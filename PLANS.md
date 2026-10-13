@@ -31,6 +31,40 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater history --summary` names when each loop last produced a change: a `last change` column and `lastChangeTs` in the JSON (planned 2026-10-12 by plan; extends the Done "`tumwater history --summary` tallies each loop's tick outcomes" entry; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+
+**Goal.** `history --summary` counts each loop's changes, but it does not say *when* the newest one happened. A loop showing `changes 1` over `--since 7d` may have landed an hour ago or six days ago. No surface says when a loop last landed: `LoopState` (src/loop/loop-state.ts) keeps only `lastResult`/`lastTickEndedAt`, and `status` shows the last tick, not the last change. Add the timestamp of each loop's newest changes-class row to the summary.
+
+**Approach.**
+- **Collector.** In `src/history/history-data.ts`, give `HistorySummaryRow` a field `lastChangeTs: number | null`.
+  - `summarizeTickRows`'s `blank` starts it at `null`.
+  - For each row where `historyClass(row.result) === "changes"`, set the loop entry's and `total`'s `lastChangeTs` to the larger of the current value and `row.ts`. Take the max, never the last row seen: row order is newest first, and a pure function must not depend on that.
+  - Update the doc comment to say `lastChangeTs` is the newest changes-class row's `ts`, or `null` when the loop had none among the rows.
+- **Text form.** In `renderSummary` (`src/history/history.ts`), append a fifth column `last change` after `problems`, separated by the same two spaces.
+  - The cell is `formatTimestamp(r.lastChangeTs)` from `src/text/datetime.ts` (the same formatter that makes `TickRow.time`), or `—` when the value is `null`.
+  - The column is left-aligned and is the last one, so it needs no padding; the existing `trimEnd` still applies.
+  - The four numeric columns keep their current right-alignment rule.
+  - Extend the doc comment to name the new column.
+- **JSON.** `--summary --json` prints `summarizeTickRows(rows)` as today, so every `loops` entry and `total` now carry `lastChangeTs`. No other change is needed.
+- **Docs.**
+  - In the history stanza of `src/cli/help.ts`, change "counting its ticks by outcome class (and a total line)" to "counting its ticks by outcome class, with the time of its newest change (and a total line)".
+  - Make the same wording change in README.md's "Watch per-tick history" row ("…counting its ticks by outcome class and naming its newest change (plus a total)…").
+
+**Files.** `src/history/history-data.ts`, `src/history/history.ts`, `src/cli/help.ts`, README.md, test/history-data.test.ts, test/cli-history-filtering.test.ts. No test asserts the help wording that changes (`grep -rn "outcome class" test` matches no help text), and docs/invariants.md has no history-summary entry.
+
+**Acceptance criteria.**
+- **Unit tests** in test/history-data.test.ts, "summarizeTickRows tallies each loop's outcome classes in name order with a total":
+  - Give the rows distinct `ts` values. The test asserts each loop's `lastChangeTs` is the largest `ts` among its `changed`/`queued` rows (bugfix's `queued` counts as a change).
+  - It asserts `total.lastChangeTs` is the largest of those.
+  - The empty-input case deep-equals `{ loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0, lastChangeTs: null } }`.
+  - Add a case where a loop's only change is *older* than one of its no-change rows, to prove the max is taken over changes-class rows only.
+- **CLI text form.** In test/cli-history-filtering.test.ts, "history --summary tallies each loop's outcomes…" runs on `seededHistoryRepo()` (feature #7 `changed` at ts 1787222695956, clean #3 `no_change`, bugfix #9 `error`).
+  - It asserts the exact trimmed lines. The header gains `  last change`, the bugfix and clean lines end in `  —`, and the feature and total lines end in `  ` + `formatTimestamp(1787222695956)`.
+  - The test imports `formatTimestamp` from `../src/text/datetime.js` to build the expected text, so it passes in any time zone.
+- **CLI JSON.** In the same test, `payload.total` deep-equals `{ loop: "total", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 1787222695956 }`. `history --summary --result problems` shows `—` on its total line.
+- **Unchanged output.** Without `--summary`, `history`'s output is unchanged, and "history --summary keeps the empty-state output on an empty log" passes unmodified.
+- **Check.** `npm run test` passes.
+
 ## Done
 
 ### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above) — done 2026-10-12
