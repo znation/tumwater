@@ -6,7 +6,85 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### A reviewer run that moves HEAD cannot change what lands: the gate restores the head it reviewed (planned 2026-10-12 by plan; independent of every other entry, including the done "harness folds commits the agent made during a tick" plan, which covers authoring and stage-fix runs and names vet-slot review runs out of scope)
+
+**Goal.** `reviewAheadOfMain` (`src/review/review.ts`) reads `head = headOf(wt, "HEAD")`, then
+gives the reviewer pi a worktree holding that commit. The reviewer is told its only output
+is the verdict, but nothing enforces that for commits:
+- On approve, the gate runs `git reset --hard HEAD`. That removes the reviewer's stray edits,
+  which test/review.test.ts's "gate approves a good diff, records the HEAD, and discards the
+  reviewer's stray edits" pins. It keeps any commit the reviewer made, because `HEAD` is by
+  then the reviewer's commit.
+- `landing-core.ts` (the code after `reviewAheadOfMain` returns, around "Approved or exempt:
+  track the pin") pins `gate.verifiedHead ?? headOf(wt, "HEAD")`. `gateBuildPrecheck`
+  (`src/review/review-precheck.ts`) leaves `verifiedHead` unset when no check is configured
+  (`runGateCheck` returns null) or when the check does not pass. In those cases the pin moves
+  to the reviewer's commit, and a commit no reviewer judged lands on main.
+- On the strike-free failed paths (dead backend, nudge repeat, no VERDICT) and the aborted
+  returns, the commit is "kept for re-review". If the reviewer committed, its commit is now
+  part of what the next attempt reviews and lands.
+
+After this change, every gate exit that keeps the change leaves the worktree at exactly the
+`head` it reviewed. The reject and strike-cap discard paths keep resetting to main.
+
+**Approach.**
+1. In `src/review/review.ts`, add a module-private
+   `async function restoreReviewedHead(wt: string, head: string, root: string, role: string): Promise<void>`.
+   - It reads `headOf(wt, "HEAD")`. When that differs from `head`, it calls
+     `warnEventBestEffort(root, role, "the reviewer moved HEAD to <short> during review; restored the reviewed head <short>")`,
+     using `shortSha`, which review.ts already uses.
+   - It always finishes with `git(wt, "reset", "--hard", head)`. With HEAD unchanged this is
+     exactly today's `reset --hard HEAD`.
+   - An unreadable HEAD skips the warning but still resets.
+2. Call it on every return after the `ctx.runGatePi` call, except the two that reset to main
+   on purpose (`reject` and the `REVIEW_FAILURE_LIMIT` discard):
+   - the `pi.aborted` return;
+   - the nudge-aborted return;
+   - the follow-up-aborted return;
+   - the `nudgeRepeat` failed return;
+   - the strike-free `!pi.ok || …` failed return;
+   - the under-cap failed return when `discarded` is false;
+   - the approve path, where it replaces `await git(wt, "reset", "--hard", "HEAD")`.
+
+   A local `const keep = async (r: GateResult) => { await restoreReviewedHead(wt, head, root, role); return r; }`
+   that wraps those `withRuns(...)` results keeps the call sites to one word each. The
+   implementer picks the form, but must not add a second reset to the reject or discard
+   paths.
+3. Restoring on the failed paths also discards uncommitted reviewer edits there, which today
+   survive. This is intended: the committed change at `head` is the only work in a vet-slot
+   worktree, and the approve path already treats reviewer edits this way.
+4. Add a new section to the end of `docs/invariants.md`, "## The reviewer cannot author the
+   landing", with one invariant. Give it the next free section letter, `INV-I1`: the
+   fold plan, now done, took section H.
+   - **Guarantee:** a gate exit that keeps the change after the reviewer ran (approved, or
+     failed without discard) leaves the worktree's HEAD at the head the gate reviewed, so neither the
+     landing pin nor the next re-review can include a commit the reviewer made.
+   - **Binds:** `src/review/review.ts`.
+   - **Pinned by:** the tests below.
+
+**Out of scope:** the merge conflict resolver's run in `mergeToMain` (`src/landing/landing-merge.ts`),
+whose commits are its intended output, and authoring and stage-fix runs, which the fold plan
+covers.
+
+**Files touched.** `src/review/review.ts`, `test/review.test.ts` (the `gateFixture` /
+`reviewGate` / `withPi` pattern from `test/fixtures/gate-fixtures.ts`), `docs/invariants.md`.
+
+**Acceptance criteria.**
+- New test "a reviewer's own commit is dropped on approve: the worktree returns to the reviewed
+  head". The fake pi runs `echo extra > extra.txt && git add extra.txt && git -c user.name=t -c user.email=t@t commit -qm reviewer`
+  in its cwd, then prints `VERDICT: approve`. Afterwards:
+  - `result.decision` is `"approved"`;
+  - `headOf(wt, "HEAD")` equals the fixture's `head`, and `extra.txt` does not exist;
+  - `state.lastApprovedHead` equals `head`;
+  - the events feed holds a warning that matches `/reviewer moved HEAD/`.
+- New test "a reviewer's own commit is dropped when the review fails strike-free". The same
+  committing fake pi replies with no VERDICT line and exits non-zero, which takes the `!pi.ok`
+  path. The result is `failed` without `discarded`, and HEAD equals `head`.
+- The existing "gate approves a good diff, records the HEAD, and discards the reviewer's stray
+  edits" test passes unchanged and records no "reviewer moved HEAD" warning.
+- The rejection test "gate rejects a bad diff: branch reset to main, reasons recorded" passes
+  unchanged.
+- `npm run test` passes, and the new invariant cites both new test names.
 
 
 ## Done
