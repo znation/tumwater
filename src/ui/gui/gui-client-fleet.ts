@@ -85,7 +85,9 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
       if (d.runWindowBadge) {
         rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),
-          "This run was started with run --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
+          d.scheduledStopAt !== undefined && d.scheduledStopAt === d.runStopsAt
+            ? "A scheduled stop (tumwater stop --in) — the fleet drains in-flight work and exits then."
+            : "This run was started with run --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
       }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
@@ -110,6 +112,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     paintPanel("statuschips", rows);
     renderBudgetBadge(d);
     renderPauseBadge(d);
+    renderStopControl(d);
     renderSoundBadge();
   }
   // sidebar:end

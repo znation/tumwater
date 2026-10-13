@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { isFleetPaused } from "../fleet/fleet-state.js";
+import { cancelScheduledStop, isFleetPaused, scheduleStop } from "../fleet/fleet-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
@@ -155,6 +155,24 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
         : "no harness is running — the next `tumwater run` applies it after the deadline")
     );
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
+}
+
+/** Schedule a graceful fleet stop `inMs` from now (`tumwater stop --in`, the dashboard's "Stop the
+ * fleet later"): the marker means nothing without a live fleet to consume it, so a stopped one
+ * refuses with NO_HARNESS_ERROR. The caller has already validated `inMs` (positive, within
+ * PAUSE_FOR_MAX_MS). */
+export function requestScheduledStop(root: string, inMs: number): RequestResult {
+  if (!orchestratorAlive(root)) return { ok: false, error: NO_HARNESS_ERROR };
+  scheduleStop(root, Date.now() + inMs);
+  return {
+    ok: true,
+    message: `stop scheduled in ${durationLabel(inMs)} — the fleet drains its in-flight ticks and exits then; \`tumwater stop --cancel\` drops it`,
+  };
+}
+
+/** Drop a scheduled stop; needs no live fleet. The confirmation `stop --cancel` prints. */
+export function cancelScheduledStopMessage(root: string): string {
+  return cancelScheduledStop(root) ? "scheduled stop cancelled" : "no stop scheduled";
 }
 
 /** The structured outcome of a boolean-claiming marker request (requestRestart/requestAbort):

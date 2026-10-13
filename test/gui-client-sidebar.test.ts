@@ -24,6 +24,7 @@ function sidebarScope(): { renderSidebar: (d: unknown) => void; panels: Record<s
       paintPanel: (id: string, html: string) => { panels[id] = html; },
       renderBudgetBadge: () => {},
       renderPauseBadge: () => {},
+      renderStopControl: () => {},
       renderSoundBadge: () => {},
     },
   );
@@ -149,4 +150,14 @@ test("the sidebar shows a Stops in row only for a windowed run", () => {
   assert.match(panels.statuschips!, /Stops in 2h/);
   renderSidebar({ running: true, pid: 123, runWindowBadge: "" });
   assert.doesNotMatch(panels.statuschips!, /Stops in/);
+});
+
+test("the Stops in row's explanation names stop --in for a scheduled stop and run --for otherwise", () => {
+  const { renderSidebar, panels } = sidebarScope();
+  renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5, scheduledStopAt: 5 });
+  assert.match(panels.statuschips!, /stop --in/);
+  renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5, scheduledStopAt: 9 });
+  assert.match(panels.statuschips!, /run --for/);
+  renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5 });
+  assert.match(panels.statuschips!, /run --for/);
 });

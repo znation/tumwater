@@ -289,6 +289,59 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   });
   // pause-control:end
 
+  // stop-control:start
+  let stopMenuOpen = false;
+  // The delays the menu offers for a scheduled graceful stop.
+  const STOP_CHOICES = [[3600, "In 1 hour"], [7200, "In 2 hours"], [14400, "In 4 hours"], [28800, "In 8 hours"]];
+  // The sidebar's scheduled-stop control: nothing while the fleet is stopped; Cancel while a
+  // stop is scheduled; otherwise the button that opens the menu of delays. No immediate stop:
+  // under run --gui it would take the page down mid-click.
+  function stopControlHtml(d) {
+    if (!d || !d.running) return "";
+    if (d.scheduledStopAt) {
+      return "<button type='button' class='btn btn-warn' id='stopbadge' title='A stop is scheduled — click to cancel it'>" +
+        icon("stop") + "<span>Cancel scheduled stop</span></button>";
+    }
+    return "<button type='button' class='btn' id='stopbadge' aria-haspopup='menu' title='Wind the fleet down later — in-flight ticks finish, then it exits'>" +
+      icon("stop") + "<span>Stop the fleet later</span><span class='btn-note'>" + icon("chev") + "</span></button>";
+  }
+  function renderStopControl(d) {
+    if (stopMenuOpen) return;
+    paintPanel("stopwrap", stopControlHtml(d));
+  }
+  function openStopMenu() {
+    const pop = openPopover("stopwrap", {
+      menu: true,
+      role: "menu",
+      html: "<div class='menu-title'>Stop the fleet later</div>" +
+        STOP_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-stopin='" + c[0] + "'>" +
+          icon("clock") + esc(c[1]) + "</button>").join("") +
+        "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, then the fleet exits.</p>",
+      onClosed: () => {
+        stopMenuOpen = false;
+        renderStopControl(lastStatus);
+      },
+    });
+    stopMenuOpen = true;
+    const first = pop.querySelector("button");
+    if (first) first.focus({ preventScroll: true });
+  }
+  function postStopSchedule(body) {
+    return postAction("/api/stop-schedule", body, (d) => d && typeof d.message === "string" ? d.message : "Stop schedule updated");
+  }
+  onClick((t, ev) => {
+    if (t.closest("#stopbadge")) {
+      ev.preventDefault();
+      if (lastStatus && lastStatus.scheduledStopAt) postStopSchedule({ cancel: true });
+      else if (stopMenuOpen) closeMenus();
+      else openStopMenu();
+      return;
+    }
+    const choice = t.closest("[data-stopin]");
+    if (choice) postStopSchedule({ inSeconds: Number(choice.dataset.stopin) });
+  });
+  // stop-control:end
+
   // sound-control:start
   // The sidebar's sound control, beside the theme toggle: a speaker icon that flips between
   // the unmuted and muted glyph. A per-browser preference (setSoundMuted stores it), not fleet

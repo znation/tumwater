@@ -419,7 +419,8 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
     saveBudget(): Promise<void>;
     pauseControlHtml(d: object): string;
     setFleetPause(paused: boolean, forSeconds?: number, reason?: string): Promise<void>;
-  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause", "windowLinesHtml"], {
+    stopControlHtml(d: object | null): string;
+  }>(["format", "post-action", "click-delegate", "shared-operator", "budget-edit", "pause-control", "stop-control"], ["budgetCardHtml", "parseBudgetField", "saveBudget", "pauseControlHtml", "setFleetPause", "windowLinesHtml", "stopControlHtml"], {
     document: { addEventListener: () => {}, createElement: () => ({ setAttribute() {}, remove() {} }) },
     $: (id: string) => els[id] ?? null,
     paintPanel: (id: string, html: string) => { panels[id] = html; return true; },
@@ -434,6 +435,14 @@ function operatorScope(state: { lastStatus?: object | null } = {}) {
   });
   return { scope, panels, posts, flashes, els };
 }
+
+test("the stop control is empty when stopped, a menu opener when running, and Cancel when scheduled", () => {
+  const { scope } = operatorScope();
+  assert.equal(scope.stopControlHtml(null), "");
+  assert.equal(scope.stopControlHtml({ running: false }), "");
+  assert.match(scope.stopControlHtml({ running: true }), /Stop the fleet later/);
+  assert.match(scope.stopControlHtml({ running: true, scheduledStopAt: Date.now() + 1000 }), /Cancel scheduled stop/);
+});
 
 test("the assembled script declares postAction exactly once — both operator and fleet callers go through it", () => {
   // Two `async function postAction` declarations in one concatenated script scope: the later

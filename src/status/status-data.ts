@@ -322,6 +322,9 @@ export interface StatusSnapshot {
   /** The earlier of the `run --for` deadline (the running orchestrator's info file) and a
    * `tumwater stop --in` marker (epoch ms); absent when neither is set or the fleet is stopped. */
   runStopsAt?: number;
+  /** A `tumwater stop --in` marker's deadline (epoch ms) alone, so a surface can tell it from
+   * `run --for`'s; absent when none is set or the fleet is stopped. */
+  scheduledStopAt?: number;
 }
 
 /** The earlier of the two optional stop deadlines (`run --for`'s and a scheduled stop's). */
@@ -592,5 +595,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     disk: running && info?.disk ? info.disk : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
     runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
+    scheduledStopAt: running ? scheduledStopAt(root) : undefined,
   };
 }

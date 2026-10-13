@@ -124,6 +124,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     diskBadge: diskBadge(snap.disk, now),
     // The `run --for` deadline: raw epoch ms (only when windowed) plus the display-ready badge.
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
+    ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),
     runWindowBadge: runWindowBadge(snap.runStopsAt, now),
     // The land queue (plans/merge-queue.md 4/5): depth always (machine-readable for
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is

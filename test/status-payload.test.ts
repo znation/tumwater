@@ -3,6 +3,7 @@
 // server in the loop — the routes and page behavior live in test/gui.test.ts.
 
 import test from "node:test";
+import { scheduleStop } from "../src/fleet/fleet-state.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -576,4 +577,16 @@ test("status payload carries the run --for deadline and its badge only when wind
   payload = statusPayload(repo, now) as typeof payload;
   assert.equal(payload.runStopsAt, undefined);
   assert.equal(payload.runWindowBadge, "");
+});
+
+test("status payload carries scheduledStopAt only while running with a stop marker", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload scheduled stop test");
+  const now = Date.now();
+  scheduleStop(repo, now + 3600_000);
+  let payload = statusPayload(repo, now) as { scheduledStopAt?: number };
+  assert.equal(payload.scheduledStopAt, undefined, "a stopped fleet omits it");
+  writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [] });
+  payload = statusPayload(repo, now) as typeof payload;
+  assert.equal(payload.scheduledStopAt, now + 3600_000);
 });

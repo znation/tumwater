@@ -52,6 +52,7 @@ export const GUI_PAGE = `<!doctype html>
   <div class="side-controls">
     <div class="menu-anchor up" id="budgetwrap"></div>
     <div class="menu-anchor up" id="pausewrap"></div>
+    <div class="menu-anchor up" id="stopwrap"></div>
   </div>
 </aside>
 <main id="main" class="main">

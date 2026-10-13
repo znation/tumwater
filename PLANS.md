@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### The dashboard schedules and cancels a graceful fleet stop (`tumwater stop --in` / `--cancel` parity) (planned 2026-10-12 by plan; independent of every other entry; follows the landed "`tumwater stop --in <duration>`" entry in Done)
+## Done
+
+### The dashboard schedules and cancels a graceful fleet stop (`tumwater stop --in` / `--cancel` parity) (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`tumwater stop --in <duration>`" entry in Done)
 
 **Goal.** `tumwater stop --in 2h` and `stop --cancel` exist only on the CLI. The dashboard shows the resulting `stops in …` row but can neither set nor drop it. Its row also always reads "This run was started with run --for", even when the deadline came from a `stop --in` marker. An operator watching the dashboard should be able to say "wind down in 2 hours", or take that back, without a terminal.
 
@@ -74,8 +76,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
   - The stop control is empty when not running. It reads "Stop the fleet later" when running with no marker, and "Cancel scheduled stop" when `scheduledStopAt` is set.
   - The `Stops in` row's explanation names `stop --in` when `scheduledStopAt === runStopsAt`, and `run --for` otherwise.
 - The `stop` tests in `test/scheduled-stop.test.ts` and `test/cli-operators-fleet.test.ts` pass unchanged, so the CLI output is unchanged.
-
-## Done
 
 ### `tumwater retire --role <id> --dry-run` previews what retire would remove and whether its safety rails would refuse (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

@@ -9,10 +9,11 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
+import { scheduledStopAt } from "../src/fleet/fleet-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir, roleNotesPath } from "../src/paths.js";
 import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";
@@ -281,6 +282,61 @@ test("the live server routes POST /api/restart to the handler and refuses other 
     const get = await fetch(base + "/api/restart");
     assert.equal(get.status, 404);
     assert.equal(fs.existsSync(restartRequestPath(root)), true, "the earlier POST's marker stands");
+  } finally {
+    server.close();
+  }
+});
+
+function serveStopSchedule(root: string, body: unknown) {
+  return captureJson((res) => handleStopSchedule(fakeReq(JSON.stringify(body)), res, root));
+}
+
+test("handleStopSchedule schedules a stop on a live fleet and cancel drops it", async () => {
+  const root = tmpdir();
+  seedFleet(root, null);
+  const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
+  assert.equal(captured.status, 200);
+  assert.match((data as { message: string }).message, /stop scheduled in 2h/);
+  assert.ok(Math.abs((scheduledStopAt(root) ?? 0) - (Date.now() + 7_200_000)) < 5000);
+  let cancel = await serveStopSchedule(root, { cancel: true });
+  assert.equal(cancel.captured.status, 200);
+  assert.equal((cancel.data as { message: string }).message, "scheduled stop cancelled");
+  assert.equal(scheduledStopAt(root), undefined);
+  cancel = await serveStopSchedule(root, { cancel: true });
+  assert.equal((cancel.data as { message: string }).message, "no stop scheduled");
+});
+
+test("handleStopSchedule refuses a stopped fleet with 409 and writes no marker", async () => {
+  const root = tmpdir();
+  const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
+  assert.equal(captured.status, 409);
+  assert.match((data as { error: string }).error, /no harness is running/);
+  assert.equal(scheduledStopAt(root), undefined);
+});
+
+test("handleStopSchedule rejects a missing, invalid, over-cap, or combined body with 400", async () => {
+  const root = tmpdir();
+  seedFleet(root, null);
+  for (const body of [{}, { inSeconds: -1 }, { inSeconds: 8_000_000 }, { cancel: true, inSeconds: 60 }]) {
+    const { captured } = await serveStopSchedule(root, body);
+    assert.equal(captured.status, 400, JSON.stringify(body));
+    assert.equal(scheduledStopAt(root), undefined, JSON.stringify(body));
+  }
+});
+
+test("the live server routes POST /api/stop-schedule and refuses GET", async () => {
+  const root = tmpdir();
+  seedFleet(root, null);
+  const { server, base } = await startLocalGui(root);
+  try {
+    const res = await fetch(base + "/api/stop-schedule", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inSeconds: 3600 }),
+    });
+    assert.equal(res.status, 200);
+    assert.notEqual(scheduledStopAt(root), undefined);
+    assert.equal((await fetch(base + "/api/stop-schedule")).status, 404);
   } finally {
     server.close();
   }

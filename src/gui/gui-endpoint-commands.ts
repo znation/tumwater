@@ -22,7 +22,7 @@ import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from ".
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
-import { PAUSE_FOR_MAX_MS, cancelWakes, requestAbort, requestResetCounters, requestRestart, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
+import { PAUSE_FOR_MAX_MS, cancelScheduledStopMessage, cancelWakes, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, requestWake, runManualReclaim, submitRolePromptAndWake, type RequestResult } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
@@ -592,6 +592,31 @@ function sendRequestResult(res: http.ServerResponse, result: RequestResult): voi
     return;
   }
   sendJson(res, 200, { ok: true, message: result.message });
+}
+
+/** Handle POST /api/stop-schedule: the dashboard's "Stop the fleet later" control — the same
+ * cores `tumwater stop --in`/`--cancel` call (requestScheduledStop, cancelScheduledStopMessage).
+ * `{"cancel": true}` drops the marker (no live fleet needed, like the CLI); otherwise
+ * `inSeconds` is required and takes /api/wake's positive-finite-and-capped rule. A stopped
+ * fleet answers 409 with the not-running error. */
+export async function handleStopSchedule(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"inSeconds": 7200}');
+  if (!body) return;
+  if (body.cancel === true) {
+    if (body.inSeconds !== undefined) {
+      sendJson(res, 400, { error: "cancel and inSeconds cannot be combined" });
+      return;
+    }
+    sendJson(res, 200, { ok: true, message: cancelScheduledStopMessage(root) });
+    return;
+  }
+  const inMs = wakeInSecondsMs(res, body);
+  if (inMs === null) return;
+  if (inMs === undefined) {
+    sendJson(res, 400, { error: "inSeconds or cancel is required" });
+    return;
+  }
+  sendRequestResult(res, requestScheduledStop(root, inMs));
 }
 
 /** Handle POST /api/restart: the dashboard's build-stale alert's refresh button — the same
