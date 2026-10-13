@@ -31,6 +31,34 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater retire --role <id> --dry-run` previews what retire would remove and whether its safety rails would refuse (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** `retire` deletes a loop's branch and worktree, or resets a pooled slot with `reset --hard` and `clean -fd`. Today the only way to learn what it will touch is to run it. It refuses when a safety rail objects, and then the operator has to choose blind between fixing each objection and `--force`. `reclaim` and `init` already offer `--dry-run`. `retire --dry-run` should give the same preview: which artifacts exist to remove, which are already gone, and which rails object. It changes nothing.
+
+**Approach.**
+- **`src/operator/retire.ts`.** Add `export async function previewRetire(root, role): Promise<RetirePreview>`, where `RetirePreview` is `{ status: RetireStatus; wouldRemove: string[]; skipped: string[]; objections: string[] }`.
+  - It calls `collectRetire(root, role)`. That call keeps throwing on an unreadable tumwater.json, as `retireRole` does today.
+  - It classifies each of `ARTIFACTS` in order, using the same presence test `retireRole`'s `mark` calls use: `worktree` ⇐ `status.worktreePresent`, `branch` ⇐ `status.branchPresent`, `landingRef` ⇐ `status.landingRefPresent`. For `pausedMarker`, it checks `pausedRoles(root).includes(role)` (import `pausedRoles` from `src/fleet/fleet-state.ts`) instead of calling `resumeRole`.
+  - `objections` is the existing private `objections(status)` result. It writes no file, ref, or slot state and runs no state-changing git command.
+- **`cmdRetire` in `src/operator/operator-commands.ts`.** When `args.includes("--dry-run")`, call `previewRetire` instead of `retireRole`, and render:
+  - one `would remove <artifactPhrase>` line per `wouldRemove` entry;
+  - one `nothing to remove: <artifactPhrase>` line per `skipped` entry, the same wording the real run uses;
+  - then one line per objection: `would refuse: <reason>` without `--force`, or `--force overrides: <reason>` with it;
+  - finally `dry run — nothing removed`.
+  - With `--json`, print `{ role, dryRun: true, wouldRemove, skipped, objections }`. The exit code is 0 even when rails object, because this is a preview, like `reclaim --dry-run`.
+- **`src/cli.ts`, `case "retire"`.** Add `DRY_RUN_FLAG`, imported from `src/cli/cli-flag-specs.ts` next to `FORCE_FLAG`, to the `rejectUnknownArgs("retire", …)` list. Widen `DRY_RUN_FLAG`'s doc comment, which today says it previews a reclaim pass, to name retire too.
+- **Docs.** In `src/cli/help.ts`'s retire stanza, add `--dry-run lists what would be removed and any objections, changing nothing`. In README.md's "Control the loops" row, add `--dry-run` to the `tumwater retire` mention.
+
+**Files touched.** `src/operator/retire.ts`, `src/operator/operator-commands.ts`, `src/cli.ts`, `src/cli/cli-flag-specs.ts` (comment only), `src/cli/help.ts`, `README.md`, `test/retire.test.ts`.
+
+**Acceptance criteria** (all in `test/retire.test.ts`, using its `initializedWorktree`/`disableRole` fixtures and the `cli` harness):
+- Disable `improve` and pin a merged landing ref, as the first retire test does. Then `cli(root, "retire", "--role", "improve", "--dry-run", "--json")` exits 0 with `wouldRemove` `["worktree", "branch", "landingRef"]`, `skipped` `["pausedMarker"]`, and `objections` `[]`. Afterwards the worktree directory, the branch (`branchHead` non-null), and the landing ref all still exist.
+- For an enabled role (`feature`), `--dry-run` exits 0. Its text output has a `would refuse:` line matching `/still enabled in tumwater.json/` and ends with `dry run — nothing removed`. Adding `--force` prints that reason after `--force overrides:` instead, and still removes nothing.
+- With `pausedRolesPath` holding `["improve", "clean"]`, `previewRetire(root, "improve")` lists `pausedMarker` in `wouldRemove`, and the marker still reads `["improve", "clean"]` afterwards.
+- On a pinned slot, `--dry-run` leaves `readSlotsState(root)`'s `pinnedFor` for that slot unchanged.
+- `cli(root, "retire", "--role", "improve", "--dry-runn")` fails with `unknown argument: --dry-runn`. `helpTopic("retire")` matches `/--dry-run/`.
+- The existing retire tests pass unchanged.
+
 ## Done
 
 ### `tumwater stop --in <duration>` schedules a graceful stop of the running fleet, shown as `stops in …` everywhere `run --for` is (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`run --for` shows a `stops in` countdown" plan, whose `StatusSnapshot.runStopsAt` and `runWindowBadge` it reuses)
