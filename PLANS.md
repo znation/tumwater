@@ -31,6 +31,29 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater run --for` ends with a per-loop summary of every tick in its window, not the once round's last-result line (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2. It touches no `src/backlog`, `src/landing`, or orchestrator file. Today `cmdRun` in `src/cli/cli-run.ts` prints `onceSummary(...)` under `once || forMs !== null`. That line counts ticks from each role's `ticks` delta, but it buckets each role by its *last* result only. A two-hour window where `feature` ran 12 ticks prints `once: 12 ticks — 1 changed`, so the outcome counts do not add up to the tick count. The window's work is invisible, and the line is labelled `once:` for a run that was not one round. `test/cli-run.test.ts` already pins the mismatch for the once path: `"once: 5 ticks — 1 changed, 1 error, 1 no_change"`)
+
+**Goal.** When a `run --for` generation exits, it prints a window line and then the `history --summary` table for the ticks that ended since that generation booted. Every tick counts once, by its outcome class. `--once` output does not change.
+
+**Approach.**
+- **Window start.** In `cmdRun`, record `const windowStart = Date.now()` just before `runOrchestrator` is awaited (beside the `ticksBefore` snapshot).
+- **Rows.** After the orchestrator returns and `forMs !== null`, read `readTickRowsSince(root, windowStart, null)` from `src/history/history-data.ts`, then tally them with `summarizeTickRows`. That is the same pairing and `historyClass` rule `tumwater history --since … --summary` uses, so the two views cannot disagree.
+- **Rendering.** Add an exported pure `windowSummary(label: string, summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string` in `src/cli/cli-run.ts`.
+  - First line: `for <label>: <plural(total.ticks, "tick")> — <changes> changes, <none> none, <problems> problems`. With zero ticks it reads `for <label>: 0 ticks — nothing ran`.
+  - Then, when `total.ticks > 0`, the `history --summary` table. Get it by exporting `renderSummary` from `src/history/history.ts` unchanged; it is currently module-private.
+  - When `covered` is false, append `SPARSE_WINDOW_NOTE` (from `src/events/event-window.ts`) as a last line.
+  - `label` is `durationLabel(forMs)`, the same label the banner's `· for 3s` uses.
+- **Wiring.** Change the call site to `if (once) say(onceSummary(...))` and `else if (forMs !== null) say(windowSummary(...))`. The `onceFailures` block stays under `once` only. `run --for` exit codes do not change.
+- **Self-redeploy.** A mid-window self-redeploy still prints the summary before `process.exit(RESTART_EXIT_CODE)`, as today, and it covers that generation's ticks. The next generation restarts its deadline and its window start, which matches the existing `--for` hand-off documented on `cmdRun`. Note this in `windowSummary`'s doc comment.
+
+**Files.** `src/cli/cli-run.ts`, `src/history/history.ts` (export `renderSummary`), `test/cli-run.test.ts`, `test/cli-run-window.test.ts`, README.md (the `tumwater run --for` usage comment: "… then drain, print a per-loop summary of the window, and exit"), `src/cli/help.ts` (the `--for` line, if it describes the exit output).
+
+**Acceptance criteria.**
+- New unit tests for `windowSummary` in test/cli-run.test.ts, built from `summarizeTickRows` over hand-made `TickRow` fixtures. Two `clean` rows (`changed`, `no_change`) and one `qa` row (`error`) render `for 2h: 3 ticks — 1 changes, 1 none, 1 problems`, then a `loop`/`ticks`/`changes`/`none`/`problems`/`last change` header and `clean`, `qa`, and `total` rows. An empty summary renders exactly `for 2h: 0 ticks — nothing ran`. `covered = false` appends `SPARSE_WINDOW_NOTE`.
+- test/cli-run-window.test.ts's `run --for boots, stops itself at the deadline, and prints the summary` now asserts `/for 3s: \d+ ticks?/` and asserts that no line starts with `once:`.
+- The existing `onceSummary` tests and test/cli-run-once.test.ts pass unchanged, so `--once` output stays the same.
+- `tumwater history --summary` output is unchanged (its tests pass unchanged); the only edit there is the `export` keyword.
+
 ## Done
 
 ### `tumwater run --once` exits 3 when a role's round ended in a harness failure, so a cron or CI step can tell a broken round from a quiet one (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 and of the waiting "`tumwater queue` marks the entries the landing pipeline is working on" plan. It touches no `src/backlog`, `src/landing`, or queue-render file. README and `help.ts` sell `--once` as "for cron/CI", but `cmdRun` in `src/cli/cli-run.ts` exits 0 after every round that does not request a restart. A round where every tick errored, the review gate could not parse a verdict, or main was red prints its `once: …` summary and still exits 0, so the CI job stays green) (done 2026-10-12)
