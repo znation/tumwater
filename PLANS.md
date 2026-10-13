@@ -6,7 +6,67 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-_None yet._
+### The landing gate rejects a change that writes the value of a secret environment variable into the repo (planned 2026-10-13 by plan; independent of every other entry. It follows the INV-G1 pattern of the Done entry "The landing gate rejects a loop's edit to the initial prompt block…": one reason function shared by `stageCheckFindings` and the review gate)
+
+**Goal.** On 2026-10-12 an improve tick's diff added nine Node diagnostic report files
+(`report.20261012.042734.*.json`, ~12.9k lines; test-run debris the SUMMARY never named), and each
+held the operator's `HF_TOKEN`, because a report dumps its process's whole environment. Only the
+model reviewer caught it (`review_rejected` for loop `improve` in the event log). An md-only diff
+skips the reviewer entirely (`isExemptDiff`), and a reviewer can miss a token inside a 1,400-line
+JSON file, so a credential can land on main with nothing deterministic in the way. The harness
+knows its own environment, so it can make this check exact and language-neutral: a changed file
+whose content now holds the value of a secret-named environment variable is rejected before
+review, and flagged at staging so the author gets one fix-up turn. A grep for `secret` under
+`src/review/` and `src/tick/` finds nothing.
+
+**Approach.**
+- New module `secret-leaks.ts` in `src/review/`, exporting
+  `secretLeakReason(wt: string, mainBranch: string, files: string[], env: NodeJS.ProcessEnv = process.env): Promise<string | undefined>`.
+  - Secret values: every `env` entry whose name matches
+    `/(TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY)/i` and whose value
+    is at least 16 characters, holds no whitespace, and does not start with `/` (so
+    `CLAUDE_CODE_MAX_OUTPUT_TOKENS=32000` and `GOOGLE_APPLICATION_CREDENTIALS=/path/key.json`
+    are not secrets). Export the predicate as `secretEnvValues(env)` returning
+    `{ name, value }[]` so tests pin it directly. No secrets means return undefined at once, with
+    no file read.
+  - For each path in `files`, skip it unless it is a regular file under `wt` of at most 8 MiB
+    (`fs.statSync`; an untracked directory that `changedFiles` reports as `dir/` is skipped, and
+    the gate's committed `aheadOfMainFiles` list names its files individually). Read it with
+    `readTextOrNull`, then flag each secret whose value occurs in the head content but not in the
+    file's base content (`fileContentAt(wt, await changeBaseRev(wt, mainBranch), file)`, computed
+    once and only when some head content matched). A value already present on main is not this
+    change's leak and must not wedge every later tick.
+  - The reason names files and variable names, NEVER the value. It is logged in
+    `review_rejected` and injected into the author's next prompt:
+    `` `<file>` contains the value of $HF_TOKEN — delete the file or remove the value; never commit credentials (a Node diagnostic report, report.*.json, dumps the whole environment) ``.
+    Join several files with `; ` and cap the list at 10 with `moreSuffix` from
+    `src/text/phrases.ts`, as `stage-check.ts` caps its lists.
+- `src/review/review.ts`: call it right after `protectedEditReason` in the gate (before the
+  `isExemptDiff` fast path, so md-only diffs are covered) and `return reject([reason])` when set.
+- `src/tick/stage-check.ts` `stageCheckFindings`: push its finding after the protected-edit
+  finding, with `.catch(() => undefined)` like its siblings.
+- `docs/invariants.md`: add `### INV-G2` under "The landing gate's deterministic rejections",
+  stating the guarantee, binding the three source files, and pinned by the tests below.
+
+**Files touched.** `secret-leaks.ts` (new, in `src/review/`), `src/review/review.ts`,
+`src/tick/stage-check.ts`, `secret-leaks.test.ts` (new, in `test/`), `test/review.test.ts`,
+`test/stage-check.test.ts`, `docs/invariants.md`.
+
+**Acceptance criteria.**
+- The new `secret-leaks.test.ts` uses an injected `env` and never reads the real `process.env`
+  secrets. It shows that `secretEnvValues` keeps `HF_TOKEN=<20+ chars>` and drops a short value,
+  a value with whitespace, a `/`-leading path, and a non-matching name. It shows that
+  `secretLeakReason` names the file and `$HF_TOKEN`, and that the returned string does not
+  contain the value. It returns undefined when the value was already in the file at the
+  merge-base, when the file is a directory, and when `env` holds no secret.
+- `test/review.test.ts` "gate rejects an md-only change that writes a secret env value, with no
+  pi run": a fixture modeled on the existing `protectedEditRepo` helper, with an env-injected
+  secret, gives a `rejected` decision, and the fake pi is never invoked. Make the env injectable
+  to the gate however review.ts already threads test seams; if it has none, the test sets a
+  uniquely named `TUMWATER_TEST_FAKE_TOKEN` in `process.env` and deletes it in a `finally`.
+- `test/stage-check.test.ts` "an uncommitted file holding a secret env value is a finding": an
+  untracked `report.json` holding the value yields one finding naming it.
+- `docs/invariants.md` carries INV-G2 naming those tests. `npm run test` passes.
 
 ## Done
 
