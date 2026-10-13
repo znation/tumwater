@@ -23,6 +23,7 @@ import { changedFiles } from "../git/git-diff.js";
 import { conflictMarkerReason } from "../landing/landing-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
+import { protectedEditReason } from "../review/protected-edits.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
@@ -63,12 +64,15 @@ export async function stageCheckFindings(
   wt: string,
   mainBranch: string,
   exemptPaths: string[],
+  role: string,
 ): Promise<string[]> {
   const files = await changedFiles(wt).catch(() => null);
   if (files === null || files.length === 0) return [];
   const findings: string[] = [];
   const structure = await backlogStructureReason(wt, mainBranch, files).catch(() => undefined);
   if (structure) findings.push(structure);
+  const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
+  if (protectedReason) findings.push(protectedReason);
   if (isExemptDiff(files, exemptPaths)) {
     const falseFix = await falseFixReason(wt, mainBranch, files).catch(() => undefined);
     if (falseFix) findings.push(falseFix);

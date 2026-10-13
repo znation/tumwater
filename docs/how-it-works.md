@@ -53,7 +53,7 @@ merge step lands them, so other loops keep ticking while a change is under revie
   or the single change, and a red result there blocks the merge. `check.timeoutSeconds` (default
   300) bounds every check, the detected `npm test` included.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
-  `VERDICT: approve|reject`. Markdown-only diffs skip review. Each reviewer run is capped at
+  `VERDICT: approve|reject`. Markdown-only diffs skip review, but the gate first rejects, md-only diffs included, an edit to the initial prompt block or to PRINCIPLES.md from any role but the director and steward. Each reviewer run is capped at
   `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`; at least 3600 while
   the budget fallback carries the fleet, since a slower free model needs as many turns); a
   reviewer still making progress at that deadline gets one extension of the same length before

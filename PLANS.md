@@ -6,7 +6,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The landing gate rejects a loop's edit to the initial prompt block, or to PRINCIPLES.md from a role other than director or steward (planned 2026-10-12 by plan; independent of every other entry)
+_None yet._
+
+
+## Done
+
+### The landing gate rejects a loop's edit to the initial prompt block, or to PRINCIPLES.md from a role other than director or steward (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
 **Goal.** Every loop prompt carries two boundaries: "Never edit the initial prompt block in
 <brief> (between the tumwater:prompt markers)" and "PRINCIPLES.md ... only the director and
@@ -85,9 +90,6 @@ commit directly and never pass the gate, so they are unaffected.
   unchanged.
 - `npm run test` passes.
 
-
-
-## Done
 
 ### Bare `tumwater questions answer <n>` opens the question in `$VISUAL`/`$EDITOR` and records the saved decision (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 

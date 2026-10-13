@@ -830,3 +830,46 @@ test("gate fails closed on an aborted run without bookkeeping", async () => {
       assert.equal(state.unreviewFailures, undefined);
   });
 });
+
+/** A repo whose main carries `base` files, plus the ROLE worktree with `edit` committed on top. */
+async function protectedEditRepo(base: Record<string, string>, edit: Record<string, string>) {
+  const root = makeRepo();
+  for (const [f, c] of Object.entries(base)) fs.writeFileSync(path.join(root, f), c);
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "base");
+  const wt = await ensureWorktree(root, ROLE, "main");
+  for (const [f, c] of Object.entries(edit)) fs.writeFileSync(path.join(wt, f), c);
+  sh(wt, "git", "add", "-A");
+  sh(wt, "git", "commit", "-m", "edit");
+  return { root, wt };
+}
+
+const PROMPT_README = (body: string) =>
+  `# T\n\n<!-- tumwater:prompt:start -->\n${body}\n<!-- tumwater:prompt:end -->\n`;
+
+test("gate rejects an md-only edit to the initial prompt block with no pi run", async () => {
+  const { root, wt } = await protectedEditRepo(
+    { "README.md": PROMPT_README("original") },
+    { "README.md": PROMPT_README("rewritten") },
+  );
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.match(result.detail!, /README\.md changes the initial prompt/);
+    assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+  });
+});
+
+test("gate rejects an md-only PRINCIPLES.md edit except from the steward", async () => {
+  const { root, wt } = await protectedEditRepo({ "PRINCIPLES.md": "# P\n" }, { "PRINCIPLES.md": "# P\n- new\n" });
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'`, async () => {
+    const { result } = await reviewGate(root, wt);
+    assert.equal(result.decision, "rejected");
+    assert.match(result.detail!, /PRINCIPLES\.md is edited by the improve loop/);
+    assert.ok(!fs.existsSync(marker));
+    const steward = await reviewGate(root, wt, { role: "steward" });
+    assert.equal(steward.result.decision, "exempt");
+  });
+});

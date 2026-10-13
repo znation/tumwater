@@ -132,12 +132,19 @@ export function replaceInitialPrompt(text: string, prompt: string): string | nul
   return `${text.slice(0, bodyStart)}\n${prompt.trim()}\n${text.slice(end)}`;
 }
 
-function extractPrompt(text: string): string | null {
+/** The trimmed, untruncated text between the first start marker and the first end marker after
+ * it; null when `text` has no well-formed block. */
+export function promptBlockOf(text: string): string | null {
   const start = text.indexOf(PROMPT_START);
   if (start < 0) return null;
   const end = text.indexOf(PROMPT_END, start + PROMPT_START.length);
   if (end < 0) return null;
-  const prompt = text.slice(start + PROMPT_START.length, end).trim();
+  return text.slice(start + PROMPT_START.length, end).trim();
+}
+
+function extractPrompt(text: string): string | null {
+  const prompt = promptBlockOf(text);
+  if (prompt === null) return null;
   // A hand-edited brief can carry an over-long prompt past init's length check. Truncate it
   // for every tick instead of injecting the whole thing (the same defensive cap readPrinciples
   // applies, through text.ts's truncateWithNote), with a visible note so the loss is not

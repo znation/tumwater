@@ -118,7 +118,7 @@ function buildCtx(
     stageCheck: async (checkWt: string) => {
       calls.stageChecks.push(checkWt);
       if (over.realStageCheck) {
-        return stageCheckFindings(checkWt, "main", config.review.exemptPaths);
+        return stageCheckFindings(checkWt, "main", config.review.exemptPaths, "feature");
       }
       const results = over.stageChecks ?? [[]];
       const result = results[Math.min(calls.stageChecks.length - 1, results.length - 1)] ?? [];

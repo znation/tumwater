@@ -344,3 +344,22 @@ and bind no real listener". The flake-regression half is pinned by `test/orchest
 hold assertions wait on the injected breaker clock's own reads instead of a wall-clock sleep. The
 deadline-clock half and the remaining flake regressions are pinned by the cases the plan's parts
 2/5–5/5 add.
+
+## The landing gate's deterministic rejections
+
+The gate rejects some changes without running a reviewer, because the exempt fast path for
+markdown would otherwise land them unreviewed.
+
+### INV-G1: a loop cannot land a change to the initial prompt block, or to PRINCIPLES.md unless it is the director or steward
+
+**Guarantee.** A change that alters, removes, or deletes the text between the `tumwater:prompt`
+markers of README.md or TUMWATER.md (a block that merely moves passes), or that touches
+PRINCIPLES.md from a role whose base is neither `director` nor `steward`, is rejected before
+review — md-only diffs included — and flagged at staging for one fix-up turn.
+
+**Binds.** `src/review/protected-edits.ts`, `src/review/review.ts`, `src/tick/stage-check.ts`.
+
+**Pinned by.** `test/protected-edits.test.ts` (the per-case reasons), `test/review.test.ts` — "gate
+rejects an md-only edit to the initial prompt block with no pi run" and "gate rejects an md-only
+PRINCIPLES.md edit except from the steward" — and `test/stage-check.test.ts` — "an uncommitted
+PRINCIPLES.md edit is a finding for a non-steward role only".

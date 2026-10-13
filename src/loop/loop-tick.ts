@@ -640,7 +640,7 @@ export async function handlePiResultPhase(
     piStartedAt,
     warn: (message) => ctx.warn(message),
     requestSummary: (w) => ctx.pi.requestSummary(w, cfg),
-    stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.config.review.exemptPaths),
+    stageCheck: (w) => stageCheckFindings(w, ctx.mainBranch, ctx.config.review.exemptPaths, ctx.role),
     requestStageFix: (w, findings) => ctx.pi.requestStageFix(w, findings, cfg),
     pinAndReset: (w, sha) => ctx.pinAndReset(w, sha),
     finishAbortedTick: () => ctx.finishAbortedTick(userPrompt, wt),

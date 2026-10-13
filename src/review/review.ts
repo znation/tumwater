@@ -22,6 +22,7 @@ import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { conflictMarkerReason } from "../landing/landing-git.js";
+import { protectedEditReason } from "./protected-edits.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "../landing/landing-slot.js";
@@ -205,6 +206,10 @@ export async function reviewAheadOfMain(
   // hard stop — an md-only diff skips the reviewer entirely, so nothing else would catch it.
   const markerReason = conflictMarkerReason(wt, files);
   if (markerReason !== undefined) return reject([markerReason]);
+  // The prompt block and PRINCIPLES.md are markdown, so the exempt fast path below would land
+  // an edit to either unreviewed; reject it here, for md-only and code diffs alike.
+  const protectedReason = await protectedEditReason(wt, mainBranch, files, role);
+  if (protectedReason !== undefined) return reject([protectedReason]);
   if (isExemptDiff(files, config.review.exemptPaths)) {
     // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
     // Fixed must have its fix's symbols on this tree, or it records code that does not
