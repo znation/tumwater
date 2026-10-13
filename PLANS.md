@@ -29,6 +29,28 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
+### `tumwater completion <bash|zsh>` prints a shell completion script derived from the help text (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/orchestrator`, or UI file. The help lists 31 commands and 37 distinct long flags, spread over per-command usage forms, and the operator types every one by hand: a grep for `complete -F`, `compdef`, or `bashcompinit` under `src/` finds nothing, and no Planned or Done entry covers shell completion)
+
+**Goal.** `tumwater completion bash` and `tumwater completion zsh` print a completion script the operator installs once (`eval "$(tumwater completion zsh)"` in their shell rc). It completes command names, each command's subcommand words, and each command's long flags. The script comes from `HELP` in `src/cli/help.ts`, the same text `helpTopic` and `suggestCommand` already parse, so a new command or flag completes the moment it gains a help stanza and can never drift from the listing.
+
+**Approach.**
+- New module `completion.ts` under `src/cli/`, with no imports beyond `./help.js`:
+  - `completionSpec(help: string = HELP): { commands: string[]; subcommands: Record<string, string[]>; flags: Record<string, string[]> }`. It is built from `helpStanzas(help)`. `commands` lists the distinct `stanza.command` values in help order. For each command, `flags` is the sorted, de-duplicated set of `--[a-z][a-z-]*` matches across all of that command's stanza texts (continuation lines included), plus `--help`. `subcommands` takes, for each stanza, the *usage part* of its first line: the text after `tumwater <command>` up to the first run of two or more spaces (the description column), or the whole rest when there is no such run. Remove `[`, `]`, and `|` from it, split on whitespace, and keep tokens matching `^[a-z][a-z-]*$`. That yields `get`/`set`/`unset` for `config` and `answer` for `questions`; `<key>`, `<id>`, and flags are dropped. `help` is special-cased: its subcommands are `commands`.
+  - `completionScript(shell: "bash" | "zsh", help: string = HELP): string`. The bash script defines `_tumwater` and registers it with `complete -F _tumwater tumwater`. It must run under macOS's bash 3.2, so it uses only `compgen -W`, `COMP_WORDS`, `COMP_CWORD`, and one `case "${COMP_WORDS[1]}" in … esac` with an arm per command (no associative arrays or `mapfile`). At word 1 it completes `commands`. Past word 1 it completes the command's flags when the current word starts with `-`. Otherwise, at word 2 only, it completes that command's subcommands, and when the command has none it returns no words, so the shell falls back to its default (filenames). The zsh script is `autoload -U +X bashcompinit && bashcompinit` followed by the same bash script, so there is one completion code path to keep correct.
+  - `SUPPORTED_SHELLS = ["bash", "zsh"] as const`.
+- `src/cli.ts`: a new `case "completion":` arm before `version`. It does not call `requireReadyRepo` (completion works outside a repo). It fails with `completion takes one shell: bash or zsh` (plus `gotSuffix` for a stray token) unless `args` is exactly one supported shell. Otherwise it `say`s `completionScript(shell)`.
+- `src/cli/help.ts`: a new stanza `  tumwater completion <bash|zsh>` with a description line, `Print a shell completion script (eval "$(tumwater completion zsh)" in your rc)`, placed before `help`.
+- README.md: a sentence after the `tumwater help lists every command…` paragraph naming `tumwater completion bash|zsh` and the `eval` install line.
+
+**Files touched.** a new `completion.ts` under `src/cli/`, `src/cli.ts`, `src/cli/help.ts`, README.md, a new `completion.test.ts` under `test/`, `test/help.test.ts` (`ALL_COMMANDS` gains `"completion"`), `test/cli-help.test.ts`.
+
+**Acceptance criteria.**
+- `completionSpec()`'s `commands` equals the distinct commands `helpStanzas()` names (`completion` included). `subcommands.config` is `["get", "set", "unset"]`, `subcommands.questions` is `["answer"]`, and `subcommands.help` equals `commands`. `flags.report` includes `--failures`, `--since`, `--role`, and `--json`. Every command's `flags` includes `--help`.
+- A unit test with a synthetic help string (two commands, one with a `[a | b]` subcommand) pins the parse, including a description column that mentions a flag the usage part does not.
+- The new `completion.test.ts` runs `bash -n` on the bash script and exits 0. It then sources the script in `bash` (via `execFile`, offline, no TTY), sets `COMP_WORDS=(tumwater con)` with `COMP_CWORD=1`, calls `_tumwater`, and sees `config` in `COMPREPLY`. It does the same for `(tumwater config u)` → `unset` and `(tumwater report --fa)` → `--failures`.
+- The zsh script starts with the `bashcompinit` line and contains the bash script's `complete -F _tumwater tumwater`.
+- `tumwater completion bash` exits 0 outside a git repo and prints the script. `tumwater completion fish` and bare `tumwater completion` exit nonzero, naming bash and zsh. `tumwater help completion` prints the new stanza.
+
 ## Done
 
 ### A bugfix runner whose open bugs are all held stands down instead of ticking (planned 2026-10-12 by plan; done 2026-10-12; independent of every other entry; extends the landed feature stand-down in Done, "A feature runner with no plan to take stands down instead of ticking")
