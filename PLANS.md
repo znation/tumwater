@@ -6,7 +6,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater doctor` names uncommitted backlog edits in the primary checkout: an "uncommitted backlog" check (planned 2026-10-13 by plan; independent of every other entry. It is split out of the open BUGS.md entry "An operator write through the running dashboard generation is committed best-effort and reports success regardless…", whose fix sketch asks for this doctor row; that bug keeps the caller-side checks of `commitOperatorBacklogEdit`'s result, and this plan touches none of those call sites)
+_None yet._
+
+## Done
+
+### `tumwater doctor` names uncommitted backlog edits in the primary checkout: an "uncommitted backlog" check (planned 2026-10-13 by plan; independent of every other entry. It is split out of the open BUGS.md entry "An operator write through the running dashboard generation is committed best-effort and reports success regardless…", whose fix sketch asks for this doctor row; that bug keeps the caller-side checks of `commitOperatorBacklogEdit`'s result, and this plan touches none of those call sites) (done 2026-10-13)
 
 **Goal.** An operator write to PLANS.md, BUGS.md, QUESTIONS.md, or the brief file is meant to
 leave the primary checkout clean: `commitOperatorBacklogEdit` (`src/backlog/backlog-commit.ts`)
@@ -69,9 +73,6 @@ only by running `git status` by hand.
   `"refusals"`. Every other existing test in `test/doctor-backlog.test.ts` and
   `test/doctor.test.ts` passes unchanged.
 - `npm run test` passes.
-
-
-## Done
 
 ### A commit the agent makes in a SUMMARY follow-up turn folds into the tick's harness commit too (planned 2026-10-12 by plan; independent of every other entry. It extends the Done entry "The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit" (INV-H1), which covered the authoring run and the stage-fix turn) — done 2026-10-13
 

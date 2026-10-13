@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStrandedPlans } from "../src/doctor/doctor-backlog.js";
-import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
 // Unit coverage for the doctor's backlog-document checks (src/doctor/doctor-backlog.ts): the three
@@ -237,4 +237,59 @@ test("checkRefusedEntries flags a refusal whose prerequisites have left Planned"
   const live = checkRefusedEntries(dir);
   assert.match(live.detail, /Refused note/);
   assert.ok(!live.detail.includes("may be stale"));
+});
+
+// checkUncommittedBacklog — operator edits left uncommitted in the primary checkout.
+
+function backlogRepo(): string {
+  const root = makeRepo();
+  seedCommit(root, "PLANS.md", "# Plans\n", "plans");
+  seedCommit(root, "BUGS.md", "# Bugs\n", "bugs");
+  seedCommit(root, "QUESTIONS.md", "# Questions\n", "questions");
+  return root;
+}
+
+test("checkUncommittedBacklog reads ok on a clean checkout", async () => {
+  const r = await checkUncommittedBacklog(backlogRepo(), undefined);
+  assert.equal(r.level, "ok", r.detail);
+});
+
+test("checkUncommittedBacklog warns naming each modified backlog file", async () => {
+  const root = backlogRepo();
+  fs.appendFileSync(path.join(root, "QUESTIONS.md"), "edit\n");
+  const one = await checkUncommittedBacklog(root, undefined);
+  assert.equal(one.level, "warn");
+  assert.match(one.detail, /QUESTIONS\.md has uncommitted changes/);
+  fs.appendFileSync(path.join(root, "PLANS.md"), "edit\n");
+  const r = await checkUncommittedBacklog(root, undefined);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /PLANS\.md, QUESTIONS\.md have uncommitted changes/);
+  assert.match(r.detail, /merge_blocked/);
+});
+
+test("checkUncommittedBacklog ignores untracked and unwatched files", async () => {
+  const root = backlogRepo();
+  seedCommit(root, "other.txt", "x\n", "other");
+  fs.writeFileSync(path.join(root, "other.txt"), "changed\n");
+  fs.writeFileSync(path.join(root, "new.md"), "new\n");
+  const r = await checkUncommittedBacklog(root, undefined);
+  assert.equal(r.level, "ok", r.detail);
+});
+
+test("checkUncommittedBacklog skips a primary that is not on the base branch", async () => {
+  const root = backlogRepo();
+  sh(root, "git", "checkout", "-b", "other");
+  fs.appendFileSync(path.join(root, "BUGS.md"), "edit\n");
+  const r = await checkUncommittedBacklog(root, { baseBranch: "main" } as never);
+  assert.equal(r.level, "ok");
+  assert.match(r.detail, /not on/);
+});
+
+test("checkUncommittedBacklog counts the brief file", async () => {
+  const root = backlogRepo();
+  seedCommit(root, "README.md", "# x\n<!-- tumwater:prompt:start -->\nidea\n<!-- tumwater:prompt:end -->\n", "readme");
+  fs.appendFileSync(path.join(root, "README.md"), "edit\n");
+  const r = await checkUncommittedBacklog(root, undefined);
+  assert.equal(r.level, "warn");
+  assert.match(r.detail, /README\.md has uncommitted/);
 });

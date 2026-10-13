@@ -6,13 +6,17 @@ import { plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/ba
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
+import { briefFile } from "../brief.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { currentBranch, targetBranch } from "../git/git.js";
+import { gitTry } from "../git/git-run.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
-/** The doctor's backlog-document checks, split out of doctor-checks.ts: the four checks that
+/** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
  * environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated `## `
- * headings, and refused entries. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
- * andMore) and the heading-trim constant, and all four warn instead of failing: damaged
+ * headings, refused entries, and uncommitted edits to the backlog files in the primary checkout. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
+ * andMore) and the heading-trim constant, and all five warn instead of failing: damaged
  * documentation is operator signal, not a broken environment. doctor.ts composes them beside
  * the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
 
@@ -189,4 +193,34 @@ export function checkRefusedEntries(root: string): CheckOutcome {
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no loop takes a refused entry until it is edited: ` +
       `answer the objection and release the entry with \`tumwater ${first.command} --release ${first.position}\`, ` +
       `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
+}
+
+/** Names the backlog files (and the brief file) with uncommitted edits in the primary checkout.
+ * An operator write is meant to be committed on the base branch by commitOperatorBacklogEdit;
+ * when that commit does not happen the edit is invisible to every loop worktree (they branch
+ * from main) and a landing that touches the file cannot fast-forward the checkout
+ * (merge_blocked). A primary off the base branch is skipped: the ref-push landing arm leaves
+ * its working tree alone. Untracked files are not edits of a tracked file and are ignored. */
+export async function checkUncommittedBacklog(root: string, config: TumwaterConfig | undefined): Promise<CheckOutcome> {
+  const primary = await currentBranch(root);
+  const base = targetBranch(config?.baseBranch, primary);
+  if (primary === null || primary !== base) {
+    return okOutcome(`primary checkout is not on ${base}; operator backlog writes are not committed from it`);
+  }
+  const brief = briefFile(root);
+  const files = [...new Set([...BACKLOG_FILES, ...(brief ? [brief] : [])])];
+  const out = await gitTry(root, "status", "--porcelain", "--", ...files);
+  if (out === null) return okOutcome("could not read git status; skipped");
+  const dirty = new Set(out.split("\n")
+    .filter((line) => line.length > 3 && !line.startsWith("??"))
+    .map((line) => line.slice(3)));
+  const named = files.filter((f) => dirty.has(f));
+  if (named.length === 0) {
+    const list = files.slice(0, -1).join(", ");
+    return okOutcome(`${list} and ${files[files.length - 1]} are committed`);
+  }
+  const list = named.join(", ");
+  return warnOutcome(`${list} ${named.length > 1 ? "have" : "has"} uncommitted changes in the primary checkout — ` +
+    `loops branch from main and do not see them, and a landing that touches one cannot fast-forward the checkout ` +
+    `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base}`);
 }
