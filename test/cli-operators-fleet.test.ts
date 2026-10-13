@@ -284,17 +284,17 @@ test("signalOrchestrator reports ESRCH as gone and EPERM as an actionable error"
   }
 });
 
-test("stop takes no flags and appears in the help table", async () => {
+test("stop takes only --in and --cancel and appears in the help table", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli stop args");
 
   const r = await cli(repo, "stop", "--anything");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /tumwater stop takes no arguments/);
+  assert.match(r.stderr, /unknown argument: --anything \(valid flags for tumwater stop: --in <duration>, --cancel\)/);
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater stop\s+Stop a running fleet/);
+  assert.match(help.stdout, /tumwater stop \[--in <duration> \| --cancel\]\s+Stop a running fleet/);
 });
 
 // --- config: print the effective merged config as JSON ---

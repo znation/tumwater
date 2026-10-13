@@ -1,6 +1,6 @@
 import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
+import { durationLabel, failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, retireRole } from "./retire.js";
@@ -8,12 +8,14 @@ import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js"
 import { errCode } from "../errno.js";
 import { allRoleIds } from "../roles/roles.js";
 import {
+  cancelScheduledStop,
   normalizePauseReason,
   pauseFleet,
   pauseRole,
   pausedRoles,
   resumeFleet,
   resumeRole,
+  scheduleStop,
 } from "../fleet/fleet-state.js";
 import { readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { pidAlive } from "../process/process.js";
@@ -272,12 +274,26 @@ export function signalOrchestrator(pid: number): "signalled" | "gone" {
  * that `orchestratorAlive` already accepts everywhere (status, abort, pause) applies here
  * too: the info file is refreshed by the live orchestrator, so the window is small, and the
  * signal is the same one a human `kill <pid>` would send. */
-export async function cmdStop(root: string): Promise<void> {
+export async function cmdStop(root: string, args: string[] = []): Promise<void> {
+  const inRaw = flagValue(args, "--in");
+  if (args.includes("--cancel")) {
+    if (inRaw !== null) fail("stop --cancel and --in cannot be combined");
+    say(cancelScheduledStop(root) ? "scheduled stop cancelled" : "no stop scheduled");
+    return;
+  }
   // Deliberately the same liveness gate and wording `requestAbort` uses: an unreadable info
   // file (torn write) and a dead recorded pid both mean nothing is running to stop.
   const info = readOrchestratorInfo(root);
   if (!info || !pidAlive(info.pid)) {
     fail(NO_HARNESS_ERROR);
+  }
+  if (inRaw !== null) {
+    // The gate (STOP_IN_FLAG's validate) checked shape and cap; re-parse beside the writer.
+    const ms = parseDurationFlag("stop --in", inRaw);
+    failOverDurationCap("stop --in", ms, PAUSE_FOR_MAX_MS);
+    scheduleStop(root, Date.now() + ms);
+    say(`stop scheduled in ${durationLabel(ms)} — the fleet drains its in-flight ticks and exits then; \`tumwater stop --cancel\` drops it`);
+    return;
   }
   // A pid that dies between the liveness check and the signal (ESRCH) means the fleet is
   // already stopped — say so and exit clean rather than surfacing Node's raw kill error;

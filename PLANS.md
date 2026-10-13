@@ -6,7 +6,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### `tumwater stop --in <duration>` schedules a graceful stop of the running fleet, shown as `stops in …` everywhere `run --for` is (planned 2026-10-12 by plan; independent of every other entry; follows the landed "`run --for` shows a `stops in` countdown" plan, whose `StatusSnapshot.runStopsAt` and `runWindowBadge` it reuses)
+### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
+- `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
+- `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
+- the dashboard's drawer cancel, edit, and question answer (`tryCancelEntry`/`tryEditEntry`/`tryAnswerQuestion` call sites in `src/gui/gui-endpoint-commands.ts`);
+- the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
+A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
+
+**Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed (no `src/backlog/backlog-commit.ts` / `commitOperatorBacklogEdit` exists); re-open once it does**
+
+**Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
+
+**Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
+- **Subjects.** All built with `stampedSubject("operator", …)`: `Cancel <kind>: <title>`, `Edit <kind>: <title>` (the new title), and `Answer question: <title>`.
+- **Where to await.** The CLI announce functions and the dashboard handlers are async and await it. The TUI key branches call it fire-and-forget (`void …`), as part 1/2's Ctrl+N does.
+- **Failures.** A refused or no-op outcome (stale position, title mismatch, `UNCLOSED_FENCE_MESSAGE`) writes nothing and commits nothing.
+- **Unchanged.** No change to the sync `try*`/`cancel*`/`edit*`/`answerQuestion*` writers, or to any printed output or JSON payload.
+
+**Files.** `src/backlog/backlog-write.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, the `backlog-commit.test.ts` part 1/2 adds, README.md (the same "Steer the project" and "Answer open questions" rows), docs/invariants.md (widen part 1/2's INV entry to name cancel, edit, and answer).
+
+**Acceptance criteria.**
+- In a repo on main, `tumwater bug --cancel 1`, `tumwater plan --edit 1 "z"`, and `tumwater questions answer 1 "yes"` each leave `git status --porcelain` empty, with the matching `tumwater(operator): …` subject as HEAD's subject.
+- A `--cancel` naming a missing position fails as today and adds no commit (HEAD unchanged).
+- The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
+- Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
+
+## Done
+
+### `tumwater stop --in <duration>` schedules a graceful stop of the running fleet, shown as `stops in …` everywhere `run --for` is (done 2026-10-12; planned 2026-10-12 by plan; independent of every other entry; follows the landed "`run --for` shows a `stops in` countdown" plan, whose `StatusSnapshot.runStopsAt` and `runWindowBadge` it reuses)
 
 **Goal.** A deadline can only be set when a fleet starts (`run --for`). An operator who started an unbounded `tumwater run` and later wants it to end tonight can either kill it now (`tumwater stop`) or restart it under `--for`, and a restart loses in-flight ticks. `tumwater stop --in 2h` should set that deadline from any terminal, and `tumwater stop --cancel` should drop it. `wake --in` and `pause --for` already schedule their own actions this way.
 
@@ -54,32 +81,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - With a running fleet whose info has no `stopsAt` and a stop marker 30 minutes ahead, the status snapshot's `runStopsAt` equals the marker's `until`. When both are present, `runStopsAt` is the earlier one. With no running fleet, `runStopsAt` is absent.
 - Existing `cmdStop` tests and `test/cli-run-window.test.ts` pass unchanged.
 
-### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
-- `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
-- `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
-- the dashboard's drawer cancel, edit, and question answer (`tryCancelEntry`/`tryEditEntry`/`tryAnswerQuestion` call sites in `src/gui/gui-endpoint-commands.ts`);
-- the TUI backlog pane's Ctrl+X, Ctrl+E, and Ctrl+A (the same three `try*` call sites in `createTuiKeys`, `src/ui/tui/tui-keys.ts`).
-A cancelled entry still reads as eligible on main, and an answered question stays open in every loop's worktree)
-
-**Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed (no `src/backlog/backlog-commit.ts` / `commitOperatorBacklogEdit` exists); re-open once it does**
-
-**Goal.** Each of those writes commits its one file on main, exactly as part 1/2's filings do.
-
-**Approach.** After each successful write, call `commitOperatorBacklogEdit(root, file, subject)`:
-- **Subjects.** All built with `stampedSubject("operator", …)`: `Cancel <kind>: <title>`, `Edit <kind>: <title>` (the new title), and `Answer question: <title>`.
-- **Where to await.** The CLI announce functions and the dashboard handlers are async and await it. The TUI key branches call it fire-and-forget (`void …`), as part 1/2's Ctrl+N does.
-- **Failures.** A refused or no-op outcome (stale position, title mismatch, `UNCLOSED_FENCE_MESSAGE`) writes nothing and commits nothing.
-- **Unchanged.** No change to the sync `try*`/`cancel*`/`edit*`/`answerQuestion*` writers, or to any printed output or JSON payload.
-
-**Files.** `src/backlog/backlog-write.ts`, `src/cli/cli-query-commands.ts`, `src/gui/gui-endpoint-commands.ts`, `src/ui/tui/tui-keys.ts`, the `backlog-commit.test.ts` part 1/2 adds, README.md (the same "Steer the project" and "Answer open questions" rows), docs/invariants.md (widen part 1/2's INV entry to name cancel, edit, and answer).
-
-**Acceptance criteria.**
-- In a repo on main, `tumwater bug --cancel 1`, `tumwater plan --edit 1 "z"`, and `tumwater questions answer 1 "yes"` each leave `git status --porcelain` empty, with the matching `tumwater(operator): …` subject as HEAD's subject.
-- A `--cancel` naming a missing position fails as today and adds no commit (HEAD unchanged).
-- The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
-- Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
-
-## Done
 
 ### A `run --for` fleet shows when it stops: `tumwater status`, the TUI header, and the dashboard sidebar carry a `stops in <duration>` countdown (planned 2026-10-12 by plan; follows the landed "`tumwater run --for` keeps one window across self-redeploys" plan; independent of the refused "Operator backlog writes land on main" part 2/2 — it touches no `src/backlog` file) (done 2026-10-12)
 

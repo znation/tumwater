@@ -167,15 +167,25 @@ export const PAUSE_FOR_OVERFLOW_HINT =
  * `pause --for` honors, the same not-initialized-masking rationale durationFlagSpec records).
  * missingValue names the command for a trailing `--in` (`wake --in needs a value`), the same
  * command-named pattern durationFlagSpec and sinceFlagSpec follow. */
-export const WAKE_IN_FLAG: FlagSpec = {
-  names: ["--in"],
-  value: true,
-  valueName: "<duration>",
-  missingValue: "wake --in needs a value",
-  validate: (value) => {
-    failOverDurationCap("wake --in", parseDurationFlag("wake --in", value), PAUSE_FOR_MAX_MS);
-  },
-};
+function inFlagSpec(command: string): FlagSpec {
+  return {
+    names: ["--in"],
+    value: true,
+    valueName: "<duration>",
+    missingValue: `${command} --in needs a value`,
+    validate: (value) => {
+      failOverDurationCap(`${command} --in`, parseDurationFlag(`${command} --in`, value), PAUSE_FOR_MAX_MS);
+    },
+  };
+}
+
+export const WAKE_IN_FLAG: FlagSpec = inFlagSpec("wake");
+
+/** `tumwater stop --in <duration>`: the scheduled graceful stop, same shape and cap as wake's. */
+export const STOP_IN_FLAG: FlagSpec = inFlagSpec("stop");
+
+/** `tumwater stop --cancel`: drop the scheduled stop. */
+export const STOP_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] };
 
 /** The `--cancel` flag spec for `tumwater wake --cancel`: drop pending scheduled wakes. */
 export const WAKE_CANCEL_FLAG: FlagSpec = { names: ["--cancel"] };

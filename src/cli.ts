@@ -29,6 +29,8 @@ import {
   STAT_FLAG,
   SUMMARY_FLAG,
   FORCE_FLAG,
+  STOP_CANCEL_FLAG,
+  STOP_IN_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -326,11 +328,11 @@ async function main(): Promise<void> {
       break;
     }
     case "stop": {
-      // No flags: stop is a bare signal to the recorded orchestrator pid, so any argument is
-      // a mistake and fails before a signal is ever sent.
-      rejectUnknownArgs("stop", args, []);
+      // Bare stop signals the recorded orchestrator pid; `--in`/`--cancel` schedule or drop a
+      // deferred stop. Anything else is a mistake and fails before a signal is ever sent.
+      rejectUnknownArgs("stop", args, [STOP_IN_FLAG, STOP_CANCEL_FLAG]);
       await requireReadyRepo(root);
-      await (await import("./operator/operator-commands.js")).cmdStop(root);
+      await (await import("./operator/operator-commands.js")).cmdStop(root, args);
       break;
     }
     case "version":

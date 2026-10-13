@@ -4,7 +4,7 @@ import { finiteNumber, stringList } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import { pausedPath, pausedRolesLockPath, pausedRolesPath } from "../paths.js";
+import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledStopPath } from "../paths.js";
 import { pendingScheduledWakes } from "../operator/operator-requests.js";
 
 /** The operator pause markers: the fleet-wide pause (`tumwater pause`/`resume`) and the
@@ -152,6 +152,31 @@ export function pauseFleet(root: string, untilMs?: number, reason?: string): boo
  * failure worth surfacing from a toggle. */
 export function resumeFleet(root: string): boolean {
   const marker = pausedPath(root);
+  if (!fs.existsSync(marker)) return false;
+  removeQuiet(marker);
+  return true;
+}
+
+/** Schedule a graceful fleet stop at `untilMs` (epoch ms): `tumwater stop --in`. Overwrites the
+ * marker, so the last write wins. */
+export function scheduleStop(root: string, untilMs: number): void {
+  writeJsonAtomic(scheduledStopPath(root), { at: Date.now(), until: untilMs });
+}
+
+/** The scheduled stop's deadline (epoch ms), or undefined. Never throws: a missing, unreadable,
+ * or non-finite marker reads as no stop scheduled. */
+export function scheduledStopAt(root: string): number | undefined {
+  try {
+    const body = readJsonFile<{ until?: unknown }>(scheduledStopPath(root));
+    return typeof body?.until === "number" && Number.isFinite(body.until) ? body.until : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Drop the scheduled stop; returns whether a marker was there (resumeFleet's contract). */
+export function cancelScheduledStop(root: string): boolean {
+  const marker = scheduledStopPath(root);
   if (!fs.existsSync(marker)) return false;
   removeQuiet(marker);
   return true;

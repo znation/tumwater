@@ -276,7 +276,9 @@ Usage:
   tumwater retire --role <id>      Remove a disabled loop's worktree, branch, and per-role
                                    state (landing ref, pause marker); --force overrides the
                                    safety rails; --json prints what was removed
-  tumwater stop                    Stop a running fleet (drains in-flight ticks, like Ctrl+C)
+  tumwater stop [--in <duration> | --cancel]
+                                   Stop a running fleet (drains in-flight ticks, like Ctrl+C);
+                                   --in schedules the stop, --cancel drops it
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
 

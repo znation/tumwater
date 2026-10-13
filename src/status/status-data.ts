@@ -26,7 +26,7 @@ import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { pausedRoles, pausedRolesUntil, scheduledWakes, standingFleetPause } from "../fleet/fleet-state.js";
+import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingFleetPause } from "../fleet/fleet-state.js";
 import {
   orchestratorAlive,
   readOrchestratorInfo,
@@ -319,9 +319,14 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
-  /** The `run --for` window's deadline (epoch ms) from the running orchestrator's info file;
-   * absent for an unbounded run or a stopped fleet. */
+  /** The earlier of the `run --for` deadline (the running orchestrator's info file) and a
+   * `tumwater stop --in` marker (epoch ms); absent when neither is set or the fleet is stopped. */
   runStopsAt?: number;
+}
+
+/** The earlier of the two optional stop deadlines (`run --for`'s and a scheduled stop's). */
+function earliestStop(a: number | undefined, b: number | undefined): number | undefined {
+  return a === undefined ? b : b === undefined ? a : Math.min(a, b);
 }
 
 /** The claude subscription-window block for a poll (see StatusSnapshot.claudeWindow): absent
@@ -586,6 +591,6 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // volume. Absent otherwise, so the surfaces render exactly as before.
     disk: running && info?.disk ? info.disk : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
-    runStopsAt: running && info?.stopsAt !== undefined ? info.stopsAt : undefined,
+    runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
   };
 }

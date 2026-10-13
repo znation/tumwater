@@ -202,6 +202,12 @@ export function pausedPath(root: string): string {
   return path.join(tumwaterDir(root), "paused.json");
 }
 
+/** Operator-intent marker for `tumwater stop --in <duration>`: `{ at, until }` in epoch ms. The
+ * running fleet's watch consumes it when `until` passes; a fresh `tumwater run` clears a stale one. */
+export function scheduledStopPath(root: string): string {
+  return path.join(tumwaterDir(root), "stop-at.json");
+}
+
 /** Persistent operator-intent marker for `tumwater pause --role <id>` / `resume --role <id>`:
  * the set of individually paused roles, `{ roles: string[], at: number }` — the same
  * presence-means-paused persistence as the fleet marker above, so pausing a role before

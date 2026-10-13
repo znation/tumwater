@@ -17,7 +17,7 @@ import {
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
-import { isFleetPaused, pausedRoles } from "../fleet/fleet-state.js";
+import { cancelScheduledStop, isFleetPaused, pausedRoles, scheduledStopAt } from "../fleet/fleet-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
@@ -136,6 +136,8 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
+    // A stop marker left by a fleet that died before its deadline must not stop this run.
+    cancelScheduledStop(root);
     await superviseRunCommand(root, args, branchArg, forMs);
     return;
   }
@@ -157,6 +159,9 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     say("deadline reached — stopping");
     stop();
   }) : null;
+  const scheduledStopWatch = armScheduledStopWatch(root, () => {
+    if (!stopping) stop(); // A drain already under way must not be turned into a force-kill.
+  });
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
   // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
@@ -211,7 +216,8 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       stopsAt: forMs !== null ? windowStart + forMs : undefined,
     });
   } finally {
-  if (deadlineTimer) deadlineTimer.clear();
+    if (deadlineTimer) deadlineTimer.clear();
+    scheduledStopWatch.clear();
     unsubscribe();
   }
   if (once) say(onceSummary(root, roles, ticksBefore, exit.settled, exit.ticksRun));
@@ -277,6 +283,24 @@ export function armDeadlineTimer(ms: number, onFired: () => void): { clear(): vo
   };
   arm(ms);
   return { clear: () => clearTimeout(timer) };
+}
+
+const SCHEDULED_STOP_POLL_MS = 5000;
+
+/** Poll for a `tumwater stop --in` marker: once its `until` has passed, consume the marker,
+ * stop polling, and call `onStop` (cmdRun's Ctrl+C closure) exactly once. The interval is
+ * unref'd; clear() retracts it. Exported for tests. */
+export function armScheduledStopWatch(root: string, onStop: () => void): { clear(): void } {
+  const timer = setInterval(() => {
+    const at = scheduledStopAt(root);
+    if (at === undefined || at > Date.now()) return;
+    clearInterval(timer);
+    cancelScheduledStop(root);
+    say("scheduled stop reached — stopping");
+    onStop();
+  }, SCHEDULED_STOP_POLL_MS);
+  timer.unref();
+  return { clear: () => clearInterval(timer) };
 }
 
 /** Parse `run --for <duration>` (the windowed run): the parsed duration in milliseconds, or null
