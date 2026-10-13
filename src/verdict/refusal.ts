@@ -4,6 +4,7 @@ import { changedFiles } from "../git/git-diff.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../git/commit-message.js";
 import { labeledLine } from "./reply-contract.js";
+import { logEventBestEffort } from "../events/events.js";
 import { clearSupersededRejection } from "../tick/tick-apply.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -44,6 +45,7 @@ export async function refusalContradiction(
  * an authoring run. */
 export interface RefusalContext {
   role: string;
+  root: string;
   mainBranch: string;
   /** Assistant turns folded into this tick so far (main + transient retry) — the same field
    * the friction flag reads. */
@@ -83,6 +85,11 @@ export async function handleRefusal(
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
   // A landed refusal note is a landed change too: it supersedes a stale rejection exactly as
   // applyLandingOutcome's landed branch does (this path merges directly, bypassing that fold).
-  else clearSupersededRejection(state);
+  else {
+    clearSupersededRejection(state);
+    // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —
+    // the note has already landed.
+    logEventBestEffort(ctx.root, { loop: ctx.role, type: "entry_refused", reason, files: notes });
+  }
   return { result: "refused", summary: reason, commit };
 }

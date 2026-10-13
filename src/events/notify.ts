@@ -35,6 +35,7 @@ export const NOTIFY_EVENT_TYPES = [
   "land_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
   "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
+  "entry_refused", // a refusal note landed — the entry is held until a human or the director releases it
   "supervisor_exit", // the supervisor gave up — the fleet is down; paged from the supervisor process by notifyFleetDown, since no orchestrator is left to hear it
 ] as const;
 

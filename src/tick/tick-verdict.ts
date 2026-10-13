@@ -164,6 +164,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       return handleRefusal(
         {
           role: ctx.role,
+          root: ctx.root,
           mainBranch: ctx.mainBranch,
           turns: ctx.turns,
           merge: (w, sum) => ctx.merge(w, sum),

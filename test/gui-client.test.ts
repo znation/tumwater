@@ -5,6 +5,7 @@ import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
+import { eventKind as tsEventKind } from "../src/ui/tone.js";
 import { parseBudgetInput } from "../src/ui/tui/tui-input.js";
 
 // The dashboard's browser logic, exercised region by region (see gui-client-scope.ts): the
@@ -178,6 +179,8 @@ test("activity items sort into landings, problems, questions, notices, and routi
   const kind = (type: string, result?: string) => model.eventKind({ type, ...(result === undefined ? {} : { result }) });
   assert.equal(kind("merged"), "landing");
   assert.equal(kind("question_posted"), "attention");
+  assert.equal(kind("entry_refused"), "attention");
+  assert.equal(tsEventKind("entry_refused"), "attention", "the TS twin agrees");
   assert.equal(kind("tick_end", "error"), "problem");
   assert.equal(kind("tick_end", "rejected"), "problem");
   assert.equal(kind("tick_end", "queued"), "routine", "a queued change's landing is the notable part");

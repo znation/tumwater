@@ -31,7 +31,9 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - The dashboard's cancel, edit, and answer routes each leave the checkout clean in a repo on main.
 - Existing tests in test/backlog-write.test.ts, test/question-commands.test.ts, and test/tui-keys.test.ts pass unchanged.
 
-### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above)
+## Done
+
+### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above; done 2026-10-12)
 
 **Goal.** When a tick's **Refused** note lands on main, the operator hears about it the same way they hear about a posted question. Only a human or the director can lift a refusal (`tumwater plan|bug --release <n>`). Until then the entry is held, and a fully refused backlog leaves feature or bugfix with nothing to do. Today the only trace is a `tick_end` with result `refused`, which is not a notify type. So a refusal nobody reads holds an entry until someone happens to run `tumwater doctor`, as the refused part 2/2 above shows.
 
@@ -52,7 +54,6 @@ A cancelled entry still reads as eligible on main, and an answered question stay
 - `test/gui-client.test.ts`: `kind("entry_refused")` is `"attention"`, and `eventKind("entry_refused")` from `src/ui/tone.ts` agrees.
 - `npm run test` passes.
 
-## Done
 
 ### `tumwater plan|bug --release <n>` lifts a stale **Refused** note and commits the release on main (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. It touches `src/backlog/backlog-write.ts` and `src/cli.ts`, which that plan also touches, but in different functions and `case` arms. Today a Refused note can only be cleared by hand-editing the file, or by rewriting the whole entry with `--edit <n> --file`. Both leave an uncommitted edit in the primary checkout. `checkRefusedEntries`' remedy says "answer the objection and delete the note" but names no command for it. The part 2/2 entry above is stuck this way right now: its refusal cites a missing `src/backlog/backlog-commit.ts`, and that file has since landed. A grep for `--release` or `unrefuse` under `src/` finds nothing, and the `reopen` hits there are about the budget gate and drawers, not backlog entries) — done 2026-10-12
 

@@ -55,6 +55,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "land_failed",
       "restart_blocked",
       "question_posted",
+      "entry_refused",
       "supervisor_exit",
     ],
   );

@@ -284,6 +284,12 @@ test("formatEvent renders question_posted with the posted heading and no warning
   assert.ok(!line.includes("warning"), `a posted question is routine, not a warning: ${line}`);
 });
 
+test("formatEvent renders entry_refused with the reason and files and no warning prefix", () => {
+  const line = formatEvent({ ts: 0, loop: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"] } as never);
+  assert.match(line, /entry refused: too risky \(PLANS\.md\)/);
+  assert.ok(!line.includes("warning"), line);
+});
+
 // The director inbox's prompt_cancelled event (director inbox management plan): a plain line
 // like its prompt_enqueued sibling — routine operation, not a warning.
 test("formatEvent renders prompt_cancelled plainly with the preview", () => {

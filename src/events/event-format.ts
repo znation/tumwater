@@ -181,6 +181,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `question posted: ${textOr(e.question)}`;
+    case "entry_refused":
+      // Routine operation (a refusal note landed), not a warning — like question_posted.
+      return `entry refused: ${textOr(e.reason)} (${Array.isArray(e.files) ? e.files.join(", ") : ""})`;
     case "wake":
       return `woke (${textOr(e.reason)})`;
     case "tick_deferred":

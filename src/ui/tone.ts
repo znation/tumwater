@@ -88,6 +88,7 @@ const ROUTINE_BUILD_RESULT_SET = new Set(ROUTINE_BUILD_RESULTS);
 export function eventKind(type: string, result?: string): EventKind {
   if (type === "merged") return "landing";
   if (type === "question_posted") return "attention";
+  if (type === "entry_refused") return "attention";
   if (type === "tick_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";
   if (type === "build_check") return result !== undefined && ROUTINE_BUILD_RESULT_SET.has(result) ? "routine" : "problem";
   if (PROBLEM_EVENT_SET.has(type)) return "problem";
