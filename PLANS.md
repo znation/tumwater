@@ -6,6 +6,79 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Defer the plan loop's due ticks while PLANS.md already holds its eligible-plan target (planned 2026-10-12 by plan; independent of the backlog-writes series)
+
+**Goal.** Skip the plan loop's model run when it can only end with `TUMWATER_NOTHING_TO_DO`.
+Today the plan charter stops once `## Planned` holds `planBacklogTarget(config)` eligible plans
+(`src/scheduling/claims.ts`). The harness only states that target in the prompt
+(`planTargetNote` in `src/tick/tick-prompt.ts`), so every "main moved" wake still runs a full
+model tick that reads the backlog and stops. Plan is a work role, so it is not in
+`DEFERRABLE_ROLES` (`src/roles/roles.ts`), and `deferTickReason`
+(`src/scheduling/scheduling.ts`) never defers it.
+
+**Approach.**
+- **Fullness predicate.** Add `planBacklogFull(root, config): boolean` to
+  `src/scheduling/claims.ts`, next to `planBacklogTarget`. It is true when both hold:
+  - `eligibleEntries(root, "feature").length >= planBacklogTarget(config)`;
+  - no entry of `backlogHolds(root).plans` is `"needs-review"` or `"needs-replan"`. The charter
+    makes splitting or replanning a marked plan outrank the stop, so a marked entry keeps plan
+    running.
+- **Verdict.** Give `DeferReason` a third member, `"plans-full"`. Give `deferTickReason` a
+  trailing `planBacklogFull = false` parameter, so existing call sites and tests are unchanged.
+  When `baseRoleOf(role) === "plan"`, the function returns `"plans-full"` only if all of these
+  hold, and returns `null` otherwise:
+  - `planBacklogFull` is true;
+  - there is no fresh wake (the same `wokenAt > lastTickEndedAt` test the maintenance clause
+    uses);
+  - `!hasOutstandingWork(s)`;
+  - `s.lastMainHead !== ""`;
+  - `!deferralExpired(s, now)`. This keeps the `DEFER_MAX_MS` cap, so a full backlog still
+    gets one re-check per 3 h.
+
+  Plan never reaches the maintenance clause, and `lastResult` does not matter for it.
+- **Wiring.**
+  - `src/orchestrator/orchestrator.ts` computes `planBacklogFull(root, liveConfig)` next to
+    `workBacklogOpen`.
+  - `SchedulingPassCtx` (`src/orchestrator/orchestrator-scheduling.ts`) gains a
+    `planBacklogFull` field, and `pollRunnerReasons` passes it to `deferTickReason`.
+  - The existing branch already handles everything else: it logs one `tick_deferred` per
+    episode, settles `run --once` as `"deferred"`, and records the skip. Because it is gated
+    on `reason === "scheduled" || reason === "main moved"`, a queued prompt (`inbox`) or a
+    resume still runs.
+- **Skip label.**
+  - Add `"deferred-plans-full"` to `SkipReason` and `SKIP_REASONS` (`src/loop/loop-state.ts`).
+  - Replace the `noteSkip` ternary with a three-way mapping.
+  - Add a `loopPhase` case in `src/ui/status-model.ts` that renders `deferred (plans full)`.
+  - The dashboard needs no change: `gui-client-model.ts` already parses any `deferred (…)`
+    phase.
+- **Event text.** `deferredReasonText` (`src/events/event-format.ts`) returns
+  `"plan backlog at its target"` for `"plans-full"`. Update the `tick_deferred` comment in
+  `src/events/events.ts`.
+
+**Files.** `src/scheduling/claims.ts`, `src/scheduling/scheduling.ts`,
+`src/orchestrator/orchestrator.ts`, `src/orchestrator/orchestrator-scheduling.ts`,
+`src/loop/loop-state.ts`, `src/ui/status-model.ts`, `src/events/event-format.ts`,
+`src/events/events.ts`, `test/claims.test.ts`, `test/scheduling.test.ts`,
+`test/status-model.test.ts`, `test/event-format.test.ts`, docs/how-it-works.md (the Scheduling
+bullet saying the plan loop keeps `instances(feature) + 1` eligible plans ahead gains: "a due
+plan tick defers while that many are waiting and none is marked needs-review or needs-replan").
+
+**Acceptance criteria.**
+- `planBacklogFull` is tested in a temp repo:
+  - true with two eligible plans and one feature instance;
+  - false with one eligible plan;
+  - false when one of three plans carries a `**Needs review …**` note;
+  - refused plans and plans blocked by a prerequisite do not count toward the target.
+- `deferTickReason` tests for role `"plan"` with `planBacklogFull` true:
+  - returns `"plans-full"`;
+  - returns `null` with a fresh `wokenAt`, with `resumePending: true`, or with `nextRunAt`
+    more than `DEFER_MAX_MS` in the past.
+- With `planBacklogFull` false, the plan verdict is `null`.
+- Every existing `deferTickReason`/`deferTick` assertion passes unchanged.
+- `loopPhase` renders `deferred (plans full)` for `skipReason: "deferred-plans-full"`.
+- `deferredReasonText` renders the new clause for `reason: "plans-full"`, and the existing
+  spellings for `"backlog"` and missing reasons are unchanged.
+
 ### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
 - `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
 - `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
