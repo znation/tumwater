@@ -6,6 +6,23 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fail } from "./cli-output.js";
 
+/** Signal number → name, for the shell's 128+n convention: a shell that does not re-raise a
+ * signal-killed child (dash on Linux) exits with 128+signo, so node sees an exit status where
+ * bash on macOS lets it see the signal. Keyed by number, so a later alias (SIGABRT over SIGIOT)
+ * wins; any name is fine for the message. */
+const SIGNAL_NAMES: Record<number, string> = Object.fromEntries(
+  Object.entries(os.constants.signals).map(([name, n]) => [n, name]),
+);
+
+/** How an editor run ended, naming a signal even when the shell folded it into 128+n. A null
+ * status (spawn error, signal) and a plain non-zero status fall through unchanged. */
+function exitReason(r: { error?: Error; signal: NodeJS.Signals | null; status: number | null }): string {
+  if (r.error) return r.error.message;
+  if (r.signal) return `signal ${r.signal}`;
+  const signalled = r.status !== null && r.status > 128 ? SIGNAL_NAMES[r.status - 128] : undefined;
+  return signalled ? `signal ${signalled}` : `status ${r.status}`;
+}
+
 /** Write `initial` to a temp file named `fileName`, run `$VISUAL` (else `$EDITOR`) on it, and
  * return the saved text. The editor value runs through `sh -c` (git's convention) so one with
  * arguments, like `code -w`, works. There is no `vi` fallback: a script without a TTY must fail
@@ -22,8 +39,7 @@ export function editInEditor(initial: string, fileName: string, fallback = "pass
     fs.writeFileSync(file, `${initial}\n`);
     const r = spawnSync("sh", ["-c", `${editor} "$1"`, "sh", file], { stdio: "inherit" });
     if (r.error || r.status !== 0) {
-      const how = r.error ? r.error.message : r.signal ? `signal ${r.signal}` : `status ${r.status}`;
-      failure = `editor exited with ${how}; nothing changed`;
+      failure = `editor exited with ${exitReason(r)}; nothing changed`;
     } else {
       saved = fs.readFileSync(file, "utf8");
     }
