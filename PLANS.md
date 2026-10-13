@@ -6,6 +6,62 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Maintenance loops stop deferring on a backlog made only of held entries (planned 2026-10-12 by plan; independent of every other entry)
+
+**Goal.** A maintenance loop should defer as "backlog open" only while feature or bugfix has
+something it can actually take.
+- `src/orchestrator/orchestrator.ts` computes
+  `workBacklogOpen = plannedPlans(root).length > 0 || openBugsNow`. That counts every entry,
+  including refused, needs-review, needs-replan and prerequisite-blocked ones.
+- On a backlog where every entry is held (as now, apart from one waiting plan), each idle
+  deferrable role (`DEFERRABLE_ROLES`) gets `"backlog"` from `deferTickReason`
+  (`src/scheduling/scheduling.ts`) on every scheduled or main-moved wake. It then re-checks
+  only at the `DEFER_MAX_MS` cap. Meanwhile nothing feature or bugfix lands can lift the
+  hold, because no runner can take a held entry.
+- `pollRunnerReasons` (`src/orchestrator/orchestrator-scheduling.ts`) also skips the
+  `workLandedSince.since(...)` query whenever `workBacklogOpen` is true. A landing from a
+  human or the director therefore never ends the deferral either.
+
+**Approach.** The change is one predicate in `src/orchestrator/orchestrator.ts`. It touches no
+scheduling union or ctx field.
+- Import `eligibleEntries` from `../backlog/backlog-eligibility.js`. It already serves
+  `claims.ts` and `orchestrator-scheduling.ts`, and reads through the same stat-cached
+  readers.
+- Replace the predicate with
+  `eligibleEntries(root, "feature").length > 0 || eligibleEntries(root, "bugfix").length > 0`.
+- Keep `openBugsNow` (`openBugs(root).length > 0`) exactly as it is. It decides bugfix's
+  search mode, and whether a bugfix whose open bugs are all held should search is a
+  different question this plan does not answer.
+- If `plannedPlans` is no longer used in this file, drop it from the
+  `../backlog/backlog.js` import. `status-payload.ts` still uses it.
+- Update the comment above the predicate ("while PLANS.md `## Planned` or BUGS.md `## Open`
+  on main is non-empty") to say "holds an entry feature or bugfix may take (eligibleEntries)".
+- Reword `docs/how-it-works.md`'s maintenance-deferral bullet ("stays deferred while PLANS.md
+  or BUGS.md has open work") the same way, e.g. "has work a feature or bugfix runner can take
+  (refused, needs-review/replan and blocked entries do not count)".
+- Extend the file-header rule list in `test/orchestrator-defer.test.ts` with one line for the
+  new rule.
+
+**Files touched.** `src/orchestrator/orchestrator.ts`, `docs/how-it-works.md`,
+`test/orchestrator-defer.test.ts`.
+
+**Acceptance criteria.**
+- New test in `test/orchestrator-defer.test.ts`: "once: a backlog of only held entries does
+  not defer a maintenance role — it defers on the work-landed verdict instead".
+  - Seed PLANS.md with one Planned entry whose body carries
+    `**Refused 2026-10-12 by feature: test**`.
+  - Seed `idleDueState(repo)` for `clean`.
+  - Run `onceRound`. `clean` settles as `"deferred"` with `skipReason` `"deferred-no-work"`,
+    not `"deferred-backlog"`. Nothing landed since its `lastMainHead`, so the work-landed
+    clause now decides.
+  - `"deferred-no-work"` is the existing `SkipReason` (`src/loop/loop-state.ts`) for
+    `noteSkip`'s `"no-work"` clause.
+- The existing test "once: a due maintenance role with an open backlog settles as deferred,
+  runs no tick, and logs the episode" still passes unchanged, since its `openBacklog` entry
+  is eligible.
+- The existing bugfix search-mode test passes unchanged.
+- The project's check (`npm run test`) passes.
+
 ### Operator backlog writes land on main, part 2/2: cancelling, editing, and answering commit too (planned 2026-10-12 by plan; requires part 1/2 landed. It reuses part 1/2's `commitOperatorBacklogEdit` from part 1/2's new `backlog-commit.ts` module. The other operator writers of the primary checkout's backlog files leave the same uncommitted edit part 1/2 describes:
 - `tumwater plan|bug --cancel <n>` / `--edit <n>` (`cancelAndAnnounce`/`editAndAnnounce` in `src/backlog/backlog-write.ts`);
 - `tumwater questions answer` (`answerQuestion`/`answerQuestionFromText`, called from `src/cli/cli-query-commands.ts`);
