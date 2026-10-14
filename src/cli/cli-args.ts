@@ -61,6 +61,23 @@ export function parseGrepFlag(args: string[], missingValueError: string): { rest
   return { rest, pattern: raw };
 }
 
+/** Parse an optional `--type <eventType>` exact-type filter flag for the event feed view
+ * (logs): the exact type id, or null when absent, returned alongside `rest` — the args with
+ * the flag's value token removed, exactly like parseGrepFlag. It mirrors that parser and not
+ * a bare flagValue read because the value token must leave the list: `logs --type --since`
+ * treats "--since" as the type text, not the flag, so the rival-flag and --since scans run
+ * over `rest` and cannot misfire on the pattern. A valueless or empty type fails with the
+ * caller's wording (each view names its own command) — the same error the `--type` gate spec
+ * (typeFlagSpec) reports earlier for the trailing-no-value case. */
+export function parseTypeFlag(args: string[], missingValueError: string): { rest: string[]; type: string | null } {
+  const i = args.indexOf("--type");
+  const rest = i >= 0 ? args.filter((_, j) => j !== i + 1) : args;
+  const raw = flagValue(args, "--type");
+  if (raw === null) return { rest, type: null };
+  if (raw === undefined || raw === "") fail(missingValueError);
+  return { rest, type: raw };
+}
+
 /** Parse a `-n`-style count flag value: a positive integer, or fail with a clear message.
  * Unvalidated, NaN/0/negative limits make readEvents' `slice(-limit)` dump the whole log
  * (or drop leading lines) instead of showing the requested tail. With `max`, the count is

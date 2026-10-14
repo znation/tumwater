@@ -78,12 +78,14 @@ Usage:
                                    roles still merges the built-in catalog per entry, so
                                    disable a role with roles.<id>.enabled false, not by
                                    omitting it
-  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--json]
+  tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--type <event type>] [--json]
                                    Show (and follow) harness events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,
                                    case-insensitively (-n bounds the scanned window, not
-                                   the printed rows); --json prints each event as one
+                                   the printed rows); --type shows only events of that
+                                   exact event type (it composes with --since); --json
+                                   prints each event as one
                                    JSON object per line (NDJSON) — the raw event objects
                                    as stored in the log, instead of the rendered text
   tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]

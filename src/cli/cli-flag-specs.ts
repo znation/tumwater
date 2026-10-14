@@ -286,6 +286,14 @@ export function grepFlagSpec(missingValue: string): FlagSpec {
   return { names: ["--grep"], value: true, valueName: "<text>", missingValue };
 }
 
+/** The `--type <event type>` flag spec of `logs`' exact-type filter, beside grepFlagSpec: one
+ * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
+ * drift. The missing-value wording names the command (each names its own command), so the
+ * spec is a factory taking it — the same string parseTypeFlag fails with in the command body. */
+export function typeFlagSpec(missingValue: string): FlagSpec {
+  return { names: ["--type"], value: true, valueName: "<event type>", missingValue };
+}
+
 /** The `--result <class>` flag spec of `history`'s outcome filter, beside grepFlagSpec: one
  * definition of the flag's spelling and value shape, so the gate's accepted vocabulary cannot
  * drift. The missing-value wording names the command, so the spec is a factory taking it — the

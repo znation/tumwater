@@ -1,5 +1,5 @@
 import { fail, say, sayJsonLine } from "./cli-output.js";
-import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "./cli-args.js";
+import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
   LOGS_SINCE_MAX_MS,
   readEventsSince,
@@ -47,6 +47,17 @@ function rejectRoleViewRival(rest: string[], flag: string, active: boolean): voi
  * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
 export const GREP_VALUE_ERROR = "logs --grep needs a pattern";
 
+/** The missing-type error cmdLogs prints for a valueless `--type`, exported so cli.ts's
+ * rejectUnknownArgs spec for --type can fail a trailing `logs --type` with the same wording
+ * (the gate runs before the ready-repo gate and this parser, so the wordings must not drift). */
+export const TYPE_VALUE_ERROR = "logs --type needs an event type";
+
+/** The exact-type empty-match prose: the same no-match shape `--grep` uses, naming the type
+ * whose value matched nothing, so the two filters' empty replies cannot drift in form. */
+function typeEmpty(type: string): string {
+  return `no events matching "${type}"`;
+}
+
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
  * loop's pi transcript (see cmdLogsTranscript). */
@@ -61,8 +72,24 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
   // impersonating a rival flag, and the empty-value fail) is cli/cli-args.ts's parseGrepFlag,
   // the one home shared with history's identical preamble.
-  const { rest, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
+  const { rest: grepped, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
+  // `--type <eventType>` filters the event feed by EXACT event type (e.type === value):
+  // deterministic where --grep substrings — a land_failed whose rendered line quotes
+  // "land_failed" matches --grep but not --type. Unlike --grep it composes with --since
+  // (the window, not a filter of its own) as well as -n, -f, --json, and --grep; like --json
+  // it is a rival only of the --role/--prompt transcript view. The value scan (keeping a
+  // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
+  // parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
+  const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
+  const typeFilter = type === null ? null : (e: HarnessEvent) => e.type === type;
+  // The composed feed rule every emit site threads today's grep-only predicate through:
+  // an event passes when it is absent-or-matches the --grep substring AND absent-or-equals
+  // the --type id, held in one place so the --since window, the -n tally, and the follow
+  // cannot drift on what an event must satisfy.
+  const feedFilter = (e: HarnessEvent) =>
+    (grepLower === null || eventMatchesGrep(e, grepLower)) &&
+    (typeFilter === null || typeFilter(e));
   const follow = rest.includes("-f") || rest.includes("--follow");
   // `--json` switches the feed from formatEvent rendering to one JSON.stringify(e) per line —
   // the raw HarnessEvent objects exactly as stored in the log — so scripts read the canonical
@@ -73,6 +100,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // excluded with it).
   const json = rest.includes("--json");
   rejectRoleViewRival(rest, "--json", json);
+  if (type !== null) rejectRoleViewRival(rest, "--type", true);
   if (grepPattern !== null) {
     rejectRoleViewRival(rest, "--grep", true);
     if (rest.includes("--since"))
@@ -93,13 +121,18 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // covered is only consulted below when the window has rows (an empty window returns
     // earlier), so the helper's vacuous empty-log branch never reaches the note here.
     const { events, covered } = readEventsSince(root, ms);
-    if (events.length === 0) {
-      // In JSON mode an empty window answers silently — an empty output IS the machine-readable
+    // `--type` composes with the window (it is NOT the --since rival --grep is): only the
+    // window events of the exact type are printed, and an all-filtered window answers with
+    // the no-match prose (the type's own line) instead of the generic empty-window one —
+    // "which land_failed in the last hour" filters the same as it would the -n view.
+    const filtered = type === null ? events : events.filter((e) => e.type === type);
+    if (filtered.length === 0) {
+      // In JSON mode an empty result answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.
-      if (!json) say(`no events in ${durationLabel(ms)}`);
+      if (!json) say(type === null ? `no events in ${durationLabel(ms)}` : typeEmpty(type));
       return;
     }
-    for (const e of events) sayEventLine(e, json);
+    for (const e of filtered) sayEventLine(e, json);
     // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
@@ -124,12 +157,17 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
-  const shown = grepLower ? tail.events.filter((e) => eventMatchesGrep(e, grepLower)) : tail.events;
+  const shown = grepLower !== null || type !== null ? tail.events.filter(feedFilter) : tail.events;
   for (const e of shown) sayEventLine(e, json);
   if (!follow) {
-    // The empty-match line is prose: in JSON mode the empty output is the answer.
-    if (grepPattern !== null && shown.length === 0 && !json)
-      say(`no events matching "${grepPattern}"`);
+    // The empty-match line is prose: in JSON mode the empty output is the answer. It fires
+    // for either filter, naming the flag's value(s) whose match came up empty so the operator
+    // knows what to loosen.
+    if (shown.length === 0 && !json && (grepPattern !== null || type !== null)) {
+      if (grepPattern !== null && type !== null)
+        say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
+      else say(typeEmpty(type ?? grepPattern ?? ""));
+    }
     return;
   }
   const file = eventsLogPath(root);
@@ -146,8 +184,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       const e = parseEventLine(line);
       // The filter holds across rotation: every event the follow callback sees goes through
       // the same match rule as the seeded window.
-      if (e && (grepLower === null || eventMatchesGrep(e, grepLower)))
-        sayEventLine(e, json);
+      if (e && feedFilter(e)) sayEventLine(e, json);
     }
   });
   await new Promise(() => {}); // Follow until Ctrl+C.

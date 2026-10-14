@@ -391,3 +391,143 @@ test("tumwater help logs documents --json", async () => {
   assert.match(r.stdout, /--json/);
   assert.match(r.stdout, /NDJSON/);
 });
+
+// --- logs --type (the exact event-type filter) ---
+
+test("logs --type prints only events of exactly that type, where --grep substrings", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type exact");
+  const now = Date.now();
+  const file = eventsLogPath(repo);
+  writeLogLines(file, [
+    { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
+    { ts: now - 5000, loop: "feature", type: "tick_start", tick: 1 },
+    // A wake event whose rendered line quotes the word "land_failed" as its reason text:
+    // the exact-vs-substring case — --grep matches the quoted text, --type (an event id,
+    // not free text) must not.
+    { ts: now - 4000, loop: "clean", type: "wake", reason: "land_failed" },
+  ]);
+
+  const r = await cli(repo, "logs", "--type", "land_failed", "-n", "200");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("did not land (review_rejected)"), r.stdout);
+  assert.ok(!r.stdout.includes("tick #"), r.stdout);
+  assert.ok(!r.stdout.includes("woke (land_failed)"), `--type is an exact id, not a substring:\n${r.stdout}`);
+
+  // The same log under --grep DOES match the quoted reason text (where --type refused it).
+  const g = await cli(repo, "logs", "--grep", "land_failed", "-n", "200");
+  assert.equal(g.code, 0);
+  assert.ok(g.stdout.includes("woke (land_failed)"), g.stdout);
+});
+
+test("logs --since --type filters the window, and an empty match is gentle prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type since");
+  const now = Date.now();
+  const file = eventsLogPath(repo);
+  writeLogLines(file, [
+    { ts: now - 40 * 60_000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
+    { ts: now - 30 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 400 },
+    { ts: now - 20 * 60_000, loop: "feature", type: "land_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 },
+  ]);
+
+  // --type composes with the window: only the window's review_rejected prints, oldest-first.
+  let r = await cli(repo, "logs", "--since", "1h", "--type", "review_rejected");
+  assert.equal(r.code, 0);
+  assert.ok(r.stdout.includes("review rejected"), r.stdout);
+  assert.ok(!r.stdout.includes("did not land"), r.stdout);
+
+  // An all-filtered window answers with the type's own no-match line (prose only).
+  r = await cli(repo, "logs", "--since", "1h", "--type", "nosuchthing");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /no events matching "nosuchthing"/);
+
+  // In JSON mode an all-filtered window prints nothing (the empty output is the answer).
+  const j = await cli(repo, "logs", "--since", "1h", "--type", "nosuchthing", "--json");
+  assert.equal(j.code, 0);
+  assert.equal(j.stdout, "", j.stdout);
+});
+
+test("logs --type -n composes with --grep (type AND text) and with --json", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type compose");
+  seedMixedLog(repo); // two land_failed (review_rejected / build_check), a review_rejected, ticks.
+
+  // Both rules hold: land_failed events whose text ALSO mentions review_rejected (only the
+  // one with result review_rejected, not the build_check one, and not the review_rejected
+  // event itself).
+  const g = await cli(repo, "logs", "--type", "land_failed", "--grep", "review_rejected", "-n", "200");
+  assert.equal(g.code, 0);
+  assert.ok(g.stdout.includes("did not land (review_rejected)"), g.stdout);
+  assert.ok(!g.stdout.includes("did not land (build_check)"), g.stdout);
+  assert.ok(!g.stdout.includes("review rejected abc1234"), g.stdout);
+
+  // --json filters before serialization: every emitted line is a land_failed event.
+  const j = await cli(repo, "logs", "--json", "--type", "land_failed");
+  assert.equal(j.code, 0);
+  const lines = j.stdout.split("\n").filter(Boolean);
+  assert.equal(lines.length, 2, j.stdout);
+  for (const line of lines) assert.equal(JSON.parse(line).type, "land_failed", line);
+});
+
+test("logs --type refuses the transcript-view rivals and a valueless flag", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type rivals");
+  seedMixedLog(repo);
+
+  let r = await cli(repo, "logs", "--type", "x", "--role", "clean");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--type .*--role/);
+
+  // --prompt requires --role, so it is excluded with it.
+  r = await cli(repo, "logs", "--type", "x", "--prompt");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--type .*--prompt/);
+
+  // A valueless --type fails with the shared wording (the gate's missingValue).
+  r = await cli(repo, "logs", "--type");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /logs --type needs an event type/);
+});
+
+test("logs --type treats a flag-shaped value as text, not as the flag it spells", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type flag-shaped value");
+  seedMixedLog(repo);
+
+  // A rival flag's name at the VALUE's position is the type text: exit 0 with the gentle
+  // no-match note, not a --since combine rejection (the value must leave rest for the scans).
+  const r = await cli(repo, "logs", "--type", "--since");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /no events matching "--since"/);
+});
+
+test("logs --type -f holds the filter across the seeded window and rotation", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type follow");
+  seedMixedLog(repo);
+
+  const s = spawnCli(repo, ["logs", "--type", "land_failed", "-f"]);
+  try {
+    await s.waitFor((out) => out.includes("did not land (build_check)"), "the seeded match");
+
+    const file = eventsLogPath(repo);
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "tick_start", tick: 7 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
+    await s.waitFor((out) => out.includes("did not land (conflict)"), "the live match");
+
+    const out = s.out();
+    assert.ok(!out.includes("tick #7"), `followed events must be filtered too:\n${out}`);
+    assert.ok(!out.includes("review rejected abc1234"), `the seeded window must be filtered too:\n${out}`);
+  } finally {
+    s.kill();
+  }
+});
+
+test("tumwater help logs documents --type", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs type help");
+  const r = await cli(repo, "help", "logs");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /--type <event type>/);
+});
