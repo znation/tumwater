@@ -91,6 +91,54 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
+### tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR` when it is set, as pi does (planned 2026-10-14 by plan; independent of every other entry)
+
+**Goal.** pi keeps its config directory at `~/.pi/agent` unless `PI_CODING_AGENT_DIR` names
+another one (pi 1.0.4's environment-variables doc; `getAgentDir()` in pi's `dist/config.js`
+uses the variable when it is non-empty and expands a leading `~` against the home dir).
+`piModelsPath()` (`src/pi/pi-models.ts`) always returns `os.homedir()/.pi/agent/models.json`.
+An operator who sets the variable therefore runs pi against one `models.json` while tumwater
+reads another: the free-fleet budget badge (`fleetModelsFree`, `snapshot` in
+`src/status/status-data.ts`), doctor's model checks (`src/doctor/doctor-model-checks.ts`),
+the role view (`rolePayload`) and the orchestrator's `modelsPath` all price and resolve models
+from the wrong file, or from none. The secret-leak gate entry under Done ("The secret-leak gate
+also checks the credentials pi stores in `auth.json` and `models.json`") defaults to
+`piModelsPath()` and derives `auth.json` beside it, so it gets this fix without any change of its own.
+
+**Approach.**
+- In `src/pi/pi-models.ts`, add and export
+  `piAgentDir(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string`.
+  When `env.PI_CODING_AGENT_DIR` is a non-empty string, return it with pi's tilde rule: exactly
+  `~` becomes `homeDir`, and a leading `~/` becomes `path.join(homeDir, rest)`. Anything else is
+  returned as given. Otherwise return `path.join(homeDir, ".pi", "agent")`. Doc comment: this
+  mirrors pi's `getAgentDir`.
+- `piModelsPath(env = process.env, homeDir = os.homedir())` becomes
+  `path.join(piAgentDir(env, homeDir), "models.json")`. Every existing caller calls it with no
+  arguments and stays unchanged (grep `piModelsPath(` under `src/` to confirm).
+- `warnFallbackClone` in `src/loop/loop-pi.ts` hard-codes `~/.pi/agent/models.json` in its
+  warning. Interpolate `piModelsPath()` instead so the warning names the file pi actually reads.
+  No test pins that warning's text today (grep `add an exact entry to` under `test/` finds none).
+- `docs/backends.md`: where it first names `~/.pi/agent/models.json`, add one sentence. It says
+  tumwater reads pi's files from `$PI_CODING_AGENT_DIR` when it is set, as pi does.
+- No new config knob, and no change to how pi is spawned: pi already inherits the variable from
+  the harness's environment.
+
+**Files touched.** `src/pi/pi-models.ts`, `src/loop/loop-pi.ts`, `test/pi-models.test.ts`,
+`docs/backends.md`.
+
+**Acceptance criteria.**
+- `test/pi-models.test.ts`'s "piModelsPath points at pi's agent models.json under the home dir"
+  passes an explicit `{}` env and a fixed home dir, so a developer shell that sets
+  `PI_CODING_AGENT_DIR` cannot fail it. It asserts `<home>/.pi/agent/models.json`.
+- New tests in the same file: `piAgentDir({ PI_CODING_AGENT_DIR: "/x/agent" }, "/h")` is
+  `/x/agent`; `"~"` gives `/h`; `"~/cfg"` gives `path.join("/h", "cfg")`; an empty string falls
+  back to `path.join("/h", ".pi", "agent")`. `piModelsPath` with the variable set returns
+  `<dir>/models.json`.
+- `fleetModelsFree(config, piModelsPath({ PI_CODING_AGENT_DIR: dir }))` reads a temp
+  `models.json` written under `dir`. Nothing writes to the real home directory.
+- `warnFallbackClone`'s message is built from `piModelsPath()`, not the literal `~/.pi/agent` path.
+- `npm run test` passes.
+
 ## Done
 
 ### The secret-leak gate also checks the credentials pi stores in `auth.json` and `models.json` (planned 2026-10-14 by plan, done 2026-10-14 by feature; independent of every other entry)
@@ -161,7 +209,6 @@ signature change forces it.
 - The existing env-variable behaviour and its tests are unchanged apart from the call-shape
   update. The new tests read only temp files, never the real `~/.pi/agent`.
 - `npm run test` passes.
-
 
 ### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line, done 2026-10-14)
 
