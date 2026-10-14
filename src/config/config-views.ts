@@ -7,7 +7,7 @@ import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier
 import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
-import { roleById } from "../roles/roles.js";
+import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
 
@@ -134,6 +134,7 @@ function seamOverrides(s: { provider?: string; model?: string; thinking?: string
 export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
   const m = config.roles[baseRoleOf(role)]?.model;
   if (isTierName(m)) return m;
+  if (role === DIRECTOR_ROLE) return "strong";
   return roleById(role)?.tier ?? "default";
 }
 

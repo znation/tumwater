@@ -238,13 +238,13 @@ test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => 
   );
 });
 
-test("configForRole resolves each seam's tier: plan strong, readme small, others default", () => {
+test("configForRole resolves each seam's tier: plan and director strong, readme small, others default", () => {
   const config: TumwaterConfig = defaultConfig();
   config.model = { default: "prov/a", strong: "prov/b", small: "prov/c" };
   assert.equal(configForRole(config, "plan").model, "b");
   assert.equal(configForRole(config, "readme").model, "c");
   assert.equal(configForRole(config, "feature").model, "a");
-  assert.equal(configForRole(config, "director").model, "a");
+  assert.equal(configForRole(config, "director").model, "b");
   // A tier-name override in roles.<id>.model moves the seam to that tier.
   config.roles.feature = { enabled: true, model: "strong" };
   assert.equal(configForRole(config, "feature").model, "b");

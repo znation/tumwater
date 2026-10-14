@@ -77,7 +77,7 @@ itself is a load error rather than a silent override. A selector whose provider 
 id always routes there regardless of the top-level `agent`: `claude/claude-opus-5-5` runs on
 claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
 default, Haiku 5.5 small — so `agent: "claude"` with no `model` still resolves a concrete model
-per seam. The observability surfaces name the backend in the selector (`claude/claude-sonnet-5-5`
+per seam; the director runs at the strong tier. The observability surfaces name the backend in the selector (`claude/claude-sonnet-5-5`
 in `tumwater status`, the dashboards, and the event feed), and a seam with no model at all reads
 `claude default`.
 

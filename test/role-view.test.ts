@@ -212,7 +212,7 @@ test("inspectMarkdownLines carries the notebook and next-tick blocks renderRoleM
 test("unset things render as explicit placeholder lines, not omissions", () => {
   const dir = root();
   const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
-  assert.match(md, /- Model: pi default \(default tier\)/m);
+  assert.match(md, /- Model: pi default \(strong tier\)/m);
   assert.ok(!md.includes("Budget fallback")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
   assert.match(md, /_\(none — the director is driven by its queued prompts, not a find text\)_/);
