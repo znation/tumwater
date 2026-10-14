@@ -371,6 +371,21 @@ export function normalizeEntryBody(body: string): string {
   return lines.join("\n");
 }
 
+/** Fail with the kind's empty-field usage line when the title/symptom is empty: the plan
+ * form names its missing field a "title", the bug form a "symptom". The single home of those
+ * two strings, shared by the inline, `--file`, and `--edit` forms so the CLI and dashboard
+ * can't drift. */
+function requireEntryTitle(kind: "bug" | "plan", title: string, usage: string): void {
+  if (title === "") fail(kind === "plan" ? `plan needs a title: ${usage}` : `bug needs a symptom: ${usage}`);
+}
+
+/** Fail when a split `--file` body would grow a phantom section (bodyStructureProblem). verb is
+ * the CLI verb in the message: "filed" for `--file`, "written" for `--edit <n> --file`. */
+function requireBodyStructurallySound(body: string, verb: "filed" | "written"): void {
+  const problem = bodyStructureProblem(body);
+  if (problem) fail(`the --file body cannot be ${verb}: ${problem}`);
+}
+
 /** File an already-validated title and body under PLANS.md's `## Planned` (plan) or BUGS.md's
  * `## Open` (bug). Shared by the `--file` forms and the dashboard file endpoint; the caller has
  * checked the title is non-empty and the body passes bodyStructureProblem. */
@@ -385,18 +400,16 @@ export function fileEntryWithBody(root: string, kind: "bug" | "plan", title: str
  * PLANS.md's `## Planned`. A body that would grow a phantom section writes nothing. */
 export function filePlanFromText(root: string, text: string, usage: string): FiledEntry {
   const { title, body } = splitEntryFile(text);
-  if (title === "") fail(`plan needs a title: ${usage}`);
-  const problem = bodyStructureProblem(body);
-  if (problem) fail(`the --file body cannot be filed: ${problem}`);
+  requireEntryTitle("plan", title, usage);
+  requireBodyStructurallySound(body, "filed");
   return fileEntryWithBody(root, "plan", title, body);
 }
 
 /** `tumwater bug --file`: the bug twin of filePlanFromText, under BUGS.md's `## Open`. */
 export function fileBugFromText(root: string, text: string, usage: string): FiledEntry {
   const { title, body } = splitEntryFile(text);
-  if (title === "") fail(`bug needs a symptom: ${usage}`);
-  const problem = bodyStructureProblem(body);
-  if (problem) fail(`the --file body cannot be filed: ${problem}`);
+  requireEntryTitle("bug", title, usage);
+  requireBodyStructurallySound(body, "filed");
   return fileEntryWithBody(root, "bug", title, body);
 }
 
@@ -443,7 +456,7 @@ function appendOperatorEntry(
  * with the usage line and writes nothing. */
 export function fileBug(root: string, rawText: string, usage: string): FiledEntry {
   const symptom = collapseWhitespace(rawText);
-  if (symptom === "") fail(`bug needs a symptom: ${usage}`);
+  requireEntryTitle("bug", symptom, usage);
   return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", symptom, "");
 }
 
@@ -454,7 +467,7 @@ export function fileBug(root: string, rawText: string, usage: string): FiledEntr
  * line and writes nothing. */
 export function filePlan(root: string, rawTitle: string, rawBody: string, usage: string): FiledEntry {
   const title = collapseWhitespace(rawTitle);
-  if (title === "") fail(`plan needs a title: ${usage}`);
+  requireEntryTitle("plan", title, usage);
   return appendOperatorEntry(root, "PLANS.md", PLANS_TEMPLATE, "Planned", title, collapseWhitespace(rawBody));
 }
 
@@ -477,9 +490,8 @@ export function editPlanFromText(root: string, n: number, text: string, usage: s
   const { title: rawTitle, body } = splitEntryFile(text);
   // A first line pasted back as the full heading carries the entry's stamp; the splice re-adds it.
   const title = stripEntryStamp(rawTitle);
-  if (title === "") fail(`plan needs a title: ${usage}`);
-  const problem = bodyStructureProblem(body);
-  if (problem) fail(`the --file body cannot be written: ${problem}`);
+  requireEntryTitle("plan", title, usage);
+  requireBodyStructurallySound(body, "written");
   return editEntry(root, "PLANS.md", "Planned", n, title, body);
 }
 
@@ -488,9 +500,8 @@ export function editPlanFromText(root: string, n: number, text: string, usage: s
 export function editBugFromText(root: string, n: number, text: string, usage: string): { file: string; title: string } {
   const { title: rawTitle, body } = splitEntryFile(text);
   const title = stripEntryStamp(rawTitle);
-  if (title === "") fail(`bug needs a symptom: ${usage}`);
-  const problem = bodyStructureProblem(body);
-  if (problem) fail(`the --file body cannot be written: ${problem}`);
+  requireEntryTitle("bug", title, usage);
+  requireBodyStructurallySound(body, "written");
   return editEntry(root, "BUGS.md", "Open", n, title, body);
 }
 
@@ -501,7 +512,7 @@ export function editBugFromText(root: string, n: number, text: string, usage: st
  * body, so the rebuilt entry is its heading alone. */
 export function editBug(root: string, n: number, rawText: string, usage: string): { file: string; title: string } {
   const symptom = collapseWhitespace(rawText);
-  if (symptom === "") fail(`bug needs a symptom: ${usage}`);
+  requireEntryTitle("bug", symptom, usage);
   return editEntry(root, "BUGS.md", "Open", n, symptom, "");
 }
 
@@ -517,7 +528,7 @@ export function editPlan(
   usage: string,
 ): { file: string; title: string } {
   const title = collapseWhitespace(rawTitle);
-  if (title === "") fail(`plan needs a title: ${usage}`);
+  requireEntryTitle("plan", title, usage);
   const body = collapseWhitespace(rawBody);
   return editEntry(root, "PLANS.md", "Planned", n, title, body);
 }
