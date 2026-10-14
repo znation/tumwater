@@ -17,6 +17,17 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Acceptance:** a 7d window five days out shows `resets in 5d …`; a 5h window shows `resets in Xh Ym`; the `held until HH:MM` and `~cap at HH:MM` strings are unchanged; the check passes.
 
+### The GUI "Landed today" stat tile truncates its sub line with an ellipsis (reported by user 2026-10-14)
+
+**Symptom:** the fleet view's "Landed today" tile shows `2 features done · 0 bugs fixed · …`; the work/maintenance split is cut off and the full text is unreadable.
+
+**Reproduce:** open the GUI fleet view at a normal width with any commits landed today; the sub line (`workSplit` part) is clipped.
+
+**Cause:** `.stat-sub` in `src/ui/gui/gui-styles.ts` is `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`. The sub text is built in `renderStats` (`src/ui/gui/gui-client-fleet.ts`).
+
+**Fix (user's direction):** let `.stat-sub` wrap onto a second line, and reserve that second line on every tile so the row stays aligned: give `.stat-sub` a `min-height` of two lines (`calc(2 * line-height)` with an explicit `line-height`) and drop the nowrap/ellipsis. Apply it to the shared `.stat` tiles (`.stats.six` too, if they use `.stat-sub`); check no other view's `.stat-sub` regresses. Keep `.stat-value` as is.
+
+**Acceptance:** at the width in the screenshot the Landed today tile shows its full text across two lines; all four tiles in the row stay the same height and their values align; a style test (extend the existing `gui-styles` test if one exists) pins that `.stat-sub` no longer carries `nowrap`/`ellipsis` and reserves two lines; the check passes.
 
 ## Fixed
 
