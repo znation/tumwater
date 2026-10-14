@@ -180,10 +180,11 @@ export function handleFailures(q: URLSearchParams, res: http.ServerResponse, roo
  * not parse is a client error, unlike the report's degrade-to-default typo rule); then clamped
  * to [1, HISTORY_MAX_TICKS] — the GUI clamps where the CLI fails fast, its established
  * convention. grep is optional: absent or empty filters nothing; present → the rows are
- * filtered through history-data.ts's shared tickRowsMatchingGrep rule, the same case-insensitive haystack rule
- * `tumwater history --grep` uses (shared, not re-implemented), after the n/role scan so n
- * bounds the scanned window and not the printed rows — the CLI's rule. The window shape
- * ({ rows, covered, note }) rides readTickRowsSince, the collector behind `history --since`,
+ * filtered through history-data.ts's shared tickRowsMatchingGrep rule, the same
+ * case-insensitive haystack rule `tumwater history --grep` uses (shared, not
+ * re-implemented), after the n/role scan so n bounds the scanned window and not the
+ * printed rows — the CLI's rule. The window shape ({ rows, covered, note }) rides
+ * readTickRowsSince, the collector behind `history --since`,
  * so the browser and the CLI cannot disagree about the window's rows; a simultaneous n is a
  * rival shape → 400 (the CLI's count-vs-window rule), sinceMs parses and is capped through
  * sinceMsQuery (gui-args.ts, LOGS_SINCE_MAX_MS — the shared `history --since` cap), and note is
@@ -294,9 +295,10 @@ export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: s
  * marker and the `[image attached: …]` reference block are stripped, both plumbing the edit
  * carries over unchanged. The role is optional (absent reads the director's queue) and
  * validates exactly like /api/transcript; a file name failing the shared
- * rejectBadQueueFileName guard is a user-input error answered 400 with nothing read. A vanished file answers 200
- * { ok: true, status: "gone" } — the loop already dequeued it, which is data for the UI, not
- * a server fault. Reads one file directly, so it works whether or not the fleet is running. */
+ * rejectBadQueueFileName guard is a user-input error answered 400 with nothing read. A
+ * vanished file answers 200 { ok: true, status: "gone" } — the loop already dequeued
+ * it, which is data for the UI, not a server fault. Reads one file directly, so it works
+ * whether or not the fleet is running. */
 export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const roleParam = q.get("role");
   if (roleParam !== null && rejectBadRole(root, res, roleParam)) return;

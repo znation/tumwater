@@ -1,8 +1,9 @@
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
  * totals (each with its per-day average) over five daily bar charts — landed commits, ticks by
- * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one shared color per loop;
- * a window picker switches between 7, 14, 30, and 90 days and a Loop picker scopes the report
- * to one loop group (`?role=`, the browser twin of `tumwater report --role`). Both pickers also
+ * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one
+ * shared color per loop; a window picker switches between 7, 14, 30, and 90 days and a
+ * Loop picker scopes the report to one loop group (`?role=`, the browser twin of
+ * `tumwater report --role`). Both pickers also
  * carry trailing-window buttons (1h/6h/1d, `?sinceMs=`, the browser twin of `tumwater report
  * --since`), so the day and sub-day shapes read through the same collectors and renders as the
  * CLI; the since shape draws the returned Markdown instead of the charts. Failures renders
@@ -139,7 +140,8 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
-  // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as the cap spend.
+  // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as
+  // the cap spend.
   function chartNotionalByRole(data) {
     return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }

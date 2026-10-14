@@ -5,28 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 ## Planned
-### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`)
-
-
-**Goal.** Finish what part 1/2 started: fix the over-100-column comment lines that part 1/2's
-`EXEMPT_DIRS` still skips (31 on 2026-10-14: 12 in `src/cli`, 8 in `src/gui`, 11 in `src/ui`,
-the largest being `src/gui/gui-endpoint-commands.ts` and `src/ui/tui/tui-keys.ts`). Then delete
-the exemption, so the check covers all of `src/` and `test/`.
-
-**Approach.** Delete `EXEMPT_DIRS` and its use from `comment-width.test.ts`, then run that
-test to get the list. Rewrap each listed line's whole comment paragraph by part 1/2's rule:
-fill toward 100 columns, leave no stranded fragment, keep the wording, touch only comment
-lines.
-
-**Files touched.** `comment-width.test.ts`, and the comment lines of about 17 files under
-`src/cli`, `src/gui` and `src/ui`.
-
-**Acceptance criteria.**
-- `grep -rn EXEMPT_DIRS test` finds nothing, and the test passes.
-- `git diff -U0` changes no non-comment line outside the test file.
-- `npm run test` passes.
-
-
 ### Waiting backlog entries name how long they have been open: a "since <date>" age on `plan|bug --list` and its JSON (planned 2026-10-14 by plan; independent of every other entry — touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, or test-suite file, and no code the waiting comment-width / loop-model / provider-hold plans touch)
 
 **Goal.** `tumwater plan --list` and `tumwater bug --list` list every waiting entry's title and eligibility mark, but not how long it has waited, so a stale or orphaned entry is indistinguishable from a fresh one until the reader opens the file and finds its date clause. Every eligible heading already carries its filing stamp in prose — plans open with a `(planned YYYY-MM-DD …)` clause, bugs with `(found by … YYYY-MM-DD …)` or `(reported …)` — so the list can name the age from the text it already parses, giving the operator and the feature loop a quick read on which waiting work is fresh and which has sat. `listAndAnnounce` in `src/backlog/backlog-cli.ts` is the only list surface changed; it is shared verbatim by `plan --list` and `bug --list`. A grep for `filingDate`/`ageInDays`/` · since` under `src/` finds nothing.
@@ -49,6 +27,27 @@ lines.
 - `npm run test` passes.
 
 ## Done
+### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
+
+
+**Goal.** Finish what part 1/2 started: fix the over-100-column comment lines that part 1/2's
+`EXEMPT_DIRS` still skips (31 on 2026-10-14: 12 in `src/cli`, 8 in `src/gui`, 11 in `src/ui`,
+the largest being `src/gui/gui-endpoint-commands.ts` and `src/ui/tui/tui-keys.ts`). Then delete
+the exemption, so the check covers all of `src/` and `test/`.
+
+**Approach.** Delete `EXEMPT_DIRS` and its use from `comment-width.test.ts`, then run that
+test to get the list. Rewrap each listed line's whole comment paragraph by part 1/2's rule:
+fill toward 100 columns, leave no stranded fragment, keep the wording, touch only comment
+lines.
+
+**Files touched.** `comment-width.test.ts`, and the comment lines of about 17 files under
+`src/cli`, `src/gui` and `src/ui`.
+
+**Acceptance criteria.**
+- `grep -rn EXEMPT_DIRS test` finds nothing, and the test passes.
+- `git diff -U0` changes no non-comment line outside the test file.
+- `npm run test` passes.
+
 ### Split src/status/status-data.ts's monolithic snapshot() into per-domain collectors — the new modules `status-roles`, `status-inbox`, `status-budget` (planned 2026-10-14 by organize) — done 2026-10-14
 
 **Goal.** `snapshot()` in `src/status/status-data.ts` is a 600-line single function (about 3x the tree's 192-line median) that collects every observer field for the status table, TUI, and dashboard in one pass. It is the largest remaining mostly-one-function outlier in `src/` (the others — `orchestrator.ts` 611, `review.ts` 608, `config-validation.ts` 595 — are single gates whose size is inherent to one concern; config-validation already keeps its generic checkers in `config-field-checks.ts`). Unlike those, `snapshot()` genuinely aggregates several independent domains (per-role rows, inboxes, budget/billing, land queue, pause/wakes, quiet hours, maintenance, bootstrap, main-check, disk). `wc -l` puts it at 600 lines, with the `loops` row build (~150 lines) and the budget/billing block (~90 lines) as the two biggest slices. `test/status-data.test.ts` was already split by `snapshot()` facet into concern-named suites, so the domains are already delimited in the tests; the collector holding them all in one function is the lagging piece. Splitting it turns each domain into an independently testable module and shrinks `snapshot()` to a thin composer, so a future field lands in its domain's module instead of growing the monolith.

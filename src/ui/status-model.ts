@@ -59,8 +59,9 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both fleet gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an
- * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling poll's recorded skip (`idle: …` / `deferred (…)`, from
- * LoopState.skipReason), else "queued".
+ * error or quiet-kill streak at its threshold ("failing"); sleep; then the scheduling
+ * poll's recorded skip (`idle: …` / `deferred (…)`, from LoopState.skipReason), else
+ * "queued".
  * Pass `root` so an in-flight tick expands into live detail (elapsed · turn · ctx · tool);
  * without it a working loop shows plain "working". `live`, when given, is the frame's
  * precomputed tail (see workingDetail) — it skips the log read; without it an in-flight tick

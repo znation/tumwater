@@ -219,7 +219,8 @@ export function statusPayload(root: string, now = Date.now()): object {
     // machine-readable for `status --json`; the planned GUI pause-badge countdown reads it
     // client-side.
     pausedUntil: snap.pausedUntil,
-    // The paused-roles marker's shared `until` while a timed per-role pause stands (omitted otherwise).
+    // The paused-roles marker's shared `until` while a timed per-role pause stands (omitted
+    // otherwise).
     pausedRolesUntil: snap.pausedRolesUntil,
     // A pending scheduled wake ({ roles, atMs }); omitted when none stands.
     scheduledWake: snap.scheduledWake,

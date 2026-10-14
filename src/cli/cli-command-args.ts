@@ -287,10 +287,11 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // The queue-only flags --file and --at have nothing to mean in the read-only and destructive
   // modes (--list and --cancel): --file is the file-shaped twin of free-form text (--edit
   // accepts it as its replacement text, so the editFlag test below exempts that one mode), and
-  // a delivery deferral has nothing to mean to a listing or a cancel. --attach is queue/edit-only: --list and --cancel refuse it
-  // by name, while --edit accepts it to append images to the prompt it rewrites (the editFlag
-  // test below exempts that one mode). One home for the mode predicate and the
-  // `<flag> only queues a prompt` wording, so a new mode or queue-only flag is added here.
+  // a delivery deferral has nothing to mean to a listing or a cancel. --attach is queue/edit-only:
+  // --list and --cancel refuse it by name, while --edit accepts it to append images to the
+  // prompt it rewrites (the editFlag test below exempts that one mode). One home for the mode
+  // predicate and the `<flag> only queues a prompt` wording, so a new mode or queue-only flag
+  // is added here.
   const refuseQueueOnlyFlag = (flag: string, present: boolean): void => {
     if (present && (listFlag >= 0 || cancelFlag >= 0 || editFlag >= 0)) fail(`${flag} only queues a prompt`);
   };

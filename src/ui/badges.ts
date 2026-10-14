@@ -127,8 +127,9 @@ function untilReset(resetsAt: number, now: number): string {
 }
 
 /** The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
- * `· Claude 5h · 64% · resets in 4h 12m` (`resets now` once the deadline has passed), with the status word when no `utilization` was reported
- * and an `overage` marker while the account spends into overage. A rejected window reads
+ * `· Claude 5h · 64% · resets in 4h 12m` (`resets now` once the deadline has passed), with
+ * the status word when no `utilization` was reported and an `overage` marker while the
+ * account spends into overage. A rejected window reads
  * `claude seams held until 14:30` in place of `resets` while a future deadline holds the
  * seams; a reset reading names neither. The one home of the string, so the TUI header and the
  * payload's preformatted badge cannot drift. */

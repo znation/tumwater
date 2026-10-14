@@ -43,12 +43,12 @@ const CLEAR_NOTES_SPEC = { names: ["--clear-notes"] };
 const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" };
 
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
- * neither a flag nor the value of a --role or --notes-file flag. Returns the id (null when absent) and the
- * remaining arguments — flags only, ready for rejectUnknownArgs and sayJsonOrRender. The
- * id may also arrive as --role <id>, the flag spelling every other role-targeting command
- * shares; the collector's caller rejects both spellings at once rather than silently
- * picking one. Lives here because it exists only for this one command's mixed
- * positional/flag vocabulary. */
+ * neither a flag nor the value of a --role or --notes-file flag. Returns the id (null when
+ * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
+ * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
+ * role-targeting command shares; the collector's caller rejects both spellings at once
+ * rather than silently picking one. Lives here because it exists only for this one
+ * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
   for (const flag of ["--role", "--notes-file"]) {
@@ -59,9 +59,9 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? ""; // Unreachable fallback: the loop bound guarantees a token here.
-    // A non-flag token that is not a --role or --notes-file flag's value is the positional, taken once;
-    // everything else — flags and their values alike — rides in rest for rejectUnknownArgs
-    // and flagValue to claim.
+    // A non-flag token that is not a --role or --notes-file flag's value is the positional,
+    // taken once; everything else — flags and their values alike — rides in rest for
+    // rejectUnknownArgs and flagValue to claim.
     if (!arg.startsWith("-") && id === null && !valueIdx.has(i)) {
       id = arg;
       continue;

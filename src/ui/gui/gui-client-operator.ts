@@ -4,9 +4,10 @@ import { PAUSE_REASON_MAX } from "../../fleet/fleet-state.js";
  * they are in reach from every view: the daily spend badge — today's spend against the cap
  * with a meter, a button that opens a small editor for the cap (POST /api/budget, the same
  * setter as the TUI's Ctrl+B) — the pause control, a menu of timed pauses with an
- * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's `pause --for`/`--reason`) that turns into a Resume button with
- * the countdown while the fleet is paused, and the sound toggle that mutes the alert cue (a
- * per-browser preference, no server call). Neither keeps optimistic state: after a successful
+ * optional reason (POST /api/pause with `forSeconds` and `reason`, the CLI's
+ * `pause --for`/`--reason`) that turns into a Resume button with the countdown while the
+ * fleet is paused, and the sound toggle that mutes the alert cue (a per-browser preference,
+ * no server call). Neither keeps optimistic state: after a successful
  * POST the next status poll re-renders them from the server's answer, and a failed one toasts
  * the error and leaves the editor open. Spliced into gui-client.ts's script, where it reaches
  * the other sections' shared plumbing through that concatenation: the DOM and HTML helpers

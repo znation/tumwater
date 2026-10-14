@@ -13,8 +13,9 @@ const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 /** `brief`'s `--edit` flag: open the prompt in `$VISUAL`/`$EDITOR`. */
 const EDIT_SPEC = { names: ["--edit"] };
 
-/** `tumwater brief`: show the initial prompt and the file holding it, or with `--file <path>`
- * replace it (or with `--edit`, open it in the editor) under the checks init applies and commit that one file on main. */
+/** `tumwater brief`: show the initial prompt and the file holding it, or with `--file <path>` to
+ * replace it (or with `--edit`, open it in the editor) under the checks init applies and commit
+ * that one file on main. */
 export async function cmdBrief(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("brief", args, [JSON_FLAG, FILE_SPEC, EDIT_SPEC]);
   await requireReadyRepo(root);

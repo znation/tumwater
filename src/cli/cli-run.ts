@@ -322,7 +322,8 @@ export function parseRunWindow(args: string[], once: boolean): number | null {
 /** Results that mean the harness or the project's check failed and the round's work did not
  * land: a `--once` round with a role ending in one exits ONCE_FAILED_EXIT_CODE. `rejected` and
  * `refused` are the review gate and the agent working as designed; `aborted`, `quiet_killed`, and
- * `user_aborted` only reach a once round on a shutdown or operator abort, which exit their own way. */
+ * `user_aborted` only reach a once round on a shutdown or operator abort, which exit
+ * their own way. */
 export const ONCE_FAILURE_RESULTS: ReadonlySet<TickResult> = new Set<TickResult>([
   "error",
   "review_error",

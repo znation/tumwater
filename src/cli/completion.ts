@@ -24,7 +24,8 @@ interface CompletionSpec {
  * a single-space description (`role <id> --clear-notes Clear that notebook`) adds nothing. */
 function usageWords(firstLine: string, command: string): string[] {
   const rest = firstLine.replace(new RegExp(`^ {2}tumwater ${command}`), "");
-  // Usage arguments follow the command after a single space; two or more spaces start the description.
+  // Usage arguments follow the command after a single space; two or more spaces start the
+  // description.
   const usage = /^ {2,}/.test(rest) ? "" : (rest.split(/ {2,}/)[0] ?? "");
   const words: string[] = [];
   let depth = 0;
@@ -68,9 +69,10 @@ export function completionRoleIds(root: string): string[] {
   }
 }
 
-/** The keys `config get|set|unset` complete: every form parseConfigKey accepts, with the role-scoped
- * keys of this repo's base roles and custom loops (not instance ids like `feature-2`). A broken
- * tumwater.json falls back to the built-in catalog rather than writing errors into the prompt. */
+/** The keys `config get|set|unset` complete: every form parseConfigKey accepts, with the
+ * role-scoped keys of this repo's base roles and custom loops (not instance ids like
+ * `feature-2`). A broken tumwater.json falls back to the built-in catalog rather than writing
+ * errors into the prompt. */
 export function completionConfigKeys(root: string): string[] {
   let roleIds: string[];
   try {

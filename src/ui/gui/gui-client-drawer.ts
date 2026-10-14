@@ -116,7 +116,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         actions += ROLE_WAKE_CHOICES.map((c) => "<button type='button' class='btn btn-sm rowaction' data-action='wake-in' data-for='" + c[0] +
           "' data-role='" + esc(l.role) + "'>in " + esc(c[1]) + "</button>").join("");
       } else actions += btn("wake-in", "clock", "Wake later…");
-      // Exact id only: the cancel matches ids exactly, so an instance named via its base role would cancel nothing.
+      // Exact id only: the cancel matches ids exactly, so an instance named via its base role
+      // would cancel nothing.
       if (scheduledWakesFor(l, d).some((w) => w.roles.includes(l.role))) actions += btn("wake-cancel", "x", "Cancel scheduled wake");
     }
     if (paused) actions += btn("resume", "play", "Resume");

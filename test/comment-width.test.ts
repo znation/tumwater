@@ -11,9 +11,6 @@ import { test } from "node:test";
 // rules out, so this is a node:test file like test/exports.test.ts.
 
 const MAX_COMMENT_COLUMNS = 100;
-// Part 2/2 of the comment-width plan fixes these three directories (31 lines on 2026-10-14);
-// landing it is what empties this list. Everything outside them must already fit.
-const EXEMPT_DIRS = ["src/cli", "src/gui", "src/ui"];
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 // The suite runs both from test/ (node --test on the source) and from dist/test/ (the compiled
@@ -66,8 +63,6 @@ function commentOffenders(text: string): Array<{ number: number; text: string }>
 }
 
 function offendersInFile(file: string): string[] {
-  const dir = path.relative(repoRoot(TEST_DIR), path.dirname(file));
-  if (EXEMPT_DIRS.some((d) => dir === d || dir.startsWith(d + "/"))) return [];
   const text = fs.readFileSync(file, "utf8");
   return commentOffenders(text).map(({ number }) => `${file}:${number} (cols)`);
 }

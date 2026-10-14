@@ -246,7 +246,8 @@ interface TuiKeysDeps {
   /** The Pending pane's async collector; production uses change-data's collectFleetChanges.
    * Injectable so tests can resolve a fixed roster without git plumbing. */
   collectPending?(root: string): Promise<FleetChangeView>;
-  /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe binaries or git. */
+  /** Seam for the Health tab's checks; defaults to `runDoctor` so tests need not probe
+   * binaries or git. */
   runDoctor?(root: string): Promise<DoctorReport>;
   /** The transcript Change mode's async collector; production uses change-data's
    * collectRoleChange. Injectable so tests can resolve a fixed view without git plumbing. */
@@ -306,8 +307,8 @@ interface TuiKeysState {
   /** The backlog pane's title editor (Ctrl+E on a selected plan or bug): the entry's kind, its
    * 1-based position within its section, and the heading title the operator saw, or null when
    * no edit is open. A null position is the new-entry form (Ctrl+N, title ""): Enter files a new
-   * entry of that kind instead of retitling one. The title rides into tryEditEntry so an entry that moved under the editor
-   * is refused rather than rewritten. */
+   * entry of that kind instead of retitling one. The title rides into tryEditEntry so an
+   * entry that moved under the editor is refused rather than rewritten. */
   entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null;
   /** The Queued pane's cached rows — the same list renderQueuedList printed — so a selection
    * addresses a row's role/position without re-reading the queue each frame. */
@@ -953,9 +954,9 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    // Per-loop controls on the transcript pane: Ctrl+P
-    // toggles the viewed loop's pause, Ctrl+A aborts its in-flight tick, Ctrl+W opens the wake editor,
-    // and Ctrl+R opens the role-prompt editor for it.
+    // Per-loop controls on the transcript pane: Ctrl+P toggles the viewed loop's pause,
+    // Ctrl+A aborts its in-flight tick, Ctrl+W opens the wake editor, and Ctrl+R opens the
+    // role-prompt editor for it.
     // They call the same marker-writing/submit cores the CLI's --role flags do, so the
     // surfaces cannot drift on marker format, idempotence, or wording. Guarded to the
     // transcript views and out of budget-edit mode; everywhere else the keys fall through
@@ -965,7 +966,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     // unguarded throw would escape this keypress handler and kill the TUI — flash the
     // reason instead, the same contract the prompt-submit path below honors.
     if (key.ctrl && (key.name === "p" || key.name === "w") && pauseEditRole !== null) {
-      // A second Ctrl+P or Ctrl+W closes the per-loop pause/wake editor, mirroring Ctrl+F's second press.
+      // A second Ctrl+P or Ctrl+W closes the per-loop pause/wake editor, mirroring Ctrl+F's
+      // second press.
       exitPauseEditMode();
       deps.requestRender();
       return;
@@ -1509,7 +1511,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           refreshQueued();
         } else if (view === roleIds.length + 7) {
           // Health reruns `tumwater doctor`'s checks on each entry; the loading note shows until
-          // they resolve. Same stale-resolution guard as Pending: only paint while Health is current.
+          // they resolve. Same stale-resolution guard as Pending: only paint while Health is
+          // current.
           paneCache = null;
           void runDoctorSeam(root).then(
             (report) => {

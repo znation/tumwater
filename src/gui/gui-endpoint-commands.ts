@@ -1,7 +1,7 @@
 /**
- * The dashboard's POST operator endpoint handlers (src/gui/gui-server.ts routes to them): prompt,
- * prompt-role, prompt-cancel, prompt-edit, budget, config-set, config-unset, pause, wake, restart, abort,
- * pause-role —
+ * The dashboard's POST operator endpoint handlers (src/gui/gui-server.ts routes to them):
+ * prompt, prompt-role, prompt-cancel, prompt-edit, budget, config-set, config-unset, pause,
+ * wake, restart, abort, pause-role —
  * everything that writes state or queues work — plus the shared request-body helpers
  * (readPostBody, readRoleBody, checkedPromptImages, checkedPromptFields) each mutating handler
  * guards its inputs with. The GET data endpoints (transcript, backlog, report, failures, history,
@@ -53,9 +53,10 @@ async function readPostBody(
  * wake/abort/prompt-role/pause-role family states the body-discipline-and-role-check pairing
  * once instead of two guard lines per handler. Its null return means the response is already
  * written and the handler must stop; callers keep their own `if (!body) return` bail. Exactly
- * seven call sites — handlePromptRole, handleWake, handleWakeCancel and handleResetCounters (allowMissing, the
- * {} → all-roles default), handleAbort, handlePauseRole, and handleRoleNotes; handlePromptCancel deliberately does not ride it, since
- * its role is optional and validates only when present. */
+ * seven call sites — handlePromptRole, handleWake, handleWakeCancel and handleResetCounters
+ * (allowMissing, the {} → all-roles default), handleAbort, handlePauseRole, and
+ * handleRoleNotes; handlePromptCancel deliberately does not ride it, since its role is
+ * optional and validates only when present. */
 async function readRoleBody(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -428,7 +429,8 @@ function wakeInSecondsMs(res: http.ServerResponse, body: Record<string, unknown>
  * state-file edits or the marker. `{}`/a missing role targets every configured role (the
  * CLI's all-roles default); a given role validates exactly like /api/transcript. Same body
  * discipline as /api/pause (readJsonObject → 400 malformed/non-object, 413 oversized). An
- * optional `inSeconds` schedules the wake for later, like `tumwater wake --in` (same 90-day cap). */
+ * optional `inSeconds` schedules the wake for later, like `tumwater wake --in` (same
+ * 90-day cap). */
 export async function handleWake(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature"}', root, true);
   if (!body) return;
@@ -463,8 +465,10 @@ export async function handleResetCounters(req: http.IncomingMessage, res: http.S
 
 /** Handle POST /api/backlog-file: the Plans/Bugs tabs' New control — the same entry and wake
  * `tumwater bug`/`tumwater plan` produce (fileEntryWithBody, then the shared wake text to the
- * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional markdown"}`. The empty-title and
- * wake-length checks run here, before anything is written: the body is normalized and checked by bodyStructureProblem too, and an over-long wake would throw after the entry landed. */
+ * bugfix/feature loop). Body `{"kind": "bug"|"plan", "title": "...", "body": "optional
+ * markdown"}`. The empty-title and wake-length checks run here, before anything is written:
+ * the body is normalized and checked by bodyStructureProblem too, and an over-long wake
+ * would throw after the entry landed. */
 export async function handleBacklogFile(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "plan", "title": "...", "body": "optional markdown"}');
   if (!body) return;
