@@ -102,6 +102,147 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
+### Loop rows name pi's own default model when `tumwater.json` names none, part 1/2: the dashboard, the TUI and `tumwater status` (planned 2026-10-14 from an operator request; builds on the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`", whose `piAgentDir` it relies on; part 2/2 below follows it)
+
+**Goal.** Each loop row in the dashboard, the TUI and `tumwater status` names the model the loop
+runs on. The operator uses it to see which model handles which running loop. `snapshot` in
+`src/status/status-data.ts` fills the row's `model` from `modelSelectorField(configForRole(cfg,
+r))`, so the name comes only from `tumwater.json`. With `agent: "claude"` every seam resolves a
+tier default, so the rows always had one. With `agent: "pi"` and no `model`, nothing resolves,
+the row's `model` is absent, and pi starts on its own default from `settings.json` in its agent
+dir. No surface says which model that is. This is the live fleet's shape on 2026-10-14:
+`tumwater.json` names no `model`, `~/.pi/agent/settings.json` names `huggingface` /
+`deepseek-ai/DeepSeek-V4-Flash-0731:deepinfra` at thinking `low`, and every row `statusPayload`
+returns lacks `model`. The operator noticed the model was gone from the dashboard and asked for it
+back. A grep for `defaultModel` under `src/` finds nothing. Copying the pair into
+`tumwater.json` would show it, but then the model is named in two places: the next model switch
+in pi's settings would be silently overridden by the stale copy.
+
+**Approach.**
+- New module `src/pi/pi-settings.ts`:
+  - `piSettingsPath(modelsPath: string): string` returns
+    `path.join(path.dirname(modelsPath), "settings.json")`. Deriving it from the models path keeps
+    one seam. `snapshot` and `rolePayload` already take `modelsPath`, so they get the settings
+    file beside it, and a test that passes a temp models path is hermetic for both files. The
+    default `piModelsPath()` already follows `$PI_CODING_AGENT_DIR` through `piAgentDir`, so
+    the settings path does too. The secret-leak gate derives `auth.json` the same way.
+  - `readPiDefaultModel(settingsPath: string, projectRoot: string): ModelSelector | null`
+    (`ModelSelector` from `src/config/model-selector.ts`). It mirrors step 3 of pi 1.2.0's
+    start-up model choice, "saved default from settings" (`findInitialModel` in pi's
+    `dist/core/model-resolver.js`), for a run tumwater starts without `--provider`/`--model`.
+    Read the file through `cachedByStat`, as `readPiProviders` in `src/pi/pi-models.ts` reads
+    `models.json`, because the snapshot runs on every poll. Return null when the file is
+    missing, unreadable or not a JSON object. Return null unless `defaultProvider` and
+    `defaultModel` are both non-empty strings: pi uses a saved default only as a pair. Return
+    null when `enabledModels` is a non-empty array: pi then starts on the first scoped model,
+    which is a pattern tumwater does not resolve. Return null when
+    `<projectRoot>/.pi/settings.json` exists and names any of `defaultProvider`,
+    `defaultModel`, `defaultThinkingLevel`, `enabledModels` or `modelThinkingLevels`. pi merges
+    that file over the global one only for a project it trusts, and tumwater cannot tell
+    whether it does. Showing nothing is better than naming a model pi may not run. Otherwise
+    return `{ provider: defaultProvider, model: defaultModel }`, with `thinking` set from
+    `modelThinkingLevels["<provider>/<model>"]` when that is a string, else from
+    `defaultThinkingLevel` when that is a string. That is pi's precedence. The doc comment cites
+    pi's function. It also says the reader does not model pi's last step: when the default pair
+    is missing from pi's catalog or has no auth, pi picks the first available model.
+- `snapshot`: read the default once per poll with
+  `readPiDefaultModel(piSettingsPath(modelsPath), root)`. Use it on a row whose resolved seam
+  `eff` runs pi (`eff.agent` is undefined or `"pi"`) and has neither `eff.provider` nor
+  `eff.model`. When the default is non-null, set `model` on that row to
+  `formatModelSelector({ ...piDefault, thinking: eff.thinking ?? piDefault.thinking })` and set
+  `modelFromPi: true`. The config's `thinking` wins because tumwater passes it to pi as
+  `--thinking` (`src/pi/pi-args.ts`). Every other row is unchanged, and none of them carries
+  `modelFromPi`. Add `modelFromPi?: true` to `StatusSnapshot.loops`, documented beside `model`.
+  Only the display surfaces read a row's `model`: the name cell in `src/ui/status-render.ts`, and
+  `statusPayload` for the dashboard. The other `s.model` reads in `src/status/status-data.ts`
+  (`claudeWindowBlock`, the pricing helpers) take config seams, not rows, so pricing, the budget
+  badge and the claude window do not change.
+- `statusPayload` (`src/ui/status-payload.ts`): ship `modelFromPi: true` beside `model` with the
+  same conditional spread.
+- Dashboard (`loopCells` in `src/ui/gui/gui-client-loops.ts`): when `l.modelFromPi`, follow the
+  selector in the sub line with ` (pi default)`. Wrap it in a span titled "pi's own default
+  model, from its settings.json: tumwater.json names no model". A row without the flag renders
+  byte-identical to today's.
+- TUI and `tumwater status` (the name cell in `src/ui/status-render.ts`): the plain `s.model`
+  branch reads ` (<selector>, pi default)` when `s.modelFromPi`. A tier-map row never carries
+  the flag, since a tier map always resolves a model.
+- Suite hermeticity (`suiteEnv` in `test/test-runner.ts`): replace its
+  `delete env.PI_CODING_AGENT_DIR` (landed in 5c721acb) with
+  `env.PI_CODING_AGENT_DIR = path.join(scratch, "pi-agent")`, without creating the directory.
+  About 130 calls in 13 test files run `snapshot(repo)` or `statusPayload(repo)` with the
+  default `modelsPath`. With the variable deleted, that is the developer's real `~/.pi/agent`.
+  Today those calls read only `models.json` from it. After this change they would also put the
+  host's pi default into every row of a config without `model`, so row text and payloads under
+  test would depend on the machine, including the fleet's own host. Pointing the variable at an
+  empty scratch dir makes every suite read no pi config at all. Rewrite the `PI_CODING_AGENT_DIR`
+  bullet of `suiteEnv`'s doc comment to say so: the bullet sits in the list of dropped
+  variables, so move it below the list as the one variable the suite sets. A test that passed
+  only because the host's `models.json` priced a model gets an explicit temp models path
+  instead. A test file run directly with `node --test` still reads the real agent dir, as it
+  does today.
+- `docs/backends.md`: after the sentence "Leave `model` out and pi's own default applies" and
+  its example, add one sentence. It says the loop rows then name that default, read from pi's
+  `settings.json`, marked `pi default`.
+
+**Files touched.** `src/pi/pi-settings.ts` (new), `src/status/status-data.ts`,
+`src/ui/status-payload.ts`, `src/ui/gui/gui-client-loops.ts`, `src/ui/status-render.ts`,
+`test/pi-settings.test.ts` (new), `test/status-data-models.test.ts`,
+`test/gui-client-loops.test.ts`, `test/status-render.test.ts`, `test/test-runner.ts`,
+`test/test-runner.test.ts`, `docs/backends.md`.
+
+**Acceptance criteria.**
+- `test/pi-settings.test.ts` writes every settings file in a temp dir and covers these cases.
+  `defaultProvider: "prov"`, `defaultModel: "org/m:route"`, `defaultThinkingLevel: "low"` reads
+  as `{ provider: "prov", model: "org/m:route", thinking: "low" }`.
+  `modelThinkingLevels: { "prov/org/m:route": "high" }` makes the thinking `high`. Each of these
+  reads as null: a missing file, malformed JSON, `defaultModel` without `defaultProvider`, and
+  `enabledModels: ["x/*"]`. A project `.pi/settings.json` that names `defaultModel` makes it
+  null. One that names only `theme` leaves the result unchanged.
+- `test/status-data-models.test.ts`: the temp models path has a `settings.json` beside it, and
+  the config names no `model`. Then `snapshot(repo, modelsPath)` rows carry
+  `model: "prov/org/m:route:low"` and `modelFromPi: true`, and a config `thinking: "high"` makes
+  it `prov/org/m:route:high`. Each of these leaves `modelFromPi` absent: a configured `model`
+  (the row keeps the configured selector), `agent: "claude"` (the row keeps the `claude/…` tier
+  default), and a config that names only `provider` (the row has no `model`). `statusPayload`
+  ships both fields. The payload test sets `PI_CODING_AGENT_DIR` to the temp dir and restores
+  it in `finally`.
+- `test/gui-client-loops.test.ts`: a row with `modelFromPi: true` renders the selector followed
+  by `(pi default)`. A row without the flag renders the same sub line as today.
+- `test/status-render.test.ts`: the name cell reads `feature (prov/org/m:route:low, pi default)`.
+  Every existing expectation holds unchanged.
+- `test/test-runner.test.ts`'s `suiteEnv` test asserts that `PI_CODING_AGENT_DIR` points under
+  the scratch dir.
+- `npm run test` passes.
+
+### Loop rows name pi's own default model when `tumwater.json` names none, part 2/2: `tumwater role` (planned 2026-10-14 from an operator request; requires part 1/2 landed)
+
+**Goal.** `tumwater role <id>` prints `- Model: pi default (<tier> tier)` for a pi seam that names
+no model (`agentDefault` and `modelLine` in `src/roles/role-render.ts`). After part 1/2 the
+dashboard, the TUI and `tumwater status` name that default, so the one-loop inspection should
+too.
+
+**Approach.**
+- `rolePayload` (`src/roles/role-view.ts`) applies part 1/2's rule: a pi seam with neither
+  `provider` nor `model` reads `readPiDefaultModel(piSettingsPath(modelsPath), root)`. When that
+  is non-null, add `piDefault: string` to `RoleViewPayload`. It is the formatted selector, with
+  the effective `thinking` winning as in part 1/2. The field is absent otherwise, so the JSON
+  shape is unchanged for every other seam.
+- `modelLine` prints `pi default (<selector>)` when `p.piDefault` is set. The selector already
+  carries the thinking level, so the separate ` (thinking: …)` suffix is dropped for that case
+  only.
+
+**Files touched.** `src/roles/role-view.ts`, `src/roles/role-render.ts`, `test/role-view.test.ts`.
+
+**Acceptance criteria.**
+- With a temp models path that has a `settings.json` beside it naming `prov` / `org/m` at
+  `low`, `renderRoleMarkdown(rolePayload(root, "feature", modelsPath))` matches
+  `- Model: pi default (prov/org/m:low) (default tier)`, and the JSON payload carries
+  `piDefault: "prov/org/m:low"`.
+- The existing `NO_MODELS` assertions (`- Model: pi default (strong tier)` and
+  `- Model: pi default (default tier)`) hold unchanged, because nothing exists beside
+  `/nonexistent/tumwater-test-models.json`.
+- `npm run test` passes.
+
 ## Done
 
 ### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
