@@ -69,6 +69,8 @@ rules out. So this is a node:test file, like `test/exports.test.ts`.
 
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; blocked by part 1/2 above, which adds the test and its `EXEMPT_DIRS`)
 
+**Refused 2026-10-14 by feature: part 1/2 has not landed (no comment-width.test.ts or EXEMPT_DIRS exists), so there is nothing to delete or run**
+
 **Goal.** Finish what part 1/2 started: fix the over-100-column comment lines that part 1/2's
 `EXEMPT_DIRS` still skips (31 on 2026-10-14: 12 in `src/cli`, 8 in `src/gui`, 11 in `src/ui`,
 the largest being `src/gui/gui-endpoint-commands.ts` and `src/ui/tui/tui-keys.ts`). Then delete
