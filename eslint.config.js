@@ -1,8 +1,9 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries eleven rules on purpose: four for promise misuse tsc cannot see, four for type
-// spellings whose meaning is not what the author read, one for a type-only import that silently
+// carries twelve rules on purpose: four for promise misuse tsc cannot see, four for type
+// spellings whose meaning is not what the author read, one for a type-only import that
 // stays a runtime side effect under verbatimModuleSyntax, one for a private member that is
-// never reassigned but is not marked `readonly`, and one for a comparator-less `sort` on a
+// never reassigned but is not marked `readonly`, one for an inline-only-type import that the
+// rest of the tree spells `import type`, and one for a comparator-less `sort` on a
 // non-string array, which orders by the elements' string forms (`[10, 2].sort()` stays
 // `[10, 2]`).
 //
@@ -37,12 +38,15 @@
 // the same thing in one spelling;
 // prefer-find flags `.filter(pred)[0]`, which builds a whole array to read one element.
 //
-// Import hygiene: no-import-type-side-effects flags an import whose every specifier is an
-// inline `type` (`import { type A, type B } from "./x.js"`). With verbatimModuleSyntax,
-// tsc elides the inline specifiers but keeps the statement as `import "./x.js"`, so the
-// module stays a runtime dependency the author did not ask for; a top-level `import type`
-// removes the statement entirely. (The two adapter modules fixed for this landed as the rule
-// was enabled.)
+// Import hygiene: consistent-type-imports flags an import whose every specifier is only a
+// type but is written inline (`import { type A } from "./x.js"`) instead of the top-level
+// `import type { A }` the rest of the tree uses, so the import contract reads the same
+// everywhere and a type-only import never looks like a runtime one. no-import-type-side-effects
+// flags an import whose every specifier is an inline `type` (`import { type A, type B }`). With
+// verbatimModuleSyntax, tsc elides the inline specifiers but keeps the statement as
+// `import "./x.js"`, so the module stays a runtime dependency the author did not ask for; a
+// top-level `import type` removes the statement entirely. (The two adapter modules fixed for
+// this landed as the rule was enabled.)
 //
 // Immutability: prefer-readonly flags a private member that is assigned once and never
 // reassigned again, where `readonly` documents the invariant and turns a later accidental
@@ -76,6 +80,7 @@ export default tseslint.config(
       "@typescript-eslint/no-redundant-type-constituents": "error",
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/consistent-type-imports": "error",  // inline-only-type imports use top-level `import type`
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-inferrable-types": "error",
       "@typescript-eslint/consistent-indexed-object-style": "error",

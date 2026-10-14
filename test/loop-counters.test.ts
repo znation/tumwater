@@ -8,7 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LoopRunner } from "../src/loop/loop.js";
+import type { LoopRunner } from "../src/loop/loop.js";
 import { initProject } from "../src/init/init.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";

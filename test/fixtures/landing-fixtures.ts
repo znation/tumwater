@@ -9,7 +9,7 @@ import {
   type LandingPipeline,
   type LandingPipelineContext,
 } from "../../src/landing/landing-pipeline.js";
-import { LoopRunner } from "../../src/loop/loop.js";
+import type { LoopRunner } from "../../src/loop/loop.js";
 import { enqueueLanding, queueDepth } from "../../src/landing/landing-queue.js";
 import { landingRefName } from "../../src/paths.js";
 import { setRef } from "../../src/git/git.js";

@@ -15,7 +15,7 @@ import { loadLoopState } from "../../src/loop/loop-state.js";
 import { logEvent } from "../../src/events/events.js";
 import type { RedeployDeps } from "../../src/redeploy/redeploy-policy.js";
 import { Redeployer } from "../../src/redeploy/redeployer.js";
-import { LoopRunner } from "../../src/loop/loop.js";
+import type { LoopRunner } from "../../src/loop/loop.js";
 import { fakePi, fakePiIdle } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { writeModelsFile } from "./models-fixtures.js";

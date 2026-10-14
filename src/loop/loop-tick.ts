@@ -35,7 +35,7 @@ import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
-import { TickUsage } from "../tick/tick-usage.js";
+import type { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
 import { hasConflictMarkers, mainCommitsTouching } from "../landing/landing-git.js";

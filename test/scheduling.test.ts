@@ -4,7 +4,7 @@ import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workLa
 import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
-import { LoopRunner } from "../src/loop/loop.js";
+import type { LoopRunner } from "../src/loop/loop.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { clearBackoff } from "../src/scheduling/backoff.js";

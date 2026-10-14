@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { LoopState } from "../loop/loop-state.js";
-import { readSlotsState } from "../git/slots-state.js";
+import type { readSlotsState } from "../git/slots-state.js";
 import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import {
   configForRole,

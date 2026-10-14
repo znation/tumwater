@@ -32,7 +32,7 @@ import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
-import { LoopRunner } from "../src/loop/loop.js";
+import type { LoopRunner } from "../src/loop/loop.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";
