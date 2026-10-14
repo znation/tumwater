@@ -11,6 +11,13 @@
  * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
  * through GET /api/doctor on each open (and on its Re-run button) and paints the report. */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
+  // One home for turning a thrown value into the message a flash shows: the fetch/parse/post
+  // helpers throw the server's JSON-decoded value, which for the server's own errors is an
+  // {error} object (its message on the .message field) — the three Save/Clear/Brief catch
+  // blocks that flash the outcome share this coercion so the wording cannot drift.
+  function clientErrorMessage(err) {
+    return err && err.message ? err.message : String(err);
+  }
   // The curated keys, in display order: [key, label]. Mirrors the server's
   // EDITABLE_CONFIG_KEYS (src/config/config-editable-keys.ts) by hand — the settings test pins
   // this list's keys and order to that constant.
@@ -102,7 +109,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       const d = await postJson("/api/config-set", { key: key, value: value });
       showFlash(d && d.oldValue === null ? "Saved " + key + " (was unset)" : "Saved " + key);
     } catch (err) {
-      showFlash("error: " + (err && err.message ? err.message : String(err)));
+      showFlash("error: " + clientErrorMessage(err));
     }
   }
   // The row's Clear button: retract the key through /api/config-unset, then refetch so the
@@ -116,7 +123,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       showFlash(d && d.oldValue !== undefined ? "Unset " + key + " (was " + JSON.stringify(d.oldValue) + ")" : "Nothing to unset for " + key + " — it was already the default");
       await fetchSettings();
     } catch (err) {
-      showFlash("error: " + (err && err.message ? err.message : String(err)));
+      showFlash("error: " + clientErrorMessage(err));
     }
   }
   // The Initial prompt card: the brief file's name and the prompt in a textarea, filled from
@@ -141,7 +148,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       const d = await postJson("/api/brief", { prompt: form.querySelector("textarea").value });
       showFlash(!d.changed ? "Initial prompt unchanged" : d.committed ? "Initial prompt saved (committed to main)" : "Initial prompt saved");
     } catch (err) {
-      showFlash("error: " + (err && err.message ? err.message : String(err)));
+      showFlash("error: " + clientErrorMessage(err));
     }
   }
   // settings-view:end
