@@ -243,6 +243,44 @@ too.
   `/nonexistent/tumwater-test-models.json`.
 - `npm run test` passes.
 
+### claude transcript paths follow `$CLAUDE_CONFIG_DIR` when it is set, as pi's follow `$PI_CODING_AGENT_DIR` (planned 2026-10-14 by plan; independent of every other entry; mirrors the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`…")
+
+**Goal.** When the operator relocates claude's config dir with `CLAUDE_CONFIG_DIR`, the transcript
+tree moves with it. tumwater's two claude paths still hard-code `~/.claude`: `claudeTranscriptPath`
+in `src/agent/claude/claude-backend.ts` returns `path.join(os.homedir(), ".claude", "projects", <slug>, <id>.jsonl)`, and `checkClaudeTranscripts` in `src/doctor/doctor-checks.ts` walks
+`path.join(homeDir, ".claude", "projects")`. On such a host the resume check (`resumableSession`,
+`claude-backend.ts`, which `fs.existsSync`es the transcript at line 109) looks for a file that is
+not there and mints a fresh id every tick instead of resuming, and doctor's "claude transcripts"
+row reports the wrong directory (often "no transcript dir at …"). The just-landed Done entry gave
+pi the same env-aware dir (`piAgentDir` in `src/pi/pi-models.ts`, reading `$PI_CODING_AGENT_DIR`
+with a leading-`~` expand into `~/.pi/agent`); claude's is the mirror gap. A grep for
+`CLAUDE_CONFIG_DIR` under `src/`, `test/`, and `PLANS.md` finds nothing, and no Planned or Done
+entry covers it.
+
+**Approach.**
+- New exported helper `claudeConfigDir(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string` in `src/agent/claude/claude-backend.ts`, copying `piAgentDir`'s shape: `$CLAUDE_CONFIG_DIR` when non-empty (`~` expands to `homeDir`, `~/` + rest), else `path.join(homeDir, ".claude")`. Export it so doctor reuses it.
+- `claudeTranscriptPath(cwd, id)` gains optional `(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir())` parameters and joins `claudeConfigDir(env, homeDir)`, `"projects"`, `claudeProjectSlug(cwd)`, `` `${id}.jsonl` ``. All existing two-arg callers (the resume check, the PATH fake, `test/claude-run.test.ts`, `test/tick-resume.test.ts`, `test/review-followup.test.ts`) pass the defaults and are unchanged.
+- `checkClaudeTranscripts(config, homeDir = os.homedir(), env: NodeJS.ProcessEnv = process.env)` in `src/doctor/doctor-checks.ts` computes `path.join(claudeConfigDir(env, homeDir), "projects")` where it now joins `path.join(homeDir, ".claude", "projects")`. The `homeDir` doc seam stays; `env` is the new seam.
+
+**Files touched.** `src/agent/claude/claude-backend.ts`, `src/doctor/doctor-checks.ts`,
+`test/claude-run.test.ts`, `test/doctor-checks.test.ts`, `docs/backends.md` (one sentence beside
+the `agents.claude.bin` paragraph noting that with `CLAUDE_CONFIG_DIR` set, transcripts move).
+
+**Acceptance criteria.**
+- `claudeTranscriptPath("/w a/b", "r1", { CLAUDE_CONFIG_DIR: "/cfg/sc" }, "/home/x")` is
+  `/cfg/sc/projects/-w-a-b/r1.jsonl`; with `CLAUDE_CONFIG_DIR: "~/reloc"` and homeDir `/home/x` it
+  is `/home/x/reloc/projects/-w-a-b/r1.jsonl`; with neither env var it is
+  `/home/x/.claude/projects/-w-a-b/r1.jsonl`. The resume path holds end to end: a transcript the
+  fake writes at the relocated path is found by the resume check, and a missing one at the
+  default `~/.claude` under a relocated config is not.
+- `test/doctor-checks.test.ts`: `checkClaudeTranscripts(claudeConfig, home, { CLAUDE_CONFIG_DIR: relocDir })`
+  totals the tree under `relocDir/projects`; every existing `checkClaudeTranscripts(config, home)`
+  two-arg expectation holds unchanged.
+- `grep -rn 'os.homedir(), ".claude"' src/` finds nothing (the old literal is gone from both
+  `claude-backend.ts` and `doctor-checks.ts`).
+- `npm run test` passes.
+
+
 ## Done
 
 ### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
