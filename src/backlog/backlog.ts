@@ -86,14 +86,22 @@ export function ageInDays(since: string, now: number = Date.now()): number {
   return Math.max(0, Math.floor((now - Date.parse(since)) / 86400000));
 }
 
+/** The ` · since YYYY-MM-DD (Nd)`/`(today)` tail a listing line gains for its entry's filing
+ * stamp — the one place the wording and the today/`Nd` choice live, so the plans/bugs list
+ * (entryAgeSuffix, stamp parsed by filingDate) and the questions list (questionAgeSuffix,
+ * parsed by questionFilingDate) cannot drift. `date` is the already-parsed stamp; the caller
+ * returns `""` for an undated heading. */
+export function ageSuffix(date: string, now: number = Date.now()): string {
+  const n = ageInDays(date, now);
+  return ` · since ${date} (${n === 0 ? "today" : `${n}d`})`;
+}
+
 /** The ` · since YYYY-MM-DD (Nd)`/`(today)` tail an entry's listing line gains when its heading
- * parses a filing stamp, else `""` — the one place the age is worded, so `--list` and `tumwater
- * backlog` could reuse it without drifting. */
+ * parses a filing stamp, else `""` — rendered through ageSuffix, the one place the age is
+ * worded (shared with the questions list's questionAgeSuffix). */
 export function entryAgeSuffix(title: string, now: number = Date.now()): string {
   const since = filingDate(title);
-  if (since === null) return "";
-  const n = ageInDays(since, now);
-  return ` · since ${since} (${n === 0 ? "today" : `${n}d`})`;
+  return since === null ? "" : ageSuffix(since, now);
 }
 
 /** Planned features: the `### ` headings under PLANS.md's `## Planned` section. Missing or

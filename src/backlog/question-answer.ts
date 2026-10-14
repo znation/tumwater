@@ -15,7 +15,7 @@
  */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
-import { openQuestionEntries, ageInDays } from "./backlog.js";
+import { openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
@@ -51,15 +51,13 @@ export function questionFilingDate(title: string): string | null {
 }
 
 /** The ` · since <date> (…)` suffix naming how long an open question has waited for an answer,
- * from its heading's stamp (see questionFilingDate), or "" when the heading is undated. `n` is
- * the whole days from `now` back to the stamp date through backlog.ts's ageInDays (the one
- * age formula), floored at 0 (a future stamp reads `(today)`). The one place the age is worded,
- * so the prose list and the JSON share the wording without drifting. */
+ * from its heading's stamp (see questionFilingDate), or "" when the heading is undated —
+ * rendered through backlog.ts's ageSuffix, the one place the wording lives (shared with the
+ * plans/bugs list's entryAgeSuffix), which floors at 0 through ageInDays so a future stamp
+ * reads `(today)`. */
 export function questionAgeSuffix(title: string, now: number = Date.now()): string {
   const date = questionFilingDate(title);
-  if (date === null) return "";
-  const n = ageInDays(date, now);
-  return n === 0 ? ` · since ${date} (today)` : ` · since ${date} (${n}d)`;
+  return date === null ? "" : ageSuffix(date, now);
 }
 
 /** `tumwater questions` with no arguments: the open questions numbered from 1 in file order,
