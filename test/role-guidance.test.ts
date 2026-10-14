@@ -144,6 +144,11 @@ test("the plan role and the director size plans to one implementation run via th
   assert.match(sizing, /Size every plan to ONE implementation run by a mid-sized model working alone/);
   assert.match(sizing, /at most a few hundred lines of change including tests/);
   assert.match(sizing, /split into independently landable sub-plans/);
+  // A sub-plan depending on a sibling must name it so the claim allocator holds it (BUGS.md 2026-10-14):
+  // only the `requires part N/M landed` form in the heading's parenthetical is read by requiredParts.
+  assert.match(sizing, /requires part N\/M landed/);
+  assert.match(sizing, /only form the claim allocator reads/);
+  assert.match(sizing, /does not hold the part until its/);
   // Anchors drift: line numbers go stale with every landing, symbols do not.
   assert.match(sizing, /file paths and symbol names/);
   assert.match(sizing, /never on line numbers or ranges/);

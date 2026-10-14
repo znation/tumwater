@@ -42,7 +42,11 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
 export const PLAN_SIZING = `Size every plan to ONE implementation run by a mid-sized model working
 alone: a handful of files, at most a few hundred lines of change including tests, and no design
 question left open for the implementer. Anything larger is split into independently landable
-sub-plans that cross-reference each other, each with its own acceptance criteria. Anchor plans on
+sub-plans that cross-reference each other, each with its own acceptance criteria. A sub-plan that
+depends on a sibling spells that dependency as requires part N/M landed, in quotes, in its
+heading's trailing parenthetical; it is the only form the claim allocator reads, so a dependency
+worded any other way (such as blocked by part 1/2, after part 1/2, or follows part 1/2) does not
+hold the part until its prerequisite leaves ## Planned. Anchor plans on
 file paths and symbol names — functions, types, constants, test names — never on line numbers or
 ranges, because line anchors go stale with every landing. When the project is the harness running
 the fleet, every commit lands under the build that predates it, so a
