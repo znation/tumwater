@@ -526,7 +526,7 @@ test("status payload ships the disk block and its preformatted badge", async () 
     freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true,
     lastReclaim: { at, mode: "pressure", freedGB: 3.24 },
   });
-  assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago");
+  assert.equal(payload.diskBadge, " · disk 8.2 GB free — holding new work");
 });
 
 // The pinned clock reaches the alerts too: fleetAlerts' pause countdown must read the

@@ -207,7 +207,7 @@ export function renderStatusSpans(
     // The disk floor (plans/disk-floor.md, part 4/4): `disk 8.2 GB free — holding new work`
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
-    ...badgeSpans(diskBadge(snap.disk, now), snap.disk?.held ? "yellow" : "blue"),
+    ...badgeSpans(diskBadge(snap.disk), snap.disk?.held ? "yellow" : "blue"),
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
     ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),

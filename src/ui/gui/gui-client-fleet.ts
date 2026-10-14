@@ -70,7 +70,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // The disk floor (plans/disk-floor.md, part 4/4): the sidebar row renders the payload's
       // preformatted diskBadge (upcased for the row's label style) — the same facts the
       // TUI/status header carries, so the two surfaces cannot drift — and names the free space,
-      // the hold and the last reclaim there.
+      // and the hold there.
       if (d.diskBadge) {
         const held = Boolean(d.disk && d.disk.held);
         const low = Boolean(d.disk && !held && d.disk.reclaimGB > 0 && d.disk.freeGB < d.disk.reclaimGB);
@@ -80,7 +80,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
             ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the fleet starts no new work until it recovers. Build outputs are reclaimed first."
             : low
               ? "Free space is below the " + esc(String(d.disk.reclaimGB)) + " GB reclaim threshold; idle build outputs are being cleaned."
-              : "The last build-output reclaim freed space on the worktrees volume.");
+              : "");
       }
       // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
       if (d.runWindowBadge) {

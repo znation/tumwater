@@ -108,19 +108,18 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): the sidebar renders the payload's
-// preformatted diskBadge — the same string the TUI/status header carries — so the hold and the
-// last reclaim read the same on both dashboards. An empty badge (no disk block, or comfortable
-// space with no reclaim on record) leaves the sidebar untouched.
-test("the sidebar's disk row mirrors the header badge, hold and last reclaim named", () => {
+// preformatted diskBadge — the same string the TUI/status header carries — so the hold reads
+// the same on both dashboards. An empty badge (no disk block, or comfortable space) leaves the sidebar untouched.
+test("the sidebar's disk row mirrors the header badge, hold named", () => {
   const { renderSidebar, panels } = sidebarScope();
   renderSidebar({
     running: true,
     pid: 123,
     disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: { at: Date.now() - 300_000, mode: "pressure", freedGB: 3.24 } },
-    diskBadge: " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago",
+    diskBadge: " · disk 8.2 GB free — holding new work",
   });
-  assert.match(panels.statuschips!, /Disk 8\.2 GB free — holding new work · last reclaim freed 3\.2 GB 5m ago/,
-    "the hold and the reclaim ride the row");
+  assert.match(panels.statuschips!, /Disk 8\.2 GB free — holding new work/,
+    "the hold rides the row");
   assert.match(panels.statuschips!, /data-act='reclaim'/, "a held disk's icon is the reclaim button");
 
   renderSidebar({
@@ -136,7 +135,7 @@ test("the sidebar's disk row mirrors the header badge, hold and last reclaim nam
     running: true,
     pid: 123,
     disk: { freeGB: 50, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: { at: Date.now() - 300_000, mode: "pressure", freedGB: 3.24 } },
-    diskBadge: " · disk 50.0 GB free · last reclaim freed 3.2 GB 5m ago",
+    diskBadge: "",
   });
   assert.doesNotMatch(panels.statuschips!, /data-act='reclaim'/, "a recovered disk has no reclaim button");
 

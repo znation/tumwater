@@ -3,7 +3,7 @@ import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { humanSeconds, pad2, secondsSince, secondsUntil } from "../text/datetime.js";
+import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { pauseReasonSuffix } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
@@ -301,24 +301,17 @@ export function quietBadge(quietHours: string | undefined, inQuietHours: boolean
 
 /** The header's disk-floor fragment (plans/disk-floor.md, part 4/4): shown while the disk hold
  * is on (`— holding new work`) or free space sits below the reclaim threshold, so an operator
- * sees why the fleet stopped without reading events. The most recent reclaim's freed size and
- * age ride the same fragment whenever one has run — standing information, so an operator
- * watching a volume recover can see what the clean bought even after space rises above the
- * threshold. Empty when the snapshot carries no disk block (an older orchestrator, or an
- * unmeasurable volume) and space is comfortable with no reclaim on record — a quiet header
- * reads exactly as before. One home for the rule, like budgetBadge: renderStatus renders it in
- * the TUI/status header and status-payload.ts ships it preformatted. `now` pins the reclaim
- * age (the same elapsed-seconds rule status-render.ts's own `ago` uses). */
-export function diskBadge(disk: StatusSnapshot["disk"], now = Date.now()): string {
+ * sees why the fleet stopped without reading events. A finished reclaim is not standing
+ * information here; it surfaces as a `disk_reclaim` item in the Activity log's Notable feed.
+ * Empty when the snapshot carries no disk block (an older orchestrator, or an unmeasurable
+ * volume) and space is comfortable. One home for the rule, like budgetBadge: renderStatus
+ * renders it in the TUI/status header and status-payload.ts ships it preformatted. */
+export function diskBadge(disk: StatusSnapshot["disk"]): string {
   if (!disk) return "";
   const free = `${formatGB(disk.freeGB)} free`;
-  const reading = disk.held
+  return disk.held
     ? ` · disk ${free} — holding new work`
     : disk.reclaimGB > 0 && disk.freeGB < disk.reclaimGB
       ? ` · disk ${free}`
       : "";
-  const reclaim = disk.lastReclaim
-    ? ` · last reclaim freed ${formatGB(disk.lastReclaim.freedGB)} ${humanSeconds(secondsSince(disk.lastReclaim.at, now))} ago`
-    : "";
-  return reading + reclaim;
 }

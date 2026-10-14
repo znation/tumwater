@@ -121,7 +121,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // the same string the TUI/status header renders. Omitted (not null) when no orchestrator
     // has published one — the same omit-undefined idiom as pausedUntil.
     ...(snap.disk ? { disk: snap.disk } : {}),
-    diskBadge: diskBadge(snap.disk, now),
+    diskBadge: diskBadge(snap.disk),
     // The `run --for` deadline: raw epoch ms (only when windowed) plus the display-ready badge.
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
     ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),

@@ -219,9 +219,9 @@ test("the status header carries a mainCheck badge only after a merge-scope check
 });
 
 // The disk floor (plans/disk-floor.md, part 4/4): the header carries the published free space,
-// the hold verdict and the last reclaim — an operator sees why the fleet stopped without
+// the hold verdict — an operator sees why the fleet stopped without
 // reading events. No disk block keeps the header byte-identical.
-test("the status header carries the disk reading, the hold and the last reclaim", () => {
+test("the status header carries the disk reading and the hold, not the last reclaim", () => {
   assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snapshotWith([{ role: "clean" }]))), /disk/);
 
   const low = snapshotWith([{ role: "clean" }]);
@@ -238,6 +238,6 @@ test("the status header carries the disk reading, the hold and the last reclaim"
   };
   assert.match(
     headerOf(renderStatus(tmpdir(), held)),
-    /· disk 8\.2 GB free — holding new work · last reclaim freed 3\.2 GB 5m ago$/,
+    /· disk 8\.2 GB free — holding new work$/,
   );
 });

@@ -178,19 +178,17 @@ test("diskBadge shows the hold or low space and stays empty otherwise", () => {
   assert.equal(diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 0, held: false }), "", "reclaim disabled means no low badge");
 });
 
-test("diskBadge names the last reclaim's size and age, held or recovered", () => {
-  const at = Date.UTC(2026, 9, 7, 12, 0, 0);
-  const now = at + 5 * 60_000;
-  const reclaimed = { at, mode: "pressure" as const, freedGB: 3.24 };
+test("diskBadge leaves the last reclaim to the Activity log, held or recovered", () => {
+  const reclaimed = { at: 0, mode: "pressure" as const, freedGB: 3.24 };
   assert.equal(
-    diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: reclaimed }, now),
-    " · disk 8.2 GB free — holding new work · last reclaim freed 3.2 GB 5m ago",
-    "a held fleet also names the reclaim that ran",
+    diskBadge({ freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true, lastReclaim: reclaimed }),
+    " · disk 8.2 GB free — holding new work",
+    "a held fleet names the hold, not the reclaim that ran",
   );
   assert.equal(
-    diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: reclaimed }, now),
-    " · last reclaim freed 3.2 GB 5m ago",
-    "the reclaim stands on its own after space recovers",
+    diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false, lastReclaim: reclaimed }),
+    "",
+    "a recovered disk shows nothing, whatever the last reclaim freed",
   );
 });
 
