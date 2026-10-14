@@ -349,7 +349,8 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });
   assert.equal(flashes.shift(), "docs paused — it starts no new ticks");
 
-  // wake-in: the first click opens the chooser (no post); a choice posts inSeconds. Only one chooser is open at a time.
+  // wake-in: the first click opens the chooser (no post); a choice posts inSeconds. Only one
+  // chooser is open at a time.
   await scope.rowAction("pause-for", "docs");
   assert.equal(scope.rolePauseMenuOpen("docs"), true);
   await scope.rowAction("wake-in", "docs");

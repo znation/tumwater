@@ -150,11 +150,11 @@ export function tryAnswerQuestion(root: string, n: number, rawDecision: string, 
  * the pause `--reason` precedent): verbatim multi-line text could carry a line that starts with
  * `## ` or `### ` and grow a phantom section no reader wrote. The `--file` form (`keepLines`)
  * keeps the lines, behind bodyStructureProblem — the guard `plan --file` uses — applied by its
- * caller; a multi-line decision follows the stamp after a blank line. The Open section that is left empty regains
- * its `_None yet._` placeholder; a file with no
- * `## Answered` section gains one. Returns the outcome (see `AnswerOutcome`); on `answered`
- * the title for the confirmation line, plus the collapsed decision that actually landed in the file so callers
- * report what was written rather than the caller's raw whitespace. */
+ * caller; a multi-line decision follows the stamp after a blank line. The Open section that is
+ * left empty regains its `_None yet._` placeholder; a file with no `## Answered` section gains
+ * one. Returns the outcome (see `AnswerOutcome`); on `answered` the title for the confirmation
+ * line, plus the collapsed decision that actually landed in the file so callers report what was
+ * written rather than the caller's raw whitespace. */
 function answerQuestionLocked(root: string, n: number, rawDecision: string, expectedTitle: string | undefined, keepLines: boolean): AnswerOutcome {
   const decision = keepLines ? normalizeEntryBody(rawDecision) : collapseWhitespace(rawDecision);
   const file = path.join(root, "QUESTIONS.md");

@@ -131,8 +131,9 @@ export async function fileAndAnnounce(
   await announceFiled(root, command, file(positionals), role, wakeText, json);
 }
 
-/** The tail both fileAndAnnounce forms share: commit the entry on main, wake the `role` loop with the filed entry's
- * title, then print the confirmation (the wake line rides the prose output only). */
+/** The tail both fileAndAnnounce forms share: commit the entry on main, wake the `role`
+ * loop with the filed entry's title, then print the confirmation (the wake line rides the
+ * prose output only). */
 async function announceFiled(
   root: string,
   command: string,

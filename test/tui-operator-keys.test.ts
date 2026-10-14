@@ -1,6 +1,7 @@
-/** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor on an unpaused loop, an immediate resume on a paused one) and
- * its fleet-pause interplay note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's
- * wake editor, Ctrl+Q's scheduled fleet stop, and the keys' inertness outside transcript views and in budget mode.
+/** The TUI per-loop operator controls (extracted from tui.test.ts): Ctrl+P (a duration editor
+ * on an unpaused loop, an immediate resume on a paused one) and its fleet-pause interplay
+ * note, Ctrl+A's abort confirmation and liveness gate, Ctrl+W's wake editor, Ctrl+Q's
+ * scheduled fleet stop, and the keys' inertness outside transcript views and in budget mode.
  * Like the other topic-named slices (loop-refusal,
  * orchestrator-budget, review-precheck), this file holds one coherent topic; the shared
  * fake-TTY harness lives in fixtures/tui-fixtures.ts. Each test file gets its own process, so the

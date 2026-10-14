@@ -206,7 +206,8 @@ export async function reviewPinnedChange(
   // point the rejected ref at the head the gate judged and record the round, so the author's next
   // tick re-applies it. A rejection is final — clear the state, delete the ref, and log
   // `exhausted` — when the same objection has survived two revisions or the chain hit the
-  // backstop (BUGS.md 2026-10-14). Done before the save below so the round rides the persisted state.
+  // backstop (BUGS.md 2026-10-14). Done before the save below so the round rides the
+  // persisted state.
   if (gate.decision === "rejected") {
     await recordRejectedChange(root, role, state, state.lastReview?.head ?? req.sha, req.revisionRound, req.priorReview?.counts);
   }

@@ -22,8 +22,9 @@ import { errorMessage } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
- * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota` (checkMaintenanceQuota), and
- * `error streaks` (checkErrorStreaks), all read-only reports of holds on ticking.
+ * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
+ * (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all read-only reports of
+ * holds on ticking.
  *
  * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause

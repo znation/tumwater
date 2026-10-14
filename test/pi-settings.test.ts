@@ -30,7 +30,8 @@ test("readPiDefaultModel reads pi's saved default pair and its thinking", () => 
   });
   assert.deepEqual(readPiDefaultModel(file, project), { provider: "prov", model: "org/m:route", thinking: "low" });
 
-  // A modelThinkingLevels entry for the exact pair wins over defaultThinkingLevel — pi's precedence.
+  // A modelThinkingLevels entry for the exact pair wins over defaultThinkingLevel — pi's
+  // precedence.
   const file2 = writeSettings(tmpdir("pi-default-b-"), {
     defaultProvider: "prov",
     defaultModel: "org/m:route",

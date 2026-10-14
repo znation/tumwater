@@ -350,7 +350,8 @@ export function claudeTranslator(opts: ClaudeTranslatorOptions = {}): ClaudeStre
         return out;
       }
       case "tool_progress":
-        // A 30 s heartbeat of a running tool call: known, and the open call already tracks liveness.
+        // A 30 s heartbeat of a running tool call: known, and the open call already tracks
+        // liveness.
         return [];
       default:
         record(type ?? "unknown");

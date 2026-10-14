@@ -142,7 +142,8 @@ test("buildConflictPrompt names the project's declared check and tells the resol
     buildConflictPrompt("organize", ["a.ts"], { kind: "command", command: "pytest -q", cwd: "/tmp/r", timeoutMs: 1000 }),
   );
   assert.match(configured, /Do not run `pytest -q` \(the project's declared check\)/);
-  // No check: the generic sentence, and no rule — with nothing declared, the harness verifies nothing.
+  // No check: the generic sentence, and no rule — with nothing declared, the harness verifies
+  // nothing.
   const none = buildConflictPrompt("organize", ["a.ts"]);
   assert.match(none, /Keep the project building and its tests passing\.\n/);
   assert.doesNotMatch(none, /Do not run|verify with/);

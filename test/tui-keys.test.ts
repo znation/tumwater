@@ -236,7 +236,8 @@ test("Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body
   assert.ok(renders() > 0);
 });
 
-/** A root with two planned entries, two open bugs, and one open question, the keys on the backlog view. */
+/** A root with two planned entries, two open bugs, and one open question, the keys on the
+ * backlog view. */
 function backlogCancelRig() {
   const root = makeRoot();
   const plans = "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
@@ -1556,7 +1557,8 @@ test("the Queued edit editor is inert to Ctrl+T and a gone file flashes on save"
   assert.equal(keys.state().queuedEditFor, null, "Ctrl+T leaves the queued editor");
   assert.equal(readQueuedPromptBody(root, "clean", base), "keep me", "Ctrl+T writes nothing");
 
-  // Re-enter (Ctrl+T left for Health, so one more lap), remove the file from disk, and Enter flashes the gone notice.
+  // Re-enter (Ctrl+T left for Health, so one more lap), remove the file from disk, and Enter
+  // flashes the gone notice.
   for (let i = 0; i < 8; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "e" });

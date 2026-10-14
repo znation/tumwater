@@ -21,8 +21,9 @@ import { ensureDetachedWorktree } from "../git/worktree.js";
  * and "Tests red on main" entries), so while a SHA is known red the blocked roles skip authoring
  * instead of burning runs that are guaranteed to fail. Split out of loop.ts — which keeps the
  * tick lifecycle around it — because this is a self-contained policy with its own per-process
- * state (one harness-level `main_red_hold` event per newly-discovered red SHA) and its own event contract; what
- * it borrows from the loop is identity and the role's worktree, and it consumes
+ * state (one harness-level `main_red_hold` event per newly-discovered red SHA) and its own
+ * event contract; what it borrows from the loop is identity and the role's worktree, and it
+ * consumes
  * build/build-check.ts's checkMainBaseline machinery (detection + execution + per-SHA cache),
  * which stays unaware of ticks. */
 
@@ -40,9 +41,9 @@ function redMainMessage(red: { sha: string; script?: string; outputTail?: string
   return `${mainRedPhrase(red.sha)} (${red.script}${firstLine ? `: ${firstLine}` : ""}) — ${action}`;
 }
 
-/** Log the fleet-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at most once per process. Module-level
- * (with lastMainRedSha) so the gate and the bugfix handoff share one guard: whichever observes
- * the red first logs it, the other stays silent. */
+/** Log the fleet-wide `main_red_hold` event (the notify hook pages it) for `red`'s SHA at
+ * most once per process. Module-level (with lastMainRedSha) so the gate and the bugfix
+ * handoff share one guard: whichever observes the red first logs it, the other stays silent. */
 function warnMainRedOnce(root: string, red: { sha: string; script?: string; outputTail?: string[] }): void {
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
@@ -170,8 +171,9 @@ let gateMainQueue: Promise<unknown> = Promise.resolve();
  * through checkMainBaseline — the same per-SHA, fleet-wide cache mainRedGate reads, which every
  * landing seeds green for the SHA it moved main to, so the common case is a cache hit. A miss
  * (or a provisional red from another worktree, or a green that was only inherited across doc
- * commits) runs the declared check once here, bounded by its timeout. A red is warned fleet-wide once per SHA, exactly as mainRedGate warns it. Never
- * throws: an unreadable main, a checkout that fails, no declared check on main, or a skipped
+ * commits) runs the declared check once here, bounded by its timeout. A red is warned
+ * fleet-wide once per SHA, exactly as mainRedGate warns it. Never throws: an unreadable main,
+ * a checkout that fails, no declared check on main, or a skipped
  * run all read as `unavailable`.
  *
  * `forceFresh` bypasses that per-SHA cache and runs main's declared check now, even over a

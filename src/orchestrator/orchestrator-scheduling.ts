@@ -248,7 +248,8 @@ export async function pollRunnerReasons(
   // the remaining `allowance - used` slots, reset every pass, so two due maintenance loops
   // cannot start in the same poll and overshoot the allowance.
   let maintenanceQuotaAdmitted = 0;
-  // The stand-down's eligible lists per base role, read at most once per poll (see the check below).
+  // The stand-down's eligible lists per base role, read at most once per poll (see the check
+  // below).
   const eligibleMemo = new Map<string, EligibleEntry[]>();
   for (const runner of runners) {
     // Once mode: a paused role runs no tick this round and must be reported as skipped,
@@ -409,7 +410,8 @@ export async function pollRunnerReasons(
     // nothing to do" and the bugfix charter says "when every open entry carries [a Refused note],
     // there is nothing to do", so a feature runner (primary included) with no eligible plan at all,
     // or a bugfix runner whose open bugs are all held (no open bugs at all is search mode, which
-    // still runs), skips its scheduled and main-moved ticks instead of paying a model run that can only end in
+    // still runs), skips its scheduled and main-moved ticks instead of paying a model run that
+    // can only end in
     // nothing-to-do. Startup, inbox and resume ticks, a fresh operator wake, and a runner with a
     // claim or outstanding work still run. nextRunAt and backoff stay put, so the first poll
     // after a plan turns eligible ticks it.

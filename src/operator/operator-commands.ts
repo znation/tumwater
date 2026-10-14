@@ -90,12 +90,14 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
   say(requestResetCounters(root, targetRoles(root, args)));
 }
 
-/** `tumwater wake [--role <id>] [--in <duration> | --cancel | --list [--json]]`: tell the fleet "whatever the loops were
- * failing on is fixed — try again", so the named roles tick within one poll instead of
+/** `tumwater wake [--role <id>] [--in <duration> | --cancel | --list [--json]]`: tell the
+ * fleet "whatever the loops were failing on is fixed — try again", so the named roles tick
+ * within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
  * auto-resume takes — the wake applies at the deadline, not at submit. With `--cancel`, the
- * pending scheduled wakes (or the named role's share) are dropped instead; no wake is written. With `--list`, every pending scheduled wake (or the named role's)
+ * pending scheduled wakes (or the named role's share) are dropped instead; no wake is
+ * written. With `--list`, every pending scheduled wake (or the named role's)
  * is printed, earliest first — `--json` as an array of {roles, atMs}; read-only. */
 export async function cmdWake(root: string, args: string[]): Promise<void> {
   // `--in <duration>` (the scheduled wake): the command's own gate (runMarkerCommand's

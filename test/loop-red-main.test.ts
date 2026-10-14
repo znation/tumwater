@@ -65,7 +65,8 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.equal(checks[0]!.loop, "feature");
     assert.ok(Number(checks[0]!.durationMs) >= 0);
 
-    // Exactly one harness-level main_red_hold for the red SHA: script name + clipped first failure line.
+    // Exactly one harness-level main_red_hold for the red SHA: script name + clipped first
+    // failure line.
     const warnings = mainRedHolds(repo);
     assert.equal(warnings.length, 1);
     const message = String(warnings[0]?.message ?? "");

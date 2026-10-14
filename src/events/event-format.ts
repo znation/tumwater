@@ -100,8 +100,9 @@ export function outcomeText(e: HarnessEvent): string {
 }
 
 /** Why a `tick_deferred` event fired, as the clause that can follow "deferred — ": scheduling's
- * reason ("backlog", "no-work" or "plans-full"). Shared by the event feed (eventMessage) and the failure
- * digest (describeStateChange) so the two cannot disagree on the deferral's cause. A missing or
+ * reason ("backlog", "no-work" or "plans-full"). Shared by the event feed (eventMessage) and
+ * the failure digest (describeStateChange) so the two cannot disagree on the deferral's cause.
+ * A missing or
  * unknown value — a torn line, or an event written before the field existed — reads as the
  * no-work spelling, the only clause the pre-field builds could log. */
 export function deferredReasonText(e: HarnessEvent): string {
@@ -330,7 +331,8 @@ export function eventMessage(e: HarnessEvent): string {
     case "role_cap_resumed":
       return `role ${textOr(e.role)} resumed — it is under its daily cap again and ticks again`;
     case "main_red_hold":
-      // The message already names the SHA, script, and consequence; the problem tone comes from PROBLEM_EVENTS.
+      // The message already names the SHA, script, and consequence; the problem tone comes
+      // from PROBLEM_EVENTS.
       return textOr(e.message);
     case "maintenance_quota_hold":
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness

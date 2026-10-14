@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
-// Comments cite plans by quoted title, by quoted title (the file name, then the title in double quotes). This test fails when
-// such a citation matches no PLANS.md heading or one-line Done record, so a steward compression
-// that drops a record cannot land silently. Only this exact quoted form is checked: unquoted
-// citations (PLANS.md 2026-09-30, part 1/3) are out of scope.
+// Comments cite plans by quoted title, by quoted title (the file name, then the title in
+// double quotes). This test fails when such a citation matches no PLANS.md heading or
+// one-line Done record, so a steward compression that drops a record cannot land
+// silently. Only this exact quoted form is checked: unquoted citations (PLANS.md
+// 2026-09-30, part 1/3) are out of scope.
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
 // The suite runs both from test/ and from dist/test/, so walk up to the repo root.

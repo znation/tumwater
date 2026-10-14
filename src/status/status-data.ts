@@ -228,7 +228,8 @@ export interface StatusSnapshot {
   /** A pending scheduled wake (`tumwater wake --in`): the roles it targets and the deadline
    * (ms epoch); absent for no marker, an immediate or expired one, or a corrupt one. */
   scheduledWake?: { roles: string[]; atMs: number };
-  /** Every pending scheduled wake, earliest first (`scheduledWake` is its head); absent when none is pending. */
+  /** Every pending scheduled wake, earliest first (`scheduledWake` is its head); absent when
+   * none is pending. */
   scheduledWakes?: { roles: string[]; atMs: number }[];
   /** The standing fleet pause's operator reason (`tumwater pause --reason <text>`), absent
    * for a reasonless pause, a role-only pause, or no pause at all — read from the same
@@ -358,7 +359,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
   // isFleetPaused + pausedUntil would each re-read the same marker file every second.
   const fleetPause = standingFleetPause(root);
-  // One read of the pending scheduled wakes feeds both the earliest and the full list, so they cannot disagree.
+  // One read of the pending scheduled wakes feeds both the earliest and the full list, so they
+  // cannot disagree.
   const wakes = scheduledWakes(root, now);
   // One land-queue pass per poll (landing-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator

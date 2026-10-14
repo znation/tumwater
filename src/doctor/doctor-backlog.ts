@@ -15,7 +15,8 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
  * environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated `## `
- * headings, refused entries, and uncommitted edits to the backlog files in the primary checkout. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
+ * headings, refused entries, and uncommitted edits to the backlog files in the primary
+ * checkout. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
  * andMore) and the heading-trim constant, and all five warn instead of failing: damaged
  * documentation is operator signal, not a broken environment. doctor.ts composes them beside
  * the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */

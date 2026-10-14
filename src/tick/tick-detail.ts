@@ -65,7 +65,8 @@ async function tickCommitStat(root: string, sha: string | null): Promise<string>
 }
 
 /** The pinned commit's stat text for a tick, shared by `tick --stat` and GET /api/tick so both
- * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)" texts. */
+ * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)"
+ * texts. */
 export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
   return tickCommitStat(root, tickCommitSha(d));
 }

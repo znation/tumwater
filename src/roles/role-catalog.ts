@@ -268,8 +268,8 @@ Grep is your detector:
      file's indent width (for 2-space code \`^ {10,}(if|for|while|switch) \\(\`, for 4-space
      Python \`^ {16,}(if|for|while) \`). Hits are candidates, not proof: an object literal or class
      body also adds indentation, so read the function and confirm the nesting before you count it.
-Examples of a kind: comments that still name a removed mechanism; doc lines over 100 columns in
-one directory; doc comments citing a renamed helper.
+Examples of a kind: comments that still name a removed mechanism; comments citing a PLANS.md
+entry title that no longer exists; doc comments citing a renamed helper.
 Keep the diff under about 300 changed lines. When the kind has more instances than that, sweep
 one directory or subsystem completely instead — still one kind of fix throughout — and say in
 your WHY which instances remain.

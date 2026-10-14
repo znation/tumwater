@@ -464,7 +464,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
 
       // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
-      // holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks stay deferred — queued feature/bugfix work outranks
+      // holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks
+      // stay deferred — queued feature/bugfix work outranks
       // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
       // poll while the files are unchanged. bugfix is not a maintenance role, but while BUGS.md
       // `## Open` is empty it defers like one (deferTick) — openBugsNow is that emptiness, read

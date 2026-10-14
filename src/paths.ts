@@ -41,8 +41,9 @@ export function configLockPath(root: string): string {
 
 /** The cross-process lock serializing writes to the primary checkout's tracked backlog files:
  * `tumwater bug`/`plan` (backlog-write.ts's appendEntry) and `tumwater questions answer`
- * (backlog/question-answer.ts's tryAnswerQuestion) each read a whole backlog file and rewrite it, while a
- * landing's working-tree fast-forward (landing-git.ts's ffMainTo) updates those same files in
+ * (backlog/question-answer.ts's tryAnswerQuestion) each read a whole backlog file and rewrite
+ * it, while a landing's working-tree fast-forward (landing-git.ts's ffMainTo) updates those
+ * same files in
  * the same checkout by `git merge --ff-only`. Without a shared lock the CLI's stale read can
  * overwrite the landed change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under
  * .tumwater/state so it never enters the tracked tree; its critical sections are one file read
@@ -145,7 +146,8 @@ export function autoRestartStampPath(root: string): string {
 }
 
 /** The green main-baseline verdicts the fleet keeps across restarts (baseline/main-baseline.ts's
- * persistBaselineVerdicts): SHAs whose suite passed, so a new generation does not re-verify them. */
+ * persistBaselineVerdicts): SHAs whose suite passed, so a new generation does not re-verify
+ * them. */
 export function baselineVerdictsPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "baseline-verdicts.json");
 }
@@ -203,7 +205,8 @@ export function pausedPath(root: string): string {
 }
 
 /** Operator-intent marker for `tumwater stop --in <duration>`: `{ at, until }` in epoch ms. The
- * running fleet's watch consumes it when `until` passes; a fresh `tumwater run` clears a stale one. */
+ * running fleet's watch consumes it when `until` passes; a fresh `tumwater run` clears a
+ * stale one. */
 export function scheduledStopPath(root: string): string {
   return path.join(tumwaterDir(root), "stop-at.json");
 }

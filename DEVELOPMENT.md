@@ -22,6 +22,8 @@ config: it makes `npx vitest` refuse to start here (BUGS.md 2026-10-05). Non-npm
 replace the gate's check with `check.command` in tumwater.json (`command`, optional `cwd` and
 `timeoutSeconds`).
 
+Comments wrap at 100 columns; code lines have no limit. `test/comment-width.test.ts` enforces it.
+
 Every suite script starts with `scripts/live-checkout-guard.mjs`, which refuses to run in a
 checkout a live fleet runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
 suite's first steps recompile and restamp the `dist/` that fleet executes and its dashboards

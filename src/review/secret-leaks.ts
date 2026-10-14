@@ -88,8 +88,9 @@ export function knownSecrets(
 }
 
 /** The deterministic gate/stage finding for a change that writes the value of a secret
- * environment variable or stored pi credential into a file (a Node diagnostic report dumps the whole environment).
- * A value already present in the file at the merge-base is not this change's leak. The reason
+ * environment variable or stored pi credential into a file (a Node diagnostic report dumps
+ * the whole environment). A value already present in the file at the merge-base is not this
+ * change's leak. The reason
  * names files and variables, never the value. undefined when nothing leaked; never throws on
  * an unreadable file. */
 export async function secretLeakReason(

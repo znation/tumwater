@@ -13,9 +13,11 @@ import { childEnv } from "../process/process.js";
  * Scope, stated plainly: the notifier subscribes via subscribeEvents (src/events/events.ts), which
  * only sees events THIS process logs. Every allowlisted type but `supervisor_exit` is logged by
  * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
- * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/fleet/fleet-polls.ts, landing-slot.ts, landing-questions.ts,
+ * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/fleet/fleet-polls.ts,
+ * landing-slot.ts, landing-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
- * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyFleetDown; events appended by
+ * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyFleetDown; events
+ * appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
  * One knob, an opinionated fixed allowlist, no per-event selection — a command that can post
@@ -133,8 +135,9 @@ export function notifyFleetDown(root: string, event: HarnessEvent): void {
 /** Subscribe to this process's event feed and spawn the configured command for allowlisted
  * events. Fire-and-forget: the spawn is never awaited from the poll loop — the command runs
  * detached with stdio ignored, so it outlives whatever the orchestrator does next. A nonzero
- * exit or kill is logged as one warning and the page is not retried. `"warning"` is deliberately not on
- * the allowlist, so a failure warning can never recurse into another spawn. */
+ * exit or kill is logged as one warning and the page is not retried. `"warning"` is
+ * deliberately not on the allowlist, so a failure warning can never recurse into another
+ * spawn. */
 export function newNotifier(
   root: string,
   minGapMs: number = NOTIFY_MIN_GAP_MS,

@@ -109,7 +109,8 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
 
 // The disk floor (plans/disk-floor.md, part 4/4): the sidebar renders the payload's
 // preformatted diskBadge — the same string the TUI/status header carries — so the hold reads
-// the same on both dashboards. An empty badge (no disk block, or comfortable space) leaves the sidebar untouched.
+// the same on both dashboards. An empty badge (no disk block, or comfortable space) leaves
+// the sidebar untouched.
 test("the sidebar's disk row mirrors the header badge, hold named", () => {
   const { renderSidebar, panels } = sidebarScope();
   renderSidebar({

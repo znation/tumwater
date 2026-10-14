@@ -5,84 +5,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 ## Planned
+### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`)
 
-### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 1/2: the test, `test/` and most of `src/` (planned 2026-10-14 by plan; independent of the waiting secret-leak gate plan; part 2/2 below follows it)
-
-**Goal.** Comments in this tree wrap at 100 columns, but the rule is unwritten and nothing checks it.
-So the clean loop sweeps it by hand, and each sweep is measured with a different ad hoc grep: bytes or
-code points, `//` lines only, one directory. Of the clean loop's 42 `review_rejected` events from
-2026-10-08 to 2026-10-13 (read from the fleet's event log), 16 concern over-100-column comments.
-Most say the sweep left lines over the limit, or that a "zero matches" VERIFIED claim was false.
-Two more on 2026-10-12 rejected half-done rewraps that left stranded fragments. A
-deterministic test ends this: the gate catches a new long comment line in the commit that adds it,
-and the clean loop stops spending ticks on the theme. On 2026-10-14 the scan below found 69
-offending lines in 42 files. Code lines are deliberately unlimited (about 8,500 run past 100
-columns), so the check covers comments only. ESLint's core `max-len` is deprecated and goes away
-in ESLint 11, and its replacement would be a new dependency (`@stylistic`), which PRINCIPLES.md
-rules out. So this is a node:test file, like `test/exports.test.ts`.
-
-**Approach.**
-- New test file `comment-width.test.ts` in `test/` (named by its basename below). Copy
-  `test/exports.test.ts`'s `repoRoot` walk-up, because the suite runs from `dist/test/`. Walk `src/` and `test/` for `.ts` and `.tsx` files. A line is a
-  comment line when its trimmed text starts with `//`, or when it lies inside a block comment.
-  Track block comments with one flag per file: a line whose trimmed text starts with `/*` opens the
-  block (outside an open block), and the first `*/` on that line or a later one closes it. That
-  keeps a `* …` markdown bullet inside a template literal (as prompt text could hold) out of
-  scope. Width is in code points (`[...line].length`), so an em dash counts as one column, as a
-  terminal shows it. The limit is a `MAX_COMMENT_COLUMNS = 100` constant.
-- One test, "every comment line in src/ and test/ fits in 100 columns". It collects offenders
-  as `path:line (N cols)` and asserts that the list is empty. The failure message prints the
-  whole list, so the test itself is the detector the fixer uses.
-- A temporary `EXEMPT_DIRS = ["src/cli", "src/gui", "src/ui"]` (paths relative to the repo root,
-  with a comment that names part 2/2 as the change that empties it). Those three directories held
-  31 of the 69 lines and are part 2's work. This part fixes every other offender: 10 in `test/`,
-  and 28 across the other `src/` directories (`agent`, `backlog`, `baseline`, `build`, `config`,
-  `doctor`, `events`, `landing`, `operator`, `orchestrator`, `status`, `tick`, `paths.ts`). Run
-  the new test to get the current list; the counts will have drifted since planning.
-- How to fix a line: rewrap the whole comment paragraph that holds it, filling each line toward
-  100 columns. No mid-paragraph line may be left as a short stranded fragment. Keep the wording
-  except where a split forces otherwise. Touch only comment lines: `git diff -U0` shows no
-  changed code line.
-- Only genuinely-comment lines are in scope. A line inside a template literal (a test fixture,
-  a prompt string, a markdown block in backticks) is not a comment, even when it starts with `*`
-  or `//`: the block-comment flag never opens inside a template, so the test never flags it and
-  the fixer must leave it byte-identical — reflowing or repunctuating a template fixture is a
-  non-comment change.
-- Preserve each block comment's leading alignment. A JSDoc continuation line keeps its ` * `
-  (space, asterisk, space) prefix exactly; never re-indent a block to `  * ` or drop the ` * `
-  even when wrapping pushes the text wider, and `paths.ts:148` is a known case to keep aligned.
-- `src/roles/role-catalog.ts`, the `clean` role's `find` text: the test now enforces the
-  "doc lines over 100 columns in one directory" example, so replace it with "comments citing
-  a PLANS.md entry title that no longer exists". That theme drew six clean rejections on
-  2026-10-11.
-- `DEVELOPMENT.md`: next to the `npm run lint` line, or in the paragraph about the suite, add
-  one sentence: comments wrap at 100 columns, code lines have no limit, and
-  `comment-width.test.ts` enforces it.
-
-**Files touched.** `comment-width.test.ts` (new), `src/roles/role-catalog.ts`,
-`DEVELOPMENT.md`, and the comment lines of about 25 files outside `src/cli`, `src/gui` and
-`src/ui`.
-
-**Acceptance criteria.**
-- `comment-width.test.ts` passes on the final tree, with `EXEMPT_DIRS` covering exactly
-  `src/cli`, `src/gui` and `src/ui` and no other directory. So no over-100-column comment line
-  remains in `test/` or any other `src/` directory. Re-measure by running the test itself and
-  reading its offender list (it is what the gate runs); do not attribute any failure to
-  `test/operator-intent.test.ts` or claim it fails — state only what the tree shows.
-- With `EXEMPT_DIRS` emptied the same test fails and lists only lines under
-  `src/cli`, `src/gui` and `src/ui`.
-- The test has a second case built on an in-memory sample. Export a small pure helper from
-  the test file, or keep it local, e.g. `commentOffenders(text)`. The case shows that a 101-column
-  `//` line and a 101-column line inside `/* … */` are offenders. A 101-column code line, a
-  101-column `* bullet` line inside a template literal, and a 100-column comment holding an em
-  dash are not.
-- The diff changes no non-comment line, apart from the new test, the role-catalog text, and
-  DEVELOPMENT.md.
-- `grep -n 'over 100 columns' src/roles/role-catalog.ts` finds nothing. `npm run test` passes.
-
-### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; blocked by part 1/2 above, which adds the test and its `EXEMPT_DIRS`)
-
-**Refused 2026-10-14 by feature: part 1/2 has not landed (no comment-width.test.ts or EXEMPT_DIRS exists), so there is nothing to delete or run**
 
 **Goal.** Finish what part 1/2 started: fix the over-100-column comment lines that part 1/2's
 `EXEMPT_DIRS` still skips (31 on 2026-10-14: 12 in `src/cli`, 8 in `src/gui`, 11 in `src/ui`,
@@ -181,6 +105,81 @@ lines.
 - `test/doctor-holds.test.ts`: with a temp root whose event log (`writeEvents`) holds a `rate_limit_hold` for provider `deepinfra` (kind `rate-limit`, roles `["feature","qa"]`, `holdMs` large enough that `ts+holdMs` is still ahead of a passed `now`), `checkProviderHolds(root, now)` warns naming `deepinfra`, rate-limit, `feature`, `qa`, and a re-open figure; a `rate_limit_resumed` (same provider, kind `rate-limit`) after it makes the same call ok. An event whose `ts+holdMs` is behind `now` (the hold re-opened) is ok. A provider-undefined `rate_limit_hold` warns as pi's default backend. No `rate_limit_*` events read ok. Events of other types (a `tick_end`, a `landed`) are ignored.
 - `runDoctor` seeds a `provider hold` row between `claude window` and `maintenance quota`; with an empty log it reads ok.
 - The diff is confined to the files above; `npm run test` passes.
+
+### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 1/2: the test, `test/` and most of `src/` (planned 2026-10-14 by plan; independent of the waiting secret-leak gate plan; part 2/2 below follows it) — done 2026-10-14
+
+**Goal.** Comments in this tree wrap at 100 columns, but the rule is unwritten and nothing checks it.
+So the clean loop sweeps it by hand, and each sweep is measured with a different ad hoc grep: bytes or
+code points, `//` lines only, one directory. Of the clean loop's 42 `review_rejected` events from
+2026-10-08 to 2026-10-13 (read from the fleet's event log), 16 concern over-100-column comments.
+Most say the sweep left lines over the limit, or that a "zero matches" VERIFIED claim was false.
+Two more on 2026-10-12 rejected half-done rewraps that left stranded fragments. A
+deterministic test ends this: the gate catches a new long comment line in the commit that adds it,
+and the clean loop stops spending ticks on the theme. On 2026-10-14 the scan below found 69
+offending lines in 42 files. Code lines are deliberately unlimited (about 8,500 run past 100
+columns), so the check covers comments only. ESLint's core `max-len` is deprecated and goes away
+in ESLint 11, and its replacement would be a new dependency (`@stylistic`), which PRINCIPLES.md
+rules out. So this is a node:test file, like `test/exports.test.ts`.
+
+**Approach.**
+- New test file `comment-width.test.ts` in `test/` (named by its basename below). Copy
+  `test/exports.test.ts`'s `repoRoot` walk-up, because the suite runs from `dist/test/`. Walk `src/` and `test/` for `.ts` and `.tsx` files. A line is a
+  comment line when its trimmed text starts with `//`, or when it lies inside a block comment.
+  Track block comments with one flag per file: a line whose trimmed text starts with `/*` opens the
+  block (outside an open block), and the first `*/` on that line or a later one closes it. That
+  keeps a `* …` markdown bullet inside a template literal (as prompt text could hold) out of
+  scope. Width is in code points (`[...line].length`), so an em dash counts as one column, as a
+  terminal shows it. The limit is a `MAX_COMMENT_COLUMNS = 100` constant.
+- One test, "every comment line in src/ and test/ fits in 100 columns". It collects offenders
+  as `path:line (N cols)` and asserts that the list is empty. The failure message prints the
+  whole list, so the test itself is the detector the fixer uses.
+- A temporary `EXEMPT_DIRS = ["src/cli", "src/gui", "src/ui"]` (paths relative to the repo root,
+  with a comment that names part 2/2 as the change that empties it). Those three directories held
+  31 of the 69 lines and are part 2's work. This part fixes every other offender: 10 in `test/`,
+  and 28 across the other `src/` directories (`agent`, `backlog`, `baseline`, `build`, `config`,
+  `doctor`, `events`, `landing`, `operator`, `orchestrator`, `status`, `tick`, `paths.ts`). Run
+  the new test to get the current list; the counts will have drifted since planning.
+- How to fix a line: rewrap the whole comment paragraph that holds it, filling each line toward
+  100 columns. No mid-paragraph line may be left as a short stranded fragment. Keep the wording
+  except where a split forces otherwise. Touch only comment lines: `git diff -U0` shows no
+  changed code line.
+- Only genuinely-comment lines are in scope. A line inside a template literal (a test fixture,
+  a prompt string, a markdown block in backticks) is not a comment, even when it starts with `*`
+  or `//`: the block-comment flag never opens inside a template, so the test never flags it and
+  the fixer must leave it byte-identical — reflowing or repunctuating a template fixture is a
+  non-comment change.
+- Preserve each block comment's leading alignment. A JSDoc continuation line keeps its ` * `
+  (space, asterisk, space) prefix exactly; never re-indent a block to `  * ` or drop the ` * `
+  even when wrapping pushes the text wider, and `paths.ts:148` is a known case to keep aligned.
+- `src/roles/role-catalog.ts`, the `clean` role's `find` text: the test now enforces the
+  "doc lines over 100 columns in one directory" example, so replace it with "comments citing
+  a PLANS.md entry title that no longer exists". That theme drew six clean rejections on
+  2026-10-11.
+- `DEVELOPMENT.md`: next to the `npm run lint` line, or in the paragraph about the suite, add
+  one sentence: comments wrap at 100 columns, code lines have no limit, and
+  `comment-width.test.ts` enforces it.
+
+**Files touched.** `comment-width.test.ts` (new), `src/roles/role-catalog.ts`,
+`DEVELOPMENT.md`, and the comment lines of about 25 files outside `src/cli`, `src/gui` and
+`src/ui`.
+
+**Acceptance criteria.**
+- `comment-width.test.ts` passes on the final tree, with `EXEMPT_DIRS` covering exactly
+  `src/cli`, `src/gui` and `src/ui` and no other directory. So no over-100-column comment line
+  remains in `test/` or any other `src/` directory. Re-measure by running the test itself and
+  reading its offender list (it is what the gate runs); do not attribute any failure to
+  `test/operator-intent.test.ts` or claim it fails — state only what the tree shows.
+- With `EXEMPT_DIRS` emptied the same test fails and lists only lines under
+  `src/cli`, `src/gui` and `src/ui`.
+- The test has a second case built on an in-memory sample. Export a small pure helper from
+  the test file, or keep it local, e.g. `commentOffenders(text)`. The case shows that a 101-column
+  `//` line and a 101-column line inside `/* … */` are offenders. A 101-column code line, a
+  101-column `* bullet` line inside a template literal, and a 100-column comment holding an em
+  dash are not.
+- The diff changes no non-comment line, apart from the new test, the role-catalog text, and
+  DEVELOPMENT.md.
+- `grep -n 'over 100 columns' src/roles/role-catalog.ts` finds nothing. `npm run test` passes.
+
 
 ### Loop rows name pi's own default model when `tumwater.json` names none, part 2/2: `tumwater role` (planned 2026-10-14 from an operator request; requires part 1/2 landed) — done 2026-10-14
 

@@ -1,9 +1,10 @@
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work loop may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
  * **Needs review …** or **Needs replan …** note, or when its heading's trailing parenthetical
- * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts 1/5–3/5 landed`) that is itself still listed under
- * `## Planned`. The parsers are pure over markdown text; `eligibleEntries` is the stat-backed
- * reader for a caller that wants the list. The backlog index marks every held entry so a loop
+ * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
+ * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
+ * markdown text; `eligibleEntries` is the stat-backed reader for a caller that wants the list.
+ * The backlog index marks every held entry so a loop
  * skips it without re-deriving the rule. */
 
 import { collapseWhitespace } from "../text/text.js";
