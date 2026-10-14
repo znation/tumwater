@@ -156,6 +156,31 @@ test("renderReportMarkdown shows the landing line under Totals only when landing
   );
 });
 
+test("renderReportMarkdown shows (N failed) on the landing line only when some landing failed", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    totals: {
+      ...base.totals,
+      tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingFailed: 3, landingTokens: 45_200, landingCostUsd: 0.84,
+    },
+  };
+  assert.match(
+    renderReportMarkdown(data),
+    /of which landing runs: 12 runs \(3 failed\) · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/,
+  );
+  // Zero failures: the annotation stays off — a landing-ful but failure-free line is untouched.
+  const clean: ReportData = {
+    ...base,
+    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingTokens: 45_200, landingCostUsd: 0.84 },
+  };
+  assert.match(
+    renderReportMarkdown(clean),
+    /of which landing runs: 12 runs · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/,
+  );
+  assert.ok(!renderReportMarkdown(clean).includes("0 failed"), "a failure-free line never prints (0 failed)");
+});
+
 test("renderReportMarkdown renders token counts through the shared compactTokens rule", () => {
   const data: ReportData = {
     days: 1,
@@ -371,6 +396,22 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
+});
+
+test("renderSinceReportMarkdown shows (N failed) on the landing line when a landing failed", () => {
+  const data = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 1000, ticks: 2, commits: 0, costUsd: 0.5, landingRuns: 2, landingFailed: 1, landingTokens: 1200, landingCostUsd: 0.5 },
+    ticksByRole: { feature: 2 },
+    costByRole: { feature: 0.1 },
+    rejectionsByRole: {},
+    revisionsByRole: {},
+    tokensByRole: { feature: 900 },
+    commitsByRole: {},
+    coversFullWindow: true,
+  });
+  assert.match(data, /of which landing runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
 });
 
 test("renderSinceReportMarkdown prints Commits by role and Notional by role matching the day render", () => {
@@ -608,6 +649,66 @@ test("report --json carries the landing fields in totals and the day series", as
   const today = parsed.series[parsed.series.length - 1];
   assert.equal(today.landingCostUsd, 0.84, "the day series carries landingCostUsd");
   assert.ok(Math.abs(today.tokensOut - 45_300) < 1e-9, "the day's tokensOut includes the landing share");
+});
+
+test("report --json --days carries landingFailed on the day and totals when a landing fails; lands 2 runs with 1 failed", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+  ]);
+  const json = await runCli(root, "report", "--json", "--days", "2");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out);
+  // landingRuns still counts both landed and land_failed together; landingFailed names the flops.
+  assert.equal(parsed.totals.landingRuns, 2, "totals.landingRuns unchanged — counts both outcomes");
+  assert.equal(parsed.totals.landingFailed, 1);
+  const today = parsed.series[parsed.series.length - 1];
+  assert.equal(today.landingRuns, 2);
+  assert.equal(today.landingFailed, 1, "the day series carries landingFailed when that day has one");
+
+  // The landing share's token/cost totals fold both outcomes, untouched by the new counter.
+  assert.equal(parsed.totals.landingTokens, 55_200);
+  assert.ok(Math.abs(parsed.totals.landingCostUsd - 1.34) < 1e-9);
+
+  // The Markdown render names the flop on the same line.
+  const md = await runCli(root, "report", "--days", "2");
+  assert.match(md.out, /of which landing runs: 2 runs \(1 failed\) · 55\.2k tokens · \$1\.34 \(reviewer \+ conflict resolution\)/);
+});
+
+test("report --json leaves landingFailed absent on a failure-free window", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  assert.equal(parsed.totals.landingRuns, 1);
+  assert.ok(!("landingFailed" in parsed.totals), "a failure-free window omits totals.landingFailed");
+  assert.ok(!("landingFailed" in parsed.series[parsed.series.length - 1]), "a failure-free day omits day.landingFailed");
+  const md = await runCli(root, "report", "--days", "2");
+  assert.match(md.out, /of which landing runs: 1 runs · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/);
+  assert.ok(!md.out.includes("0 failed"), "a failure-free window never prints (0 failed)");
+});
+
+test("report --json --since carries landingFailed when a landing fails and omits it otherwise", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+  ]);
+  const parsed = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
+  assert.equal(parsed.totals.landingRuns, 2);
+  assert.equal(parsed.totals.landingFailed, 1);
+
+  const clean = makeRepo();
+  writeEvents(clean, [
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--since", "6h")).out);
+  assert.equal(cleanParsed.totals.landingRuns, 1);
+  assert.ok(!("landingFailed" in cleanParsed.totals), "a failure-free --since window omits landingFailed");
 });
 
 test("report --failures --json prints the digest's collected data; --since --json stays legal", async () => {

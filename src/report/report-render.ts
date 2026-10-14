@@ -61,7 +61,8 @@ function totalsLine(t: ReportTotals, tail = ""): string {
  * totals include them — this line says how much of the spend was reviewer + conflict
  * resolution work). */
 function landingShareLine(t: ReportTotals): string {
-  return `of which landing runs: ${t.landingRuns} runs · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
+  const failed = (t.landingFailed ?? 0) > 0 ? ` (${t.landingFailed} failed)` : "";
+  return `of which landing runs: ${t.landingRuns} runs${failed} · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
 }
 
 /** The notional-spend line (plans/agent-backends.md part 6a): the API-equivalent cost of

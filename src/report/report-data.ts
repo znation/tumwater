@@ -55,6 +55,7 @@ interface UsageFold {
   landingRuns?: number;
   landingTokens?: number;
   landingCostUsd?: number;
+  landingFailed?: number; // of those runs, the land_failed events (absent when none)
 }
 
 /** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
@@ -96,6 +97,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     else if (tier === "maintenance") target.maintenanceCommits++;
   } else if (ev.type === "landed" || ev.type === "land_failed") {
     target.landingRuns = (target.landingRuns ?? 0) + 1;
+    if (ev.type === "land_failed") target.landingFailed = (target.landingFailed ?? 0) + 1;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.landingTokens = (target.landingTokens ?? 0) + tokens;
     target.landingCostUsd = (target.landingCostUsd ?? 0) + costUsd;
@@ -126,6 +128,7 @@ interface DayFold {
   landingRuns: number;
   landingTokens: number;
   landingCostUsd: number;
+  landingFailed?: number; // of those runs, the land_failed events (absent when none)
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
@@ -348,6 +351,7 @@ export interface ReportDay {
   landingRuns?: number; // landed/land_failed events this day folded (absent when none)
   landingTokens?: number; // their output tokens, also included in tokensOut above
   landingCostUsd?: number; // their cost, also included in costUsd above
+  landingFailed?: number; // of those runs, the land_failed events (absent when none)
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
   /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
   notionalByRole?: Record<string, number>;
@@ -369,6 +373,7 @@ export interface ReportTotals {
   landingRuns: number; // the landing share of the above, named for itself
   landingTokens: number;
   landingCostUsd: number;
+  landingFailed?: number; // of those runs, the land_failed events (absent when none)
 }
 
 /** Fleet usage over a window of exactly `days` local calendar days ending today. */
@@ -487,6 +492,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
           landingRuns: acc.landingRuns ?? 0,
           landingTokens: acc.landingTokens ?? 0,
           landingCostUsd: acc.landingCostUsd ?? 0,
+          ...((acc.landingFailed ?? 0) > 0 ? { landingFailed: acc.landingFailed } : {}),
         }
       : (() => {
           // The role's own notional spend, from its tick_end events; the landing slot's
@@ -570,6 +576,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.landingRuns = fold.landingRuns;
       day.landingTokens = fold.landingTokens;
       day.landingCostUsd = fold.landingCostUsd;
+      // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
+      if ((fold.landingFailed ?? 0) > 0) day.landingFailed = fold.landingFailed;
     } else {
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
       // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the
@@ -638,8 +646,11 @@ export function collectReport(root: string, days: number, role?: string): Report
     ...zeroLandingCounts(),
   };
   // Notional spend is kept out of the totals object until it is nonzero, so a pre-feature
-  // window's totals keep their exact shape.
+  // window's totals keep their exact shape. Landing failures likewise: a failure-free window
+  // carries no landingFailed (zero means absent, like the landing-share line's other fields
+  // are folded in below).
   let notionalCostUsd = 0;
+  let landingFailed = 0;
   for (const d of series) {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.ticksByRole)) totals.ticks += n;
@@ -654,6 +665,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     totals.landingRuns += d.landingRuns ?? 0;
     totals.landingTokens += d.landingTokens ?? 0;
     totals.landingCostUsd += d.landingCostUsd ?? 0;
+    landingFailed += d.landingFailed ?? 0;
   }
 
   // The shared coverage proof (event-window.ts), rebuilt from the memoized read's pinned
@@ -675,7 +687,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     to,
     ...(role === undefined ? {} : { role: baseRoleOf(role) }),
     series,
-    totals: { ...totals, ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}) },
+    totals: { ...totals, ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}), ...(landingFailed > 0 ? { landingFailed } : {}) },
     coversFullWindow,
   };
 }
