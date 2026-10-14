@@ -29,6 +29,14 @@ type ParsedQuietHours =
   | { ok: true; window: QuietHoursWindow | null }
   | { ok: false; error: string };
 
+/** The error arm of ParsedQuietHours — one home for the `{ ok: false, error }` constructor
+ * every parse-failure path of parseQuietHours returns, so the shape cannot drift between
+ * the five rejection messages. (The same-named helper in config-write.ts serves the config
+ * writers' parallel union; the type here is narrower, so each module owns its own.) */
+function fail(error: string): { ok: false; error: string } {
+  return { ok: false, error };
+}
+
 /** Parse one `quietHours` value: `"HH:MM-HH:MM"` in local time, 24-hour clock, a wrapping
  * window (`start > end`) is the overnight case the format exists for. `key` is the config key
  * the value came from, named verbatim in every error; it defaults to the fleet-wide
@@ -37,42 +45,33 @@ type ParsedQuietHours =
 export function parseQuietHours(value: unknown, key = "quietHours"): ParsedQuietHours {
   if (value === undefined || value === null) return { ok: true, window: null };
   if (typeof value !== "string")
-    return {
-      ok: false,
-      error: `${key} must be a string like "23:00-07:00"${gotSuffix(value)}`,
-    };
+    return fail(`${key} must be a string like "23:00-07:00"${gotSuffix(value)}`);
   if (value.trim() === "") return { ok: true, window: null }; // empty means off
   const parts = value.split("-");
   if (parts.length !== 2)
-    return {
-      ok: false,
-      error: `${key} must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00"${gotSuffix(value)}`,
-    };
+    return fail(
+      `${key} must be "HH:MM-HH:MM" with exactly one dash, e.g. "23:00-07:00"${gotSuffix(value)}`,
+    );
   const ends: number[] = [];
   for (const part of parts) {
     const trimmed = part.trim();
     const m = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
     if (!m)
-      return {
-        ok: false,
-        error: `${key} times must be 24-hour "HH:MM", e.g. "23:00"${gotSuffix(trimmed)}`,
-      };
+      return fail(`${key} times must be 24-hour "HH:MM", e.g. "23:00"${gotSuffix(trimmed)}`);
     const hours = Number(m[1]);
     const minutes = Number(m[2]);
     if (hours > 23 || minutes > 59)
-      return {
-        ok: false,
-        error: `${key} times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59${gotSuffix(trimmed)}`,
-      };
+      return fail(
+        `${key} times must be 24-hour "HH:MM" — hours 00-23, minutes 00-59${gotSuffix(trimmed)}`,
+      );
     ends.push(hours * 60 + minutes);
   }
   // parts.length === 2 above, so both ends are present (the non-null assertions are safe).
   const [startMin, endMin] = [ends[0]!, ends[1]!];
   if (startMin === endMin)
-    return {
-      ok: false,
-      error: `${key} start and end must differ — a zero-length window means nothing schedulable${gotSuffix(value)}`,
-    };
+    return fail(
+      `${key} start and end must differ — a zero-length window means nothing schedulable${gotSuffix(value)}`,
+    );
   return { ok: true, window: { startMin, endMin } };
 }
 
