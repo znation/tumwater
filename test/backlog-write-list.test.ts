@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
+import { openBugs, plannedPlans, entryAgeSuffix } from "../src/backlog/backlog.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -58,33 +58,37 @@ function seededBugsForList(): string {
   ].join("\n");
 }
 
-test("plan --list prints the Planned entries numbered with their eligibility marks", async () => {
+test("plan --list prints the Planned entries numbered with their eligibility marks and age", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
   const r = await cli(repo, "plan", "--list");
   assert.equal(r.code, 0);
+  const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
+  const p2 = "Export series, part 2/2: add import (planned 2026-10-02) (requires Export series 1/2 landed)";
   assert.equal(
     r.stdout,
     [
       "planned features in PLANS.md:",
-      "1. Export series, part 1/2: add export (planned 2026-10-01)",
-      "2. Export series, part 2/2: add import (planned 2026-10-02) (requires Export series 1/2 landed) [blocked: requires Export series 1/2]",
+      `1. ${p1}${entryAgeSuffix(p1)}`,
+      `2. ${p2} [blocked: requires Export series 1/2]${entryAgeSuffix(p2)}`,
       "",
     ].join("\n"),
   );
 });
 
-test("bug --list prints the Open entries numbered with their eligibility marks", async () => {
+test("bug --list prints the Open entries numbered with their eligibility marks and age", async () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "BUGS.md"), seededBugsForList());
   const r = await cli(repo, "bug", "--list");
   assert.equal(r.code, 0);
+  const b1 = "held bug (reported by the operator 2026-10-01)";
+  const b2 = "open bug (reported by the operator 2026-10-02)";
   assert.equal(
     r.stdout,
     [
       "open bugs in BUGS.md:",
-      "1. held bug (reported by the operator 2026-10-01) [refused]",
-      "2. open bug (reported by the operator 2026-10-02)",
+      `1. ${b1} [refused]${entryAgeSuffix(b1)}`,
+      `2. ${b2}${entryAgeSuffix(b2)}`,
       "",
     ].join("\n"),
   );
@@ -124,9 +128,10 @@ test("a --list position is the entry --cancel and --edit act on", async () => {
   // Position 1 is now the surviving part 1; --edit 1 rewrites it in place.
   const edited = await cli(repo, "plan", "--edit", "1", "Rewritten", "new body");
   assert.equal(edited.code, 0);
+  const rewritten = "Rewritten (planned 2026-10-01)";
   assert.equal(
     (await cli(repo, "plan", "--list")).stdout,
-    ["planned features in PLANS.md:", "1. Rewritten (planned 2026-10-01)", ""].join("\n"),
+    ["planned features in PLANS.md:", `1. ${rewritten}${entryAgeSuffix(rewritten)}`, ""].join("\n"),
   );
   // And for bugs: --cancel 2 removes the entry --list numbered 2.
   const brepo = makeRepo();

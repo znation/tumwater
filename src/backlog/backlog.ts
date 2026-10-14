@@ -68,6 +68,34 @@ export function sectionCompletionDates(
   );
 }
 
+/** The first `YYYY-MM-DD` after a `planned`/`reported`/`found by` stamp word in an entry heading:
+ * the filing date every eligible heading carries in prose (plans open with `(planned YYYY-MM-DD…)`,
+ * bugs with `(found by …)` or `(reported …)`), parsed so `plan|bug --list` shows how long an entry
+ * has waited, without opening the file. Read only the title — the whole heading, never the body,
+ * because the stamp is the entry's own and the body may name other dates.
+ * null when the heading carries no such clause. */
+const STAMP_DATE_RE = /(?:planned|reported|found by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/;
+export function filingDate(title: string): string | null {
+  const m = STAMP_DATE_RE.exec(title);
+  return m ? (m[1] as string) : null;
+}
+
+/** Whole days between a filing stamp and `now`, floored at 0 so a future-dated entry reads as
+ * fresh (0d) rather than negative. Shared by the suffix and the `--list --json` `ageDays` field. */
+export function ageInDays(since: string, now: number = Date.now()): number {
+  return Math.max(0, Math.floor((now - Date.parse(since)) / 86400000));
+}
+
+/** The ` · since YYYY-MM-DD (Nd)`/`(today)` tail an entry's listing line gains when its heading
+ * parses a filing stamp, else `""` — the one place the age is worded, so `--list` and `tumwater
+ * backlog` could reuse it without drifting. */
+export function entryAgeSuffix(title: string, now: number = Date.now()): string {
+  const since = filingDate(title);
+  if (since === null) return "";
+  const n = ageInDays(since, now);
+  return ` · since ${since} (${n === 0 ? "today" : `${n}d`})`;
+}
+
 /** Planned features: the `### ` headings under PLANS.md's `## Planned` section. Missing or
  * unreadable → []. */
 export function plannedPlans(root: string): string[] {
