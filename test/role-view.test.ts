@@ -391,3 +391,40 @@ test("a claude seam's role view names its billing and subscription window", () =
   writeConfig(dir, {});
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
 });
+
+// Part 2/2: a pi seam that resolves no model names pi's own saved default from its
+// settings.json beside the models catalog (readPiDefaultModel), the same rule status-data's
+// snapshot applies. The formatted selector carries the effective thinking, so no separate
+// ` (thinking: …)` suffix is added.
+test("a pi seam naming no model shows pi's own saved default", () => {
+  const dir = root();
+  const modelsDir = path.join(dir, "pi-agent");
+  fs.mkdirSync(modelsDir, { recursive: true });
+  const modelsPath = path.join(modelsDir, "models.json");
+  fs.writeFileSync(
+    path.join(modelsDir, "settings.json"),
+    JSON.stringify({
+      defaultProvider: "prov",
+      defaultModel: "org/m",
+      modelThinkingLevels: { "prov/org/m": "low" },
+    }),
+  );
+  const p = rolePayload(dir, "feature", modelsPath);
+  assert.equal(p.piDefault, "prov/org/m:low");
+  assert.match(renderRoleMarkdown(p), /- Model: pi default \(prov\/org\/m:low\) \(default tier\)/m);
+
+  // The configured thinking wins over the default's: a role that names only a thinking level
+  // still resolves no provider/model, so it rides pi's default at the configured level.
+  writeConfig(dir, { provider: undefined, model: undefined, thinking: "high" });
+  const p2 = rolePayload(dir, "feature", modelsPath);
+  assert.equal(p2.piDefault, "prov/org/m:high");
+  assert.match(renderRoleMarkdown(p2), /- Model: pi default \(prov\/org\/m:high\) \(default tier\)/m);
+
+  // No settings.json beside the models catalog: nothing to name, so the seam reads `pi
+  // default` with no selector and the payload carries no `piDefault` (the JSON is unchanged
+  // for every other seam). Reset the config's thinking so the line is the bare default.
+  writeConfig(dir, {});
+  const bare = rolePayload(dir, "feature", path.join(dir, "empty", "models.json"));
+  assert.equal(bare.piDefault, undefined);
+  assert.match(renderRoleMarkdown(bare), /- Model: pi default \(default tier\)/m);
+});

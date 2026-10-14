@@ -102,7 +102,27 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
-### Loop rows name pi's own default model when `tumwater.json` names none, part 2/2: `tumwater role` (planned 2026-10-14 from an operator request; requires part 1/2 landed)
+
+
+### `tumwater doctor` names a standing provider rate-limit / backend-failure hold: a "provider hold" check (planned 2026-10-14 by plan; the subscription sibling of the landed "claude window" check (`checkClaudeWindow` in src/doctor/doctor-holds.ts) is the only fleet hold doctor reports today — a pi provider 429/backend storm one is invisible; independent of every other entry — no `src/status`, `src/events`, `src/ui`, or backlog-file overlap)
+
+**Goal.** When `pollFleetHold` (src/fleet/fleet-polls.ts) puts a provider on hold because several roles' runs ended on the same failure kind within a short window — a `rate_limit_hold` (kind `rate-limit` for 429 storms, or a backend-failure kind like `connection`/`timeout`/`server`/`model-load`) — the enabled roles on that provider start no new ticks until the hold re-opens, yet `tumwater doctor` prints nothing about it and no status surface names it: a grep for `rate_limit`/`rateLimit` under `src/status/`, `src/ui/`, and `src/doctor/` finds nothing. The `rate_limit_hold` event (src/fleet/fleet-polls.ts, ~line 93) carries `provider`, `kind`, `roles`, `holdMs`, and `escalation`; the `rate_limit_resumed` event (same file) carries the ending hold's `kind`. An operator who runs `doctor` to learn why the loops are idle has to open the event log and join `rate_limit_hold`/`rate_limit_resumed` by hand. This is the identical gap the landed `budget`, `quiet hours`, `maintenance quota`, and `claude window` checks each closed for their hold; this plan closes it for the per-provider storm hold. Stands alone: no scheduler, snapshot, GUI, or TUI change — the dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work.
+
+**Approach.**
+- New check `checkProviderHolds(root: string, now: number = Date.now()): CheckOutcome` in `src/doctor/doctor-holds.ts`, read-only like every check. It scans the event log via `readEventsSince(root, HOLD_CHECK_WINDOW_MS)` (the same helper `checkNotify` in src/doctor/doctor-notify.ts uses), filtering `rate_limit_hold` and `rate_limit_resumed` events with `parseEventLine` (src/events/event-read.ts). Group the holds by the event's `provider` (undefined for pi's default backend). A hold stands when the newest event for that provider is a `rate_limit_hold` whose `ts + holdMs` is still after `now` and the newest is not a `rate_limit_resumed`; a `rate_limit_resumed` with the same `kind` clears the hold it names (the ended hold's kind rides the resumed event, per the comment in src/fleet/fleet-polls.ts). Use a `HOLD_CHECK_WINDOW_MS` at least the largest a hold can reach (escalation doubles against a cap; pick a value large enough to cover a long escalated hold, e.g. a `HOLD_CHECK_WINDOW_MS` constant in the module).
+- For each standing hold, a warn line naming the provider (or "pi's default backend" when undefined), the kind (429 → "rate-limit", backend kinds verbatim), the held roles, and the re-open in `humanSeconds(secondsUntil(end, now))` — reusing the same duration helpers `checkClaudeWindow` uses. One warn naming every standing hold; ok "no provider holds" when none stands.
+- Wire it into `runDoctor` (src/doctor/doctor.ts) as `{ name: "provider hold", ...checkProviderHolds(root) }` placed after the `claude window` row (~line 75), so the hold rows read together.
+
+**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts` (which already imports `writeEvents` from `./fixtures/log-fixtures.js` to seed the log).
+
+**Acceptance criteria.**
+- `test/doctor-holds.test.ts`: with a temp root whose event log (`writeEvents`) holds a `rate_limit_hold` for provider `deepinfra` (kind `rate-limit`, roles `["feature","qa"]`, `holdMs` large enough that `ts+holdMs` is still ahead of a passed `now`), `checkProviderHolds(root, now)` warns naming `deepinfra`, rate-limit, `feature`, `qa`, and a re-open figure; a `rate_limit_resumed` (same provider, kind `rate-limit`) after it makes the same call ok. An event whose `ts+holdMs` is behind `now` (the hold re-opened) is ok. A provider-undefined `rate_limit_hold` warns as pi's default backend. No `rate_limit_*` events read ok. Events of other types (a `tick_end`, a `landed`) are ignored.
+- `runDoctor` seeds a `provider hold` row between `claude window` and `maintenance quota`; with an empty log it reads ok.
+- The diff is confined to the files above; `npm run test` passes.
+
+## Done
+
+### Loop rows name pi's own default model when `tumwater.json` names none, part 2/2: `tumwater role` (planned 2026-10-14 from an operator request; requires part 1/2 landed) — done 2026-10-14
 
 **Goal.** `tumwater role <id>` prints `- Model: pi default (<tier> tier)` for a pi seam that names
 no model (`agentDefault` and `modelLine` in `src/roles/role-render.ts`). After part 1/2 the
@@ -130,24 +150,6 @@ too.
   `- Model: pi default (default tier)`) hold unchanged, because nothing exists beside
   `/nonexistent/tumwater-test-models.json`.
 - `npm run test` passes.
-
-### `tumwater doctor` names a standing provider rate-limit / backend-failure hold: a "provider hold" check (planned 2026-10-14 by plan; the subscription sibling of the landed "claude window" check (`checkClaudeWindow` in src/doctor/doctor-holds.ts) is the only fleet hold doctor reports today — a pi provider 429/backend storm one is invisible; independent of every other entry — no `src/status`, `src/events`, `src/ui`, or backlog-file overlap)
-
-**Goal.** When `pollFleetHold` (src/fleet/fleet-polls.ts) puts a provider on hold because several roles' runs ended on the same failure kind within a short window — a `rate_limit_hold` (kind `rate-limit` for 429 storms, or a backend-failure kind like `connection`/`timeout`/`server`/`model-load`) — the enabled roles on that provider start no new ticks until the hold re-opens, yet `tumwater doctor` prints nothing about it and no status surface names it: a grep for `rate_limit`/`rateLimit` under `src/status/`, `src/ui/`, and `src/doctor/` finds nothing. The `rate_limit_hold` event (src/fleet/fleet-polls.ts, ~line 93) carries `provider`, `kind`, `roles`, `holdMs`, and `escalation`; the `rate_limit_resumed` event (same file) carries the ending hold's `kind`. An operator who runs `doctor` to learn why the loops are idle has to open the event log and join `rate_limit_hold`/`rate_limit_resumed` by hand. This is the identical gap the landed `budget`, `quiet hours`, `maintenance quota`, and `claude window` checks each closed for their hold; this plan closes it for the per-provider storm hold. Stands alone: no scheduler, snapshot, GUI, or TUI change — the dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work.
-
-**Approach.**
-- New check `checkProviderHolds(root: string, now: number = Date.now()): CheckOutcome` in `src/doctor/doctor-holds.ts`, read-only like every check. It scans the event log via `readEventsSince(root, HOLD_CHECK_WINDOW_MS)` (the same helper `checkNotify` in src/doctor/doctor-notify.ts uses), filtering `rate_limit_hold` and `rate_limit_resumed` events with `parseEventLine` (src/events/event-read.ts). Group the holds by the event's `provider` (undefined for pi's default backend). A hold stands when the newest event for that provider is a `rate_limit_hold` whose `ts + holdMs` is still after `now` and the newest is not a `rate_limit_resumed`; a `rate_limit_resumed` with the same `kind` clears the hold it names (the ended hold's kind rides the resumed event, per the comment in src/fleet/fleet-polls.ts). Use a `HOLD_CHECK_WINDOW_MS` at least the largest a hold can reach (escalation doubles against a cap; pick a value large enough to cover a long escalated hold, e.g. a `HOLD_CHECK_WINDOW_MS` constant in the module).
-- For each standing hold, a warn line naming the provider (or "pi's default backend" when undefined), the kind (429 → "rate-limit", backend kinds verbatim), the held roles, and the re-open in `humanSeconds(secondsUntil(end, now))` — reusing the same duration helpers `checkClaudeWindow` uses. One warn naming every standing hold; ok "no provider holds" when none stands.
-- Wire it into `runDoctor` (src/doctor/doctor.ts) as `{ name: "provider hold", ...checkProviderHolds(root) }` placed after the `claude window` row (~line 75), so the hold rows read together.
-
-**Files touched.** `src/doctor/doctor-holds.ts`, `src/doctor/doctor.ts`, `test/doctor-holds.test.ts` (which already imports `writeEvents` from `./fixtures/log-fixtures.js` to seed the log).
-
-**Acceptance criteria.**
-- `test/doctor-holds.test.ts`: with a temp root whose event log (`writeEvents`) holds a `rate_limit_hold` for provider `deepinfra` (kind `rate-limit`, roles `["feature","qa"]`, `holdMs` large enough that `ts+holdMs` is still ahead of a passed `now`), `checkProviderHolds(root, now)` warns naming `deepinfra`, rate-limit, `feature`, `qa`, and a re-open figure; a `rate_limit_resumed` (same provider, kind `rate-limit`) after it makes the same call ok. An event whose `ts+holdMs` is behind `now` (the hold re-opened) is ok. A provider-undefined `rate_limit_hold` warns as pi's default backend. No `rate_limit_*` events read ok. Events of other types (a `tick_end`, a `landed`) are ignored.
-- `runDoctor` seeds a `provider hold` row between `claude window` and `maintenance quota`; with an empty log it reads ok.
-- The diff is confined to the files above; `npm run test` passes.
-
-## Done
 
 ### Loop rows name pi's own default model when `tumwater.json` names none, part 1/2: the dashboard, the TUI and `tumwater status` (planned 2026-10-14 from an operator request; builds on the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`", whose `piAgentDir` it relies on; part 2/2 below follows it) — done 2026-10-14
 

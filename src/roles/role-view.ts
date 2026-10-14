@@ -25,6 +25,8 @@ import {
   type ModelFallbackView,
 } from "../config/config-views.js";
 import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
+import { formatModelSelector } from "../config/model-selector.js";
+import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
@@ -57,6 +59,11 @@ export interface RoleViewPayload {
    * `pi` unless a selector's provider names another agent or the top-level `agent` does.
    * Drives the renderer's `<agent> default` label and the agent-qualified selector string. */
   agent: string;
+  /** pi's own saved default model (readPiDefaultModel) as a formatted selector, present only
+   * for a pi seam that resolves neither a provider nor a model — the name the loop runs when
+   * tumwater.json names none. The effective `thinking` wins over the default's, matching
+   * status-data.ts's snapshot. Absent for every other seam, so the JSON shape is unchanged. */
+  piDefault?: string;
   /** The budget gate's fallback pair, or null when none is configured. */
   fallback: FallbackModelConfig | null;
   /** Whether that fallback is actually free in pi's definitions — what makes the gate
@@ -120,6 +127,15 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // its subscription window's primary type rides along for the renderer's label.
   const account = effective.agent === "claude" ? readClaudeAccount(root) : null;
   const billingWindow = account?.billing === "subscription" ? claudeWindowEntries(account)[0]?.type : undefined;
+  // pi's own saved default for a pi seam that resolves no model, read once beside the models
+  // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
+  // wins over the default's because tumwater passes it to pi as `--thinking`, mirroring the
+  // snapshot's modelFromPi rule. Any other seam stays unchanged and carries no `piDefault`.
+  const runsPiWithoutAModel =
+    (effective.agent === undefined || effective.agent === "pi") &&
+    effective.provider === undefined &&
+    effective.model === undefined;
+  const piDefault = runsPiWithoutAModel ? readPiDefaultModel(piSettingsPath(modelsPath), root) : null;
   // The fallback story the operator sees: the declared pair, but the price-resolved pair when
   // one exists (a map with no `default` entry borrows another tier's free pair) and the
   // freeness verdict from the same read. `fallbackFree` false keeps the declared pair visible
@@ -146,6 +162,14 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     tier: roleTier(role),
     modelTier: roleSeamTier(cfg, role),
     ...resolvedModelFields(effective.provider, effective.model, effective.thinking),
+    ...(piDefault
+      ? {
+          piDefault: formatModelSelector({
+            ...piDefault,
+            thinking: effective.thinking ?? piDefault.thinking,
+          }),
+        }
+      : {}),
     agent: effective.agent ?? "pi",
     fallback,
     fallbackFree: freeFallback !== null,

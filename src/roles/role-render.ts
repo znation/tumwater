@@ -75,6 +75,10 @@ function agentDefault(p: RoleViewPayload): string {
  * A non-pi backend is named as the selector's provider namespace (`claude/claude-sonnet-5-5`),
  * matching the string the events and status rows carry; a pi seam is unchanged. */
 function modelLine(p: RoleViewPayload): string {
+  // pi's own saved default (part 2/2): the formatted selector already carries its thinking
+  // level (piDefault is formatted with the effective thinking winning), so the separate
+  // ` (thinking: …)` suffix is dropped for this case only.
+  if (p.piDefault) return `${agentDefault(p)} (${p.piDefault})`;
   const pair = modelPair(p.provider, p.model);
   const thinking = p.thinking ? ` (thinking: ${p.thinking})` : "";
   if (!pair) return `${agentDefault(p)}${thinking}`;
