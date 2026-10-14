@@ -32,7 +32,7 @@ export function markdownTable(
  * the `map((item, i) => `${i + 1}. ${item}`).join("\n")` step, shared by the review prompt's
  * prior objections, its stage-fix findings, and the rejected/revision notes
  * (prompt/gate-prompts.ts) and `tumwater questions`' open-question list
- * (cli/question-commands.ts), so the numbering shape cannot drift between the surfaces that
+ * (backlog/question-answer.ts), so the numbering shape cannot drift between the surfaces that
  * read a numbered list. `empty` is returned verbatim when `items` is empty (the reasons
  * sites pass `(no reasons recorded)`; the others keep the default empty string). */
 export function numberedList(items: readonly string[], empty = ""): string {

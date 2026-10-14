@@ -33,7 +33,7 @@ import { fileEntryWithBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry } 
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { durationLabel } from "../../cli/cli-args.js";
-import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../cli/question-commands.js";
+import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../backlog/question-answer.js";
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import {

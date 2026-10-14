@@ -41,7 +41,7 @@ export function configLockPath(root: string): string {
 
 /** The cross-process lock serializing writes to the primary checkout's tracked backlog files:
  * `tumwater bug`/`plan` (backlog-write.ts's appendEntry) and `tumwater questions answer`
- * (question-commands.ts's answerQuestion) each read a whole backlog file and rewrite it, while a
+ * (backlog/question-answer.ts's tryAnswerQuestion) each read a whole backlog file and rewrite it, while a
  * landing's working-tree fast-forward (landing-git.ts's ffMainTo) updates those same files in
  * the same checkout by `git merge --ff-only`. Without a shared lock the CLI's stale read can
  * overwrite the landed change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under

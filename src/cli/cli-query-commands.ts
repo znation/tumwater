@@ -31,7 +31,8 @@ import { errorMessage } from "../text/text.js";
 import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, questionListPayload, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
+import { questionListPayload } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */

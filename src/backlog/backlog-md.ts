@@ -2,7 +2,7 @@
  * QUESTIONS.md text, with no filesystem access — every function here takes the markdown text as
  * an argument. Split from src/backlog/backlog.ts, which keeps the stat-cached file readers
  * (sectionEntries, the root-based plannedPlans/openBugs/openQuestions family, and the
- * Done/Fixed date scan): consumers who only parse markdown (question-commands.ts's QUESTIONS.md
+ * Done/Fixed date scan): consumers who only parse markdown (question-answer.ts's QUESTIONS.md
  * walks, backlog-write.ts's section appends, backlog-structure.ts's stranding checks)
  * import from here without reaching the file/cache layer, and a caller who parses a string never
  * pays for a stat. Both layers share one fenceTracker state machine, so independent readers can
@@ -80,7 +80,7 @@ export function headingTitle(line: string, prefix: "## " | "### "): string {
  * code block. The single home of the fence-aware heading guard (`!fenced.inside(line) &&
  * line.startsWith(prefix)` plus headingTitle) that every line-level reader of the backlog
  * docs repeats: sectionLines' section boundaries and parseEntryDetails' entry boundaries here,
- * and question-commands.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
+ * and question-answer.ts's walks of QUESTIONS.md (the Open/Answered scan, the `### ` block
  * split, and the Answered section's start); that file's two pure next-`## ` boundary walks
  * go through nextSectionHeading below instead. Readers that walk
  * whole documents collecting heading lines go through fenceAwareHeadingLines instead; callers
@@ -118,7 +118,7 @@ export function sectionLines(md: string, sectionTitle: string): string[] {
 /** The index of the next `## ` section heading at or after `from`, fence-aware through the
  * caller's `fenced` tracker — or `lines.length` when none follows. The section-end boundary
  * rule as an index, for readers that must cut or splice at the boundary rather than collect
- * its content (question-commands.ts cuts the Open section at its end and inserts a moved
+ * its content (question-answer.ts cuts the Open section at its end and inserts a moved
  * block before Answered's next `## `; backlog-write.ts cuts the section a filed entry is
  * appended to). Shares fencedHeadingTitle's guard with sectionLines, so
  * a boundary found here is the same boundary sectionLines would stop at. */

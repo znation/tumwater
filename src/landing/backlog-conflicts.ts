@@ -123,7 +123,7 @@ export async function resolveBacklogInsertConflicts(
     }
     // Atomic (tmp + rename): a landing process killed mid-write (SIGKILL, the timeout
     // group-kill) must leave either the conflicted file or the fully resolved one, never a
-    // truncated backlog — the CLI's backlog writers (backlog-write.ts, question-commands.ts)
+    // truncated backlog — the CLI's backlog writers (backlog-write.ts, question-answer.ts)
     // already write these unbounded-history files through this helper.
     writeTextAtomic(p, resolved);
     await git(wt, "add", "--", file);

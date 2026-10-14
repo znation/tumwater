@@ -18,7 +18,7 @@ import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
 import { promptLengthProblem, submitPrompt } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
-import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../cli/question-commands.js";
+import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { parseDurationMs } from "../cli/cli-args.js";
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";

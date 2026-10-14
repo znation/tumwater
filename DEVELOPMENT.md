@@ -223,7 +223,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes,
   and the TUI's controls.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
-  reader/writer, its structure, its renderer, and its eligibility marks.
+  reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
+  reader/writer core (`question-answer.ts`) sits here, shared by the CLI's `questions` command
+  body, the TUI's answer box, and the dashboard's POST route.
 - `src/budget/`: the daily cost budget's accounting and the fallback circuit breaker.
 - `src/change/`: the `tumwater diff` collector and renderer.
 - `src/concurrency/`: the merge lock, the semaphores, and the check-permit gate.
