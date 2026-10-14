@@ -86,6 +86,7 @@ export default tseslint.config(
       "@typescript-eslint/prefer-optional-chain": "error",
       "@typescript-eslint/prefer-includes": "error",
       "@typescript-eslint/prefer-regexp-exec": "error",
+      "@typescript-eslint/no-unused-expressions": "error",  // flags dead no-op expressions (stray literals) left by missed edits
     },
   },
   {

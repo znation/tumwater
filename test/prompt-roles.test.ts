@@ -171,9 +171,6 @@ test("the qa prompt carries the safety rails for launched processes", () => {
   assert.match(find, /ephemeral high ports, never the product's documented default port/);
   assert.match(find, /no listening process may outlive your tick/);
 });
-380
-381
-382
 test("the qa prompt keeps servers on loopback and tracks background processes by their own pid", () => {
   const find = qa!.find;
   assert.match(
