@@ -9,6 +9,7 @@ import { notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { imageReferencePaths } from "../src/inbox/inbox-attachments.js";
 import { queueFileStamp } from "../src/files/file-queue.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
@@ -615,4 +616,33 @@ test("prompt --edit <n> reports gone when the file is dequeued while the editor 
   const { result } = await withEditor(root, `fs.rmSync(${JSON.stringify(path.join(dir, fs.readdirSync(dir)[0] as string))}); fs.writeFileSync(file, "changed\\n");`, () => expectOk(() => cmdPrompt(root, ["--edit", "1"])));
   assert.match(result.stdout, /prompt 1 is no longer queued/);
   assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith(".md")).length, 0);
+});
+
+test("prompt --edit <n> reports gone when the file vanished before its body was read", async () => {
+  const root = makeRoot();
+  // listQueueFiles does not stat (inbox.ts), so a dangling symlink still occupies position 1,
+  // while readQueuedPromptBody's readTextIfExists sees the ENOENT and reports gone — the bare
+  //-edit form's concurrent-dequeue race without having to interleave an actual dequeue.
+  const dir = dirOf(root, "clean");
+  fs.mkdirSync(dir, { recursive: true }); // the bare-edit command never queues, so the inbox dir is not yet made
+  fs.symlinkSync(path.join(dir, "vanished-target.md"), path.join(dir, `${Date.now()}-000001-${process.pid}.md`));
+  const { result, received } = await withEditor(root, "", () => expectOk(() => cmdPrompt(root, ["--role", "clean", "--edit", "1"])));
+  assert.match(result.stdout, /prompt 1 is no longer queued/);
+  assert.equal(received, null, "the editor never opened — gone is reported off the read, not the editor");
+});
+
+test("prompt --edit <n> with a buffer over the prompt cap fails with the length message, queue untouched", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "short body"]));
+  const dir = dirOf(root, "clean");
+  const file = path.join(dir, fs.readdirSync(dir)[0] as string);
+  const before = fs.readFileSync(file);
+  // The edited text rides into the target tick's prefill exactly like a queued prompt, so the
+  // bare editor form enforces the same cap as a submission (editPromptAtFile, inbox-edit.ts).
+  const over = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
+  const { result } = await withEditor(root, `fs.writeFileSync(file, ${JSON.stringify(over)});`, () =>
+    expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--edit", "1"])),
+  );
+  assert.match(result, /rides into the clean tick's prefill/);
+  assert.ok(before.equals(fs.readFileSync(file)), "no write landed when the edit was rejected");
 });
