@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
-import { plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
+import { entryHold, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -159,6 +159,34 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
   return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
       `later entries are invisible; keep one heading per name (the gate blocks only a landing ` +
       `that adds another copy — remove the duplicate in a deliberate edit)`);
+}
+
+/** Stalled plans — planned plans held by a **Needs review …** or **Needs replan …** note,
+ * parked until the plan role splits or replans them. No loop takes a held entry (the claim
+ * gate refuses one) and nothing clears the note on its own, so the state is visible only as
+ * the `[needs review]`/`[needs replan]` marks in the backlog listings; this names them so an
+ * operator gets a single-line health signal from `tumwater doctor`. Reads the tree at `root`
+ * — the primary checkout IS main's tree — like checkRefusedEntries, which is also where
+ * refusal notes (a different hold) are surfaced. entryHold (src/backlog/backlog-eligibility.ts)
+ * already classifies the notes, so this check adds no parsing: only the planned entries whose
+ * hold is exactly needs-review or needs-replan are collected. A warn, never a fail — the
+ * checkRefusedEntries precedent: a parked plan is operator signal, not a broken environment,
+ * and the plan role resolves it itself. */
+export function checkStalledPlans(root: string): CheckOutcome {
+  const planned = plannedPlanEntries(root);
+  const stalled = planned.filter((entry) => {
+    const hold = entryHold(entry, planned);
+    return hold === "needs-review" || hold === "needs-replan";
+  });
+  const [first, ...rest] = stalled;
+  if (!first) return okOutcome("no planned plan is held by a Needs-review or Needs-replan note");
+  const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
+  const hold = entryHold(first, planned);
+  const note = (first.body.split(/\n/).find(
+    (line) => line.trimStart().startsWith("**Needs review ") || line.trimStart().startsWith("**Needs replan "),
+  ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
+  return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
+      `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears

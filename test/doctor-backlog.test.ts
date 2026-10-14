@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -237,6 +237,50 @@ test("checkRefusedEntries flags a refusal whose prerequisites have left Planned"
   const live = checkRefusedEntries(dir);
   assert.match(live.detail, /Refused note/);
   assert.ok(!live.detail.includes("may be stale"));
+});
+
+// checkStalledPlans — plans parked by a Needs-review or Needs-replan note until the plan role
+// splits or replans them: the doctor names them so the state is one-line visible, without the
+// plan role or any listing changing. Mirrors the checkRefusedEntries setup — the two are the
+// same shape but a different hold, and refusal notes (a separate hold) never trip it.
+
+test("checkStalledPlans warns naming the first stalled plan, its note, and the rest", () => {
+  const dir = tmpdir("doctor-stalled-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n### Eligible plan\n\nbody\n\n### Parked plan (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run**\n`);
+  const out = checkStalledPlans(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /PLANS\.md plan "Parked plan \(planned 2026-10-14\)" is held by a Needs review note \(Needs review 2026-10-14 by feature: /);
+  assert.match(out.detail, /the plan role resolves it by splitting or replanning/);
+});
+
+test("checkStalledPlans warns on a Needs-replan note too", () => {
+  const dir = tmpdir("doctor-stalled-replan-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n### Parked plan (planned 2026-10-14)\n**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**\n`);
+  const out = checkStalledPlans(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /is held by a Needs replan note \(Needs replan 2026-10-14 by feature: /);
+});
+
+test("checkStalledPlans warns once when both kinds are present, naming the rest via andMore", () => {
+  const dir = tmpdir("doctor-stalled-both-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n### First (planned 2026-10-14)\n**Needs review 2026-10-14 by feature: too large for one run**\n\n### Second (planned 2026-10-14)\n**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**\n`);
+  const out = checkStalledPlans(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /"Second \(planned 2026-10-14\)"/);
+});
+
+test("checkStalledPlans reads ok with no notes, and ignores Done, Refused, and bodyless headings", () => {
+  const ok = { level: "ok", detail: "no planned plan is held by a Needs-review or Needs-replan note" };
+  assert.deepEqual(checkStalledPlans(tmpdir("doctor-stalled-none-")), ok);
+  const dir = tmpdir("doctor-stalled-closed-");
+  const note = "**Needs review 2026-10-14 by feature: too large for one run**";
+  const refused = "**Refused 2026-10-12 by feature: too big**";
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n### Bodyless heading\n\n### Refused (planned 2026-10-12)\n${refused}\n\n## Done\n\n### Old plan\n${note}\n`);
+  assert.deepEqual(checkStalledPlans(dir), ok);
 });
 
 // checkUncommittedBacklog — operator edits left uncommitted in the primary checkout.
