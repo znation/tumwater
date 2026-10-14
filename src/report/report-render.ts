@@ -110,6 +110,11 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   pushReportSummary(lines, t, "", data.role !== undefined);
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
+  // Same breakdown for token spend: ranked by tokens desc then name asc, zero-token roles
+  // omitted — an all-zero window renders "-" like the other lines. Output tokens are the
+  // resource the budget charges, so this is the line an operator reads to find which role's
+  // prompt loop burned the window's tokens.
+  lines.push(rankedRoleLine("Tokens by role", rankedRoleMap(data.tokensByRole).filter(([, n]) => n > 0), compactTokens));
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
   // an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleMap(data.costByRole).filter(([, c]) => c > 0), usd));
@@ -200,6 +205,10 @@ export function renderReportMarkdown(data: ReportData): string {
   );
   lines.push("");
   lines.push(rankedRoleLine("Ticks by role", rankedRoleTotals(data.series, (d) => d.ticksByRole), String));
+  // The same breakdown for output tokens (the resource the budget charges): window totals per
+  // role from tokensByRole, ranked like the ticks line. Zero-token roles are omitted; an
+  // all-zero window renders "-" like the ticks line.
+  lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}).filter(([, n]) => n > 0), compactTokens));
   // The same breakdown for spend: window totals per role from costByRole, ranked by spend
   // desc then name asc — spend is what the operator acts on (an operator tuning per-role
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are

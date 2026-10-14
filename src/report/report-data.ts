@@ -319,6 +319,10 @@ export interface ReportDay {
   date: string; // "YYYY-MM-DD" local day key
   tokensOut: number;
   ticksByRole: Record<string, number>;
+  /** Output tokens per loop id, so the day report can break the day's token spend down by
+   * role the way Ticks/Cost do; absent only on hand-built fixtures (the collector always
+   * sets it — zero uses leave it an empty map). */
+  tokensByRole?: Record<string, number>;
   costByRole: Record<string, number>;
   /** review_rejected events per loop id; absent when the day has none (zero means absent). */
   rejectionsByRole?: Record<string, number>;
@@ -393,6 +397,9 @@ export interface SinceReport {
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
   /** review_rejected events per loop id; empty when the window has none. */
   rejectionsByRole: Record<string, number>;
+  /** Output tokens per loop id, so the --since render can break the window's token spend
+   * down by role the way the day report does. */
+  tokensByRole: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -479,6 +486,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     ticksByRole: base === undefined ? acc.ticksByRole : narrowToRole(acc.ticksByRole, base),
     costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
     rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
+    tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
     coversFullWindow,
   };
 }
@@ -513,6 +521,7 @@ export function collectReport(root: string, days: number, role?: string): Report
     if (role === undefined) {
       day.tokensOut = fold.tokensOut;
       day.ticksByRole = fold.ticksByRole;
+      day.tokensByRole = fold.tokensByRole;
       day.costByRole = fold.costByRole;
       // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.rejectionsByRole).length > 0)
@@ -540,6 +549,7 @@ export function collectReport(root: string, days: number, role?: string): Report
       const tier = commitTier(base);
       day.tokensOut = roleSum(fold.tokensByRole, base);
       day.ticksByRole = narrowToRole(fold.ticksByRole, base);
+      day.tokensByRole = narrowToRole(fold.tokensByRole, base);
       day.costByRole = narrowToRole(fold.costByRole, base);
       const rejs = narrowToRole(fold.rejectionsByRole, base);
       if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;

@@ -49,8 +49,9 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   // Window totals per role: feature 3+2=5 before bugfix 1 (count desc); the cost line under
   // it renders "-" — no role in this fixture carries spend.
   assert.equal(lines[12], "**Ticks by role:** feature — 5 · bugfix — 1");
-  assert.equal(lines[13], "**Cost by role:** -");
-  assert.equal(lines[14], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
+  assert.equal(lines[13], "**Tokens by role:** -", "no token spend renders '-' like the cost line");
+  assert.equal(lines[14], "**Cost by role:** -");
+  assert.equal(lines[15], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
 });
 
 test("renderReportMarkdown prints a Rejections by role line ranked by count, only when rejections exist", () => {
@@ -187,6 +188,26 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
   assert.match(md, /\*\*Totals:\*\* 0 output tokens · 5 ticks · 0 commits · \$2\.10 ·/);
 });
 
+test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, its own data", () => {
+  const base = collectReport(tmpdir(), 2);
+  const data: ReportData = {
+    ...base,
+    series: [
+      // alpha carries 4000 tokens but spends $0 — it must lead the tokens line while the
+      // cost line omits it, proving the tokens line renders its own data.
+      { date: base.from, tokensOut: 0, ticksByRole: { feature: 5, alpha: 1 }, tokensByRole: { alpha: 4000, feature: 5000 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, ticksByRole: { bugfix: 1 }, tokensByRole: { feature: 7000, beta: 800 }, costByRole: { beta: 0.5 }, commits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { ...base.totals, ticks: 7, costUsd: 0.5 },
+  };
+  const md = renderReportMarkdown(data);
+  // feature 5000+7000 = 12.0k, alpha 4000, beta 800 — ranked tokens desc then name asc.
+  assert.match(md, /\*\*Tokens by role:\*\* feature — 12\.0k · alpha — 4000 · beta — 800/);
+  // alpha holds 4000 tokens but spent $0, so it leads the tokens line while the cost line
+  // omits it — the two lines render different data, not a re-render of Cost by role.
+  assert.match(md, /\*\*Cost by role:\*\* beta — \$0\.50/);
+});
+
 // This file's assertions match combined stdout+stderr via the shared runCli bridge; a few
 // assertions need the streams apart, so those call cli-harness's cli() directly.
 
@@ -228,12 +249,14 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     ticksByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    tokensByRole: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
   assert.match(zero, /window: last 1h \(since /);
   assert.match(zero, /\*\*Totals:\*\* 0 output tokens · 0 ticks · 0 commits · \$0\.00/);
   assert.match(zero, /\*\*Ticks by role:\*\* -/);
+  assert.match(zero, /\*\*Tokens by role:\*\* -/);
   assert.match(zero, /\*\*Cost by role:\*\* -/);
   assert.ok(!zero.includes("rotated"));
 
@@ -245,11 +268,15 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
+    // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
+    // own ranked data) while the cost line omits it, proving the lines differ.
+    tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
   assert.match(data, /\*\*Totals:\*\* 1500 output tokens · 5 ticks · 1 commits · \$0\.75/);
   assert.match(data, /\*\*Ticks by role:\*\* bugfix — 2 · feature — 2 · clean — 1/);
+  assert.match(data, /\*\*Tokens by role:\*\* clean — 12\.0k · feature — 5000 · bugfix — 800/);
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
   assert.match(data, /\*\*Rejections by role:\*\* clean — 1 · feature — 1/, "equal rejection counts rank by name asc");
   assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
@@ -263,6 +290,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     ticksByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    tokensByRole: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
@@ -274,6 +302,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     ticksByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
+    tokensByRole: { feature: 900 },
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);

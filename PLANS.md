@@ -27,22 +27,25 @@ _None yet._
 
 
 
-### `tumwater report` breaks output tokens down by role: a "Tokens by role" line in the day and `--since` renders (planned 2026-10-14 by plan; independent of every other entry — touches only `src/report/report-render.ts` and its `test/report.test.ts`, no `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, or GUI file, and no code the waiting questions-age / checkStalledPlans plans touch)
-
-**Goal.** `tumwater report` already pores each role's output-token totals — `tokensByRole` is folded into every `ReportDay` (`src/report/report-data.ts`, the day interface's `tokensByRole`) and into the `--since` window's totals — yet no render prints them: the report's per-role lines are `Ticks by role`, `Cost by role`, `Rejections by role` (and `Commits by role`, `Notional by role` in the day render), never `Tokens by role`. Output tokens are the resource the budget charges, so an operator who sees a cost or token spike can point at the offending role for cost but cannot tell which role's prompt loop burned the tokens without opening the raw event log. A grep for `Tokens by role` under `src/` and `test/` finds nothing. Both collectors already carry the data, so the change is render-only: no `report-data.ts`, no event handling, no JSON-shape change (the `/api/report` consumer reads `ReportDay`, and `tokensByRole` is already a field there).
-
-**Approach.** In `src/report/report-render.ts`, `rankedRoleMap`/`rankedRoleTotals`/`rankedRoleLine` and the `compactTokens` formatter (imported at line 10) already exist, so each addition is one line, placed right after the corresponding `Ticks by role` line, zero-token roles omitted the way `Cost by role` omits zero-spend ones (an all-zero window renders `-` like the siblings):
-- In `renderSinceReportMarkdown`, after the `Ticks by role` line (~line 112): `lines.push(rankedRoleLine("Tokens by role", rankedRoleMap(data.tokensByRole).filter(([, n]) => n > 0), compactTokens));`
-- In `renderReportMarkdown`, after the `Ticks by role` line (~line 202): `lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole).filter(([, n]) => n > 0), compactTokens));`
-
-**Files touched.** `src/report/report-render.ts`, `test/report.test.ts` (a node:test file already exercising both renders — it asserts the `Ticks by role`/`Cost by role` lines at lines 51/167/236/252).
-
-**Acceptance criteria.**
-- `test/report.test.ts` gains assertions mirroring the existing `Ticks by role` ones: the day render's `**Tokens by role:**` line ranks roles by tokens descending (and joins multi-instance base roles, since `rankedRoleTotals` runs through the same base-role fold `Ticks by role` uses), the `--since` render has the same ranked line, and a window with nothing but zero-token roles renders `**Tokens by role:** -`.
-- A role with more tokens but equal or lower cost appears in the tokens line where the cost line omits it, showing the line is its own data and not a re-render of `Cost by role`.
-- The diff is confined to the two files above; `report-data.ts`/`report.ts` and the JSON `ReportDay` shape are untouched; `/api/report` and the Usage dashboard are unaffected; `npm run test` passes.
 
 ## Done
+### `tumwater report` breaks output tokens down by role: a "Tokens by role" line in the day and `--since` renders (planned 2026-10-14 by plan; touches `src/report/report-render.ts`, `src/report/report-data.ts`, and `test/report.test.ts` only — no `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, or GUI file) — done 2026-10-14
+
+
+**Goal.** `tumwater report`'s per-role lines are `Ticks by role`, `Cost by role`, `Rejections by role` (and `Commits by role`, `Notional by role` in the day render), never `Tokens by role`. Output tokens are the resource the budget charges, so an operator who sees a cost or token spike can point at the offending role for cost but cannot tell which role's prompt loop burned the tokens without opening the raw event log. A grep for `Tokens by role` under `src/` and `test/` finds nothing. Plan note corrected on landing: the plan's premise — that `report-data.ts` already carries `tokensByRole` and the change was render-only — was wrong. `SinceReport` did not declare or return `tokensByRole` at all, and `ReportDay` retained only the aggregate `tokensOut` (the per-role map was folded and discarded). So the landing adds `tokensByRole` to both interfaces and populates it in the collectors; the `/api/report` JSON gains an additive optional field (backward compatible, existing consumers unaffected).
+
+**Approach.** `rankedRoleMap`/`rankedRoleTotals`/`rankedRoleLine` and the `compactTokens` formatter already exist, so each render addition is one line right after the corresponding `Ticks by role` line, zero-token roles omitted the way `Cost by role` omits zero-spend ones (an all-zero window renders `-` like the siblings). Corrections from plan text: `rankedRoleTotals` folds per-day maps by raw loop id — exactly what the `Ticks by role`/`Cost by role` lines already do — so the tokens line does **not** base-role-join instances; it matches its siblings.
+- In `renderSinceReportMarkdown`, after the `Ticks by role` line: `lines.push(rankedRoleLine("Tokens by role", rankedRoleMap(data.tokensByRole).filter(([, n]) => n > 0), compactTokens));`
+- In `renderReportMarkdown`, after the `Ticks by role` line: `lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole ?? {}).filter(([, n]) => n > 0), compactTokens));`
+- In `report-data.ts`: add `tokensByRole` to `SinceReport` (required) and to `ReportDay` (optional, mirroring `rejectionsByRole`/`commitsByRole`); `collectReportSince` returns it (`narrowToRole` when scoped) and `collectReport` sets it per day on both the fleet and role-scoped paths.
+
+**Files touched.** `src/report/report-render.ts`, `src/report/report-data.ts`, `test/report.test.ts` (a node:test file already exercising both renders).
+
+**Acceptance criteria.**
+- `test/report.test.ts` gains assertions mirroring the existing `Ticks by role` ones: the day render's `**Tokens by role:**` line ranks roles by tokens descending, the `--since` render has the same ranked line, and a window with nothing but zero-token roles renders `**Tokens by role:** -`.
+- A role with more tokens but equal or lower cost appears in the tokens line where the cost line omits it, showing the line is its own data and not a re-render of `Cost by role`.
+- The diff is confined to the three files above; `report.ts`, `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, and the GUI are untouched; the `/api/report` JSON gains only an additive optional `tokensByRole` per day; `npm run test` passes.
+
 ### A doctor check surfaces plans held by a Needs-review or Needs-replan note: `checkStalledPlans` joins the backlog checks (planned 2026-10-14 by plan; independent — touches `src/doctor/doctor-backlog.ts` plus its one-line registration in `src/doctor/doctor.ts` and tests in `test/doctor-backlog.test.ts`, and only as a read-only doctor warn: it does not change how landings, eligibility, or any listing behave, and touches no code or file the waiting backlog-age / questions-age / comment-width / provider-hold plans do — done 2026-10-14)
 
 **Goal.** When a feature run finds a plan too large for one run it appends **Needs review <YYYY-MM-DD> by feature: too large for one run**, and when its landing is rejected it appends **Needs replan <date> by feature: rejected after <N> review rounds**; both outrank new plans for the plan role, and the fleet's claim gate refuses them (`scheduling/claims.ts` rejects a plan whose `backlogHolds(root).plans` entry is `needs-review` or `needs-replan`). Yet no doctor check names them: `checkRefusedEntries` (`src/doctor/doctor-backlog.ts`) surfaces `**Refused …**` notes but stops there, so a stalled plan is only glance-visible as the `[needs review]`/`[needs replan]` mark in `tumwater backlog`, and the operator gets no single-line health signal — and no doctor warn from `tumwater doctor` — that a plan is parked awaiting split or replan. `entryHold` in `src/backlog/backlog-eligibility.ts` already classifies a held entry: a body line starting `NEEDS_REVIEW_PREFIX` (resp. `NEEDS_REPLAN_PREFIX`, both in `src/roles/role-guidance.ts`) yields `"needs-review"` / `"needs-replan"`, so the new check needs no fresh parsing.
@@ -58,6 +61,8 @@ _None yet._
 - New tests in `test/doctor-backlog.test.ts`: a temp PLANS.md whose `## Planned` holds an entry with a `**Needs review 2026-10-14 by feature: too large for one run**` line in its body warns naming that plan; a `**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**` line warns the same; both kinds present warn once naming the first and the rest via `andMore`; no such note (including notes only under `## Done`, or only `**Refused …**` notes, or a heading with no body) reads ok; an absent PLANS.md reads ok with the check's own "nothing to verify" detail rather than throwing — each mirroring the `checkRefusedEntries` counterpart.
 - The warn carries the plan heading and its note text, and the outcome is a warn (doctor stays exit 0), matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `entryHold`, `holdMark`, `backlogHolds`, or any eligibility or listing surface; `npm run test` passes.
+
+
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
 
 
