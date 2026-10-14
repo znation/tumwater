@@ -121,6 +121,14 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines.
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
+  // The landed-commits split by base role, matching the day render's unfiltered line: the
+  // window's totals.commits carries the count; this line says which role's commits it was.
+  lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
+  // Subscription spend is notional: its own line, only when the window has any — the same
+  // conditional/filtered `usd` form the day render's "Notional by role" uses.
+  if (data.notionalByRole !== undefined) {
+    lines.push(rankedRoleLine("Notional by role", rankedRoleMap(data.notionalByRole).filter(([, c]) => c > 0), usd));
+  }
   lines.push("");
   // Exactly one final line, chosen by the collector's coverage proof: either a hedged note
   // that stays true whenever it prints (the oldest retained event lies inside the window —

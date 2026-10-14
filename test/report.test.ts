@@ -250,6 +250,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByRole: {},
     rejectionsByRole: {},
     tokensByRole: {},
+    commitsByRole: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -271,6 +272,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
+    commitsByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -291,6 +293,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     costByRole: {},
     rejectionsByRole: {},
     tokensByRole: {},
+    commitsByRole: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
@@ -303,9 +306,47 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     tokensByRole: { feature: 900 },
+    commitsByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
+});
+
+test("renderSinceReportMarkdown prints Commits by role and Notional by role matching the day render", () => {
+  const data = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 1500, ticks: 5, commits: 4, costUsd: 0.75, notionalCostUsd: 0.9, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    ticksByRole: { feature: 5 },
+    costByRole: { feature: 0.75 },
+    rejectionsByRole: {},
+    tokensByRole: { feature: 1500 },
+    // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
+    // day render applies to its Commits/Notional by role lines — window and day speak one shape.
+    commitsByRole: { feature: 3, clean: 1 },
+    notionalByRole: { feature: 0.4, plan: 0.5 },
+    coversFullWindow: true,
+  });
+  assert.match(data, /\*\*Commits by role:\*\* feature — 3 · clean — 1/);
+  assert.match(data, /\*\*Notional by role:\*\* plan — \$0\.50 · feature — \$0\.40/);
+});
+
+test("renderSinceReportMarkdown renders an empty window's Commits by role and omits Notional by role", () => {
+  const zero = renderSinceReportMarkdown({
+    sinceMs: HOUR,
+    fromIso: new Date(ago(HOUR)).toISOString(),
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    ticksByRole: {},
+    costByRole: {},
+    rejectionsByRole: {},
+    tokensByRole: {},
+    commitsByRole: {},
+    coversFullWindow: true,
+  });
+  // The now-required commitsByRole renders "-" when empty; a window with no notional spend
+  // carries no Notional by role line at all — the same conditional omission the day render uses.
+  assert.match(zero, /\*\*Commits by role:\*\* -/);
+  assert.ok(!zero.includes("**Notional by role:"), "no notional spend omits the line entirely");
 });
 
 test("tumwater report --since prints the window totals and validates its flags", async () => {
@@ -350,6 +391,27 @@ test("tumwater report --since prints the window totals and validates its flags",
   const help = await runCli(root, "help", "report");
   assert.equal(help.code, 0);
   assert.match(help.out, /report --since <duration>/);
+});
+
+test("tumwater report --since prints Commits/Notional by role and --json carries them", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "plan", type: "tick_end", tick: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
+  ]);
+
+  const md = await runCli(root, "report", "--since", "6h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Commits by role:\*\* clean — 1 · feature — 1/);
+  assert.match(md.out, /\*\*Notional by role:\*\* plan — \$0\.50/);
+
+  const json = await runCli(root, "report", "--json", "--since", "6h");
+  assert.equal(json.code, 0);
+  const parsed = JSON.parse(json.out);
+  assert.deepEqual(parsed.commitsByRole, { feature: 1, clean: 1 }, "the since JSON carries commitsByRole");
+  assert.deepEqual(parsed.notionalByRole, { plan: 0.5 }, "the since JSON carries notionalByRole when nonzero");
+  assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
 });
 
 // --- report through the real CLI entry point: main()'s wiring that the in-process pins
@@ -418,6 +480,29 @@ test("report --json --days prints the collector's payload; the Markdown render i
   assert.match(help.out, /--json/);
 });
 
+test("report --since --role omits Notional by role when the scoped role spent none", async () => {
+  const root = makeRepo();
+  // The fleet window has notional spend (plan's tick), but feature spends none — scoping to
+  // feature must drop the line/field, not render an empty "Notional by role: -".
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "tick_end", tick: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
+  ]);
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Commits by role:\*\* feature — 1/);
+  assert.ok(!scoped.out.includes("**Notional by role:"), "a scoped role with no notional omits the line");
+
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.commitsByRole, { feature: 1 });
+  assert.ok(!("notionalByRole" in scopedJson), "the scoped role's JSON carries no notionalByRole");
+
+  const fleet = await runCli(root, "report", "--since", "6h");
+  assert.equal(fleet.code, 0);
+  assert.match(fleet.out, /\*\*Notional by role:\*\* plan — \$0\.50/, "the fleet window still shows the notional spend");
+});
+
 test("report --json --since prints the window totals with the coverage proof", async () => {
   const root = makeRepo();
   writeEvents(root, [
@@ -439,6 +524,8 @@ test("report --json --since prints the window totals with the coverage proof", a
   assert.equal(parsed.totals.ticks, 1);
   assert.equal(parsed.totals.tokensOut, 777);
   assert.deepEqual(parsed.ticksByRole, { feature: 1 });
+  assert.deepEqual(parsed.commitsByRole, {}, "the since payload carries commitsByRole always");
+  assert.ok(!("notionalByRole" in parsed), "notionalByRole is absent when the window has none");
   assert.equal(parsed.coversFullWindow, true, "the log reaches back before the cutoff");
   assert.ok(!("series" in parsed), "the since shape carries totals, not a day series");
 });

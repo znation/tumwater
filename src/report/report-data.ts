@@ -400,6 +400,14 @@ export interface SinceReport {
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
+  /** Landed commits per base role, so the --since render can print the day report's
+   * `Commits by role` line; always present (the collector's accumulator is pre-filled by
+   * zeroCommitCounts, so a commit-free window carries an empty map — the `-` render). */
+  commitsByRole: Record<string, number>;
+  /** Subscription spend per loop id, never in costByRole; absent when the window has none —
+   * the same conditional the day collector applies to ReportDay.notionalByRole, so a
+   * --since JSON carries it only when nonzero. */
+  notionalByRole?: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -478,6 +486,11 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
             ...zeroLandingCounts(),
           };
         })();
+  // The --since render/JSON's Notional by role line is conditional on the window's own
+  // notional spend, scoped to base when a role is given — the same conditional the day
+  // collector applies to ReportDay.notionalByRole (line ~573), so a role-scoped window
+  // whose role spent no notional carries no notionalByRole instead of an empty map.
+  const notionalByRole = base === undefined ? acc.notionalByRole : narrowToRole(acc.notionalByRole, base);
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
@@ -487,6 +500,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
     rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
     tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
+    commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
+    ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
     coversFullWindow,
   };
 }
