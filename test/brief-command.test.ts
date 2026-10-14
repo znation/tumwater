@@ -46,6 +46,20 @@ test("brief --file --json names the successful edit with changed and committed",
   assert.deepEqual(JSON.parse(again.stdout), { file: "README.md", changed: false, committed: false });
 });
 
+test("brief --file on a head off the base branch reports the edit without claiming a commit", async () => {
+  const repo = await initializedRepo();
+  // On a detached HEAD the primary is not the base branch, so editInitialPrompt writes the
+  // new prompt but commitOperatorBacklogEdit declines (never touching git) — the human-facing
+  // message must not claim "(committed to main)".
+  sh(repo, "git", "checkout", "--detach");
+  const r = await cli(repo, "brief", "--file", promptFile("Off main prompt.\n"));
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /initial prompt updated in README\.md/);
+  assert.doesNotMatch(r.stdout, /committed to main/);
+  // The write landed even though nothing was committed.
+  assert.match((await cli(repo, "brief")).stdout, /Off main prompt\./);
+});
+
 test("brief --file refuses empty, over-long, and marker-bearing text without touching the brief", async () => {
   const repo = await initializedRepo();
   const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
