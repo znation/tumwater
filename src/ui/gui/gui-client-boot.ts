@@ -85,6 +85,12 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   // run-act:start
+  // The backlog drawer rows resolve a list entry's title from the last polled status by its
+  // backlog file and 0-based position (entry-cancel, entry-edit, and the mention action). The
+  // call sites keep their arg's "file:index" split because that shape is theirs alone.
+  function entryTitleAt(file, index) {
+    return ((lastStatus && lastStatus[file]) || [])[Number(index)];
+  }
   function runAct(act, arg) {
     if (act === "loop") openLoop(arg);
     else if (act === "close") closeDrawer();
@@ -121,7 +127,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       });
     } else if (act === "entry-cancel") {
       const [file, index] = arg.split(":");
-      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
+      const title = entryTitleAt(file, index);
       if (title === undefined) return;
       if (!entryCancelArmed(arg, title)) { armEntryCancel(arg, title); return; }
       disarmEntryCancel();
@@ -133,7 +139,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       });
     } else if (act === "entry-edit") {
       const [file, index] = arg.split(":");
-      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
+      const title = entryTitleAt(file, index);
       if (title !== undefined) startEntryEdit(arg, title);
     } else if (act === "entry-edit-discard") {
       stopEntryEdit();
@@ -176,7 +182,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
-      const title = ((lastStatus && lastStatus[file]) || [])[Number(index)];
+      const title = entryTitleAt(file, index);
       if (title !== undefined) draftForDirector("About “" + splitTitle(title).title + "”: ");
     }
   }
