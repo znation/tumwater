@@ -900,3 +900,21 @@ test("gate rejects an md-only PRINCIPLES.md edit except from the steward", async
     assert.equal(steward.result.decision, "exempt");
   });
 });
+
+test("gate rejects an md-only change that writes a secret env value, with no pi run", async () => {
+  const value = "tw-secret-value-0123456789";
+  const { root, wt } = await protectedEditRepo({ "NOTES.md": "# N\n" }, { "NOTES.md": `# N\n${value}\n` });
+  const marker = piRanMarker();
+  process.env.TUMWATER_TEST_FAKE_TOKEN = value;
+  try {
+    await withPi(`touch '${marker}'`, async () => {
+      const { result } = await reviewGate(root, wt);
+      assert.equal(result.decision, "rejected");
+      assert.match(result.detail!, /`NOTES\.md` contains the value of \$TUMWATER_TEST_FAKE_TOKEN/);
+      assert.ok(!result.detail!.includes(value));
+      assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
+    });
+  } finally {
+    delete process.env.TUMWATER_TEST_FAKE_TOKEN;
+  }
+});

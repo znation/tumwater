@@ -24,6 +24,7 @@ import { conflictMarkerReason } from "../landing/landing-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { protectedEditReason } from "../review/protected-edits.js";
+import { secretLeakReason } from "../review/secret-leaks.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { changeBaseRev } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
@@ -73,6 +74,8 @@ export async function stageCheckFindings(
   if (structure) findings.push(structure);
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role).catch(() => undefined);
   if (protectedReason) findings.push(protectedReason);
+  const secretReason = await secretLeakReason(wt, mainBranch, files).catch(() => undefined);
+  if (secretReason) findings.push(secretReason);
   if (isExemptDiff(files, exemptPaths)) {
     const falseFix = await falseFixReason(wt, mainBranch, files).catch(() => undefined);
     if (falseFix) findings.push(falseFix);

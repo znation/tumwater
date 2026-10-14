@@ -348,3 +348,17 @@ test("an uncommitted PRINCIPLES.md edit is a finding for a non-steward role only
   assert.match(findings[0]!, /PRINCIPLES\.md is edited by the feature loop/);
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "steward"), []);
 });
+
+test("an uncommitted file holding a secret env value is a finding", async () => {
+  const { wt } = await repoWith({ "README.md": "# T\n" });
+  fs.writeFileSync(path.join(wt, "report.json"), "{}");
+  process.env.TUMWATER_TEST_FAKE_TOKEN = "tw-secret-value-0123456789";
+  try {
+    fs.writeFileSync(path.join(wt, "report.json"), `{"env":"${process.env.TUMWATER_TEST_FAKE_TOKEN}"}\n`);
+    const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+    assert.equal(findings.length, 1, findings.join("\n"));
+    assert.match(findings[0]!, /`report\.json` contains the value of \$TUMWATER_TEST_FAKE_TOKEN/);
+  } finally {
+    delete process.env.TUMWATER_TEST_FAKE_TOKEN;
+  }
+});

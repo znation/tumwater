@@ -23,6 +23,7 @@ import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
 import { conflictMarkerReason } from "../landing/landing-git.js";
 import { protectedEditReason } from "./protected-edits.js";
+import { secretLeakReason } from "./secret-leaks.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
 import { setLandingStage } from "../landing/landing-slot.js";
@@ -220,6 +221,9 @@ export async function reviewAheadOfMain(
   // an edit to either unreviewed; reject it here, for md-only and code diffs alike.
   const protectedReason = await protectedEditReason(wt, mainBranch, files, role);
   if (protectedReason !== undefined) return reject([protectedReason]);
+  // A leaked credential is just as invisible to the exempt fast path: reject it here too.
+  const secretReason = await secretLeakReason(wt, mainBranch, files);
+  if (secretReason !== undefined) return reject([secretReason]);
   if (isExemptDiff(files, config.review.exemptPaths)) {
     // The exemption is a fast path, not a blind eye: an md-only diff that moves a bug to
     // Fixed must have its fix's symbols on this tree, or it records code that does not
