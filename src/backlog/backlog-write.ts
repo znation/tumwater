@@ -26,6 +26,15 @@ import { primaryWorktreeLockPath } from "../paths.js";
  * stamps with the date it filed on. */
 const operatorStamp = () => `reported by the operator ${formatDate(new Date())}`;
 
+/** The kind's open-section markdown file and its `## ` heading: bugs live in BUGS.md's `Open`
+ * section, plan requests in PLANS.md's `Planned`. Every position-based writer (cancel, edit,
+ * release, show) resolves the same pair. */
+function backlogTarget(kind: "bug" | "plan"): { fileName: string; sectionTitle: string } {
+  return kind === "bug"
+    ? { fileName: "BUGS.md", sectionTitle: "Open" }
+    : { fileName: "PLANS.md", sectionTitle: "Planned" };
+}
+
 /** The section-append entry point: run the whole read-modify-write under the cross-process
  * primary-worktree lock (paths.ts), which a landing's working-tree fast-forward (`ffMainTo`)
  * takes too, so a filed entry and a landed change to the same backlog file cannot each clobber
@@ -218,8 +227,7 @@ export function tryCancelEntry(
   n: number,
   expectedTitle: string,
 ): CancelEntryOutcome {
-  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
-  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const { fileName, sectionTitle } = backlogTarget(kind);
   return withStateLock(primaryWorktreeLockPath(root), () => {
     const file = path.join(root, fileName);
     const md = readTextIfExists(file) ?? "";
@@ -327,8 +335,7 @@ export function tryEditEntry(
   rawTitle: string,
   rawBody: string,
 ): EditEntryOutcome {
-  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
-  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const { fileName, sectionTitle } = backlogTarget(kind);
   const title = stripEntryStamp(collapseWhitespace(rawTitle));
   const body = rawBody.replace(/\r\n?/g, "\n").trim();
   return withStateLock(primaryWorktreeLockPath(root), () => {
@@ -538,8 +545,7 @@ export function editPlan(
  * An out-of-range position fails with locateEntry's wording; an entry without a Refused note
  * fails too, writing nothing. */
 export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
-  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
-  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const { fileName, sectionTitle } = backlogTarget(kind);
   return withStateLock(primaryWorktreeLockPath(root), () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
     const slice = lines.slice(entry.start - 1, entry.end);
@@ -559,8 +565,7 @@ export function showEntry(
   kind: "bug" | "plan",
   n: number,
 ): { position: number; title: string; body: string; hold: EntryHold } {
-  const fileName = kind === "bug" ? "BUGS.md" : "PLANS.md";
-  const sectionTitle = kind === "bug" ? "Open" : "Planned";
+  const { fileName, sectionTitle } = backlogTarget(kind);
   const { lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
   const meta = headingMetadata(lines, entry.start - 1);
   const title = collapseWhitespace(stripEntryStamp(meta.text.replace(/^### /, "")));
