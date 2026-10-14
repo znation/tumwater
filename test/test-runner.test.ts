@@ -306,6 +306,7 @@ test("suiteEnv drops every variable the harness resolves, so a fleet-started sui
   assert.equal(env.HOME, "/home/operator");
   assert.equal(env.PATH, "/no/such/dir");
   assert.equal(env.GIT_TEMPLATE_DIR, path.join(scratch, "git-templates"));
+  assert.equal(env.PI_CODING_AGENT_DIR, path.join(scratch, "pi-agent"));
   assert.equal(env.GIT_CONFIG_KEY_0, "maintenance.auto");
   // main() hands in process.env itself, so the result is a copy.
   assert.equal(base.TUMWATER_PI_BIN, "/opt/pi-wrapper/pi");

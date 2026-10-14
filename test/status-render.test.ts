@@ -577,6 +577,17 @@ test("the loop name cell appends a lone selector when no tier map is declared", 
   assert.doesNotMatch(text, /plan \(/);
 });
 
+test("the loop name cell names pi's own default and marks it", () => {
+  const snap = snapshotWith([
+    { role: "feature", model: "prov/org/m:route:low", modelFromPi: true } as never,
+    { role: "clean" },
+  ]);
+  const text = renderStatus(tmpdir(), snap);
+  assert.match(text, /feature \(prov\/org\/m:route:low, pi default\)/);
+  // A model not marked pi default keeps today's selector-only bytes — the clean row has no marker.
+  assert.doesNotMatch(rowOf(text, "clean"), /pi default\)/);
+});
+
 // The pooled worktree slot no longer rides the status state cell (PLANS.md "Stop showing leased
 // worktree slots in the TUI and GUI"): the payload keeps slot/slotPinned, but the dashboards
 // stop rendering them.

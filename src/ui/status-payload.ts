@@ -58,6 +58,10 @@ export function statusPayload(root: string, now = Date.now()): object {
       // the loop name and the selector in the sub line.
       ...(s.modelTier ? { modelTier: s.modelTier } : {}),
       ...(s.model ? { model: s.model } : {}),
+      // pi's own saved default (see StatusSnapshot.loops.modelFromPi): ships beside `model` so
+      // the dashboard can mark a row whose model tumwater.json did not name. Same conditional
+      // spread as `model`, present on exactly the rows that carry the flag.
+      ...(s.modelFromPi ? { modelFromPi: true } : {}),
       // Model failure fallback (PLANS.md "Model failure fallback, part 2/2"): present only
       // while the loop's ticks run off-model, so the common row shape is unchanged.
       ...(s.fallback ? { fallback: s.fallback } : {}),

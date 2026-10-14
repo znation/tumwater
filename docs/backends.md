@@ -25,6 +25,11 @@ out and pi's own default applies:
 "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
 ```
 
+The loop rows then name that default — read from pi's `settings.json` beside its models catalog —
+marked `pi default`, so `tumwater status`, the TUI and the dashboard still show which model each
+loop runs. That marking only appears when `tumwater.json` resolves no model at all, so the two
+never disagree about where a model name came from.
+
 `fallback` names the free model role loops switch to when the primary cannot carry the work:
 once `maxDailyCostUsd` is spent (the budget gate), and while a role's tier primary keeps
 failing with provider-class errors (model failure fallback, described in

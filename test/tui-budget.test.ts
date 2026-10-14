@@ -85,7 +85,11 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
   cfg.provider = "lm-studio";
   cfg.model = "qwen3.8-27b";
   saveConfig(repo, cfg);
+  // snapshot() resolves pi's model catalog through $PI_CODING_AGENT_DIR (src/pi/pi-models.ts) —
+  // the suite's suiteEnv now points that at an empty scratch dir, so this test must aim it at
+  // its own temp agent dir rather than relying on HOME alone.
   const restoreHome = setEnv("HOME", home); // must be set before the first render so Ctrl+B reads the free flag
+  const restorePiDir = setEnv("PI_CODING_AGENT_DIR", path.join(home, ".pi", "agent"));
   try {
     await withTui(repo, async (tui) => {
       // A draft prompt — the notice must leave it byte-for-byte intact.
@@ -97,6 +101,7 @@ test("Ctrl+B flashes a notice instead of opening the editor on an all-free fleet
     });
   } finally {
     restoreHome();
+    restorePiDir();
   }
 });
 

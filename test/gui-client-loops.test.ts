@@ -176,6 +176,18 @@ test("a loop row renders its model tier tag and selector when the payload carrie
   assert.doesNotMatch(tierOnly, /model-s/);
 });
 
+// The pi-default marker (docs/backends.md): a row whose model is pi's own saved default (not
+// named in tumwater.json) labels it, so a row without the flag renders byte-identical to today.
+test("a loop row marks a model pi's own saved default", () => {
+  const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
+  const marked = cells({ role: "feature", phase: "sleeping", ticks: 2, commits: 1, model: "prov/org/m:route:low", modelFromPi: true });
+  assert.match(marked, /prov\/org\/m:route:low/);
+  assert.match(marked, /\(pi default\)/);
+  assert.match(marked, /from its settings\.json/);
+  // Without the flag the same selector renders unchanged.
+  assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", ticks: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
+});
+
 // Model failure fallback, part 2/2: a loop row carries a fallback tag only while the
 // payload's active-episode field is present.
 test("a loop row tags an active model-fallback episode", () => {

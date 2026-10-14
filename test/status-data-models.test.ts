@@ -5,6 +5,8 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { snapshot } from "../src/status/status-data.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
@@ -142,4 +144,78 @@ test("snapshot carries the claude subscription window and classifies paying seam
   const mixed = statusPayload(repo) as { budgetBadge: string };
   assert.match(mixed.budgetBadge, /budget: /, "the daily-spend line stands");
   assert.match(mixed.budgetBadge, /Claude 5h/, "beside the window line");
+});
+
+// The pi-default facet of the loop row (docs/backends.md): when tumwater.json resolves no
+// model and the seam routes to pi, the row names pi's own saved default from its settings.json
+// (read beside the models catalog) and marks it modelFromPi.
+test("snapshot rows name pi's own saved default when the config resolves no model", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "pi default rows");
+  const dir = tmpdir("status-pi-default-");
+  writeModelsFile(dir, MODELS_JSON);
+  fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ defaultProvider: "prov", defaultModel: "org/m:route", defaultThinkingLevel: "low" }));
+  const modelsPath = path.join(dir, "models.json");
+
+  writeConfig(repo, {});
+  const snap = snapshot(repo, modelsPath);
+  const row = snap.loops.find((l) => l.role === "feature")!;
+  assert.equal(row.model, "prov/org/m:route:low");
+  assert.equal(row.modelFromPi, true);
+  // No model anywhere in the config, so every row names the pi default.
+  assert.ok(snap.loops.every((l) => l.modelFromPi === true));
+
+  // The config's thinking wins over the default's (tumwater passes it as --thinking).
+  writeConfig(repo, { thinking: "high" });
+  const high = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  assert.equal(high.model, "prov/org/m:route:high");
+  assert.equal(high.modelFromPi, true);
+});
+
+test("modelFromPi stays absent when a model, agent or provider resolves", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "pi no-default rows");
+  const dir = tmpdir("status-pi-no-");
+  writeModelsFile(dir, MODELS_JSON);
+  fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ defaultProvider: "prov", defaultModel: "org/m:route" }));
+  const modelsPath = path.join(dir, "models.json");
+
+  // A configured model: the row keeps the configured selector.
+  writeConfig(repo, { model: "prov-a/model-a" });
+  const configured = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  assert.equal(configured.model, "prov-a/model-a");
+  assert.equal(configured.modelFromPi, undefined);
+
+  // agent claude: the row keeps the claude/… tier default.
+  writeConfig(repo, { agent: "claude" });
+  const claude = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  assert.equal(claude.modelFromPi, undefined);
+  assert.match(claude.model ?? "", /^claude\//);
+
+  // Config names only a provider: no model resolves, so the row has none and no flag.
+  writeConfig(repo, { provider: "huggingface" });
+  const provOnly = snapshot(repo, modelsPath).loops.find((l) => l.role === "feature")!;
+  assert.equal(provOnly.modelFromPi, undefined);
+  assert.equal(provOnly.model, undefined);
+});
+
+test("statusPayload ships modelFromPi beside the model it names", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "pi default payload");
+  const dir = tmpdir("status-pi-payload-");
+  writeModelsFile(dir, MODELS_JSON);
+  fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ defaultProvider: "prov", defaultModel: "org/m:route", defaultThinkingLevel: "low" }));
+  writeConfig(repo, {});
+  const savedDir = process.env.PI_CODING_AGENT_DIR;
+  try {
+    // statusPayload reads the default models/settings path, so point it at the temp dir.
+    process.env.PI_CODING_AGENT_DIR = dir;
+    const payload = statusPayload(repo) as { loops: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
+    const row = payload.loops.find((l) => l.role === "feature")!;
+    assert.equal(row.model, "prov/org/m:route:low");
+    assert.equal(row.modelFromPi, true);
+  } finally {
+    if (savedDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = savedDir;
+  }
 });

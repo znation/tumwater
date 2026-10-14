@@ -21,6 +21,8 @@ import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import { isJsonObject } from "../files/json-object.js";
 import { fallbackModelFree, fleetModelsFree, piModelsPath, piPairFree, readPiProviders } from "../pi/pi-models.js";
+import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
+import { formatModelSelector } from "../config/model-selector.js";
 import { configForStatus, queueInFlight, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { queuedRolePromptEntries } from "../inbox/inbox.js";
 import { deliverableAt } from "../inbox/prompt-not-before.js";
@@ -84,6 +86,13 @@ export interface StatusSnapshot {
      * string model, where every role rides the same pair. Fresh per poll, like `custom`. */
     modelTier?: ModelTier;
     model?: string;
+    /** True when this row's `model` names pi's own saved default (read from pi's settings.json
+     * beside the models catalog — see src/pi/pi-settings.ts), not a model `tumwater.json`
+     * resolved: `tumwater.json` names no model and the seam routes to pi, so the row shows
+     * the model pi actually starts on. `model` is set in exactly this case; every other row
+     * carries a config-resolved selector and no `modelFromPi`. A tier-map row never carries
+     * either the flag or its default, since a tier map always resolves a model. */
+    modelFromPi?: true;
     /** While a model-fallback episode is active (PLANS.md "Model failure fallback"): the
      * tier-resolved fallback pair this loop's ticks run on, when the episode began, and the
      * provider-class failure that tripped it. Absent while the episode is not running the
@@ -383,6 +392,10 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
   // tick or vet) or is pinned to.
   const slots = readSlotsState(root).slots;
+  // One read of pi's own saved default per poll (docs/backends.md): the model pi starts on
+  // for a row whose seam runs pi and resolves no model — its settings.json sits beside the
+  // models catalog this snapshot already reads (piSettingsPath), so one seam serves both.
+  const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
   const loops = roles.map((r) => {
     const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
     const leased = slots.find((slot) => slot.lease?.role === r);
@@ -399,9 +412,28 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
     // every row agrees on what "active" means.
     const episode = modelFallbackView(base.modelFallback, cfg, r, now);
+    // A seam that runs pi and resolves neither a provider nor a model starts on pi's own
+    // saved default — name it in the row (modelFromPi) so the operator sees which model the
+    // loop runs. The config's `thinking` wins over the default's because tumwater passes it
+    // to pi as `--thinking` (src/pi/pi-args.ts). Any other row is unchanged and carries no
+    // `modelFromPi`.
+    const runsPiWithoutAModel =
+      (eff.agent === undefined || eff.agent === "pi") &&
+      eff.provider === undefined &&
+      eff.model === undefined;
+    const modelFromPi = runsPiWithoutAModel && piDefault !== null;
     return {
       ...base,
       ...modelSelectorField(eff),
+      ...(modelFromPi
+        ? {
+            model: formatModelSelector({
+              ...piDefault!,
+              thinking: eff.thinking ?? piDefault!.thinking,
+            }),
+            modelFromPi: true as const,
+          }
+        : {}),
       ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
       ...(episode !== null ? { fallback: episode } : {}),
       ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),

@@ -278,7 +278,7 @@ export function renderStatusSpans(
     const modelSuffix = s.modelTier
       ? ` (${s.modelTier}${s.model ? ` · ${s.model}` : ""})`
       : s.model
-        ? ` (${s.model})`
+        ? ` (${s.model}${s.modelFromPi ? ", pi default" : ""})`
         : "";
     // Model failure fallback, part 2/2: while the loop runs off-model its name cell says so,
     // so the operator can see which loops the fallback pair is carrying without reading logs.
