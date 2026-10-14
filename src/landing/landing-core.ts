@@ -10,7 +10,8 @@ import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
 import type { GateRunsPi, PiRunWiring } from "../loop/loop-pi.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
-import { REVISION_LIMIT } from "../loop/revision.js";
+import { REVISION_FINAL_ON_REPEAT, REVISION_BACKSTOP } from "../loop/revision.js";
+import { priorObjectionNumber } from "../review/review-verdict.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { shortSha } from "../text/format.js";
 import { setLandingStage } from "./landing-slot.js";
@@ -49,8 +50,8 @@ export interface LandRequest {
   body?: string;
   highFriction?: boolean;
   /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
-   * carried from the LandingEntry so a rejection at round N records round N+1, and a round past
-   * REVISION_LIMIT exhausts the revision instead of continuing. */
+   * carried from the LandingEntry so a rejection at round N records round N+1, and a rejection
+   * that is final stops the revision there instead of continuing (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this landing is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2): carried from the LandingEntry so the re-review sees the
@@ -203,10 +204,11 @@ export async function reviewPinnedChange(
   setLandingStage(root, role, "merging");
   // A rejection keeps the rejected commit alive while a revision is due (plans/revise-rejected.md):
   // point the rejected ref at the head the gate judged and record the round, so the author's next
-  // tick re-applies it. Past REVISION_LIMIT the rejection is final: clear the state, delete the
-  // ref, and log `exhausted`. Done before the save below so the round rides the persisted state.
+  // tick re-applies it. A rejection is final — clear the state, delete the ref, and log
+  // `exhausted` — when the same objection has survived two revisions or the chain hit the
+  // backstop (BUGS.md 2026-10-14). Done before the save below so the round rides the persisted state.
   if (gate.decision === "rejected") {
-    await recordRejectedChange(root, role, state, state.lastReview?.head ?? req.sha, req.revisionRound);
+    await recordRejectedChange(root, role, state, state.lastReview?.head ?? req.sha, req.revisionRound, req.priorReview?.counts);
   }
   // Persist the verdict immediately, not at the tick's end save: the gate's bookkeeping is
   // cross-tick memory (a persisted "reject" injects a "your previous change was rejected"
@@ -301,33 +303,52 @@ export const RETRIABLE_LANDING_RESULTS: ReadonlySet<TickResult> = new Set([
   "merge_blocked",
 ]);
 
-/** Record a gate rejection for the revise-rejected feature (plans/revise-rejected.md): while
- * the round is within REVISION_LIMIT, point `refs/tumwater/rejected/<role>` at the head the gate
- * judged and set LoopState.revision so the author's next tick re-applies it; past the limit,
- * clear the revision, delete the ref and log `exhausted`. Shared by a pinned change's rejection
- * (reviewPinnedChange) and the in-lock re-review rejection of a resolved conflict
- * (landApprovedChange), so both send the change back for revision the same way. A rejection
- * with no `revisionRound` is a fresh change's first round (1). The director never revises. */
+/** Record a gate rejection for the revise-rejected feature (plans/revise-rejected.md; the
+ * repeat-finality policy in BUGS.md 2026-10-14): a rejection sends the change back for another
+ * round UNLESS the same objection has survived two revisions — a `(prior N)` restatement whose
+ * count reaches REVISION_FINAL_ON_REPEAT, counted from `priorCounts` — or the chain has reached
+ * the REVISION_BACKSTOP cap, when it ends even if the objections never repeat. While it keeps
+ * revising, point `refs/tumwater/rejected/<role>` at the head the gate judged and set
+ * LoopState.revision (with each reason's persistence count) so the author's next tick re-applies
+ * it; when final, clear the revision, delete the ref and log `exhausted`. `priorCounts` is the
+ * previous round's per-reason persistence counts, carried from the queued landing's PriorReview;
+ * absent for a fresh change's first rejection and on a recovery landing, a `(prior N)` tag then
+ * reads as a fresh objection. Shared by a pinned change's rejection (reviewPinnedChange) and the
+ * in-lock re-review rejection of a resolved conflict (landApprovedChange), so both send the
+ * change back for revision the same way. A rejection with no `revisionRound` is a fresh change's
+ * first round (1). The director never revises. */
 async function recordRejectedChange(
   root: string,
   role: string,
   state: LoopState,
   rejectedHead: string,
   revisionRound?: number,
+  priorCounts?: number[],
 ): Promise<void> {
   if (role === DIRECTOR_ROLE) return;
   const nextRound = (revisionRound ?? 0) + 1;
-  if (nextRound <= REVISION_LIMIT) {
-    await setRef(root, rejectedRefName(role), rejectedHead);
-    state.revision = { sha: rejectedHead, round: nextRound, at: Date.now() };
+  const reasons = state.lastReview?.reasons ?? [];
+  // Each reason's persistence count: a new (untagged) objection starts at 0; a `(prior N)`
+  // restatement has survived one more revision than that objection's own count from the prior
+  // round, so an objection standing across two revisions reaches REVISION_FINAL_ON_REPEAT. An
+  // out-of-range or missing tag (a stale prior list, no prior round) reads as a fresh objection.
+  const prior = priorCounts ?? [];
+  const counts = reasons.map((r) => {
+    const n = priorObjectionNumber(r);
+    return n === null ? 0 : 1 + (prior[n - 1] ?? 0);
+  });
+  const repeatedFinal = counts.some((c) => c >= REVISION_FINAL_ON_REPEAT);
+  if (nextRound >= REVISION_BACKSTOP || repeatedFinal) {
+    state.revision = undefined;
+    await deleteRef(root, rejectedRefName(role));
+    // The next tick gets the plain rejected note, not a revision note; mark it final so that
+    // note says the rejected diff is gone rather than inviting another revision.
+    if (state.lastReview) state.lastReview.exhausted = true;
+    logEventBestEffort(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
     return;
   }
-  state.revision = undefined;
-  await deleteRef(root, rejectedRefName(role));
-  // The next tick gets the plain rejected note, not a revision note; mark it final so that
-  // note says the rejected diff is gone rather than inviting another revision.
-  if (state.lastReview) state.lastReview.exhausted = true;
-  logEventBestEffort(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
+  await setRef(root, rejectedRefName(role), rejectedHead);
+  state.revision = { sha: rejectedHead, round: nextRound, at: Date.now(), reasonCounts: counts };
 }
 
 /** Land a head that already passed its OWN gate in its vet — the merge slot's one-change landing
@@ -409,6 +430,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
             ctx.state,
             ctx.state.lastReview?.head ?? req.sha,
             req.revisionRound,
+            req.priorReview?.counts,
           );
           saveLoopState(ctx.root, ctx.state);
           await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin

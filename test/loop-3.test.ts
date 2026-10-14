@@ -57,7 +57,7 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     assert.ok(!runs[0]?.includes("already in the worktree as uncommitted edits"), "tick 1 had no revision yet");
     const second = runs[1] ?? "";
     assert.match(second, /is already in the worktree as uncommitted edits/);
-    assert.match(second, /revision 1 of 2/);
+    assert.match(second, /revision 1\b/);
     assert.match(second, /1\. breaks the zero-dep rule/);
     assert.match(second, /2\. no regression test/);
     assert.ok(!runs[1]?.includes("was rejected in review"), "the plain rejected note is replaced by the revision note");

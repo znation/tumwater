@@ -13,26 +13,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
   2. Word the rejection case by what happened (for example "3 changes rejected in a row") instead of "the same error keeps coming back", including the loop-row pill label.
 
 
-### A rejected change's revision chain ends at its third rejection even when every round raises a new objection, so changes that are converging get abandoned (found by operator session 2026-10-14; policy decided by the user the same day)
-
-- **Symptom:** `REVISION_LIMIT` (2, src/loop/revision.ts) makes the third rejection final whatever the objections were. Both chains exhausted on 2026-10-14 were converging, with each round fixing the last objection and the reviewer finding a new one:
-  - **bugfix-2's Claude-badge change** was rejected first for `resets in now` under a minute (00:52:36 PDT), then because the GUI mirror `windowResetsIn` still read `resets now` (00:56:39), then for a stale spec row in `plans/agent-backends.md` (01:08:11).
-  - **feature-2's comment-width change** was rejected first for a rewrapped template-literal fixture (00:44:59), then for over-100-column comments that main added while it waited (01:04:22), then for a VERIFIED claim about a test that really had flaked (01:09:57, the scheduled-wake entry above).
-
-  Both were abandoned. bugfix-2 released its bug, feature-2's plan went back for a replan, and the work will be re-authored from scratch at full price.
-- **Policy (user's direction):** try hard to avoid a final rejection. While the objections keep changing, the chain keeps revising. It ends only when the same objection stays unresolved several rounds in a row.
-- **Fix sketch:**
-  1. Make "the same objection" observable. In `buildReviewPrompt`'s revision section (src/prompt/gate-prompts.ts), the reviewer starts each numbered reason that restates a prior objection with `(prior N)`, where N is that objection's number in the prior list, and leaves new objections untagged. Parse the tag beside the reasons in src/review/review-verdict.ts.
-  2. Track persistence on the chain. Next to `LoopState.revision` (src/loop/loop-state.ts), keep one count per recorded reason: the number of consecutive revisions the objection has survived. An untagged reason starts at 0, and a `(prior N)` reason is 1 plus prior reason N's count.
-  3. In `recordRejectedChange` (src/landing/landing-core.ts), make the rejection final when any reason's count reaches 2, meaning it was raised and then survived two revisions. Use one named constant. Otherwise send the change back for another round.
-  4. Keep a hard backstop so that a chain whose objections never repeat still ends. Proposed: a total of 6 rejections, which replaces `REVISION_LIMIT`'s current role.
-  5. Update the wording the author and reviewer see: `buildRejectedReviewNote`'s finality arm and the "revision N" line. Also update the tests that pin exhaustion at the third rejection.
-- **Acceptance:**
-  - A chain whose re-reviews carry only untagged reasons gets a fourth round.
-  - A chain whose re-reviews tag the same objection `(prior N)` twice in a row is final at that rejection.
-  - The backstop makes a chain final at the cap.
-  - The `revision` events (`applied`/`exhausted`) and the exhausted note keep their shapes.
-
 ### `test/operator-intent.test.ts` "a later wake request leaves a pending scheduled wake standing" fails about 3% of runs: two scheduled wakes written in the same millisecond sort by a random file-name suffix (found by operator session 2026-10-14; it cost feature-2's comment-width change its final review round)
 
 - **Symptom:** at about 01:07 PDT on 2026-10-14, feature-2's full-suite run in tick 109 (claude session `62bc0a19`, `_slot-8`) failed `✖ a later wake request leaves a pending scheduled wake standing (1.49ms)` on a tree that does not touch wakes. The agent reported it in VERIFIED/RISK. The reviewer ran the file, saw 21/21 pass, and rejected the final revision round because "The VERIFIED and RISK claims are false". That rejection exhausted the chain and sent the plan back for a replan. The suite claim was true and the test is flaky. The agent's second claim, that the test also "fails alone", came from running the `.ts` file directly with `node --experimental-strip-types --test`, which failed at file load (`test at …:1:1`). That is a different failure.
@@ -79,6 +59,29 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Fixed 2026-10-14 by bugfix:** implemented the user-approved counting rule — a rejection counts into `consecutiveErrors` only when it is final (the rejection leaves no `state.revision` to work on). `recordRejectedChange` (src/landing/landing-core.ts) sets `revision` for a round within `REVISION_LIMIT` and clears it on exhaustion, so `applyLandingOutcome`'s rejected branch (src/tick/tick-apply.ts) increments the streak only for the exhausted chain, the director (it never revises), and a deterministic landing-check reject. A chain's rounds now leave the streak unchanged and keep the fast minimum-interval retry, so one change's exhausting chain reads streak 1 (not 3) and never crosses `ERROR_STREAK_WARN` on its own — the flashing red alert is gone. Regression test: test/tick-apply.test.ts “a revision-round rejection leaves the error streak unchanged; only a final one counts” (fails with the old behavior, passes with the fix). The sketch's observability items — 3 (key the alert on the streak, not on phase precedence) and 4 (word the rejection case) — stay open for genuine rejection streaks, tracked in the new «## Open» entry below.
 **Validation gap:** none — the offline suite reproduced it (the new test failed with the pre-fix guard forced open) and confirms the fix; nothing was missing.
 
+
+### A rejected change's revision chain ends at its third rejection even when every round raises a new objection, so changes that are converging get abandoned (found by operator session 2026-10-14; policy decided by the user the same day) — fixed 2026-10-14
+
+- **Symptom:** `REVISION_LIMIT` (2, src/loop/revision.ts) makes the third rejection final whatever the objections were. Both chains exhausted on 2026-10-14 were converging, with each round fixing the last objection and the reviewer finding a new one:
+  - **bugfix-2's Claude-badge change** was rejected first for `resets in now` under a minute (00:52:36 PDT), then because the GUI mirror `windowResetsIn` still read `resets now` (00:56:39), then for a stale spec row in `plans/agent-backends.md` (01:08:11).
+  - **feature-2's comment-width change** was rejected first for a rewrapped template-literal fixture (00:44:59), then for over-100-column comments that main added while it waited (01:04:22), then for a VERIFIED claim about a test that really had flaked (01:09:57, the scheduled-wake entry above).
+
+  Both were abandoned. bugfix-2 released its bug, feature-2's plan went back for a replan, and the work will be re-authored from scratch at full price.
+- **Policy (user's direction):** try hard to avoid a final rejection. While the objections keep changing, the chain keeps revising. It ends only when the same objection stays unresolved several rounds in a row.
+- **Fix sketch:**
+  1. Make "the same objection" observable. In `buildReviewPrompt`'s revision section (src/prompt/gate-prompts.ts), the reviewer starts each numbered reason that restates a prior objection with `(prior N)`, where N is that objection's number in the prior list, and leaves new objections untagged. Parse the tag beside the reasons in src/review/review-verdict.ts.
+  2. Track persistence on the chain. Next to `LoopState.revision` (src/loop/loop-state.ts), keep one count per recorded reason: the number of consecutive revisions the objection has survived. An untagged reason starts at 0, and a `(prior N)` reason is 1 plus prior reason N's count.
+  3. In `recordRejectedChange` (src/landing/landing-core.ts), make the rejection final when any reason's count reaches 2, meaning it was raised and then survived two revisions. Use one named constant. Otherwise send the change back for another round.
+  4. Keep a hard backstop so that a chain whose objections never repeat still ends. Proposed: a total of 6 rejections, which replaces `REVISION_LIMIT`'s current role.
+  5. Update the wording the author and reviewer see: `buildRejectedReviewNote`'s finality arm and the "revision N" line. Also update the tests that pin exhaustion at the third rejection.
+- **Acceptance:**
+  - A chain whose re-reviews carry only untagged reasons gets a fourth round.
+  - A chain whose re-reviews tag the same objection `(prior N)` twice in a row is final at that rejection.
+  - The backstop makes a chain final at the cap.
+  - The `revision` events (`applied`/`exhausted`) and the exhausted note keep their shapes.
+- **Fixed:** the re-review prompt (buildReviewPrompt) now asks a reason that restates a prior objection to open with the tag `(prior N)` (N the objection's number in the prior list) and to leave new objections untagged; `priorObjectionNumber` (src/review/review-verdict.ts) parses the tag beside the reasons. `recordRejectedChange` (src/landing/landing-core.ts) computes each reason's persistence count (untagged = 0, `(prior N)` = 1 + the prior round's count, carried as `PriorReview.counts` on the queued landing) and makes the rejection final when any count reaches `REVISION_FINAL_ON_REPEAT` (2) or the chain reaches `REVISION_BACKSTOP` (6). `LoopState.revision` records `reasonCounts`; the revision and finality wording (`buildRevisionNote`, `buildRejectedReviewNote`) and `plans/revise-rejected.md` were updated, and the tests were updated to pin the third rejection no longer ending a converging chain.
+
+**Validation gap:** real-run-needed — the harm (converging chains abandoned at a fixed cap) was confirmed from live revision chains in the fleet's events, not by any offline test, which had pinned the old `REVISION_LIMIT` exhaustion as correct.
 
 ### The GUI "Landed today" stat tile truncates its sub line with an ellipsis (reported by user 2026-10-14) — fixed 2026-10-14
 

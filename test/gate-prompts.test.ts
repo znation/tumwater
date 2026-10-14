@@ -209,7 +209,7 @@ test("an exhausted feature rejection tells feature to replan, not re-author", ()
 // re-author: the same purpose re-derived from the same objections is the loop this note ends.
 test("an exhausted plan-less rejection records the purpose in the notebook instead of re-authoring", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix");
-  assert.match(note, /do not re-author it/);
+  assert.match(note, /[Dd]o not re-author it/);
   assert.match(note, /abandoned purpose/);
   assert.match(note, /notebook/);
   assert.match(note, /different theme/);

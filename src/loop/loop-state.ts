@@ -249,11 +249,14 @@ export interface LoopState {
   skipReason?: SkipReason;
   /** The rejected change this loop owes a revision to (plans/revise-rejected.md): its head, how
    * many revision rounds have been attempted, and when the rejection was recorded. Set at a gate
-   * rejection while the round is within REVISION_LIMIT; consumed when the revision stages, drops,
-   * or conflicts; cleared when the rejected change exhausts its rounds. Persisted: the rejected
-   * diff is re-applied on a later tick, which can follow a restart. Absent for a loop with no
-   * outstanding rejection, so existing state files read unchanged. */
-  revision?: { sha: string; round: number; at: number };
+   * rejection that keeps revising; consumed when the revision stages, drops, or conflicts;
+   * cleared when the rejected change is final (a repeated objection or the backstop, BUGS.md
+   * 2026-10-14). `reasonCounts` holds each of that rejection's objections' persistence counts —
+   * how many consecutive revisions each has survived — aligned with `lastReview.reasons`;
+   * staging copies it onto the queued landing's PriorReview so the next rejection can resolve a
+   * `(prior N)` tag to a count. Absent for a loop with no outstanding rejection, so existing
+   * state files read unchanged (and an older file without `reasonCounts` reads as all-new). */
+  revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
 }
 
 /** Why a due loop was skipped by the scheduling poll (LoopState.skipReason). */
@@ -382,6 +385,11 @@ export function loadLoopState(root: string, role: string): LoopState {
     s.revision = healRecord(s.revision, (v) => {
       v.round = healNumber(v.round, 0);
       v.at = healNumber(v.at, 0);
+      // reasonCounts is a count array (the default of 0/[] for a corrupt or absent value keeps
+      // a repeat from reading as a long-standing one) — rebuild it to non-negative numbers.
+      v.reasonCounts = Array.isArray(v.reasonCounts)
+        ? v.reasonCounts.map((c) => healNumber(c, 0))
+        : undefined;
     });
   if (s.mergeConflicts !== undefined)
     s.mergeConflicts = healRecord(s.mergeConflicts, (v) => {

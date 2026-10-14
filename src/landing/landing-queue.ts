@@ -20,11 +20,15 @@ import { landQueueDir } from "../paths.js";
 /** The review that rejected the change a revision is revising (plans/revise-rejected.md part
  * 2/2): the rejected head and the numbered objections the reviewer named. It rides the queued
  * entry so the re-review can be shown what the revision had to resolve, plus the interdiff
- * between the two versions. Absent on a fresh change and read back as absent on a recovery
- * landing, which is reviewed like a fresh change. */
+ * between the two versions. `counts` carries each objection's persistence count (aligned with
+ * `reasons`; BUGS.md 2026-10-14) so the next rejection can resolve a `(prior N)` restatement
+ * in the re-review's reasons to a count and end a chain whose objection has stopped converging.
+ * Absent on a fresh change and read back as absent on a recovery landing, which is reviewed
+ * like a fresh change — a `(prior N)` tag then counts as a new objection. */
 export interface PriorReview {
   sha: string;
   reasons: string[];
+  counts?: number[];
 }
 
 /** One entry in the durable land queue (.tumwater/land-queue/; this module): a commit
@@ -51,7 +55,8 @@ export interface LandingEntry {
   enqueuedAt: number;
   /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
    * 1 for the first revision of a rejected change, 2 for the second. Carried onto the
-   * LandRequest so a rejection of round N sets round N+1, and past REVISION_LIMIT exhausts. */
+   * LandRequest so a rejection of round N sets round N+1; a rejection stops revising on a
+   * repeated objection or the backstop (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this landing is revising, absent for a fresh change
    * (plans/revise-rejected.md part 2/2). Filled by tick-stage.ts from LoopState.lastReview only
@@ -109,7 +114,8 @@ function isPriorReview(v: unknown): v is PriorReview {
   return (
     typeof v.sha === "string" &&
     Array.isArray(v.reasons) &&
-    v.reasons.every((r) => typeof r === "string")
+    v.reasons.every((r) => typeof r === "string") &&
+    (v.counts === undefined || (Array.isArray(v.counts) && v.counts.every((c) => nonNegativeNumber(c, null) !== null)))
   );
 }
 

@@ -175,7 +175,10 @@ not just whether it is correct.`,
 of the prior review's numbered objections FIRST — an unresolved one is a rejection on its own —
 then review the whole diff as usual. List only the still-unresolved objections as your numbered
 reasons; state that a prior objection is resolved in prose, never as a numbered reason, so the
-recorded rejection is not read as the resolution itself. The prior objections were:\n${list}\nThe interdiff
+recorded rejection is not read as the resolution itself. When a numbered reason restates one of
+the prior objections, start it with the tag (prior N) where N is that objection's number in the
+prior list, and leave a newly raised objection untagged — the tag is how the harness tells a repeat
+from a new finding. The prior objections were:\n${list}\nThe interdiff
 between the rejected version and this revision (what the revision changed, main's own movement
 excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
     );
@@ -360,8 +363,8 @@ export function buildRejectedReviewNote(review: {
   if (review.exhausted) {
     finality =
       role === "feature"
-        ? ` This was the change's final revision round — the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and land that markdown-only change and nothing else so the plan loop can rewrite the plan. Otherwise, redo the change against current main.`
-        : " This was the change's final revision round — the rejected diff and ref are gone, so do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notebook, then take a different theme on this tick: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
+        ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and land that markdown-only change and nothing else so the plan loop can rewrite the plan. Otherwise, redo the change against current main.`
+        : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notebook, then take a different theme on this tick: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
 }
@@ -370,16 +373,16 @@ export function buildRejectedReviewNote(review: {
  * current main as uncommitted edits (plans/revise-rejected.md, loop/revision.ts's
  * applyRevision): this tick's one task is to revise the change already in the worktree, not
  * author a new one. The prior objections are numbered so the author can work through them; a
- * revision round past the first also reaches here. A pure function so its shape is pinned in
- * tests. */
+ * revision round past the first also reaches here. The chain keeps revising while each round
+ * fixes the prior objection; it ends only on a repeated objection or the backstop (BUGS.md
+ * 2026-10-14). A pure function so its shape is pinned in tests. */
 export function buildRevisionNote(
   review: { reasons: string[] },
   round: number,
-  limit: number,
 ): string {
   const list = numberedList(review.reasons, NO_REASONS);
   return `Your previously rejected change is already in the worktree as uncommitted edits — this
-is revision ${round} of ${limit}. This tick's ONE task is to revise it; do not author anything else.
+is revision ${round}. This tick's ONE task is to revise it; do not author anything else.
 The review objections were:\n${list}
 Fix each numbered objection with the smallest edit that resolves it, and keep everything else as it
 is. When an objection is about a build-check failure in a test the change does not touch that you

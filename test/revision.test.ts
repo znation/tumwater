@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "../src/loop/revision.js";
+import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/loop/revision.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
 import { vetRequest } from "../src/landing/landing-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
@@ -181,15 +181,22 @@ test("a gate rejection points the rejected ref at the judged head and records ro
   });
 });
 
-test("a rejection of the last allowed revision exhausts it and deletes the rejected ref", async () => {
-  await withPi(reviewerPi("VERDICT: reject\n1. still wrong"), async () => {
+test("a rejection whose objection has survived two revisions is final and deletes the rejected ref", async () => {
+  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
-    // The rejected ref exists from the earlier rounds; a rejection at the limit clears it.
+    // The rejected ref exists from the earlier rounds; a repeated objection clears it. This is
+    // rejection 2 (round 2): the prior rejection's objection 1 had already survived one revision
+    // (count 1), and the re-review re-states it `(prior 1)`, so its count reaches 2 — the change
+    // has stopped converging and the rejection is final, well before the backstop.
     await setRef(root, rejectedRefName(ROLE), sha);
-    const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_LIMIT }), w);
+    const verdict = await vetRequest(
+      ctx,
+      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
+      w,
+    );
     assert.equal(verdict.kind, "result");
     assert.equal(state.revision, undefined, "no more rounds are recorded");
     assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
@@ -198,11 +205,50 @@ test("a rejection of the last allowed revision exhausts it and deletes the rejec
   });
 });
 
-test("exhausting the last revision still records the outcome when the events feed is unwritable", async () => {
+test("a converging chain whose revisions raise only new objections keeps revising", async () => {
+  await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    const w = batchWiring(ctx);
+    // This is the chain's third rejection (revisionRound 2 → round 3), where the old
+    // REVISION_LIMIT of 2 used to abandon even a converging change. The re-review raises a
+    // NEW untagged objection, so no count reaches the finality threshold and the chain keeps
+    // revising instead.
+    const verdict = await vetRequest(
+      ctx,
+      request(sha, { revisionRound: 2, priorReview: { sha, reasons: ["the old bug"], counts: [1] } }),
+      w,
+    );
+    assert.equal(verdict.kind, "result");
+    assert.equal(state.revision?.round, 3, "a converging chain is not abandoned");
+    assert.equal(state.lastReview?.exhausted, undefined, "not final — the change still revises");
+    assert.equal(await refSha(root, rejectedRefName(ROLE)), state.revision?.sha, "the rejected head stays reachable");
+  });
+});
+
+test("a chain whose objections never repeat ends at the backstop", async () => {
+  await withPi(reviewerPi("VERDICT: reject\n1. a brand-new concern"), async () => {
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    const { ctx } = makeCtx(root, state);
+    const w = batchWiring(ctx);
+    await setRef(root, rejectedRefName(ROLE), sha);
+    // REVISION_BACKSTOP - 1 revisions have been granted; this is the 6th (cap) rejection, and
+    // even with every objection untagged the chain ends.
+    const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_BACKSTOP - 1 }), w);
+    assert.equal(verdict.kind, "result");
+    assert.equal(state.revision, undefined, "no more rounds are recorded");
+    assert.equal(state.lastReview?.exhausted, true, "the next rejected note says it was final");
+    assert.equal(await refSha(root, rejectedRefName(ROLE)), null, "the rejected ref is deleted");
+  });
+});
+
+test("exhausting a revision still records the outcome when the events feed is unwritable", async () => {
   // recordRejectedChange (landing-core.ts) deletes the rejected ref and clears the round, then
   // logs the exhaustion LAST. An EISDIR on that append must not turn the terminal exhaustion
   // into a thrown vet error after the ref is already gone.
-  await withPi(reviewerPi("VERDICT: reject\n1. still wrong"), async () => {
+  await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
     const { ctx } = makeCtx(root, state);
@@ -210,7 +256,11 @@ test("exhausting the last revision still records the outcome when the events fee
     await setRef(root, rejectedRefName(ROLE), sha);
     unwritableEvents(root);
 
-    const verdict = await vetRequest(ctx, request(sha, { revisionRound: REVISION_LIMIT }), w);
+    const verdict = await vetRequest(
+      ctx,
+      request(sha, { revisionRound: 1, priorReview: { sha, reasons: ["the bug"], counts: [1] } }),
+      w,
+    );
 
     assert.equal(verdict.kind, "result");
     assert.equal(state.revision, undefined, "the round is still cleared");
@@ -421,7 +471,7 @@ test("the director never gets a revision: a rejection leaves no revision state",
 test("an exhausted rejection's plain note sends a plan-less role to its notebook", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], at: Date.now(), exhausted: true });
   assert.match(note, /final revision round/);
-  assert.match(note, /do not re-author it/);
+  assert.match(note, /[Dd]o not re-author it/);
   assert.match(note, /abandoned purpose/);
   assert.match(note, /notebook/);
   assert.match(note, /different theme/);
@@ -430,8 +480,8 @@ test("an exhausted rejection's plain note sends a plan-less role to its notebook
 });
 
 test("buildRevisionNote names the objections, the round, and the nothing-to-do escape", () => {
-  const note = buildRevisionNote({ reasons: ["first", "second"] }, 1, REVISION_LIMIT);
-  assert.match(note, /revision 1 of 2/);
+  const note = buildRevisionNote({ reasons: ["first", "second"] }, 1);
+  assert.match(note, /revision 1\b/);
   assert.match(note, /1\. first/);
   assert.match(note, /2\. second/);
   assert.match(note, new RegExp(NOTHING_TO_DO));
@@ -492,7 +542,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
 
       assert.equal(outcome.result, "queued");
       const prompt = fs.readFileSync(prompts, "utf8");
-      assert.match(prompt, /revision 1 of 2/);
+      assert.match(prompt, /revision 1\b/);
       assert.match(prompt, /conflict-handback/);
       assert.match(prompt, /Conflicted files:\n- seed\.txt/);
       assert.doesNotMatch(prompt, /The rejected diff no longer applies to current main/);

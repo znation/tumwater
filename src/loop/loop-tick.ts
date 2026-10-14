@@ -37,7 +37,7 @@ import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
 import { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
-import { applyRevision, applyWithConflicts, REVISION_LIMIT } from "./revision.js";
+import { applyRevision, applyWithConflicts } from "./revision.js";
 import { hasConflictMarkers, mainCommitsTouching } from "../landing/landing-git.js";
 import { changedFiles } from "../git/git-diff.js";
 import { mergeToMain } from "../landing/landing-merge.js";
@@ -487,12 +487,12 @@ async function tickWithWorktreePhase(
         // tick-prompt.ts suppresses the rejected-review note whenever state.revision is set,
         // so without this the fresh run would see neither the objections nor the revision
         // instructions. A resume keeps its session context and must not see the note twice.
-        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
       }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
       logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });
-      prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+      prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
     } else {
       // The clean re-apply conflicted: re-apply with the markers left in place so the author
       // resolves them rather than losing the revision (PLANS.md "Robust conflict landing, part
@@ -516,7 +516,7 @@ async function tickWithWorktreePhase(
           reason: "revision",
           conflicted: withConflicts.conflicted,
         });
-        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round, REVISION_LIMIT)}`;
+        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
         const intent = await handbackIntent(wt, ctx.mainBranch, sha, withConflicts.conflicted);
         prompt += `\n\n${buildConflictHandbackNote("revision", withConflicts.conflicted, intent)}`;
       } else {

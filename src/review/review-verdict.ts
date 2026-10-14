@@ -17,6 +17,20 @@ interface ReviewVerdict {
 /** Cap on recorded reasons, so a chatty reviewer cannot bloat persisted state. */
 const MAX_REASONS = 10;
 
+/** The prior-objection number a reviewer reason is tagged with at its start — `(prior N)`, N
+ * the objection's 1-based number in the prior list the re-review prompt showed — or null when
+ * the reason is a newly raised (untagged) objection. The repeat-finality policy (BUGS.md
+ * 2026-10-14) asks a re-review to restate a still-open prior objection with this tag so the
+ * harness can tell a repeat from a new finding and end a chain whose objection has stopped
+ * converging. Anything else that merely begins with the word "prior" (e.g. "prior to the
+ * change…") is not a tag and reads as an untagged reason. */
+export function priorObjectionNumber(reason: string): number | null {
+  const m = /^\(prior\s+(\d+)\)/i.exec(reason.trim());
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
 /** Parse the reviewer's reply: the LAST VERDICT line wins (the prompt asks for exactly one),
  * followed by its reasons — numbered/bulleted lines first, any other non-empty prose as a
  * fallback. Null when no parseable verdict exists: that is a FAILED review, never an approval

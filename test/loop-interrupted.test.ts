@@ -269,7 +269,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     // The handoff is a FRESH session and tick-prompt suppresses the rejected-review note while
     // state.revision is set, so the revision note must ride this tick's prompt.
     const run = readRunBlocks(argsFile).join("\n");
-    assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising the rejected change");
+    assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising the rejected change");
     assert.match(run, /fix it/, "the fresh handoff receives the review objections");
     assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
     assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
@@ -405,7 +405,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
     };
     assert.equal((await resumed.tick()).result, "queued");
     const run = readRunBlocks(argsFile).join("\n");
-    assert.match(run, /is revision 1 of \d+/, "the fresh handoff is told it is revising");
+    assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
     assert.match(run, /no longer applies cleanly/, "the note names the revision hand-back");
     assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");

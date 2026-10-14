@@ -11,11 +11,21 @@ interface ApplyWithConflictsResult {
   conflicted: string[];
 }
 
-/** The most revision rounds one rejected change gets before its rejection is final
- * (plans/revise-rejected.md): the gate rejected the change, the author re-applies the rejected
- * diff onto current main, fixes the named objections and re-submits. Past this the change is
- * dropped and a plain rejection stands, so a non-converging author cannot revise forever. */
-export const REVISION_LIMIT = 2;
+/** The persistence count at which one repeated objection makes a rejection final
+ * (plans/revise-rejected.md; the repeat-finality policy in BUGS.md 2026-10-14): each numbered
+ * reason records how many consecutive revisions it has survived — a new (untagged) objection is
+ * 0, a `(prior N)` restatement is 1 plus the prior round's count for that objection — and when
+ * any reason reaches this count it was raised and then survived two revisions, so the change has
+ * stopped converging and the rejection is final. A converging chain keeps revising while each
+ * round's objections differ. */
+export const REVISION_FINAL_ON_REPEAT = 2;
+
+/** The hard backstop on one change's revision chain (plans/revise-rejected.md; BUGS.md
+ * 2026-10-14): at this many total rejections the rejection is final even when the objections
+ * never repeat, so a non-converging author cannot revise forever. Replaces the old fixed
+ * `REVISION_LIMIT = 2`, which ended a converging chain at its third rejection whenever each
+ * round raised a new objection. */
+export const REVISION_BACKSTOP = 6;
 
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
  * (plans/revise-rejected.md): the author's next tick starts from the rejected diff instead of

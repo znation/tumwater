@@ -5,11 +5,14 @@ Planned 2026-10-06 · refined 2026-10-07 (part 2/2: the re-review's prior contex
 
 ## Goal
 
-A change the review gate rejects goes back to its author for at most two revision rounds. The
-author's next tick starts from the rejected diff re-applied onto current main as uncommitted
-edits, fixes the named objections (or drops the change), and the result lands through the
-normal gate. The re-review is shown the prior review's numbered objections and the interdiff
-between the rejected version and the revision, and checks each objection first.
+A change the review gate rejects goes back to its author for revision, ending only when the
+same objection has survived two revisions or the chain hits its backstop. A converging chain
+whose each round fixes the last objection keeps revising. The author's next tick starts from
+the rejected diff re-applied onto current main as uncommitted edits, fixes the named objections
+(or drops the change), and the result lands through the normal gate. The re-review is shown the
+prior review's numbered objections and the interdiff between the rejected version and the
+revision, and checks each objection first; a reason that restates a prior objection is tagged
+`(prior N)` so the harness can tell a repeat from a new finding (refined 2026-10-14).
 
 ## Motivation
 
@@ -27,11 +30,16 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
 
 - `rejectedRefName(role)` (`src/paths.ts`) is `refs/tumwater/rejected/<role>`. On a gate
   rejection, `recordRejectedChange` (`src/landing/landing-core.ts`) points it at the rejected
-  head and sets `LoopState.revision = { sha, round, at }` while the next round is within
-  `REVISION_LIMIT`. Past the limit it clears the revision, deletes the ref, marks
-  `lastReview.exhausted`, and logs a `revision` `exhausted` event. The director never revises.
-- `REVISION_LIMIT = 2` (`src/loop/revision.ts`). Both a pinned change's rejection and the
-  in-lock conflict-resolution re-review's rejection record the change the same way.
+  head and sets `LoopState.revision = { sha, round, at, reasonCounts }` while the rejection is
+  not final. When final it clears the revision, deletes the ref, marks `lastReview.exhausted`,
+  and logs a `revision` `exhausted` event. The director never revises.
+- A rejection is final in two cases (BUGS.md 2026-10-14): some objection's persistence count
+  has reached `REVISION_FINAL_ON_REPEAT = 2` (it was raised and survived two revisions — the
+  change stopped converging), or the chain has reached `REVISION_BACKSTOP = 6` rejections. Each
+  numbered reason's count starts at 0 (a new objection) and is `1 +` the prior round's count for
+  a `(prior N)` restatement; `priorCounts` rides the queued landing's `PriorReview`. Both a
+  pinned change's rejection and the in-lock conflict-resolution re-review's rejection record the
+  change the same way.
 - The round rides the commit's harness-stamped `Revision: N` trailer
   (`src/git/commit-message.ts`) as well as `LandingEntry.revisionRound`, so a retriable
   revision whose queue marker is lost keeps its round through leftover recovery.
