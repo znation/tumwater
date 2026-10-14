@@ -30,9 +30,20 @@ export function readJson<T = unknown>(file: string | URL): T {
 }
 
 /** The scheduled wakes (`wake --in`) a request left under scheduledWakeDir, one parsed marker per
- * file in name order; empty when none were written. */
+ * file ordered by notBeforeMs (then at) — never by file name, whose `now` prefix collides when two
+ * wakes are written in the same millisecond and the heavy `randomBytes` suffix then decides the
+ * order (a coin flip that flaked tests about 3% of runs); the deadline is the deterministic,
+ * production-relevant order. Empty when none were written. */
 export function readScheduledWakes<T = { at: number; roles: string[]; notBeforeMs: number }>(root: string): T[] {
   const dir = scheduledWakeDir(root);
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((n) => n.endsWith(".json")).sort().map((n) => readJson<T>(`${dir}/${n}`));
+  return fs
+    .readdirSync(dir)
+    .filter((n) => n.endsWith(".json"))
+    .map((n) => readJson<T>(`${dir}/${n}`))
+    .sort((a, b) => {
+      const na = ((a as { notBeforeMs?: number }).notBeforeMs ?? 0) - ((b as { notBeforeMs?: number }).notBeforeMs ?? 0);
+      if (na !== 0) return na;
+      return ((a as { at?: number }).at ?? 0) - ((b as { at?: number }).at ?? 0);
+    });
 }

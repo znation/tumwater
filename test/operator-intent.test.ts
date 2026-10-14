@@ -324,6 +324,26 @@ test("a later wake request leaves a pending scheduled wake standing", () => {
   assert.equal(immediate?.notBeforeMs, undefined);
 });
 
+test("readScheduledWakes orders same-millisecond markers by notBeforeMs, not file name", () => {
+  const root = deadRoot();
+  const dir = scheduledWakeDir(root);
+  fs.mkdirSync(dir, { recursive: true });
+  const at = Date.now();
+  // Two wakes written in the SAME millisecond (identical `at` and `now` file-name prefix) whose
+  // random file-name suffixes sort in the WRONG order: the 7.2M "clean" marker's name sorts
+  // first, so a name-order reader returns [clean, fix] ~half the time. readScheduledWakes must
+  // follow the deterministic deadline instead, returning [fix, clean].
+  fs.writeFileSync(
+    path.join(dir, `${at}-${process.pid}-00000000.json`),
+    JSON.stringify({ at, roles: ["clean"], notBeforeMs: at + 7_200_000 }),
+  );
+  fs.writeFileSync(
+    path.join(dir, `${at}-${process.pid}-ffffffff.json`),
+    JSON.stringify({ at, roles: ["fix"], notBeforeMs: at + 3_600_000 }),
+  );
+  assert.deepEqual(readScheduledWakes(root).map((m) => m.roles), [["fix"], ["clean"]]);
+});
+
 test("submitRolePromptAndWake leaves a pending scheduled wake standing", () => {
   const root = deadRoot();
   requestWake(root, ["clean"], 3_600_000);

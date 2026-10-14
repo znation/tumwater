@@ -469,7 +469,9 @@ test("POST /api/wake with inSeconds schedules the wake like `tumwater wake --in`
     res = await postJson(base, "/api/wake", { role: "feature", inSeconds: 60 });
     assert.equal(res.status, 200);
     assert.equal(readScheduledWakes(repo).length, 2, "the second request leaves the first standing");
-    marker = readScheduledWakes(repo)[1];
+    // The helper orders by notBeforeMs (the 30m request's deadline is later than the feature
+    // request's 60s one), so find the feature wake by role rather than by position.
+    marker = readScheduledWakes(repo).find((m) => m.roles.includes("feature"));
     assert.deepEqual(marker?.roles, ["feature"]);
 
     fs.rmSync(scheduledWakeDir(repo), { recursive: true });
