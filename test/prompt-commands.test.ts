@@ -597,6 +597,17 @@ test("prompt --edit <n> with no text fails on an ambiguous or missing position b
   assert.equal(miss.received, null);
 });
 
+test("prompt --edit <n> with --role and an out-of-range position fails before any editor runs", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "one"]));
+  // The bare editor form resolves the role directly, then reads the queue file at the
+  // position; an out-of-range position fails on that read (naming the count) before an
+  // editor ever opens, so the failure must not depend on $EDITOR being configured.
+  const res = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--edit", "5"])));
+  assert.match(res.result, /no prompt at position 5 \(1 queued\)/);
+  assert.equal(res.received, null, "the editor never opened");
+});
+
 test("prompt --edit <n> reports gone when the file is dequeued while the editor is open", async () => {
   const root = makeRoot();
   await expectOk(() => cmdPrompt(root, ["--role", "clean", "vanishing"]));
