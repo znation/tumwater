@@ -76,6 +76,13 @@ function withConfigLock<T>(root: string, fn: () => T): T {
   return withStateLock(configLockPath(root), fn, CONFIG_LOCK_TIMEOUT_MS);
 }
 
+/** The error arm of the shared write-result union — one home for the `{ ok: false, error }`
+ * constructor every writer's failure path returns (a broken on-disk file, a validation
+ * problem, a failed write, a lost lock), so the shape cannot drift between callers. */
+function fail(error: string): { ok: false; error: string } {
+  return { ok: false, error };
+}
+
 /** The one load → mutate → validate → atomic-write idiom every top-level config writer
  * shares (setDailyBudgetUsd, setConfigKey): a fresh loadConfig that bypasses config.ts's
  * stat cache (a writer must see the latest file), the caller's mutation applied in memory,
@@ -96,7 +103,7 @@ function writeConfigMutation(
       try {
         cfg = loadConfig(root); // fresh — bypasses the stat cache on purpose
       } catch (err) {
-        return { ok: false, error: errorMessage(err) }; // broken file: never overwrite it with defaults
+        return fail(errorMessage(err)); // broken file: never overwrite it with defaults
       }
       const mutated = mutate(cfg);
       // An unset that finds nothing to remove returns the loaded config unchanged. Write nothing:
@@ -110,18 +117,18 @@ function writeConfigMutation(
       try {
         validateConfig(candidate); // throws listing every problem — nothing is written on failure
       } catch (err) {
-        return { ok: false, error: errorMessage(err) };
+        return fail(errorMessage(err));
       }
       try {
         // The trailing newline is tumwater.json's convention (POSIX text file).
         writeJsonAtomic(configPath(root), candidate, true);
       } catch (err) {
-        return { ok: false, error: errorMessage(err) };
+        return fail(errorMessage(err));
       }
       return { ok: true };
     });
   } catch (err) {
-    return { ok: false, error: errorMessage(err) }; // lock acquire timeout/failure — nothing written
+    return fail(errorMessage(err)); // lock acquire timeout/failure — nothing written
   }
 }
 
@@ -133,7 +140,7 @@ export function setDailyBudgetUsd(
   value: number,
 ): { ok: true } | { ok: false; error: string } {
   const problem = checkDailyBudgetUsd(value);
-  if (problem) return { ok: false, error: problem };
+  if (problem) return fail(problem);
   return writeConfigMutation(root, (cfg) => {
     const next = { ...cfg, maxDailyCostUsd: value };
     // A whole-config write: keep the file's own roles section (see preserveFileRoles).
@@ -267,7 +274,7 @@ export function setConfigKey(
   rawValue: string,
 ): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
   const parsed = parseConfigKey(key);
-  if (parsed.kind === "error") return { ok: false, error: parsed.error };
+  if (parsed.kind === "error") return fail(parsed.error);
   let value: unknown;
   try {
     value = JSON.parse(rawValue);
@@ -276,20 +283,17 @@ export function setConfigKey(
   }
   if (parsed.kind !== "top") {
     const fieldError = parsed.kind === "role" ? unknownRoleFieldError(parsed.id, parsed.field) : null;
-    if (fieldError) return { ok: false, error: fieldError };
+    if (fieldError) return fail(fieldError);
     if (parsed.kind === "map") {
       // Name the key the operator actually typed (`maxDailyCostUsdPerRole.qa`), not the
       // fleet-wide field the shared validator's message would otherwise default to.
       const label = `${parsed.map}.${parsed.role}`;
       const validator = parsed.map === "maxDailyCostUsdPerRole" ? checkDailyBudgetUsd : checkQuietHours;
       const problem = validator(value, label);
-      if (problem) return { ok: false, error: problem };
+      if (problem) return fail(problem);
     }
     if (parsed.kind === "tier" && (typeof value !== "string" || value === "")) {
-      return {
-        ok: false,
-        error: `model.${parsed.tier} must be a model selector string (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`,
-      };
+      return fail(`model.${parsed.tier} must be a model selector string (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`);
     }
     let oldValue: unknown;
     const result = writeConfigMutation(root, (cfg) => {
@@ -352,7 +356,7 @@ export function setConfigKey(
     return { ok: true, value, oldValue };
   }
   const unknown = unknownConfigKeyError(key);
-  if (unknown) return { ok: false, error: unknown };
+  if (unknown) return fail(unknown);
   // Legacy `provider` / `fallbackModel` are accepted to FIX an existing value (a config
   // that already has one keeps the old meaning), but `config set` never adds them to a
   // config that lacks them — the new-form writers emit `model` and `fallback` only.
@@ -366,15 +370,12 @@ export function setConfigKey(
       }
     })();
     if (absent)
-      return {
-        ok: false,
-        error: `config set ${key}: this config has no ${key}, and a writer never adds legacy ${key} — set \`${key === "provider" ? "model" : "fallback"}\` instead`,
-      };
+      return fail(`config set ${key}: this config has no ${key}, and a writer never adds legacy ${key} — set \`${key === "provider" ? "model" : "fallback"}\` instead`);
   }
   const perKeyValidator = PER_KEY_VALIDATORS[key];
   if (perKeyValidator) {
     const problem = perKeyValidator(value);
-    if (problem) return { ok: false, error: problem };
+    if (problem) return fail(problem);
   }
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
@@ -482,14 +483,14 @@ export function unsetConfigKey(
   key: string,
 ): { ok: true; oldValue: unknown } | { ok: false; error: string } {
   const parsed = parseConfigKey(key);
-  if (parsed.kind === "error") return { ok: false, error: parsed.error };
+  if (parsed.kind === "error") return fail(parsed.error);
   if (parsed.kind === "role") {
     const fieldError = unknownRoleFieldError(parsed.id, parsed.field);
-    if (fieldError) return { ok: false, error: fieldError };
+    if (fieldError) return fail(fieldError);
   }
   if (parsed.kind === "top") {
     const unknown = unknownConfigKeyError(key);
-    if (unknown) return { ok: false, error: unknown };
+    if (unknown) return fail(unknown);
   }
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
