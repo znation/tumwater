@@ -219,6 +219,39 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   );
 }
 
+/** Shared 400-validation for an entry-target body's `kind` — "bug" or "plan" — the one field
+ * the backlog file/cancel/edit endpoints all ask for in the same words. Sends the 400 and
+ * returns null when invalid, else the validated kind. */
+function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unknown>): "bug" | "plan" | null {
+  const kind = body.kind;
+  if (kind !== "bug" && kind !== "plan") {
+    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
+    return null;
+  }
+  return kind;
+}
+
+/** Shared 400-validation for an entry-target body's `position` (a positive integer) and
+ * `title` (a non-empty string) — the two fields every backlog/QUESTIONS entry drawer asks
+ * for, so the question-answer, backlog-cancel, and backlog-edit endpoints report the same
+ * two errors and cannot drift on the messages. Sends the 400 and returns null on the first
+ * bad field; the validated pair otherwise. */
+function checkedEntryPositionAndTitle(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+): { position: number; title: string } | null {
+  const { position, title } = body;
+  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
+    sendJson(res, 400, { error: "position must be a positive integer" });
+    return null;
+  }
+  if (typeof title !== "string" || title === "") {
+    sendJson(res, 400, { error: "title must be a non-empty string" });
+    return null;
+  }
+  return { position, title };
+}
+
 /** Handle POST /api/question-answer: record the operator's answer to the Nth open question
  * exactly as `tumwater questions answer` does, through the non-exiting tryAnswerQuestion core.
  * The body carries the `title` the operator saw at `position`; a different title there, or no
@@ -231,15 +264,10 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
 export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"position": 1, "title": "<heading>", "decision": "..."}');
   if (!body) return;
-  const { position, title, decision } = body;
-  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    sendJson(res, 400, { error: "position must be a positive integer" });
-    return;
-  }
-  if (typeof title !== "string" || title === "") {
-    sendJson(res, 400, { error: "title must be a non-empty string" });
-    return;
-  }
+  const { decision } = body;
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (!pair) return;
+  const { position, title } = pair;
   if (typeof decision !== "string" || decision.trim() === "") {
     sendJson(res, 400, { error: 'questions answer needs a decision: questions answer <n> "<decision>"' });
     return;
@@ -472,11 +500,8 @@ export async function handleResetCounters(req: http.IncomingMessage, res: http.S
 export async function handleBacklogFile(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "plan", "title": "...", "body": "optional markdown"}');
   if (!body) return;
-  const kind = body.kind;
-  if (kind !== "bug" && kind !== "plan") {
-    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
-    return;
-  }
+  const kind = checkedBacklogKind(res, body);
+  if (!kind) return;
   const rawTitle = typeof body.title === "string" ? body.title : "";
   if (collapseWhitespace(rawTitle) === "") {
     sendJson(res, 400, { error: "title required" });
@@ -513,19 +538,11 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
 export async function handleBacklogCancel(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>"}');
   if (!body) return;
-  const { kind, position, title } = body;
-  if (kind !== "bug" && kind !== "plan") {
-    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
-    return;
-  }
-  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    sendJson(res, 400, { error: "position must be a positive integer" });
-    return;
-  }
-  if (typeof title !== "string" || title === "") {
-    sendJson(res, 400, { error: "title must be a non-empty string" });
-    return;
-  }
+  const kind = checkedBacklogKind(res, body);
+  if (!kind) return;
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (!pair) return;
+  const { position, title } = pair;
   let outcome: CancelEntryOutcome;
   try {
     outcome = tryCancelEntry(root, kind, position, title);
@@ -549,19 +566,12 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
 export async function handleBacklogEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"kind": "bug", "position": 1, "title": "<heading>", "newTitle": "...", "newBody": "..."}');
   if (!body) return;
-  const { kind, position, title, newTitle, newBody } = body;
-  if (kind !== "bug" && kind !== "plan") {
-    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
-    return;
-  }
-  if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    sendJson(res, 400, { error: "position must be a positive integer" });
-    return;
-  }
-  if (typeof title !== "string" || title === "") {
-    sendJson(res, 400, { error: "title must be a non-empty string" });
-    return;
-  }
+  const kind = checkedBacklogKind(res, body);
+  if (!kind) return;
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (!pair) return;
+  const { position, title } = pair;
+  const { newTitle, newBody } = body;
   if (typeof newTitle !== "string" || collapseWhitespace(newTitle) === "") {
     sendJson(res, 400, { error: "newTitle required" });
     return;
