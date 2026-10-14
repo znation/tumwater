@@ -11,6 +11,9 @@ import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
+import { queuedLandings } from "../landing/landing-queue.js";
+import { landingChanges, readLandingMarker } from "../landing/landing-slot.js";
+import { humanSeconds, secondsSince } from "../text/datetime.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
@@ -193,6 +196,41 @@ export function checkStalledPlans(root: string): CheckOutcome {
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
+}
+
+/** How long a queued landing may wait without its change starting before the stale-queued-landing
+ * check warns: 6 hours, fixed. A vet plus a merge completes in minutes (plans/merge-queue.md), so
+ * a full six-hour silence while the fleet is healthy — not on a hold, which doctor already reports
+ * separately — is never a merely busy pipeline: it reads as a drain that has stalled. The one
+ * opinionated default, like STALE_QUESTION_DAYS, so no knob. */
+const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
+
+/** Stale queued landings — a change that has sat in the durable land queue too long without
+ * starting (plans/merge-queue.md). Every queued-change health fact is otherwise a hook into its
+ * own role or stage: a vet under way reads in the fleet row, a fleet hold gets its own banner,
+ * and fleet-alerts' STALL_RE catches a RUNNING stage frozen. But a change (or a batch behind the
+ * single merge slot) that quietly never starts — neither vetted nor flagged — reads as healthy:
+ * the header's `land queue: N` badge counts it and `tumwater queue` ages it, yet nothing calls it
+ * out on its own. This names the single oldest queued landing that is NOT currently in-flight and
+ * has waited past LAND_QUEUE_STALE_MS, so an operator sees a stalled drain instead of only a
+ * growing depth. The in-flight marker (readLandingMarker via landingChanges) contributes the set
+ * of roles holding a change being vetted or merged right now — a slow review is not a stalled
+ * drain, and an absent or never-throwing unreadable marker contributes the empty set. Reads the
+ * tree at `root` with the already-exported readers, changing nothing in src/landing/. A warn,
+ * never a fail — the checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate
+ * while the fleet is genuinely held, and those holds already warn separately. */
+export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {
+  const marker = readLandingMarker(root);
+  const inFlight = new Set(marker ? landingChanges(marker).map((c) => c.role) : []);
+  const stale = queuedLandings(root)
+    .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > LAND_QUEUE_STALE_MS)
+    .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
+  const [first, ...rest] = stale;
+  if (!first)
+    return okOutcome(`no queued landing has waited more than ${humanSeconds(LAND_QUEUE_STALE_MS / 1000)} to start`);
+  const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
+  return warnOutcome(`queued landing of role ${first.role} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
+      `${first.age} to start${more}; a queued change the pipeline neither vets nor flags reads as healthy, so the drain has stalled`);
 }
 
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an

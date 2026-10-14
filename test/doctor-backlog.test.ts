@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { enqueueLanding } from "../src/landing/landing-queue.js";
+import { writeLandingMarker } from "../src/landing/landing-slot.js";
+import { landQueueDir } from "../src/paths.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -332,6 +335,63 @@ test("checkStaleQuestions ignores undated and fresh headings, and a missing or s
   const closed = tmpdir("doctor-stale-questions-closed-");
   fs.writeFileSync(path.join(closed, "QUESTIONS.md"), `## Answered\n\n### Old (asked by director 2026-01-01)\n`);
   assert.deepEqual(checkStaleQuestions(closed), ok);
+});
+
+// checkStaleQueuedLandings — a change that has sat in the durable land queue too long without
+// starting is the one queued-change health fact with no hook of its own: the header badge counts
+// it and `tumwater queue` ages it, but nothing calls it out. This warns on the oldest queued
+// landing that is NOT in-flight and has waited past the 6-hour threshold; a marker showing the
+// role in-flight suppresses it, and an absent/unreadable marker or empty queue reads ok.
+
+function advice(role: string, summary: string): { role: string; summary: string; enqueuedAt: number; sha: string; tick: number } {
+  return { role, summary, enqueuedAt: Date.now(), sha: "abc1234", tick: 1 };
+}
+
+function queueRoot(): string {
+  const root = tmpdir("doctor-stale-landing-");
+  fs.mkdirSync(landQueueDir(root), { recursive: true });
+  return root;
+}
+
+test("checkStaleQueuedLandings reads ok for an empty queue and one whose entries are all fresh", () => {
+  const now = Date.now();
+  assert.equal(checkStaleQueuedLandings(queueRoot(), now).level, "ok");
+  const root = queueRoot();
+  enqueueLanding(root, advice("improve", "tidy parser"));
+  assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
+  // An entry exactly at the threshold boundary (not strictly past it) is not stale yet.
+  enqueueLanding(root, { ...advice("clean", "split module"), enqueuedAt: now - 6 * 60 * 60 * 1000 });
+  assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
+});
+
+test("checkStaleQueuedLandings warns naming the oldest stale role, its summary, and its age", () => {
+  const now = Date.now();
+  const root = queueRoot();
+  enqueueLanding(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
+  const out = checkStaleQueuedLandings(root, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /organize/);
+  assert.match(out.detail, /move the helpers/);
+  assert.match(out.detail, /has waited 7h to start/);
+});
+
+test("checkStaleQueuedLandings warns once, resting via andMore, and never flags an in-flight role", () => {
+  const now = Date.now();
+  const root = queueRoot();
+  enqueueLanding(root, { ...advice("clean", "split module"), enqueuedAt: now - 8 * 60 * 60 * 1000 });
+  enqueueLanding(root, { ...advice("organize", "move helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
+  // The freshest is the in-flight one: the marker shows `improve` being merged, so it must
+  // not be flagged even though it too is older than the threshold.
+  writeLandingMarker(root, {
+    role: "improve", sha: "abc1234", summary: "tidy parser", startedAt: now - 1000, stage: "merging",
+    changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "landing", startedAt: now - 1000 }],
+  });
+  enqueueLanding(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
+  const out = checkStaleQueuedLandings(root, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /clean/);
+  assert.ok(!out.detail.includes("improve"), "the in-flight role is not flagged");
+  assert.match(out.detail, /and 1 more: organize/);
 });
 
 // checkUncommittedBacklog — operator edits left uncommitted in the primary checkout.
