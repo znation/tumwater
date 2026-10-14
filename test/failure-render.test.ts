@@ -972,3 +972,23 @@ test("a scoped partial window names the log's retention date, not the role's own
   assert.equal(data.oldestEventDate, dayKey(at(5)), "the retention date is the whole log's oldest event");
   assert.ok(data.oldestEventDate !== dayKey(at(0)), "not the scoped role's own first event");
 });
+
+test("the loss-ranking renders a refused cause with its summary, and bare without one", () => {
+  // PLANS.md 2026-10-14: a refusal is a deliberate objection that blocks its entry, so the
+  // digest must name it — `refused on <role> — <summary>` — rather than fold it into no_change.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "refused",
+      summary: "blocks entry X: it violates a principle", durationMs: 3_600_000, costUsd: 0.5 },
+    { ts: at(0, 1), loop: "bugfix", type: "tick_end", result: "refused", durationMs: 1_800_000, costUsd: 0.2 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const md = renderFailureMarkdown(data);
+  assert.match(
+    md,
+    /1\.0 h · \$0\.50 — 1 tick: refused on feature — blocks entry X: it violates a principle/,
+    `the refused cause names its summary: ${md}`,
+  );
+  assert.match(md, /0\.5 h · \$0\.20 — 1 tick: refused on bugfix/, "a summary-less refusal renders the bare form");
+  assert.ok(!md.includes("no_change on feature"), "the refused tick is not rendered as no_change");
+});

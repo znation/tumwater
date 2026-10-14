@@ -217,9 +217,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
             ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
             : c.kind === "review-rejected"
               ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-              : c.kind === "merge-conflict" || c.kind === "merge-blocked"
-                ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
-                : `${c.example} (${roleList(c.roles)})`;
+              : c.kind === "refused"
+                ? `refused on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+                : c.kind === "merge-conflict" || c.kind === "merge-blocked"
+                  ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
+                  : `${c.example} (${roleList(c.roles)})`;
         lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
       }
       // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that

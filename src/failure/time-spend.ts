@@ -57,10 +57,11 @@ export interface TimeSpendRow {
  * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
  * gate rejected (BUGS.md 2026-09-30), or a landing that failed to merge (BUGS.md 2026-10-10).
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
- * 2026-09-30), a review-rejected cause's newest rejection reason, the shared no-text
+ * 2026-09-30), a review-rejected cause's newest rejection reason, a refused cause's newest
+ * refusal summary (the deliberate objection that blocks the entry), the shared no-text
  * placeholder for a merge failure, or "" for a no_change cause. */
 export interface LossCause {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
   roles: string[]; // unique, sorted
   example: string;
   ticks: number;
@@ -89,7 +90,7 @@ const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "qui
 
 /** A loss cause while collecting; `roles` is a set until the final sort. */
 interface LossDraft {
-  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked";
+  kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
   roles: Set<string>;
   lastSeen: number;
   example: string;
@@ -221,7 +222,17 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     let key: string | null = null;
     let kind: LossDraft["kind"] = "error-cluster";
     let example = "";
-    if (cls === "no_change") {
+    if (ev.result === "refused") {
+      // A refusal is a deliberate objection that blocks its entry, not quiet idleness — the
+      // reason live in the event + lastSummary (src/verdict/refusal.ts). Rank it as its own
+      // per-role cause so the digest surfaces the objection instead of pricing the tick
+      // exactly like a silently idle one; the branch sits BEFORE the no_change one because a
+      // refused tick is also no_change-class in the outcome table. The example rides the
+      // refusal's summary the way a review-rejected cause rides its reason.
+      key = `refused\u0000${role}`;
+      kind = "refused";
+      example = typeof ev.summary === "string" ? truncateExample(ev.summary) : "";
+    } else if (cls === "no_change") {
       key = `no_change\u0000${role}`;
       kind = "no_change";
     } else if (CLUSTERED_RESULTS.has(String(ev.result))) {

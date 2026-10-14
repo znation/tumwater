@@ -292,3 +292,36 @@ test("a main_red tick prices its red-main cause into the loss ranking, not only 
   );
   assert.equal(data.lossCausesHidden, 0, "neither cause is dropped by the top-N cut");
 });
+
+test("a refused tick prices its own loss cause, not no_change", () => {
+  // PLANS.md 2026-10-14: a refusal is a deliberate objection that blocks its entry, yet the
+  // loss fold bucketed every no_change-class tick under `no_change\u0000<role>` — so a role
+  // that actively refuses priced into the digest exactly like a quietly idle one. A refused
+  // still counts under no_change in the outcome table (that three-class table is its stated
+  // contract), but the loss ranking names the objection via the refusal's own summary.
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "refused",
+      summary: "record: refusal-verdict reason at head", durationMs: 3_600_000, costUsd: 0.5 },
+    // The same role idles in a sibling window: its quiet no_change must stay its own cause.
+    { ts: at(0, 1), loop: "feature", type: "tick_end", tick: 2, result: "no_change",
+      durationMs: 1_800_000, costUsd: 0.3 },
+  ]);
+  const data = collectFailureReport(root, 1);
+  const refused = data.lossCauses.find((c) => c.kind === "refused");
+  assert.ok(refused, `a refusal names its own loss cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.deepEqual(refused?.roles, ["feature"]);
+  assert.equal(refused?.example, "record: refusal-verdict reason at head", "the example is the refusal's summary");
+  assert.equal(refused?.ticks, 1);
+  assert.equal(refused?.ms, 3_600_000);
+  assert.ok(Math.abs((refused?.costUsd ?? 0) - 0.5) < 1e-9, `the refusal's cost is priced: ${refused?.costUsd}`);
+  const idle = data.lossCauses.find((c) => c.kind === "no_change");
+  assert.ok(idle, `the idling tick stays its own no_change cause: ${JSON.stringify(data.lossCauses)}`);
+  assert.equal(idle?.ticks, 1, "the idle and refused ticks are not merged");
+  assert.equal(idle?.example, "", "no_change keeps its empty example");
+  // The outcome table still folds the refusal under no_change, its class contract unchanged.
+  const feature = data.timeSpend.find((r) => r.role === "feature");
+  assert.deepEqual(feature?.classes.no_change, { ticks: 2, ms: 5_400_000, costUsd: 0.8 });
+  assert.deepEqual(feature?.classes.landed, { ticks: 0, ms: 0, costUsd: 0 });
+  assert.deepEqual(data.lossCauses.reduce((n, c) => n + c.ticks, 0), 2, "both ticks are owned by a loss cause");
+});
