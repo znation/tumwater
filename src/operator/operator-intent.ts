@@ -85,13 +85,21 @@ export function requestResetCounters(root: string, roles: string[]): string {
 }
 
 
+/** The empty-list wording both wake-list renderers share — `cancelWakes`'s no-op arm and
+ * `renderWakeList`'s empty list: one literal so the two surfaces cannot drift on what an
+ * operator sees when nothing is pending, plus a ` for <role>` suffix when the view was
+ * role-scoped. */
+function noWakePending(role?: string): string {
+  return `no scheduled wake pending${role ? ` for ${role}` : ""}`;
+}
+
 /** Drop pending scheduled wakes (`tumwater wake --cancel`, the dashboard's POST /api/wake-cancel):
  * every pending wake, or only `role`'s share of them. Returns the confirmation the CLI prints
  * verbatim and the GUI flashes, so the surfaces cannot drift on wording. */
 export function cancelWakes(root: string, role?: string): string {
   const n = cancelScheduledWakes(root, role);
   const forRole = role ? ` for ${role}` : "";
-  return n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : `no scheduled wake pending${forRole}`;
+  return n > 0 ? `cancelled ${n} scheduled wake${n === 1 ? "" : "s"}${forRole}` : noWakePending(role);
 }
 
 /** The pending scheduled wakes (`tumwater wake --list`), earliest first; with `role`, only the
@@ -103,7 +111,7 @@ export function listWakes(root: string, role: string | undefined, now: number): 
 
 /** `wake --list`'s text: one numbered line per wake, or the empty wording `cancelWakes` uses. */
 export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: number, role?: string): string {
-  if (wakes.length === 0) return `no scheduled wake pending${role ? ` for ${role}` : ""}`;
+  if (wakes.length === 0) return noWakePending(role);
   return wakes
     .map((w, i) => `${i + 1}. in ${humanSeconds(secondsUntil(w.atMs, now))} — ${w.roles.join(", ")}`)
     .join("\n");
