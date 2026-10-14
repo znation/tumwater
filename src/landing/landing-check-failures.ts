@@ -5,7 +5,7 @@ import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { unverifiedTreeOutcome } from "../build/build-check-events.js";
 import { checkFailureReasons } from "../build/build-check-report.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -122,9 +122,20 @@ export async function landingCheckRed(
     ctx.state.lastError = `merge failed: ${firstCheckReason(red)}`;
     return "merge_blocked";
   }
-  return keepPinOrAttribute(ctx, wt, firstCheckReason(red), (head) =>
+  const reason = firstCheckReason(red);
+  const result = await keepPinOrAttribute(ctx, wt, reason, (head) =>
     attributeRedCheck(ctx, role, head, "landing check", red, ctx.state),
   );
+  // The first red of a patch's in-lock check is exactly the retry that exists for load flakes,
+  // so it is the ONE signal that could name a flaky test after the fact — and lastError, the
+  // only place this reason is written, is overwritten by the leftover-recovery tick a second
+  // later (BUGS.md 2026-10-14). Log it as a warning so the failure digest and a later audit can
+  // name the flaky test; the second red at LANDING_CHECK_FAILURE_LIMIT is attributed through
+  // review_rejected, whose reasons are already durable.
+  if (result === "merge_blocked") {
+    warnEventBestEffort(ctx.root, role, `landing check red (kept for one re-land): ${reason}`);
+  }
+  return result;
 }
 
 /** A landing blocked by a deterministic cross-check (onLandingBlocked's fix-claim or

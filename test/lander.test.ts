@@ -13,7 +13,7 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
 import {
@@ -462,6 +462,30 @@ for (const main of ["green", "red"] as const) {
     assert.equal(mainSha(root), tip, "nothing landed");
   });
 }
+
+// The first red of a patch's in-lock landing check is the retry that exists for load flakes — the
+// whole point is to re-land a flaky test green. It is also the one signal that could name the flaky
+// test, and until now the reason was written only into lastError, which the leftover-recovery tick
+// overwrites a second later, so the flaky test could never be identified (BUGS.md 2026-10-14). The
+// kept-for-re-land path now logs a warning naming the failing test, so the digest and a later audit
+// can still name it.
+test("a kept-for-re-land red landing check logs a warning naming the failing test", async () => {
+  const { root, sha } = await pinnedFixture();
+  // Main moves after the pin so the in-lock rebase rewrites the tree and the landing check runs.
+  const tip = advanceMain(root, `main-red-warn-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  noteGreenBaseline(tip);
+  const state = freshLoopState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  ctx.config = { ...ctx.config, check: { command: "echo '✖ the flaky test (1.2ms)'; exit 1" } };
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one re-land");
+  assert.equal(await refSha(root, REF), sha, "the pin is kept");
+
+  const warning = warningMessages(root).find((m) => m.includes("landing check red (kept for one re-land)"));
+  assert.ok(warning, "the kept-for-re-land red is recorded durably as a warning");
+  assert.match(warning!, /the flaky test/, "the warning names the failing test");
+  assert.equal(mainSha(root), tip, "nothing landed");
+});
 
 // A fix-claim-blocked landing used to be kept like a lost fast-forward race and re-landed on
 // every recovery, each retry paying a fresh conflict-resolver run against the same block —
