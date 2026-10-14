@@ -8,6 +8,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 1/2: the test, `test/` and most of `src/` (planned 2026-10-14 by plan; independent of the waiting secret-leak gate plan; part 2/2 below follows it)
 
+**Needs replan 2026-10-14 by feature: rejected after repeated review rounds** (the last rejection was over a false VERIFIED claim about `test/operator-intent.test.ts`, not the design; a retry should re-measure before claiming any failing test).
+
 **Goal.** Comments in this tree wrap at 100 columns, but the rule is unwritten and nothing checks it.
 So the clean loop sweeps it by hand, and each sweep is measured with a different ad hoc grep: bytes or
 code points, `//` lines only, one directory. Of the clean loop's 42 `review_rejected` events from
