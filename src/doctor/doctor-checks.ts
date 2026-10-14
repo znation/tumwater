@@ -44,6 +44,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse } from "../gates/startup-gate.js";
 import { claudeSeamsInUse } from "./doctor-model-checks.js";
+import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
@@ -274,19 +275,21 @@ function formatBytes(n: number): string {
   return `${n} B`;
 }
 
-/** claude transcript disk — the total size of `~/.claude/projects` (plans/agent-backends.md
- * "Sessions" retention): claude ages transcripts out under its own cleanupPeriodDays, so an
- * operator asking where claude's disk went gets the number without `du`. Informational (ok) in
- * every case — a large transcript tree is a fact, not a misconfiguration. Stands down when no
- * seam routes to claude: a pi-only fleet reads no claude state, and the report must not walk a
- * host directory that has nothing to do with the fleet. `homeDir` is a test seam. */
+/** claude transcript disk — the total size of the claude config dir's `projects/`
+ * (plans/agent-backends.md "Sessions" retention): the perf adapter ages transcripts out under
+ * its own cleanupPeriodDays, so an operator asking where claude's disk went gets the number
+ * without `du`. Informational (ok) in every case — a large transcript tree is a fact, not a
+ * misconfiguration. Stands down when no seam routes to claude: a pi-only fleet reads no claude
+ * state, and the report must not walk a host directory that has nothing to do with the fleet.
+ * `homeDir` and `env` are test seams. */
 export function checkClaudeTranscripts(
   config: TumwaterConfig | undefined,
   homeDir: string = os.homedir(),
+  env: NodeJS.ProcessEnv = process.env,
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
   if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
-  const dir = path.join(homeDir, ".claude", "projects");
+  const dir = path.join(claudeConfigDir(env, homeDir), "projects");
   let slugs: string[];
   try {
     slugs = fs

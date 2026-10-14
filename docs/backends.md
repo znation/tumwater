@@ -73,7 +73,10 @@ fallback is carrying the fleet.
 
 `agents.claude.bin` overrides the binary (`TUMWATER_CLAUDE_BIN` overrides it for one run), and
 `agents.claude.args` appends extra argv after the harness's own flags; a flag the harness sets
-itself is a load error rather than a silent override. A selector whose provider names a backend
+itself is a load error rather than a silent override. With `CLAUDE_CONFIG_DIR` set, claude's
+transcripts live under that dir (`<config>/projects/…`) and tumwater's resume check and doctor's
+"claude transcripts" row follow it; unset, they stay at `~/.claude`.
+A selector whose provider names a backend
 id always routes there regardless of the top-level `agent`: `claude/claude-opus-5-5` runs on
 claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
 default, Haiku 5.5 small — so `agent: "claude"` with no `model` still resolves a concrete model

@@ -243,7 +243,9 @@ too.
   `/nonexistent/tumwater-test-models.json`.
 - `npm run test` passes.
 
-### claude transcript paths follow `$CLAUDE_CONFIG_DIR` when it is set, as pi's follow `$PI_CODING_AGENT_DIR` (planned 2026-10-14 by plan; independent of every other entry; mirrors the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`…")
+## Done
+
+### claude transcript paths follow `$CLAUDE_CONFIG_DIR` when it is set, as pi's follow `$PI_CODING_AGENT_DIR` (planned 2026-10-14 by plan; independent of every other entry; mirrors the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`…") — done 2026-10-14
 
 **Goal.** When the operator relocates claude's config dir with `CLAUDE_CONFIG_DIR`, the transcript
 tree moves with it. tumwater's two claude paths still hard-code `~/.claude`: `claudeTranscriptPath`
@@ -263,8 +265,8 @@ entry covers it.
 - `checkClaudeTranscripts(config, homeDir = os.homedir(), env: NodeJS.ProcessEnv = process.env)` in `src/doctor/doctor-checks.ts` computes `path.join(claudeConfigDir(env, homeDir), "projects")` where it now joins `path.join(homeDir, ".claude", "projects")`. The `homeDir` doc seam stays; `env` is the new seam.
 
 **Files touched.** `src/agent/claude/claude-backend.ts`, `src/doctor/doctor-checks.ts`,
-`test/claude-run.test.ts`, `test/doctor-checks.test.ts`, `docs/backends.md` (one sentence beside
-the `agents.claude.bin` paragraph noting that with `CLAUDE_CONFIG_DIR` set, transcripts move).
+`test/claude-run.test.ts`, `test/doctor-checks.test.ts`, `docs/backends.md` (one sentence beside the
+`agents.claude.bin` paragraph noting that with `CLAUDE_CONFIG_DIR` set, transcripts move).
 
 **Acceptance criteria.**
 - `claudeTranscriptPath("/w a/b", "r1", { CLAUDE_CONFIG_DIR: "/cfg/sc" }, "/home/x")` is
@@ -279,9 +281,6 @@ the `agents.claude.bin` paragraph noting that with `CLAUDE_CONFIG_DIR` set, tran
 - `grep -rn 'os.homedir(), ".claude"' src/` finds nothing (the old literal is gone from both
   `claude-backend.ts` and `doctor-checks.ts`).
 - `npm run test` passes.
-
-
-## Done
 
 ### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
 

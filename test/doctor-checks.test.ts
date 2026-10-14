@@ -719,6 +719,27 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
   );
 });
 
+test("checkClaudeTranscripts follows CLAUDE_CONFIG_DIR when it is set", () => {
+  const home = tmpdir("doctor-claude-home-");
+  const reloc = tmpdir("doctor-claude-reloc-");
+  const projects = path.join(reloc, "projects");
+  fs.mkdirSync(path.join(projects, "-slot"), { recursive: true });
+  fs.writeFileSync(path.join(projects, "-slot", "a.jsonl"), "x".repeat(1500));
+
+  // The default `~/.claude` tree stays empty so a two-arg call must not pick it up.
+  fs.mkdirSync(path.join(home, ".claude", "projects"), { recursive: true });
+
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const outcome = checkClaudeTranscripts(loadConfig(root), home, { CLAUDE_CONFIG_DIR: reloc });
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /^1\.5 KB across 1 project in /);
+  assert.ok(outcome.detail.includes(reloc), "the relocated dir is named");
+
+  // Without the env var the default `~/.claude` tree is read (empty here).
+  assert.match(checkClaudeTranscripts(loadConfig(root), home).detail, /0 B across 0 projects in /);
+});
+
 test("checkClaudeTranscripts reports a sub-KB tree in plain bytes", () => {
   const home = tmpdir("doctor-claude-tiny-");
   const slug = path.join(home, ".claude", "projects", "-tiny");

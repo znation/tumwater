@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runAgent } from "../src/agent/run-agent.js";
-import { claudeBackend, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
+import { claudeBackend, claudeConfigDir, claudeProjectSlug, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { readSessions, recordSession } from "../src/agent/session-ledger.js";
 import { agentBinSourceLabel } from "../src/pi/pi-bin.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -252,6 +252,60 @@ test("claude's resumable predicate requires the kind, the recorded cwd, and a tr
     );
   } finally {
     restoreHome();
+  }
+});
+
+test("claudeTranscriptPath follows CLAUDE_CONFIG_DIR and expands a leading ~", () => {
+  assert.equal(
+    claudeTranscriptPath("/w a/b", "r1", { CLAUDE_CONFIG_DIR: "/cfg/sc" }, "/home/x"),
+    "/cfg/sc/projects/-w-a-b/r1.jsonl",
+  );
+  assert.equal(
+    claudeTranscriptPath("/w a/b", "r1", { CLAUDE_CONFIG_DIR: "~/reloc" }, "/home/x"),
+    "/home/x/reloc/projects/-w-a-b/r1.jsonl",
+  );
+  assert.equal(
+    claudeTranscriptPath("/w a/b", "r1", {}, "/home/x"),
+    "/home/x/.claude/projects/-w-a-b/r1.jsonl",
+  );
+  assert.equal(claudeConfigDir({ CLAUDE_CONFIG_DIR: "~" }, "/home/x"), "/home/x");
+});
+
+test("the resume check finds a transcript at a relocated CLAUDE_CONFIG_DIR", async () => {
+  const sessions = path.join(tmpdir(), "sessions");
+  const cwd = fs.realpathSync(tmpdir());
+  const reloc = tmpdir();
+  const restoreEnv = setEnv("CLAUDE_CONFIG_DIR", reloc);
+  try {
+    recordSession(sessions, {
+      agent: "claude",
+      id: "relocated-id",
+      kind: "author",
+      name: "n",
+      cwd,
+      at: Date.now(),
+    });
+    const transcript = claudeTranscriptPath(cwd, "relocated-id");
+    assert.ok(
+      transcript.startsWith(reloc + path.sep),
+      `the transcript lives under the relocated dir: ${transcript}`,
+    );
+    fs.mkdirSync(path.dirname(transcript), { recursive: true });
+    fs.writeFileSync(transcript, "");
+    // The default `~/.claude` tree is untouched, so only the relocated file is relevant.
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
+      true,
+      "a transcript written at the relocated path is resumable",
+    );
+    fs.rmSync(transcript);
+    assert.equal(
+      claudeBackend.resumable!(sessions, { kind: "author", agent: "claude", cwd }),
+      false,
+      "removing the relocated transcript makes the run non-resumable",
+    );
+  } finally {
+    restoreEnv();
   }
 });
 

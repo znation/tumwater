@@ -38,19 +38,44 @@ import type {
   StreamTranslator,
 } from "../agent-backend.js";
 
-/** claude's per-cwd project directory name under `~/.claude/projects/`: every character that
- * is not a letter or digit becomes `-`. Exported with `claudeTranscriptPath` so the PATH fake
- * and the tests create and look for exactly the file the resume check reads. */
+/** claude's per-cwd project directory name under the claude config dir's `projects/`:
+ * every character that is not a letter or digit becomes `-`. Exported with
+ * `claudeTranscriptPath` so the PATH fake and the tests create and look for exactly the file
+ * the resume check reads. */
 export function claudeProjectSlug(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, "-");
 }
 
+/** claude's config directory: `$CLAUDE_CONFIG_DIR` when non-empty (a leading `~` expands
+ * against the home dir), else `~/.claude`. This mirrors claude's own lookup and pi's
+ * `piAgentDir`; exported so doctor reads the same dir the adapter writes transcripts into. */
+export function claudeConfigDir(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+): string {
+  const dir = env.CLAUDE_CONFIG_DIR;
+  if (!dir) return path.join(homeDir, ".claude");
+  if (dir === "~") return homeDir;
+  if (dir.startsWith("~/")) return path.join(homeDir, dir.slice(2));
+  return dir;
+}
+
 /** The transcript file claude writes for a session started in `cwd`: its resume check must find
  * a real file before passing `--resume`. claude's own layout is
- * `~/.claude/projects/<slug>/<sessionId>.jsonl`; exported so the fake and the resume logic
+ * `<config>/projects/<slug>/<sessionId>.jsonl`; exported so the fake and the resume logic
  * cannot drift. */
-export function claudeTranscriptPath(cwd: string, id: string): string {
-  return path.join(os.homedir(), ".claude", "projects", claudeProjectSlug(cwd), `${id}.jsonl`);
+export function claudeTranscriptPath(
+  cwd: string,
+  id: string,
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+): string {
+  return path.join(
+    claudeConfigDir(env, homeDir),
+    "projects",
+    claudeProjectSlug(cwd),
+    `${id}.jsonl`,
+  );
 }
 
 /** The CLI version every gated claude model needs (plans/agent-backends.md finding 9): on
