@@ -114,3 +114,35 @@ test("a clean nothing-to-do run classifies as a fulfilled no_change without requ
   assert.equal(outcome?.cutOff, undefined);
   assert.equal(pending.get(), null, "a fulfilled no_change requeues nothing");
 });
+
+test("a director question answered in prose ends no_change carrying the answer as its summary", async () => {
+  const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: true,
+    finalText: "Not a bug. The merge slot is busy.\n\nTUMWATER_NOTHING_TO_DO",
+  });
+
+  // userPrompt non-null marks a prompt-driven director tick: a question-type prompt needs no
+  // change, but its prose reply must survive as the tick's summary (BUGS.md 2026-10-14).
+  const { ctx } = makeCtx(root, wt, DIRECTOR_ROLE, { pi, userPrompt: "Is this a bug?" });
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(outcome?.summary, "Not a bug. The merge slot is busy.");
+});
+
+test("a role loop's prompt-less nothing-to-do is not treated as an answer", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  // Prose above the sentinel, but no user prompt driving the tick: only a director question
+  // promotes the reply to a summary; a role loop's bare nothing-to-do stays summary-less.
+  const pi: PiRunResult = piRunResult({
+    nothingToDo: true,
+    finalText: "Nothing to do today.\n\nTUMWATER_NOTHING_TO_DO",
+  });
+
+  const { ctx } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "no_change");
+  assert.equal(outcome?.summary, undefined);
+});

@@ -13,7 +13,7 @@ import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { isDirty, deleteRef } from "../git/git.js";
 import { applyConfigRequest } from "../config/config-write.js";
-import { diagnoseNoChange } from "../verdict/no-change.js";
+import { diagnoseNoChange, extractNoChangeAnswer } from "../verdict/no-change.js";
 import { handleRefusal, refusalContradiction } from "../verdict/refusal.js";
 import { extractSummary } from "../git/commit-message.js";
 import { recordFlow } from "./qa-coverage.js";
@@ -249,7 +249,16 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
         ctx.flow.result,
         ctx.flow.result === "bug" ? extractSummary(pi.finalText) ?? undefined : undefined,
       );
-    return { result: "no_change", cutOff: diagnosis.cutOff || undefined };
+    // A prompt-driven (director) tick that answers a question in prose ends `no_change` with
+    // no SUMMARY block, so its reply would be lost — the dashboard reads a bare "No change"
+    // and the feed carries nothing (BUGS.md 2026-10-14). Keep the prose above the sentinel as
+    // the tick's summary so `lastSummary` and the tick_end event show the answer where the
+    // operator asked the question. A role loop's bare nothing-to-do stays summary-less.
+    const summary =
+      ctx.userPrompt !== null && !diagnosis.cutOff
+        ? (extractNoChangeAnswer(pi.finalText) ?? undefined)
+        : undefined;
+    return { result: "no_change", cutOff: diagnosis.cutOff || undefined, summary };
   }
   return null;
 }

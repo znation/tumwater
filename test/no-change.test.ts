@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { diagnoseNoChange } from "../src/verdict/no-change.js";
+import { diagnoseNoChange, extractNoChangeAnswer } from "../src/verdict/no-change.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
@@ -57,4 +57,25 @@ test("a sentinel in an intermediate turn suppresses the diagnosis even when the 
   );
   assert.equal(d.cutOff, false); // cut-off requires BOTH signals; the sentinel wins
   assert.deepEqual(d.notes, []);
+});
+
+test("extractNoChangeAnswer returns the prose above the sentinel", () => {
+  const ans = extractNoChangeAnswer("Not a bug. The merge slot is busy.\n\nTUMWATER_NOTHING_TO_DO");
+  assert.equal(ans, "Not a bug. The merge slot is busy.");
+});
+
+test("extractNoChangeAnswer trims decoration but keeps the answer", () => {
+  const ans = extractNoChangeAnswer("  The row is accurate.  \n\nTUMWATER_NOTHING_TO_DO");
+  assert.equal(ans, "The row is accurate.");
+});
+
+test("extractNoChangeAnswer is null when nothing rides the sentinel", () => {
+  assert.equal(extractNoChangeAnswer("TUMWATER_NOTHING_TO_DO"), null);
+  assert.equal(extractNoChangeAnswer("some reply without the sentinel"), null);
+});
+
+test("extractNoChangeAnswer caps an overlong answer like a SUMMARY", () => {
+  const ans = extractNoChangeAnswer("x".repeat(400) + "\n\nTUMWATER_NOTHING_TO_DO");
+  assert.ok(ans!.length <= 100, `kept ${ans!.length} chars, under the 100 cap`);
+  assert.ok(ans!.endsWith("…"));
 });
