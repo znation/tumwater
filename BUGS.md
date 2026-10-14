@@ -5,7 +5,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The GUI "Landed today" stat tile truncates its sub line with an ellipsis (reported by user 2026-10-14)
+## Fixed
+
+### The GUI "Landed today" stat tile truncates its sub line with an ellipsis (reported by user 2026-10-14) — fixed 2026-10-14
 
 **Symptom:** the fleet view's "Landed today" tile shows `2 features done · 0 bugs fixed · …`; the work/maintenance split is cut off and the full text is unreadable.
 
@@ -17,7 +19,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 **Acceptance:** at the width in the screenshot the Landed today tile shows its full text across two lines; all four tiles in the row stay the same height and their values align; a style test (extend the existing `gui-styles` test if one exists) pins that `.stat-sub` no longer carries `nowrap`/`ellipsis` and reserves two lines; the check passes.
 
-## Fixed
+**Fixed:** `.stat-sub` now wraps (`line-height: 1.4`, `min-height: calc(2 * 1.4em)`, no nowrap/ellipsis); pinned by a page-CSS test in `test/gui-client-fleet.test.ts`.
+
+**Validation gap:** none — the CSS rule was readable in the page string and a test can pin it.
 
 ### The Claude window badge shows `resets HH:MM` with no date, so a 7d window resetting days away reads as today (reported by user 2026-10-14, fixed 2026-10-14)
 

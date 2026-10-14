@@ -463,3 +463,11 @@ test("the Questions tab's Answer button opens the entry drawer instead of drafti
   assert.match(html, /backloglink' data-file='questions' data-index='0'>Answer</);
   assert.doesNotMatch(html, /data-act='answer'/);
 });
+
+test("the stat tile sub line wraps and reserves two lines instead of truncating", () => {
+  const rule = /\.stat-sub \{([^}]*)\}/.exec(GUI_PAGE)?.[1] ?? "";
+  assert.ok(rule, "page carries a .stat-sub rule");
+  assert.doesNotMatch(rule, /nowrap|ellipsis/);
+  assert.match(rule, /min-height: calc\(2 \* 1\.4em\)/);
+  assert.match(rule, /line-height: 1\.4/);
+});

@@ -287,7 +287,7 @@ export const GUI_STYLES = String.raw`
   .stat-value { display: block; margin-top: 4px; font-size: 24px; line-height: 1.2; font-weight: 650; letter-spacing: -0.02em;
                 font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .stat-value small { font-size: 13.5px; font-weight: 500; letter-spacing: 0; color: var(--text-3); }
-  .stat-sub { display: block; margin-top: 2px; font-size: 12.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-sub { display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.4; min-height: calc(2 * 1.4em); color: var(--text-3); }
   .meter { display: block; height: 5px; margin-top: 9px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
   .meter > span { display: block; height: 100%; border-radius: inherit; background: var(--primary); }
   .meter.t-red > span, .meter.t-amber > span { background: var(--t); }
