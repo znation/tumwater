@@ -140,6 +140,28 @@ lines.
 - `grep -rn 'readOrchestratorInfo\|readSlotsState\|queuedRolePromptEntries\|readPiProviders\|readClaudeAccount' src/status` shows each defined in its one module and imported, never duplicated.
 - `DEVELOPMENT.md`'s `src/status/` bullet names the three collectors. `npm run test` passes.
 
+
+### Waiting backlog entries name how long they have been open: a "since <date>" age on `plan|bug --list` and its JSON (planned 2026-10-14 by plan; independent of every other entry — touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, or test-suite file, and no code the waiting comment-width / loop-model / provider-hold plans touch)
+
+**Goal.** `tumwater plan --list` and `tumwater bug --list` list every waiting entry's title and eligibility mark, but not how long it has waited, so a stale or orphaned entry is indistinguishable from a fresh one until the reader opens the file and finds its date clause. Every eligible heading already carries its filing stamp in prose — plans open with a `(planned YYYY-MM-DD …)` clause, bugs with `(found by … YYYY-MM-DD …)` or `(reported …)` — so the list can name the age from the text it already parses, giving the operator and the feature loop a quick read on which waiting work is fresh and which has sat. `listAndAnnounce` in `src/backlog/backlog-cli.ts` is the only list surface changed; it is shared verbatim by `plan --list` and `bug --list`. A grep for `filingDate`/`ageInDays`/` · since` under `src/` finds nothing.
+
+**Approach.**
+- In `src/backlog/backlog.ts`, three small pure helpers next to `sectionCompletionDates`:
+  - `filingDate(title: string): string | null` — the first `YYYY-MM-DD` after a `planned`, `reported`, or `found by` word in the heading (`/(?:planned|reported|found by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/` on the title), else null. Taken from the title text only — the whole heading, not the body — because the stamp is the entry's own and the body may name other dates.
+  - `ageInDays(since: string, now: number = Date.now()): number` — `Math.max(0, Math.floor((now - Date.parse(since)) / 86400000))`.
+  - `entryAgeSuffix(title: string, now: number = Date.now()): string` — `` ` · since ${since} (${n}d)` `` when `filingDate` parses (with `(today)` when `n === 0`), else `""`. Rendering "today"/"`(n}d`" is the one place the age is worded, so `--list` and `tumwater backlog` could reuse it without drifting.
+- In `listAndAnnounce` (`src/backlog/backlog-cli.ts`), extend both output shapes:
+  - Plain: `numbered` becomes `` `${entry.title}${holdMark(entryHolds[i] ?? null)}${entryAgeSuffix(entry.title)}` `` so each line reads `2. <title>[eligible] · since 2026-10-14 (1d)`.
+  - JSON: each object gains `since: filingDate(entry.title)` and, when `since` parses, `ageDays: ageInDays(since)`; both absent when the heading has no stamp, so the JSON shape is unchanged for an undated entry.
+
+**Files touched.** `src/backlog/backlog.ts`, `src/backlog/backlog-cli.ts`, and a new test file `backlog-age.test.ts` in `test/` (a node:test file like `test/backlog-eligibility.test.ts`, using a temp root whose `PLANS.md`/`BUGS.md` it writes).
+
+**Acceptance criteria.**
+- `backlog-age.test.ts`: a heading `… (planned 2026-10-10 by plan; …)` gives `filingDate` `2026-10-10` and, with `now` three days later, `entryAgeSuffix` `` ` · since 2026-10-10 (3d)` ``; the same day gives `(today)`. A bug heading `… (found by director 2026-10-12)` parses the same way; a heading with no `planned|reported|found by` date clause gives `null`/`""`. A heading whose body-only date would otherwise tempt the reader (stamp clause present) still parses its own stamp. `ageInDays` floors at 0 for a future date.
+- With a temp root holding one plan and one bug written as above, `plan --list`'s numbered line ends in ` · since 2026-10-10 (3d)` (and the hold mark still rides before it), and the `--json` object carries `since` and `ageDays` for the dated entry and neither field for an undated one.
+- No heading text, `tumwater backlog` markdown, or other surface changes: the diff is confined to the files above.
+- `npm run test` passes.
+
 ## Done
 
 ### Loop rows name pi's own default model when `tumwater.json` names none, part 2/2: `tumwater role` (planned 2026-10-14 from an operator request; requires part 1/2 landed) — done 2026-10-14
