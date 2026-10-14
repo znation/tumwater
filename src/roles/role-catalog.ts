@@ -497,7 +497,10 @@ Compressing PLANS.md ## Done — PLANS.md's ## Done section is curated to stay b
      landed the work — and when no landing commit exists (a plan closed without code change says
      so in its Done note) omit the commit(s) field rather than guess.
    - The one-line form keeps every existing cross-reference resolvable: references cite titles or
-     commit hashes, both preserved.
+     commit hashes, both preserved. Never delete a
+     one-line record, and an epitaph for a deleted or merged entry keeps the entry's title, because
+     \`plans-citations.test.ts\` fails when a \`PLANS.md "<title>"\` citation in a \`src/\` or
+     \`test/\` comment matches no heading or one-line record.
 
 Compressing BUGS.md ## Fixed — BUGS.md's ## Fixed section is curated to stay bounded by the same
 policy:

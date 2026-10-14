@@ -436,6 +436,13 @@ test("the director investigates only enough to route", () => {
   assert.match(prompt, /Investigate only as much as routing precisely needs/);
   assert.match(prompt, /never a survey of the codebase, and never the implementation itself/);
 });
+test("the steward never deletes a one-line record and keeps epitaph titles", () => {
+  const find = oneLine(roleById("steward")!.find);
+  assert.match(find, /Never delete a one-line record/);
+  assert.match(find, /an epitaph for a deleted or merged entry keeps the entry's title/);
+  assert.match(find, /`plans-citations\.test\.ts` fails when a `PLANS\.md "<title>"` citation/);
+});
+
 test("the steward reads the injected index and reads bodies only by range", () => {
   const find = oneLine(roleById("steward")!.find);
   assert.match(find, /you may see PLANS\.md and BUGS\.md whole, but do it cheaply/i);

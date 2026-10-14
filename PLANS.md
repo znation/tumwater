@@ -89,7 +89,9 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
-### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line)
+## Done
+
+### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line, done 2026-10-14)
 
 **Goal.** Comments cite plans by quoted title, as in `(PLANS.md "Robust conflict landing, part 2/2")`.
 The steward prompt (`steward` in `ROLES`, `src/roles/role-catalog.ts`) promises that "the one-line form
@@ -150,8 +152,6 @@ docs/invariants.md entry: the register covers subsystem code, not the backlog re
   `src/prompt/gate-prompts.ts` and the quote. Put the line back afterwards.
 - `git diff` changes no line under `src/` other than the steward `find` text.
 - The new prompt-roles test fails if that steward sentence is removed.
-
-## Done
 
 ### The landing gate rejects a change that writes the value of a secret environment variable into the repo (planned 2026-10-13 by plan; independent of every other entry. It follows the INV-G1 pattern of the Done entry "The landing gate rejects a loop's edit to the initial prompt block…": one reason function shared by `stageCheckFindings` and the review gate) (done 2026-10-14)
 
@@ -6144,3 +6144,11 @@ citation-sweep parts, so the parts land cleanly in any order.
 - The TUI moves to ink, part 3/3: retire the hand-rolled renderer remnants and correct the docs (planned 2026-10-01, done 2026-10-02; commit 75c42c9a)
 - The TUI moves to ink, part 2b/3: key handling moves to ink's `useInput` (planned 2026-10-01, done 2026-10-02; commit 4576a0c3)
 - The TUI moves to ink, part 2a/3: extract the key handler from `runTui` into a framework-free module (planned 2026-10-01, done 2026-10-02; commit 5511dafd)
+- Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29, done 2026-09-29; commit e5cb99ab)
+- Prioritize loops by need — defer unneeded maintenance ticks and order work roles first (planned 2026-09-08, done 2026-09-10; commits 1406be5, b2ddeb6)
+- Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, done 2026-09-24; commit d964507)
+- Red-main handoff — point the bugfix loop at the failing suite when main is red (planned 2026-09-19, done 2026-09-19; commit cfac056)
+- Land-queue speed 1/3 — Take the build-fix run out of the landing slot: retry a failed gate check once, then hand the failure to whoever caused it (planned 2026-09-23, done 2026-09-24; commits 4e9bf7f, 91ef22a)
+- Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
+- `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
+- `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
