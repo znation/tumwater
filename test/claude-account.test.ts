@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  claudeWindowEntries,
   observeClaudeAccount,
   readClaudeAccount,
   seedClaudeAccount,
@@ -244,4 +245,67 @@ test("seedClaudeAccount: a claude.ai login seeds subscription billing", () => {
     assert.equal(seeded?.subscriptionType, "team");
     assert.equal(readClaudeAccount(root, 321)?.billing, "subscription");
   });
+});
+
+test("claudeWindowEntries orders most constrained first by status severity", () => {
+  const entries = claudeWindowEntries(account({
+    windows: {
+      seven_day: { status: "allowed", observedAt: 1 },
+      reset: { status: "reset", observedAt: 1 },
+      five_hour: { status: "rejected", resetsAt: 9_000, observedAt: 1 },
+      warning: { status: "allowed_warning", observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(
+    entries.map((e) => e.type),
+    ["five_hour", "warning", "seven_day", "reset"],
+    "rejected > allowed_warning > allowed > reset",
+  );
+  assert.equal(entries[0]?.resetsAt, 9_000, "the window entry keeps its own fields");
+});
+
+test("claudeWindowEntries breaks ties by utilization, then reset time, then type name", () => {
+  // Same status (allowed_warning), differing utilization: higher utilization first, and a
+  // missing reading sorts below any number.
+  const byUtil = claudeWindowEntries(account({
+    windows: {
+      low: { status: "allowed_warning", utilization: 0.4, observedAt: 1 },
+      high: { status: "allowed_warning", utilization: 0.9, observedAt: 1 },
+      none: { status: "allowed_warning", observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byUtil.map((e) => e.type), ["high", "low", "none"]);
+
+  // Same status and utilization: the earlier reset sorts first.
+  const byReset = claudeWindowEntries(account({
+    windows: {
+      later: { status: "rejected", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+      earlier: { status: "rejected", utilization: 0.5, resetsAt: 8_000, observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byReset.map((e) => e.type), ["earlier", "later"]);
+
+  // Identical readings: the type name decides, deterministically.
+  const byName = claudeWindowEntries(account({
+    windows: {
+      zebra: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+      alpha: { status: "allowed", utilization: 0.5, resetsAt: 9_000, observedAt: 1 },
+    },
+  }));
+  assert.deepEqual(byName.map((e) => e.type), ["alpha", "zebra"]);
+});
+
+test("claudeWindowEntries: empty account lists empty, prototype-key window listed as an entry", () => {
+  assert.deepEqual(claudeWindowEntries(account()), []);
+  // `setWindow` stores a `__proto__` rate-limit type as an own entry via defineProperty, so an
+  // object literal cannot reproduce it — define it the same way the writer does.
+  const proto = account();
+  Object.defineProperty(proto.windows, "__proto__", {
+    value: { status: "rejected", observedAt: 1 },
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
+  const entries = claudeWindowEntries(proto);
+  assert.deepEqual(entries.map((e) => e.type), ["__proto__"], "a prototype-key window is an own entry");
 });
