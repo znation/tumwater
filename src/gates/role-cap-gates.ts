@@ -28,6 +28,7 @@
  * accepts). */
 
 import type { LoopState } from "../loop/loop-state.js";
+import { groupBy } from "../collections.js";
 import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
 import { logEventBestEffort } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -73,14 +74,11 @@ export function roleCapVerdicts(
   caps: Record<string, number> | undefined,
   now: number,
 ): Map<string, RoleCapVerdict> {
-  const groups = new Map<string, CapObservation[]>();
-  for (const r of runners) {
-    const base = baseRoleOf(r.role);
-    if (base === DIRECTOR_ROLE) continue;
-    const members = groups.get(base);
-    if (members) members.push(r);
-    else groups.set(base, [r]);
-  }
+  // Group by base role via the shared Map-of-arrays step (collections.groupBy, which
+  // time-spend, history-data, and fleet-polls also fold), then drop the exempt director's
+  // group so it never holds a verdict; first-appearance order is preserved.
+  const groups = groupBy(runners, (r) => baseRoleOf(r.role));
+  groups.delete(DIRECTOR_ROLE);
   const verdicts = new Map<string, RoleCapVerdict>();
   for (const [base, members] of groups) {
     const cap = caps?.[base];
