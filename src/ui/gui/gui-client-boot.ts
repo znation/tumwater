@@ -7,7 +7,14 @@
  * when the serving build moves. Spliced into gui-client.ts's script as its last section,
  * reaching the shared state and the render helpers of every other section through that
  * concatenation. */
-export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
+export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written to the file but the worktree was left dirty" toasts: the
+  // cancel/edit/file backlog actions share the same committed===false copy, kept in one place
+  // so the operator-facing wording about an uncommitted edit cannot drift between them. The
+  // question-answer toast names QUESTIONS.md explicitly, so it stays inline.
+  function uncommittedTail(d) {
+    return d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : "";
+  }
+  // ---- views ----
   // view-routing:start
   const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" };
   function switchView(v) {
@@ -121,7 +128,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
       postAction("/api/backlog-cancel", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
         closeDrawer();
         return d && d.status === "cancelled"
-          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + (d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : "")
+          ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d)
           : "That entry was already removed or moved — refreshed";
       });
     } else if (act === "entry-edit") {
@@ -145,7 +152,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // ---- views ----
         stopEntryEdit();
         closeDrawer();
         return d && d.status === "edited"
-          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + (d.committed === false ? ", but NOT committed to main (uncommitted in the checkout)" : "")
+          ? "Edited “" + splitTitle(d.title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d)
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "note-edit") {
