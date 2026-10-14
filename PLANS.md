@@ -8,8 +8,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 1/2: the test, `test/` and most of `src/` (planned 2026-10-14 by plan; independent of the waiting secret-leak gate plan; part 2/2 below follows it)
 
-**Needs replan 2026-10-14 by feature: rejected after repeated review rounds** (the last rejection was over a false VERIFIED claim about `test/operator-intent.test.ts`, not the design; a retry should re-measure before claiming any failing test).
-
 **Goal.** Comments in this tree wrap at 100 columns, but the rule is unwritten and nothing checks it.
 So the clean loop sweeps it by hand, and each sweep is measured with a different ad hoc grep: bytes or
 code points, `//` lines only, one directory. Of the clean loop's 42 `review_rejected` events from
@@ -45,6 +43,14 @@ rules out. So this is a node:test file, like `test/exports.test.ts`.
   100 columns. No mid-paragraph line may be left as a short stranded fragment. Keep the wording
   except where a split forces otherwise. Touch only comment lines: `git diff -U0` shows no
   changed code line.
+- Only genuinely-comment lines are in scope. A line inside a template literal (a test fixture,
+  a prompt string, a markdown block in backticks) is not a comment, even when it starts with `*`
+  or `//`: the block-comment flag never opens inside a template, so the test never flags it and
+  the fixer must leave it byte-identical — reflowing or repunctuating a template fixture is a
+  non-comment change.
+- Preserve each block comment's leading alignment. A JSDoc continuation line keeps its ` * `
+  (space, asterisk, space) prefix exactly; never re-indent a block to `  * ` or drop the ` * `
+  even when wrapping pushes the text wider, and `paths.ts:148` is a known case to keep aligned.
 - `src/roles/role-catalog.ts`, the `clean` role's `find` text: the test now enforces the
   "doc lines over 100 columns in one directory" example, so replace it with "comments citing
   a PLANS.md entry title that no longer exists". That theme drew six clean rejections on
@@ -58,8 +64,13 @@ rules out. So this is a node:test file, like `test/exports.test.ts`.
 `src/ui`.
 
 **Acceptance criteria.**
-- `comment-width.test.ts` passes on the tree. With `EXEMPT_DIRS` emptied it fails and
-  lists only lines under `src/cli`, `src/gui` and `src/ui`.
+- `comment-width.test.ts` passes on the final tree, with `EXEMPT_DIRS` covering exactly
+  `src/cli`, `src/gui` and `src/ui` and no other directory. So no over-100-column comment line
+  remains in `test/` or any other `src/` directory. Re-measure by running the test itself and
+  reading its offender list (it is what the gate runs); do not attribute any failure to
+  `test/operator-intent.test.ts` or claim it fails — state only what the tree shows.
+- With `EXEMPT_DIRS` emptied the same test fails and lists only lines under
+  `src/cli`, `src/gui` and `src/ui`.
 - The test has a second case built on an in-memory sample. Export a small pure helper from
   the test file, or keep it local, e.g. `commentOffenders(text)`. The case shows that a 101-column
   `//` line and a 101-column line inside `/* … */` are offenders. A 101-column code line, a
