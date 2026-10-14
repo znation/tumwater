@@ -30,6 +30,31 @@ function contentBlocks(content: unknown): ContentBlock[] {
   return content.map((raw) => (raw ?? {}) as ContentBlock);
 }
 
+/** Append a `text` content block's lines to `out` under the per-message line budget, returning
+ * the new (shown, overflow-marked) counters. Blank lines render nothing; once the budget is
+ * spent the ellipsis marks the overflow a single time and every later line is dropped. */
+function renderTextLines(
+  block: ContentBlock,
+  out: string[],
+  textShown: number,
+  textOverflowMarked: boolean,
+): { textShown: number; textOverflowMarked: boolean } {
+  for (const rawLine of textOr(block.text, "").split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (textShown >= TEXT_LINES_PER_MESSAGE) {
+      if (!textOverflowMarked) {
+        out.push("  …");
+        textOverflowMarked = true;
+      }
+      break;
+    }
+    out.push(`  ${truncate(line, TEXT_LINE_MAX_COLS)}`);
+    textShown += 1;
+  }
+  return { textShown, textOverflowMarked };
+}
+
 /** Render one completed assistant message into transcript lines: abbreviated thinking,
  * indented text (capped), and labeled tool calls — in the order they appear. */
 function renderAssistantMessage(content: unknown): string[] {
@@ -43,22 +68,9 @@ function renderAssistantMessage(content: unknown): string[] {
         if (thinking) out.push(`· ${truncate(thinking, THINKING_MAX_CHARS)}`);
         break;
       }
-      case "text": {
-        for (const rawLine of textOr(block.text, "").split("\n")) {
-          const line = rawLine.trim();
-          if (!line) continue;
-          if (textShown >= TEXT_LINES_PER_MESSAGE) {
-            if (!textOverflowMarked) {
-              out.push("  …");
-              textOverflowMarked = true;
-            }
-            break;
-          }
-          out.push(`  ${truncate(line, TEXT_LINE_MAX_COLS)}`);
-          textShown += 1;
-        }
+      case "text":
+        ({ textShown, textOverflowMarked } = renderTextLines(block, out, textShown, textOverflowMarked));
         break;
-      }
       case "toolCall":
         out.push(`→ ${describeToolCall(textOr(block.name), block.arguments)}`);
         break;
