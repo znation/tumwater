@@ -91,7 +91,9 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
-### The secret-leak gate also checks the credentials pi stores in `auth.json` and `models.json` (planned 2026-10-14 by plan; independent of every other entry)
+## Done
+
+### The secret-leak gate also checks the credentials pi stores in `auth.json` and `models.json` (planned 2026-10-14 by plan, done 2026-10-14 by feature; independent of every other entry)
 
 **Goal.** INV-G2 (`src/review/secret-leaks.ts`, landed 2026-10-14) rejects a change that writes
 a secret into a file. It only knows the secrets in `process.env` (`secretEnvValues`). pi resolves
@@ -160,7 +162,6 @@ signature change forces it.
   update. The new tests read only temp files, never the real `~/.pi/agent`.
 - `npm run test` passes.
 
-## Done
 
 ### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line, done 2026-10-14)
 

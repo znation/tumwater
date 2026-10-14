@@ -364,17 +364,21 @@ rejects an md-only edit to the initial prompt block with no pi run" and "gate re
 PRINCIPLES.md edit except from the steward" — and `test/stage-check.test.ts` — "an uncommitted
 PRINCIPLES.md edit is a finding for a non-steward role only".
 
-### INV-G2: a loop cannot land a change that writes a secret environment variable's value into a file
+### INV-G2: a loop cannot land a change that writes a secret environment variable's value or a credential pi stores in `auth.json`/`models.json` into a file
 
 **Guarantee.** A changed file whose content holds the value of a secret-named environment
 variable (name matching token, secret, password, credential, or key; value of 16+ characters, no
-whitespace, not a path) that its merge-base content did not hold is rejected before review —
+whitespace, not a path), or a literal credential pi stores in `auth.json`/`models.json` (`apiKey`,
+header values, `key`/`access`/`refresh`; not `$NAME` or `!command` values), that its merge-base
+content did not hold is rejected before review —
 md-only diffs included — and flagged at staging for one fix-up turn. The reason names the file and
-variable, never the value.
+variable or pi source, never the value.
 
 **Binds.** `src/review/secret-leaks.ts`, `src/review/review.ts`, `src/tick/stage-check.ts`.
 
-**Pinned by.** `test/secret-leaks.test.ts`, `test/review.test.ts` — "gate rejects an md-only change
+**Pinned by.** `test/secret-leaks.test.ts` — "piCredentialValues returns literal apiKey, header,
+key, access and refresh values", "piCredentialValues skips interpolations, commands and short dummy
+keys", "secretLeakReason names the pi models.json source, never the value" — `test/review.test.ts` — "gate rejects an md-only change
 that writes a secret env value, with no pi run" — and `test/stage-check.test.ts` — "an uncommitted
 file holding a secret env value is a finding".
 
