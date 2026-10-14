@@ -7,6 +7,8 @@
  * The backlog index marks every held entry so a loop
  * skips it without re-deriving the rule. */
 
+import path from "node:path";
+import { statOrNull } from "../files/files.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -203,13 +205,65 @@ export function holdMark(hold: EntryHold): string {
  * parallel to backlogPayload's `plans` and `bugs`: the same entryHold decision the prompt's
  * backlog index carries, so a hold is observable rather than inferred. The planned entries
  * are read once and reused as the prerequisite set. Questions carry no holds. */
-export function backlogHolds(root: string): { plans: EntryHold[]; bugs: EntryHold[] } {
-  const planned = plannedPlanEntries(root);
+/** The holds' shape, derived from two files so it needs a stat key spanning both. */
+type BacklogHolds = { plans: EntryHold[]; bugs: EntryHold[] };
+
+/** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them
+ * each frame while PLANS.md/BUGS.md change only when a loop lands an edit. The file reads
+ * beneath are already stat-cached (plannedPlanEntries/openBugEntries), but the per-entry
+ * eligibility walk (entryHoldAgainst's body scan + heading clause) is pure CPU re-derived on
+ * every call, growing with the append-only backlog. Cache the derived holds keyed on both
+ * files' stat identities — the same dev/ino/mtimeMs/size freshness check stat-cache.ts
+ * applies — so an unchanged backlog costs two stat syscalls per poll instead of the walk.
+ * Bounded (like sectionCache) so many short-lived roots in tests cannot grow it unbounded. */
+const HOLDS_CACHE_MAX = 64;
+const holdsCache = new Map<string, BacklogHolds>();
+
+function holdsStatKey(root: string): string {
+  const statId = (file: string): string => {
+    const st = statOrNull(file);
+    return st === null ? "-" : `${st.dev}:${st.ino}:${st.mtimeMs}:${st.size}`;
+  };
+  return `${statId(path.join(root, "PLANS.md"))}\u0000${statId(path.join(root, "BUGS.md"))}`;
+}
+
+const cloneHold = (hold: EntryHold): EntryHold =>
+  hold !== null && typeof hold === "object" ? { blockedBy: [...hold.blockedBy] } : hold;
+
+/** A copy of the holds so each caller owns its data, matching stat-cache's contract (mutating
+ * one result must not poison later polls). */
+function cloneHolds(holds: BacklogHolds): BacklogHolds {
+  return { plans: holds.plans.map(cloneHold), bugs: holds.bugs.map(cloneHold) };
+}
+
+/** The two reader calls computeBacklogHolds derives from, grouped in one object — the one
+ * deliberate mock seam in this module. Both readers are themselves stat-cached, so a repeat
+ * poll's only cost is this per-entry walk; exposing them on an object lets a test count whether
+ * a poll re-runs the walk at all, which is the holds cache's observable win (a hit serves the
+ * cached derives without calling these). */
+export const holdsBacklogReaders = {
+  plannedPlanEntries,
+  openBugEntries,
+};
+
+/** The uncached derivation, shared by backlogHolds' miss path. */
+function computeBacklogHolds(root: string): BacklogHolds {
+  const planned = holdsBacklogReaders.plannedPlanEntries(root);
   const parts = plannedPartKeys(planned);
   return {
     plans: planned.map((entry) => entryHoldAgainst(entry, parts)),
-    bugs: openBugEntries(root).map((entry) => entryHoldAgainst(entry, parts)),
+    bugs: holdsBacklogReaders.openBugEntries(root).map((entry) => entryHoldAgainst(entry, parts)),
   };
+}
+
+export function backlogHolds(root: string): BacklogHolds {
+  const key = holdsStatKey(root);
+  const hit = holdsCache.get(key);
+  if (hit !== undefined) return cloneHolds(hit);
+  const value = computeBacklogHolds(root);
+  if (holdsCache.size >= HOLDS_CACHE_MAX) holdsCache.clear();
+  holdsCache.set(key, value);
+  return cloneHolds(value);
 }
 
 /** The eligibility mark (holdMark) for each planned plan and open bug, two arrays parallel

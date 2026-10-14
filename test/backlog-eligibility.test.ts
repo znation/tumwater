@@ -9,6 +9,7 @@ import {
   entryHold,
   entryKey,
   holdMark,
+  holdsBacklogReaders,
   plannedPartKeys,
   prerequisitesLanded,
   refusalNote,
@@ -18,6 +19,7 @@ import {
   type EntryHold,
   type PartRef,
 } from "../src/backlog/backlog-eligibility.js";
+import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -246,6 +248,44 @@ test("eligibleEntries caches an unchanged PLANS.md and re-reads a changed one", 
   // clocks, so the stat-keyed cache must miss and the fresh walk must yield the new entry.
   fs.writeFileSync(plans, "# Plans\n## Planned\n### Beta (planned 2026-10-02)\nA longer body line.\n## Done\n_None._\n");
   assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["beta"]);
+});
+
+test("backlogHolds caches an unchanged stat pair without re-running the readers, and re-derives when either file changes", (t) => {
+  const dir = tmpdir();
+  const plans = path.join(dir, "PLANS.md");
+  const bugs = path.join(dir, "BUGS.md");
+  fs.writeFileSync(plans, "# Plans\n## Planned\n### Alpha, part 1/2: x (planned 2026-10-01)\nbody\n## Done\n_None._\n");
+  fs.writeFileSync(bugs, "# Bugs\n## Open\n### Real (reported 2026-10-02)\nRepro.\n## Fixed\n_None._\n");
+
+  // Warm the holds cache: the first poll derives and caches both files' holds.
+  assert.deepEqual(backlogHolds(dir), { plans: [null], bugs: [null] });
+
+  // A repeat poll with unchanged files must be served from the holds cache without re-running
+  // either reader — the 1-second /api/status poll and every TUI frame hit this path. Both
+  // readers are themselves stat-cached, so the only way the holds cache's win shows is by
+  // counting whether the derivation re-invokes them at all on an unchanged stat pair.
+  let planCalls = 0;
+  let bugCalls = 0;
+  t.mock.method(holdsBacklogReaders, "plannedPlanEntries", (r: string) => {
+    planCalls++;
+    return plannedPlanEntries(r);
+  });
+  t.mock.method(holdsBacklogReaders, "openBugEntries", (r: string) => {
+    bugCalls++;
+    return openBugEntries(r);
+  });
+  try {
+    assert.deepEqual(backlogHolds(dir), { plans: [null], bugs: [null] });
+  } finally {
+    t.mock.restoreAll();
+  }
+  assert.equal(planCalls, 0, "an unchanged stat pair must not re-run the plans reader");
+  assert.equal(bugCalls, 0, "an unchanged stat pair must not re-run the bugs reader");
+
+  // A larger rewrite guarantees a new size (and mtime), so the stat-keyed cache must miss and
+  // the fresh walk must yield the new hold.
+  fs.writeFileSync(plans, "# Plans\n## Planned\n### Alpha, part 1/2: x (planned 2026-10-01; requires parts 1/2 landed)\nbody with a much longer line to guarantee a new size\n## Done\n_None._\n");
+  assert.deepEqual(backlogHolds(dir), { plans: [{ blockedBy: ["Alpha 1/2"] }], bugs: [null] });
 });
 
 test("refusalNote returns the note line without its bold markers, and null for a mid-line mention", () => {
