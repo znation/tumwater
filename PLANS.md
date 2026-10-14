@@ -89,6 +89,75 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
+### The secret-leak gate also checks the credentials pi stores in `auth.json` and `models.json` (planned 2026-10-14 by plan; independent of every other entry)
+
+**Goal.** INV-G2 (`src/review/secret-leaks.ts`, landed 2026-10-14) rejects a change that writes
+a secret into a file. It only knows the secrets in `process.env` (`secretEnvValues`). pi resolves
+credentials from more sources: per pi's own models documentation (its `models.md`), it tries a stored `auth.json` credential
+first, then an `apiKey` from `models.json`, and only then environment variables. Both files sit
+in pi's agent directory, beside `piModelsPath()` (`src/pi/pi-models.ts`). This machine's
+`models.json` holds literal `apiKey` values for its custom providers. A pi-backed fleet's actual
+API keys are therefore invisible to the gate: a loop that copies them into a fixture, a doc or a
+diagnostic dump lands them on main. Teach the gate those values too.
+
+**Approach.**
+- In `src/review/secret-leaks.ts`, add an exported
+  `piCredentialValues(modelsPath: string = piModelsPath()): { name: string; value: string }[]`.
+  It reads `models.json` at `modelsPath` and `auth.json` at `path.join(path.dirname(modelsPath), "auth.json")`
+  with `readJsonFile` (`src/files/json-files.ts`), so a missing or torn file yields nothing and
+  the function never throws. It collects:
+  - from `models.json`: for each `providers.<p>` object, its string `apiKey` (named
+    `models.json <p>.apiKey`) and each string value of its `headers` object (named
+    `models.json <p>.headers.<h>`).
+  - from `auth.json`: for each top-level `<p>` object, its string `key`, `access` and `refresh`
+    fields (named `auth.json <p>.<field>`). These cover the `api_key` and OAuth credential shapes.
+    Values of its `env` object are included only when the variable name matches `SECRET_NAME`.
+  - Drop any value that starts with `$` (env interpolation, which `secretEnvValues` already
+    covers) or `!` (a command, not a key). Then apply the rule `secretEnvValues` uses (length ≥
+    `MIN_SECRET_LENGTH`, no whitespace, no leading `/`): extract that rule into one local predicate
+    (`looksLikeSecret(value)`) that both functions call. A dummy key like `"ollama"` stays
+    out by length.
+- Change `secretLeakReason`'s last parameter from `env` to
+  `secrets: { name: string; value: string }[] = knownSecrets()`, where the new exported
+  `knownSecrets(env = process.env, modelsPath = piModelsPath())` concatenates `secretEnvValues(env)`
+  and `piCredentialValues(modelsPath)`. When two entries share a value, keep only the first.
+  The reason's wording becomes ``contains the value of <name>``: env names keep their `$` prefix
+  (`$OPENAI_API_KEY`), and pi names read as `pi models.json qwenrunner.apiKey`. It still names
+  the file and source, never the value. The callers in `src/review/review.ts` and
+  `src/tick/stage-check.ts` keep calling with three arguments and get the default.
+- Update `test/secret-leaks.test.ts`: its existing calls pass `secretEnvValues(ENV)` instead of
+  `ENV`. Add tests that write a temp `models.json` and `auth.json`:
+  - `piCredentialValues` returns the literal `apiKey`, the header value, the `api_key` `key` and
+    the OAuth `access`/`refresh` values.
+  - It skips `$NAME`, `${NAME}` and `!cmd` values and a short dummy key.
+  - It returns `[]` for a missing directory and for a file that is not JSON.
+  - `secretLeakReason` with `knownSecrets({}, <temp models path>)` names `pi models.json <p>.apiKey`
+    for a changed file that holds that key, and the reason does not contain the value.
+- In `docs/invariants.md`, widen INV-G2's heading and Guarantee to "a secret environment
+  variable's value or a credential pi stores in `auth.json`/`models.json`". Add the new test
+  names to its Pinned-by line.
+
+**Files touched.** `src/review/secret-leaks.ts`, `test/secret-leaks.test.ts`, `docs/invariants.md`.
+`src/review/review.ts` and `src/tick/stage-check.ts` should need no edit; touch them only if the
+signature change forces it.
+
+**Out of scope.** Two items:
+- Claude Code's credential store: the keychain on macOS, and `~/.claude/.credentials.json`.
+- `PI_CODING_AGENT_DIR`. `piModelsPath()` ignores it today. Fixing that is a separate change to
+  `piModelsPath` that this plan's default inherits for free.
+
+**Acceptance criteria.**
+- A change that writes the literal `apiKey` from the `models.json` that `piModelsPath()` names,
+  or a `key`/`access`/`refresh` from the sibling `auth.json`, into any changed file is rejected
+  by the gate and reported as a stage finding. The reason names the file and the
+  `pi models.json …`/`pi auth.json …` source, never the value.
+- `$NAME`, `${NAME}` and `!command` values, values under 16 characters, and values that contain
+  whitespace or start with `/` raise nothing. A missing or malformed `auth.json` or `models.json`
+  raises nothing and throws nothing.
+- The existing env-variable behaviour and its tests are unchanged apart from the call-shape
+  update. The new tests read only temp files, never the real `~/.pi/agent`.
+- `npm run test` passes.
+
 ## Done
 
 ### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line, done 2026-10-14)
