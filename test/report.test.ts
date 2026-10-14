@@ -69,6 +69,62 @@ test("renderReportMarkdown prints a Rejections by role line ranked by count, onl
   assert.match(md, /\*\*Rejections by role:\*\* feature — 3 · qa — 1/, "window rejections rank by count desc then name asc");
 });
 
+test("report folds revision events into Revisions by role, beside Rejections by role", async () => {
+  const root = makeRepo();
+  // One rejection yesterday; two revisions today, on distinct roles. The window's day report
+  // must render rejections and revisions as two independent lines, and --json must carry the
+  // new revisionsByRole field only on the day(s) that have one (zero-means-absent).
+  writeEvents(root, [
+    JSON.stringify({ ts: at(1), loop: "feature", type: "review_rejected" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "revision", action: "conflict", round: 2, sha: "def" }),
+  ]);
+
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Rejections by role:\*\* feature — 1/);
+  assert.match(md.out, /\*\*Revisions by role:\*\* clean — 1 · feature — 1/, "revisions fold as their own line, ranked desc then name asc like rejections");
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const today = json.series[1];
+  const yesterday = json.series[0];
+  assert.deepEqual(today.revisionsByRole, { feature: 1, clean: 1 }, "--json carries revisionsByRole on the day that has them");
+  assert.ok(!("revisionsByRole" in yesterday), "a day with no revision carries no revisionsByRole key (zero means absent)");
+  assert.equal(yesterday.rejectionsByRole?.feature, 1, "the rejection still lands on its own day");
+});
+
+test("report renders 'Revisions by role: -' when the window has no revision events", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 10 }),
+  ]);
+  const md = await runCli(root, "report", "--days", "1");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Revisions by role:\*\* -/, "no revisions render the line as '-', the zero-means-absent convention");
+});
+
+test("report --since narrows Revisions by role to the scoped base role", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "revision", action: "conflict", round: 1, sha: "def" }),
+  ]);
+
+  const fleet = await runCli(root, "report", "--since", "6h");
+  assert.equal(fleet.code, 0);
+  assert.match(fleet.out, /\*\*Revisions by role:\*\* clean — 1 · feature — 1/, "the fleet window sums both roles' revisions, ranked name asc on a tie");
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Revisions by role:\*\* feature — 1/, "scoping --since narrows revisions to the base role");
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.revisionsByRole, { feature: 1 }, "the scoped since JSON narrows revisionsByRole");
+
+  const cleanNone = await runCli(root, "report", "--role", "bugfix", "--since", "6h");
+  assert.equal(cleanNone.code, 0);
+  assert.match(cleanNone.out, /\*\*Revisions by role:\*\* -/, "a scoped role with no revisions carries an empty map that renders '-'");
+});
+
 test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
   const data: ReportData = {
     days: 1,
@@ -249,6 +305,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     ticksByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    revisionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,
@@ -269,6 +326,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
+    revisionsByRole: { feature: 1 },
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
@@ -281,6 +339,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /\*\*Tokens by role:\*\* clean — 12\.0k · feature — 5000 · bugfix — 800/);
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
   assert.match(data, /\*\*Rejections by role:\*\* clean — 1 · feature — 1/, "equal rejection counts rank by name asc");
+  assert.match(data, /\*\*Revisions by role:\*\* feature — 1/);
   assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
 });
 
@@ -292,6 +351,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     ticksByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    revisionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,
@@ -305,6 +365,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     ticksByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
+    revisionsByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     coversFullWindow: true,
@@ -320,6 +381,7 @@ test("renderSinceReportMarkdown prints Commits by role and Notional by role matc
     ticksByRole: { feature: 5 },
     costByRole: { feature: 0.75 },
     rejectionsByRole: {},
+    revisionsByRole: { feature: 3 },
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Notional by role lines — window and day speak one shape.
@@ -339,6 +401,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     ticksByRole: {},
     costByRole: {},
     rejectionsByRole: {},
+    revisionsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,
