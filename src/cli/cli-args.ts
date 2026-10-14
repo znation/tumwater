@@ -35,7 +35,7 @@ export function flagValue(args: string[], flag: string): string | null | undefin
  * the shared wording (`<flag> may only be given once`), `seen` being the caller's accumulator
  * for that flag. One home for the wording the spec-driven gate (cli-flag-specs.ts), the
  * free-form parsers' pre-scan (cli-command-args.ts), and the bespoke command shells
- * (backlog-write.ts, cli-query-commands.ts) all apply, so a repeat cannot be reported as a
+ * (backlog-cli.ts, cli-query-commands.ts) all apply, so a repeat cannot be reported as a
  * different error on one surface. Called per occurrence rather than pre-scanned at every site,
  * so a malformed invocation still reports whichever error its token order reaches first. */
 export function rejectRepeatFlag(seen: boolean, flag: string): void {
@@ -82,7 +82,7 @@ export function parseCountFlag(flag: string, raw: string | undefined, max?: numb
  * `(e.g. …)` example because a bare count flag's `needs a value` reads thin next to the `<n>`
  * the operator typed; `example` is the spelling shown back to them. One home for the two
  * failure messages and the plain-decimal rule, shared by the prompt queue's parser
- * (cli-command-args.ts) and the bug/plan backlog shells (backlog-write.ts), so the rule cannot
+ * (cli-command-args.ts) and the bug/plan backlog shells (backlog-cli.ts), so the rule cannot
  * drift to Number() at one site. */
 export function parsePositionFlag(flag: string, raw: string | undefined, example: string): number {
   if (raw === undefined) fail(`${flag} needs a position number (e.g. \`${example}\`)`);

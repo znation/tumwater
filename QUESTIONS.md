@@ -34,7 +34,7 @@ PLANS.md `## Planned` holds one entry, "Operator backlog writes land on main, pa
 carries **Refused 2026-10-12 by feature: prerequisite part 1/2 has not landed**. That objection
 is stale: part 1/2 landed as 11ddb628 ("Commit operator-filed plans and bugs to main on
 filing"). `src/backlog/backlog-commit.ts` exists, and `commitOperatorBacklogEdit` is called from
-`announceFiled` and `releaseAndAnnounce` (`src/backlog/backlog-write.ts`), the dashboard filing
+`announceFiled` and `releaseAndAnnounce` (`src/backlog/backlog-cli.ts`), the dashboard filing
 handler, the TUI's Ctrl+N, and `src/brief-edit.ts`. `tumwater doctor`'s refusals row already
 says the refusal may be stale. The refusal landed before the `entry_refused` notify event
 existed, so the notify hook never paged about it. Only a human or the director can lift a

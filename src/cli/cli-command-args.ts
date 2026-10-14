@@ -28,7 +28,7 @@ import { errorMessage } from "../text/text.js";
  * prefix test — a negative tick number (`tick bugfix -3`) arrives flag-shaped and fails the
  * unknown-arg gate, which is the right answer for a non-positive n anyway. Lives here with
  * the CLI's other argument helpers, shared by cli.ts's tick case and
- * backlog-write.ts's fileAndAnnounce. */
+ * backlog-cli.ts's fileAndAnnounce. */
 export function peelPositionals(args: string[]): {
   positionals: string[];
   rest: string[];

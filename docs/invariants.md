@@ -170,7 +170,7 @@ checkout stays clean for the next fast-forward. Only that file is committed (oth
 stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; a refused or no-op write commits nothing. When the primary is not on the base branch, or git fails, the commit is skipped
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
-**Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-write.ts`
+**Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-cli.ts`
 (`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/brief-command.ts`, `src/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`).
 
 **Pinned by.** `test/backlog-commit.test.ts`, `test/brief-command.test.ts`, `test/gui-endpoints.test.ts`.
