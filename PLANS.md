@@ -42,6 +42,20 @@ _None yet._
 - The warn carries the plan heading and its note text, and the outcome is a warn (doctor stays exit 0), matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `entryHold`, `holdMark`, `backlogHolds`, or any eligibility or listing surface; `npm run test` passes.
 
+### `tumwater report` breaks output tokens down by role: a "Tokens by role" line in the day and `--since` renders (planned 2026-10-14 by plan; independent of every other entry — touches only `src/report/report-render.ts` and its `test/report.test.ts`, no `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, or GUI file, and no code the waiting questions-age / checkStalledPlans plans touch)
+
+**Goal.** `tumwater report` already pores each role's output-token totals — `tokensByRole` is folded into every `ReportDay` (`src/report/report-data.ts`, the day interface's `tokensByRole`) and into the `--since` window's totals — yet no render prints them: the report's per-role lines are `Ticks by role`, `Cost by role`, `Rejections by role` (and `Commits by role`, `Notional by role` in the day render), never `Tokens by role`. Output tokens are the resource the budget charges, so an operator who sees a cost or token spike can point at the offending role for cost but cannot tell which role's prompt loop burned the tokens without opening the raw event log. A grep for `Tokens by role` under `src/` and `test/` finds nothing. Both collectors already carry the data, so the change is render-only: no `report-data.ts`, no event handling, no JSON-shape change (the `/api/report` consumer reads `ReportDay`, and `tokensByRole` is already a field there).
+
+**Approach.** In `src/report/report-render.ts`, `rankedRoleMap`/`rankedRoleTotals`/`rankedRoleLine` and the `compactTokens` formatter (imported at line 10) already exist, so each addition is one line, placed right after the corresponding `Ticks by role` line, zero-token roles omitted the way `Cost by role` omits zero-spend ones (an all-zero window renders `-` like the siblings):
+- In `renderSinceReportMarkdown`, after the `Ticks by role` line (~line 112): `lines.push(rankedRoleLine("Tokens by role", rankedRoleMap(data.tokensByRole).filter(([, n]) => n > 0), compactTokens));`
+- In `renderReportMarkdown`, after the `Ticks by role` line (~line 202): `lines.push(rankedRoleLine("Tokens by role", rankedRoleTotals(data.series, (d) => d.tokensByRole).filter(([, n]) => n > 0), compactTokens));`
+
+**Files touched.** `src/report/report-render.ts`, `test/report.test.ts` (a node:test file already exercising both renders — it asserts the `Ticks by role`/`Cost by role` lines at lines 51/167/236/252).
+
+**Acceptance criteria.**
+- `test/report.test.ts` gains assertions mirroring the existing `Ticks by role` ones: the day render's `**Tokens by role:**` line ranks roles by tokens descending (and joins multi-instance base roles, since `rankedRoleTotals` runs through the same base-role fold `Ticks by role` uses), the `--since` render has the same ranked line, and a window with nothing but zero-token roles renders `**Tokens by role:** -`.
+- A role with more tokens but equal or lower cost appears in the tokens line where the cost line omits it, showing the line is its own data and not a re-render of `Cost by role`.
+- The diff is confined to the two files above; `report-data.ts`/`report.ts` and the JSON `ReportDay` shape are untouched; `/api/report` and the Usage dashboard are unaffected; `npm run test` passes.
 ## Done
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
 
