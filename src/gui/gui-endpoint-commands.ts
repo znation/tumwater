@@ -113,11 +113,11 @@ function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unkno
   if (body.defer === undefined) return undefined;
   const ms = typeof body.defer === "string" ? parseDurationMs(body.defer) : null;
   if (ms === null) {
-    sendJson(res, 400, { error: "defer needs a duration like 45s, 90m, 1h30m, or 2d" });
+    sendJson(res, 400, { error: `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(body.defer)}` });
     return null;
   }
   if (ms > PAUSE_FOR_MAX_MS) {
-    sendJson(res, 400, { error: "defer is capped at 90d" });
+    sendJson(res, 400, { error: `defer is capped at 90d${gotSuffix(body.defer)}` });
     return null;
   }
   return Date.now() + ms;
