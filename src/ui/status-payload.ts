@@ -115,7 +115,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // The header's daily-cost-budget badge preformatted through badges.ts's budgetBadge —
     // the same string the TUI/status table renders (n/a for an all-free fleet; `· no cap`
     // when disabled). Sent display-ready like buildBadge so the page cannot re-derive it.
-    budgetBadge: budgetBadge(snap.budget, snap.claudeWindow),
+    budgetBadge: budgetBadge(snap.budget, snap.claudeWindow, now),
     // The disk floor (plans/disk-floor.md, part 4/4): the raw block is machine-readable for
     // `status --json`, and the header badge is preformatted through badges.ts's diskBadge —
     // the same string the TUI/status header renders. Omitted (not null) when no orchestrator

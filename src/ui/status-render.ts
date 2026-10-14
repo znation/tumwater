@@ -203,7 +203,7 @@ export function renderStatusSpans(
     ...badgeSpans(landingBadge(snap.landQueue), "blue"),
     ...(snap.inbox ? [{ text: ` · inbox: ${snap.inbox}` }] : []),
     ...(snap.questions ? badgeSpans(` · questions: ${snap.questions}`, "magenta") : []),
-    ...badgeSpans(budgetBadge(snap.budget, snap.claudeWindow), budgetTone(snap.budget, snap.claudeWindow)),
+    ...badgeSpans(budgetBadge(snap.budget, snap.claudeWindow, now), budgetTone(snap.budget, snap.claudeWindow)),
     // The disk floor (plans/disk-floor.md, part 4/4): `disk 8.2 GB free — holding new work`
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.

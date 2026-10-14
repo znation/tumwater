@@ -116,13 +116,23 @@ function clockHm(ms: number): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/** How far off a window's reset is, two units wide: `4h 12m`, `5d 3h`, `37m`. A clock time
+ * alone cannot tell a 7d window resetting Monday from one resetting tonight. */
+function untilReset(resetsAt: number, now: number): string {
+  const minutes = Math.floor((resetsAt - now) / 60_000);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ${minutes % 60}m`;
+  return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 /** The subscription usage-window fragment (plans/agent-backends.md §8, PLANS.md part 6d/7):
- * `· Claude 5h · 64% · resets 14:30`, with the status word when no `utilization` was reported
+ * `· Claude 5h · 64% · resets in 4h 12m` (`resets now` once the deadline has passed), with the status word when no `utilization` was reported
  * and an `overage` marker while the account spends into overage. A rejected window reads
  * `claude seams held until 14:30` in place of `resets` while a future deadline holds the
  * seams; a reset reading names neither. The one home of the string, so the TUI header and the
  * payload's preformatted badge cannot drift. */
-function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>): string {
+function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>, now: number): string {
   const w = claudeWindow.primary;
   const parts = [`Claude ${claudeWindowLabel(w.type)}`];
   parts.push(typeof w.utilization === "number" ? `${Math.round(w.utilization * 100)}%` : claudeWindowStatusWord(w.status));
@@ -130,7 +140,7 @@ function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindo
   if (w.status === "rejected" && claudeWindow.heldUntil !== null) {
     parts.push(`claude seams held until ${clockHm(claudeWindow.heldUntil)}`);
   } else if (w.status !== "reset" && typeof w.resetsAt === "number") {
-    parts.push(`resets ${clockHm(w.resetsAt)}`);
+    parts.push(w.resetsAt - now < 60_000 ? "resets now" : `resets in ${untilReset(w.resetsAt, now)}`);
   }
   return ` · ${parts.join(" · ")}`;
 }
@@ -167,8 +177,9 @@ export function claudeWindowTone(claudeWindow: StatusSnapshot["claudeWindow"]): 
 export function budgetBadge(
   budget: StatusSnapshot["budget"],
   claudeWindow?: StatusSnapshot["claudeWindow"],
+  now = Date.now(),
 ): string {
-  const window = claudeWindow ? claudeWindowBadge(claudeWindow) : "";
+  const window = claudeWindow ? claudeWindowBadge(claudeWindow, now) : "";
   // Subscription-only: the window stands IN PLACE of the daily spend — there is no priced
   // spend for a dollar figure to report. Mixed and none fall through to the daily spend.
   if (claudeWindow?.only) return window;

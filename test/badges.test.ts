@@ -197,6 +197,7 @@ test("diskBadge leaves the last reclaim to the Activity log, held or recovered",
 // The reset clock is built from a LOCAL Date, so the expected HH:MM holds in any test timezone.
 test("budgetBadge renders the subscription window in place of or beside the daily spend", () => {
   const at = (h: number, m: number) => new Date(2026, 9, 10, h, m).getTime();
+  const now = at(10, 18);
   const cw = (over: Partial<NonNullable<StatusSnapshot["claudeWindow"]>> = {}): NonNullable<StatusSnapshot["claudeWindow"]> => ({
     windows: [{ type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 }],
     primary: { type: "five_hour", status: "allowed", resetsAt: at(14, 30), utilization: 0.64, observedAt: 0 },
@@ -205,15 +206,15 @@ test("budgetBadge renders the subscription window in place of or beside the dail
     ...over,
   });
   assert.equal(
-    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw()),
-    " · Claude 5h · 64% · resets 14:30",
+    budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw(), now),
+    " · Claude 5h · 64% · resets in 4h 12m",
     "subscription-only: the window replaces the daily spend",
   );
   assert.equal(
     budgetBadge({ spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({
       primary: { type: "five_hour", status: "allowed_warning", resetsAt: at(14, 30), observedAt: 0 },
-    })),
-    " · Claude 5h · near limit · resets 14:30",
+    }), now),
+    " · Claude 5h · near limit · resets in 4h 12m",
     "no utilization: the status word stands in",
   );
   assert.equal(
@@ -238,10 +239,24 @@ test("budgetBadge renders the subscription window in place of or beside the dail
     " · Claude 5h · reset",
     "a past window reads reset and names no clock",
   );
+  const sevenDay = (resetsAt: number) => cw({
+    primary: { type: "seven_day", status: "allowed", resetsAt, utilization: 0.14, observedAt: 0 },
+  });
+  const budget = { spentUsd: 3, capUsd: 50, capHitAt: null, free: false, fallback: null };
+  assert.equal(
+    budgetBadge(budget, sevenDay(new Date(2026, 9, 15, 13, 18).getTime()), now),
+    " · Claude 7d · 14% · resets in 5d 3h",
+    "a 7d window days out reads as days, not a bare clock",
+  );
+  assert.equal(
+    budgetBadge(budget, sevenDay(now - 5_000), now),
+    " · Claude 7d · 14% · resets now",
+    "a deadline already past reads now",
+  );
   // Mixed: the daily-spend line plus the window line.
   assert.equal(
-    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({ only: false })),
-    " · budget: $12.34/$50 today · Claude 5h · 64% · resets 14:30",
+    budgetBadge({ spentUsd: 12.34, capUsd: 50, capHitAt: null, free: false, fallback: null }, cw({ only: false }), now),
+    " · budget: $12.34/$50 today · Claude 5h · 64% · resets in 4h 12m",
     "mixed: both the daily spend and the window",
   );
   // None: no window block, byte-identical to before.

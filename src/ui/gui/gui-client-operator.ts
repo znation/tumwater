@@ -77,13 +77,21 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const d = new Date(ms);
     return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
   }
+  function windowResets(ms) {
+    const minutes = Math.floor((ms - Date.now()) / 60000);
+    if (minutes < 1) return "resets now";
+    if (minutes < 60) return "resets in " + minutes + "m";
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return "resets in " + hours + "h " + (minutes % 60) + "m";
+    return "resets in " + Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+  }
   function windowLine(w, cw) {
     const parts = ["Claude " + windowLabel(w.type)];
     const word = windowWord(w.status);
     parts.push(typeof w.utilization === "number" ? Math.round(w.utilization * 100) + "%" : word === "ok" ? "ok · usage not reported" : word);
     if (w.isUsingOverage) parts.push("overage");
     if (w.status === "rejected" && cw.heldUntil != null) parts.push("held until " + windowClock(cw.heldUntil));
-    else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push("resets " + windowClock(w.resetsAt));
+    else if (w.status !== "reset" && typeof w.resetsAt === "number") parts.push(windowResets(w.resetsAt));
     return parts.join(" · ");
   }
   function windowLineTone(w) {

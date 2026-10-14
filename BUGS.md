@@ -5,18 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### The Claude window badge shows `resets HH:MM` with no date, so a 7d window resetting days away reads as today (reported by user 2026-10-14)
-
-**Symptom:** the header shows `Claude 7d · 14% · resets 16:00` while the reset is Monday, 5 days out; nothing says it is not today.
-
-**Reproduce:** give `claudeWindowBadge` (`src/ui/badges.ts`) a `primary` of type `seven_day` whose `resetsAt` is days ahead: it renders `resets` plus `clockHm(resetsAt)`, hours and minutes only.
-
-**Cause:** `clockHm` drops the date. The same helper serves the `claude seams held until` text and the `~cap at` forecast, which are always same-day, so leave those alone.
-
-**Fix (user's direction):** render the window's reset as a relative time for every window type, 5h included, so they match: `resets in 4h 12m`, `resets in 5d 3h`. Reuse `duration` from `src/ui/tick-progress-model.ts` if it fits, or add a small helper in `badges.ts`. The badge needs the current time: thread a `now` through `claudeWindowBadge` and its callers (the TUI header and the payload's preformatted badge in `status-payload.ts`) so the string stays one home and tests can pin it. A deadline already past reads `resets now`. Update the tests that pin `resets 14:30` (`test/badges.test.ts`, `test/gui-client.test.ts`) to fixed `now` values, and check `test/event-format-fleet.test.ts` (the `resets ${clock}` harness event lines): move those to the relative form only if they share the helper, otherwise leave them.
-
-**Acceptance:** a 7d window five days out shows `resets in 5d …`; a 5h window shows `resets in Xh Ym`; the `held until HH:MM` and `~cap at HH:MM` strings are unchanged; the check passes.
-
 ### The GUI "Landed today" stat tile truncates its sub line with an ellipsis (reported by user 2026-10-14)
 
 **Symptom:** the fleet view's "Landed today" tile shows `2 features done · 0 bugs fixed · …`; the work/maintenance split is cut off and the full text is unreadable.
@@ -30,6 +18,20 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 **Acceptance:** at the width in the screenshot the Landed today tile shows its full text across two lines; all four tiles in the row stay the same height and their values align; a style test (extend the existing `gui-styles` test if one exists) pins that `.stat-sub` no longer carries `nowrap`/`ellipsis` and reserves two lines; the check passes.
 
 ## Fixed
+
+### The Claude window badge shows `resets HH:MM` with no date, so a 7d window resetting days away reads as today (reported by user 2026-10-14, fixed 2026-10-14)
+
+**Symptom:** the header shows `Claude 7d · 14% · resets 16:00` while the reset is Monday, 5 days out; nothing says it is not today.
+
+**Reproduce:** give `claudeWindowBadge` (`src/ui/badges.ts`) a `primary` of type `seven_day` whose `resetsAt` is days ahead: it renders `resets` plus `clockHm(resetsAt)`, hours and minutes only.
+
+**Cause:** `clockHm` drops the date. The same helper serves the `claude seams held until` text and the `~cap at` forecast, which are always same-day, so leave those alone.
+
+**Fix (user's direction):** render the window's reset as a relative time for every window type, 5h included, so they match: `resets in 4h 12m`, `resets in 5d 3h`. Reuse `duration` from `src/ui/tick-progress-model.ts` if it fits, or add a small helper in `badges.ts`. The badge needs the current time: thread a `now` through `claudeWindowBadge` and its callers (the TUI header and the payload's preformatted badge in `status-payload.ts`) so the string stays one home and tests can pin it. A deadline already past reads `resets now`. Update the tests that pin `resets 14:30` (`test/badges.test.ts`, `test/gui-client.test.ts`) to fixed `now` values, and check `test/event-format-fleet.test.ts` (the `resets ${clock}` harness event lines): move those to the relative form only if they share the helper, otherwise leave them.
+
+**Acceptance:** a 7d window five days out shows `resets in 5d …`; a 5h window shows `resets in Xh Ym`; the `held until HH:MM` and `~cap at HH:MM` strings are unchanged; the check passes.
+
+**Validation gap:** none — the existing badge tests pinned the clock-only string and reproduced it directly.
 
 ### An operator write through the running dashboard generation is committed best-effort and reports success regardless, so an answered question landed as an unstaged `QUESTIONS.md` edit (observed by operator session 2026-10-12, fixed 2026-10-13)
 

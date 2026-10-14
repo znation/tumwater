@@ -478,7 +478,8 @@ test("the spend card is an editor button unless every model is free", () => {
 // claude, beside it when some are priced, and lists every window.
 test("the spend card renders the subscription window in place of or beside the daily spend", () => {
   const { scope } = operatorScope();
-  const resetsAt = new Date(2026, 9, 10, 14, 30).getTime();
+  // 4h 12m 30s out: the card's relative reading floors to whole minutes.
+  const resetsAt = Date.now() + (4 * 3600 + 12 * 60 + 30) * 1000;
   const cw = {
     windows: [{ type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 }],
     primary: { type: "five_hour", status: "allowed_warning", resetsAt, utilization: 0.64 },
@@ -488,18 +489,19 @@ test("the spend card renders the subscription window in place of or beside the d
   const only = scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false, fallback: null }, cw);
   assert.doesNotMatch(only, /id='budgetbadge'/, "a subscription-only fleet has no cap editor");
   assert.match(only, /Claude window/);
-  assert.match(only, /Claude 5h · 64% · resets 14:30/);
+  assert.match(only, /Claude 5h · 64% · resets in 4h 12m/);
 
   const mixed = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, { ...cw, only: false });
   assert.match(mixed, /id='budgetbadge'/, "a mixed fleet keeps the spend editor");
   assert.match(mixed, /\$4\.09 <small>of \$15<\/small>/);
-  assert.match(mixed, /Claude 5h · 64% · resets 14:30/);
+  assert.match(mixed, /Claude 5h · 64% · resets in 4h 12m/);
 
+  const heldAt = new Date(2026, 9, 10, 14, 30).getTime();
   const rejected = scope.budgetCardHtml({ spentUsd: 4.09, capUsd: 15, free: false, fallback: null }, {
-    windows: [{ type: "five_hour", status: "rejected", resetsAt, utilization: 1 }],
-    primary: { type: "five_hour", status: "rejected", resetsAt, utilization: 1 },
+    windows: [{ type: "five_hour", status: "rejected", heldAt, utilization: 1 }],
+    primary: { type: "five_hour", status: "rejected", heldAt, utilization: 1 },
     only: false,
-    heldUntil: resetsAt,
+    heldUntil: heldAt,
   });
   assert.match(rejected, /class='side-card-value window-line t-red'>Claude 5h · 100% · held until 14:30/);
 
@@ -507,10 +509,10 @@ test("the spend card renders the subscription window in place of or beside the d
     const w = { type: "five_hour", status: "allowed", resetsAt, ...(utilization === undefined ? {} : { utilization }) };
     return scope.budgetCardHtml({ spentUsd: 0, capUsd: 50, free: false }, { windows: [w], primary: w, only: true, heldUntil: null });
   };
-  assert.match(meterOf(0.64), /Claude 5h · 64% · resets 14:30[\s\S]*class='meter'><span style='width:64%'>/);
+  assert.match(meterOf(0.64), /Claude 5h · 64% · resets in 4h 12m[\s\S]*class='meter'><span style='width:64%'>/);
   assert.match(meterOf(1.2), /style='width:100%'/, "over-full clamps the bar");
   const unreported = meterOf();
-  assert.match(unreported, /Claude 5h · ok · usage not reported · resets 14:30/);
+  assert.match(unreported, /Claude 5h · ok · usage not reported · resets in 4h 12m/);
   assert.doesNotMatch(unreported, /meter/, "no meter without a reported utilization");
 });
 
