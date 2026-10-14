@@ -125,6 +125,54 @@ test("report --since narrows Revisions by role to the scoped base role", async (
   assert.match(cleanNone.out, /\*\*Revisions by role:\*\* -/, "a scoped role with no revisions carries an empty map that renders '-'");
 });
 
+test("report folds error-class tick_ends into Failed ticks by role, beside Revisions by role", async () => {
+  const root = makeRepo();
+  // Two failed ticks today on distinct roles (one hard error, one merge_conflict), a clean
+  // tick yesterday, and one revision. The day report must fold the failing tick_ends into
+  // their own line, --json must carry failedTicksByRole only on the day that has failures
+  // (zero-means-absent), and the failed tally must never subtract from Ticks by role.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "tick_end", tick: 2, result: "merge_conflict", tokens: 5 }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "tick_end", tick: 3, result: "changed", tokens: 20 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
+  ]);
+
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Failed ticks by role:\*\* clean — 1 · feature — 1/, "error-class tick_ends fold as their own line, ranked desc then name asc");
+  assert.match(md.out, /\*\*Revisions by role:\*\* feature — 1/, "revisions stay on their own line");
+  assert.match(md.out, /\*\*Ticks by role:\*\* feature — 2 · clean — 1/, "the failed ticks still count in Ticks by role (never subtracted)");
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const today = json.series[1];
+  const yesterday = json.series[0];
+  assert.deepEqual(today.failedTicksByRole, { feature: 1, clean: 1 }, "--json carries failedTicksByRole on the day that has them");
+  assert.ok(!("failedTicksByRole" in yesterday), "a day with no failure carries no failedTicksByRole key (zero means absent)");
+});
+
+test("report --since folds failed ticks by role and narrows to the scoped base role", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 10 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "tick_end", tick: 2, result: "no_change", tokens: 5 }),
+  ]);
+
+  const fleet = await runCli(root, "report", "--since", "6h");
+  assert.equal(fleet.code, 0);
+  assert.match(fleet.out, /\*\*Failed ticks by role:\*\* feature — 1/, "the fleet window counts only the error-class role (no_change is not a failure)");
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.match(scoped.out, /\*\*Failed ticks by role:\*\* feature — 1/, "scoping --since narrows failed ticks to the base role");
+  const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
+  assert.deepEqual(scopedJson.failedTicksByRole, { feature: 1 }, "the scoped since JSON narrows failedTicksByRole");
+
+  const cleanNone = await runCli(root, "report", "--role", "clean", "--since", "6h");
+  assert.equal(cleanNone.code, 0);
+  assert.match(cleanNone.out, /\*\*Failed ticks by role:\*\* -/, "a scoped role with no failures renders '-'");
+});
+
 test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
   const data: ReportData = {
     days: 1,
@@ -331,6 +379,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,
@@ -352,6 +401,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
     revisionsByRole: { feature: 1 },
+    failedTicksByRole: {},
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
@@ -377,6 +427,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,
@@ -391,6 +442,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     coversFullWindow: true,
@@ -407,6 +459,7 @@ test("renderSinceReportMarkdown shows (N failed) on the landing line when a land
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
     coversFullWindow: true,
@@ -423,6 +476,7 @@ test("renderSinceReportMarkdown prints Commits by role and Notional by role matc
     costByRole: { feature: 0.75 },
     rejectionsByRole: {},
     revisionsByRole: { feature: 3 },
+    failedTicksByRole: {},
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Notional by role lines — window and day speak one shape.
@@ -443,6 +497,7 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
     coversFullWindow: true,

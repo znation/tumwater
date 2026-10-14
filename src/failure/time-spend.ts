@@ -18,7 +18,7 @@ import { getOrCreate, groupBy, rankByCount } from "../collections.js";
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
-const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
+export const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
   changed: "landed",
   queued: "landed",
   no_change: "no_change",

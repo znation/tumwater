@@ -16,6 +16,8 @@ import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo } from "../collections.js";
+import { OUTCOME_CLASS } from "../failure/time-spend.js";
+import type { TickResult } from "../tick/tick-outcome.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { commitTier } from "../roles/roles.js";
 
@@ -39,6 +41,10 @@ interface UsageFold {
    * split by role so a loop whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the landing slot's). */
   revisionsByRole: Record<string, number>;
+  /** tick_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
+   * ticks that burned agent time and landed nothing without going through review. Split by role,
+   * a parallel tally to ticksByRole (never subtracted from it). */
+  failedTicksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
@@ -70,6 +76,10 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   if (ev.type === "tick_end") {
     const role = eventRole(ev);
     addTo(target.ticksByRole, role, 1);
+    // Error-class ticks get their own parallel tally — the day report's ``Failed ticks by role``
+    // line — reusing the digest's OUTCOME_CLASS so "failed" cannot drift from the failure
+    // report's meaning. Never subtracted from ticksByRole; the two are independent counts.
+    if (OUTCOME_CLASS[ev.result as TickResult] === "error") addTo(target.failedTicksByRole, role, 1);
     if (target.ticks !== undefined) target.ticks++;
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     addTo(target.tokensByRole, role, tokens);
@@ -122,6 +132,7 @@ interface DayFold {
   ticksByRole: Record<string, number>;
   rejectionsByRole: Record<string, number>;
   revisionsByRole: Record<string, number>;
+  failedTicksByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   notionalByRole: Record<string, number>;
@@ -220,6 +231,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       ticksByRole: {},
       rejectionsByRole: {},
       revisionsByRole: {},
+      failedTicksByRole: {},
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
@@ -341,6 +353,9 @@ export interface ReportDay {
   rejectionsByRole?: Record<string, number>;
   /** revision events per loop id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
+  /** error-class tick_end events per loop id; absent when the day has none (zero means
+   * absent, so a failure-free day keeps its exact pre-feature shape). */
+  failedTicksByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -416,6 +431,8 @@ export interface SinceReport {
   rejectionsByRole: Record<string, number>;
   /** revision events per loop id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
+  /** error-class tick_end events per loop id; empty when the window has none. */
+  failedTicksByRole: Record<string, number>;
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
@@ -458,6 +475,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     ticksByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
+    failedTicksByRole: {},
     tokensByRole: {},
     costByRole: {},
     tokensOut: 0,
@@ -521,6 +539,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
     rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
     revisionsByRole: base === undefined ? acc.revisionsByRole : narrowToRole(acc.revisionsByRole, base),
+    failedTicksByRole: base === undefined ? acc.failedTicksByRole : narrowToRole(acc.failedTicksByRole, base),
     tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
     commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
@@ -565,6 +584,9 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.rejectionsByRole = fold.rejectionsByRole;
       if (Object.keys(fold.revisionsByRole).length > 0)
         day.revisionsByRole = fold.revisionsByRole;
+      // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
+      if (Object.keys(fold.failedTicksByRole).length > 0)
+        day.failedTicksByRole = fold.failedTicksByRole;
       day.commits = fold.commits;
       day.commitsByRole = fold.commitsByRole;
       day.workCommits = fold.workCommits;
@@ -596,6 +618,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
       const revs = narrowToRole(fold.revisionsByRole, base);
       if (Object.keys(revs).length > 0) day.revisionsByRole = revs;
+      const fails = narrowToRole(fold.failedTicksByRole, base);
+      if (Object.keys(fails).length > 0) day.failedTicksByRole = fails;
       day.commits = commits;
       day.commitsByRole = narrowToRole(fold.commitsByRole, base);
       day.workCommits = tier === "work" ? commits : 0;
