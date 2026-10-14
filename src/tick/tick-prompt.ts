@@ -7,7 +7,7 @@ import { configForRole } from "../config/config-views.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import { dequeuePromptEntry, dequeueRolePromptEntry, peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { stripNotBeforeMarker } from "../inbox/prompt-not-before.js";
-import { readBrief } from "../brief.js";
+import { readBrief } from "../brief/brief.js";
 import { buildDirectorPrompt, buildTickPrompt } from "../prompt/prompt.js";
 import { readPrinciples } from "../prompt/principles.js";
 import { buildCutOffNote } from "../prompt/prompt-followup.js";

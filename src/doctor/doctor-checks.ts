@@ -36,7 +36,7 @@ import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLoc
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
-import { briefFile } from "../brief.js";
+import { briefFile } from "../brief/brief.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";

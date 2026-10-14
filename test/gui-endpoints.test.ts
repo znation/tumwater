@@ -21,7 +21,7 @@ import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief.js";
+import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";

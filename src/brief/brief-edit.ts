@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceInitialPrompt } from "./brief.js";
-import { commitOperatorBacklogEdit } from "./backlog/backlog-commit.js";
-import { withStateLock } from "./concurrency/lock.js";
-import { writeTextAtomic } from "./files/files.js";
-import { stampedSubject } from "./git/commit-message.js";
-import { primaryWorktreeLockPath } from "./paths.js";
-import { PREFILL_REASON } from "./text/phrases.js";
-import { tooLongMessage } from "./text/text.js";
+import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
+import { withStateLock } from "../concurrency/lock.js";
+import { writeTextAtomic } from "../files/files.js";
+import { stampedSubject } from "../git/commit-message.js";
+import { primaryWorktreeLockPath } from "../paths.js";
+import { PREFILL_REASON } from "../text/phrases.js";
+import { tooLongMessage } from "../text/text.js";
 
 /** The outcome of replacing the initial prompt: a refusal's message, or the brief file's
  * basename with whether the text changed and whether that change was committed to main. */

@@ -24,7 +24,7 @@ import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
-import { readBrief, renderBrief } from "../src/brief.js";
+import { readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */

@@ -171,7 +171,7 @@ stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, 
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
 **Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-cli.ts`
-(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/brief-command.ts`, `src/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`).
+(`announceFiled`), `src/gui/gui-endpoint-commands.ts` (`handleBacklogFile`), `src/ui/tui/tui-keys.ts`, `src/cli/brief-command.ts`, `src/brief/brief-edit.ts`, `src/gui/gui-endpoint-commands.ts` (`handleBriefEdit`).
 
 **Pinned by.** `test/backlog-commit.test.ts`, `test/brief-command.test.ts`, `test/gui-endpoints.test.ts`.
 

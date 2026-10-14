@@ -7,7 +7,7 @@ import { entryHold, plannedPartKeys, prerequisitesLanded, refusalNote } from "..
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
-import { briefFile } from "../brief.js";
+import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";

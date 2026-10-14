@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { readInitialPrompt } from "../src/brief.js";
+import { readInitialPrompt } from "../src/brief/brief.js";
 import { defaultConfig } from "../src/config/config.js";
 import { assertClean, makeRepo, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";

@@ -17,7 +17,7 @@ import { readTickDetail, type TickDetail } from "../../tick/tick-detail-data.js"
 import { renderTickDetail, tickDetailStat } from "../../tick/tick-detail.js";
 import { collectFleetChanges, collectRoleChange, type FleetChangeView, type RoleChangeView } from "../../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../../change/change-render.js";
-import { readBrief, renderBrief } from "../../brief.js";
+import { readBrief, renderBrief } from "../../brief/brief.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { renderDoctor } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";

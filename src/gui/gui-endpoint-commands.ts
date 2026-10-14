@@ -27,7 +27,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { rejectBadQueueFileName, rejectBadRole, requireConfigKey, requirePausedFlag, requirePromptText, validRoleIds } from "./gui-args.js";
-import { editInitialPrompt } from "../brief-edit.js";
+import { editInitialPrompt } from "../brief/brief-edit.js";
 import { readJsonObject, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import type http from "node:http";

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief.js";
+import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief/brief.js";
 import { assertClean, initializedRepo, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 
@@ -86,7 +86,7 @@ test("brief edits TUMWATER.md when it owns the block, and refuses a positional",
 });
 
 test("editInitialPrompt refuses a repo with no brief and trims the text it writes", async () => {
-  const { editInitialPrompt } = await import("../src/brief-edit.js");
+  const { editInitialPrompt } = await import("../src/brief/brief-edit.js");
   const none = await editInitialPrompt(makeRepo(), "Anything.");
   assert.equal(none.ok, false);
   assert.match(none.ok ? "" : none.error, /no project brief with a prompt block found/);

@@ -1459,7 +1459,7 @@ test` 1401 pass.
 
 **Goal.** Let `tumwater init` run against a repo that already exists and already has a README.
 Today it hard-fails when `README.md` exists without the `tumwater:prompt` markers ("your prompt
-would be lost"), because `readInitialPrompt` (src/brief.ts) reads the project brief only out of
+would be lost"), because `readInitialPrompt` (src/brief/brief.ts) reads the project brief only out of
 README.md's managed section — and the readme role then owns a `## Status` block inside the
 project's own README. For an existing codebase that is a non-starter, and it is why tumwater has
 only ever been pointed at repos it created itself.
@@ -1485,7 +1485,7 @@ only ever been pointed at repos it created itself.
 
 **Approach.**
 - src/paths.ts — `briefCandidates(root)` (the `TUMWATER.md`-then-`README.md` pair).
-- src/brief.ts — `readInitialPrompt` resolves over the candidates; `briefFile(root)` returns
+- src/brief/brief.ts — `readInitialPrompt` resolves over the candidates; `briefFile(root)` returns
   whichever file owns the managed sections (for the readme role and for doctor);
   `briefTemplate(projectName, prompt)`; the status markers become exported so the readme role
   writes to the resolved file.
@@ -1501,7 +1501,7 @@ only ever been pointed at repos it created itself.
   test/brief.test.ts (resolution order; a `TUMWATER.md` wins over a marked README),
   test/prompt.test.ts (the resolved brief file is what the prompt names), test/doctor.test.ts.
 
-**Files touched.** src/paths.ts, src/brief.ts, src/init/init.ts, src/cli/cli-command-args.ts, src/roles/role-catalog.ts,
+**Files touched.** src/paths.ts, src/brief/brief.ts, src/init/init.ts, src/cli/cli-command-args.ts, src/roles/role-catalog.ts,
 src/prompt/prompt.ts, src/doctor/doctor-checks.ts, test/init.test.ts, test/brief.test.ts, test/prompt.test.ts,
 test/doctor.test.ts.
 
@@ -1520,7 +1520,7 @@ is four landings behind at `8fd6a85`, and none of the landings since touches an 
 Every anchor verified on this tree; three files are missing from the Files-touched list, one
 claim is wrong, and eight implementation questions the write left open are pinned below.**
 
-Verified as written: `src/brief.ts` holds `PROMPT_START`/`PROMPT_END` exported,
+Verified as written: `src/brief/brief.ts` holds `PROMPT_START`/`PROMPT_END` exported,
 `STATUS_START`/`STATUS_END` module-private, `readmeTemplate(projectName, initialPrompt)` and
 `readInitialPrompt(root)`, the latter reading only `path.join(root, "README.md")` and searching
 the close marker only after the open one. The per-tick prompt reads the brief through `readBrief`
@@ -1575,7 +1575,7 @@ Corrections (pinned in place):
    markers for its own state (`grep -rn 'STATUS_START\|tumwater:status' src/` names only brief.ts and
    `src/roles/role-catalog.ts`'s readme instructions). `readmeTemplate` already embeds the
    markers into whichever file; the adopt path wraps the same managed sections in `briefTemplate`
-   (`src/brief.ts`), so no marker needs a new reader.
+   (`src/brief/brief.ts`), so no marker needs a new reader.
 4. **A fresh repo still gets README.md; `TUMWATER.md` is the adoption-only path.** To keep the
    compatibility path meaningful and fresh behavior unchanged, `write("README.md",
    readmeTemplate(...))` stays exactly as today when neither candidate is marked (`test/init.test.ts`
@@ -1625,7 +1625,7 @@ corrected (brief.ts grew, and `readInitialPrompt` gained a length cap the resolu
 not disturb); one new pre-adopt validation step named; two test anchors re-pinned.**
 
 Verified as written:
-- `src/brief.ts` grew since the audit: it gained the exported
+- `src/brief/brief.ts` grew since the audit: it gained the exported
   `INITIAL_PROMPT_MAX_CHARS = 4096` and a truncation backstop inside `readInitialPrompt` —
   a hand-edited README with an over-long prompt truncates with a visible note instead
   of injecting unbounded text into every tick. The resolution change needs no new seam: both
@@ -1680,7 +1680,7 @@ The design holds unchanged; every drifted anchor is re-pinned below and the flag
 corrections are restated against the new shape.**
 
 Verified as written:
-- `src/brief.ts` is functionally unchanged: `PROMPT_START`/`PROMPT_END`,
+- `src/brief/brief.ts` is functionally unchanged: `PROMPT_START`/`PROMPT_END`,
   `INITIAL_PROMPT_MAX_CHARS` (its doc comment grew), the end-marker-after-start
   ordering guard, the cap check, the truncation backstop. Same two
   markers, same parse-trim-cap shape — `briefCandidates` resolution needs no new seam here.

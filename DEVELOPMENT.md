@@ -230,6 +230,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
   reader/writer core (`question-answer.ts`) sits here, shared by the CLI's `questions` command
   body, the TUI's answer box, and the dashboard's POST route.
+- `src/brief/`: the project brief — the managed prompt/status sections, reading the initial
+  prompt back out (`brief.ts`), and the shared writer that replaces it under the primary lock
+  (`brief-edit.ts`).
 - `src/budget/`: the daily cost budget's accounting and the fallback circuit breaker.
 - `src/change/`: the `tumwater diff` collector and renderer.
 - `src/concurrency/`: the merge lock, the semaphores, and the check-permit gate.
@@ -246,6 +249,6 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/roles/`: the role catalog, its loop ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
-  `src/brief.ts` (the initial-prompt bridge), `src/version.ts`, `src/project-name.ts`,
-  `src/collections.ts`, `src/errno.ts`, and `src/request-timeouts.ts`.
+  `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`, and
+  `src/request-timeouts.ts`.
 - `test/`: unit tests.

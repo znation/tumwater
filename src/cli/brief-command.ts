@@ -1,6 +1,6 @@
 import path from "node:path";
-import { readBrief, renderBrief } from "../brief.js";
-import { editInitialPrompt } from "../brief-edit.js";
+import { readBrief, renderBrief } from "../brief/brief.js";
+import { editInitialPrompt } from "../brief/brief-edit.js";
 import { editInEditor } from "./cli-editor.js";
 import { readPromptFileArg } from "./cli-command-args.js";
 import { JSON_FLAG, rejectUnknownArgs } from "./cli-flag-specs.js";

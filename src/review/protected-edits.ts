@@ -1,5 +1,5 @@
 import path from "node:path";
-import { promptBlockOf } from "../brief.js";
+import { promptBlockOf } from "../brief/brief.js";
 import { readTextOrNull } from "../files/files.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { briefCandidates } from "../paths.js";

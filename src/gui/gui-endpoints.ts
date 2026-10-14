@@ -34,7 +34,7 @@ import { rolePayload } from "../roles/role-view.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
-import { readBrief } from "../brief.js";
+import { readBrief } from "../brief/brief.js";
 import { sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";

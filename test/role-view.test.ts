@@ -13,7 +13,7 @@ import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-rend
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { readmeTemplate } from "../src/brief.js";
+import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 

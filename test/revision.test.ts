@@ -19,7 +19,7 @@ import { recoverLeftover } from "../src/loop/leftover.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../src/git/commit-message.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
-import { readmeTemplate } from "../src/brief.js";
+import { readmeTemplate } from "../src/brief/brief.js";
 import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";

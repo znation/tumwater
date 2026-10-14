@@ -7,7 +7,7 @@ import {
   type PromptImageInput,
 } from "./inbox-attachments.js";
 import { logEventBestEffort } from "../events/events.js";
-import { INITIAL_PROMPT_MAX_CHARS } from "../brief.js";
+import { INITIAL_PROMPT_MAX_CHARS } from "../brief/brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text/text.js";
 
