@@ -1,6 +1,6 @@
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
- * totals (each with its per-day average) over four daily bar charts — landed commits, ticks by
- * loop, output tokens, spend by loop — with gridlines, a scale, and one shared color per loop;
+ * totals (each with its per-day average) over five daily bar charts — landed commits, ticks by
+ * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one shared color per loop;
  * a window picker switches between 7, 14, 30, and 90 days and a Loop picker scopes the report
  * to one loop group (`?role=`, the browser twin of `tumwater report --role`). Both pickers also
  * carry trailing-window buttons (1h/6h/1d, `?sinceMs=`, the browser twin of `tumwater report
@@ -33,6 +33,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
       for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.notionalByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.rejectionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }
@@ -141,6 +142,12 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as the cap spend.
   function chartNotionalByRole(data) {
     return roleStackChart(data, "notionalByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
+  }
+
+  // The fleet's review friction, per loop, on a tick-like count axis: one segment per
+  // (day, loop) with a rejection, empty when the report has none.
+  function chartRejectionsByRole(data) {
+    return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);
   }
   // report-chart:end
 
@@ -393,6 +400,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) +
+        block("Rejections by loop", chartRejectionsByRole(d)) +
         (d.totals.notionalCostUsd > 0
           ? block("Notional spend by loop", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Loop scope: " + esc(d.role) +

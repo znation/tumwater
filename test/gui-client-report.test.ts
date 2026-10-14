@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GUI_CLIENT_REPORT_JS } from "../src/ui/gui/gui-client-report.js";
 import { clientScope } from "./helpers/gui-client-scope.js";
+import type { ReportData, ReportDay } from "../src/report/report-data.js";
 
 // The report tab's hover chip (gui-client-report.ts's report-tip region) runs in the
 // browser, so it is exercised here through the same regex-extract + new Function seam as
@@ -196,4 +197,43 @@ test("reportBaseRoles folds each instance into its `instanceOf` base role, once,
     ["feature", "bugfix", "clean"],
     "one slot per base role, first occurrence order preserved",
   );
+});
+
+test("the Rejections by loop chart stacks per role in the ticks order and stays empty without a map", () => {
+  type Builders = {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartRejectionsByRole(d: ReportData): string;
+  };
+  const { reportRoleOrder, chartTicksByRole, chartRejectionsByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartRejectionsByRole"],
+  );
+  const mkDay = (date: string, ticksByRole: Record<string, number>, rejectionsByRole?: Record<string, number>): ReportDay => ({
+    date, tokensOut: 0, ticksByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+    ...(rejectionsByRole ? { rejectionsByRole } : {}),
+  });
+  const data: ReportData = {
+    days: 2, from: "2026-09-01", to: "2026-09-02",
+    series: [
+      mkDay("2026-09-01", { feature: 3 }, { feature: 2, bugfix: 1 }),
+      mkDay("2026-09-02", { feature: 1 }, { qa: 1 }),
+    ],
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  const parseRects = (svg: string) =>
+    [...svg.matchAll(/<rect x='([\d.]+)' y='([\d.]+)' width='([\d.]+)' height='([\d.]+)' rx='2' fill='([^']*)'><title>([^<]*)<\/title><\/rect>/g)].map(
+      (r) => ({ y: +r[2]!, h: +r[3]!, title: r[6]! }),
+    );
+  // A role that rejected but never ticked (qa) still keeps a stack row, after the tickers.
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
+  const rects = parseRects(chartRejectionsByRole(data));
+  assert.equal(rects.length, 3, "one segment per (day, loop) with a rejection");
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartRejectionsByRole(data)), legendOf(chartTicksByRole(data)), "same per-role order and colors as the ticks element");
+  // A missing rejectionsByRole map renders the element empty (no segments).
+  const none = mkDay("2026-09-01", { feature: 2 });
+  const emptySvg = chartRejectionsByRole({ ...data, series: [none, { ...none, date: "2026-09-02" }] });
+  assert.equal(parseRects(emptySvg).length, 0, "a missing map renders no segments");
 });

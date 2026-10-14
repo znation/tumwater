@@ -77,6 +77,46 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(data.totals.bugsFixed, 0);
 });
 
+test("collectReport folds review_rejected events into per-day per-role rejections", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
+    JSON.stringify({ ts: at(0), loop: "qa", type: "review_rejected" }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    // Merely landing a commit is not a rejection: it must fold no rejection anywhere.
+    JSON.stringify({ ts: at(1), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
+  ]);
+  const data = collectReport(root, 4);
+  const today = data.series[data.series.length - 1];
+  assert.deepEqual(today?.rejectionsByRole, { feature: 2, qa: 1 });
+  assert.deepEqual(today?.ticksByRole, { feature: 1 }, "tick_end still counts ticks alongside rejections");
+  // A day with no review_rejected has no rejectionsByRole key at all (zero means absent).
+  for (const d of data.series) {
+    if (d !== today) {
+      assert.ok(!Object.hasOwn(d, "rejectionsByRole"), `${d.date} carries no rejectionsByRole`);
+    }
+  }
+  // The window totals fold the same events: rejections sum across the series.
+  const total = data.series.reduce(
+    (m, d) => m + Object.values(d.rejectionsByRole ?? {}).reduce((a, b) => a + b, 0),
+    0,
+  );
+  assert.equal(total, 3);
+});
+
+test("collectReportSince folds review_rejected events into the window totals", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "review_rejected" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "qa", type: "review_rejected" }),
+    // Outside the 6 h window — must not count.
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "review_rejected" }),
+  ]);
+  const data = collectReportSince(root, 6 * HOUR);
+  assert.deepEqual(data.rejectionsByRole, { feature: 1, qa: 1 });
+});
+
 test("collectReport splits merged events by base role and by work/maintenance tier", () => {
   const root = tmpdir();
   writeEvents(root, [

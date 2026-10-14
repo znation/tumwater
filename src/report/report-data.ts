@@ -32,6 +32,9 @@ import { commitTier } from "../roles/roles.js";
 interface UsageFold {
   ticks?: number;
   ticksByRole: Record<string, number>;
+  /** review_rejected events per loop id — the review gate's turn-backs, split by role so a
+   * loop whose every change draws a new objection is visible alongside its ticks/cost. */
+  rejectionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
@@ -70,6 +73,10 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
+  } else if (ev.type === "review_rejected") {
+    // One rejection per event, on the day it happened, per loop. Zero-means-absent: a role
+    // that never rejected stays absent, like costByRole.
+    addTo(target.rejectionsByRole, eventRole(ev), 1);
   } else if (ev.type === "merged") {
     target.commits++;
     // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
@@ -103,6 +110,7 @@ interface DayFold {
   costUsd: number;
   notionalCostUsd: number;
   ticksByRole: Record<string, number>;
+  rejectionsByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   notionalByRole: Record<string, number>;
@@ -198,6 +206,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       costUsd: 0,
       notionalCostUsd: 0,
       ticksByRole: {},
+      rejectionsByRole: {},
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
@@ -311,6 +320,8 @@ export interface ReportDay {
   tokensOut: number;
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>;
+  /** review_rejected events per loop id; absent when the day has none (zero means absent). */
+  rejectionsByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -380,6 +391,8 @@ export interface SinceReport {
   totals: ReportTotals;
   ticksByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
+  /** review_rejected events per loop id; empty when the window has none. */
+  rejectionsByRole: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -409,6 +422,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   const acc: UsageFold = {
     ticks: 0,
     ticksByRole: {},
+    rejectionsByRole: {},
     tokensByRole: {},
     costByRole: {},
     tokensOut: 0,
@@ -464,6 +478,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     totals: scopedTotals,
     ticksByRole: base === undefined ? acc.ticksByRole : narrowToRole(acc.ticksByRole, base),
     costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
+    rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
     coversFullWindow,
   };
 }
@@ -499,6 +514,9 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.tokensOut = fold.tokensOut;
       day.ticksByRole = fold.ticksByRole;
       day.costByRole = fold.costByRole;
+      // Only set when nonzero, so a rejection-free day keeps its exact pre-feature shape.
+      if (Object.keys(fold.rejectionsByRole).length > 0)
+        day.rejectionsByRole = fold.rejectionsByRole;
       day.commits = fold.commits;
       day.commitsByRole = fold.commitsByRole;
       day.workCommits = fold.workCommits;
@@ -523,6 +541,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.tokensOut = roleSum(fold.tokensByRole, base);
       day.ticksByRole = narrowToRole(fold.ticksByRole, base);
       day.costByRole = narrowToRole(fold.costByRole, base);
+      const rejs = narrowToRole(fold.rejectionsByRole, base);
+      if (Object.keys(rejs).length > 0) day.rejectionsByRole = rejs;
       day.commits = commits;
       day.commitsByRole = narrowToRole(fold.commitsByRole, base);
       day.workCommits = tier === "work" ? commits : 0;

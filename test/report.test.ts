@@ -50,6 +50,22 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   // it renders "-" — no role in this fixture carries spend.
   assert.equal(lines[12], "**Ticks by role:** feature — 5 · bugfix — 1");
   assert.equal(lines[13], "**Cost by role:** -");
+  assert.equal(lines[14], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
+});
+
+test("renderReportMarkdown prints a Rejections by role line ranked by count, only when rejections exist", () => {
+  const md = renderReportMarkdown({
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, ticksByRole: {}, costByRole: {}, rejectionsByRole: { feature: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+    ],
+    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    coversFullWindow: true,
+  });
+  assert.match(md, /\*\*Rejections by role:\*\* feature — 3 · qa — 1/, "window rejections rank by count desc then name asc");
 });
 
 test("renderReportMarkdown prints commits by role and the work/maintenance split with commits per item", () => {
@@ -211,6 +227,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
     ticksByRole: {},
     costByRole: {},
+    rejectionsByRole: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -227,12 +244,14 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     // Equal totals rank by name asc; a zero-cost role is omitted from the cost line.
     ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
+    rejectionsByRole: { feature: 1, clean: 1 },
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
   assert.match(data, /\*\*Totals:\*\* 1500 output tokens · 5 ticks · 1 commits · \$0\.75/);
   assert.match(data, /\*\*Ticks by role:\*\* bugfix — 2 · feature — 2 · clean — 1/);
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
+  assert.match(data, /\*\*Rejections by role:\*\* clean — 1 · feature — 1/, "equal rejection counts rank by name asc");
   assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
 });
 
@@ -243,6 +262,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
     ticksByRole: {},
     costByRole: {},
+    rejectionsByRole: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
@@ -253,6 +273,7 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     totals: { tokensOut: 1000, ticks: 2, commits: 0, costUsd: 0.5, landingRuns: 1, landingTokens: 900, landingCostUsd: 0.4 },
     ticksByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
+    rejectionsByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
