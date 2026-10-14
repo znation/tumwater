@@ -159,6 +159,15 @@ export function parseBudgetInput(
   return { ok: true, value: n };
 }
 
+/** The 90d cap refusal every duration editor shares — the same over-cap arm (`ms` past
+ * PAUSE_FOR_MAX_MS, the limit `pause --for`/`wake --in`/`stop --in`/"defer" and the
+ * dashboard composer's defer field all admit), spelled once per verb so the wording cannot
+ * drift between the five parsers. Returns the error result when `ms` exceeds the cap, else
+ * null so the caller keeps its ok result. */
+function overDurationCap(ms: number, verb: string): { ok: false; error: string } | null {
+  return ms > PAUSE_FOR_MAX_MS ? { ok: false, error: `${verb} is capped at 90d` } : null;
+}
+
 /** Parse the TUI's Ctrl+L defer line: empty → null (clear the pending delay; deliver now),
  * otherwise a parseDurationMs duration at or under the 90d cap — the same grammar and cap
  * `tumwater prompt --at` and the dashboard composer's defer field admit, so the three
@@ -176,7 +185,8 @@ export function parseDeferInput(
     return { ok: false, error: `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}` };
   // The dashboard composer's server check caps the same duration at the same limit, so the
   // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
-  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "defer is capped at 90d" };
+  const over = overDurationCap(ms, "defer");
+  if (over) return over;
   return { ok: true, ms };
 }
 
@@ -193,7 +203,8 @@ export function parsePauseInput(
   const m = /^(\S+)(?:\s+([\s\S]*))?$/.exec(t)!;
   const ms = parseDurationMs(m[1]!);
   if (ms === null) return { ok: true, reason: t };
-  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "pause is capped at 90d" };
+  const over = overDurationCap(ms, "pause");
+  if (over) return over;
   const reason = (m[2] ?? "").trim();
   return reason ? { ok: true, forMs: ms, reason } : { ok: true, forMs: ms };
 }
@@ -213,7 +224,8 @@ export function parseRolePauseInput(
       error: "a loop pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are fleet-wide, use Ctrl+F",
     };
   }
-  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "pause is capped at 90d" };
+  const over = overDurationCap(ms, "pause");
+  if (over) return over;
   return { ok: true, forMs: ms };
 }
 
@@ -233,7 +245,8 @@ export function parseRoleWakeInput(
       error: 'a loop wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now',
     };
   }
-  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "wake is capped at 90d" };
+  const over = overDurationCap(ms, "wake");
+  if (over) return over;
   return { ok: true, inMs: ms };
 }
 
@@ -243,7 +256,8 @@ export function parseRoleWakeInput(
 export function parseStopInInput(text: string): { ok: true; inMs: number } | { ok: false; error: string } {
   const ms = parseDurationMs(text.trim());
   if (ms === null) return { ok: false, error: "a scheduled stop takes a duration like 45m or 2h — Esc to cancel" };
-  if (ms > PAUSE_FOR_MAX_MS) return { ok: false, error: "stop is capped at 90d" };
+  const over = overDurationCap(ms, "stop");
+  if (over) return over;
   return { ok: true, inMs: ms };
 }
 
