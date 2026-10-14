@@ -70,12 +70,12 @@ test("quiet hours raise one informational alert only while the window holds", ()
 test("loop trouble, a stale build, questions, and a pause, most urgent first", () => {
   const now = Date.now();
   const loops: AlertLoop[] = [
-    { role: "bugfix", phase: "failing", inFlight: false, lastError: "429 Rate limit exceeded" },
-    { role: "qa", phase: "failing", inFlight: false },
-    { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", inFlight: true },
-    { role: "coverage", phase: "main red", inFlight: false },
-    { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", inFlight: true },
-    { role: "idle", phase: "sleeping (for 5m)", inFlight: false },
+    { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "429 Rate limit exceeded" },
+    { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
+    { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", errorStreak: false, inFlight: true },
+    { role: "coverage", phase: "main red", errorStreak: false, inFlight: false },
+    { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", errorStreak: false, inFlight: true },
+    { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
   const alerts = fleetAlerts(
     { ...base, paused: true, pausedUntil: now + 12 * 60_000,
@@ -118,27 +118,50 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
 // points at the transcripts instead of repeating an empty error list.
 test("a lone failing or stuck loop reads singular; three loops list as a, b, and c", () => {
   const now = Date.now();
-  const [one] = fleetAlerts(base, [], [{ role: "bugfix", phase: "failing", inFlight: false, lastError: "pi exited null" }], now);
+  const [one] = fleetAlerts(base, [], [{ role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "pi exited null" }], now);
   assert.equal(one?.title, "bugfix is failing tick after tick");
   assert.equal(one?.detail, "bugfix: pi exited null");
   const three: AlertLoop[] = [
-    { role: "bugfix", phase: "failing", inFlight: false },
-    { role: "qa", phase: "failing", inFlight: false },
-    { role: "docs", phase: "failing", inFlight: false },
+    { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false },
+    { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
+    { role: "docs", phase: "failing", errorStreak: true, inFlight: false },
   ];
   const [many] = fleetAlerts(base, [], three, now);
   assert.equal(many?.title, "bugfix, qa, and docs are failing tick after tick");
-  assert.equal(many?.detail, "The same error keeps coming back. The transcript shows where it stops.");
+  assert.equal(many?.detail, "The streak clears only on the next healthy tick; the transcript names each failure.");
   assert.deepEqual(many?.actions.map((a) => a.arg), ["bugfix", "qa", "docs"]);
   const [stuckOne] = fleetAlerts(
     base,
     [],
-    [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", inFlight: true }],
+    [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", errorStreak: false, inFlight: true }],
     now,
   );
   assert.equal(stuckOne?.key, "stuck");
   assert.equal(stuckOne?.title, "feature looks stuck");
   assert.equal(stuckOne?.detail, "feature: tool call stalled: bash (12m)");
+});
+
+// A failing streak is the alert's tell, not the rendered phase: while a loop's own tick runs
+// the phase reads "working"/"landing", but the red "failing tick after tick" banner must stay
+// up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working loop with no
+// streak raises nothing.
+test("a streak behind a working label still raises the failing alert; a healthily working loop raises none", () => {
+  const now = Date.now();
+  const streakWorking: AlertLoop[] = [
+    { role: "bugfix", phase: "working 30s · turn 2 · reading BUGS.md", errorStreak: true, inFlight: true, lastError: "review rejected: not converging" },
+  ];
+  const [alert] = fleetAlerts(base, [], streakWorking, now);
+  assert.equal(alert?.key, "failing");
+  assert.equal(alert?.tone, "red");
+  assert.equal(alert?.title, "bugfix is failing tick after tick");
+  assert.equal(alert?.detail, "bugfix: review rejected: not converging");
+  assert.deepEqual(alert?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"]]);
+
+  const healthyWorking: AlertLoop[] = [
+    { role: "feature", phase: "working 30s · turn 1", errorStreak: false, inFlight: true },
+    { role: "qa", phase: "landing 1s · build-check", errorStreak: false, inFlight: true },
+  ];
+  assert.equal(fleetAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
 });
 
 // The detail arms the two-loop case above cannot reach: a fallback named by provider alone

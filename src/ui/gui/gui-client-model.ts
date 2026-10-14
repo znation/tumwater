@@ -26,7 +26,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("landing")) return { key: "landing", label: "Landing", tone: "orange", live: true, detail: after(7) };
     if (p.startsWith("vetted")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting for the merge slot" };
     if (p.startsWith("awaiting slot")) return { key: "awaiting", label: "Waiting for a slot", tone: "gray", live: false, detail: after(13) ? "for " + after(13) : "" };
-    if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "the same error, tick after tick" };
+    if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed ticks in a row" };
     if (p === "main red") return { key: "mainred", label: "Main red", tone: "red", live: false, detail: "blocked until main's suite passes" };
     if (p === "paused") return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
     if (p === "budget paused") return { key: "budget", label: "Budget paused", tone: "amber", live: false, detail: "today's cap is spent" };

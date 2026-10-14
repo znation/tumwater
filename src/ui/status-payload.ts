@@ -7,7 +7,7 @@ import { dailyCost } from "../budget/budget.js";
 import { queueEntryLandingLabel } from "../landing/landing-queue-render.js";
 import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge, runWindowBadge } from "./badges.js";
-import { isActivePhase, loopRowCells } from "./status-model.js";
+import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
 
@@ -44,6 +44,11 @@ export function statusPayload(root: string, now = Date.now()): object {
     const { live, generated, peakCtx, phase } = loopRowCells(snap, root, s);
     return {
       role: s.role,
+      // The loop's own failure-streak tell (onErrorStreak, status-model.ts): the red
+      // "failing tick after tick" alert keys on this rather than the rendered phase, so it
+      // stays up while the loop's next tick runs (phase reads "working") and clears only
+      // when the streak resets (BUGS.md 2026-10-14).
+      errorStreak: onErrorStreak(s),
       // User-defined-loop marker (computed in snapshot — see StatusSnapshot.loops): the GUI
       // renders it as an asterisk beside the loop name.
       custom: s.custom,

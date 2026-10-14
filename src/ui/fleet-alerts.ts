@@ -30,11 +30,16 @@ export interface FleetAlert {
   actions: Array<{ label: string; act: string; arg?: string }>;
 }
 
-/** The loop facts fleetAlerts reads: each loop's rendered phase (loopPhase), whether it is in
+/** The loop facts fleetAlerts reads: whether the loop's OWN failure streak is at or past the
+ * alert threshold (onErrorStreak, src/ui/status-model.ts) — the tell the red "failing tick
+ * after tick" banner keys on, independent of the rendered phase, so the alert stays up while
+ * the loop's next tick runs (its phase reads "working") and clears only once the streak
+ * resets; plus its rendered phase (for the main-red and stuck banners), whether it is in
  * flight, and its last recorded error. */
 export interface AlertLoop {
   role: string;
   phase: string;
+  errorStreak: boolean;
   inFlight: boolean;
   lastError?: string | null;
 }
@@ -113,7 +118,14 @@ export function fleetAlerts(
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
-  const failing = loops.filter((l) => l.phase === "failing");
+  // A loop whose own failure streak is at or past the alarm threshold (onErrorStreak — an
+  // error streak at ERROR_STREAK_WARN, or a quiet-kill streak): the red "failing tick after
+  // tick" banner. Keyed on the streak, not on the rendered phase, so it stays up while the
+  // loop's next tick runs — where loopPhase reads "working"/"landing"/"reviewing" rather
+  // than "failing" — and clears only when the streak resets (BUGS.md 2026-10-14). The
+  // wording names what happened (a streak of failed or rejected ticks), not a single repeated
+  // error, because a rejection streak is three different rejected changes.
+  const failing = loops.filter((l) => l.errorStreak);
   if (failing.length) {
     out.push({
       key: "failing",
@@ -121,7 +133,7 @@ export function fleetAlerts(
       title: `${listRoles(failing)} ${agree(failing.length, "is", "are")} failing tick after tick`,
       detail: failing.some((l) => l.lastError)
         ? failing.map((l) => `${l.role}: ${l.lastError || "see its transcript"}`).join(" · ")
-        : "The same error keeps coming back. The transcript shows where it stops.",
+        : "The streak clears only on the next healthy tick; the transcript names each failure.",
       actions: failing.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });
   }

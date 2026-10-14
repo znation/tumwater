@@ -93,6 +93,20 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
  * newest run is typically a finished one (the author's, a previous review) whose turns are
  * stale and whose silence would read as a false stall; a record with no stage (an older
  * writer mid-upgrade) keeps the bare elapsed label. */
+export function onErrorStreak(s: Pick<LoopState, "consecutiveErrors" | "lastResult" | "quietKillStreak">): boolean {
+  // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN), or
+  // a quiet-kill streak at the give-up threshold (BUGS.md 2026-09-18): the exact condition
+  // that makes loopPhase read "failing", split out so the fleet alert (fleet-alerts.ts) can
+  // key its red "failing tick after tick" banner on the streak rather than on the rendered
+  // phase — an in-flight tick hides the streak behind a `working`/`landing` label (loopPhase
+  // ranks running work above failing), but the alert must stay up while the loop's next tick
+  // runs and clear only when the streak resets (BUGS.md 2026-10-14).
+  return (
+    (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN ||
+    (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT)
+  );
+}
+
 export function loopPhase(
   s: LoopState,
   orchestratorRunning: boolean,
@@ -197,11 +211,7 @@ export function loopPhase(
   // backend must still read "failing" (BUGS.md 2026-09-21). Self-clearing: the first
   // healthy tick resets the streak, and each retry re-arms it while the environment stays
   // broken.
-  if ((s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN) return "failing";
-  // A quiet-kill streak at the give-up threshold reads "failing" too (BUGS.md 2026-09-18):
-  // the loop is retrying a session the backend will not schedule, and before this it looked
-  // exactly like a sleeping loop while it burned an hour of slot time per tick.
-  if (s.lastResult === "quiet_killed" && (s.quietKillStreak ?? 0) >= QUIET_KILL_RESUME_LIMIT) return "failing";
+  if (onErrorStreak(s)) return "failing";
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder

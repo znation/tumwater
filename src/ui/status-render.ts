@@ -7,7 +7,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
-import { idleClaimText, isActivePhase, loopRowCells, sortLoopsByState } from "./status-model.js";
+import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
@@ -161,10 +161,14 @@ function budgetTone(
 }
 
 /** The loop facts one status render computed, for callers that build more on them (the TUI's
- * attention lines): each loop's rendered phase, whether it is in flight, its last error. */
+ * attention lines): each loop's rendered phase, whether its own failure streak is at the
+ * alarm threshold (onErrorStreak — the red "failing tick after tick" alert keys on this, not
+ * the phase, so it stays up while a streak stands behind a `working` label; BUGS.md
+ * 2026-10-14), whether it is in flight, its last error. */
 interface StatusLoopRow {
   role: string;
   phase: string;
+  errorStreak: boolean;
   inFlight: boolean;
   lastError?: string;
 }
@@ -381,7 +385,13 @@ export function renderStatusSpans(
   // One footnote under the table when any custom loop exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
   if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
-  const loops = withMetrics.map(({ s, phase }) => ({ role: s.role, phase, inFlight: isActivePhase(phase), ...(s.lastError ? { lastError: s.lastError } : {}) }));
+  const loops = withMetrics.map(({ s, phase }) => ({
+    role: s.role,
+    phase,
+    errorStreak: onErrorStreak(s),
+    inFlight: isActivePhase(phase),
+    ...(s.lastError ? { lastError: s.lastError } : {}),
+  }));
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
   return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops };

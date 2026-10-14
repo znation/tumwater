@@ -380,7 +380,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   const cells = loopRowCells(snap, tmpdir(), s);
   assert.notEqual(cells.phase, "main red", "the row derivation sees the snapshot's newer green check");
   assert.equal(
-    fleetAlerts(snap, [], [{ role: "feature", phase: cells.phase, inFlight: false }], Date.now())
+    fleetAlerts(snap, [], [{ role: "feature", phase: cells.phase, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
     false,
     "no 'main is red' banner for a loop whose blockage main has already recovered from",
@@ -390,7 +390,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   const stale = loopRowCells(snap, tmpdir(), s).phase;
   assert.equal(stale, "main red");
   assert.ok(
-    fleetAlerts(snap, [], [{ role: "feature", phase: stale, inFlight: false }], Date.now())
+    fleetAlerts(snap, [], [{ role: "feature", phase: stale, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
   );
 });
@@ -659,12 +659,12 @@ test("a running director renders its own phase, outside the cap's active set", (
 // running phase too, or a stalled director would go unalerted (BUGS.md 2026-10-06).
 test("a stalled running director still raises the stuck alert", () => {
   const snap = snapshotWith([{ role: "director" }]);
-  const stalled = [{ role: "director", phase: "director working 6m · tool call stalled: bash find /", inFlight: false }];
+  const stalled = [{ role: "director", phase: "director working 6m · tool call stalled: bash find /", errorStreak: false, inFlight: false }];
   assert.ok(
     fleetAlerts(snap, [], stalled, Date.now()).some((a) => a.key === "stuck"),
     "a stalled director is stuck even though it holds no permit",
   );
-  const idle = [{ role: "director", phase: "waiting for prompts", inFlight: false }];
+  const idle = [{ role: "director", phase: "waiting for prompts", errorStreak: false, inFlight: false }];
   assert.equal(
     fleetAlerts(snap, [], idle, Date.now()).some((a) => a.key === "stuck"),
     false,
