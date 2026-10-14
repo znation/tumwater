@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START } from "../src/brief.js";
+import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START } from "../src/brief.js";
 import { assertClean, initializedRepo, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
 
@@ -103,6 +103,23 @@ test("brief --edit saves the edited buffer as --file would; unchanged writes not
   assert.equal(fs.readFileSync(s.received, "utf8").trim(), before);
   assert.equal(subject(repo), "tumwater(operator): Edit initial prompt");
   assert.match((await cli(repo, "brief")).stdout, /Edited in editor\./);
+});
+
+test("brief on a ready repo with no prompt block fails with the init hint", async () => {
+  const repo = await initializedRepo();
+  const readme = fs.readFileSync(path.join(repo, "README.md"), "utf8");
+  const start = readme.indexOf(PROMPT_START);
+  const end = readme.indexOf(PROMPT_END);
+  assert.ok(start >= 0 && end > start, "the template carries a managed prompt block");
+  // Strip the whole managed block so no candidate file carries a well-formed one: readBrief
+  // then reports null and cmdBrief must say to run init — the gate (tumwater.json, commits)
+  // still passes, so this is the no-brief branch, not the not-initialized one.
+  fs.writeFileSync(path.join(repo, "README.md"), readme.slice(0, start) + readme.slice(end + PROMPT_END.length));
+  sh(repo, "git", "add", "README.md");
+  sh(repo, "git", "commit", "-q", "-m", "drop the brief block");
+  const r = await cli(repo, "brief");
+  assert.notEqual(r.code, 0);
+  assert.match(r.stderr, /no project brief with a prompt block found/);
 });
 
 test("brief --edit refuses an empty buffer, a failing editor, no editor, and --file", async () => {
