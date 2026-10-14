@@ -102,6 +102,42 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
+### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry)
+
+**Goal.** The model-catalog plan taught the fleet to read pi's files from `$PI_CODING_AGENT_DIR`
+when it is set, else `~/.pi/agent` (the `piAgentDir` helper in `src/pi/pi-models.ts`, whose
+`piModelsPath` composes it with `models.json`). `docs/backends.md` already documents that for
+`models.json` (line 125), but two other lines still hard-code the default and would mislead an
+operator who runs tumwater against a redirected pi agent dir: line 203 advises putting
+`"httpIdleTimeoutMs"` in `~/.pi/agent/settings.json`, and line 142 says "pi (`~/.pi/agent/`)".
+The doc should point at `settings.json` through the same env-aware dir, so the file actually read
+by pi under `PI_CODING_AGENT_DIR` is the one the reader edits.
+
+**Approach.** In `docs/backends.md` only (no source change: tumwater never parses pi's
+`settings.json`, so this is purely reader-facing advice):
+- Line 203: replace ``~/.pi/agent/settings.json`` with a phrase naming the env-aware path —
+  e.g. "in pi's `settings.json` — `$PI_CODING_AGENT_DIR/settings.json` when that env var is set,
+  else `~/.pi/agent/settings.json` —", mirroring the parenthetical line 125 already uses for
+  `models.json`.
+- Line 142: change "pi (`~/.pi/agent/`)" to the same env-aware form (or a short ``$PI_CODING_AGENT_DIR``
+  caveat) so it matches line 125.
+- Keep every other claim byte-identical; rewrite only these in-line path mentions, not the
+  sentences around them.
+
+**Files touched.** `docs/backends.md`.
+
+**Acceptance criteria.**
+- `grep -n '$PI_CODING_AGENT_DIR' docs/backends.md` finds it on the settings.json advice (line ~203)
+  and near line ~142, alongside the `~/.pi/agent` default that names the fallback rather than the
+  only location.
+- No other hard-coded bare `~/.pi/agent/settings.json` remains as the sole pointer to that file:
+  `grep -n 'settings.json' docs/backends.md` shows the env-aware phrasing on the `httpIdleTimeoutMs`
+  bullet.
+- `git diff` on `docs/backends.md` changes no code-adjacent claim beyond the path mentions (the diff
+  is small and localized to those two lines).
+- `npm run test` passes (no source or test file changes).
+
+
 ## Done
 
 ### tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR` when it is set, as pi does (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
