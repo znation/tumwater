@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
-import { openBugEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { questionFilingDate } from "../backlog/question-answer.js";
 import { entryHold, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
@@ -33,6 +34,11 @@ const FIX_CLAIM_HEADING_MAX = 60;
 
 /** A refused entry's note is trimmed to this many characters in the refusals warn. */
 const REFUSAL_NOTE_MAX = 120;
+
+/** The whole days an open question may wait before the stale-questions check warns about it:
+ * an opinionated default, matching the 7-day window the `--list` age is meant to surface.
+ * A question awaiting a human answer is operator signal, so the value needs no knob. */
+const STALE_QUESTION_DAYS = 7;
 
 /** The `(and N more …)` suffix three one-line doctor details append after naming their first
  * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
@@ -187,6 +193,32 @@ export function checkStalledPlans(root: string): CheckOutcome {
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
+}
+
+/** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
+ * answer. A fleet can stay parked on a question for days while `tumwater doctor` reports
+ * nothing; the `--list` age (`questionAgeSuffix` on `tumwater questions`) is the only other
+ * place the wait shows, and only when the operator asks. Reads the tree at `root` — the
+ * primary checkout IS main's tree — like checkRefusedEntries, reusing
+ * `questionFilingDate`/`openQuestionEntries` (src/backlog) unchanged. The age is the whole
+ * days between the heading's `(asked by …)` stamp and now through backlog.js's ageInDays,
+ * the one age formula, floored at 0; an undated heading is skipped. A warn, never a fail —
+ * the checkStalledPlans/checkRefusedEntries precedent: a question awaiting a human is
+ * operator signal, not a broken environment. */
+export function checkStaleQuestions(root: string): CheckOutcome {
+  const read = readDocChecked(path.join(root, "QUESTIONS.md"), "QUESTIONS.md", "no QUESTIONS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
+  const stale = openQuestionEntries(root).flatMap((q) => {
+    const stamp = questionFilingDate(q.title);
+    if (stamp === null) return [];
+    const days = ageInDays(stamp);
+    return days >= STALE_QUESTION_DAYS ? [{ title: q.title, days }] : [];
+  });
+  const [first, ...rest] = stale;
+  if (!first) return okOutcome("no open question has waited more than 7 days for an answer");
+  const more = andMore(rest, (q) => `"${truncate(q.title, FIX_CLAIM_HEADING_MAX)}"`);
+  return warnOutcome(`QUESTIONS.md question "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for an answer${more} — ` +
+      `a question that waits too long for a human answer is operator signal`);
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears

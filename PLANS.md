@@ -5,7 +5,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 ## Planned
-### A doctor check names an open question that has waited too long for an answer: a "stale questions" check (planned 2026-10-14 by plan; independent of every other entry — the only running Planned entry touches `src/history/`, and this touches neither that nor any `src/status`, `src/events`, `src/ui`, or `src/cli` file, and reuses the just-landed Done entry's `questionFilingDate`/`openQuestionEntries` without changing them)
+
+## Done
+### A doctor check names an open question that has waited too long for an answer: a "stale questions" check (planned 2026-10-14 by plan; independent of every other entry — the only running Planned entry touches `src/history/`, and this touches neither that nor any `src/status`, `src/events`, `src/ui`, or `src/cli` file, and reuses the just-landed Done entry's `questionFilingDate`/`openQuestionEntries` without changing them) — done 2026-10-14
 
 **Goal.** QUESTIONS.md's open questions wait for a human answer, and the fleet can stay parked on one for days, yet `tumwater doctor` reports nothing when an answer stays out past a sensible window — the `--list` age (Done 2026-10-14: `questionAgeSuffix` on `tumwater questions`) is the only place the wait is visible, and only when the operator asks. Today no doctor check reads QUESTIONS.md at all: `src/doctor/doctor-backlog.ts` reads PLANS.md and BUGS.md only (`checkStalledPlans`, `checkRefusedEntries`, …). A grep for any stale-question check under `src/`, `test/`, PLANS.md, and BUGS.md finds nothing, so a fleet held on a question for a week shows no one-line health signal in `tumwater doctor`.
 
@@ -21,7 +23,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The outcome is a warn (the doctor report still exits 0), carrying the question heading and its `(N d)` age, matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `questionFilingDate`, `questionAgeSuffix`, `openQuestionEntries`, or any listing surface; the `"stale questions"` row appears in `tumwater doctor`; `npm run test` passes.
 
-## Done
+
 ### `tumwater history --summary` and `history --json --summary` name each loop's tokens and cost across the window: per-loop totals join the outcome tally (planned 2026-10-14 by plan; independent of every other entry — touches only `src/history/history-data.ts`, `src/history/history.ts`, and `test/history-data.test.ts`, and no code or file the waiting questions-age / checkStalledPlans / tokens-by-role plans touch) — done 2026-10-14
 
 **Goal.** `tumwater history --summary` tallies each loop's ticks into `changes`/`none`/`problems` buckets — `HistorySummaryRow` (src/history/history-data.ts) carries only `ticks`, `changes`, `none`, `problems`, and `lastChangeTs` — yet the very tick rows it folds — each `TickRow` carries `tokens`/`costUsd` from `eventUsage`, rendered by the per-tick `usage` cell — already hold the usage numbers. So an operator who wants each loop-instance's token/cost burn over the recent or `--since` window has no one-line answer: the daily report (`tumwater report`) folds to base role by calendar day, and the history table's per-tick `usage` cells are per row, so a busy `feature-2` vs `feature` split takes hand-summing (the report's `report-data.ts`/`report-render.ts` and the doctor `checkStalledPlans` do brown-bag per-base-role or nothing). A grep for `tokens`/`costUsd` on `HistorySummaryRow` finds none. Small, render+collector only: the per-tick data is already read.
@@ -37,6 +39,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - In `test/history-data.test.ts`, the existing `summarizeTickRows tallies each loop's outcome classes in name order with a total` test's `deepEqual` expectations gain the two fields (its rows are built with `tokens: 0, costUsd: 0`, so the loop and `total` rows expect `tokens: 0, costUsd: 0`); add a `summarizeTickRows sums tokens and cost per loop and into the total` test — rows with nonzero `tokens`/`costUsd` per loop land in that loop's row and in `total` as the sum across loops.
 - A new `renderSummary` test (importing it from `src/history/history.ts`, or a `tumwater history --summary` invocation) shows a header row with `tokens` and `cost` columns and per-loop/`total` cells formatted through `compactTokens`/`usd` (e.g. `1.2k`/`$0.50`), right-aligned under their headers like the tick columns.
 - `--json --summary` carries `tokens` and `costUsd` on each loop row and on `total`; the `cli-run.ts` window summary picks the new columns up through the shared `renderSummary` without a code change there, and old `--json` consumers that ignore extra fields are unaffected; `npm run test` passes.
+
 
 ### `tumwater report` breaks output tokens down by role: a "Tokens by role" line in the day and `--since` renders (planned 2026-10-14 by plan; touches `src/report/report-render.ts`, `src/report/report-data.ts`, and `test/report.test.ts` only — no `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, or GUI file) — done 2026-10-14
 

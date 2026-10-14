@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -281,6 +281,57 @@ test("checkStalledPlans reads ok with no notes, and ignores Done, Refused, and b
   fs.writeFileSync(path.join(dir, "PLANS.md"),
     `## Planned\n\n### Bodyless heading\n\n### Refused (planned 2026-10-12)\n${refused}\n\n## Done\n\n### Old plan\n${note}\n`);
   assert.deepEqual(checkStalledPlans(dir), ok);
+});
+
+// checkStaleQuestions — open questions that have waited too long for a human answer. The
+// age (whole days from the heading's `(asked by …)` stamp) is the same formula the `--list`
+// age suffix uses, so it is computed via backlog.ts's ageInDays, never hard-coded — the exact
+// value drifts with the time of day. Mirrors the checkStalledPlans setup: a warn, and a
+// missing QUESTIONS.md (or one with no stamps) reads ok.
+
+/** A whole calendar day `n` days before `now`, as a `YYYY-MM-DD` filing stamp. */
+function daysAgoStamp(n: number, now: number = Date.now()): string {
+  const d = new Date(now - n * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The whole days a `YYYY-MM-DD` stamp is old — the same formula the entry-age suffix uses. */
+function stampAge(stamp: string): number {
+  return Math.max(0, Math.floor((Date.now() - Date.parse(stamp)) / 86400000));
+}
+
+test("checkStaleQuestions warns naming a question whose stamp is at least 7 days old", () => {
+  const dir = tmpdir("doctor-stale-questions-");
+  const stamp = daysAgoStamp(8);
+  const days = stampAge(stamp);
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"),
+    `# Questions\n\n## Open\n\n### Retire old logs (asked by director ${stamp})\n\nbody\n`);
+  const out = checkStaleQuestions(dir);
+  assert.equal(out.level, "warn");
+  assert.ok(out.detail.startsWith(`QUESTIONS.md question "Retire old logs (asked by director ${stamp})"`), out.detail);
+  assert.ok(out.detail.includes(`has waited ${days} d for an answer`), out.detail);
+});
+
+test("checkStaleQuestions warns once on several stale questions, naming the rest via andMore", () => {
+  const dir = tmpdir("doctor-stale-questions-multi-");
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"),
+    `## Open\n\n### First (asked by director ${daysAgoStamp(9)})\n\n### Second (asked by director ${daysAgoStamp(8)})\n`);
+  const out = checkStaleQuestions(dir);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /has waited \d+ d for an answer/);
+  assert.ok(out.detail.includes('(and 1 more: "Second (asked by director '), out.detail);
+});
+
+test("checkStaleQuestions ignores undated and fresh headings, and a missing or sectionless QUESTIONS.md", () => {
+  const ok = { level: "ok", detail: "no open question has waited more than 7 days for an answer" };
+  assert.deepEqual(checkStaleQuestions(tmpdir("doctor-stale-questions-none-")), { level: "ok", detail: "no QUESTIONS.md — nothing to verify" });
+  const dir = tmpdir("doctor-stale-questions-fresh-");
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"),
+    `## Open\n\n### Undated heading\n\n### Fresh (asked by director ${daysAgoStamp(0)})\n`);
+  assert.deepEqual(checkStaleQuestions(dir), ok);
+  const closed = tmpdir("doctor-stale-questions-closed-");
+  fs.writeFileSync(path.join(closed, "QUESTIONS.md"), `## Answered\n\n### Old (asked by director 2026-01-01)\n`);
+  assert.deepEqual(checkStaleQuestions(closed), ok);
 });
 
 // checkUncommittedBacklog — operator edits left uncommitted in the primary checkout.
