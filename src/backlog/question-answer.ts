@@ -15,7 +15,7 @@
  */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
-import { openQuestionEntries } from "./backlog.js";
+import { openQuestionEntries, ageInDays } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
@@ -52,13 +52,13 @@ export function questionFilingDate(title: string): string | null {
 
 /** The ` · since <date> (…)` suffix naming how long an open question has waited for an answer,
  * from its heading's stamp (see questionFilingDate), or "" when the heading is undated. `n` is
- * the whole days from `now` back to the stamp date, floored at 0 (a future stamp reads
- * `(today)`). The one place the age is worded, so the prose list and the JSON share the wording
- * without drifting. */
+ * the whole days from `now` back to the stamp date through backlog.ts's ageInDays (the one
+ * age formula), floored at 0 (a future stamp reads `(today)`). The one place the age is worded,
+ * so the prose list and the JSON share the wording without drifting. */
 export function questionAgeSuffix(title: string, now: number = Date.now()): string {
   const date = questionFilingDate(title);
   if (date === null) return "";
-  const n = Math.max(0, Math.floor((now - Date.parse(date)) / 86400000));
+  const n = ageInDays(date, now);
   return n === 0 ? ` · since ${date} (today)` : ` · since ${date} (${n}d)`;
 }
 
@@ -88,7 +88,7 @@ export function questionListPayload(root: string): {
       const since = questionFilingDate(q.title);
       if (since !== null) {
         sent.since = since;
-        sent.ageDays = Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 86400000));
+        sent.ageDays = ageInDays(since);
       }
       return sent;
     }),
