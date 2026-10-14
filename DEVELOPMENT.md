@@ -197,7 +197,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `src/cli/log-commands.ts` (the `logs` command body), and `src/cli/cli-query-commands.ts` (the
   other read-only command bodies).
 - `src/status/`: the `status` collector behind the status table, TUI, and dashboard
-  (`status-data.ts`) and its per-poll cached readers; rendering lives in `src/ui/status-render.ts`.
+  (`status-data.ts` — a thin composer over the per-domain collectors `status-roles.ts`,
+  `status-inbox.ts` and `status-budget.ts`) and its per-poll cached readers; rendering lives
+  in `src/ui/status-render.ts`.
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
   pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the fleet
   failure hold (`gate-polls.ts` polls them).

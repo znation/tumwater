@@ -1,31 +1,13 @@
 import type { LoopState } from "../loop/loop-state.js";
-import path from "node:path";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
-import { enabledRoleIds, isCustomRole } from "../config/config.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
-import {
-  modelFallbackView,
-  modelSelectorField,
-  resolveTierFallbacks,
-  roleSeamTier,
-  configForRole,
-  reviewConfig,
-  resolverConfig,
-  tierFallbackLabels,
-  tiersResolveDistinctPairs,
-  type ModelFallbackView,
-} from "../config/config-views.js";
-import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
-import { claudeWindowEntries, readClaudeAccount, type ClaudeWindowEntry } from "../agent/claude/claude-account.js";
-import { isJsonObject } from "../files/json-object.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath, piPairFree, readPiProviders } from "../pi/pi-models.js";
-import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
-import { formatModelSelector } from "../config/model-selector.js";
-import { configForStatus, queueInFlight, loopStateForPoll, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
-import { queuedRolePromptEntries } from "../inbox/inbox.js";
-import { deliverableAt } from "../inbox/prompt-not-before.js";
+import type { ModelTier } from "../config/config-schema.js";
+import type { ModelFallbackView } from "../config/config-views.js";
+import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
+import { piModelsPath } from "../pi/pi-models.js";
+import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
 import { quietHoursStatus, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { pausedRoles, pausedRolesUntil, scheduledStopAt, scheduledWakes, standingFleetPause } from "../fleet/fleet-state.js";
@@ -35,15 +17,17 @@ import {
   type DiskStatus,
 } from "../fleet/orchestrator-info.js";
 import type { LandingInFlight } from "../landing/landing-slot.js";
-import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
-import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
+import { collectRoleRows } from "./status-roles.js";
+import { collectInboxes } from "./status-inbox.js";
+import { collectBudget } from "./status-budget.js";
 
 /** Status data collection: one fresh snapshot of the fleet for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
  * snapshot() reads through (main-check scan, last-known-good config, loop-state stat cache)
- * live in status/status-polls.ts. */
+ * live in status/status-polls.ts. snapshot() composes the per-domain collectors in
+ * status-roles.ts, status-inbox.ts and status-budget.ts and keeps the one-off fields here. */
 
 export interface StatusSnapshot {
   running: boolean;
@@ -341,43 +325,15 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
   return a === undefined ? b : b === undefined ? a : Math.min(a, b);
 }
 
-/** The claude subscription-window block for a poll (see StatusSnapshot.claudeWindow): absent
- * unless the account reads subscription billing with at least one window AND a resolved seam
- * routes to claude. `only` is the free-ness classification the display needs: every paying seam
- * is a subscription claude seam exactly when no other seam is priced — a pi seam judged by
- * piPairFree, any other backend's billing unseen so it counts as paying too. The reviewer and
- * the strong-tier resolver are included, like fleetModelsFree, since they can spend. */
-function claudeWindowBlock(
-  cfg: TumwaterConfig,
-  providers: ReturnType<typeof readPiProviders>,
-  root: string,
-  now: number,
-): StatusSnapshot["claudeWindow"] {
-  const account = readClaudeAccount(root, now);
-  if (account?.billing !== "subscription") return undefined;
-  const windows = claudeWindowEntries(account);
-  if (windows.length === 0) return undefined;
-  const seams = enabledRoleIds(cfg).map((role) => configForRole(cfg, role));
-  if (cfg.review.enabled) seams.push(reviewConfig(cfg));
-  if (seams.length > 0) seams.push(resolverConfig(cfg));
-  if (!seams.some((s) => s.agent === "claude")) return undefined;
-  const priced = seams.some((s) => {
-    if (s.agent === undefined || s.agent === "pi") return !piPairFree(providers, s.provider, s.model);
-    return s.agent !== "claude"; // a backend the account cannot bill is never subscription-paid
-  });
-  const heldUntil =
-    windows
-      .filter((w) => w.status === "rejected" && w.isUsingOverage !== true && typeof w.resetsAt === "number")
-      .reduce((max, w) => Math.max(max, w.resetsAt as number), 0) || null;
-  return { windows, primary: windows[0]!, only: !priced, heldUntil };
-}
-
 /** One fresh fleet snapshot for observers. `modelsPath` overrides pi's model definitions
  * location (default ~/.pi/agent/models.json) — a test seam, like doctor's pathEnv. `now` pins
  * the poll's clock for the budget figures (the persisted day-stamp check and the burn-rate
  * projection) — one instant for the whole block, and the seam that keeps a test's expected
  * projection from racing the snapshot's own `Date.now()`; production callers take the default
- * and read the live clock, as always. */
+ * and read the live clock, as always. The three per-domain collectors (status-roles, status-
+ * inbox, status-budget) each take the shared reads and the pinned `now` as parameters, so
+ * every poll still reads a shared resource exactly once and the one `now` pins the whole
+ * snapshot — the consistency property the per-collector comments call out. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
   // The gate's read-only bootstrap verdict (plans/work-ratio.md, part 2/2), computed over the
@@ -390,87 +346,14 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // liveness check (passing it to orchestratorAlive skips its own re-read).
   const info = readOrchestratorInfo(root);
   // One slots.json read per poll serves every row: the pooled slot a role leases (a running
-  // tick or vet) or is pinned to.
+  // tick or vet) or is pinned to — threaded into the roles collector so `running`, `disk` and
+  // the rows agree.
   const slots = readSlotsState(root).slots;
-  // One read of pi's own saved default per poll (docs/backends.md): the model pi starts on
-  // for a row whose seam runs pi and resolves no model — its settings.json sits beside the
-  // models catalog this snapshot already reads (piSettingsPath), so one seam serves both.
-  const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
-  const loops = roles.map((r) => {
-    const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
-    const leased = slots.find((slot) => slot.lease?.role === r);
-    const pinned = slots.find((slot) => slot.pinnedFor === r);
-    const slot = leased ?? pinned;
-    // Every row carries the selector its config resolves to, so the dashboards show which
-    // model a role rides even with a single string `model`. A tier-name `roles.<id>.model`
-    // and a role selector override both resolve through configForRole — the same view the
-    // seam consumes. Part 7a (model-tiers.md "Observability"): the seam tier tag is added
-    // only with a tier map declared, where it names the tier a role rides.
-    const eff = configForRole(cfg, r);
-    // Model failure fallback, part 2/2: while the role's episode is active its ticks run on
-    // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
-    // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
-    // every row agrees on what "active" means.
-    const episode = modelFallbackView(base.modelFallback, cfg, r, now);
-    // A seam that runs pi and resolves neither a provider nor a model starts on pi's own
-    // saved default — name it in the row (modelFromPi) so the operator sees which model the
-    // loop runs. The config's `thinking` wins over the default's because tumwater passes it
-    // to pi as `--thinking` (src/pi/pi-args.ts). Any other row is unchanged and carries no
-    // `modelFromPi`.
-    const runsPiWithoutAModel =
-      (eff.agent === undefined || eff.agent === "pi") &&
-      eff.provider === undefined &&
-      eff.model === undefined;
-    const modelFromPi = runsPiWithoutAModel && piDefault !== null;
-    return {
-      ...base,
-      ...modelSelectorField(eff),
-      ...(modelFromPi
-        ? {
-            model: formatModelSelector({
-              ...piDefault!,
-              thinking: eff.thinking ?? piDefault!.thinking,
-            }),
-            modelFromPi: true as const,
-          }
-        : {}),
-      ...(isJsonObject(cfg.model) ? { modelTier: roleSeamTier(cfg, r) } : {}),
-      ...(episode !== null ? { fallback: episode } : {}),
-      ...(slot ? { slot: path.basename(slot.dir), slotPinned: pinned !== undefined } : {}),
-      ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),
-    };
-  });
-  // One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists
-  // the directory and reads each file once): the count is the entries' length, so a prompt
-  // enqueued or dequeued mid-snapshot can never make the header badge disagree with its
-  // numbered previews, and each preview keeps its queue-file address beside it.
-  const queued = queuedRolePromptEntries(root, DIRECTOR_ROLE);
-  const inboxPrompts = queued.map((e) => e.preview);
-  const inboxFiles = queued.map((e) => e.file);
-  const inboxQueuedAt = queued.map((e) => e.queuedAtMs);
-  const inboxNotBefore = queued.map((e) => e.notBeforeMs);
-  // One directory listing pass per role per poll (below) fills the per-role counts; the
-  // director is excluded because its queue is the shared inbox above.
-  // A role with prompts queued also fills its cancel-addressable entries — the
-  // stat-keyed prompt cache keeps an unchanged file at one stat per poll. Entries follow the
-  // full list, deferred prompts included (the Queued tab lists and cancels them; only the
-  // deliverable count above excludes them).
-  const roleInbox: Record<string, number> = {};
-  const roleInboxPrompts: StatusSnapshot["roleInboxPrompts"] = {};
-  // One listing pass per role serves both the deliverable count and the cancel-addressable
-  // entries: queuedRolePromptRecords already carries each readable prompt's notBeforeMs, and
-  // deliverableAt is exactly `notBeforeMs === null || notBeforeMs <= now` (prompt-not-before.ts)
-  // over the same cached text — so the old second pass (queuedRolePromptCount's own readdir +
-  // deliverability filter, once per role per poll across all 12 non-director loops) repeated
-  // work the entries pass had just done. One instant — the snapshot's own pinned `now` — pins
-  // the count and the entries to the same moment, so a caller that pins the clock sees
-  // deliverability advance with it instead of the wall clock.
-  for (const r of roles) {
-    if (r === DIRECTOR_ROLE) continue;
-    const entries = queuedRolePromptEntries(root, r);
-    roleInbox[r] = entries.filter((e) => deliverableAt(e.notBeforeMs, now)).length;
-    if (entries.length) roleInboxPrompts[r] = entries;
-  }
+  const loops = collectRoleRows(root, cfg, now, slots, modelsPath);
+  // One inbox pass per poll (status-inbox.ts) serves all four director fields and the per-role
+  // counts/entries from the same queuedRolePromptEntries reads.
+  const { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts } =
+    collectInboxes(root, roles, now);
   const running = orchestratorAlive(root, info);
   // One fleet-pause-marker read per poll serves both the paused flag and its deadline:
   // isFleetPaused + pausedUntil would each re-read the same marker file every second.
@@ -498,46 +381,28 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   }
   const inFlight = queueInFlight(root, landings, running);
   if (inFlight) landQueue.inFlight = inFlight;
-  // The running orchestrator's published gate figures (read once above, with the pid and the
-  // demotion): the scheduler's own sum over its live runner states. Only while running — the
-  // exit removes the info file, so a stale file beside a dead pid must not speak for a fleet
-  // whose persisted files are final.
-  const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
-  // The one materialized spend the budget block renders and the burn-rate projection both
-  // read — the scheduler's published figure while running, the persisted states' sum otherwise.
-  const spentUsd = publishedSpend ?? fleetDailyCost(loops, now);
   // Quiet hours 2/2 — one parse and one clock read per poll serve both the window string the
   // header badge renders and the in-window boolean the active reading turns on; the value is
   // read fresh from the same cached config load the budget block uses, so a live edit shows
   // on the next poll exactly when the gate applies it.
   const quiet = quietHoursStatus(cfg.quietHours, new Date());
-  // The per-tier budget pause set (part 5c/8): the same resolution the scheduler's gate folds,
-  // over the SAME usable predicate an observer can re-derive — the price check, and the pair
-  // not among the running orchestrator's published per-pair demotions (a demotion lives in
-  // the orchestrator's memory, so it publishes them; the legacy single-pair field
-  // `fallbackDemoted` is the engaged pair's entry of the same map). Computed only while the
-  // cap is reached — the hold never stands under an open gate — and the director exempt.
-  const budgetReachedNow = budgetReached({ spentUsd, capUsd: cfg.maxDailyCostUsd });
-  const providers = readPiProviders(modelsPath);
-  // The persisted billing answer (6a/7), read once for every free-ness verdict below: a
-  // subscription claude seam is free, so the badge and the pause set judge it as such.
-  const account = readClaudeAccount(root);
-  const publishedDemotions = info?.fallbackDemotions ?? {};
-  const usable = (p: { provider?: string; model?: string }) =>
-    piPairFree(providers, p.provider, p.model, account) && !(modelPairName(p) in publishedDemotions);
-  const servingResolved = resolveTierFallbacks(cfg, usable);
-  // The subscription usage window (part 6d/7): one account read per poll serves the block.
-  const claudeWindow = claudeWindowBlock(cfg, providers, root, now);
-  const budgetPausedRoles = budgetReachedNow
-    ? roles.filter(
-        (r) => r !== DIRECTOR_ROLE && servingResolved[roleSeamTier(cfg, r)].pair === null,
-      )
-    : [];
+  // The spend/billing block (status-budget.ts): the budget object, the claude window, and the
+  // two per-role pause verdicts, all from one readPiProviders and one readClaudeAccount per poll.
+  const { budget, claudeWindow, budgetPausedRoles, capPaused } = collectBudget(
+    root,
+    cfg,
+    loops,
+    roles,
+    running,
+    info,
+    modelsPath,
+    now,
+  );
   return {
     running,
     pid: info?.pid,
     build: running && info?.build ? info.build : null,
-    inbox: inboxPrompts.length,
+    inbox,
     inboxPrompts,
     inboxFiles,
     inboxQueuedAt,
@@ -549,35 +414,11 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // Unconditional (never null): a disabled fleet still shows its spend and the badge is
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,
     // so an unchanged catalog costs one stat per poll, not a re-read plus parse.
-    budget: {
-      spentUsd,
-      capUsd: cfg.maxDailyCostUsd,
-      // One projection per poll, from the same spend the field above renders: null exactly
-      // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
-      capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: fleetModelsFree(cfg, modelsPath, account),
-      agent: cfg.agent ?? "pi",
-      // Null unless the gate could actually engage it (configured AND priced at zero AND not
-      // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse
-      // must not be advertised as one that will save the fleet — and a demoted one is refused
-      // until its probe serves, so the dashboards read `budget paused` exactly while the
-      // scheduler is (BUGS.md 2026-09-20). The pair is the price-aware default tier's
-      // resolution, so a map with no `default` entry names the pair the gate actually runs.
-      fallback:
-        fallbackModelFree(cfg, modelsPath, account) && !(running && info?.fallbackDemoted)
-          ? (servingResolved.default.pair ?? null)
-          : null,
-      tiers:
-        budgetReachedNow && tiersResolveDistinctPairs(servingResolved)
-          ? tierFallbackLabels(servingResolved)
-          : null,
-    },
+    budget,
     ...(claudeWindow ? { claudeWindow } : {}),
     paused: fleetPause !== null,
     pausedRoles: pausedRoles(root),
-    capPaused: [...roleCapVerdicts(loops.map((l) => ({ role: l.role, state: l })), cfg.maxDailyCostUsdPerRole, now).values()]
-      .filter((v) => v.over)
-      .flatMap((v) => v.roleIds),
+    capPaused,
     // The maintenance allowance (plans/work-ratio.md, part 1b/4): the same pure verdict the
     // gate folds, over the same event log, so the dashboards show the hold the scheduler
     // enforces. `landings` is the one land-queue snapshot read above, so in-flight maintenance
