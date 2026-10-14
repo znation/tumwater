@@ -66,8 +66,11 @@ test("the list numbers open questions 1..N in file order with an ellipsized body
   const rendered = openQuestionList(root);
   const lines = rendered.split("\n");
   assert.equal(lines.length, 2);
-  assert.match(lines[0]!, /^1\. First: which renderer\? \(asked by director 2026-10-01\) — The user reported flicker/);
-  assert.match(lines[1]!, /^2\. Second: which backend\? \(asked by bugfix 2026-10-03\) — Any OpenAI-compatible model works\.$/);
+  // A dated heading carries its wait-age suffix — ` · since <stamp> (<n>d)` — between the
+  // title and its body preview; the exact day count drifts with the run date, so it is matched
+  // loosely while the stamp and the body preview stay pinned.
+  assert.match(lines[0]!, /^1\. First: which renderer\? \(asked by director 2026-10-01\) · since 2026-10-01 \(\d+d\) — The user reported flicker/);
+  assert.match(lines[1]!, /^2\. Second: which backend\? \(asked by bugfix 2026-10-03\) · since 2026-10-03 \(\d+d\) — Any OpenAI-compatible model works\.$/);
 });
 
 test("a file with no open questions renders the empty line, not an error", () => {

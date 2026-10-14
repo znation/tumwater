@@ -5,27 +5,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 ## Planned
-_None yet._
-
-### `tumwater questions --list` names how long each open question has waited since its `(asked by <who> YYYY-MM-DD)` clause, and the JSON carries it (planned 2026-10-14 by plan; independent — a different command and file (`src/backlog/question-answer.ts`, `tumwater questions`) than the sibling entry that ages `plan|bug --list`; touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, `src/cli`, or test-suite-wide file, and no code the waiting comment-width / provider-hold plans touch)
-
-**Goal.** Open questions in QUESTIONS.md wait for a human answer, and the fleet can be blocked on one for days, yet `tumwater questions` lists each as just a title plus a body preview — so an operator cannot tell which question has blocked the fleet longest without opening the file to find its date clause. Every open heading already carries its filing stamp in prose — `(asked by <who> YYYY-MM-DD)` — so the list can name the age from the text it already parses. `openQuestionList` and `questionListPayload` in `src/backlog/question-answer.ts` are the only two list surfaces changed; `tumwater questions` (with and without `--json`) reads both. A grep for `questionFilingDate`/`questionAgeSuffix` under `src/` finds nothing; the sibling plan's `filingDate`/`ageInDays`/`entryAgeSuffix` live in `src/backlog/backlog.ts` for the `plan|bug` surfaces and are not reused here, so this lands on its own whether or not that entry has.
-
-**Approach.**
-- In `src/backlog/question-answer.ts`, two small pure helpers beside `openQuestionList`:
-  - `questionFilingDate(title: string): string | null` — the first `YYYY-MM-DD` after an `asked by` word in the heading (`/(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/` against the title text), else null. Taken from the title text only, not the body, because the stamp is the entry's own and the body may name other dates.
-  - `questionAgeSuffix(title: string, now: number = Date.now()): string` — `` ` · since ${date} (${n}d)` `` when the date parses, `` ` · since ${date} (today)` `` when `n === 0`, else `""`, with `n = Math.max(0, Math.floor((now - Date.parse(date)) / 86400000))`. It is the one place the age is worded, so the prose and JSON share the wording without drifting.
-- In `openQuestionList`, the numbered line becomes `` `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}` `` so each line reads `1. <title> · since 2026-10-10 (4d) — <body preview>`.
-- In `questionListPayload`, each object gains `since: questionFilingDate(q.title)` and, when it parses, `ageDays` — the same shape rule `plan|bug --list --json` uses: both absent for an undated heading, so the JSON shape is unchanged for an entry without a stamp.
-
-**Files touched.** `src/backlog/question-answer.ts`, and a new test file `question-age.test.ts` in `test/` (a node:test file like `test/backlog-eligibility.test.ts`, writing a temp `QUESTIONS.md` it reads through `openQuestionEntries`).
-
-**Acceptance criteria.**
-- `question-age.test.ts`: a heading `… (asked by director 2026-10-10)` gives `questionFilingDate` `2026-10-10` and, with `now` four days later, `questionAgeSuffix` `` ` · since 2026-10-10 (4d)` ``; the same day gives `(today)`; a heading with no `asked by` date clause gives `null`/`""`; a body-only date does not parse (a heading whose own stamp clause is present still parses its own stamp). `n` floors at 0 for a future date.
-- With a temp root holding one dated and one undated open question, `tumwater questions`' numbered line ends in ` · since 2026-10-10 (4d)` (body preview still trailing after it), and the `--json` object carries `since`/`ageDays` for the dated entry and neither field for the undated one.
-- The diff is confined to the two files above; no QUESTIONS.md content or other surface changes; `npm run test` passes.
-
-
+_None yet.
 
 
 ## Done
@@ -46,7 +26,9 @@ _None yet._
 - A role with more tokens but equal or lower cost appears in the tokens line where the cost line omits it, showing the line is its own data and not a re-render of `Cost by role`.
 - The diff is confined to the three files above; `report.ts`, `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, and the GUI are untouched; the `/api/report` JSON gains only an additive optional `tokensByRole` per day; `npm run test` passes.
 
+
 ### A doctor check surfaces plans held by a Needs-review or Needs-replan note: `checkStalledPlans` joins the backlog checks (planned 2026-10-14 by plan; independent — touches `src/doctor/doctor-backlog.ts` plus its one-line registration in `src/doctor/doctor.ts` and tests in `test/doctor-backlog.test.ts`, and only as a read-only doctor warn: it does not change how landings, eligibility, or any listing behave, and touches no code or file the waiting backlog-age / questions-age / comment-width / provider-hold plans do — done 2026-10-14)
+
 
 **Goal.** When a feature run finds a plan too large for one run it appends **Needs review <YYYY-MM-DD> by feature: too large for one run**, and when its landing is rejected it appends **Needs replan <date> by feature: rejected after <N> review rounds**; both outrank new plans for the plan role, and the fleet's claim gate refuses them (`scheduling/claims.ts` rejects a plan whose `backlogHolds(root).plans` entry is `needs-review` or `needs-replan`). Yet no doctor check names them: `checkRefusedEntries` (`src/doctor/doctor-backlog.ts`) surfaces `**Refused …**` notes but stops there, so a stalled plan is only glance-visible as the `[needs review]`/`[needs replan]` mark in `tumwater backlog`, and the operator gets no single-line health signal — and no doctor warn from `tumwater doctor` — that a plan is parked awaiting split or replan. `entryHold` in `src/backlog/backlog-eligibility.ts` already classifies a held entry: a body line starting `NEEDS_REVIEW_PREFIX` (resp. `NEEDS_REPLAN_PREFIX`, both in `src/roles/role-guidance.ts`) yields `"needs-review"` / `"needs-replan"`, so the new check needs no fresh parsing.
 
@@ -61,6 +43,25 @@ _None yet._
 - New tests in `test/doctor-backlog.test.ts`: a temp PLANS.md whose `## Planned` holds an entry with a `**Needs review 2026-10-14 by feature: too large for one run**` line in its body warns naming that plan; a `**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**` line warns the same; both kinds present warn once naming the first and the rest via `andMore`; no such note (including notes only under `## Done`, or only `**Refused …**` notes, or a heading with no body) reads ok; an absent PLANS.md reads ok with the check's own "nothing to verify" detail rather than throwing — each mirroring the `checkRefusedEntries` counterpart.
 - The warn carries the plan heading and its note text, and the outcome is a warn (doctor stays exit 0), matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `entryHold`, `holdMark`, `backlogHolds`, or any eligibility or listing surface; `npm run test` passes.
+
+
+### `tumwater questions --list` names how long each open question has waited since its `(asked by <who> YYYY-MM-DD)` clause, and the JSON carries it (planned 2026-10-14 by plan; independent — a different command and file (`src/backlog/question-answer.ts`, `tumwater questions`) than the sibling entry that ages `plan|bug --list`; touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, `src/cli`, or test-suite-wide file, and no code the waiting comment-width / provider-hold plans touch) — done 2026-10-14
+
+**Goal.** Open questions in QUESTIONS.md wait for a human answer, and the fleet can be blocked on one for days, yet `tumwater questions` lists each as just a title plus a body preview — so an operator cannot tell which question has blocked the fleet longest without opening the file to find its date clause. Every open heading already carries its filing stamp in prose — `(asked by <who> YYYY-MM-DD)` — so the list can name the age from the text it already parses. `openQuestionList` and `questionListPayload` in `src/backlog/question-answer.ts` are the only two list surfaces changed; `tumwater questions` (with and without `--json`) reads both. A grep for `questionFilingDate`/`questionAgeSuffix` under `src/` finds nothing; the sibling plan's `filingDate`/`ageInDays`/`entryAgeSuffix` live in `src/backlog/backlog.ts` for the `plan|bug` surfaces and are not reused here, so this lands on its own whether or not that entry has.
+
+**Approach.**
+- In `src/backlog/question-answer.ts`, two small pure helpers beside `openQuestionList`:
+  - `questionFilingDate(title: string): string | null` — the first `YYYY-MM-DD` after an `asked by` word in the heading (`/(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/` against the title text), else null. Taken from the title text only, not the body, because the stamp is the entry's own and the body may name other dates.
+  - `questionAgeSuffix(title: string, now: number = Date.now()): string` — `` ` · since ${date} (${n}d)` `` when the date parses, `` ` · since ${date} (today)` `` when `n === 0`, else `""`, with `n = Math.max(0, Math.floor((now - Date.parse(date)) / 86400000))`. It is the one place the age is worded, so the prose and JSON share the wording without drifting.
+- In `openQuestionList`, the numbered line becomes `` `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}` `` so each line reads `1. <title> · since 2026-10-10 (4d) — <body preview>`.
+- In `questionListPayload`, each object gains `since: questionFilingDate(q.title)` and, when it parses, `ageDays` — the same shape rule `plan|bug --list --json` uses: both absent for an undated heading, so the JSON shape is unchanged for an entry without a stamp.
+
+**Files touched.** `src/backlog/question-answer.ts`, a new test file `question-age.test.ts` in `test/` (a node:test file like `test/backlog-eligibility.test.ts`, writing a temp `QUESTIONS.md` it reads through `openQuestionEntries`), and `test/question-commands.test.ts` (its list-render regex for dated headings is widened to admit the new ` · since … (<n>d)` suffix the feature inserts)
+
+**Acceptance criteria.**
+- `question-age.test.ts`: a heading `… (asked by director 2026-10-10)` gives `questionFilingDate` `2026-10-10` and, with `now` four days later, `questionAgeSuffix` `` ` · since 2026-10-10 (4d)` ``; the same day gives `(today)`; a heading with no `asked by` date clause gives `null`/`""`; a body-only date does not parse (a heading whose own stamp clause is present still parses its own stamp). `n` floors at 0 for a future date.
+- With a temp root holding one dated and one undated open question, `tumwater questions`' numbered line carries a ` · since <stamp> (<n>d)` suffix (body preview still trailing after it), and the `--json` object carries `since`/`ageDays` for the dated entry and neither field for the undated one — the expected `<n>` computed from the same `Date.now() - Date.parse(stamp) / 86400000` whole-day formula the feature uses, not a hard-coded count, since the exact value drifts with the time of day and timezone.
+- The diff is confined to the two files above; no QUESTIONS.md content or other surface changes; `npm run test` passes.
 
 
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14

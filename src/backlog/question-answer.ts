@@ -41,6 +41,27 @@ function firstBodySuffix(body: string): string {
   return ` — ${truncate(line, BODY_PREVIEW_MAX)}`;
 }
 
+/** The open question's filing stamp, `YYYY-MM-DD`, read from the heading's `(asked by <who>
+ * YYYY-MM-DD)` clause — the first `YYYY-MM-DD` after an `asked by` word in the title text — or
+ * null when the heading carries no such clause. Taken from the title text only, not the body:
+ * the stamp is the entry's own, and the body may name other dates. */
+export function questionFilingDate(title: string): string | null {
+  const m = /(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/.exec(title);
+  return m === null ? null : (m[1] as string);
+}
+
+/** The ` · since <date> (…)` suffix naming how long an open question has waited for an answer,
+ * from its heading's stamp (see questionFilingDate), or "" when the heading is undated. `n` is
+ * the whole days from `now` back to the stamp date, floored at 0 (a future stamp reads
+ * `(today)`). The one place the age is worded, so the prose list and the JSON share the wording
+ * without drifting. */
+export function questionAgeSuffix(title: string, now: number = Date.now()): string {
+  const date = questionFilingDate(title);
+  if (date === null) return "";
+  const n = Math.max(0, Math.floor((now - Date.parse(date)) / 86400000));
+  return n === 0 ? ` · since ${date} (today)` : ` · since ${date} (${n}d)`;
+}
+
 /** `tumwater questions` with no arguments: the open questions numbered from 1 in file order,
  * one line each (`prompt --list`'s shape), or one line when none are open. Reads through
  * openQuestionEntries, so a missing or unreadable QUESTIONS.md degrades to "no open
@@ -48,21 +69,29 @@ function firstBodySuffix(body: string): string {
 export function openQuestionList(root: string): string {
   const questions = openQuestionEntries(root);
   if (questions.length === 0) return "no open questions";
-  return numberedList(questions.map((q) => `${q.title}${firstBodySuffix(q.body)}`));
+  return numberedList(questions.map((q) => `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}`));
 }
 
 /** The same list as data for `--json` (the backlog --json pattern: a JSON document in every
  * exit-0 case, never prose): each entry's 1-based position (the number `answer` consumes),
  * its verbatim heading text, and its full body. */
 export function questionListPayload(root: string): {
-  questions: { position: number; title: string; body: string }[];
+  questions: { position: number; title: string; body: string; since?: string; ageDays?: number }[];
 } {
   return {
-    questions: openQuestionEntries(root).map((q, i) => ({
-      position: i + 1,
-      title: q.title,
-      body: q.body,
-    })),
+    questions: openQuestionEntries(root).map((q, i) => {
+      const sent: { position: number; title: string; body: string; since?: string; ageDays?: number } = {
+        position: i + 1,
+        title: q.title,
+        body: q.body,
+      };
+      const since = questionFilingDate(q.title);
+      if (since !== null) {
+        sent.since = since;
+        sent.ageDays = Math.max(0, Math.floor((Date.now() - Date.parse(since)) / 86400000));
+      }
+      return sent;
+    }),
   };
 }
 
