@@ -16,6 +16,9 @@ import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../fleet/fleet-polls.js";
+import { readEventsSince } from "../events/event-window.js";
+import type { HarnessEvent } from "../events/events.js";
+import { errorMessage } from "../text/text.js";
 import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
@@ -163,6 +166,50 @@ export function checkClaudeWindow(root: string, now: number = Date.now()): Check
   return okOutcome(
     top.status === "allowed_warning" ? `${label} window nearing its limit${pct}` : `${label} window ${top.status}${pct}`,
   );
+}
+
+/** How far back the `provider hold` check reads for hold/resume crossings. The longest a
+ * hold can stay is HOLD_CAP_MS (fleet-hold's 15-minute cap that escalation doubles against),
+ * so a window a comfortable multiple of that covers any standing hold's crossing event plus
+ * its resume — an older resumed event must not be missed or a re-opened provider reads held. */
+const HOLD_CHECK_WINDOW_MS = 2 * 3600_000;
+
+/** The `provider hold` check: names each provider whose fleet-wide failure hold
+ * (src/fleet/fleet-hold.ts, polled by pollFleetHold) stands now — a 429/backend-failure storm
+ * that stops the roles on that provider from starting new ticks until it re-opens. Read-only:
+ * it infers the standing set from the event log's own `rate_limit_hold`/`rate_limit_resumed`
+ * crossings, the events pollFleetHold writes, so it cannot disagree with the hold. A standing
+ * hold is a warn (as with the `claude window` row) because it stops every role on that
+ * provider; `now` is injected so a test can pin a hold standing before its deadline and
+ * re-opened after. The ended hold's kind rides the resumed event (see pollFleetHold), and any
+ * resumed event ends that provider's current hold whatever its kind. */
+export function checkProviderHolds(root: string, now: number = Date.now()): CheckOutcome {
+  let events: HarnessEvent[];
+  try {
+    events = readEventsSince(root, HOLD_CHECK_WINDOW_MS).events;
+  } catch (err) {
+    return warnOutcome(`could not read the event log for provider holds: ${errorMessage(err)}`);
+  }
+  const standing = new Map<string | undefined, { end: number; kind: unknown; roles: unknown }>();
+  for (const ev of events) {
+    if (ev.type === "rate_limit_hold") {
+      const provider = typeof ev.provider === "string" ? ev.provider : undefined;
+      const end = (typeof ev.ts === "number" ? ev.ts : 0) + (typeof ev.holdMs === "number" ? ev.holdMs : 0);
+      standing.set(provider, { end, kind: ev.kind, roles: ev.roles });
+    } else if (ev.type === "rate_limit_resumed") {
+      standing.delete(typeof ev.provider === "string" ? ev.provider : undefined);
+    }
+  }
+  const held = [...standing.entries()]
+    .filter(([, h]) => h.end > now)
+    .sort(([a], [b]) => (a ?? "").localeCompare(b ?? ""));
+  if (held.length === 0) return okOutcome("no provider holds");
+  const lines = held.map(([provider, h]) => {
+    const name = provider ?? "pi's default backend";
+    const roles = Array.isArray(h.roles) && h.roles.length > 0 ? `; roles: ${h.roles.join(", ")}` : "";
+    return `${name} (${h.kind}) holds until it re-opens in ${humanSeconds(secondsUntil(h.end, now))}${roles}`;
+  });
+  return warnOutcome(lines.join("; "));
 }
 
 /** The `error streaks` check: names each enabled loop whose `consecutiveErrors` is at or past

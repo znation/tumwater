@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkQuietHours } from "../src/doctor/doctor-holds.js";
+import { checkBudget, checkClaudeWindow, checkErrorStreaks, checkMainRed, checkMaintenanceQuota, checkPause, checkProviderHolds, checkQuietHours } from "../src/doctor/doctor-holds.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { pauseFleet, pauseRole } from "../src/fleet/fleet-state.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -344,4 +344,56 @@ test("checkMainRed: the detail names the bugfix loop as repairer only when one i
   assert.match(without.detail, /no bugfix loop is enabled/);
   const withBugfix = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, bugfix: { enabled: true } } }));
   assert.match(withBugfix.detail, /the bugfix loop is exempt and repairs it/);
+});
+
+const PH_NOW = Date.now();
+
+const providerHold = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_hold", ts: PH_NOW, holdMs: 3600_000, kind: "rate-limit", roles: ["feature", "qa"], ...o });
+const providerResumed = (o: Record<string, unknown>): Record<string, unknown> => ({ loop: "harness", type: "rate_limit_resumed", ts: PH_NOW + 10_000, kind: "rate-limit", ...o });
+
+function phRoot(lines: unknown[]): string {
+  const root = tmpdir("tw-hold-");
+  writeEvents(root, lines);
+  return root;
+}
+
+test("checkProviderHolds: no rate_limit events read ok", () => {
+  assert.deepEqual(checkProviderHolds(phRoot([]), PH_NOW), { level: "ok", detail: "no provider holds" });
+});
+
+test("checkProviderHolds: a standing hold warns naming provider, kind, roles, and re-open", () => {
+  const out = checkProviderHolds(phRoot([providerHold({ provider: "deepinfra" })]), PH_NOW);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /deepinfra/);
+  assert.match(out.detail, /rate-limit/);
+  assert.match(out.detail, /feature, qa/);
+  assert.match(out.detail, /re-opens in/);
+});
+
+test("checkProviderHolds: a resumed event clears the hold", () => {
+  const out = checkProviderHolds(phRoot([providerHold({ provider: "deepinfra" }), providerResumed({ provider: "deepinfra" })]), PH_NOW);
+  assert.deepEqual(out, { level: "ok", detail: "no provider holds" });
+});
+
+test("checkProviderHolds: a hold whose deadline passed reads ok", () => {
+  const out = checkProviderHolds(phRoot([providerHold({ provider: "deepinfra", ts: PH_NOW, holdMs: 0 })]), PH_NOW);
+  assert.deepEqual(out, { level: "ok", detail: "no provider holds" });
+});
+
+test("checkProviderHolds: a provider-undefined hold names pi's default backend", () => {
+  const out = checkProviderHolds(phRoot([providerHold({})]), PH_NOW);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /pi's default backend/);
+});
+
+test("checkProviderHolds: other event types are ignored", () => {
+  const out = checkProviderHolds(phRoot([{ loop: "feature", type: "tick_end", ts: PH_NOW, tokens: 1 }, { loop: "feature", type: "landed", ts: PH_NOW, commit: "a" }]), PH_NOW);
+  assert.deepEqual(out, { level: "ok", detail: "no provider holds" });
+});
+
+test("checkProviderHolds: a backend-failure kind is named verbatim", () => {
+  const out = checkProviderHolds(phRoot([providerHold({ provider: "deepinfra", kind: "connection", roles: ["reviewer"] })]), PH_NOW);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /connection/);
+  assert.match(out.detail, /reviewer/);
 });
