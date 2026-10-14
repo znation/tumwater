@@ -26,6 +26,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - No heading text, `tumwater backlog` markdown, or other surface changes: the diff is confined to the files above.
 - `npm run test` passes.
 
+### `tumwater questions --list` names how long each open question has waited since its `(asked by <who> YYYY-MM-DD)` clause, and the JSON carries it (planned 2026-10-14 by plan; independent — a different command and file (`src/backlog/question-answer.ts`, `tumwater questions`) than the sibling entry that ages `plan|bug --list`; touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, `src/cli`, or test-suite-wide file, and no code the waiting comment-width / provider-hold plans touch)
+
+**Goal.** Open questions in QUESTIONS.md wait for a human answer, and the fleet can be blocked on one for days, yet `tumwater questions` lists each as just a title plus a body preview — so an operator cannot tell which question has blocked the fleet longest without opening the file to find its date clause. Every open heading already carries its filing stamp in prose — `(asked by <who> YYYY-MM-DD)` — so the list can name the age from the text it already parses. `openQuestionList` and `questionListPayload` in `src/backlog/question-answer.ts` are the only two list surfaces changed; `tumwater questions` (with and without `--json`) reads both. A grep for `questionFilingDate`/`questionAgeSuffix` under `src/` finds nothing; the sibling plan's `filingDate`/`ageInDays`/`entryAgeSuffix` live in `src/backlog/backlog.ts` for the `plan|bug` surfaces and are not reused here, so this lands on its own whether or not that entry has.
+
+**Approach.**
+- In `src/backlog/question-answer.ts`, two small pure helpers beside `openQuestionList`:
+  - `questionFilingDate(title: string): string | null` — the first `YYYY-MM-DD` after an `asked by` word in the heading (`/(?:asked by)\b[^)]*?\b(\d{4}-\d{2}-\d{2})/` against the title text), else null. Taken from the title text only, not the body, because the stamp is the entry's own and the body may name other dates.
+  - `questionAgeSuffix(title: string, now: number = Date.now()): string` — `` ` · since ${date} (${n}d)` `` when the date parses, `` ` · since ${date} (today)` `` when `n === 0`, else `""`, with `n = Math.max(0, Math.floor((now - Date.parse(date)) / 86400000))`. It is the one place the age is worded, so the prose and JSON share the wording without drifting.
+- In `openQuestionList`, the numbered line becomes `` `${q.title}${questionAgeSuffix(q.title)}${firstBodySuffix(q.body)}` `` so each line reads `1. <title> · since 2026-10-10 (4d) — <body preview>`.
+- In `questionListPayload`, each object gains `since: questionFilingDate(q.title)` and, when it parses, `ageDays` — the same shape rule `plan|bug --list --json` uses: both absent for an undated heading, so the JSON shape is unchanged for an entry without a stamp.
+
+**Files touched.** `src/backlog/question-answer.ts`, and a new test file `question-age.test.ts` in `test/` (a node:test file like `test/backlog-eligibility.test.ts`, writing a temp `QUESTIONS.md` it reads through `openQuestionEntries`).
+
+**Acceptance criteria.**
+- `question-age.test.ts`: a heading `… (asked by director 2026-10-10)` gives `questionFilingDate` `2026-10-10` and, with `now` four days later, `questionAgeSuffix` `` ` · since 2026-10-10 (4d)` ``; the same day gives `(today)`; a heading with no `asked by` date clause gives `null`/`""`; a body-only date does not parse (a heading whose own stamp clause is present still parses its own stamp). `n` floors at 0 for a future date.
+- With a temp root holding one dated and one undated open question, `tumwater questions`' numbered line ends in ` · since 2026-10-10 (4d)` (body preview still trailing after it), and the `--json` object carries `since`/`ageDays` for the dated entry and neither field for the undated one.
+- The diff is confined to the two files above; no QUESTIONS.md content or other surface changes; `npm run test` passes.
+
 ## Done
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
 
