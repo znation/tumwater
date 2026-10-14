@@ -243,6 +243,56 @@ too.
   `/nonexistent/tumwater-test-models.json`.
 - `npm run test` passes.
 
+### `tumwater report` and the Usage view break the fleet's rejections down by role: a "Rejections by role" line and stacked element (planned 2026-10-14 by plan; independent of every other entry — no `src/status`, `src/events/notify`, or stale-citation-file overlap)
+
+**Goal.** The operator can see which loop's submissions the review gate turns back. The fleet's
+cost is already visible per role (`costByRole`), but rejection friction is not: `foldUsageEvent`
+in `src/report/report-data.ts` folds `tick_end`, `merged`, and `landed`/`land_failed`, and ignores
+`review_rejected`. A loop whose every change draws a new objection (the open BUGS.md revision
+entry, for one) is invisible in `tumwater report` and the dashboard Usage view, yet `review_rejected`
+is a first-class event (src/events/events.ts) carrying the loop id and landing on the same per-day
+event log `foldWindowEvents` reads, and `foldUsageEvent` folds no event type that records a
+rejection (the only `reject` hits under `src/report/` are unrelated: an unknown-args CLI rejection
+and a comment on re-landed entries). No Planned or Done entry covers a rejection breakdown.
+
+**Approach.**
+- In `foldUsageEvent` (`src/report/report-data.ts`), add a `review_rejected` branch that folds one
+  into a per-day per-loop count: `addTo(target.rejectionsByRole, eventRole(ev), 1)`. Add
+  `rejectionsByRole: Record<string, number>` alongside `ticksByRole` to `UsageFold`, `DayFold`,
+  and `dayFoldFor`'s fresh-fold literal (the zero-means-absent rule: an absent role stays absent,
+  like `costByRole`). Add `rejectionsByRole?: Record<string, number>` to `ReportDay`, populated in
+  the same place `ticksByRole` is, so the per-day series and the window totals both carry it.
+- `src/report/report-render.ts`: in the day report's role list, one new line
+  `rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String)`,
+  placed after the "Cost by role" line; on the window-totals line, `rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String)` after that day's "Cost by role" totals. A day with no rejections renders neither line (`-`, the existing zero-means-absent convention).
+- `src/ui/gui/gui-client-report.ts`: add `d.rejectionsByRole` to `reportRoleOrder`'s seed loop (so a
+  role that rejected but did not tick keeps its stack row), and render one stacked
+  `roleStackChart(data, "rejectionsByRole", String, (v) => String(v))` element under the cost
+  element in the Usage render. Keys and coloring come from the existing per-role palette; a day
+  absent from `rejectionsByRole` covers as zero, as the other stacked elements do.
+- `docs/cli.md` and the `/api/report` doc line (or its sentence in docs/backends.md, whichever
+  names the report's per-day fields): add one sentence that the report surfaces rejections per
+  role from `review_rejected` events.
+
+**Files touched.** `src/report/report-data.ts`, `src/report/report-render.ts`,
+`src/ui/gui/gui-client-report.ts`, `test/report-data.test.ts`, `test/report.test.ts`,
+`test/gui-client-report.test.ts`, and one sentence in docs.
+
+**Acceptance criteria.**
+- `test/report-data.test.ts`: a fold over a temp event log holding two `review_rejected` events
+  for loop `feature` and one for `qa`, plus a `tick_end` for `feature`, makes that day's
+  `rejectionsByRole` `{ feature: 2, qa: 1 }` and `ticksByRole` `{ feature: 1 }`; a `merged` event
+  adds no rejection. A day with no `review_rejected` has no `rejectionsByRole` key at all, and the
+  window totals fold the same events to match. The existing `costByRole`, `ticksByRole`, and
+  `notionalByRole` assertions are unchanged.
+- `test/report.test.ts` (the home of `renderReportMarkdown`, from `src/report/report-render.ts`): a
+day with rejections prints the `Rejections by role` line with the ranked counts; a day with none
+prints no such line.
+- `test/gui-client-report.test.ts`: a `rejectionsByRole` map renders the stacked element with the
+  same per-role order the ticks element uses; a missing map renders the element empty.
+- The diff is confined to the files above.
+- `npm run test` passes.
+
 ## Done
 
 ### claude transcript paths follow `$CLAUDE_CONFIG_DIR` when it is set, as pi's follow `$PI_CODING_AGENT_DIR` (planned 2026-10-14 by plan; independent of every other entry; mirrors the Done entry "tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR`…") — done 2026-10-14
