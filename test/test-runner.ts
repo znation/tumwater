@@ -285,6 +285,9 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  *   inherited mark made a spawned run's sweep read the suite's own process tree.
  * - DASHBOARD_CHILD_ENV makes reexecSelf exit its restart code instead of supervising, so an
  *   inherited mark changed the reload tests' branch through the ambient environment.
+ * - PI_CODING_AGENT_DIR names the directory pi reads its config from (pi-models.ts reads it), so
+ *   an inherited value would make a suite read a different models.json than the default; the
+ *   piAgentDir tests pass an explicit env instead.
  * NODE_OPTIONS is kept: the LaunchServices preload the harness adds there only changes where
  * process.title is stored (the suite's assertions about it hold either way), and it carries the
  * operator's own Node flags. */
@@ -301,6 +304,7 @@ export function suiteEnv(scratch: string, base: NodeJS.ProcessEnv = process.env)
   delete env.TUMWATER_NOTES_PATH;
   delete env.TUMWATER_RUN;
   delete env[DASHBOARD_CHILD_ENV];
+  delete env.PI_CODING_AGENT_DIR;
   const templates = path.join(scratch, "git-templates");
   fs.mkdirSync(templates);
   env.GIT_TEMPLATE_DIR = templates;

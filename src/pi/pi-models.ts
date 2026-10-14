@@ -13,8 +13,18 @@ import { readJsonFile } from "../files/json-files.js";
  * declared cost. This is where a local (free) fleet differs from an API one: unpriced or
  * zero-cost models never accumulate spend against the daily budget cap, so the badge can
  * read n/a instead of a dollar figure that can never move. */
-export function piModelsPath(): string {
-  return path.join(os.homedir(), ".pi", "agent", "models.json");
+export function piModelsPath(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string {
+  return path.join(piAgentDir(env, homeDir), "models.json");
+}
+
+/** pi's config directory: `$PI_CODING_AGENT_DIR` when non-empty (a leading `~` expands against
+ * the home dir), else `~/.pi/agent`. This mirrors pi's `getAgentDir`. */
+export function piAgentDir(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string {
+  const dir = env.PI_CODING_AGENT_DIR;
+  if (!dir) return path.join(homeDir, ".pi", "agent");
+  if (dir === "~") return homeDir;
+  if (dir.startsWith("~/")) return path.join(homeDir, dir.slice(2));
+  return dir;
 }
 
 interface PiModelDef {

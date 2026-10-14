@@ -91,7 +91,9 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
-### tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR` when it is set, as pi does (planned 2026-10-14 by plan; independent of every other entry)
+## Done
+
+### tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR` when it is set, as pi does (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
 
 **Goal.** pi keeps its config directory at `~/.pi/agent` unless `PI_CODING_AGENT_DIR` names
 another one (pi 1.0.4's environment-variables doc; `getAgentDir()` in pi's `dist/config.js`
@@ -138,8 +140,6 @@ also checks the credentials pi stores in `auth.json` and `models.json`") default
   `models.json` written under `dir`. Nothing writes to the real home directory.
 - `warnFallbackClone`'s message is built from `piModelsPath()`, not the literal `~/.pi/agent` path.
 - `npm run test` passes.
-
-## Done
 
 ### The secret-leak gate also checks the credentials pi stores in `auth.json` and `models.json` (planned 2026-10-14 by plan, done 2026-10-14 by feature; independent of every other entry)
 

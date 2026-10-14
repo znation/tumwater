@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackModelFree, fleetModelsFree, piModelsPath } from "../src/pi/pi-models.js";
+import { fallbackModelFree, fleetModelsFree, piAgentDir, piModelsPath } from "../src/pi/pi-models.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
@@ -42,7 +42,25 @@ function fleetAt(provider: string | undefined, model: string | undefined): Tumwa
 }
 
 test("piModelsPath points at pi's agent models.json under the home dir", () => {
-  assert.match(piModelsPath(), /[/\\]\.pi[/\\]agent[/\\]models\.json$/);
+  assert.equal(piModelsPath({}, "/h"), path.join("/h", ".pi", "agent", "models.json"));
+});
+
+test("piAgentDir honors PI_CODING_AGENT_DIR with pi's tilde rule", () => {
+  assert.equal(piAgentDir({ PI_CODING_AGENT_DIR: "/x/agent" }, "/h"), "/x/agent");
+  assert.equal(piAgentDir({ PI_CODING_AGENT_DIR: "~" }, "/h"), "/h");
+  assert.equal(piAgentDir({ PI_CODING_AGENT_DIR: "~/cfg" }, "/h"), path.join("/h", "cfg"));
+  assert.equal(piAgentDir({ PI_CODING_AGENT_DIR: "" }, "/h"), path.join("/h", ".pi", "agent"));
+  assert.equal(
+    piModelsPath({ PI_CODING_AGENT_DIR: "/x/agent" }, "/h"),
+    path.join("/x/agent", "models.json"),
+  );
+});
+
+test("fleetModelsFree reads the models.json under PI_CODING_AGENT_DIR", () => {
+  const dir = path.dirname(writeModels());
+  const file = piModelsPath({ PI_CODING_AGENT_DIR: dir });
+  assert.equal(fleetModelsFree(fleetAt("lm-studio", "qwen3.8-27b"), file), true);
+  assert.equal(fleetModelsFree(fleetAt("paid", "gpt-x"), file), false);
 });
 
 test("a fleet whose every model is unpriced or zero-cost reads free", () => {

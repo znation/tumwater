@@ -12,6 +12,7 @@ import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
+import { piModelsPath } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { cappedRequestTimeouts } from "../request-timeouts.js";
 
@@ -337,7 +338,7 @@ export class LoopPi {
   private warnFallbackClone(run: PiRunResult): void {
     if (!run.fallbackClone) return;
     this.host.warn(
-      `pi could not resolve the model id exactly (${run.fallbackClone}) — the run uses the provider default's price and context window; add an exact entry to ~/.pi/agent/models.json`,
+      `pi could not resolve the model id exactly (${run.fallbackClone}) — the run uses the provider default's price and context window; add an exact entry to ${piModelsPath()}`,
     );
   }
 
