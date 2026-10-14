@@ -89,6 +89,68 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
+### A suite test resolves every `PLANS.md "<title>"` citation in `src/` and `test/` comments, and the steward keeps the records they cite (planned 2026-10-14 by plan; independent of every other entry. Its only overlap with the comment-width plans is PLANS.md itself, since it edits no comment line)
+
+**Goal.** Comments cite plans by quoted title, as in `(PLANS.md "Robust conflict landing, part 2/2")`.
+The steward prompt (`steward` in `ROLES`, `src/roles/role-catalog.ts`) promises that "the one-line form
+keeps every existing cross-reference resolvable". Yet steward commits e01d2bb7 (2026-10-03) and
+463f4e2c (2026-10-05) deleted one-line Done records outright, and nothing noticed. On 2026-10-14, 11
+of the 74 quoted citations in `src/` and `test/` comments name a title that no PLANS.md heading or
+one-line record holds. They cover 8 distinct titles. The clean loop finds these by hand, and its
+reviewers rejected 6 of its sweeps over dead citations on 2026-10-11 (clean `review_rejected`
+events in the fleet event log). Some of those reviews name unquoted forms, such as
+`PLANS.md Land-queue speed 3e`, which this plan leaves alone. A check makes the rot impossible to land, and restoring the
+dropped records fixes the dead citations without touching any comment.
+
+**Approach.**
+1. New test file `plans-citations.test.ts` in `test/` (named by its basename below; node:test, offline, reads files only). Use the walk-up
+   `repoRoot` pattern from `test/exports.test.ts`, and copy the helper rather than importing it,
+   as that file does.
+   - Titles: from the repo root's `PLANS.md`, collect every line matching `^### (.*)$` (a heading)
+     or `^- (.*\(planned .*)$` (a one-line Done record). Normalize each title: remove backticks,
+     collapse whitespace runs to one space, lowercase.
+   - Citations: walk `src/` and `test/` for `.ts`/`.tsx` files. Split each file into comment
+     blocks, where a block is a run of consecutive lines whose trimmed text starts with `//`, `/*`
+     or `*`. Strip each line's leading `//`, `/**`, `/*`, `*/` or `*` marker plus one following
+     space, and join the block's lines with a single space, so a quote wrapped across lines reads
+     whole. Match `/PLANS\.md "([^"]+)"/g` in the joined text.
+   - Assertion: each normalized quote (same normalization) is a substring of at least one
+     normalized title. On failure, list every dead citation as `path:line "quote"`, using the
+     line where its block starts, in one message.
+   - Only this exact form is checked. Unquoted citations such as `PLANS.md 2026-09-30, part 1/3`
+     are out of scope, and the test's header comment says so.
+2. Restore the dropped one-line records into `## Done` in PLANS.md, appended at the section's
+   end (the oldest position), verbatim as they read before their deletion:
+   - Retire the README freshness stamp: `tumwater status` reports main's last green check (planned 2026-09-29, done 2026-09-29; commit e5cb99ab)
+   - Prioritize loops by need — defer unneeded maintenance ticks and order work roles first (planned 2026-09-08, done 2026-09-10; commits 1406be5, b2ddeb6)
+   - Bound tool output head+tail with a tumwater pi extension (planned 2026-09-23, done 2026-09-24; commit d964507)
+   - Red-main handoff — point the bugfix loop at the failing suite when main is red (planned 2026-09-19, done 2026-09-19; commit cfac056)
+   - The `Land-queue speed 1/3 — …` record: copy its full line from `git show e01d2bb7^:PLANS.md`.
+   - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
+   - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
+   - The `` `tumwater prompt --list` shows how long each prompt has waited — part 1/2, … `` record: copy its full line from `git show 463f4e2c^:PLANS.md`.
+   If the new test still lists a dead citation after this, find its record with
+   `git log -S'<quote>' -- PLANS.md` and restore that line the same way. Never edit the comment
+   to make the test pass.
+3. In the `steward` `find` text, extend the bullet "The one-line form keeps every existing
+   cross-reference resolvable…" with one sentence: never delete a one-line record, and an
+   epitaph for a deleted or merged entry keeps the entry's title, because
+   `plans-citations.test.ts` fails when a `PLANS.md "<title>"` citation in a `src/` or
+   `test/` comment matches no heading or one-line record. Pin it with a new test in
+   `test/prompt-roles.test.ts`, written in the style of "the steward reads the injected index and
+   reads bodies only by range" (`oneLine(roleById("steward")!.find)` plus `assert.match`).
+
+**Files touched.** `plans-citations.test.ts` (new), `PLANS.md` (restored Done lines),
+`src/roles/role-catalog.ts` (the steward `find` text), `test/prompt-roles.test.ts`. There is no
+docs/invariants.md entry: the register covers subsystem code, not the backlog records.
+
+**Acceptance criteria.**
+- `npm run test` passes with the new test included, and the test is not skipped.
+- Temporarily deleting the restored "Red-main handoff" line makes the new test fail, naming
+  `src/prompt/gate-prompts.ts` and the quote. Put the line back afterwards.
+- `git diff` changes no line under `src/` other than the steward `find` text.
+- The new prompt-roles test fails if that steward sentence is removed.
+
 ## Done
 
 ### The landing gate rejects a change that writes the value of a secret environment variable into the repo (planned 2026-10-13 by plan; independent of every other entry. It follows the INV-G1 pattern of the Done entry "The landing gate rejects a loop's edit to the initial prompt block…": one reason function shared by `stageCheckFindings` and the review gate) (done 2026-10-14)
