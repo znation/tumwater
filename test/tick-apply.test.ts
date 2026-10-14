@@ -360,6 +360,38 @@ test("a rejection past the warn bar backs the re-author off on the error ladder"
   assert.deepEqual(rungs, [0, 0, 30, 60, 120, 240, 480, 600, 600, 600]);
 });
 
+test("a revision-round rejection leaves the error streak unchanged; only a final one counts", () => {
+  // BUGS.md 2026-10-14: recordRejectedChange sets `state.revision` while a rejected change
+  // goes back for another round and clears it when the chain is exhausted. The streak counts
+  // only the FINAL rejection, so ONE change's revision chain (however many rounds) never
+  // crosses the warn bar by itself — the exhausted third round of a chain is streak 1, not
+  // streak 3. A clear revision ever after stands for the director (it never revises) and a
+  // deterministic landing-check reject, which have no revision to begin with.
+  const cfg = testConfig();
+  const change = { sha: PINNED, summary: "did it" };
+
+  // Round 1 and 2 of one change: recordRejectedChange leaves `revision` set, so neither the
+  // streak nor the re-author's fast schedule moves.
+  const s = freshLoopState("feature");
+  for (const round of [1, 2]) {
+    applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
+    s.revision = { sha: PINNED, round, at: Date.now() };
+    const scheduledAt = s.nextRunAt!;
+    applyLandingOutcome(s, "rejected", change);
+    assert.equal(s.consecutiveErrors ?? 0, 0, `round ${round} rejection does not feed the streak`);
+    assert.equal(s.backoffSeconds, 0, `round ${round} rejection keeps the fast retry`);
+    assert.equal(s.nextRunAt, scheduledAt, `round ${round} rejection keeps the min-interval schedule`);
+  }
+
+  // The exhausted (final) rejection clears the revision and counts once — so a chain that
+  // exhausts its rounds reads streak 1, not streak 3, and does not cross the warn bar.
+  s.revision = undefined;
+  applyLandingOutcome(s, "rejected", change);
+  assert.equal(s.consecutiveErrors, 1, "the exhausted chain's final rejection counts once");
+  assert.equal(s.backoffSeconds, 0, "a single final rejection sits below the warn bar");
+  assert.match(s.lastError!, /^review rejected:/, "the final rejection records its reason");
+});
+
 // A hand-back record must live exactly as long as the resolution it encodes: a landing
 // hand-back tick that ends without committing its edits (no_change, user_aborted, a spent
 // quiet-kill resume) abandons them, and a stale record would make a later change's cap

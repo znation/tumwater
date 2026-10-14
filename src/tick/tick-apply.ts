@@ -298,15 +298,26 @@ export function applyLandingOutcome(
     s.consecutiveErrors = 0;
   }
   if (result === "rejected") {
-    // A review rejection is a failure the streak must count (BUGS.md 2026-09-30): the
-    // authoring tick ended `queued`, which no longer resets the streak (see applyTickOutcome),
-    // so this landing outcome is the episode's accumulation point — the same field the warn,
-    // the breaker (src/gates/streak-gate.ts), and the error-storm observation
+    // A review rejection is a failure the streak must count ONLY when it is final (BUGS.md
+    // 2026-10-14): recordRejectedChange (src/landing/landing-core.ts) already decided finality
+    // by the time this runs — it sets `state.revision` when the change goes back for another
+    // round and clears it when the chain is exhausted (or never sets it for a role that cannot
+    // revise, the director). A rejection that leaves a revision to work on is not a verdict
+    // about the author yet: counting every round of ONE change made an exhausted chain's third
+    // round cross the warn bar and flash a red "failing tick after tick" alert that needed
+    // nothing from the operator and was gone before it could be read (0–30 s). Counting only
+    // final rejections makes a streak of 3 mean three changes ended rejected (or errored) —
+    // the non-converging author the 2026-09-30 fix meant to catch — while a chain's rounds
+    // leave the streak unchanged and keep the fast minimum-interval retry the queued tick
+    // scheduled. This landing outcome is the accumulation point (the authoring tick ends
+    // `queued`, which no longer resets the streak, see applyTickOutcome) — the same field the
+    // warn, the breaker (src/gates/streak-gate.ts), and the error-storm observation
     // (src/fleet/fleet-polls.ts) already read. No new machinery, no new constants: the warn
     // bar and the breaker bar are ERROR_STREAK_WARN and ERROR_STREAK_BREAKER themselves.
-    s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
-    const lastReasons = s.lastReview?.verdict === "reject" ? s.lastReview.reasons : undefined;
-    s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
+    if (s.revision === undefined) {
+      s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
+      const lastReasons = s.lastReview?.verdict === "reject" ? s.lastReview.reasons : undefined;
+      s.lastError = `review rejected: ${firstReason(lastReasons).slice(0, 200)}`;
     // Past the warn bar the re-author backs off on the error ladder instead of the minimum
     // interval the queued tick scheduled: the fast first retries stay — the rejected branch's
     // design intent, letting the author address the recorded reasons at once — but a
@@ -314,14 +325,15 @@ export function applyLandingOutcome(
     // rung derives from the streak (not from backoffSeconds, which every queued tick zeroes
     // on its way out, pinning a state-derived ladder at its first rung), and never pulls
     // nextRunAt earlier than the already-scheduled minimum interval.
-    const streak = s.consecutiveErrors;
-    if (streak >= ERROR_STREAK_WARN) {
-      const rung = Math.min(
-        ERROR_BACKOFF.initialSeconds * 2 ** (streak - ERROR_STREAK_WARN),
-        ERROR_BACKOFF.maxSeconds,
-      );
-      s.backoffSeconds = rung;
-      s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
+      const streak = s.consecutiveErrors;
+      if (streak >= ERROR_STREAK_WARN) {
+        const rung = Math.min(
+          ERROR_BACKOFF.initialSeconds * 2 ** (streak - ERROR_STREAK_WARN),
+          ERROR_BACKOFF.maxSeconds,
+        );
+        s.backoffSeconds = rung;
+        s.nextRunAt = Math.max(s.nextRunAt ?? 0, Date.now() + rung * 1000);
+      }
     }
   }
   // A landing or a rejection is the end of the change's life; a merge_conflict keeps its pin.
