@@ -5,7 +5,21 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 ## Planned
-_None yet.
+### `tumwater history --summary` and `history --json --summary` name each loop's tokens and cost across the window: per-loop totals join the outcome tally (planned 2026-10-14 by plan; independent of every other entry — touches only `src/history/history-data.ts`, `src/history/history.ts`, and `test/history-data.test.ts`, and no code or file the waiting questions-age / checkStalledPlans / tokens-by-role plans touch)
+
+**Goal.** `tumwater history --summary` tallies each loop's ticks into `changes`/`none`/`problems` buckets — `HistorySummaryRow` (src/history/history-data.ts) carries only `ticks`, `changes`, `none`, `problems`, and `lastChangeTs` — yet the very tick rows it folds — each `TickRow` carries `tokens`/`costUsd` from `eventUsage`, rendered by the per-tick `usage` cell — already hold the usage numbers. So an operator who wants each loop-instance's token/cost burn over the recent or `--since` window has no one-line answer: the daily report (`tumwater report`) folds to base role by calendar day, and the history table's per-tick `usage` cells are per row, so a busy `feature-2` vs `feature` split takes hand-summing (the report's `report-data.ts`/`report-render.ts` and the doctor `checkStalledPlans` do brown-bag per-base-role or nothing). A grep for `tokens`/`costUsd` on `HistorySummaryRow` finds none. Small, render+collector only: the per-tick data is already read.
+
+**Approach.**
+- In `src/history/history-data.ts`, extend `HistorySummaryRow` with `tokens: number; costUsd: number`. In `summarizeTickRows`, `blank()` initializes both to `0`, and the tally loop adds each row's (`row.tokens`, `row.costUsd`) to both the loop's `entry` and `total` — the same two-iteration pattern the outcome buckets already use, so the total always sums every loop and the two cannot drift.
+- In `src/history/history.ts`, `renderSummary` gains a `tokens` and a `cost` column between `problems` and `last change`, right-aligned like the others: `cols` becomes `["ticks", "changes", "none", "problems", "tokens", "cost"]`, the header and each row's cell for `tokens` use `compactTokens(r.tokens)` and for `cost` use `usd(r.costUsd)` — importing `compactTokens` and `usd` from `../text/format.js` (the same formatters report-render.ts uses, so the window and the daily report speak one number format). A loop/`total` with zero tokens and cost renders the bucket-like `compactTokens(0)`/`usd(0)` cells, consistent with the other count columns.
+- Because `summarizeTickRows` and `renderSummary` are shared, the `--json --summary` payload (`sayJson(summarizeTickRows(rows))`, history.ts line 159) and the run-window summary in `src/cli/cli-run.ts` (`windowSummary`, which calls `renderSummary`) both inherit the new fields.
+
+**Files touched.** `src/history/history-data.ts`, `src/history/history.ts`, `test/history-data.test.ts`.
+
+**Acceptance criteria.**
+- In `test/history-data.test.ts`, the existing `summarizeTickRows tallies each loop's outcome classes in name order with a total` test's `deepEqual` expectations gain the two fields (its rows are built with `tokens: 0, costUsd: 0`, so the loop and `total` rows expect `tokens: 0, costUsd: 0`); add a `summarizeTickRows sums tokens and cost per loop and into the total` test — rows with nonzero `tokens`/`costUsd` per loop land in that loop's row and in `total` as the sum across loops.
+- A new `renderSummary` test (importing it from `src/history/history.ts`, or a `tumwater history --summary` invocation) shows a header row with `tokens` and `cost` columns and per-loop/`total` cells formatted through `compactTokens`/`usd` (e.g. `1.2k`/`$0.50`), right-aligned under their headers like the tick columns.
+- `--json --summary` carries `tokens` and `costUsd` on each loop row and on `total`; the diff is confined to the three files above (the `cli-run.ts` window summary picks the new columns up through the shared `renderSummary` without a code change there, and old `--json` consumers that ignore extra fields are unaffected); `npm run test` passes.
 
 
 ## Done
@@ -62,8 +76,6 @@ _None yet.
 - `question-age.test.ts`: a heading `… (asked by director 2026-10-10)` gives `questionFilingDate` `2026-10-10` and, with `now` four days later, `questionAgeSuffix` `` ` · since 2026-10-10 (4d)` ``; the same day gives `(today)`; a heading with no `asked by` date clause gives `null`/`""`; a body-only date does not parse (a heading whose own stamp clause is present still parses its own stamp). `n` floors at 0 for a future date.
 - With a temp root holding one dated and one undated open question, `tumwater questions`' numbered line carries a ` · since <stamp> (<n>d)` suffix (body preview still trailing after it), and the `--json` object carries `since`/`ageDays` for the dated entry and neither field for the undated one — the expected `<n>` computed from the same `Date.now() - Date.parse(stamp) / 86400000` whole-day formula the feature uses, not a hard-coded count, since the exact value drifts with the time of day and timezone.
 - The diff is confined to the two files above; no QUESTIONS.md content or other surface changes; `npm run test` passes.
-
-
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
 
 
