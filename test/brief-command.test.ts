@@ -34,6 +34,18 @@ test("brief --file replaces the prompt, commits on main, and a repeat is a no-op
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
 });
 
+test("brief --file --json names the successful edit with changed and committed", async () => {
+  const repo = await initializedRepo();
+  const r = await cli(repo, "brief", "--file", promptFile("Fresh prompt.\n"), "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout), { file: "README.md", changed: true, committed: true });
+  assertClean(repo);
+  // A repeat with the same file is an unchanged edit, reported as such in JSON.
+  const again = await cli(repo, "brief", "--file", promptFile("Fresh prompt.\n"), "--json");
+  assert.equal(again.code, 0);
+  assert.deepEqual(JSON.parse(again.stdout), { file: "README.md", changed: false, committed: false });
+});
+
 test("brief --file refuses empty, over-long, and marker-bearing text without touching the brief", async () => {
   const repo = await initializedRepo();
   const before = fs.readFileSync(path.join(repo, "README.md"), "utf8");
