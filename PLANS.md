@@ -102,7 +102,9 @@ lines.
 - `git diff -U0` changes no non-comment line outside the test file.
 - `npm run test` passes.
 
-### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry)
+## Done
+
+### docs/backends.md points at pi's settings.json through the same `piAgentDir` the models.json path uses (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
 
 **Goal.** The model-catalog plan taught the fleet to read pi's files from `$PI_CODING_AGENT_DIR`
 when it is set, else `~/.pi/agent` (the `piAgentDir` helper in `src/pi/pi-models.ts`, whose
@@ -136,9 +138,6 @@ by pi under `PI_CODING_AGENT_DIR` is the one the reader edits.
 - `git diff` on `docs/backends.md` changes no code-adjacent claim beyond the path mentions (the diff
   is small and localized to those two lines).
 - `npm run test` passes (no source or test file changes).
-
-
-## Done
 
 ### tumwater reads pi's model catalog from `PI_CODING_AGENT_DIR` when it is set, as pi does (planned 2026-10-14 by plan; independent of every other entry) — done 2026-10-14
 

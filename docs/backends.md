@@ -139,7 +139,7 @@ the `lmstudio-community` checkpoints carry no MTP tensors, making `mtp_enabled` 
 oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
 `max_context_window` **131072**, pinned + default;
 `settings.json` sets `max_concurrent_requests` **3**, `memory_guard_tier` aggressive,
-`hot_cache_max_size` 4GB and an API key. pi (`~/.pi/agent/`) and omp
+`hot_cache_max_size` 4GB and an API key. pi (`$PI_CODING_AGENT_DIR` when that env var is set, else `~/.pi/agent/`) and omp
 (`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
 `api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
 limit for pi's output reserve), and must send the API key. `tumwater.json`
@@ -200,7 +200,8 @@ longer describe what runs.
   concurrent load can take longer than that to stream its first byte, so the request is severed
   ("terminated"), pi's retries die the same way, and the tick fails after ~4 × 5 min. Fix: set
   a large-but-finite `"httpIdleTimeoutMs"` (e.g. `1800000` = 30 min) in
-  `~/.pi/agent/settings.json`. Do not use `0` (fully disabled): a zombie socket then waits
+  pi's `settings.json` — `$PI_CODING_AGENT_DIR/settings.json` when that env var is set, else
+  `~/.pi/agent/settings.json` —. Do not use `0` (fully disabled): a zombie socket then waits
   forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min; kills a run when no
   *progress* — message, turn, and tool boundary events — happens, so content-free keepalives
   cannot reset it) and `tickTimeoutSeconds` remain the layered hang guards.
