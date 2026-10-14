@@ -310,7 +310,7 @@ test("windowSummary counts every tick once by outcome class, with the history ta
   const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("qa", "error", 1)]), true);
   const lines = out.split("\n");
   assert.equal(lines[0], "for 2h: 3 ticks — 1 changes, 1 none, 1 problems");
-  assert.match(lines[1] ?? "", /^loop\s+ticks\s+changes\s+none\s+problems\s+last change$/);
+  assert.match(lines[1] ?? "", /^loop\s+ticks\s+changes\s+none\s+problems\s+tokens\s+cost\s+last change$/);
   assert.deepEqual(lines.slice(2).map((l) => l.split(/\s+/)[0]), ["clean", "qa", "total"]);
 });
 

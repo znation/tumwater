@@ -5,6 +5,7 @@ import { displayWidth, padToWidth } from "../text/text-width.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, summarizeTickRows, type HistorySummaryRow, tickRowCells, tickRowLine, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
+import { compactTokens, usd } from "../text/format.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
@@ -63,13 +64,15 @@ function renderRow(row: TickRow, widths: RowWidths): string {
 export function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.loops, summary.total];
   const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
-  const cols = ["ticks", "changes", "none", "problems"] as const;
-  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => String(r[c]).length)));
+  const cols = ["ticks", "changes", "none", "problems", "tokens", "cost"] as const;
+  const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
+    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(r[c]);
+  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
   const line = (loop: string, cells: string[], lastChange: string): string =>
     [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
     line("loop", [...cols], "last change"),
-    ...all.map((r) => line(r.loop, cols.map((c) => String(r[c])), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
+    ...all.map((r) => line(r.loop, cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
   ].join("\n");
 }
 

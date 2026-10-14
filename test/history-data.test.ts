@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { HarnessEvent } from "../src/events/events.js";
-import { readTickRowsSince, summarizeTickRows, tickRowGrepHaystack, tickRows, type TickRow } from "../src/history/history-data.js";
+import { readTickRowsSince, summarizeTickRows, tickRowGrepHaystack, tickRows, type HistorySummaryRow, type TickRow } from "../src/history/history-data.js";
+import { renderSummary } from "../src/history/history.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
@@ -508,11 +509,42 @@ test("summarizeTickRows tallies each loop's outcome classes in name order with a
     row("bugfix", "rejected", 600),
   ]);
   assert.deepEqual(summary.loops, [
-    { loop: "bugfix", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 300 },
-    { loop: "feature", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 100 },
+    { loop: "bugfix", ticks: 3, changes: 1, none: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 300 },
+    { loop: "feature", ticks: 3, changes: 1, none: 1, problems: 1, tokens: 0, costUsd: 0, lastChangeTs: 100 },
   ]);
-  assert.deepEqual(summary.total, { loop: "total", ticks: 6, changes: 2, none: 2, problems: 2, lastChangeTs: 300 });
-  assert.deepEqual(summarizeTickRows([]), { loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0, lastChangeTs: null } });
+  assert.deepEqual(summary.total, { loop: "total", ticks: 6, changes: 2, none: 2, problems: 2, tokens: 0, costUsd: 0, lastChangeTs: 300 });
+  assert.deepEqual(summarizeTickRows([]), { loops: [], total: { loop: "total", ticks: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null } });
   const newest = summarizeTickRows([row("a", "changed", 5), row("a", "changed", 9), row("a", "changed", 7)]);
   assert.equal(newest.loops[0]?.lastChangeTs, 9);
+});
+
+test("summarizeTickRows sums tokens and cost per loop and into the total", () => {
+  const row = (loop: string, tokens: number, costUsd: number): TickRow => ({
+    ts: 0, time: "", loop, tick: 1, result: "changed", durationMs: null, tokens, costUsd, usage: "", detail: "",
+  });
+  const summary = summarizeTickRows([
+    row("feature", 1000, 0.1),
+    row("bugfix", 200, 0.02),
+    row("feature", 14000, 1.4),
+    row("bugfix", 0, 0),
+  ]);
+  assert.deepEqual(summary.loops, [
+    { loop: "bugfix", ticks: 2, changes: 2, none: 0, problems: 0, tokens: 200, costUsd: 0.02, lastChangeTs: 0 },
+    { loop: "feature", ticks: 2, changes: 2, none: 0, problems: 0, tokens: 15000, costUsd: 1.5, lastChangeTs: 0 },
+  ]);
+  assert.deepEqual(summary.total, { loop: "total", ticks: 4, changes: 4, none: 0, problems: 0, tokens: 15200, costUsd: 1.52, lastChangeTs: 0 });
+});
+
+test("renderSummary shows tokens and cost columns formatted via compactTokens and usd", () => {
+  const row = (loop: string, tokens: number, costUsd: number): HistorySummaryRow => ({
+    loop, ticks: 1, changes: 1, none: 0, problems: 0, tokens, costUsd, lastChangeTs: null,
+  });
+  const out = renderSummary({ loops: [row("feature", 14000, 0.5)], total: row("total", 14000, 0.5) });
+  const lines = out.split("\n");
+  assert.match(lines[0]!, /tokens\s+cost/);
+  // Each data row's tokens/cost cells are right-aligned under their headers and formatted.
+  for (const l of lines.slice(1)) {
+    assert.match(l, /\b14\.0k\b/);
+    assert.match(l, /\$0\.50/);
+  }
 });

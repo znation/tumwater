@@ -349,25 +349,25 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
   const text = await cli(repo, "history", "--summary");
   assert.equal(text.code, 0);
   assert.deepEqual(text.stdout.split("\n").map((l) => l.trimEnd()), [
-    "loop     ticks  changes  none  problems  last change",
-    "bugfix       1        0     0         1  —",
-    "clean        1        0     1         0  —",
-    `feature      1        1     0         0  ${when}`,
-    `total        3        1     1         1  ${when}`,
+    "loop     ticks  changes  none  problems  tokens   cost  last change",
+    "bugfix       1        0     0         1       0  $0.00  —",
+    "clean        1        0     1         0       0  $0.00  —",
+    `feature      1        1     0         0    2400  $0.02  ${when}`,
+    `total        3        1     1         1    2400  $0.02  ${when}`,
     "",
   ]);
 
   const json = await cli(repo, "history", "--summary", "--json");
   const payload = JSON.parse(json.stdout) as { loops: unknown[]; total: unknown };
   assert.equal(payload.loops.length, 3);
-  assert.deepEqual(payload.total, { loop: "total", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 1787222695956 });
+  assert.deepEqual(payload.total, { loop: "total", ticks: 3, changes: 1, none: 1, problems: 1, tokens: 2400, costUsd: 0.02, lastChangeTs: 1787222695956 });
 
   const scoped = await cli(repo, "history", "--summary", "--role", "feature");
   assert.equal(scoped.stdout.trim().split("\n").length, 3);
   assert.match(scoped.stdout, /^feature /m);
 
   const problems = await cli(repo, "history", "--summary", "--result", "problems");
-  assert.match(problems.stdout, /^total +1 +0 +0 +1 +—$/m);
+  assert.match(problems.stdout, /^total +1 +0 +0 +1 +0 +\$0\.00 +—$/m);
   assert.doesNotMatch(problems.stdout, /^clean/m);
 });
 

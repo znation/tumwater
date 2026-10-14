@@ -50,13 +50,15 @@ export interface HistorySummaryRow {
   changes: number;
   none: number;
   problems: number;
+  tokens: number;
+  costUsd: number;
   lastChangeTs: number | null;
 }
 
 /** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
  * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
 export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]; total: HistorySummaryRow } {
-  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0, lastChangeTs: null });
+  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
   const byLoop = new Map<string, HistorySummaryRow>();
   const total = blank("total");
   for (const row of rows) {
@@ -66,6 +68,8 @@ export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]
     for (const t of [entry, total]) {
       t.ticks += 1;
       t[cls] += 1;
+      t.tokens += row.tokens;
+      t.costUsd += row.costUsd;
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
