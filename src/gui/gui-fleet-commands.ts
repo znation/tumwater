@@ -13,9 +13,38 @@ import { gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
+/** The shared optional-seconds rule behind the timed pause's `forSeconds` and the scheduled
+ * wake/stop's `inSeconds`: the field is absent (undefined) or a positive finite number of
+ * seconds within the CLI's 90-day cap — the two parallel validators used to restate this
+ * smell, one per field name. Its null return means the 400 is already sent and the caller must
+ * stop; its number return is the delay in milliseconds, which the timed-pause callers add
+ * their own clock to (the marker's `until` deadline) and the wake/stop-schedule callers use
+ * directly. `capHint` rides after the cap message for a field whose capped form earns an extra
+ * pointer (pause's standing-pause note); the messages name the field so pause (`forSeconds`)
+ * and wake/stop-schedule (`inSeconds`) each read correctly. */
+function boundedSecondsMs(
+  res: http.ServerResponse,
+  body: Record<string, unknown>,
+  field: string,
+  capHint = "",
+): number | undefined | null {
+  const seconds = body[field];
+  if (seconds === undefined) return undefined;
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    sendJson(res, 400, { error: `${field} must be a positive number of seconds${gotSuffix(seconds)}` });
+    return null;
+  }
+  if (seconds * 1000 > PAUSE_FOR_MAX_MS) {
+    sendJson(res, 400, { error: `${field} is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(seconds)}${capHint}` });
+    return null;
+  }
+  return Math.round(seconds * 1000);
+}
+
 /** The shared `forSeconds` rule of /api/pause and /api/pause-role: undefined when absent, the
  * deadline in epoch milliseconds when valid, null after sending the 400 (only with
- * `paused: true`, a positive finite number, within the CLI's 90-day cap). */
+ * `paused: true`, a positive finite number, within the CLI's 90-day cap — the numeric body
+ * rides boundedSecondsMs). */
 function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknown>, pausing: boolean): number | undefined | null {
   const forSeconds = body.forSeconds;
   if (forSeconds === undefined) return undefined;
@@ -23,15 +52,8 @@ function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknow
     sendJson(res, 400, { error: "forSeconds only applies when pausing (paused: true)" });
     return null;
   }
-  if (typeof forSeconds !== "number" || !Number.isFinite(forSeconds) || forSeconds <= 0) {
-    sendJson(res, 400, { error: `forSeconds must be a positive number of seconds${gotSuffix(forSeconds)}` });
-    return null;
-  }
-  if (forSeconds * 1000 > PAUSE_FOR_MAX_MS) {
-    sendJson(res, 400, { error: `forSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(forSeconds)} — pause without it for a standing pause` });
-    return null;
-  }
-  return Date.now() + Math.round(forSeconds * 1000);
+  const ms = boundedSecondsMs(res, body, "forSeconds", " — pause without it for a standing pause");
+  return ms === null || ms === undefined ? ms : Date.now() + ms;
 }
 
 /** The optional `reason` of /api/pause: undefined when absent or blank, the raw string when
@@ -78,17 +100,7 @@ export async function handlePause(req: http.IncomingMessage, res: http.ServerRes
  * valid, null after sending the 400 (a positive finite number within the CLI's 90-day cap).
  * A duration, not a deadline: requestWake takes `inMs` and reads its own clock. */
 export function wakeInSecondsMs(res: http.ServerResponse, body: Record<string, unknown>): number | undefined | null {
-  const inSeconds = body.inSeconds;
-  if (inSeconds === undefined) return undefined;
-  if (typeof inSeconds !== "number" || !Number.isFinite(inSeconds) || inSeconds <= 0) {
-    sendJson(res, 400, { error: `inSeconds must be a positive number of seconds${gotSuffix(inSeconds)}` });
-    return null;
-  }
-  if (inSeconds * 1000 > PAUSE_FOR_MAX_MS) {
-    sendJson(res, 400, { error: `inSeconds is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(inSeconds)}` });
-    return null;
-  }
-  return Math.round(inSeconds * 1000);
+  return boundedSecondsMs(res, body, "inSeconds");
 }
 
 /** Handle POST /api/wake: the dashboard's per-row wake control — the same marker-writing
