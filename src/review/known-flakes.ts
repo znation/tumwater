@@ -24,25 +24,31 @@ export const KNOWN_FLAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
  * the writer and reader cannot drift over the separator. */
 export const FLAKY_WARNING_PREFIX = "gate check failed then passed on retry — flaky: ";
 
-/** The normalized cluster keys of every flake warning in `events` at or after `now - windowMs`.
- * Pure over its inputs (no I/O, no clock) so the matching rules have their own unit tests.
- * Non-warning events, warnings whose message is not a string, and warnings older than the
- * window are ignored; a warning's headline is everything after the prefix. */
+/** The normalized cluster keys of every flake warning in `events` — the shared extraction
+ * both the gate's flakeKeys and the doctor's `flaky checks` check fold from the log, so the
+ * prefix slice-offset and original cluster normalization live once and cannot drift. Non-
+ * warning events and warnings whose message is not a string are ignored; `cutoffMs`, when
+ * given, also drops events timestamped strictly before it. Pure over its inputs (no I/O, no
+ * clock) so the matching rules have their own unit tests. */
+export function flakeWarningKeys(events: readonly HarnessEvent[], cutoffMs?: number): string[] {
+  const keys: string[] = [];
+  for (const e of events) {
+    if (e.type !== "warning" || typeof e.message !== "string") continue;
+    if (cutoffMs !== undefined && typeof e.ts === "number" && e.ts < cutoffMs) continue;
+    const at = e.message.indexOf(FLAKY_WARNING_PREFIX);
+    if (at < 0) continue;
+    keys.push(normalizeClusterKey(e.message.slice(at + FLAKY_WARNING_PREFIX.length)));
+  }
+  return keys;
+}
+
+/** A Set of the flakeWarningKeys at or after `now - windowMs` of the gate's own window. */
 export function flakeKeys(
   events: readonly HarnessEvent[],
   now: number,
   windowMs: number = KNOWN_FLAKE_WINDOW_MS,
 ): Set<string> {
-  const cutoff = now - windowMs;
-  const keys = new Set<string>();
-  for (const e of events) {
-    if (e.type !== "warning" || typeof e.message !== "string") continue;
-    if (typeof e.ts === "number" && e.ts < cutoff) continue;
-    const at = e.message.indexOf(FLAKY_WARNING_PREFIX);
-    if (at < 0) continue;
-    keys.add(normalizeClusterKey(e.message.slice(at + FLAKY_WARNING_PREFIX.length)));
-  }
-  return keys;
+  return new Set(flakeWarningKeys(events, now - windowMs));
 }
 
 /** Whether `headline` matches a flake warning the gate logged within the last

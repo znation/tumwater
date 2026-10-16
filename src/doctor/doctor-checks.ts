@@ -53,8 +53,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
-import { FLAKY_WARNING_PREFIX, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
-import { normalizeClusterKey } from "../failure/failure-cluster.js";
+import { flakeWarningKeys, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 
 /** The environment/repo pre-flight checks, split out of
  * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
@@ -626,19 +625,16 @@ export function checkBuildCheck(
  * on its one immediate re-run (src/review/known-flakes.ts); that record is internal to the
  * gate's matching, so a genuinely flaky check silently burns a re-run per landing and hides
  * real instability — exactly the information that explains intermittent rejections. This
- * check reads the same window and the same normalized headline the gate matches with (the
- * slice-offset logic and normalizeClusterKey shared with flakeKeys), and warns only when a
- * normalized check flapped more than once, so a routine one-off flake stays quiet.
+ * check reads the same window and folds the same normalized headline the gate matches with
+ * (flakeWarningKeys, so the prefix slice-offset and cluster normalization cannot drift), and
+ * warns only when a normalized check flapped more than once, so a routine one-off flake stays
+ * quiet.
  * ok/warn only — never a fail — so a flaky suite cannot fail a scripted doctor pre-flight
  * (the checkStalledPlans precedent; the exit-code rule is outcome.ts's). */
 export function checkFlakyChecks(root: string): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   const counts = new Map<string, number>();
-  for (const e of events) {
-    if (e.type !== "warning" || typeof e.message !== "string") continue;
-    const at = e.message.indexOf(FLAKY_WARNING_PREFIX);
-    if (at < 0) continue;
-    const key = normalizeClusterKey(e.message.slice(at + FLAKY_WARNING_PREFIX.length));
+  for (const key of flakeWarningKeys(events)) {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const flapped = [...counts.entries()]
