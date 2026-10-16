@@ -567,6 +567,28 @@ test("role payload surfaces the newest tick_end outcomes ordered newest-first", 
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).recentOutcomes, undefined);
 });
 
+test("a torn tick_end line (no usable ts/result/duration) contributes no recent outcome", () => {
+  const dir = root();
+  const now = Date.now();
+  // The event log is read without a shape filter, so a torn or hand-edited line can carry a
+  // non-numeric ts/durationMs or an empty result — the same foreign-shape every other
+  // consumer guards with finiteNumber. A line missing a usable ts or result is as unusable
+  // as an absent one and must not surface (no "Invalid Date", no literal "undefined").
+  writeEvents(dir, [
+    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: "not-a-number", loop: "feature", type: "tick_end", tick: 2, result: "changed" }, // torn ts
+    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 3, result: "", durationMs: "not-a-number" }, // empty result + torn duration
+    { ts: now - 30_000, loop: "feature", type: "tick_end", tick: 4, result: "no_change", durationMs: 10_000 },
+  ]);
+  const o = rolePayload(dir, "feature", NO_MODELS).recentOutcomes!;
+  assert.equal(o.length, 2); // only the two with a usable ts + result survive
+  assert.ok(o.every((x) => Number.isFinite(x.ts) && typeof x.result === "string" && x.result.length > 0));
+  const newest = o[0]!;
+  assert.equal(newest.result, "no_change"); // newest valid survivor = tick 4
+  assert.equal(newest.ts, now - 30_000);
+  assert.equal(newest.durationMs, 10_000); // a valid duration rides along
+});
+
 test("a role with no tick_end events carries no recentOutcomes", () => {
   const dir = root();
   const p = rolePayload(dir, "feature", NO_MODELS);

@@ -27,6 +27,7 @@ import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../a
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 import { eventRole, readEvents } from "../events/event-read.js";
+import { finiteNumber } from "../files/json-object.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -185,12 +186,20 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // summaries ride along only when the event carried them (a torn or empty line drops them),
   // and an empty result is omitted so a never-ticked loop carries no `recentOutcomes` at all.
   const recentOutcomes = readEvents(root)
-    .filter((ev) => ev.type === "tick_end" && eventRole(ev) === role)
+    // The event log is read without a shape filter, so a torn or hand-edited tick_end line can
+    // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
+    // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
+    // an absent one (the same "a torn line carries no usable timestamp" rule eventTick/tickStartMap
+    // apply), so it contributes no outcome; a non-numeric durationMs is dropped like a missing one.
+    .filter((ev) => {
+      if (ev.type !== "tick_end" || eventRole(ev) !== role) return false;
+      return finiteNumber(ev.ts, null) !== null && typeof ev.result === "string" && ev.result !== "";
+    })
     .slice(-8)
     .map((ev) => ({
       ts: ev.ts as number,
       result: ev.result as string,
-      ...(ev.durationMs !== undefined && ev.durationMs !== null ? { durationMs: ev.durationMs as number } : {}),
+      ...(finiteNumber(ev.durationMs, null) !== null ? { durationMs: ev.durationMs as number } : {}),
       ...(typeof ev.summary === "string" && ev.summary !== "" ? { summary: ev.summary } : {}),
     }))
     .reverse();
