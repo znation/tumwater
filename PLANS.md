@@ -21,59 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms groundwork, part 2/4: Add the vocabulary guard test for modules that opt in to plain terms (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts)
-
-**Goal.** A deterministic test that fails when user-visible text in an opted-in `src/` module uses a retired word, so the text series can convert modules one group at a time and keep them converted. With no module opted in yet it passes. Its own self-tests prove what it flags and what it ignores.
-
-**Approach.**
-- New file `test/vocabulary.test.ts`. Import the compiler API as `import ts from "typescript";`. `typescript` is already a devDependency (package.json) and resolves under the NodeNext build. Tests never ship (package.json `files` is `dist/src`), so this adds no runtime dependency. The test is offline and pure.
-- Locate the repo root the way test/layering.test.ts's `findRepoRoot` does: walk up to the directory holding package.json and src/, so the scan works from dist/test. test/affected-tests.ts's `SCANS_TREE` rule then runs it on any code change with no edit there.
-- **The retired-word list** lives at the top of this file as `RETIRED_WORDS: readonly string[]`, regex sources with a doc comment saying "later series append here". This is the only list, and later series extend it by editing this constant. Start it with: `fleet`, `loop`, `tick`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `backed off`, `drain`.
-  - The role ids `dry` and `telemetry` are NOT in the starting list. They stay valid ids until Plain terms role ids switches them, and each switch part appends its old id: `dedupe` appends `dry(?![- ]run)`, so `--dry-run` and "dry run" stay legal, and `selfcheck` appends `telemetry`.
-  - Say this in the doc comment.
-- **Matching:** compile each entry as `(?<![a-z0-9_])(?:<entry>)(?:s|es|ed|ing)?(?![a-z0-9_])` with flags `gi`.
-  - Letters, digits and `_` count as word characters. So snake_case machine names such as `tick_end`, `land_queued` and `fleet_paused` are never flagged: they are code until Plain terms event log renames them, and flagging them would force a temporary exemption on every `case "tick_end":` in an opted-in module.
-  - Prose is flagged: `fleet-wide`, `tumwater(operator):`, `Fleet`, and inflections such as ticks, loops, landings and drained.
-  - camelCase like `lastTickEndedAt` is not flagged, and neither are `ticket`, `seamless` and `loophole`.
-- **Opting in:** a module is scanned when one of its lines, trimmed, is exactly `// vocabulary: plain`. Put that test in one function, `optedIn(text)`, so Plain terms code cleanup can flip the guard to all of `src/` in one line, and say so in its doc comment.
-- **What is scanned**, by `ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, kind)` with `ts.ScriptKind.TSX` for `.tsx` files:
-  - the text of `StringLiteral` and `NoSubstitutionTemplateLiteral` nodes;
-  - the literal text of `TemplateHead`, `TemplateMiddle` and `TemplateTail`, never the `${…}` expressions between them;
-  - `JsxText`;
-  - identifiers and comments are never scanned.
-- **Skipped literals** are machine names by position:
-  - module specifiers of import and export declarations, `import()` and `require()` arguments, and `ImportTypeNode` arguments;
-  - property-name literals (`PropertyAssignment.name`, `{ "tick_end": … }`);
-  - literals inside type positions (`LiteralTypeNode`).
-- **Browser code:** a `String.raw` tagged template bound to a `const` whose name ends in `_JS` (the `GUI_CLIENT_*_JS`, `CORE_JS`, `FORMAT_JS` and `DOM_JS` blobs in src/ui/gui/) is JavaScript source, not text.
-  - Build its source from the file text between the backticks, replacing each `${…}` substitution, from `$` to its closing `}`, with a run of the same length: a `0` and then spaces, keeping any newline inside it. Parse that as `ts.ScriptKind.JS` and scan its literals by the rules above.
-  - Because lengths are kept, embedded line N is file line (template start line + N), so findings and exemptions use real file lines.
-  - Every other template, CSS and HTML included, is scanned as text.
-- **Exemption:** a finding is dropped when the file line it sits on ends with `// vocabulary-ok: <reason>`, with a non-empty reason.
-  - A word inside multi-line template text cannot carry the comment, because the comment would be part of the text.
-  - So the doc comment tells authors to move such a machine name into a constant on its own exempted line and interpolate it, for example a trailer prefix.
-- **Shape:** export nothing. Use one pure function `vocabularyFindings(fileName: string, text: string): string[]`, returning `"<file>:<line>: <word> in <excerpt>"`, shared by the real scan and the self-tests, as layering.test.ts shares `scanUiImports`.
-- **Tests:**
-  - "opted-in src modules use only plain terms": walk `src/` for `.ts` and `.tsx` files, keep those where `optedIn` is true, and assert no findings. Zero opted-in modules passes.
-  - Self-tests on inline fixture source, each a separate `test(…)`:
-    - flags a retired word in a string literal and in template text, including inflections, and does not flag `tick_end` or `land_queued`;
-    - ignores the same words in identifiers, comments and `${fleet.loop}` expressions;
-    - honors `// vocabulary-ok: event type` and refuses an empty reason;
-    - skips import specifiers, property-name literals and type literals;
-    - flags `JsxText` in a `.tsx` fixture;
-    - in a `const X_JS = String.raw\`…\`` fixture, flags a word inside a browser string literal on the right file line, ignores browser identifiers, and ignores a `${JSON.stringify(x)}` substitution;
-    - does not flag `ticket`, `seamless` or `lastTickEndedAt`;
-    - ignores a module without the header.
-
-**Files touched.** test/vocabulary.test.ts (new). Reads (does not edit): test/layering.test.ts, test/affected-tests.ts, src/ui/gui/gui-client.ts.
-
-**Acceptance criteria.**
-- With no `// vocabulary: plain` header anywhere in src/, the guard passes.
-- On a header-carrying fixture whose string literal contains "fleet", `vocabularyFindings` returns one finding that names the file, the line and the word.
-- The self-tests above all pass, each in its own named test.
-- `RETIRED_WORDS` holds exactly the starting list above, and its doc comment says the role-ids series appends `dry` and `telemetry`.
-- `npm run test` passes.
-
 ### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests)
 
 **Goal.** One server-side home for three display rules every surface will use: `feature-2` shown as `feature #2`, a role's title, and an event type or run result code shown in words ("run finished", "no change"). They land with tests and no callers. The text series adopts them.
@@ -4055,6 +4002,60 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms groundwork, part 2/4: Add the vocabulary guard test for modules that opt in to plain terms (done 2026-10-16; planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts)
+
+**Goal.** A deterministic test that fails when user-visible text in an opted-in `src/` module uses a retired word, so the text series can convert modules one group at a time and keep them converted. With no module opted in yet it passes. Its own self-tests prove what it flags and what it ignores.
+
+**Approach.**
+- New file `test/vocabulary.test.ts`. Import the compiler API as `import ts from "typescript";`. `typescript` is already a devDependency (package.json) and resolves under the NodeNext build. Tests never ship (package.json `files` is `dist/src`), so this adds no runtime dependency. The test is offline and pure.
+- Locate the repo root the way test/layering.test.ts's `findRepoRoot` does: walk up to the directory holding package.json and src/, so the scan works from dist/test. test/affected-tests.ts's `SCANS_TREE` rule then runs it on any code change with no edit there.
+- **The retired-word list** lives at the top of this file as `RETIRED_WORDS: readonly string[]`, regex sources with a doc comment saying "later series append here". This is the only list, and later series extend it by editing this constant. Start it with: `fleet`, `loop`, `tick`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `backed off`, `drain`.
+  - The role ids `dry` and `telemetry` are NOT in the starting list. They stay valid ids until Plain terms role ids switches them, and each switch part appends its old id: `dedupe` appends `dry(?![- ]run)`, so `--dry-run` and "dry run" stay legal, and `selfcheck` appends `telemetry`.
+  - Say this in the doc comment.
+- **Matching:** compile each entry as `(?<![a-z0-9_])(?:<entry>)(?:s|es|ed|ing)?(?![a-z0-9_])` with flags `gi`.
+  - Letters, digits and `_` count as word characters. So snake_case machine names such as `tick_end`, `land_queued` and `fleet_paused` are never flagged: they are code until Plain terms event log renames them, and flagging them would force a temporary exemption on every `case "tick_end":` in an opted-in module.
+  - Prose is flagged: `fleet-wide`, `tumwater(operator):`, `Fleet`, and inflections such as ticks, loops, landings and drained.
+  - camelCase like `lastTickEndedAt` is not flagged, and neither are `ticket`, `seamless` and `loophole`.
+- **Opting in:** a module is scanned when one of its lines, trimmed, is exactly `// vocabulary: plain`. Put that test in one function, `optedIn(text)`, so Plain terms code cleanup can flip the guard to all of `src/` in one line, and say so in its doc comment.
+- **What is scanned**, by `ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, kind)` with `ts.ScriptKind.TSX` for `.tsx` files:
+  - the text of `StringLiteral` and `NoSubstitutionTemplateLiteral` nodes;
+  - the literal text of `TemplateHead`, `TemplateMiddle` and `TemplateTail`, never the `${…}` expressions between them;
+  - `JsxText`;
+  - identifiers and comments are never scanned.
+- **Skipped literals** are machine names by position:
+  - module specifiers of import and export declarations, `import()` and `require()` arguments, and `ImportTypeNode` arguments;
+  - property-name literals (`PropertyAssignment.name`, `{ "tick_end": … }`);
+  - literals inside type positions (`LiteralTypeNode`).
+- **Browser code:** a `String.raw` tagged template bound to a `const` whose name ends in `_JS` (the `GUI_CLIENT_*_JS`, `CORE_JS`, `FORMAT_JS` and `DOM_JS` blobs in src/ui/gui/) is JavaScript source, not text.
+  - Build its source from the file text between the backticks, replacing each `${…}` substitution, from `$` to its closing `}`, with a run of the same length: a `0` and then spaces, keeping any newline inside it. Parse that as `ts.ScriptKind.JS` and scan its literals by the rules above.
+  - Because lengths are kept, embedded line N is file line (template start line + N), so findings and exemptions use real file lines.
+  - Every other template, CSS and HTML included, is scanned as text.
+- **Exemption:** a finding is dropped when the file line it sits on ends with `// vocabulary-ok: <reason>`, with a non-empty reason.
+  - A word inside multi-line template text cannot carry the comment, because the comment would be part of the text.
+  - So the doc comment tells authors to move such a machine name into a constant on its own exempted line and interpolate it, for example a trailer prefix.
+- **Shape:** export nothing. Use one pure function `vocabularyFindings(fileName: string, text: string): string[]`, returning `"<file>:<line>: <word> in <excerpt>"`, shared by the real scan and the self-tests, as layering.test.ts shares `scanUiImports`.
+- **Tests:**
+  - "opted-in src modules use only plain terms": walk `src/` for `.ts` and `.tsx` files, keep those where `optedIn` is true, and assert no findings. Zero opted-in modules passes.
+  - Self-tests on inline fixture source, each a separate `test(…)`:
+    - flags a retired word in a string literal and in template text, including inflections, and does not flag `tick_end` or `land_queued`;
+    - ignores the same words in identifiers, comments and `${fleet.loop}` expressions;
+    - honors `// vocabulary-ok: event type` and refuses an empty reason;
+    - skips import specifiers, property-name literals and type literals;
+    - flags `JsxText` in a `.tsx` fixture;
+    - in a `const X_JS = String.raw\`…\`` fixture, flags a word inside a browser string literal on the right file line, ignores browser identifiers, and ignores a `${JSON.stringify(x)}` substitution;
+    - does not flag `ticket`, `seamless` or `lastTickEndedAt`;
+    - ignores a module without the header.
+
+**Files touched.** test/vocabulary.test.ts (new). Reads (does not edit): test/layering.test.ts, test/affected-tests.ts, src/ui/gui/gui-client.ts.
+
+**Acceptance criteria.**
+- With no `// vocabulary: plain` header anywhere in src/, the guard passes.
+- On a header-carrying fixture whose string literal contains "fleet", `vocabularyFindings` returns one finding that names the file, the line and the word.
+- The self-tests above all pass, each in its own named test.
+- `RETIRED_WORDS` holds exactly the starting list above, and its doc comment says the role-ids series appends `dry` and `telemetry`.
+- `npm run test` passes.
+
 ### `tumwater status` renders the fleet attention banners the dashboard and TUI already show, so a spent budget, a red main, loops failing, a stale build and an open question are spelled out at the terminal, not just badge-terse (planned 2026-10-16 by plan, done 2026-10-16; independent of every other eligible Planned entry — the paused-resumes plan touches `src/ui/status-model.ts`/`test/status-model.test.ts` and the director-inbox plan touches `src/status/status-inbox.ts`, and this touches neither: only `src/ui/status-render.ts`, `src/ui/tui/tui-frame.ts` (a pure move), and `test/status-render.test.ts`. The alert source and banner renderer it reuses — `fleetAlerts` and `alertLines` — are read, and only `alertLines` is relocated, not rewritten)
 
 **Goal.** `fleetAlerts` (`src/ui/fleet-alerts.ts`) turns the snapshot plus the open questions into alert banners — a spent budget (with its cap/fallback action and detail), a red main, loops failing tick after tick, loops that look stuck, a stale running build, an open question that has waited too long, a pause, a disk-floor hold, a stopped fleet. The dashboard renders them (src/ui/status-payload.ts:286 puts `alerts` in the payload; gui-client draws them) and the TUI draws the same banners under its header (`alertLines(fleetAlerts(snap, openQuestions(root), status.loops, Date.now()), width)` in src/ui/tui/tui.tsx:170). `tumwater status` — `renderStatusSpans` in `src/ui/status-render.ts` — is the odd surface out: its header carries only the terse badges (budget/pause/disk/questions/mainCheck/stale-build), so a spent budget reads as a colored badge but not the "Spent $X of the $Y cap … raise the cap" banner, a failing loop as one row's red `failing` cell, and nothing surfaces a stuck loop or a stale question's age. This mirrors the banner block in the CLI, from the one shared source, so the three surfaces cannot drift.
