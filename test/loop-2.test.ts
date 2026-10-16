@@ -31,7 +31,7 @@ import { APPROVE_PI, assistantLine, reviewerPi, thinkingOnlyLine } from "./fixtu
 // The fake pi identifies reviewer runs by their VERDICT prompt (the pattern this file already
 // uses for gate tests) and records that run's args to a file outside the worktree.
 
-test("a changed tick past thrashTurns is flagged high-friction end to end", async () => {
+test("a changed run past thrashTurns is flagged high-friction end to end", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
@@ -49,9 +49,9 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(runner.state.lastResult, undefined, "a queued tick records no completed result");
+    assert.equal(runner.state.lastResult, undefined, "a queued run records no completed result");
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
-    assert.ok(outcome.highFriction, "the tick is flagged high-friction");
+    assert.ok(outcome.highFriction, "the run is flagged high-friction");
     // The flag annotates the summary for dashboards and lastSummary — the latter once the
     // landing resolves, paired with the landing's result (BUGS.md 2026-09-23).
     assert.match(String(outcome.summary), /^slow change \(high friction: 2 turns \/ \d+m\)$/);
@@ -78,7 +78,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
   });
 });
 
-test("a changed tick past only thrashTurns is not flagged high-friction", async () => {
+test("a changed run past only thrashTurns is not flagged high-friction", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
@@ -97,7 +97,7 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
-    assert.ok(!outcome.highFriction, "a turns-only fast tick is not flagged high-friction");
+    assert.ok(!outcome.highFriction, "a turns-only fast run is not flagged high-friction");
 
     // No high-friction warning event, no marker on the reviewer prompt, and no Friction
     // trailer on the commit.
@@ -111,7 +111,7 @@ test("a changed tick past only thrashTurns is not flagged high-friction", async 
   });
 });
 
-test("an ordinary changed tick under both thresholds is not flagged high-friction", async () => {
+test("an ordinary changed run under both thresholds is not flagged high-friction", async () => {
   const repo = await initializedRepo();
   const reviewArgs = path.join(tmpdir(), "review-args");
   const script = [
@@ -125,7 +125,7 @@ test("an ordinary changed tick under both thresholds is not flagged high-frictio
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
-    assert.ok(!outcome.highFriction, "an ordinary tick is not flagged high-friction");
+    assert.ok(!outcome.highFriction, "an ordinary run is not flagged high-friction");
 
     // No high-friction warning event…
     const events = readEvents(repo);
@@ -157,7 +157,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     [
       "done",
       "SUMMARY: add hello file",
-      "WHY: the loops needed a hello file to prove the pipeline works",
+      "WHY: the roles needed a hello file to prove the pipeline works",
       "RISK: none that I can see",
       "VERIFIED: npm test, all pass",
     ].join("\n"),
@@ -179,7 +179,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     const first = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(
       first,
-      /^tumwater\(improve\): add hello file\n\nWHY: the loops needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nTick: improve #1 · turns 1 · ctx 42$/m,
+      /^tumwater\(improve\): add hello file\n\nWHY: the roles needed a hello file to prove the pipeline works\nRISK: none that I can see\nVERIFIED: npm test, all pass\n\nTick: improve #1 · turns 1 · ctx 42$/m,
     );
 
     // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
@@ -197,7 +197,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
 // the fields on its event — summed over every pi run of the tick (here: author + zero-usage
 // reviewer) — and that a skipped tick carries neither.
 
-test("a changed tick's tick_end event carries its per-tick tokens and cost", async () => {
+test("a changed run's tick_end event carries its per-run tokens and cost", async () => {
   const repo = await initializedRepo();
   const script = [
     // The reviewer run reports zero usage, so the tick's totals are exactly the author
@@ -211,7 +211,7 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
     assert.equal((await runner.tick()).result, "queued");
 
     const ends = eventsOfType(repo, "tick_end");
-    assert.equal(ends.length, 1, "one tick ran");
+    assert.equal(ends.length, 1, "one run ran");
     // tokens is the AUTHOR run's window, costUsd its spend — the landing's own spend (the
     // zero-usage reviewer) rides the `landed` event instead.
     assert.equal(ends[0]!.tokens, 18400);
@@ -221,13 +221,13 @@ test("a changed tick's tick_end event carries its per-tick tokens and cost", asy
 
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
     const landed = eventsOfType(repo, "landed");
-    assert.equal(landed.length, 1, "the landing slot logged its own outcome");
+    assert.equal(landed.length, 1, "the merge slot logged its own outcome");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
   });
 });
 
-test("a skipped tick's tick_end event carries no usage fields", async () => {
+test("a skipped run's tick_end event carries no usage fields", async () => {
   // A director with an empty inbox skips without running pi: its tick_end must carry neither
   // tokens nor costUsd, so it renders byte-identical to a pre-feature line.
   const repo = await initializedRepo();
@@ -235,16 +235,16 @@ test("a skipped tick's tick_end event carries no usage fields", async () => {
   assert.equal((await runner.tick()).result, "skipped");
 
   const ends = eventsOfType(repo, "tick_end");
-  assert.equal(ends.length, 1, "one tick ran");
-  assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped tick");
-  assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped tick");
+  assert.equal(ends.length, 1, "one run ran");
+  assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped run");
+  assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped run");
 });
 
 // Context-ceiling memory across ticks (src/prompt/prompt-followup.ts buildCutOffNote /
 // buildResumePrompt's cut-off cause): a cut-off resume must be told what actually happened, and a
 // fresh tick after
 // the loop gave up resuming must be told its last attempts were too big for the window.
-test("a cut-off resume is bridged as a cut-off, and the fresh tick after the limit carries the note", async () => {
+test("a cut-off resume is bridged as a cut-off, and the fresh run after the limit carries the note", async () => {
   const repo = await initializedRepo();
   const promptsFile = path.join(tmpdir(), "prompts.log");
   const script = [
@@ -259,18 +259,18 @@ test("a cut-off resume is bridged as a cut-off, and the fresh tick after the lim
     for (let i = 1; i <= 5; i++) assert.equal((await runner.tick()).result, "no_change");
     const runs = readRunBlocks(promptsFile);
     assert.equal(runs.length, 5);
-    assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh tick carries no cut-off text");
+    assert.doesNotMatch(runs[0]!, /ran out of context/, "the first, fresh run carries no cut-off text");
     // The resumes continue the compacted session: the bridge names the real cause, not a restart.
     for (const resumed of runs.slice(1, 4)) {
       assert.match(resumed, /--continue/);
       assert.match(resumed, /ran out of context before it could finish/);
-      assert.doesNotMatch(resumed, /The harness was restarted/);
+      assert.doesNotMatch(resumed, /Tumwater was restarted/);
     }
     // Tick 5 is fresh (past the limit): the only memory of four failed attempts is the note,
     // and it counts every cut-off — the streak keeps counting past the resume limit.
     assert.doesNotMatch(runs[4]!, /--continue/);
-    assert.match(runs[4]!, /Your previous 4 runs as this loop ran out of context before landing anything/);
-    assert.match(runs[4]!, /Your task this run:/, "…on an otherwise normal tick prompt");
+    assert.match(runs[4]!, /Your previous 4 runs as this role ran out of context before merging anything/);
+    assert.match(runs[4]!, /Your task this run:/, "…on an otherwise normal run prompt");
     assert.equal(runner.state.cutOffStreak, 5);
     const resumes = eventsOfType(repo, "resume");
     assert.equal(resumes.length, 3);
@@ -305,7 +305,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     const resumed = makeLoopRunner(repo, "clean");
     assert.equal((await resumed.tick()).result, "no_change");
     const run = fs.readFileSync(promptsFile, "utf8");
-    assert.match(run, /The harness was restarted while you/);
+    assert.match(run, /Tumwater was restarted while you/);
     assert.doesNotMatch(run, /ran out of context/);
     const [resume] = eventsOfType(repo, "resume");
     assert.equal(resume?.cause, "restart");
@@ -332,11 +332,11 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "clean");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the tick");
+    assert.equal(outcome.result, "no_change", "the retry's verdict stands in for the run");
     assert.ok(!runner.state.lastError, `no error recorded: ${runner.state.lastError}`);
     const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
     assert.equal(runs.length, 2);
-    assert.ok(!runs[0]!.includes("--continue"), "the first attempt was the fresh tick run");
+    assert.ok(!runs[0]!.includes("--continue"), "the first attempt was the fresh run run");
     assert.ok(runs[1]!.includes("--continue"), "the retry continued the crashed run's session");
     const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => /pi crashed on malformed JSON .*Unterminated string.* — resuming the session once/.test(w)), JSON.stringify(warnings));
@@ -350,7 +350,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
 // .git would. Tick 2's leftover recovery then adopts the unpinned tip
 // into the pin scheme and queues it for the same review gate — invariant 1 must hold
 // whether or not the pin survived (plans/merge-queue.md).
-test("a failed pin leaves the commit on the branch; the next tick recovers and lands it", async () => {
+test("a failed pin leaves the commit on the branch; the next run recovers and lands it", async () => {
   const repo = await initializedRepo();
   // Tick 1: one authoring run that makes a change. The tick ends at commit + pin, so the
   // VERDICT branch below only guards against the review prompt ever reaching this script.
@@ -368,7 +368,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(outcome.result, "error");
     assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
     assert.equal(runner.state.lastError, "failed to pin the merge ref; left for the next run's recovery");
-    assert.ok(runner.state.backoffSeconds > 0, "the error tick backs off on the error ladder");
+    assert.ok(runner.state.backoffSeconds > 0, "the error run backs off on the error ladder");
 
     // The commit stays on the branch ahead of main — the worktree was NOT reset.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "1");
@@ -402,12 +402,12 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
-    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the tick");
+    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the run");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
-    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit merged on main");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "0", "the branch is back at main");
-    assert.equal(await refSha(repo, landingRefName("improve")), null, "the landed pin is deleted");
+    assert.equal(await refSha(repo, landingRefName("improve")), null, "the merged pin is deleted");
     assert.equal(queueDepth(repo), 0);
     // Like the pinned-recovery case, the landing is recorded as a merged event (what the
     // usage report counts), from the landing slot rather than the tick.
@@ -426,7 +426,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
 // instead of answering about a picture it never saw. The fake pi emits the read start, its
 // end carrying pi's non-vision note, and nothing more — the runner must kill it before any
 // further output.
-test("a tick whose agent reads an image on a blind model stops and fails", async () => {
+test("a run whose agent reads an image on a blind model stops and fails", async () => {
   const repo = await initializedRepo();
   const script = [
     `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/shot.png" } })}'`,
@@ -436,14 +436,14 @@ test("a tick whose agent reads an image on a blind model stops and fails", async
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
 
-    assert.equal(outcome.result, "error", "the tick ends error on a blind image read");
+    assert.equal(outcome.result, "error", "the run ends error on a blind image read");
     assert.match(runner.state.lastError ?? "", /read \/x\/shot\.png, but .* cannot read images/);
     const blinds = eventsOfType(repo, "image_blind");
     assert.equal(blinds.length, 1, "exactly one image_blind event");
     assert.equal(blinds[0]!.loop, "improve");
     assert.equal(blinds[0]!.path, "/x/shot.png");
     assert.equal(blinds[0]!.action, "fail", "an authoring run's blind read earns the fail action");
-    assert.ok(typeof blinds[0]!.tick === "number", "the event names the tick");
+    assert.ok(typeof blinds[0]!.tick === "number", "the event names the run");
   });
 });
 
@@ -452,7 +452,7 @@ test("a tick whose agent reads an image on a blind model stops and fails", async
 // (no target-less error), and the NEXT tick runs immediately on the vision target in a fresh
 // session over the kept worktree carrying the handoff note — its tick_start stamped
 // reroute:"image" — while the tick after that is back on the loop's own tier.
-test("a blind read on a text-only loop reroutes to the vision target, then back to its own tier", async () => {
+test("a blind read on a text-only role reroutes to the vision target, then back to its own tier", async () => {
   const repo = await initializedRepo();
   // A text-only default tier and a vision strong tier, via a models.json in the suite's
   // scratch pi dir (the same file run-agent's seam check and imageReroute read).
@@ -501,7 +501,7 @@ test("a blind read on a text-only loop reroutes to the vision target, then back 
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change");
   });
-  assert.equal(runner.state.imageReroute, undefined, "the one-shot marker is consumed by the rerouted tick");
+  assert.equal(runner.state.imageReroute, undefined, "the one-shot marker is consumed by the rerouted run");
   // The blind tick (1) is killed at the first read, so only the rerouted tick (2) reliably
   // reaches its logPromptsTo line; take the last logged prompt as tick 2's.
   const blocks = readRunBlocks(promptsFile);
@@ -510,8 +510,8 @@ test("a blind read on a text-only loop reroutes to the vision target, then back 
   assert.match(reroutedPrompt, /\/x\/s\.png/);
   const starts = readEvents(repo).filter((e) => e.type === "tick_start");
   const reroutedStart = starts.find((e) => e.reroute === "image");
-  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted tick");
-  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted tick runs on the target");
+  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted run");
+  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted run runs on the target");
 
   // Tick 3: back on the loop's own text-only tier — tick_start has no reroute stamp and names
   // the loop's own model.
@@ -521,7 +521,7 @@ test("a blind read on a text-only loop reroutes to the vision target, then back 
   });
   const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
   const back = startsAfter[startsAfter.length - 1]!;
-  assert.equal(back.reroute, undefined, "the tick after the reroute is back on the loop's own tier");
+  assert.equal(back.reroute, undefined, "the run after the reroute is back on the role's own tier");
   assert.equal(String(back.model), "local/text");
 });
 
@@ -583,8 +583,8 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   assert.equal(runner.state.imageReroute, undefined, "the one-shot marker clears for the director too");
   const starts = readEvents(repo).filter((e) => e.type === "tick_start");
   const reroutedStart = starts.find((e) => e.reroute === "image");
-  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted director tick");
-  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted director tick runs on the target");
+  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted director run");
+  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted director run runs on the target");
 
   // Tick 3: with a NEW queued prompt and the one-shot marker cleared, the director is back on
   // its own text-only tier — no reroute stamp, own model (without the clearing fix the marker
@@ -596,6 +596,6 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
   });
   const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
   const back = startsAfter[startsAfter.length - 1]!;
-  assert.equal(back.reroute, undefined, "the director tick after the reroute is back on its own tier");
+  assert.equal(back.reroute, undefined, "the director run after the reroute is back on its own tier");
   assert.equal(String(back.model), "local/text");
 });

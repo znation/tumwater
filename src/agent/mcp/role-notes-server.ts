@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * claude's `role_notes` surface (plans/agent-backends.md "What the pi extensions did, per
  * backend"): a dependency-free stdio MCP server shipped in dist. claude does not load pi's
@@ -79,7 +80,7 @@ function handleMcpLine(line: string, notesPath: string | undefined): unknown {
         );
       }
       if (notesPath === undefined) {
-        return respond(toolError("no notebook path is configured for this run"));
+        return respond(toolError("no notes path is configured for this run"));
       }
       const args = (params.arguments ?? {}) as Record<string, unknown>;
       try {

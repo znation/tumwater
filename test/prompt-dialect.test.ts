@@ -36,7 +36,7 @@ test("pi's reading-budget rule is the historical text, byte for byte", () => {
   // The notebook instruction's pi text, likewise unchanged by the dialect split.
   assert.equal(
     roleNotesInstruction(PI_DIALECT),
-    `Before you end, if you learned something the next tick of your role should know (where
+    `Before you end, if you learned something the next run of your role should know (where
 things live, what you ruled out and why, what you would look at next), call role_notes with
 the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
 BUGS.md hold the work itself.`,
@@ -54,7 +54,7 @@ test("claude's dialect differs only in the tool name and output-spill wording", 
   assert.equal(dialectFor(undefined), PI_DIALECT, "unknown or unset agents speak pi's dialect");
 });
 
-test("a claude tick prompt names the MCP notebook tool; pi's names the pi tool", () => {
+test("a claude run prompt names the MCP notes tool; pi's names the pi tool", () => {
   const role = roleById("feature")!;
   const pi = buildTickPrompt({ role, initialPrompt: "" });
   assert.match(pi, /call role_notes with/);
@@ -66,7 +66,7 @@ test("a claude tick prompt names the MCP notebook tool; pi's names the pi tool",
   assert.match(claude, /saved to a file the tool names/);
 });
 
-test("the notebook instruction switches tool name with the dialect", () => {
+test("the notes instruction switches tool name with the dialect", () => {
   assert.match(roleNotesInstruction(PI_DIALECT), /call role_notes with/);
   assert.match(roleNotesInstruction(CLAUDE_DIALECT), /call mcp__tumwater__role_notes with/);
 });
@@ -74,7 +74,7 @@ test("the notebook instruction switches tool name with the dialect", () => {
 test("a claude director prompt carries claude's oversized-output wording", () => {
   const pi = buildDirectorPrompt("do a thing", "");
   assert.match(pi, /head\+tail around a marker/);
-  assert.ok(!pi.includes("mcp__tumwater__role_notes"), "the director never gets the notebook tool");
+  assert.ok(!pi.includes("mcp__tumwater__role_notes"), "the director never gets the notes tool");
 
   const claude = buildDirectorPrompt("do a thing", "", undefined, undefined, undefined, undefined, undefined, "claude");
   assert.match(claude, /saved to a file the tool names/);

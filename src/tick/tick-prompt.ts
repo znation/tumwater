@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LoopState } from "../loop/loop-state.js";
 import { allRoleIds, customRole, DIRECTOR_ROLE, roleById, unknownRoleMessage } from "../roles/roles.js";
@@ -56,7 +57,7 @@ export interface TickPromptInput {
  * marker naming the loss. */
 function readRoleNote(root: string, role: string): string | undefined {
   const text = readTextOrNull(roleNotesPath(root, role));
-  return text === null ? undefined : truncateWithNote(text, ROLE_NOTES_MAX_BYTES, "role notebook");
+  return text === null ? undefined : truncateWithNote(text, ROLE_NOTES_MAX_BYTES, "role notes");
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
@@ -162,7 +163,7 @@ export function assembleTickPrompt(
     // so the plan loop stops only once every configured feature instance has a plan waiting.
     const planTargetNote =
       base === "plan"
-        ? `This tick's stop target: when PLANS.md \`## Planned\` already holds ` +
+        ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
           `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}.`
         : undefined;
     prompt = buildTickPrompt({

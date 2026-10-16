@@ -45,7 +45,7 @@ test("a built-in role's payload resolves identity, tier, defaults, and its find 
   assert.equal(p.instructions, null); // no override configured
   assert.match(p.find ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text, verbatim
   assert.equal(p.inboxCount, 0);
-  assert.match(p.nextPrompt ?? "", /You are the "feature" loop \(feature implementer\)/);
+  assert.match(p.nextPrompt ?? "", /You are the "feature" role \(feature implementer\)/);
   assert.match(p.nextPrompt ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text rides in the preview
 });
 
@@ -102,7 +102,7 @@ test("a subscription claude fallback reads free in the role view", () => {
   assert.equal(p.fallbackFree, true); // the account's subscription makes the claude pair free
 });
 
-test("a custom loop's task is its find text, and it reads as enabled and custom", () => {
+test("a custom role's task is its find text, and it reads as enabled and custom", () => {
   const dir = root();
   writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const p = rolePayload(dir, "greeter", NO_MODELS);
@@ -122,7 +122,7 @@ test("the director is special-cased: no find text, and its inbox is its queue", 
   enqueuePrompt(dir, "add a changelog");
   const busy = rolePayload(dir, "director", NO_MODELS);
   assert.equal(busy.inboxCount, 1);
-  assert.match(busy.nextPrompt ?? "", /"director" loop/);
+  assert.match(busy.nextPrompt ?? "", /"director" role/);
   assert.match(busy.nextPrompt ?? "", /add a changelog/);
 });
 
@@ -186,7 +186,7 @@ test("the role view names the per-provider concurrency key and its cap when a ca
   assert.match(renderRoleMarkdown(p), /- Provider: prov-a \(cap 3\)/m);
 });
 
-test("a cap-less fleet's role view renders no Provider line, byte-identical to before", () => {
+test("a cap-less team's role view renders no Provider line, byte-identical to before", () => {
   const dir = root();
   writeConfig(dir, { provider: "prov-a", model: "model-a" });
   const p = rolePayload(dir, "feature", NO_MODELS);
@@ -195,7 +195,7 @@ test("a cap-less fleet's role view renders no Provider line, byte-identical to b
   assert.doesNotMatch(renderRoleMarkdown(p), /- Provider:/m);
 });
 
-test("with several prompts queued, the next-tick block discloses that only the oldest rides", () => {
+test("with several prompts queued, the next-run block discloses that only the oldest rides", () => {
   const dir = root();
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
@@ -207,18 +207,18 @@ test("with several prompts queued, the next-tick block discloses that only the o
   ); // tick-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
 });
 
-test("inspectMarkdownLines carries the notebook and next-tick blocks renderRoleMarkdown splices in place", () => {
+test("inspectMarkdownLines carries the notes and next-run blocks renderRoleMarkdown splices in place", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const p = rolePayload(dir, "feature", NO_MODELS);
   const lines = inspectMarkdownLines(p);
   // The Notebook block is verbatim and fenced, then the Next tick prompt block, then the
   // "more waits" disclosure when several prompts are queued.
-  assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in fleet.ts", "```"]);
+  assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in team.ts", "```"]);
   assert.ok(lines.includes("## Next run's prompt"));
   assert.match(
     lines.join("\n"),
@@ -231,7 +231,7 @@ test("inspectMarkdownLines carries the notebook and next-tick blocks renderRoleM
   const notebookAt = md.indexOf("## Notes");
   const nextAt = md.indexOf("## Next run's prompt");
   assert.ok(findAt >= 0 && notebookAt > findAt && nextAt > notebookAt);
-  assert.match(md, /## Notes\n\n```\nthe scheduler lives in fleet\.ts\n```/);
+  assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
 });
 
 test("unset things render as explicit placeholder lines, not omissions", () => {
@@ -245,14 +245,14 @@ test("unset things render as explicit placeholder lines, not omissions", () => {
   assert.match(md, /## Next run's prompt\n\n_\(nothing to do this run\)_/);
 });
 
-test("a role's notebook renders verbatim, or reads as none yet", () => {
+test("a role's notes renders verbatim, or reads as none yet", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
-  assert.match(md, /## Notes\n\n```\nthe scheduler lives in fleet\.ts\n```/);
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, "the scheduler lives in fleet.ts\n");
+  assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, "the scheduler lives in team.ts\n");
 
   // Empty or missing degrades to the placeholder, never a throw or a blank section.
   fs.writeFileSync(notes, "");
@@ -269,7 +269,7 @@ test("the State line distinguishes disabled from paused, alone and together", ()
   assert.match(renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS)), /- State: disabled, paused/);
 });
 
-test("a custom loop renders as user-defined, on the maintenance tier", () => {
+test("a custom role renders as user-defined, on the maintenance tier", () => {
   const dir = root();
   writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const md = renderRoleMarkdown(rolePayload(dir, "greeter", NO_MODELS));
@@ -310,7 +310,7 @@ test("a fenced block grows past any backtick run in the verbatim text", () => {
   assert.match(md, /````\nuse ```md fences\nin docs\n````/); // four backticks close the block
 });
 
-test("modelTier resolves the seam tier: the catalog's assignment, then a tier-name override", () => {
+test("modelTier resolves the model job tier: the catalog's assignment, then a tier-name override", () => {
   const dir = root();
   const p = rolePayload(dir, "plan", NO_MODELS);
   assert.equal(p.modelTier, "strong"); // the model catalog assigns plan the strong tier
@@ -396,7 +396,7 @@ test("a claude model-fallback episode renders as claude/model", () => {
   );
 });
 
-test("agent labels: a claude seam names the backend, pi stays byte-identical", () => {
+test("agent labels: a claude model job names the backend, pi stays byte-identical", () => {
   // Part 4f/7: with agent claude and no model, configForRole fills the tier default and the
   // renderer names it agent-qualified; a seam with no model at all falls back to `<agent>
   // default` rather than pi's label.
@@ -417,7 +417,7 @@ test("agent labels: a claude seam names the backend, pi stays byte-identical", (
 
 // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): the role view
 // names subscription (with its primary window) or API; a pi seam carries no billing line.
-test("a claude seam's role view names its billing and subscription window", () => {
+test("a claude model job's role view names its billing and subscription window", () => {
   const dir = root();
   writeConfig(dir, { agent: "claude" });
   writeClaudeAccount(dir, {
@@ -453,7 +453,7 @@ test("a pi role with a claude reviewer shows claude billing; a pi reviewer does 
     windows: { five_hour: { status: "allowed", utilization: 0.5, observedAt: Date.now() } },
   });
   const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.agent, "pi", "the role's own seam is pi");
+  assert.equal(p.agent, "pi", "the role's own model job is pi");
   assert.equal(p.billing, "subscription", "the claude reviewer's billing is shown");
   assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
@@ -466,7 +466,7 @@ test("a pi role with a claude reviewer shows claude billing; a pi reviewer does 
 // settings.json beside the models catalog (readPiDefaultModel), the same rule status-data's
 // snapshot applies. The formatted selector carries the effective thinking, so no separate
 // ` (thinking: …)` suffix is added.
-test("a pi seam naming no model shows pi's own saved default", () => {
+test("a pi model job naming no model shows pi's own saved default", () => {
   const dir = root();
   const modelsDir = path.join(dir, "pi-agent");
   fs.mkdirSync(modelsDir, { recursive: true });
@@ -553,14 +553,14 @@ test("role payload surfaces the newest tick_end outcomes ordered newest-first", 
       tick: i + 1,
       result: i % 2 === 0 ? "changed" : "no_change",
       durationMs: 30_000,
-      summary: "tick " + (i + 1),
+      summary: "run " + (i + 1),
     })),
   );
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.recentOutcomes!.length, 8); // capped at 8, not all 10
   assert.equal(p.recentOutcomes![0]!.ts, now - 60_000); // newest first
   assert.equal(p.recentOutcomes![0]!.result, "no_change"); // i=9 (odd)
-  assert.equal(p.recentOutcomes![0]!.summary, "tick 10");
+  assert.equal(p.recentOutcomes![0]!.summary, "run 10");
   assert.equal(p.recentOutcomes![0]!.durationMs, 30_000); // durations ride along
   assert.equal(p.recentOutcomes![7]!.ts, now - 8 * 60_000); // the 8th newest is i=2
   assert.equal(p.recentOutcomes![7]!.result, "changed");
@@ -600,7 +600,7 @@ test("a role with no tick_end events carries no recentOutcomes", () => {
 // The loop's own spend (PLANS.md): rolePayload sums this role's tick_end usage over the same
 // retained event window recentOutcomes reads, through the shared eventUsage finiteness guard,
 // and the renderer names it as a Spend line (a notional suffix only when non-zero).
-test("role payload sums the loop's usage and renders a Spend line", () => {
+test("role payload sums the role's usage and renders a Spend line", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
@@ -624,7 +624,7 @@ test("role payload sums the loop's usage and renders a Spend line", () => {
   assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Spend: \$0\.01 · 1200 tokens$/m);
 });
 
-test("a never-costly or never-ticked loop carries no usage field or Spend line", () => {
+test("a never-costly or never-ticked role carries no usage field or Spend line", () => {
   const dir = root();
   // Never ticked: no usage at all, and the render stays byte-identical (no Spend line).
   const neverTicked = rolePayload(dir, "feature", NO_MODELS);
@@ -672,7 +672,7 @@ test("role markdown renders the Recent runs section before the instructions", ()
 // last ticked, derived from the persisted nextRunAt/backoffSeconds/lastTickEndedAt and in
 // the same words and wording family as the status `next run`/`last tick` cells. The clock is
 // injected so every line is pinned by a fixed now (the renderer stays a pure function).
-test("role payload and render surface the loop's schedule from persisted state", () => {
+test("role payload and render surface the role's schedule from persisted state", () => {
   const dir = root();
   const now = 1_700_000_000_000;
   // A scheduled loop in backoff with a last tick: a future nextRunAt with backoffSeconds > 0.
@@ -721,7 +721,7 @@ test("role payload and render surface the loop's schedule from persisted state",
 // nextRunAt's countdown shows, so the `Next tick` line rides the same `×N` suffix the status
 // `next run` cell and the GUI twin carry (nextRunCell/fmtNextRun). Work roles (feature, plan,
 // director) are not scalable and never show the suffix.
-test("role schedule surfaces the yield multiplier a quiet scalable loop is serving", () => {
+test("role schedule surfaces the yield multiplier a quiet scalable role is serving", () => {
   const dir = root();
   const now = 1_700_000_000_000;
   // A bugfix loop 5m from its nextRunAt, out of backoff, with ten empties in its yield ring.
@@ -748,7 +748,7 @@ test("role schedule surfaces the yield multiplier a quiet scalable loop is servi
   assert.doesNotMatch(settled, /×/);
 });
 
-test("the role view names the quiet-hours windows governing the loop and whether one holds now", () => {
+test("the role view names the quiet-hours windows governing the role and whether one holds now", () => {
   const dir = root();
   writeConfig(dir, { quietHours: "12:00-13:00", quietHoursPerRole: { qa: "23:00-07:00" } });
   const at = new Date(2026, 9, 16, 23, 30);

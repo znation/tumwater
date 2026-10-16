@@ -88,7 +88,7 @@ test("handleReport degrades a bad days value to the default and clamps the range
   }
 });
 
-test("handleFailures serves the digest as JSON markdown, empty and after an error tick", async () => {
+test("handleFailures serves the digest as JSON markdown, empty and after an error run", async () => {
   // Empty log: the digest still answers 200 with its header, not an error.
   const empty = tmpdir();
   const { captured, data } = await serveFailures(empty);
@@ -134,8 +134,8 @@ test("handleReport serves the trailing-window totals as { markdown } when ?since
   assert.equal("series" in payload, false, "the since shape is markdown, not the day series");
   assert.equal("days" in payload, false);
   assert.match(payload.markdown, /window: last 1h/);
-  assert.match(payload.markdown, /1234 output tokens/, "the 30-minute-old tick counts");
-  assert.doesNotMatch(payload.markdown, /9999/, "the 3-hour-old tick is outside the window");
+  assert.match(payload.markdown, /1234 output tokens/, "the 30-minute-old run counts");
+  assert.doesNotMatch(payload.markdown, /9999/, "the 3-hour-old run is outside the window");
 });
 
 test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", async () => {
@@ -151,7 +151,7 @@ test("handleReport's ?sinceMs is bounded, rival to ?days, and scoped by ?role", 
 
   const scoped = (await serveReport(root, "?sinceMs=3600000&role=feature")).data as { markdown: string };
   assert.match(scoped.markdown, /^role: feature$/m, "?role scopes the since collector");
-  assert.match(scoped.markdown, /10 output tokens/, "only the feature tick's usage counts");
+  assert.match(scoped.markdown, /10 output tokens/, "only the feature run's usage counts");
   assert.doesNotMatch(scoped.markdown, /bugfix/);
 });
 
@@ -208,7 +208,7 @@ test("handleRestart writes the marker and replies ok while the running build is 
   assert.match((data as { message: string }).message, /restart requested/);
   assert.match((data as { message: string }).message, /cooldown is waived/);
   assert.match((data as { message: string }).message, /blocked restart still blocks/);
-  assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker a live fleet consumes is on disk");
+  assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker a live team consumes is on disk");
 });
 
 test("handleReclaim with no worktrees answers nothing to reclaim", async () => {
@@ -218,7 +218,7 @@ test("handleReclaim with no worktrees answers nothing to reclaim", async () => {
   assert.deepEqual(data, { ok: true, message: "nothing to reclaim" });
 });
 
-test("handleReclaim with a live fleet drops the reclaim marker", async () => {
+test("handleReclaim with a live team drops the reclaim marker", async () => {
   const root = makeRepo();
   seedFleet(root, null);
   const { captured, data } = await captureJson((res) => handleReclaim(fakeReq("{}"), res, root));
@@ -244,7 +244,7 @@ test("handleRestart refuses with nothing written when the running build is not s
   assert.equal(fs.existsSync(restartRequestPath(root)), false, "a fresh build's press writes nothing");
 });
 
-test("handleRestart with no fleet running writes the marker harmlessly and says so", async () => {
+test("handleRestart with no team running writes the marker harmlessly and says so", async () => {
   const root = tmpdir();
   const { captured, data } = await serveRestart(root);
   assert.equal(captured.status, 200);
@@ -292,7 +292,7 @@ function serveStopSchedule(root: string, body: unknown) {
   return captureJson((res) => handleStopSchedule(fakeReq(JSON.stringify(body)), res, root));
 }
 
-test("handleStopSchedule schedules a stop on a live fleet and cancel drops it", async () => {
+test("handleStopSchedule schedules a stop on a live team and cancel drops it", async () => {
   const root = tmpdir();
   seedFleet(root, null);
   const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
@@ -307,7 +307,7 @@ test("handleStopSchedule schedules a stop on a live fleet and cancel drops it", 
   assert.equal((cancel.data as { message: string }).message, "no stop scheduled");
 });
 
-test("handleStopSchedule refuses a stopped fleet with 409 and writes no marker", async () => {
+test("handleStopSchedule refuses a stopped team with 409 and writes no marker", async () => {
   const root = tmpdir();
   const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
   assert.equal(captured.status, 409);
@@ -447,7 +447,7 @@ test("the live server routes GET /api/doctor to the doctor report", async () => 
   }
 });
 
-test("handleHistory ?summary folds the served rows into an additive per-loop summary", async () => {
+test("handleHistory ?summary folds the served rows into an additive per-role summary", async () => {
   const root = tmpdir();
   const now = Date.now();
   // All timestamps sit inside the last hour, so both the count arm and a 1h trailing window
@@ -475,7 +475,7 @@ test("handleHistory ?summary folds the served rows into an additive per-loop sum
   assert.equal(summary.total.none, 1);
   assert.equal(summary.total.problems, 1);
   assert.equal(summary.total.tokens, 1000);
-  assert.equal(summary.total.lastChangeTs, now - 900_000, "the newest changes-class tick across every loop");
+  assert.equal(summary.total.lastChangeTs, now - 900_000, "the newest changes-class run across every role");
   assert.equal(summary.loops[0]?.lastChangeTs, now - 900_000, "clean changed only at 15m ago");
   assert.equal(summary.loops[1]?.lastChangeTs, now - 3_000_000, "feature changed only at 50m ago");
   // The count shape without the flag is today's byte-for-byte: no summary key.
@@ -497,7 +497,7 @@ function serveTick(root: string, query: string) {
   return captureJson((res) => handleTick(new URLSearchParams(query), res, root));
 }
 
-test("handleTick serves one tick's collector payload plus its pre-rendered text", async () => {
+test("handleTick serves one run's collector payload plus its pre-rendered text", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
@@ -515,7 +515,7 @@ test("handleTick serves one tick's collector payload plus its pre-rendered text"
   // `text`, the renderTickDetail rendering the browser shows instead of re-formatting events.
   assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this run sent nothing to merge)" });
   const d = data as TickDetail & { text: string };
-  assert.equal(d.durationMs, 46_000, "duration pairs the tick's own tick_start");
+  assert.equal(d.durationMs, 46_000, "duration pairs the run's own tick_start");
   assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "review_verdict", "tick_end"]);
   assert.match(d.text, /^clean run #3 — merged · 46s/);
   assert.match(d.text, /tidy up/);
@@ -532,7 +532,7 @@ test("handleTick's stat names a pinned commit that is not in the repository", as
   assert.match((data as { stat: string }).stat, /^\(commit [0-9a-f]+ is not in this repository\)$/);
 });
 
-test("handleTick's error cases: role and tick 400s, a missed tick 404", async () => {
+test("handleTick's error cases: role and run 400s, a missed run 404", async () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "tick_start", tick: 3 }),
@@ -562,13 +562,13 @@ function serveRole(root: string, query: string) {
   return captureJson((res) => handleRole(new URLSearchParams(query), res, root));
 }
 
-test("handleRole serves a loop's notebook and next prompt, refusing a missing or unknown role", async () => {
+test("handleRole serves a role's notes and next prompt, refusing a missing or unknown role", async () => {
   const root = tmpdir();
   // A notebook written by the loop's own earlier tick — the text the drawer's Notebook
   // section must show verbatim.
   const notes = roleNotesPath(root, "feature");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
-  fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
+  fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
 
   const { captured, data } = await serveRole(root, "?role=feature");
   assert.equal(captured.status, 200);
@@ -578,7 +578,7 @@ test("handleRole serves a loop's notebook and next prompt, refusing a missing or
   const payload = rolePayload(root, "feature");
   const d = data as { note: string | null; nextPrompt: string | null };
   assert.equal(d.note, payload.note);
-  assert.equal(d.note, "the scheduler lives in fleet.ts\n");
+  assert.equal(d.note, "the scheduler lives in team.ts\n");
   assert.equal(d.nextPrompt, payload.nextPrompt);
   assert.match(d.nextPrompt ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/);
 
@@ -601,7 +601,7 @@ test("consumeRestartRequest forces the redeployer once and removes the marker", 
   consumeRestartRequest(root, { forceRestart: () => void forced++ });
   assert.equal(forced, 1, "no marker, no force");
   consumeRestartRequest(root, null);
-  assert.equal(forced, 1, "no redeployer (a non-self-hosting fleet): the marker is still cleaned up");
+  assert.equal(forced, 1, "no redeployer (a non-self-hosting team): the marker is still cleaned up");
   assert.equal(fs.existsSync(restartRequestPath(root)), false);
 });
 
@@ -753,9 +753,9 @@ function serveDiff(root: string, query = "") {
   return captureJson((res) => handleDiff(new URLSearchParams(query), res, root));
 }
 
-test("handleDiff serves the fleet roster with no patch fields, matching collectFleetChanges", async () => {
+test("handleDiff serves the team roster with no patch fields, matching collectFleetChanges", async () => {
   const root = makeRepo();
-  await initProject(root, "gui diff fleet");
+  await initProject(root, "gui diff team");
   fs.writeFileSync(path.join(root, "notes.txt"), "seeded\n");
   commitIn(root, "seed notes.txt");
   const wt = await ensureWorktree(root, "feature", "main");
@@ -774,7 +774,7 @@ test("handleDiff serves the fleet roster with no patch fields, matching collectF
   assert.match(commits[0]!.sha, /^[0-9a-f]+$/);
   assert.equal(commits[0]!.subject, "feature work");
   assert.deepEqual(feature.dirtyFiles, ["notes.txt"]);
-  assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the fleet roster drops both patch halves");
+  assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the team roster drops both patch halves");
 });
 
 test("handleDiff with ?role serves the full per-role view, matching collectRoleChange", async () => {
@@ -981,7 +981,7 @@ function queuedTexts(root: string, role: string): string[] {
   return fs.existsSync(dir) ? fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), "utf8")) : [];
 }
 
-test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad input untouched", async () => {
+test("handleBacklogFile files a bug or plan and wakes its role, and 400s bad input untouched", async () => {
   const root = tmpdir();
   writeBacklogFile(root, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed" }]);
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
@@ -1142,7 +1142,7 @@ test("handleRoleNotes writes, clears, and rejects bad input without touching the
 
   const ok = await post({ role: "feature", text: "x\ny" });
   assert.equal(ok.captured.status, 200);
-  assert.deepEqual(ok.data, { ok: true, message: "notebook saved (3 bytes)" });
+  assert.deepEqual(ok.data, { ok: true, message: "notes saved (3 bytes)" });
   assert.equal(fs.readFileSync(notes, "utf8"), "x\ny");
 
   const bad = [
@@ -1160,7 +1160,7 @@ test("handleRoleNotes writes, clears, and rejects bad input without touching the
   assert.equal(fs.existsSync(roleNotesPath(root, DIRECTOR_ROLE)), false);
 
   const cleared = await post({ role: "feature", text: "" });
-  assert.deepEqual(cleared.data, { ok: true, message: "notebook cleared" });
+  assert.deepEqual(cleared.data, { ok: true, message: "notes cleared" });
   assert.equal(fs.readFileSync(notes, "utf8"), "");
 });
 

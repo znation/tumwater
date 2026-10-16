@@ -81,7 +81,7 @@ test("the steward prompt compresses older Done entries to one-line epitaphs with
   assert.match(find, /title and dates from the entry's heading/);
 });
 
-test("the steward prompt sources epitaph hashes from landing citations or git log, never verification references", () => {
+test("the steward prompt sources epitaph hashes from merge citations or git log, never verification references", () => {
   const find = oneLine(steward!.find);
   // Priority: an explicit merge citation in the body, else git log on main.
   assert.match(find, /an explicit merge citation in the entry body/);
@@ -155,7 +155,7 @@ test("the steward prompt compresses older Fixed entries to one-line records with
   );
 });
 
-test("the steward prompt sources Fixed-record commits from landing citations or git log, never verification references", () => {
+test("the steward prompt sources Fixed-record commits from merge citations or git log, never verification references", () => {
   const find = oneLine(steward!.find);
   assert.match(
     find,
@@ -207,6 +207,6 @@ test("the steward prompt carries the shared curation rules over to Fixed compres
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
-  assert.match(prompt, /"steward" loop \(project steward\)/);
+  assert.match(prompt, /"steward" role \(project steward\)/);
   assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
 });

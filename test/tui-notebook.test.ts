@@ -33,7 +33,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
     assert.match(tui.lastFrame(), /## Next run's prompt/);
     // The assembled prompt opens the block (the queued prompt embeds further down, past the
     // pane window): the preview seam's output is what renders, not a placeholder.
-    assert.match(tui.lastFrame(), /You are the "clean" loop/);
+    assert.match(tui.lastFrame(), /You are the "clean" role/);
     assert.match(tui.lastFrame(), /Ctrl\+N change/); // the notebook's next step is the change view
 
     // The second Ctrl+N shows the collected pending change (this fixture holds no worktree, so
@@ -111,7 +111,7 @@ test("Ctrl+X twice in the notebook view clears the loop's notebook; the first pr
     assert.match(tui.lastFrame(), /press Ctrl\+X again/);
     tui.key(undefined, "x", { ctrl: true });
     assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "");
-    assert.match(tui.lastFrame(), /notebook cleared/);
+    assert.match(tui.lastFrame(), /notes cleared/);
     assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier runs write them/);
   });
 });

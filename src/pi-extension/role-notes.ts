@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * Bundled pi extension: the `role_notes` tool, which writes one bounded note per role into
  * the harness's runtime state so a role's next fresh tick can read it (PLANS.md "Role
@@ -62,7 +63,7 @@ export default function roleNotes(pi: PiExtensionApi): void {
   if (!notesPath) return;
   pi.registerTool({
     name: "role_notes",
-    label: "role notebook",
+    label: "role notes",
     description: ROLE_NOTES_DESCRIPTION,
     parameters: ROLE_NOTES_PARAMETERS,
     execute(_toolCallId, params) {

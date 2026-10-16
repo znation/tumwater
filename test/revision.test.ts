@@ -154,7 +154,7 @@ test("applyRevision resets to clean main when the rejected commit no longer exis
 });
 
 test("applyWithConflicts resets to main when the cherry-pick fails without conflicts", async () => {
-  const { root, sha } = commitOffMain("landed.ts", "export const landed = true;\n", "work main already has");
+  const { root, sha } = commitOffMain("landed.ts", "export const merged = true;\n", "work main already has");
   // main fast-forwards onto the same commit, so merge-base is the commit itself and the
   // `base..sha` range is empty: cherry-pick fails with no unmerged paths. Unlike the
   // bogus-sha case above (which fails at merge-base), this reaches the picked===null arm.
@@ -337,10 +337,10 @@ test("stageTickLanding carries the revision round onto the entry and clears stat
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.revision, undefined, "staging consumes the revision");
-  assert.equal(queuedLandings(root)[0]?.revisionRound, 1, "the round rides the queued landing");
+  assert.equal(queuedLandings(root)[0]?.revisionRound, 1, "the round rides the queued merge");
 });
 
-test("a user-request tick that leaves a pending revision stages no round and keeps the revision", async () => {
+test("a user-request run that leaves a pending revision stages no round and keeps the revision", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const revision = { sha: "a".repeat(40), round: 1, at: Date.now() };
@@ -358,7 +358,7 @@ test("a user-request tick that leaves a pending revision stages no round and kee
   assert.deepEqual(state.revision, revision, "the pending revision is left untouched");
 });
 
-test("a non-revision dirty nothing-to-do tick does not drop a pending revision", async () => {
+test("a non-revision dirty nothing-to-do run does not drop a pending revision", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const state = {
@@ -373,7 +373,7 @@ test("a non-revision dirty nothing-to-do tick does not drop a pending revision",
   assert.notEqual(state.revision, undefined, "the pending revision is not dropped");
 });
 
-test("a revision tick that declares nothing-to-do drops the change and ends no_change", async () => {
+test("a revision run that declares nothing-to-do drops the change and ends no_change", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
@@ -390,7 +390,7 @@ test("a revision tick that declares nothing-to-do drops the change and ends no_c
   assert.equal(eventsOfType(root, "revision").length, 1, "the drop is logged");
 });
 
-test("a revision tick drops the change when the events feed is unwritable", async () => {
+test("a revision run drops the change when the events feed is unwritable", async () => {
   const { root, wt } = await initializedWorktree("improve");
   await setRef(root, rejectedRefName("improve"), "a".repeat(40));
   const state = {
@@ -409,7 +409,7 @@ test("a revision tick drops the change when the events feed is unwritable", asyn
   assert.equal(await refSha(root, rejectedRefName("improve")), null, "the rejected ref is deleted");
 });
 
-test("a revision tick that declares nothing-to-do drops the change with a clean worktree", async () => {
+test("a revision run that declares nothing-to-do drops the change with a clean worktree", async () => {
   const { root, wt } = await initializedWorktree("improve");
   // A revision tick need not leave the re-applied diff dirty: the cherry-pick can be an empty
   // range, or the author can revert the edits while deciding the change should not exist. The
@@ -431,7 +431,7 @@ test("a revision tick that declares nothing-to-do drops the change with a clean 
   assert.equal(eventsOfType(root, "revision").length, 1, "the drop is logged");
 });
 
-test("the tick prompt skips the plain rejection note while a revision is due", () => {
+test("the run prompt skips the plain rejection note while a revision is due", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), readmeTemplate("proj", "Build a tiny thing.\n"));
   const lastReview = { verdict: "reject", reasons: ["fix the bug"], head: "b".repeat(40), at: Date.now() };
@@ -468,12 +468,12 @@ test("the director never gets a revision: a rejection leaves no revision state",
   });
 });
 
-test("an exhausted rejection's plain note sends a plan-less role to its notebook", () => {
+test("an exhausted rejection's plain note sends a plan-less role to its notes", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], at: Date.now(), exhausted: true });
   assert.match(note, /final revision round/);
   assert.match(note, /[Dd]o not re-author it/);
   assert.match(note, /abandoned purpose/);
-  assert.match(note, /notebook/);
+  assert.match(note, /notes/);
   assert.match(note, /different theme/);
   assert.doesNotMatch(note, /re-author it from current main/);
   assert.doesNotMatch(buildRejectedReviewNote({ reasons: ["still wrong"] }), /final revision round/);
@@ -577,7 +577,7 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
       runner.state.lastReview = { verdict: "reject", reasons: ["fix it"], head: rejected, at: Date.now() };
       const outcome = await runner.tick();
 
-      assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
+      assert.equal(outcome.result, "queued", "the run authored a fresh change and queued it");
       const prompt = fs.readFileSync(prompts, "utf8");
       assert.match(prompt, /The rejected diff no longer applies to current main/);
       assert.doesNotMatch(prompt, /conflict-handback/);
@@ -591,7 +591,7 @@ test("a revision whose diff no longer applies falls back to the plain rejection"
   );
 });
 
-test("a landed revision deletes the rejected ref", async () => {
+test("a merged revision deletes the rejected ref", async () => {
   const root = makeRepo();
   const role = "improve";
   const rejected = headSha(root);
@@ -611,7 +611,7 @@ test("a landed revision deletes the rejected ref", async () => {
   assert.equal(await refSha(root, rejectedRefName(role)), null, "the rejected ref is gone");
 });
 
-test("a fresh landing leaves a pending revision's rejected ref alone", async () => {
+test("a fresh merge leaves a pending revision's rejected ref alone", async () => {
   const root = makeRepo();
   const role = "improve";
   const rejected = headSha(root);

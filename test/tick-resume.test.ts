@@ -72,12 +72,12 @@ function plan(
     role: s.role,
     state: s,
     pending: opts.pending ?? new PendingPrompt(root, s.role),
-    tickPrompt: opts.tickPrompt ?? (() => "assembled tick prompt"),
+    tickPrompt: opts.tickPrompt ?? (() => "assembled run prompt"),
     agent: opts.agent,
   });
 }
 
-test("a fresh tick takes the assembled prompt and derives the restart cause", () => {
+test("a fresh run takes the assembled prompt and derives the restart cause", () => {
   const dir = tmpdir();
   const s = state();
   const p = plan(dir, s);
@@ -85,7 +85,7 @@ test("a fresh tick takes the assembled prompt and derives the restart cause", ()
   assert.equal(p.resuming, false);
   assert.equal(p.handoff, false);
   assert.equal(p.resumeCause, "restart");
-  assert.equal(p.prompt, "assembled tick prompt");
+  assert.equal(p.prompt, "assembled run prompt");
   assert.equal(p.userPrompt, null);
   assert.equal(p.priorLandingFailure, undefined);
   // The flags are consumed even on the fresh path, so a stale record never survives.
@@ -94,7 +94,7 @@ test("a fresh tick takes the assembled prompt and derives the restart cause", ()
   assert.equal(s.lastError, undefined);
 });
 
-test("a fresh tick hands the effective agent to the prompt assembly", () => {
+test("a fresh run hands the effective agent to the prompt assembly", () => {
   // plans/agent-backends.md, part 5/7: the tick's prompt dialect must match the backend the
   // run actually uses. planTickStart receives the effective `cfg.agent` (the model-fallback
   // pair while an episode is active) and passes it to the fresh-tick assembly; deriving the
@@ -123,7 +123,7 @@ test("a resumable session resumes with the restart bridge and skips the assemble
   assert.equal(assembled, false, "a resume must not assemble a fresh prompt");
   assert.equal(p.resuming, true);
   assert.equal(p.resumeCause, "restart");
-  assert.match(p.prompt, /the "feature" loop/);
+  assert.match(p.prompt, /the "feature" role/);
   assert.match(p.prompt, /was restarted/);
   // Consumed: the next tick must not resume again unless another shutdown sets the flag.
   assert.equal(s.resumePending, false);
@@ -156,9 +156,9 @@ test("a review-phase interruption never resumes — the author's work is already
   withSession(dir, "feature");
   const p = plan(dir, s);
   assert.ok(p);
-  assert.equal(p.resuming, false, "a review-phase flag must fall back to a fresh tick");
+  assert.equal(p.resuming, false, "a review-phase flag must fall back to a fresh run");
   assert.equal(p.handoff, false, "a review-phase flag never hands off either");
-  assert.equal(p.prompt, "assembled tick prompt");
+  assert.equal(p.prompt, "assembled run prompt");
   assert.equal(s.resumePending, false);
 });
 
@@ -179,7 +179,7 @@ test("a resume whose newest author line names another agent hands off with the b
   assert.equal(p.resuming, false, "a cross-agent resume must not --continue another agent's session");
   assert.equal(p.handoff, true);
   assert.equal(p.resumeCause, "handoff");
-  assert.match(p.prompt, /assembled tick prompt/, "the handoff carries the assembled tick prompt");
+  assert.match(p.prompt, /assembled run prompt/, "the handoff carries the assembled run prompt");
   assert.match(p.prompt, /uncommitted edits are in your worktree/);
   assert.equal(s.resumePending, false);
 });
@@ -282,7 +282,7 @@ test("a claude author whose transcript is gone handoffs over the kept worktree",
     assert.equal(p.resuming, false, "there is no session left to continue");
     assert.equal(p.handoff, true, "the interrupted edits deserve a handoff, not a reset");
     assert.equal(p.resumeCause, "handoff");
-    assert.match(p.prompt, /assembled tick prompt/, "the handoff carries the assembled task");
+    assert.match(p.prompt, /assembled run prompt/, "the handoff carries the assembled task");
     assert.match(p.prompt, /uncommitted edits are in your worktree/);
   } finally {
     restoreHome();
@@ -294,7 +294,7 @@ test("a claude author whose transcript is gone handoffs over the kept worktree",
 // `resumeMissing`; fed through resolveTickVerdict against a dirty worktree, the failed turn
 // must arm `resumePending`; the next tick then hands off over the kept worktree instead of
 // resetting it. This is the verdict half the part-3d acceptance criterion calls out.
-test("a fake-claude resumeMissing run arms resumePending, and the next tick hands off", async () => {
+test("a fake-claude resumeMissing run arms resumePending, and the next run hands off", async () => {
   const { root, wt } = await initializedWorktree("feature");
   const cwd = fs.realpathSync(wt);
   const logs = tmpdir();
@@ -360,7 +360,7 @@ test("a fake-claude resumeMissing run arms resumePending, and the next tick hand
 // and worktree and resumes; when that run had already answered "No conversation found", the
 // record must survive so the next tick hands off instead of re-resuming a dead session whose
 // transcript file still exists.
-test("an aborted resumeMissing run records the missing session for the next tick's handoff", async () => {
+test("an aborted resumeMissing run records the missing session for the next run's handoff", async () => {
   const root = tmpdir();
   const wt = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());
@@ -447,17 +447,17 @@ test("the fallback view's routed agent drives the resume check", () => {
   }
 });
 
-test("resumePending without a session file falls back to a fresh tick", () => {
+test("resumePending without a session file falls back to a fresh run", () => {
   const dir = tmpdir();
   const s = state({ resumePending: true });
   const p = plan(dir, s);
   assert.ok(p);
   assert.equal(p.resuming, false);
-  assert.equal(p.prompt, "assembled tick prompt");
+  assert.equal(p.prompt, "assembled run prompt");
   assert.equal(s.resumePending, false);
 });
 
-test("a retriable landing failure feeds the error streak; other lastResults do not", () => {
+test("a retriable merge failure feeds the error streak; other lastResults do not", () => {
   const dir = tmpdir();
   const s = state({ lastResult: "merge_conflict", lastError: "conflict in src/x.ts" });
   const p = plan(dir, s);
@@ -473,7 +473,7 @@ test("a retriable landing failure feeds the error streak; other lastResults do n
   assert.equal(landed.lastError, undefined);
 });
 
-test("a null assembled prompt skips the tick — but the flags are still consumed", () => {
+test("a null assembled prompt skips the run — but the flags are still consumed", () => {
   const dir = tmpdir();
   const s = state({ resumePending: true, resumeCause: "hung-tool" });
   const p = plan(dir, s, { tickPrompt: () => null });
@@ -482,19 +482,19 @@ test("a null assembled prompt skips the tick — but the flags are still consume
   assert.equal(s.resumeCause, undefined);
 });
 
-test("a resume reclaims its re-queued prompt; a fresh tick clears the stale record", () => {
+test("a resume reclaims its re-queued prompt; a fresh run clears the stale record", () => {
   const dir = tmpdir();
   const resumeState = state({ resumePending: true });
   const pending = new PendingPrompt(dir, "feature");
   pending.requeueForResume(resumeState, "retry the task");
   const file = resumeState.resumePromptFile;
-  assert.ok(file, "a role-loop requeue-for-resume must record the queue file");
+  assert.ok(file, "a role-role requeue-for-resume must record the queue file");
   withSession(dir, "feature");
 
   const p = plan(dir, resumeState, { pending });
   assert.ok(p);
   assert.equal(p.resuming, true);
-  assert.equal(p.userPrompt, "retry the task", "the resumed tick must own the reclaimed request");
+  assert.equal(p.userPrompt, "retry the task", "the resumed run must own the reclaimed request");
   assert.equal(pending.get(), "retry the task");
   assert.equal(resumeState.resumePromptFile, undefined, "the reclaim record is consumed");
   assert.deepEqual(queuedRolePrompts(dir, "feature"), [], "the reclaim takes the exact file");
@@ -561,7 +561,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
       merge: async () => "changed" as const,
       finishAbortedTick: async () => ({ result: "aborted" as const }),
     });
-    assert.equal(outcome?.result, "error", "the window rejection is a hold, not a landing");
+    assert.equal(outcome?.result, "error", "the window rejection is a hold, not a merge");
     // The lease release evaluates the pin condition right after the verdict, before
     // applyTickOutcome runs; if the arm has not armed resumePending by then the slot is
     // detached and the half-done edits are lost.
@@ -572,7 +572,7 @@ test("a subscription claude rejected-window run resumes over the kept worktree o
       "the lease keeps the slot pinned across the hold",
     );
     applyTickOutcome(s, defaultConfig(), "feature", outcome!);
-    assert.equal(s.resumePending, true, "the next eligible tick resumes the session");
+    assert.equal(s.resumePending, true, "the next eligible run resumes the session");
     assert.equal(s.resumeCause, "rate-limit", "the resume names the held window");
     assert.equal(fs.readFileSync(path.join(wt, "wip.txt"), "utf8"), "half-done\n", "the edits survive");
 
@@ -621,7 +621,7 @@ test("a budgetCapped claude run keeps the worktree and hands off to the fallback
     });
     // A budget cap is a handback, not a failed tick: the verdict arms the resume before the
     // lease release reads it, and nothing resets the kept edits.
-    assert.equal(outcome?.result, "aborted", "a cap ends the tick as an interruption");
+    assert.equal(outcome?.result, "aborted", "a cap ends the run as an interruption");
     assert.equal(s.resumePending, true, "the verdict arms the next resume before the lease pins the slot");
     assert.equal(slotPinnedForResume(s, outcome), true, "the lease keeps the worktree for the resume");
     applyTickOutcome(s, defaultConfig(), "feature", outcome!);

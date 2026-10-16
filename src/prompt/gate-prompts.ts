@@ -1,5 +1,6 @@
+// vocabulary: plain
 import { shortSha } from "../text/format.js";
-import { TEST_RUNNER_RULE, dateLine } from "./prompt.js";
+import { OLDER_NAMES_SENTENCE, TEST_RUNNER_RULE, dateLine } from "./prompt.js";
 import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../roles/role-guidance.js";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -73,14 +74,14 @@ export function buildConflictPrompt(
 ): string {
   const noCheckRunRule = check
     ? `
-- Do not run ${describeCheck(check)} (the project's declared check) or the full test suite: the
-  harness runs that check on the resolved tree before it lands, and every queued landing waits
+- Do not run ${describeCheck(check)} (the project's declared check) or the full test suite:
+  tumwater runs that check on the resolved tree before it merges, and every queued merge waits
   on this run. If you combined code from both sides, a compile or the one or two test files
   that cover it is enough.`
     : "";
   const intentBlocks = intent ? conflictIntentBlocks(intent) : "";
   const removalCitation = intent ? ` (see "What main changed in these files" above)` : "";
-  return `You are the "${roleId}" loop of tumwater, an autonomous development harness. A rebase of
+  return `You are the "${roleId}" role on this project's tumwater team — tumwater runs a team of AI roles that develop the project. ${OLDER_NAMES_SENTENCE} A rebase of
 your work branch onto main stopped on conflicts; the conflict markers are sitting in the
 worktree now. Resolve them.
 
@@ -95,7 +96,7 @@ the two changes are genuinely alternatives. Keep the project building and its te
 
 Rules for this run:
 - Edit files only. Never run any git command that changes state (no add, commit, merge, rebase,
-  reset, checkout) — the harness concludes the rebase for you. Reading git state is fine.
+  reset, checkout) — tumwater concludes the rebase for you. Reading git state is fine.
 - Read only the conflicted files and what they directly reference (\`grep -n '<<<<<<<' FILE\`
   finds each marker; read around it in ranges) — not the codebase at large.
 - When main has deliberately removed or replaced what the branch edits (a revert, a rewrite of
@@ -150,15 +151,15 @@ export function buildReviewPrompt(
   priorReview?: PriorReviewPrompt,
 ): string {
   const parts = [
-    `You are an adversarial code reviewer for tumwater, an autonomous development harness. A
-loop's change is about to be merged to main; you decide whether it may land. You have no context
+    `You are an adversarial code reviewer for tumwater, which runs a team of AI roles on this project. ${OLDER_NAMES_SENTENCE} A
+role's change is about to be merged to main; you decide whether it may merge. You have no context
 from the authoring run — judge only what is in front of you, and assume nothing until you have
 checked it.`,
     dateLine(today),
   ];
   if (highFriction)
     parts.push(
-      `This change was flagged HIGH-FRICTION by the harness: its authoring run burned far more
+      `This change was flagged HIGH-FRICTION by tumwater: its authoring run burned far more
 assistant turns or wall-clock time than this project's thresholds. Difficulty is a signal that
 the work may not fit the system — apply extra scrutiny to whether the change should exist at all,
 not just whether it is correct.`,
@@ -177,7 +178,7 @@ then review the whole diff as usual. List only the still-unresolved objections a
 reasons; state that a prior objection is resolved in prose, never as a numbered reason, so the
 recorded rejection is not read as the resolution itself. When a numbered reason restates one of
 the prior objections, start it with the tag (prior N) where N is that objection's number in the
-prior list, and leave a newly raised objection untagged — the tag is how the harness tells a repeat
+prior list, and leave a newly raised objection untagged — the tag is how tumwater tells a repeat
 from a new finding. The prior objections were:\n${list}\nThe interdiff
 between the rejected version and this revision (what the revision changed, main's own movement
 excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
@@ -185,7 +186,7 @@ excluded):\n<interdiff>\n${priorReview.interdiff}\n</interdiff>`,
   }
   if (verifiedByHarness)
     parts.push(
-      `The harness already ran the project's own check on this exact tree and it passed:
+      `Tumwater already ran the project's own check on this exact tree and it passed:
 ${verifiedByHarness}. Spend your run on what a green check cannot show: wrong behavior the tests
 never exercise, claims the diff does not back, work left half-done.`,
     );
@@ -200,7 +201,7 @@ never exercise, claims the diff does not back, work left half-done.`,
   // omit it (unit tests of the prompt's other clauses) keep the generic wording.
   const diffBase = baseRev ? `measured against ${shortSha(baseRev)}` : "everything the branch is ahead of main";
   const baseClause = baseRev
-    ? ` It is measured against ${shortSha(baseRev)}; other loops land on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`, and treat the provided diff as authoritative for which files this change touches.`
+    ? ` It is measured against ${shortSha(baseRev)}; other roles merge on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`, and treat the provided diff as authoritative for which files this change touches.`
     : "";
   const truncationBase = baseRev ? shortSha(baseRev) : "main";
   parts.push(`The full diff this merge will land (${diffBase}):\n<diff>\n${diff}\n</diff>`);
@@ -208,7 +209,7 @@ never exercise, claims the diff does not back, work left half-done.`,
   // something, but a copy made to run the suite is the re-run this line forbids.
   const noRerunRule = verifiedByHarness
     ? `
-- Do not re-run the check named above or the project's full test suite: the harness's green run
+- Do not re-run the check named above or the project's full test suite: tumwater's green run
   is the verified result. Copying the tree elsewhere to run it — rsync or cp into a temp
   directory, reinstalling dependencies there (for an npm project, \`npm ci\`; otherwise its
   equivalent) — counts as re-running it. Running one
@@ -235,7 +236,7 @@ Check, in this order:
 1. Does the diff do exactly what the summary and WHY claim — no more, no less? An unclaimed
    change is a finding.
 2. Are the VERIFIED claims consistent with the diff (commands, files, observations)? A claim you
-   can disprove is a rejection. Suite counts are the harness's own attestation — they appear in
+   can disprove is a rejection. Suite counts are tumwater's own attestation — they appear in
    the passed-check line above when the check ran green — so a count missing from VERIFIED is
    not a finding, and neither is an author-stated count that differs from it: judge whether the
    tests exist and exercise the change (check 3), not the author's arithmetic.
@@ -277,7 +278,7 @@ export function buildReviewResumePrompt(baseRev: string, patchId: string): strin
 
 You are resuming an adversarial review of a tumwater change: the previous attempt hit its time budget while still making progress, and this run continues that same reviewer session. Everything you already read — the diff and the files you checked — is in your context; do not re-read it.
 
-The change is unchanged since that attempt (patch-id ${patchId}) and is still measured against ${shortSha(baseRev)}. Other loops land on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`.
+The change is unchanged since that attempt (patch-id ${patchId}) and is still measured against ${shortSha(baseRev)}. Other roles merge on main while you review, so compare against ${shortSha(baseRev)}, never against \`main\`.
 
 Finish the checks you had not completed, then end your reply with exactly one line in this form:
   ${VERDICT_ENDING.replace(/\n/g, "\n  ")}`;
@@ -291,7 +292,7 @@ Finish the checks you had not completed, then end your reply with exactly one li
  * too yields nothing (BUGS.md 2026-09-29). It shares the review prompt's closing rule
  * (reply-contract.ts's VERDICT_ENDING), so the accepted forms cannot drift between the prompts. */
 export function buildVerdictRequestPrompt(): string {
-  return `Your review reply above did not include the verdict line the harness parses, so
+  return `Your review reply above did not include the verdict line tumwater parses, so
 your judgment was lost. Reply now with ONLY the closing block — no tool calls, no other text:
 one line in this form:
   ${VERDICT_ENDING}`;
@@ -302,7 +303,7 @@ one line in this form:
  * asks it to finish the review from what it already read. The reviewer's only output channel
  * is the verdict, so the closing rule names both accepted forms like the review prompt does. */
 export function buildNoRerunPrompt(rerun: string): string {
-  return `You started a tool call the harness's pre-check already covered, so it must not run:
+  return `You started a tool call tumwater's pre-check already covered, so it must not run:
   ${rerun}
 The full check passed at this exact tree before your review began. Do not re-run it — not in
 this worktree, not in a scratch copy. Finish the review now from what you have already read:
@@ -318,13 +319,13 @@ reply with ONLY the closing block — no tool calls, no other text — one line 
  * forced away; the reply re-states the closing block because the harness re-derives the commit
  * message from it. Carries the tick prompt's no-git rule (the harness commits). */
 export function buildStageFixPrompt(findings: string[]): string {
-  return `Your change is about to commit, but the harness's pre-queue self-check found faults the
-landing gate rejects deterministically:
+  return `Your change is about to commit, but tumwater's pre-queue self-check found faults the
+merge gate rejects deterministically:
 ${numberedList(findings)}
 Fix each one in the worktree now with the smallest edit that resolves it, and keep everything else
 as it is. When a finding is wrong, say why in your RISK line instead of forcing a change that
 does not help. Do not run any git command that changes state (no add, commit, reset, checkout) —
-the harness commits for you.
+tumwater commits for you.
 When done, reply with ONLY the closing block again — no tool calls, no other text, one line each:
 ${SUMMARY_BLOCK}`;
 }
@@ -363,8 +364,8 @@ export function buildRejectedReviewNote(review: {
   if (review.exhausted) {
     finality =
       role === "feature"
-        ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and land that markdown-only change and nothing else so the plan loop can rewrite the plan. Otherwise, redo the change against current main.`
-        : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notebook, then take a different theme on this tick: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
+        ? ` This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. If it implemented a PLANS.md entry, do not re-author it: append ${NEEDS_REPLAN_NOTE} under that entry's heading, with the numbered objections above quoted beneath it, and merge that markdown-only change and nothing else so the plan role can rewrite the plan. Otherwise, redo the change against current main.`
+        : " This was the change's final revision round — the same objection survived two revisions (or the chain hit its cap), so the rejected diff and ref are gone. Do not re-author it. Record the abandoned purpose and any instances of it that remain unhandled in your notes, then take a different theme on this run: re-deriving the same purpose from the same objections is what produced the long rejection runs this note exists to end.";
   }
   return `Your previous change was rejected in review${context}:\n${list}\nAddress the objections or take a different approach.${finality}`;
 }
@@ -382,7 +383,7 @@ export function buildRevisionNote(
 ): string {
   const list = numberedList(review.reasons, NO_REASONS);
   return `Your previously rejected change is already in the worktree as uncommitted edits — this
-is revision ${round}. This tick's ONE task is to revise it; do not author anything else.
+is revision ${round}. This run's ONE task is to revise it; do not author anything else.
 The review objections were:\n${list}
 Fix each numbered objection with the smallest edit that resolves it, and keep everything else as it
 is. When an objection is about a build-check failure in a test the change does not touch that you
@@ -390,8 +391,8 @@ cannot reproduce, say so in RISK and keep the change as it is. Rewrite the closi
 describes the WHOLE change as it now stands:
 ${SUMMARY_BLOCK}
 When an objection shows the change should not exist (its premise is disproven, it duplicates main,
-or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and the
-harness drops the change.`;
+or it has no reachable benefit), end your reply with the line ${NOTHING_TO_DO} instead, and
+tumwater drops the change.`;
 }
 
 /** The note appended to a work instance's tick prompt when it holds a claim (plans/parallel-
@@ -406,7 +407,7 @@ export function buildAssignmentNote(
   const intro =
     claim.source === "staged"
       ? `Your change moved ONE backlog entry, so it is now your task, replacing your charter's "pick one" step:`
-      : `The harness has assigned you ONE backlog entry, replacing your charter's "pick one" step:`;
+      : `Tumwater has assigned you ONE backlog entry, replacing your charter's "pick one" step:`;
   return `<assigned-entry>
 ${intro}
 "${claim.title}"${where}.
@@ -433,7 +434,7 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
  * again. A pure function so its shape is pinned in tests. */
 export function buildConflictDiscardNote(summary: string, attempts: number): string {
   return (
-    `Your previous change ("${summary}") was discarded without landing: it conflicted with main ` +
+    `Your previous change ("${summary}") was discarded without merging: it conflicted with main ` +
     `${attempts} times and conflict resolution could not reconcile it. Main has moved on since you ` +
     `wrote it. If the change is still needed, redo it against current main, starting from main's ` +
     `current version of the files it touched rather than your earlier diff.`
@@ -454,8 +455,8 @@ export function buildConflictHandbackNote(
   intent: ConflictIntent,
 ): string {
   const why =
-    reason === "landing"
-      ? "Your previously approved change could not be landed: conflict resolution could not reconcile it with main"
+    reason === "landing" // vocabulary-ok: persisted reason code
+      ? "Your previously approved change could not be merged: conflict resolution could not reconcile it with main"
       : "Your rejected change was being revised, but its diff no longer applies cleanly to main";
   const files = conflicted.length > 0 ? conflicted.map((f) => `- ${f}`).join("\n") : "- (none recorded)";
   return `<conflict-handback>
@@ -484,7 +485,7 @@ export function buildMainRedNote(sha: string, script?: string, headline?: string
     : (headline ?? "the project's declared check");
   return `<main-red>
 main's own suite is red at ${shortSha(sha)} (${what}). Every code-producing role is skipping authoring and no change merges until main is green.
-This tick your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and land the fix.
+This run your job is to make main green: reproduce that failure, fix it (add a regression test where one is feasible), and merge the fix.
 The review gate's deterministic pre-check runs main + your change, so a change that leaves the suite red is rejected — do not author anything else first.
 If the failure is environmental — flaky, load-sensitive, or a broken local toolchain — say so plainly in your reply rather than editing unrelated code.
 </main-red>`;

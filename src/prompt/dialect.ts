@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * The only backend-specific prompt text (plans/agent-backends.md "What the pi extensions did,
  * per backend"). Everything else in the prompts already speaks in shell commands and "tool

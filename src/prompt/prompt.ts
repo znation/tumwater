@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { describeCheck } from "../build/build-check-report.js";
 import type { BuildCheck } from "../build/build-check-detect.js";
@@ -136,7 +137,7 @@ Orientation — read this much before choosing your task, and no more:
   by those ranges — Planned plus recent Done entries, Open plus recent Fixed ones. Consult older
   history via git log or a targeted read only when a specific entry is needed. The steward role
   is the exception: it curates those files and must see them whole.
-- Your worktree starts clean at main, and the harness checks main's build before code roles
+- Your worktree starts clean at main, and tumwater checks main's build before code roles
   start: do not run the build or test suite just to establish a baseline. Run it after your
   change, or when the task itself needs its output (reproducing a failure, counting the suite).
 
@@ -153,11 +154,11 @@ Where you work:
 - Other agents run concurrently on this machine: put scratch files under \`$TMPDIR\` (made with
   \`mktemp\`), never at a fixed \`/tmp\` path such as \`/tmp/check.log\`, so no other run overwrites
   or reads yours.
-- Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which the harness
-  lands main into while you work, and when this project is the harness itself its dist/ is the
-  code the running fleet executes — never build, test, or edit files in that checkout.${modules}
+- Never cd to the repo root (\`${ROOT_FROM_WORKTREE}\`): it is the primary checkout, which tumwater
+  merges main into while you work, and when this project is tumwater itself its dist/ is the
+  code the running team executes — never build, test, or edit files in that checkout.${modules}
 - Never run an unbounded scan (\`find /\`, \`grep -r /\`, any recursive search rooted outside the
-  repo): it runs for tens of minutes with no output until the harness kills your tick as hung.
+  repo): it runs for tens of minutes with no output until tumwater kills your run as hung.
 - Never run a command that can wait forever — interactive programs (TUIs, REPLs, editors,
   anything reading stdin), servers, or watch modes. To test such a program, background it with
   a hard time limit (kill it after at most 30 minutes) and never give it a real TTY.
@@ -168,15 +169,15 @@ Where you work:
 ${TEST_RUNNER_RULE}
 
 Boundaries:
-- Never create, amend, or revert git commits, branches, or merges — the harness handles all git
+- Never create, amend, or revert git commits, branches, or merges — tumwater handles all git
   operations. Reading git history is fine.
 - Never touch the .tumwater directory or tumwater.json.
-- Never edit the initial prompt block in ${briefFile} (between the tumwater:prompt markers).
+- Never edit the brief block in ${briefFile} (between the tumwater:prompt markers).
 - PRINCIPLES.md holds this project's design principles; only the director and steward roles may
   edit it. Treat it as read-only — to object to a principle, record the objection in PLANS.md.
 - docs/invariants.md states each subsystem's guarantees, pinned to the test that enforces them.
   Read the matching section before you reconstruct what the code you are changing is supposed
-  to guarantee; when a landing adds or changes a guarantee, update the register in the same
+  to guarantee; when a merge adds or changes a guarantee, update the register in the same
   commit.
 
 When to ask, when to refuse:
@@ -184,7 +185,7 @@ When to ask, when to refuse:
   choice, taste), do not guess: append a question to QUESTIONS.md under ## Open with context,
   the options, and your own recommendation. Then continue with the parts that don't depend on
   it, or end the run. Never block on an unanswered question; check QUESTIONS.md for answers at
-  the start of each tick and act on one that unblocks your work. Do not re-ask an open question.
+  the start of each run and act on one that unblocks your work. Do not re-ask an open question.
 - If partway in you conclude the task would harm the project — it violates PRINCIPLES.md, grows
   complexity without justification, or keeps fighting back — refuse it. Revert nothing; append
   this note directly under the entry's heading in PLANS.md (a planned feature) or BUGS.md:
@@ -196,7 +197,7 @@ When to ask, when to refuse:
 
 ${CLAIMS_RULE}
 
-How to end your reply — the harness parses it, so the form matters:
+How to end your reply — tumwater parses it, so the form matters:
 - Your last message is plain text: never a tool call, and never an announcement of what you would
   do next ("Let me check…") — either make the call or finish. If a tool result only repeats what
   you already have, do not call it again.
@@ -214,7 +215,7 @@ function principlesBlock(principles: string): string {
  * the harness renders the digest from its own event log at the project root and hands it over, so
  * the role spends no tool calls acquiring evidence and cannot read a stale or foreign log. */
 function digestBlock(digest: string): string {
-  return `Runtime failure digest of this harness's own event log — your evidence base:\n<failure-digest>\n${digest}\n</failure-digest>`;
+  return `Runtime failure digest of tumwater's own event log — your evidence base:\n<failure-digest>\n${digest}\n</failure-digest>`;
 }
 
 /** The role's notebook as shown to it: its own earlier ticks' note, labeled as unverified.
@@ -222,7 +223,7 @@ function digestBlock(digest: string): string {
  * present (roleNotesInstruction), so a role's FIRST tick — with no note yet — still learns the
  * tool exists and can seed the notebook. */
 function roleNotesBlock(notes: string): string {
-  return `Notes your role wrote in earlier ticks (yours, unverified — check against the code before
+  return `Notes your role wrote in earlier runs (yours, unverified — check against the code before
 relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
 }
 
@@ -230,7 +231,7 @@ relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
  * write one, so the first tick (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. */
 export function roleNotesInstruction(dialect: PromptDialect = PI_DIALECT): string {
-  return `Before you end, if you learned something the next tick of your role should know (where
+  return `Before you end, if you learned something the next run of your role should know (where
 things live, what you ruled out and why, what you would look at next), call ${dialect.notesTool} with
 the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
 BUGS.md hold the work itself.`;
@@ -283,36 +284,47 @@ interface TickPromptInput {
   agent?: string;
 }
 
+/** The retired names a model still meets in code, git history and logs, mapped to today's terms
+ * (plans/terminology.md "Glossary"). The one place these words may appear in a prompt. */
+const OLDER_NAMES_MAP = "loop = role, tick = run, fleet = team, landing/landed = merge/merged, vetted = approved, notebook = notes, initial prompt = brief"; // vocabulary-ok: maps retired names
+
+/** The sentence every assembled prompt carries once: the older names and where all of them are
+ * listed. Interpolated into the shared preamble and the reviewer and resolver openers. */
+export const OLDER_NAMES_SENTENCE = `Older tumwater names still appear in code, git history and logs: ${OLDER_NAMES_MAP}; docs/glossary.md in tumwater's repository lists them all.`;
+
 /** Shared opening of every loop prompt: where the run happens, what day it is, and why the
  * project exists. Defined once so the tick and director prompts cannot drift — and so the one
  * sentence telling every role to date its records from dateLine, not from the repo, reaches
  * each of them without editing any role text. */
 function sharedPreamble(initialPrompt: string, today?: string): string[] {
   const parts = [
-    `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.`,
-    `${dateLine(today)} Stamp it on anything you record now — a new BUGS.md or PLANS.md heading's
-"(found by … YYYY-MM-DD)", a Fixed or Done date, a Refused or Needs-review note — and count plan
-deadlines from it; never infer the date from the repo.`,
+    `You work in a dedicated git worktree of this project; your changes will be committed and merged to main by tumwater after you finish.`,
+    `${dateLine(today)} Stamp it on anything you record now — a new BUGS.md heading ends
+"(found by the <role> role YYYY-MM-DD)", a closing date reads "— fixed YYYY-MM-DD by the <role> role",
+a new PLANS.md heading reads "(planned YYYY-MM-DD by the <role> role …)", and a Refused or
+Needs-review note carries the date too — and count plan deadlines from it; never infer the date
+from the repo.`,
+    OLDER_NAMES_SENTENCE,
   ];
   if (initialPrompt) {
-    parts.push(`The project's initial prompt — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
+    parts.push(`The project's brief — its reason to exist — is:\n<project-prompt>\n${initialPrompt}\n</project-prompt>`);
   }
   return parts;
 }
 
-/** The full prompt for one role-loop tick. */
+/** The full prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
   const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, extraInstructions, planTargetNote, check, briefFile, today, userRequest, agent } = input;
   const dialect = dialectFor(agent);
   const parts = [
-    `You are the "${role.id}" loop (${role.title}) of tumwater, an autonomous development harness.`,
+    `You are the "${role.id}" role (${role.title}) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`,
     ...sharedPreamble(initialPrompt, today),
   ];
   if (principles) parts.push(principlesBlock(principles));
   if (userRequest)
     parts.push(
-      `An explicit request from the user, aimed at this loop. Treat it as this tick's steering;
-your role's rules and the landing gate still apply unchanged. If the request is out of this
+      `An explicit request from the user, aimed at this role. Treat it as this run's steering;
+your role's rules and the merge gate still apply unchanged. If the request is out of this
 role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n${userRequest.trim()}\n</user-request>`,
     );
   if (coverage) parts.push(coverage);
@@ -348,8 +360,8 @@ export function buildDirectorPrompt(
   agent?: string,
 ): string {
   const parts = [
-    `You are the "director" loop of tumwater, an autonomous development harness. The user steers
-the project by sending it requests; one has just arrived. Other specialist loops continuously
+    `You are the "director" role on this project's tumwater team — tumwater runs a team of AI roles that develop the project. The user steers
+the project by sending it requests; one has just arrived. Other specialist roles continuously
 implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     ...sharedPreamble(initialPrompt, today),
   ];
@@ -360,12 +372,12 @@ implement planned features from PLANS.md and fix bugs from BUGS.md.`,
     `Interpret the request as a project-level command and route it — do NOT implement substantial
 work yourself:
 - A feature request or substantial change: write a concrete plan for it in PLANS.md (goal,
-  approach, files touched, acceptance criteria) so the feature loop implements it. Do not build
+  approach, files touched, acceptance criteria) so the feature role implements it. Do not build
   it now. ${PLAN_SIZING}
 - A bug report: record it in BUGS.md (symptom, how to reproduce, suspected cause — investigate
-  briefly to sharpen the report) so the bugfix loop fixes it. Do not fix it now.
+  briefly to sharpen the report) so the bugfix role fixes it. Do not fix it now.
 - Guidance, a decision, or a constraint (e.g. "prefer X", "drop feature Y"): record it durably
-  where future loops will see it — PRINCIPLES.md first for standing design guidance and taste;
+  where future roles will see it — PRINCIPLES.md first for standing design guidance and taste;
   README.md, PLANS.md, or BUGS.md otherwise — and remove anything it supersedes.
 - A question: answer it in your final reply, and record anything durable it surfaced.
 - An answer to an open question (e.g. "answer Q3: choose SQLite"): move that entry from
@@ -373,24 +385,24 @@ work yourself:
   or route any follow-on work it implies.
 - A decision about a refused entry (e.g. "clear the refusal on plan X", "reconsider plan Y"):
   clear its **Refused …** note from PLANS.md/BUGS.md — or revise the entry per the user's
-  direction — so loops can pick it up again.
+  direction — so roles can pick it up again.
 - A decision about a marked plan (e.g. "split plan X", "keep plan X whole", "replan X"):
   split it into independently landable sub-plans per PLAN_SIZING, or clear the
   ${NEEDS_REVIEW_NOTE} note, or clear a ${NEEDS_REPLAN_NOTE} note and rewrite the entry — per
   the user's direction.
-- A request to manage user-defined loops ("add a loop named X that does Y", "remove X",
+- A request to manage custom roles ("add a role named X that does Y", "remove X",
   "move X before Y"): write the FULL replacement customRoles array to
   .tumwater-config-request.json at your worktree root — the shape is
   { "customRoles": [ { "name": "…", "task": "…" } ] }. Add appends an entry with a name in
-  [a-z0-9_-] no built-in role uses and a task written as the loop's standing per-tick
+  [a-z0-9_-] no built-in role uses and a task written as the role's standing per-run
   instruction (one clear paragraph); remove deletes the entry; move reorders entries (array
-  order is display/scheduling order). The array REPLACES the current one — include every loop
-  that should exist, not only the changed entries. Worked example — to add a loop named docs
+  order is display/scheduling order). The array REPLACES the current one — include every role
+  that should exist, not only the changed entries. Worked example — to add a role named docs
   that keeps the examples current and drop one named scrape, write the file containing exactly
   the surviving entries:
   { "customRoles": [ { "name": "docs", "task": "Keep the examples/ directory current with the latest API changes." } ] }.
-  Write the file and stop: the harness validates it, applies it to the live config, and deletes
-  it; the loops start on their own and the request file is never committed.
+  Write the file and stop: tumwater validates it, applies it to the live config, and deletes
+  it; the roles start on their own and the request file is never committed.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
   user explicitly stated) may be done immediately instead of routed.
 - Investigate only as much as routing precisely needs — grep and ranged reads to name the right
@@ -401,10 +413,10 @@ work yourself:
   // Before the shared rules, not after them: the closing reply contract stays the last thing
   // in the prompt, where a model attends to it most (the tick prompt's invariant too).
   parts.push(
-    `Note on one boundary in the rules below, director only: user-defined-loop requests are
+    `Note on one boundary in the rules below, director only: user-defined-role requests are
 executed by writing .tumwater-config-request.json in your worktree (shape and worked example
-above) — never by editing tumwater.json, which stays off-limits to you as to every role. The
-harness validates the request and applies only its customRoles array; a request that also names
+above) — never by editing tumwater.json, which stays off-limits to you as to every role. Tumwater
+validates the request and applies only its customRoles array; a request that also names
 any other setting (timeouts, budgets, role enablement, review settings) has that key discarded
 with a warning, so such a request is guidance to record per the routing rules, not an edit you
 can make.`,

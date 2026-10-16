@@ -135,7 +135,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
       assert.match(prompt, /conflict-handback/);
       assert.match(prompt, /Conflicted files:\n- seed\.txt/);
       assert.match(prompt, /main moved the same line/, "the prompt shows what main changed");
-      assert.doesNotMatch(prompt, /was discarded without landing/);
+      assert.doesNotMatch(prompt, /was discarded without merging/);
       assert.equal(runner.state.conflictHandback?.reason, "landing");
       assert.equal(runner.state.conflictHandback?.applied, true, "the hand-back was applied this tick");
       assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the hand-back");
@@ -178,7 +178,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
       assert.notEqual(outcome.commit, sha);
       const prompt = fs.readFileSync(prompts, "utf8");
-      assert.match(prompt, /was discarded without landing/);
+      assert.match(prompt, /was discarded without merging/);
       assert.match(prompt, /"work main outgrew"/, "the note names the discarded change by its subject");
       assert.doesNotMatch(prompt, /conflict-handback/);
       assert.equal(runner.state.mergeConflicts, undefined, "the conflict streak is cleared");

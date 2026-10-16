@@ -59,8 +59,8 @@ test("parseVerdict reads items inside markdown headings", () => {
 // yields them, since a lead-in beats recording no reason at all.
 
 test("parseVerdict prose fallback skips headings and colon lead-ins", () => {
-  const text = "VERDICT: reject\n## Review\nFindings:\nThe retry loop swallows errors.";
-  assert.deepEqual(parseVerdict(text)?.reasons, ["The retry loop swallows errors."]);
+  const text = "VERDICT: reject\n## Review\nFindings:\nThe retry role swallows errors.";
+  assert.deepEqual(parseVerdict(text)?.reasons, ["The retry role swallows errors."]);
 });
 
 test("parseVerdict falls back to preamble lines when the region has only those", () => {
@@ -288,7 +288,7 @@ for (const { shape, reply, reasons } of REPLY_SHAPES) {
   });
 }
 
-test("a bold-numbered rejection reaches the author's next-tick note numbered once, markup-free", () => {
+test("a bold-numbered rejection reaches the author's next-run note numbered once, markup-free", () => {
   // The rejection path shares the list: before the fix the prose fallback kept every line
   // whole, so the note read "1. Findings:" then "2. **1. The helper drops errors.** …".
   const v = parseVerdict(

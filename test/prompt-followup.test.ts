@@ -13,10 +13,10 @@ import { NOTHING_TO_DO } from "../src/verdict/reply-contract.js";
 
 test("buildCutOffNote counts the failed runs and offers nothing-to-do as the honest exit", () => {
   const one = buildCutOffNote(1);
-  assert.match(one, /^Your previous run as this loop ran out of context before landing anything/);
+  assert.match(one, /^Your previous run as this role ran out of context before merging anything/);
   assert.match(one, /grep first, read in ranges, cap\s+command output/);
   assert.ok(one.includes(NOTHING_TO_DO));
-  assert.match(buildCutOffNote(3), /^Your previous 3 runs as this loop/);
+  assert.match(buildCutOffNote(3), /^Your previous 3 runs as this role/);
 });
 
 test("buildSummaryRequestPrompt asks for exactly the closing block and nothing else", () => {
@@ -43,7 +43,7 @@ test("buildSummaryRequestPrompt(n) names the length and asks for at most 72 char
 // authors restating counts was the top record-claim rejection at the review gate.
 test("the VERIFIED line asks for observations beyond the suite total, not a count", () => {
   const p = buildSummaryRequestPrompt();
-  assert.match(p, /beyond the suite total \(the harness attests the counts\)/);
+  assert.match(p, /beyond the suite total \(tumwater attests the counts\)/);
   assert.match(p, /repro script showed X before, Y after/);
   assert.doesNotMatch(p, /182 pass/, "the count example is gone");
 });

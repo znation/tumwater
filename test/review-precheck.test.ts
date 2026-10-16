@@ -676,7 +676,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(prompts, "utf8");
-    assert.match(run, /The harness already ran the project's own check on this exact tree and it passed:/);
+    assert.match(run, /Tumwater already ran the project's own check on this exact tree and it passed:/);
     assert.match(run, /`npm run test` \(the project's declared check\) passed/);
   });
 
@@ -690,7 +690,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
     const { result } = await reviewGate(bare.root, bare.wt);
     assert.equal(result.decision, "approved");
     const run = fs.readFileSync(barePrompts, "utf8");
-    assert.ok(!run.includes("The harness already ran"), "no pre-check claim when nothing ran");
+    assert.ok(!run.includes("Tumwater already ran"), "no pre-check claim when nothing ran");
   });
 });
 

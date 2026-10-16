@@ -32,14 +32,14 @@ test("buildConflictHandbackNote names the files, the reason and what main change
     main: [{ sha: "abc1234", subject: "main rewrote a.ts", body: "the reason" }],
   });
   assert.match(note, /<conflict-handback>/);
-  assert.match(note, /could not be landed/);
+  assert.match(note, /could not be merged/);
   assert.match(note, /- notes\.md/);
   assert.match(note, /What main changed in these files/);
   assert.match(note, /abc1234 main rewrote a\.ts/);
   assert.match(note, /Resolve every marker/);
 });
 
-test("buildConflictHandbackNote says a revision, not a landing, and tolerates no intent", () => {
+test("buildConflictHandbackNote says a revision, not a merge, and tolerates no intent", () => {
   const note = buildConflictHandbackNote("revision", [], { change: "", main: [] });
   assert.match(note, /rejected change was being revised/);
   assert.match(note, /- \(none recorded\)/);
@@ -48,7 +48,7 @@ test("buildConflictHandbackNote says a revision, not a landing, and tolerates no
 
 test("buildConflictPrompt names the role and lists every conflicted file", () => {
   const p = buildConflictPrompt("bugfix", ["src/git.ts", "docs/notes.md"]);
-  assert.match(p, /"bugfix" loop/);
+  assert.match(p, /"bugfix" role/);
   // The situation is explained: a rebase onto main stopped on conflicts in the worktree.
   assert.match(p, /A rebase of\nyour work branch onto main stopped on conflicts/);
   // Every conflicted file is listed as its own bullet so pi knows exactly where to look —
@@ -114,13 +114,13 @@ test("buildConflictPrompt shows both sides' intent when given", () => {
   assert.match(p, /over main's deliberate removal \(see "What main changed in these files" above\)\./);
 });
 
-test("buildConflictPrompt forbids state-changing git commands (harness concludes the rebase)", () => {
+test("buildConflictPrompt forbids state-changing git commands (tumwater concludes the rebase)", () => {
   const p = buildConflictPrompt("clean", ["a.txt"]);
   // If pi committed or continued the rebase itself, the harness's continueRebase would
   // collide with it — the prompt keeps pi to file edits only.
   assert.match(p, /Edit files only/);
   assert.match(p, /no add, commit, merge, rebase/);
-  assert.match(p, /the harness concludes the rebase for you/i);
+  assert.match(p, /tumwater concludes the rebase for you/i);
   // Reading git state stays allowed — resolving well may need it.
   assert.match(p, /Reading git state is fine/i);
 });
@@ -134,7 +134,7 @@ test("buildConflictPrompt names the project's declared check and tells the resol
   const npm = oneLine(buildConflictPrompt("organize", ["a.ts"], { kind: "npm", rootDir: ".", script: "test" }));
   assert.match(
     npm,
-    /- Do not run `npm run test` \(the project's declared check\) or the full test suite: the harness runs that check on the resolved tree before it lands/,
+    /- Do not run `npm run test` \(the project's declared check\) or the full test suite: tumwater runs that check on the resolved tree before it merges/,
   );
   assert.match(npm, /a compile or the one or two test files that cover it is enough\./);
   assert.doesNotMatch(npm, /verify with/);
@@ -159,7 +159,7 @@ test("buildConflictPrompt keeps the project building and ends by stopping", () =
   // The run's only job is resolving the markers: it ends by stopping — no new task,
   // no sentinel or SUMMARY line (this flow parses neither from pi's reply).
   assert.match(p, /just stop/i);
-  assert.ok(!p.includes(NOTHING_TO_DO), "no tick sentinel in a conflict run");
+  assert.ok(!p.includes(NOTHING_TO_DO), "no run sentinel in a conflict run");
 });
 
 // The rejected-review note is the ONLY cross-tick memory of a failed change: every tick
@@ -208,11 +208,11 @@ test("an exhausted feature rejection tells feature to replan, not re-author", ()
 
 // A plan-less role has no entry to replan, so its exhaustion note must not invite it to
 // re-author: the same purpose re-derived from the same objections is the loop this note ends.
-test("an exhausted plan-less rejection records the purpose in the notebook instead of re-authoring", () => {
+test("an exhausted plan-less rejection records the purpose in the notes instead of re-authoring", () => {
   const note = buildRejectedReviewNote({ reasons: ["still wrong"], exhausted: true }, "bugfix");
   assert.match(note, /[Dd]o not re-author it/);
   assert.match(note, /abandoned purpose/);
-  assert.match(note, /notebook/);
+  assert.match(note, /notes/);
   assert.match(note, /different theme/);
   assert.doesNotMatch(note, /re-author it from current main/);
 });
@@ -353,7 +353,7 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   assert.match(prompt, /2\. Are the VERIFIED claims consistent with the diff/);
   // Suite counts are the harness's own attestation (PLANS.md 2026-09-29): the checklist sends
   // the reviewer to the passed-check line instead of judging a stated total.
-  assert.match(prompt, /Suite counts are the harness's own attestation/);
+  assert.match(prompt, /Suite counts are tumwater's own attestation/);
   assert.match(prompt, /a count missing from VERIFIED is not a finding/);
   // A miscounted author-stated total is not a rejection on its own (2026-10-01: several fleet
   // rejections of correct changes were off-by-one test counts) — the reviewer judges the tests.
@@ -371,15 +371,15 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   assert.match(prompt, /Do not edit any file in the worktree/);
 });
 
-test("buildReviewPrompt names the harness's green pre-check when given, and omits the section otherwise", () => {
+test("buildReviewPrompt names tumwater's green pre-check when given, and omits the section otherwise", () => {
   const withCheck = buildReviewPrompt("diff", undefined, undefined, undefined, undefined, "`npm run test` passed");
   assert.match(
     withCheck,
-    /The harness already ran the project's own check on this exact tree and it passed:\n`npm run test` passed\./,
+    /Tumwater already ran the project's own check on this exact tree and it passed:\n`npm run test` passed\./,
   );
   assert.match(oneLine(withCheck), /Spend your run on what a green check cannot show/);
   const without = buildReviewPrompt("diff");
-  assert.ok(!without.includes("The harness already ran"), "no pre-check section without a verdict");
+  assert.ok(!without.includes("Tumwater already ran"), "no pre-check section without a verdict");
   // The verdict-form contract survives the extra section: still exactly the two advertised forms.
   const advertised = [...oneLine(withCheck).matchAll(/VERDICT:\s*(\w+)/g)].map((m) => m[1]);
   assert.deepEqual(advertised, ["approve", "reject"]);
@@ -414,7 +414,7 @@ test("the review prompt's no-re-run rule is one rules-list line, present only be
   const rules = withCheck.slice(withCheck.indexOf("Rules for this run:"));
   assert.match(
     rules,
-    /\n- Do not re-run the check named above or the project's full test suite: the harness's green run\n  is the verified result\./,
+    /\n- Do not re-run the check named above or the project's full test suite: tumwater's green run\n  is the verified result\./,
     "a rules-list item of its own",
   );
   const flat = oneLine(rules);
@@ -452,7 +452,7 @@ test("buildStageFixPrompt lists every finding, forbids git state changes, and as
   const p = buildStageFixPrompt(["first fault", "second fault"]);
   assert.match(p, /1\. first fault/);
   assert.match(p, /2\. second fault/);
-  assert.match(p, /landing gate rejects deterministically/);
+  assert.match(p, /merge gate rejects deterministically/);
   assert.match(p, /no add, commit, reset, checkout/);
   assert.match(p, /SUMMARY:/);
   assert.match(p, /RISK:/);

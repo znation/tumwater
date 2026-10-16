@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { contextBudgetRule } from "./prompt.js";
 import { dialectFor } from "./dialect.js";
 import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-contract.js";
@@ -41,39 +42,39 @@ unusable, redo it — but stay on this task rather than picking a new one.`;
 export function buildResumePrompt(roleId: string, cause: ResumeCause = "restart", agent?: string): string {
   const opening =
     cause === "cut-off"
-      ? `Your previous run as the "${roleId}" loop ran out of context before it could finish, so the
-harness compacted the session and is continuing it now. Your worktree is exactly as you left it;
+      ? `Your previous run as the "${roleId}" role ran out of context before it could finish, so
+tumwater compacted the session and is continuing it now. Your worktree is exactly as you left it;
 what you did so far is summarized above. Do NOT re-read the codebase: trust the summary and
 re-check only what you must, in ranges — at most ~10 tool calls of re-reading, and never the same
 file twice. Finish the SAME task with the smallest change that completes it. If it cannot be
 finished within a fraction of the window, scope it down to what is already complete and coherent,
 leave the project working, and stop.`
       : cause === "hung-tool"
-        ? `The harness killed your previous run as the "${roleId}" loop because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
+        ? `Tumwater killed your previous run as the "${roleId}" role because it made no progress long enough to trip its hang watchdog — almost always one tool call that hung (a command waiting on input, or a scan far wider than intended). That tool call is dead: do not re-run it unchanged. Your worktree is exactly as you left it, and this session carries everything you did so far — verify the effect of anything the killed call was supposed to produce before relying on it, and bound any long-running command (a time limit, a scoped path).
 
 ${CONTINUE_TASK_BRIDGE}`
         : cause === "timeout"
-          ? `Your previous run as the "${roleId}" loop reached the harness's tick time limit while
-it was still making progress — a slow run, not a failed one — so the harness preserved your
+          ? `Your previous run as the "${roleId}" role reached tumwater's run time limit while
+it was still making progress — a slow run, not a failed one — so tumwater preserved your
 worktree and this session and is continuing them now. Finish the SAME task, but budget against
 that same limit: make the smallest change that completes the task coherently, verify it, and
 stop. Do not restart broad exploration the first run already finished; trust the work so far
 and build on it.`
           : cause === "budget-resumed"
-            ? `The fleet's daily budget has reopened, and your previous run as the "${roleId}" loop
-started on the fallback model — the harness has moved this session back to the primary model and
+            ? `The team's daily budget has reopened, and your previous run as the "${roleId}" role
+started on the fallback model — tumwater has moved this session back to the primary model and
 is continuing it now. Your worktree is exactly as you left it, and this session carries everything
 you did so far.
 
 ${CONTINUE_TASK_BRIDGE}`
             : cause === "rate-limit"
               ? `The claude.ai subscription usage window rejected your previous run as the "${roleId}"
-loop before it could finish, so the harness held every subscription claude seam until the window
+role before it could finish, so tumwater held every subscription claude model job until the window
 reset. Your worktree is exactly as you left it, and this session carries everything you did so
-far. The window has since reset, and the harness is continuing this session now.
+far. The window has since reset, and tumwater is continuing this session now.
 
 ${CONTINUE_TASK_BRIDGE}`
-              : `The harness was restarted while you (the "${roleId}" loop) were mid-run. Your worktree
+              : `Tumwater was restarted while you (the "${roleId}" role) were mid-run. Your worktree
 is exactly as you left it, and this session carries everything you did so far. A tool call that
 was executing when the restart hit may not have finished — verify its effect before relying on it.
 
@@ -82,7 +83,7 @@ ${CONTINUE_TASK_BRIDGE}`;
 still apply, in particular:
 - Do exactly ONE focused task, then stop.
 ${contextBudgetRule(dialectFor(agent))}
-- Never create, amend, or revert git commits — the harness handles all git operations.
+- Never create, amend, or revert git commits — tumwater handles all git operations.
 - Your last message is plain text — never a tool call or an announcement of a next step.
 ${REPLY_ENDINGS}`;
 }
@@ -102,15 +103,15 @@ export function buildHandoffPrompt(
 ): string {
   const note =
     cause === "budget-capped"
-      ? `An earlier API-billed claude run of the "${roleId}" loop hit its per-run budget cap before it
+      ? `An earlier API-billed claude run of the "${roleId}" role hit its per-run budget cap before it
 could finish; its uncommitted edits are in your worktree — review \`git diff\`, then finish or
-discard them. This run starts on the seam the daily budget left you.`
+discard them. This run starts on the model job the daily budget left you.`
       : cause === "image-reroute"
-        ? `An earlier run of the "${roleId}" loop on ${imageReroute?.from ?? "another model"} stopped
+        ? `An earlier run of the "${roleId}" role on ${imageReroute?.from ?? "another model"} stopped
 when it read ${imageReroute?.path ?? "an image"}, because that model cannot read images; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them. This
 run is on a model that CAN read images, so read the image again.`
-        : `An earlier run of the "${roleId}" loop on another model was interrupted; its
+        : `An earlier run of the "${roleId}" role on another model was interrupted; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them.`;
   return `${tickPrompt}\n\n${note}`;
 }
@@ -123,12 +124,12 @@ uncommitted edits are in your worktree — review \`git diff\`, then finish or d
 export function buildSummaryRequestPrompt(overLength?: number): string {
   if (overLength !== undefined) {
     return `Your final reply's SUMMARY line is ${overLength} characters; the commit subject holds at most 72,
-so the harness would cut it mid-word. Reply now with ONLY the closing block, with the SUMMARY
+so tumwater would cut it mid-word. Reply now with ONLY the closing block, with the SUMMARY
 restated in at most 72 characters — no tool calls, no other text, one line each:
 ${SUMMARY_BLOCK}`;
   }
   return `Your run changed files in the worktree, but your final reply
-did not include the required closing block, so the harness cannot describe the commit it is about
+did not include the required closing block, so tumwater cannot describe the commit it is about
 to make. Reply now with ONLY that block — no tool calls, no other text, one line each:
 ${SUMMARY_BLOCK}`;
 }
@@ -139,7 +140,7 @@ ${SUMMARY_BLOCK}`;
  * cross-tick memory that the last attempt was too big for the window. */
 export function buildCutOffNote(streak: number): string {
   const runs = streak === 1 ? "run" : `${streak} runs`;
-  return `Your previous ${runs} as this loop ran out of context before landing anything. Pick a
+  return `Your previous ${runs} as this role ran out of context before merging anything. Pick a
 smaller, more targeted task this time and budget your reading: grep first, read in ranges, cap
 command output. If the smallest useful task still needs most of the codebase in view, reply
 ${NOTHING_TO_DO} instead of starting it.`;

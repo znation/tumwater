@@ -39,69 +39,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Unit (`test/gui-client-fleet.test.ts`): `renderBacklog` on the Questions tab with `questions: []` and two `answeredQuestions` paints the "No open questions" empty state, then an "Answered recently" divider, then both titles and their decisions. The answered rows contain no `backloglink` and no Answer button. With `answeredQuestions` absent or empty, the Questions tab's html has no "Answered recently" text, so payloads from older builds render as before. The Plans tab never shows answered rows.
 - `npm run test` passes.
 
-### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests)
-
-**Goal.** Every prompt tumwater assembles opens with `You are the "<id>" role` and speaks the glossary: each role's run prompt, the director's, the reviewer's, the conflict resolver's and every follow-up. Each prompt also maps the older names the model will still meet in code, git history and logs. The shared preamble spells the attribution stamps that roles copy into BUGS.md and PLANS.md. As the series' last part, it lands only after every other text part.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/prompt/prompt.ts:
-  - The role opener `You are the "<id>" loop (<title>) of tumwater, an autonomous development harness.` → `You are the "<id>" role (<title>) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`
-  - `sharedPreamble`: "committed and merged to main by tumwater".
-  - The stamp sentence in `sharedPreamble` spells each stamp:
-    - a new BUGS.md heading ends "(found by the <role> role YYYY-MM-DD)";
-    - a closing date reads "— fixed YYYY-MM-DD by the <role> role";
-    - a new PLANS.md heading reads "(planned YYYY-MM-DD by the <role> role …)".
-
-    Today no prompt spells these stamps, so agents copy "found by bugfix …" and "by bugfix loop" from older entries. `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the stamp's leading word, so parsing is unchanged.
-  - The rules block:
-    - "the user's checkout", and "tumwater merges main into".
-    - "the code the running team executes", and "until tumwater stops your run as hung".
-    - "tumwater handles all git", and "when a merge adds or changes a guarantee".
-    - "the start of each run", and "How to end your reply — tumwater parses it".
-  - The failure-digest wrapper: "tumwater's own event log".
-  - The notes blocks: "Notes your role wrote in earlier runs", and "your role's next run".
-  - The user-request block: "aimed at this role. Treat it as this run's steering; … the merge gate still apply".
-  - The director prompt:
-    - `You are the "director" role …`, "Other specialist roles", and "so the feature role implements it".
-    - Custom-role requests name `customRoles`, the commands series' key; the request file still accepts the old one.
-    - "the roles start on their own".
-- Older names, in every assembled prompt. tumwater runs on any codebase, so the pointer cannot rely on docs/glossary.md alone, which other projects' worktrees do not contain.
-  - Add one sentence to `sharedPreamble` and to the reviewer and resolver openers: "Older tumwater names still appear in code, git history and logs: <map>; docs/glossary.md in tumwater's repository lists them all."
-  - <map> is interpolated from one constant, declared on a line ending `// vocabulary-ok: maps retired names`. It reads: "loop = role, tick = run, fleet = team, landing/landed = merge/merged, vetted = approved, notebook = notes, initial prompt = brief".
-- The reviewer and resolver prompts in src/prompt/gate-prompts.ts:
-  - `You are the "<id>" role …`.
-  - "an adversarial code reviewer for tumwater, which runs a team of AI roles on this project".
-  - landing → merge, and tick → run.
-- src/prompt/prompt-followup.ts and src/prompt/dialect.ts follow the rules. src/prompt/principles.ts takes the header only.
-- src/tick/tick-prompt.ts: "role notes", and "This run's stop target …". The `telemetry` id stays for the role ids series.
-- src/tick/qa-coverage.ts: "from this team's own record".
-- src/verdict/reply-contract.ts: "When the merge gate runs the project's check, tumwater attests the numbers itself", and "or tumwater treats the whole run as a refusal".
-- Agent-facing tool text. Tool names stay.
-  - src/agent/role-notes-write.ts: "Replace this role's notes: the short note the role's own earlier runs left for the next run …", "notes cleared", and "notes saved".
-  - src/agent/mcp/role-notes-server.ts: "no notes path is configured for this run".
-  - src/pi-extension/role-notes.ts: "role notes".
-- Kept machine strings inside these templates (trailer greps, commit prefixes) come from constants with `// vocabulary-ok:`.
-
-**Files touched.**
-- src: src/prompt/prompt.ts, prompt-followup.ts, gate-prompts.ts, dialect.ts, principles.ts; src/tick/tick-prompt.ts, src/tick/qa-coverage.ts; src/verdict/reply-contract.ts; src/agent/role-notes-write.ts, src/agent/mcp/role-notes-server.ts, src/pi-extension/role-notes.ts.
-- Tests:
-  - test/prompt.test.ts, test/prompt-roles.test.ts, test/prompt-followup.test.ts, test/prompt-resume.test.ts, test/prompt-dialect.test.ts.
-  - test/gate-prompts.test.ts, test/review-verdict.test.ts, test/reply-contract.test.ts.
-  - test/tick-prompt.test.ts, test/qa-coverage.test.ts, test/role-notes.test.ts, test/role-notes-mcp.test.ts.
-  - test/loop-pi-followups.test.ts, test/revision.test.ts, test/tick-stage.test.ts.
-
-**Acceptance criteria.**
-- A test renders every assembled prompt and finds the older-names sentence exactly once in each. With the interpolated constants removed, no prompt contains a guard word. The prompts covered are each catalog role, a custom role, the director, the reviewer, the conflict resolver and each follow-up.
-- The role opener reads `You are the "feature" role (feature implementer) …`. The shared preamble spells "(found by the <role> role YYYY-MM-DD)" and "fixed YYYY-MM-DD by the <role> role".
-- The director prompt's instructions for custom roles name `customRoles`.
-- `npm run test` passes.
-
 ### Plain terms docs, part 1/5: Rewrite the README and the command and settings references in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches README.md and docs/cli.md and docs/config.md)
 
 **Goal.** README.md, docs/cli.md and docs/config.md use the glossary's words (team, role, run, merge, notes, brief, inbox, you) and document the commands and config keys under their new names (`tumwater start`, `tumwater history <role> <n>`, `--result merged`, `customRoles`, `backend`/`backends`, `minRunIntervalSeconds`, `runTimeoutSeconds`, `mergeBatchMax`, `maintenancePerWorkMerge`), matching what `tumwater help` prints now.
@@ -2685,6 +2622,71 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests; done 2026-10-16)
+
+**Goal.** Every prompt tumwater assembles opens with `You are the "<id>" role` and speaks the glossary: each role's run prompt, the director's, the reviewer's, the conflict resolver's and every follow-up. Each prompt also maps the older names the model will still meet in code, git history and logs. The shared preamble spells the attribution stamps that roles copy into BUGS.md and PLANS.md. As the series' last part, it lands only after every other text part.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/prompt/prompt.ts:
+  - The role opener `You are the "<id>" loop (<title>) of tumwater, an autonomous development harness.` → `You are the "<id>" role (<title>) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`
+  - `sharedPreamble`: "committed and merged to main by tumwater".
+  - The stamp sentence in `sharedPreamble` spells each stamp:
+    - a new BUGS.md heading ends "(found by the <role> role YYYY-MM-DD)";
+    - a closing date reads "— fixed YYYY-MM-DD by the <role> role";
+    - a new PLANS.md heading reads "(planned YYYY-MM-DD by the <role> role …)".
+
+    Today no prompt spells these stamps, so agents copy "found by bugfix …" and "by bugfix loop" from older entries. `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the stamp's leading word, so parsing is unchanged.
+  - The rules block:
+    - "the user's checkout", and "tumwater merges main into".
+    - "the code the running team executes", and "until tumwater stops your run as hung".
+    - "tumwater handles all git", and "when a merge adds or changes a guarantee".
+    - "the start of each run", and "How to end your reply — tumwater parses it".
+  - The failure-digest wrapper: "tumwater's own event log".
+  - The notes blocks: "Notes your role wrote in earlier runs", and "your role's next run".
+  - The user-request block: "aimed at this role. Treat it as this run's steering; … the merge gate still apply".
+  - The director prompt:
+    - `You are the "director" role …`, "Other specialist roles", and "so the feature role implements it".
+    - Custom-role requests name `customRoles`, the commands series' key; the request file still accepts the old one.
+    - "the roles start on their own".
+- Older names, in every assembled prompt. tumwater runs on any codebase, so the pointer cannot rely on docs/glossary.md alone, which other projects' worktrees do not contain.
+  - Add one sentence to `sharedPreamble` and to the reviewer and resolver openers: "Older tumwater names still appear in code, git history and logs: <map>; docs/glossary.md in tumwater's repository lists them all."
+  - <map> is interpolated from one constant, declared on a line ending `// vocabulary-ok: maps retired names`. It reads: "loop = role, tick = run, fleet = team, landing/landed = merge/merged, vetted = approved, notebook = notes, initial prompt = brief".
+- The reviewer and resolver prompts in src/prompt/gate-prompts.ts:
+  - `You are the "<id>" role …`.
+  - "an adversarial code reviewer for tumwater, which runs a team of AI roles on this project".
+  - landing → merge, and tick → run.
+- src/prompt/prompt-followup.ts and src/prompt/dialect.ts follow the rules. src/prompt/principles.ts takes the header only.
+- src/tick/tick-prompt.ts: "role notes", and "This run's stop target …". The `telemetry` id stays for the role ids series.
+- src/tick/qa-coverage.ts: "from this team's own record".
+- src/verdict/reply-contract.ts: "When the merge gate runs the project's check, tumwater attests the numbers itself", and "or tumwater treats the whole run as a refusal".
+- Agent-facing tool text. Tool names stay.
+  - src/agent/role-notes-write.ts: "Replace this role's notes: the short note the role's own earlier runs left for the next run …", "notes cleared", and "notes saved".
+  - src/agent/mcp/role-notes-server.ts: "no notes path is configured for this run".
+  - src/pi-extension/role-notes.ts: "role notes".
+- Kept machine strings inside these templates (trailer greps, commit prefixes) come from constants with `// vocabulary-ok:`.
+
+**Files touched.**
+- src: src/prompt/prompt.ts, prompt-followup.ts, gate-prompts.ts, dialect.ts, principles.ts; src/tick/tick-prompt.ts, src/tick/qa-coverage.ts; src/verdict/reply-contract.ts; src/agent/role-notes-write.ts, src/agent/mcp/role-notes-server.ts, src/pi-extension/role-notes.ts.
+- Tests:
+  - test/prompt.test.ts, test/prompt-roles.test.ts, test/prompt-followup.test.ts, test/prompt-resume.test.ts, test/prompt-dialect.test.ts.
+  - test/gate-prompts.test.ts, test/review-verdict.test.ts, test/reply-contract.test.ts.
+  - test/tick-prompt.test.ts, test/qa-coverage.test.ts, test/role-notes.test.ts, test/role-notes-mcp.test.ts.
+  - test/loop-pi-followups.test.ts, test/revision.test.ts, test/tick-stage.test.ts.
+
+**Acceptance criteria.**
+- A test renders every assembled prompt and finds the older-names sentence exactly once in each. With the interpolated constants removed, no prompt contains a guard word. The prompts covered are each catalog role, a custom role, the director, the reviewer, the conflict resolver and each follow-up.
+- The role opener reads `You are the "feature" role (feature implementer) …`. The shared preamble spells "(found by the <role> role YYYY-MM-DD)" and "fixed YYYY-MM-DD by the <role> role".
+- The director prompt's instructions for custom roles name `customRoles`.
+- `npm run test` passes.
+
+**Landed note.** Follow-up prompts (resume, hand-off, cut-off notes) carry no older-names sentence: they continue a session whose preamble already has it, so the test asserts only that they contain no guard words. Catalog role task text and the `requires part N/M landed` dependency phrase still hold retired words (roles series); the new test scans the shared opener, preamble and rules through a custom role's prompt.
 
 ### Answering a question wakes the role that asked it: `tumwater questions answer`, the dashboard and the TUI wake the role named in the heading's `(asked by <role> …)` clause, as `plan --release` wakes the role it hands work back to (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry)
 

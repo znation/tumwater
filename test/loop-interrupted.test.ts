@@ -71,7 +71,7 @@ function seedInterruptedHandoffSession(repo: string): void {
   });
 }
 
-test("a tick cut off at the context ceiling warns, skips backoff, and resumes", async () => {
+test("a run cut off at the context ceiling warns, skips backoff, and resumes", async () => {
   const repo = await initializedRepo();
   // Replays the observed incident: mid-run text, then a thinking-only final message
   // (generation truncated by an output clamp but reported as a normal stop), then pi
@@ -89,7 +89,7 @@ test("a tick cut off at the context ceiling warns, skips backoff, and resumes", 
       assert.match(String(warning.message), /auto-compacted/);
       assert.doesNotMatch(String(warning.message), /no assistant text/);
       // The work survives in the compacted session: resume it promptly, no idle backoff.
-      assert.equal(runner.state.resumePending, true, "the next tick resumes the compacted session");
+      assert.equal(runner.state.resumePending, true, "the next run resumes the compacted session");
       assert.equal(runner.state.backoffSeconds, 0, "a cut-off is not idleness");
       assert.equal(runner.state.cutOffStreak, 1);
     },
@@ -116,16 +116,16 @@ test("cut-off resumes stop after the streak limit and fall back to backoff", asy
       }
       // Fourth consecutive cut-off: the task is not converging — give up and back off.
       assert.equal((await runner.tick()).result, "no_change");
-      assert.equal(runner.state.resumePending, false, "past the limit the loop stops resuming");
+      assert.equal(runner.state.resumePending, false, "past the limit the role stops resuming");
       assert.ok(runner.state.backoffSeconds > 0, "and backs off normally");
       const runs = fs.readFileSync(argsFile, "utf8").trim().split("\n");
-      assert.ok(!runs[0]?.includes("--continue"), "first tick was fresh");
+      assert.ok(!runs[0]?.includes("--continue"), "first run was fresh");
       for (const later of runs.slice(1)) assert.ok(later.includes("--continue"), "resumes continued the session");
     },
   );
 });
 
-test("a cut-off director tick re-queues the user prompt instead of resuming", async () => {
+test("a cut-off director run re-queues the user prompt instead of resuming", async () => {
   const repo = await initializedRepo();
   await withPi(`printf '%s\n' '${thinkingOnlyLine("was routing the request", { output: 16 })}'`, async () => {
     enqueuePrompt(repo, "add a widget");
@@ -137,7 +137,7 @@ test("a cut-off director tick re-queues the user prompt instead of resuming", as
   });
 });
 
-test("an aborted tick lands nothing, does not back off, and marks itself resumable", async () => {
+test("an aborted run lands nothing, does not back off, and marks itself resumable", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
@@ -151,11 +151,11 @@ test("an aborted tick lands nothing, does not back off, and marks itself resumab
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
     assert.equal(runner.state.backoffSeconds, 0);
     assert.ok(runner.state.nextRunAt <= Date.now(), "resumes promptly on restart");
-    assert.equal(runner.state.resumePending, true, "the next tick will resume this one");
+    assert.equal(runner.state.resumePending, true, "the next run will resume this one");
   });
 });
 
-test("a resumed tick continues the interrupted session and keeps the worktree edits", async () => {
+test("a resumed run continues the interrupted session and keeps the worktree edits", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
   await abortHungImproveTick(repo);
@@ -181,7 +181,7 @@ test("a resumed tick continues the interrupted session and keeps the worktree ed
     const run = fs.readFileSync(argsFile, "utf8").trim();
     assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
     assert.ok(!run.includes(" -n"), "no fresh session is started");
-    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the interrupted edits landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the interrupted edits merged on main");
     assert.equal(resumed.state.resumePending, false, "the flag is consumed");
     assert.equal(eventsOfType(repo, "resume").length, 1);
   } finally {
@@ -224,7 +224,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
       /uncommitted edits are in your worktree/,
       "the bridge points the fresh run at the kept edits",
     );
-    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the kept edit landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "partial.txt")), "the kept edit merged on main");
     assert.equal(resumed.state.resumePending, false, "the flag is consumed");
   } finally {
     restore();
@@ -307,7 +307,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
     assert.equal(
       resumed.state.conflictHandback?.applied,
       false,
-      "the pending hand-back is left for a fresh tick",
+      "the pending hand-back is left for a fresh run",
     );
     assert.equal(
       eventsOfType(repo, "conflict_handback").length,
@@ -327,7 +327,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
 // BUGS.md (fixed 2026-10-09): a handoff runs a FRESH session, so an already-applied conflict
 // hand-back must be re-explained — the fresh run meets the marker-bearing files in its kept
 // worktree with none of the interrupted session's context that carried the note.
-test("a cross-agent handoff re-sends an already-applied landing hand-back note", async () => {
+test("a cross-agent handoff re-sends an already-applied merge hand-back note", async () => {
   const repo = await initializedRepo();
   const argsFile = path.join(tmpdir(), "argv.log");
   await abortHungImproveTick(repo);
@@ -359,7 +359,7 @@ test("a cross-agent handoff re-sends an already-applied landing hand-back note",
     assert.equal((await resumed.tick()).result, "queued");
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the hand-back");
-    assert.match(run, /could not be landed/, "the note names the landing hand-back");
+    assert.match(run, /could not be merged/, "the note names the merge hand-back");
     assert.match(run, /partial\.txt/, "the note names the marker-bearing file");
   } finally {
     restore();
@@ -418,7 +418,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
 // whose next-tick reset discarded the run's work. The kill must now preserve session + edits,
 // resume them promptly, and name the real cause in the bridge so the session does not re-run
 // the hung command unchanged.
-test("a quiet-killed tick keeps its edits and resumes promptly instead of discarding", async (t) => {
+test("a quiet-killed run keeps its edits and resumes promptly instead of discarding", async (t) => {
   const repo = await initializedRepo();
   const config = defaultConfig();
   // The shim sleeps 30 so the watchdog owns the kill, and the kill waits (on logical time,
@@ -448,7 +448,7 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
       fs.existsSync(path.join(roleWt(repo, "improve"), "kept.txt")),
       "the edits survive the kill",
     );
-    assert.equal(runner.state.resumePending, true, "the next tick resumes this one");
+    assert.equal(runner.state.resumePending, true, "the next run resumes this one");
     assert.ok(runner.state.nextRunAt <= Date.now(), "the resume is scheduled promptly, not backed off");
     // Real time again for the resume: if its bridge regressed, the fake pi below stalls and the
     // watchdog's real 5 s window ends the run, instead of a hang on a clock nobody advances.
@@ -474,7 +474,7 @@ test("a quiet-killed tick keeps its edits and resumes promptly instead of discar
     assert.equal(await landHead(repo, resumed, config, "improve"), "changed");
     const run = fs.readFileSync(argsFile, "utf8").trim();
     assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
-    assert.ok(fs.existsSync(path.join(repo, "kept.txt")), "the kept edits landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "kept.txt")), "the kept edits merged on main");
     assert.equal(resumed.state.resumePending, false, "the flag is consumed");
   } finally {
     restore();

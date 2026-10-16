@@ -108,7 +108,7 @@ test("the MCP server initializes, lists role_notes, and writes a note through to
 
   const callResponse = responses.find((r) => r.id === 3);
   assert.equal(callResponse?.result?.isError, undefined, "a valid note is not a tool error");
-  assert.match((callResponse?.result?.content as Array<{ text: string }>)[0]!.text, /notebook saved/);
+  assert.match((callResponse?.result?.content as Array<{ text: string }>)[0]!.text, /notes saved/);
   assert.equal(fs.readFileSync(notes, "utf8"), "where things live");
 });
 
@@ -122,7 +122,7 @@ test("the MCP server rejects an oversized note as a tool error and leaves the ol
   assert.equal(fs.readFileSync(notes, "utf8"), "keep me", "the rejected call writes nothing");
 });
 
-test("the MCP server rejects a malformed text instead of clearing the notebook", async () => {
+test("the MCP server rejects a malformed text instead of clearing the notes", async () => {
   const notes = path.join(tmpdir(), "notes.md");
   fs.writeFileSync(notes, "keep me");
   const { responses } = await runServer([call(1, 123)], notes);
@@ -166,7 +166,7 @@ test("initialize falls back to the default protocol version and a call without a
   assert.match((result.content as Array<{ text: string }>)[0]!.text, /requires a string "text"/);
 });
 
-test("the server reports an unknown tool and a missing notebook path as tool errors", async () => {
+test("the server reports an unknown tool and a missing notes path as tool errors", async () => {
   const notes = path.join(tmpdir(), "notes.md");
   const { responses } = await runServer(
     [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "other", arguments: { text: "x" } } }],
@@ -179,7 +179,7 @@ test("the server reports an unknown tool and a missing notebook path as tool err
   const bare = await runServer([call(1, "x")], undefined);
   const noPath = bare.responses[0]!.result!;
   assert.equal(noPath.isError, true);
-  assert.match((noPath.content as Array<{ text: string }>)[0]!.text, /no notebook path is configured/);
+  assert.match((noPath.content as Array<{ text: string }>)[0]!.text, /no notes path is configured/);
 });
 
 test("malformed frames get the matching JSON-RPC error, one response per line", async () => {
@@ -191,7 +191,7 @@ test("malformed frames get the matching JSON-RPC error, one response per line", 
   );
 });
 
-test("a failed notebook write is a tool error and keeps the server answering", async () => {
+test("a failed notes write is a tool error and keeps the server answering", async () => {
   const notes = path.join(tmpdir(), "notes-dir");
   fs.mkdirSync(notes, { recursive: true });
   const { responses } = await runServer([call(1, "x"), { jsonrpc: "2.0", id: 2, method: "ping" }], notes);

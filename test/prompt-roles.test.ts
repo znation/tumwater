@@ -10,7 +10,7 @@ import { oneLine } from "./helpers/oracles.js";
 // telemetry, readme, clean, coverage, feature, bugfix, plan, steward) and the director's
 // routing text — the wording a specific loop carries. How prompts are assembled and the rules
 // every prompt shares stay in prompt.test.ts.
-test("buildDirectorPrompt routes work to the specialist loops instead of implementing", () => {
+test("buildDirectorPrompt routes work to the specialist roles instead of implementing", () => {
   const prompt = buildDirectorPrompt("add dark mode", "Make a CLI.");
   assert.match(prompt, /project-level command/);
   assert.match(prompt, /do NOT implement substantial\nwork yourself/);
@@ -34,7 +34,7 @@ test("the perf role hunts measured wins and refuses speculative micro-optimizati
   assert.ok(role, "perf role exists");
   assert.equal(role.title, "performance optimizer");
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /"perf" loop/);
+  assert.match(prompt, /"perf" role/);
   assert.match(prompt, /CLEAR performance win/);
   assert.match(prompt, /measure or reason from actual data/);
   assert.match(prompt, /Do NOT micro-optimize cold paths/);
@@ -45,7 +45,7 @@ test("the security role traces a reachable source-to-sink path and proves it wit
   assert.ok(role, "security role exists");
   assert.equal(role.title, "security reviewer");
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /"security" loop/);
+  assert.match(prompt, /"security" role/);
   assert.match(prompt, /Find ONE real, reachable security weakness/);
   assert.match(prompt, /Start from the trust boundaries, not from a file listing/);
   assert.match(prompt, /name the input an attacker controls, the path it travels, and the missing check/);
@@ -62,7 +62,7 @@ test("the robustness role injects a concrete fault and refuses to silence errors
   assert.ok(role, "robustness role exists");
   assert.equal(role.title, "robustness hardener");
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
-  assert.match(prompt, /"robustness" loop/);
+  assert.match(prompt, /"robustness" role/);
   assert.match(prompt, /fails halfway, returns garbage, or never returns/);
   assert.match(prompt, /write-to-temp-then-rename/);
   assert.match(prompt, /no timeout or cancellation/);
@@ -101,16 +101,16 @@ test("the director routes refusal decisions by clearing the Refused note", () =>
   const prompt = oneLine(buildDirectorPrompt("clear the refusal on plan X", "a project"));
   assert.match(prompt, /A decision about a refused entry/);
   assert.match(prompt, /clear its \*\*Refused …\*\* note from PLANS\.md\/BUGS\.md/);
-  assert.match(prompt, /so loops can pick it up again/);
+  assert.match(prompt, /so roles can pick it up again/);
 });
-test("the director routes loop-management requests to the config request file", () => {
+test("the director routes role-management requests to the config request file", () => {
   const prompt = oneLine(
-    buildDirectorPrompt("add a loop named docs-sync that keeps the README examples current", "a project"),
+    buildDirectorPrompt("add a role named docs-sync that keeps the README examples current", "a project"),
   );
-  assert.match(prompt, /A request to manage user-defined loops/);
+  assert.match(prompt, /A request to manage custom roles/);
   assert.match(prompt, /\.tumwater-config-request\.json/);
   assert.match(prompt, /\[a-z0-9_-\] no built-in role uses/);
-  assert.match(prompt, /standing per-tick instruction/);
+  assert.match(prompt, /standing per-run instruction/);
   assert.match(prompt, /array order is display\/scheduling order/);
   // Replace semantics and the worked example are pinned — a partial array would silently
   // delete loops the director forgot to repeat.
@@ -118,7 +118,7 @@ test("the director routes loop-management requests to the config request file", 
   assert.match(prompt, /"name": "docs"/);
 });
 test("the director's request-file contract replaces the tumwater.json edit exception; role prompts keep the blanket ban", () => {
-  const d = oneLine(buildDirectorPrompt("add a loop named x that does y", "a project"));
+  const d = oneLine(buildDirectorPrompt("add a role named x that does y", "a project"));
   assert.match(d, /Note on one boundary in the rules below, director only/);
   // The note precedes the shared rules so the reply contract still closes the prompt.
   assert.ok(buildDirectorPrompt("x", "y").trimEnd().endsWith("write none when nothing was run>"));
@@ -180,7 +180,7 @@ test("the qa prompt keeps servers on loopback and tracks background processes by
   assert.match(find, /track each background process by its own pid/i);
   assert.match(find, /in `cd dir && server & echo \$!`, `\$!` names the subshell, not the server/);
 });
-test("the qa prompt picks one flow per tick from the README usage menu, cheap first", () => {
+test("the qa prompt picks one flow per run from the README usage menu, cheap first", () => {
   const find = qa!.find;
   assert.match(find, /README's usage section is your menu of flows/);
   assert.match(find, /cheapest-first/);
@@ -216,7 +216,7 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
 });
 test("buildTickPrompt for qa carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: qa!, initialPrompt: "" });
-  assert.match(prompt, /"qa" loop \(product QA\)/);
+  assert.match(prompt, /"qa" role \(product QA\)/);
   assert.ok(prompt.includes(qa!.find.trim()), "the full find text is embedded");
   assert.match(prompt, /TUMWATER_NOTHING_TO_DO/);
 });
@@ -224,9 +224,9 @@ test("buildTickPrompt renders the coverage block only when one is passed", () =>
   const withCoverage = buildTickPrompt({
     role: qa!,
     initialPrompt: "",
-    coverage: "Flow coverage (from this fleet's own record; least recently exercised first):\n  init — never exercised",
+    coverage: "Flow coverage (from this team's own record; least recently exercised first):\n  init — never exercised",
   });
-  assert.ok(withCoverage.includes("Flow coverage (from this fleet's own record"));
+  assert.ok(withCoverage.includes("Flow coverage (from this team's own record"));
   assert.match(withCoverage, /init — never exercised/);
   const without = buildTickPrompt({ role: qa!, initialPrompt: "" });
   assert.ok(!without.includes("least recently exercised first"), "no coverage block when none is supplied");
@@ -240,7 +240,7 @@ test("the telemetry role exists after qa in catalog order", () => {
   assert.equal(ids[ids.indexOf("qa") + 1], "telemetry", "telemetry sits right after qa (both observers)");
   assert.equal(telemetry.title, "runtime telemetry reader");
 });
-test("the telemetry find text carries the harness-response rule, one bug, and the dedup check", () => {
+test("the telemetry find text carries tumwater-response rule, one bug, and the dedup check", () => {
   const find = oneLine(telemetry!.find);
   assert.match(find, /File ONE bug in BUGS\.md's ## Open section per run/);
   assert.match(find, /ONLY when tumwater's RESPONSE to it is wrong/);
@@ -300,7 +300,7 @@ test("the readme prompt works from the delta since its own last commit", () => {
   // Sync is need-based now: a merge that touched no user-facing surface needs no sync.
   assert.match(find, /a merge that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
 });
-test("the readme prompt forbids per-tick landing narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
+test("the readme prompt forbids per-run merge narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
   const find = oneLine(readme!.find);
   // Listed under "Keep these out of the status section" — the heading states the ban once.
   assert.match(find, /Keep these out of the status section: .* - Per-run merge narrative: merges are recorded/);
@@ -323,7 +323,7 @@ test("the readme prompt keeps the brief short and moves detail into linked docs"
 });
 test("buildTickPrompt for readme carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: readme!, initialPrompt: "" });
-  assert.match(prompt, /"readme" loop \(README maintainer\)/);
+  assert.match(prompt, /"readme" role \(README maintainer\)/);
   assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
 });
 test("the clean role names the suite's unused-export check instead of hunting internal-only exports", () => {
@@ -366,7 +366,7 @@ test("role prompts and the reply contract name npm only inside a generic instruc
   const block = oneLine(SUMMARY_BLOCK);
   assert.doesNotMatch(block, /"npm test/);
 });
-test("the feature role reads its plan from the injected index, matches the reviewer's plan check, and hands oversized plans to the plan loop", () => {
+test("the feature role reads its plan from the injected index, matches the reviewer's plan check, and hands oversized plans to the plan role", () => {
   const find = oneLine(roleById("feature")!.find);
   assert.match(find, /The prompt's <backlog-index> block lists PLANS\.md's `## Planned` entries/);
   assert.match(find, /read only the chosen entry's line range and the code it names/i);

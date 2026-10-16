@@ -60,7 +60,7 @@ test("abort validates its arguments before touching anything", async () => {
 
 test("abort refuses when tumwater is not running — missing or stale info file alike", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli abort no harness");
+  await initProject(repo, "cli abort no tumwater");
 
   // No orchestrator info at all: nothing would consume the marker.
   let r = await cli(repo, "abort", "--role", "feature");
@@ -81,7 +81,7 @@ test("abort refuses when tumwater is not running — missing or stale info file 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
-test("abort drops a per-role marker for a live harness and reports it", async () => {
+test("abort drops a per-role marker for a live tumwater and reports it", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli abort live");
 
@@ -147,7 +147,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
 // test/orchestrator.e2e.test.ts; here we pin what the CLI itself does: idempotency, messaging,
 // and the marker it writes/removes.
 
-test("pause and resume are idempotent with no harness running", async () => {
+test("pause and resume are idempotent with no tumwater running", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli pause resume");
   const marker = pausedPath(repo);
@@ -252,7 +252,7 @@ test("pause --for writes a timed marker and resume lifts it early", async () => 
   assert.equal(fs.existsSync(pausedPath(repo)), false);
 });
 
-test("pause and resume name the live effect when a harness is running", async () => {
+test("pause and resume name the live effect when a tumwater is running", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli pause live");
 
@@ -274,7 +274,7 @@ test("pause and resume name the live effect when a harness is running", async ()
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
-test("pause and resume accept --role to gate one loop, with per-role wording and markers", async () => {
+test("pause and resume accept --role to gate one role, with per-role wording and markers", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli pause role");
   const marker = path.join(repo, ".tumwater", "state", "paused-roles.json");
@@ -285,7 +285,7 @@ test("pause and resume accept --role to gate one loop, with per-role wording and
   assert.match(r.stdout, /role clean paused/);
   assert.match(r.stdout, /the rest of the team is unaffected/);
   assert.ok(fs.existsSync(marker), "the per-role marker is written");
-  assert.ok(!fs.existsSync(pausedPath(repo)), "the fleet marker is untouched");
+  assert.ok(!fs.existsSync(pausedPath(repo)), "the team marker is untouched");
 
   // Idempotent with distinct wording, like the fleet-wide form.
   r = await cli(repo, "pause", "--role", "clean");
@@ -315,7 +315,7 @@ test("pause and resume accept --role to gate one loop, with per-role wording and
 // test/tick-prompt.test.ts pin the unit halves): an inspection must never consume a queued
 // prompt.
 
-test("role prints one loop's standing prompt, and a queued prompt survives inspection", async () => {
+test("role prints one role's standing prompt, and a queued prompt survives inspection", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role inspection");
 
@@ -345,35 +345,35 @@ test("role prints one loop's standing prompt, and a queued prompt survives inspe
   assert.match(payload.nextPrompt, /check the scheduler first/);
 });
 
-test("role --clear-notes and --notes-file write the loop's notebook", async () => {
+test("role --clear-notes and --notes-file write the role's notes", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli role notes");
   const notes = roleNotesPath(repo, "feature");
   const file = path.join(repo, "n.md");
-  fs.writeFileSync(file, "use fleet.ts");
+  fs.writeFileSync(file, "use team.ts");
 
   let r = await cli(repo, "role", "feature", "--notes-file", file);
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: notebook saved/);
-  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+  assert.match(r.stdout, /feature: notes saved/);
+  assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
   r = await cli(repo, "role", "feature");
-  assert.match(r.stdout, /use fleet\.ts/);
+  assert.match(r.stdout, /use team\.ts/);
 
   fs.writeFileSync(notes, "old");
   r = await cli(repo, "role", "--notes-file", file, "feature");
   assert.equal(r.code, 0);
-  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+  assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
 
   const big = path.join(repo, "big.md");
   fs.writeFileSync(big, "x".repeat(4097));
   r = await cli(repo, "role", "feature", "--notes-file", big);
   assert.equal(r.code, 1);
   assert.match(r.stderr, /shorten it to at most 4096 bytes/);
-  assert.equal(fs.readFileSync(notes, "utf8"), "use fleet.ts");
+  assert.equal(fs.readFileSync(notes, "utf8"), "use team.ts");
 
   r = await cli(repo, "role", "feature", "--clear-notes");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /feature: notebook cleared/);
+  assert.match(r.stdout, /feature: notes cleared/);
   assert.equal(fs.readFileSync(notes, "utf8"), "");
   r = await cli(repo, "role", "feature", "--json");
   assert.equal((JSON.parse(r.stdout) as { note: string | null }).note, null);

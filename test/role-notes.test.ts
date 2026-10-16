@@ -28,7 +28,7 @@ function registerTool(): RegisteredTool {
   const registered: RegisteredTool[] = [];
   const api = { registerTool: (tool: RegisteredTool) => registered.push(tool) };
   roleNotesExtension(api as unknown as Parameters<typeof roleNotesExtension>[0]);
-  assert.equal(registered.length, 1, "the tool registers when a notebook path is set");
+  assert.equal(registered.length, 1, "the tool registers when a notes path is set");
   return registered[0]!;
 }
 
@@ -107,7 +107,7 @@ test("the extension registers no tool when TUMWATER_NOTES_PATH is unset", () => 
   withEnv("TUMWATER_NOTES_PATH", undefined, () => {
     roleNotesExtension(api as unknown as Parameters<typeof roleNotesExtension>[0]);
   });
-  assert.equal(registered.length, 0, "no notebook path means the tool never registers");
+  assert.equal(registered.length, 0, "no notes path means the tool never registers");
 });
 
 test("the registered tool names role_notes and carries a text parameter schema", () => {
@@ -127,7 +127,7 @@ test("executing role_notes replaces the note and rejects an oversized one withou
   try {
     const tool = registerTool();
     const saved = await tool.execute("call-1", { text: "where things live" });
-    assert.match(saved.content[0]!.text, /notebook saved/);
+    assert.match(saved.content[0]!.text, /notes saved/);
     assert.equal(fs.readFileSync(notes, "utf8"), "where things live");
 
     await assert.rejects(
@@ -144,7 +144,7 @@ test("executing role_notes replaces the note and rejects an oversized one withou
     assert.equal(fs.readFileSync(notes, "utf8"), "where things live", "a malformed call leaves the old one intact");
 
     const cleared = await tool.execute("call-3", { text: "" });
-    assert.match(cleared.content[0]!.text, /notebook cleared/);
+    assert.match(cleared.content[0]!.text, /notes cleared/);
     assert.equal(fs.readFileSync(notes, "utf8"), "");
   } finally {
     restoreNotes();

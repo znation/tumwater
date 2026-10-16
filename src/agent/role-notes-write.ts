@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * The one write path for a role's notebook, shared by the two agent-facing surfaces: the
  * bundled pi extension (src/pi-extension/role-notes.ts) and claude's stdio MCP server
@@ -31,8 +32,8 @@ export const ROLE_NOTES_PARAMETERS = {
 /** The human-facing description both surfaces carry: what the note is for, its cap, and the
  * replacement/clear semantics. */
 export const ROLE_NOTES_DESCRIPTION =
-  `Replace this role's notebook: the short note the role's own earlier ticks left for the ` +
-  `next tick (where things live, what was ruled out, what to look at next; at most ` +
+  `Replace this role's notes: the short note the role's own earlier runs left for the ` +
+  `next run (where things live, what was ruled out, what to look at next; at most ` +
   `${ROLE_NOTES_MAX_BYTES} bytes). Pass the full replacement text; empty text clears it.`;
 
 /** Validate note text against the byte cap. Returns null when the text is acceptable, or an
@@ -70,5 +71,5 @@ export function saveRoleNote(notesPath: string, text: unknown): string {
   const error = validateRoleNote(text);
   if (error) throw new Error(error);
   writeRoleNote(notesPath, text);
-  return text === "" ? "notebook cleared" : `notebook saved (${Buffer.byteLength(text, "utf8")} bytes)`;
+  return text === "" ? "notes cleared" : `notes saved (${Buffer.byteLength(text, "utf8")} bytes)`;
 }

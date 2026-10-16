@@ -54,13 +54,13 @@ function promptFor(
   });
 }
 
-test("a role tick prompt embeds the brief, principles, and the role's task — with no user prompt", () => {
+test("a role run prompt embeds the brief, principles, and the role's task — with no user prompt", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PRINCIPLES.md"), "Small beats big.\n");
   const result = promptFor(dir, "coverage");
   assert.ok(result);
   assert.equal(result.userPrompt, null);
-  assert.match(result.prompt, /You are the "coverage" loop/);
+  assert.match(result.prompt, /You are the "coverage" role/);
   assert.match(result.prompt, /<project-prompt>\nBuild a tiny thing\.\nWith care\.\n<\/project-prompt>/);
   assert.match(result.prompt, /<principles>\nSmall beats big\.\n<\/principles>/);
   // The brief rule names the resolved file, the README compatibility default here.
@@ -127,11 +127,11 @@ test("a director's prompt is built from the dequeued request, returned as userPr
   const result = promptFor(dir, DIRECTOR_ROLE);
   assert.ok(result);
   assert.equal(result.userPrompt, "prefer no third-party deps");
-  assert.match(result.prompt, /You are the "director" loop/);
+  assert.match(result.prompt, /You are the "director" role/);
   assert.match(result.prompt, /prefer no third-party deps/);
 });
 
-test("a role tick prompt injects the rendered <backlog-index> block from the primary checkout", () => {
+test("a role run prompt injects the rendered <backlog-index> block from the primary checkout", () => {
   const dir = root();
   fs.writeFileSync(
     path.join(dir, "BUGS.md"),
@@ -177,7 +177,7 @@ test("the plan prompt counts only takeable entries and marks the blocked ones in
 // The role notebook (PLANS.md "Role notebook"): the tick reads the role's note file from disk.
 // A missing file omits the block; the standing write instruction rides either way. The
 // director's branch never reads the path, so its prompt carries neither.
-test("a role tick prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
+test("a role run prompt reads the note from roleNotesPath, and omits the block when there is none", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "coverage");
   fs.mkdirSync(path.dirname(notes), { recursive: true });
@@ -197,7 +197,7 @@ test("a role tick prompt reads the note from roleNotesPath, and omits the block 
 // The notebook is bounded on read too: the tool caps writes at ROLE_NOTES_MAX_BYTES, but the
 // file is hand-editable runtime state, so an over-long one must not ride into every prefill.
 // A note at the cap (a byte is never fewer than a character) is untouched.
-const NOTE_TRUNCATION_MARKER = `…[role notebook truncated at ${ROLE_NOTES_MAX_BYTES} chars]`;
+const NOTE_TRUNCATION_MARKER = `…[role notes truncated at ${ROLE_NOTES_MAX_BYTES} chars]`;
 test("an over-long role note is truncated into the prompt with a visible marker", () => {
   const dir = root();
   const notes = roleNotesPath(dir, "coverage");
@@ -243,7 +243,7 @@ test("a bugfix instance's claim names the bug's line range from BUGS.md", () => 
   assert.match(result.prompt, /BUGS\.md lines 3-4/);
 });
 
-test("an unknown role throws — the fleet cannot run a prompt with no task", () => {
+test("an unknown role throws — the team cannot run a prompt with no task", () => {
   assert.throws(
     () =>
       promptFor(root(), "nonexistent"),
@@ -256,7 +256,7 @@ test("a custom role's task is its find-something-to-do text, titled by its name"
   config.customRoles = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
   const result = promptFor(root(), "changelog", { config });
   assert.ok(result);
-  assert.match(result.prompt, /You are the "changelog" loop/);
+  assert.match(result.prompt, /You are the "changelog" role/);
   assert.match(result.prompt, /Your task this run:\nKeep CHANGELOG\.md current\./);
 });
 
@@ -286,7 +286,7 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
   );
   const result = promptFor(dir, "qa");
   assert.ok(result);
-  assert.match(result.prompt, /Flow coverage \(from this fleet's own record; least recently exercised first\)/);
+  assert.match(result.prompt, /Flow coverage \(from this team's own record; least recently exercised first\)/);
   assert.match(result.prompt, /status — .* ago, passed/);
   assert.match(result.prompt, /init — never exercised/);
 });
@@ -298,7 +298,7 @@ test("the telemetry role's prompt carries the failure digest rendered from its e
   ]);
   const result = promptFor(dir, "telemetry");
   assert.ok(result);
-  assert.match(result.prompt, /Runtime failure digest of this harness's own event log/);
+  assert.match(result.prompt, /Runtime failure digest of tumwater's own event log/);
   assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
   // The digest is the telemetry role's evidence block, not the coverage ledger's.
   assert.doesNotMatch(result.prompt, /Flow coverage/);
@@ -311,7 +311,7 @@ test("a role other than qa or telemetry gets neither evidence block", () => {
   assert.doesNotMatch(result.prompt, /<failure-digest>/);
 });
 
-test("a rejected review rides along on the next tick's prompt, reasons intact", () => {
+test("a rejected review rides along on the next run's prompt, reasons intact", () => {
   const result = promptFor(root(), "feature", {
     state: { lastReview: { verdict: "reject", reasons: ["the test lies about coverage"], at: 1 } },
   });
@@ -319,7 +319,7 @@ test("a rejected review rides along on the next tick's prompt, reasons intact", 
   assert.match(result.prompt, /the test lies about coverage/);
 });
 
-test("an exhausted feature rejection carries the replan instruction on the next tick", () => {
+test("an exhausted feature rejection carries the replan instruction on the next run", () => {
   const result = promptFor(root(), "feature", {
     state: { lastReview: { verdict: "reject", reasons: ["still wrong"], at: 1, exhausted: true } },
   });
@@ -356,7 +356,7 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
 // The note must carry the rejection's timestamp and head: an undated verdict rides every later
 // prompt as if fresh even after main satisfied the objection, because the paths that never
 // reach a model review leave lastReview standing (BUGS.md, undated rejection note).
-test("the rejected-review note on the next tick's prompt is dated and names the reviewed head", () => {
+test("the rejected-review note on the next run's prompt is dated and names the reviewed head", () => {
   const result = promptFor(root(), "feature", {
     state: {
       lastReview: {
@@ -383,7 +383,7 @@ test("a conflict discard note rides along, with its attempt count", () => {
 test("a cut-off streak appends the cut-off note naming the streak", () => {
   const result = promptFor(root(), "feature", { state: { cutOffStreak: 2 } });
   assert.ok(result);
-  assert.match(result.prompt, /Your previous 2 runs as this loop ran out of context/);
+  assert.match(result.prompt, /Your previous 2 runs as this role ran out of context/);
 });
 
 test("notes compose in order — review rejection, then discard, then cut-off — after the base prompt", () => {
@@ -408,7 +408,7 @@ test("notes compose in order — review rejection, then discard, then cut-off �
   assert.ok(base >= 0 && reject > base && discard > reject && cut > discard, "notes must follow the base prompt in order");
 });
 
-test("a clean state appends none of the cross-tick notes", () => {
+test("a clean state appends none of the cross-run notes", () => {
   const result = promptFor(root(), "feature");
   assert.ok(result);
   // The only place the note texts appear is the appended tail; a clean tick must carry none.
@@ -417,7 +417,7 @@ test("a clean state appends none of the cross-tick notes", () => {
   assert.doesNotMatch(tail, /ran out of context/);
 });
 
-test("the brief's initial prompt survives an over-long hand edit via the truncation backstop", () => {
+test("the brief's brief survives an over-long hand edit via the truncation backstop", () => {
   const dir = tmpdir();
   const long = "x".repeat(5_000);
   fs.writeFileSync(
@@ -495,7 +495,7 @@ _None yet._
 **Goal.** It waited here for hours.
 `;
 
-test("a clean tick's prompt carries the <backlog-structure> block for a stranded PLANS.md", () => {
+test("a clean run's prompt carries the <backlog-structure> block for a stranded PLANS.md", () => {
   const dir = root();
   fs.writeFileSync(path.join(dir, "PLANS.md"), STRANDED_PLANS);
   const result = promptFor(dir, "clean");
@@ -503,7 +503,7 @@ test("a clean tick's prompt carries the <backlog-structure> block for a stranded
   assert.match(result.prompt, /<backlog-structure>\n-\s*\(now under ## Done\) Timed pause support \(planned 2026-09-25\)\n<\/backlog-structure>/);
 });
 
-test("a clean tick on a clean PLANS.md has no <backlog-structure> block", () => {
+test("a clean run on a clean PLANS.md has no <backlog-structure> block", () => {
   const dir = root();
   fs.writeFileSync(
     path.join(dir, "PLANS.md"),
@@ -549,7 +549,7 @@ test("preview mode assembles the queued prompt without consuming it", () => {
   assert.equal(inboxSize(dir, "coverage"), 0);
 });
 
-test("an instance loop id runs its base role's charter and instructions", () => {
+test("an instance role id runs its base role's charter and instructions", () => {
   const dir = root();
   const config = defaultConfig();
   config.roles.feature = {
@@ -558,7 +558,7 @@ test("an instance loop id runs its base role's charter and instructions", () => 
   };
   const result = promptFor(dir, "feature-2", { config });
   assert.ok(result);
-  assert.match(result.prompt, /You are the "feature" loop/);
+  assert.match(result.prompt, /You are the "feature" role/);
   assert.match(result.prompt, /Prefer the smallest diff\./);
 });
 

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The machine-detectable half of the reply contract every pi run must follow: the
  * TUMWATER_NOTHING_TO_DO sentinel a loop emits when it found nothing to do, the
  * TUMWATER_REFUSED line a loop emits when it declines its task, and the review gate's VERDICT
@@ -31,8 +32,8 @@ change rejected; a small, correct change is welcome:
 - Back each universal word — "all", "every", "only", "none remain", "untested", "byte-identical",
   "unchanged" — with the check that proves it (a grep over the source, the tests, and the docs;
   a diff), or drop the word.
-- Never state test or suite counts: say what you ran and what you saw. When the landing gate runs
-  the project's check, the harness attests the numbers itself.
+- Never state test or suite counts: say what you ran and what you saw. When the merge gate runs
+  the project's check, tumwater attests the numbers itself.
 - Verify after your LAST edit, per "Leave the project working" above: an edit made after the last
   green run is unverified, so verify again before you end. Order your work so the final
   verification comes after your last edit, backlog files included.`;
@@ -60,7 +61,7 @@ export const REFUSED_SENTINEL = "TUMWATER_REFUSED";
 export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the change, at most 72 characters>
   WHY: <why the change was made — one or two sentences>
   RISK: <what could break and where to look if it does>
-  VERIFIED: <what you ran and observed beyond the suite total (the harness attests the counts), e.g. "the project's check; repro script showed X before, Y after" — write none when nothing was run>`;
+  VERIFIED: <what you ran and observed beyond the suite total (tumwater attests the counts), e.g. "the project's check; repro script showed X before, Y after" — write none when nothing was run>`;
 
 /** The reply contract's closing rule: the three mutually exclusive ways a run ends, with the
  * exact SUMMARY/WHY/RISK/VERIFIED block git/commit-message.ts parses into the commit message as the
@@ -78,7 +79,7 @@ export const REPLY_ENDINGS = `- End with exactly ONE of these three endings:
   2. You refused the task (and recorded its **Refused …** note): end with the line
      ${REFUSED_SENTINEL}: <the same one-line reason>
      Use this line ONLY when refusing — never in any other reply, not even as
-     "${REFUSED_SENTINEL}: none", or the harness treats the whole tick as a refusal.
+     "${REFUSED_SENTINEL}: none", or tumwater treats the whole run as a refusal.
   3. You made changes: end your reply with this block, one line each:
 ${SUMMARY_BLOCK.replace(/^ {2}/gm, "     ")}`;
 

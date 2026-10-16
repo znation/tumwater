@@ -31,7 +31,7 @@ test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
   const role = roleById("coverage");
   assert.ok(role);
   const prompt = buildTickPrompt({ role, initialPrompt: "Make a CLI.", extraInstructions: "Prefer vitest." });
-  assert.match(prompt, /"coverage" loop/);
+  assert.match(prompt, /"coverage" role/);
   assert.match(prompt, /Make a CLI\./);
   assert.match(prompt, /Prefer vitest\./);
   assert.match(prompt, new RegExp(NOTHING_TO_DO));
@@ -42,17 +42,17 @@ test("buildTickPrompt includes role, project prompt, rules, and extras", () => {
 test("every catalog role produces a prompt mentioning its id", () => {
   for (const role of ROLES) {
     const prompt = buildTickPrompt({ role, initialPrompt: "" });
-    assert.match(prompt, new RegExp(`"${role.id}" loop`));
+    assert.match(prompt, new RegExp(`"${role.id}" role`));
   }
 });
 
 // The role notebook (PLANS.md "Role notebook"): the tick prompt shows the role's earlier note
 // when there is one, and ALWAYS carries the instruction to write one — the first tick has no
 // note yet, so an instruction that lived only in the content block would never seed it.
-test("a role's tick prompt carries the role-notes block only when a note exists", () => {
+test("a role's run prompt carries the role-notes block only when a note exists", () => {
   const role = roleById("feature")!;
-  const withNote = buildTickPrompt({ role, initialPrompt: "", notes: "the scheduler lives in fleet.ts" });
-  assert.match(withNote, /<role-notes>\nthe scheduler lives in fleet\.ts\n<\/role-notes>/);
+  const withNote = buildTickPrompt({ role, initialPrompt: "", notes: "the scheduler lives in team.ts" });
+  assert.match(withNote, /<role-notes>\nthe scheduler lives in team\.ts\n<\/role-notes>/);
   assert.match(withNote, /yours, unverified/);
   for (const empty of [undefined, "", "   \n"]) {
     const prompt = buildTickPrompt({ role, initialPrompt: "", notes: empty });
@@ -60,7 +60,7 @@ test("a role's tick prompt carries the role-notes block only when a note exists"
   }
 });
 
-test("every role tick is told to write a note, even the first one with none", () => {
+test("every role run is told to write a note, even the first one with none", () => {
   const role = roleById("feature")!;
   const prompt = buildTickPrompt({ role, initialPrompt: "" });
   assert.match(prompt, /call role_notes with\nthe full replacement note/);
@@ -80,7 +80,7 @@ test("the director prompt never carries the role-notes block or instruction", ()
 // remedy (the borrowed install lives at the repo root). BUGS.md 2026-09-29: the rule also
 // keeps every command — the suite above all — out of the primary checkout, whose relative
 // path must actually be the repo root (the old "two levels up" named .tumwater/ instead).
-test("every tick prompt keeps its commands inside the worktree and out of the primary checkout", () => {
+test("every run prompt keeps its commands inside the worktree and out of the primary checkout", () => {
   const role = roleById("bugfix");
   assert.ok(role);
   // An npm check: the node_modules borrowing sentence is only true of an npm project — it
@@ -93,7 +93,7 @@ test("every tick prompt keeps its commands inside the worktree and out of the pr
   assert.match(prompt, /Stay inside your worktree: run commands from it/);
   // Scratch directories stay allowed (qa follows the README in one, bugfix reproduces there).
   assert.match(oneLine(prompt), /or from a scratch directory under the system temp\. - Other agents run concurrently[^-]*- Never cd to the repo root \(`\.\.\/\.\.\/\.\.`\)/);
-  assert.match(oneLine(prompt), /its dist\/ is the code the running fleet executes — never build, test, or edit files in that checkout/);
+  assert.match(oneLine(prompt), /its dist\/ is the code the running team executes — never build, test, or edit files in that checkout/);
   assert.match(prompt, /find \/\`/);
   assert.ok(prompt.includes("(`../../../node_modules`)"), "the install's path from the worktree");
   assert.ok(!prompt.includes("`../../node_modules`"), "not the old path, which named .tumwater/");
@@ -116,13 +116,13 @@ test("every tick prompt keeps its commands inside the worktree and out of the pr
   assert.ok(!none.includes("node_modules"));
 });
 
-test("tick and director prompts share one worktree + initial-prompt preamble", () => {
+test("run and director prompts share one worktree + initial-prompt preamble", () => {
   const role = roleById("coverage");
   assert.ok(role);
   // Both builders spread sharedPreamble(initialPrompt); a reworded copy in either would
   // fail these includes() checks.
   const shared = [
-    "You work in a dedicated git worktree of this project; your changes will be committed and merged to main by the harness after you finish.",
+    "You work in a dedicated git worktree of this project; your changes will be committed and merged to main by tumwater after you finish.",
     "<project-prompt>\nMake a CLI.\n</project-prompt>",
   ];
   const prompts = [
@@ -171,7 +171,7 @@ test("readPrinciples clips a runaway file at the cap with a note", () => {
   assert.match(text, new RegExp(`truncated at ${PRINCIPLES_MAX_CHARS} chars`));
 });
 
-test("tick and director prompts inject principles verbatim in a <principles> block", () => {
+test("run and director prompts inject principles verbatim in a <principles> block", () => {
   const role = roleById("coverage");
   assert.ok(role);
   const principles = "# Principles\n- prefer small changes";
@@ -195,7 +195,7 @@ test("prompts omit the <principles> block when the project has none", () => {
   }
 });
 
-test("every loop prompt keeps PRINCIPLES.md read-only for non-director/steward roles", () => {
+test("every role prompt keeps PRINCIPLES.md read-only for non-director/steward roles", () => {
   const role = roleById("feature");
   assert.ok(role);
   const prompt = buildTickPrompt({ role, initialPrompt: "" });
@@ -255,17 +255,17 @@ test("both prompt builders name the resolved brief file instead of a hardcoded R
   assert.ok(role);
   const tick = oneLine(buildTickPrompt({ role, initialPrompt: "", briefFile: "TUMWATER.md" }));
   assert.match(tick, /First read the project brief \(TUMWATER\.md\) in full/);
-  assert.match(tick, /Never edit the initial prompt block in TUMWATER\.md/);
+  assert.match(tick, /Never edit the brief block in TUMWATER\.md/);
   assert.ok(!tick.includes("in README.md"), `no README.md left in the rules: ${tick.includes("README.md")}`);
 
   const director = oneLine(buildDirectorPrompt("add x", "a project", undefined, undefined, "TUMWATER.md"));
   assert.match(director, /First read the project brief \(TUMWATER\.md\) in full/);
-  assert.match(director, /Never edit the initial prompt block in TUMWATER\.md/);
+  assert.match(director, /Never edit the brief block in TUMWATER\.md/);
 
   // Omitted briefFile keeps the README.md compatibility default in both builders.
   const directorDefault = oneLine(buildDirectorPrompt("add x", "a project"));
   assert.match(directorDefault, /First read the project brief \(README\.md\) in full/);
-  assert.match(directorDefault, /Never edit the initial prompt block in README\.md/);
+  assert.match(directorDefault, /Never edit the brief block in README\.md/);
 });
 
 test("every role prompt carries the ask-don't-guess rule", () => {
@@ -427,7 +427,7 @@ test("the readme role syncs from the git delta since its own last commit", () =>
 // now states the local day once; tick and director (the roles that write dated records) are also
 // told to date them from it. An explicit `today` pins the date so these checks are exact.
 
-test("every tick, director, conflict, and review prompt states the given date exactly once", () => {
+test("every run, director, conflict, and review prompt states the given date exactly once", () => {
   const today = "2031-02-03";
   const line = "Today's date is 2031-02-03 (local time).";
   const role = roleById("bugfix");
@@ -447,7 +447,7 @@ test("every tick, director, conflict, and review prompt states the given date ex
   for (const p of loopPrompts) {
     assert.match(
       oneLine(p),
-      /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md or PLANS\.md heading's "\(found by … YYYY-MM-DD\)", a Fixed or Done date, a Refused or Needs-review note — and count plan deadlines from it; never infer the date from the repo\./,
+      /Today's date is 2031-02-03 \(local time\)\. Stamp it on anything you record now — a new BUGS\.md heading ends "\(found by the <role> role YYYY-MM-DD\)", a closing date reads "— fixed YYYY-MM-DD by the <role> role", a new PLANS\.md heading reads "\(planned YYYY-MM-DD by the <role> role …\)", and a Refused or Needs-review note carries the date too — and count plan deadlines from it; never infer the date from the repo\./,
     );
   }
   // The verdict contract survives the extra line: still exactly the two advertised forms.
@@ -458,7 +458,7 @@ test("every tick, director, conflict, and review prompt states the given date ex
 // vitest killed the compiled tests mid-run. Every prompt whose run may run tests says not to: the
 // tick and director rules (right after the verify bullet), the conflict resolver, and the
 // reviewer, with or without a verified pre-check — one shared bullet, stated once in each.
-test("every tick, director, conflict, and review prompt carries the test-runner rule exactly once", () => {
+test("every run, director, conflict, and review prompt carries the test-runner rule exactly once", () => {
   const prompts = [
     ...ROLES.map((role) => buildTickPrompt({ role, initialPrompt: "" })),
     buildDirectorPrompt("add x", "a project"),
@@ -499,11 +499,11 @@ test("an omitted date defaults to todayStamp's local day — the daily budget wi
 
 // --- User-defined loops (plans/user-defined-loops.md) ---
 
-test("a user-defined loop's tick prompt identifies it and carries its task as the run task", () => {
+test("a user-defined role's run prompt identifies it and carries its task as the run task", () => {
   const role = customRole("docs-auditor", "Keep the docs current.");
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   // The title is what identifies the loop inside its own prompt and commit context.
-  assert.match(prompt, /"docs-auditor" loop \(custom role\)/);
+  assert.match(prompt, /"docs-auditor" role \(custom role\)/);
   // The task IS the role-specific find-something-to-do text — no catalog prose around it.
   assert.ok(prompt.includes("Keep the docs current."), "the task rides in as the run's task");
   // COMMON_RULES ride along with every tick prompt — including the blanket tumwater.json ban
@@ -525,7 +525,7 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
   const feature = roleById("feature");
   assert.ok(feature);
   const p = oneLine(buildTickPrompt({ role: feature, initialPrompt: "" }));
-  assert.match(p, /"feature" loop \(feature implementer\)/);
+  assert.match(p, /"feature" role \(feature implementer\)/);
 });
 
 // a queued per-role prompt renders as a clearly labeled block
@@ -534,7 +534,7 @@ test("buildTickPrompt renders a per-role user request as a labeled block", () =>
   const role = roleById("qa");
   assert.ok(role);
   const withRequest = buildTickPrompt({ role, initialPrompt: "", userRequest: "check the flow\nend to end" });
-  assert.match(withRequest, /An explicit request from the user, aimed at this loop/);
+  assert.match(withRequest, /An explicit request from the user, aimed at this role/);
   assert.match(withRequest, /<user-request>\ncheck the flow\nend to end\n<\/user-request>/);
   // With nothing queued the block is absent entirely — no empty scaffolding.
   const without = buildTickPrompt({ role, initialPrompt: "" });
@@ -558,7 +558,7 @@ test("every authoring prompt carries the claim-discipline rules ahead of the rep
     // No presumption that a check or a reviewer exists: verification points at the check-aware
     // "Leave the project working" bullet, and a doc-only diff skips the review gate.
     assert.match(flat, /Verify after your LAST edit, per "Leave the project working" above/);
-    assert.ok(!flat.includes("the harness runs the check and attests"), "no claim that a check always runs");
+    assert.ok(!flat.includes("tumwater runs the check and attests"), "no claim that a check always runs");
     assert.ok(prompt.indexOf(CLAIMS_RULE) < prompt.indexOf("How to end your reply"), `${role.id}: rules precede the ending`);
   }
   assert.ok(buildDirectorPrompt("add x", "a project").includes(CLAIMS_RULE), "the director carries them too");
@@ -567,7 +567,7 @@ test("every authoring prompt carries the claim-discipline rules ahead of the rep
 
 test("the three endings are one shared list, used by fresh and resumed runs alike", () => {
   const tick = buildTickPrompt({ role: roleById("bugfix")!, initialPrompt: "" });
-  assert.ok(tick.includes(REPLY_ENDINGS), "tick prompt carries the shared list");
+  assert.ok(tick.includes(REPLY_ENDINGS), "run prompt carries the shared list");
   assert.ok(buildDirectorPrompt("x", "y").includes(REPLY_ENDINGS), "director prompt carries it");
   for (const cause of ["restart", "cut-off", "hung-tool", "timeout", "budget-resumed"] as const) {
     const resume = buildResumePrompt("clean", cause);
@@ -579,7 +579,7 @@ test("the three endings are one shared list, used by fresh and resumed runs alik
   assert.match(flat, /make no changes, and end your reply with the line TUMWATER_NOTHING_TO_DO — anything your task asks you to report \(an answer, a FLOW line\) goes above it/);
   assert.ok(!flat.includes("reply with the single line"));
 });
-test("the ask rule tells every loop to check QUESTIONS.md for answers at the start of each tick", () => {
+test("the ask rule tells every role to check QUESTIONS.md for answers at the start of each run", () => {
   const flat = oneLine(buildTickPrompt({ role: roleById("feature")!, initialPrompt: "" }));
-  assert.match(flat, /check QUESTIONS\.md for answers at the start of each tick and act on one that unblocks your work/);
+  assert.match(flat, /check QUESTIONS\.md for answers at the start of each run and act on one that unblocks your work/);
 });

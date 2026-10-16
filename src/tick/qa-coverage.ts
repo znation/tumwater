@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { qaCoveragePath } from "../paths.js";
 import { isJsonObject } from "../files/json-object.js";
@@ -124,7 +125,7 @@ export function renderCoverageBlock(coverage: QaCoverage, now: number = Date.now
     return `  ${name} — ${age} ago, ${status}`;
   });
   return [
-    "Flow coverage (from this fleet's own record; least recently exercised first):",
+    "Flow coverage (from this team's own record; least recently exercised first):",
     ...lines,
   ].join("\n");
 }
