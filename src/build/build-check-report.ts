@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Pure formatting and description of a build check's failure output — split out of
  * build-check.ts, which keeps the execution side (detect → run → classify, the toolchain
  * probe, the process-group runner). This module turns a check's raw combined output and a
@@ -123,11 +124,11 @@ export function checkFailureReasons(check: BuildCheck, outcome: BuildCheckOutcom
   // failure that never happened (BUGS.md 2026-09-28). The empty-tail fallback keeps the safe
   // default should a remap ever lose its reason line.
   if (outcome.unverified) {
-    return tail.length > 0 ? tail : [`build check failed (${describeCheck(check)})`];
+    return tail.length > 0 ? tail : [`check failed (${describeCheck(check)})`];
   }
   const headline = failureHeadline(tail);
   const what = describeCheck(check);
   return headline !== undefined
-    ? [`build check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
-    : [`build check failed (${what})`];
+    ? [`check failed (${what}): ${headline}`, ...tail.filter((l) => l !== headline)]
+    : [`check failed (${what})`];
 }

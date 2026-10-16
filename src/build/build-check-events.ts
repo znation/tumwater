@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The presentation half of the build check: the scope vocabulary, the environmental-skip
  * warning's wording, and the build_check event's shape. Split out of build-check.ts — which
  * keeps the deterministic execution and classification (detect → spawn → classify) — because
@@ -50,11 +51,11 @@ export function owesCleanRetry(first: BuildCheckOutcome): boolean {
  * are identical apart from these words, so keying them on the scope keeps each surface's feed
  * line byte-for-byte what it is today. */
 export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
-  gate: { label: "build check", proceeding: "proceeding to model review" },
-  landing: { label: "landing build check", proceeding: "proceeding to merge" },
+  gate: { label: "check", proceeding: "proceeding to model review" },
+  landing: { label: "merge check", proceeding: "proceeding to merge" },
   // The batch's next step after the check is the fast-forward — the same phrase the landing
   // scope uses (gate says "proceeding to model review" because its next step is the reviewer).
-  batch: { label: "batch build check", proceeding: "proceeding to merge" },
+  batch: { label: "batch check", proceeding: "proceeding to merge" },
 };
 
 /** Scopes whose outcome gates a merge to main: runScopedBuildCheck remaps a timeout or an
@@ -62,7 +63,7 @@ export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: s
  * and these are the last checks before main. The gate scope's pre-check stays fail-open
  * because the model reviewer and the landing path's own check still stand behind it
  * (BUGS.md: a landing build check that times out must not merge unverified). */
-export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]);
+export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]); // vocabulary-ok: persisted state value or event scope, renamed by a later series
 
 /** The proceeding reason a merge-scope check that made no verdict about the tree carries: the
  * run was killed, timed out, or spanned a host sleep, so nothing it saw is the change's
@@ -96,7 +97,7 @@ export function timedOutPhrase(timeoutMs: number, run?: BuildCheckRun): string {
   const cause =
     (run?.sleptMs ?? 0) > SLEEP_SPAN_TOLERANCE_MS
       ? "the host was asleep"
-      : "no host sleep measured: the host was starved or the harness stalled";
+      : "no host sleep measured: the host was starved or tumwater stalled";
   return (
     `timed out after ${oneDecimalSeconds(bound + late)}s (its ${bound / 1000}s deadline fired ` +
     `${oneDecimalSeconds(late)}s late: ${cause})`

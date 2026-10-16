@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";
@@ -145,7 +146,7 @@ export function abortOnShutdown(signal: AbortSignal, controller: AbortController
  * poll. */
 export function guardLandingTask(root: string, role: string, promise: Promise<void>): Promise<void> {
   return promise.catch((err: unknown) => {
-    warnEventBestEffort(root, "harness", `landing task for ${role} could not settle: ${errorMessage(err)}`);
+    warnEventBestEffort(root, "harness", `merge task for ${role} could not settle: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
   });
 }
 

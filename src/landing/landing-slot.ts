@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { dropLanding, type LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
@@ -135,7 +136,7 @@ export function readLandingMarker(root: string): LandingInFlight | null {
  * throws: the marker is display-only, and a failed write must not fail a landing (the
  * observers keep the previous frame's record until the next write). */
 function rewriteMarker(root: string, marker: LandingInFlight & { changes: LandingChange[] }): void {
-  const headline = marker.changes.find((c) => isLandingChange(c) && c.status === "landing");
+  const headline = marker.changes.find((c) => isLandingChange(c) && c.status === "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
   if (headline) {
     marker.role = headline.role;
     marker.sha = headline.sha;
@@ -182,7 +183,7 @@ function updateLandingChange(
 export function setLandingChangeStatus(root: string, role: string, status: LandingChangeStatus): void {
   updateLandingChange(root, role, (change) => {
     change.status = status;
-    if (status === "landing") {
+    if (status === "landing") { // vocabulary-ok: persisted state value or event scope, renamed by a later series
       change.startedAt ??= Date.now();
       change.stage = "merging";
     }
@@ -203,7 +204,7 @@ export function addLandingChange(root: string, entry: LandingEntry, live: Readon
     role: entry.role,
     sha: entry.sha,
     summary: entry.summary,
-    status: "landing",
+    status: "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
     startedAt,
     stage: "rebasing",
     stageSince: startedAt,
@@ -302,7 +303,7 @@ export function landingChanges(marker: LandingInFlight): LandingChange[] {
           role: marker.role,
           sha: marker.sha,
           summary: marker.summary,
-          status: "landing",
+          status: "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
           startedAt: marker.startedAt,
           stage: marker.stage,
           ...(marker.stageSince !== undefined ? { stageSince: marker.stageSince } : {}),
@@ -321,7 +322,7 @@ export function isLandingChange(value: unknown): value is LandingChange {
     typeof value.role === "string" &&
     typeof value.sha === "string" &&
     typeof value.summary === "string" &&
-    (value.status === "landing" || value.status === "vetted" || value.status === "done") &&
+    (value.status === "landing" || value.status === "vetted" || value.status === "done") && // vocabulary-ok: persisted state value or event scope, renamed by a later series
     (value.stageSince === undefined || nonNegativeNumber(value.stageSince, null) !== null)
   );
 }
@@ -365,7 +366,7 @@ export function writeLandingOutcome(
   // with or without landing.
   logEventBestEffort(root, {
     loop: entry.role,
-    type: result === "changed" ? "landed" : "land_failed",
+    type: result === "changed" ? "landed" : "land_failed", // vocabulary-ok: persisted state value or event type, renamed by a later series
     commit: entry.sha,
     result,
     durationMs,

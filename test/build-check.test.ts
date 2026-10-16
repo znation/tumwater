@@ -198,8 +198,8 @@ test("a deadline the host slept through is reported as when it really fired, on 
   const warning = events.find((e) => e.type === "warning");
   assert.equal(
     warning?.message,
-    "build check timed out after 412s (its 2s deadline fired 410s late: no host sleep measured: the host was starved or " +
-      "the harness stalled); proceeding to model review",
+    "check timed out after 412s (its 2s deadline fired 410s late: no host sleep measured: the host was starved or " +
+      "tumwater stalled); proceeding to model review",
   );
 });
 
@@ -345,7 +345,7 @@ test("a gate-scope timeout the host slept through is retried once, and the clean
 });
 
 // When the weather persists, the retry's verdictless timeout still rejects — never merge
-// unverified — but the reason must not wear the "build check failed" prefix a genuine red
+// unverified — but the reason must not wear the "check failed" prefix a genuine red
 // gets: the tree is unverified, not red, and the prefix would send the author hunting a test
 // failure that never happened (BUGS.md 2026-09-28).
 test("a merge-scope timeout late on both attempts rejects unverified, without the red-build prefix", async (t) => {
@@ -365,11 +365,11 @@ test("a merge-scope timeout late on both attempts rejects unverified, without th
   assert.equal(result!.outcome.status, "failed", "an unverified tree must not land");
   assert.match(
     result!.outcome.outputTail?.[0] ?? "",
-    /landing build check timed out after 10s \(its 2s deadline fired 8s late: no host sleep measured: the host was starved or the harness stalled\); the tree is unverified/,
+    /merge check timed out after 10s \(its 2s deadline fired 8s late: no host sleep measured: the host was starved or tumwater stalled\); the tree is unverified/,
   );
   const reasons = checkFailureReasons(result!.check, result!.outcome);
   assert.equal(reasons[0], result!.outcome.outputTail?.[0], "the reason keeps its own wording verbatim");
-  assert.doesNotMatch(reasons[0] ?? "", /^build check failed/);
+  assert.doesNotMatch(reasons[0] ?? "", /^check failed/);
   const events = eventsOfType(root, "build_check");
   assert.equal(events.length, 2, "the verdictless first attempt and the retry each priced one event");
   assert.equal(events[0]?.status, "skipped");
@@ -398,7 +398,7 @@ test("a gate check killed on every attempt stays skipped, and the warning names 
   assert.equal(checks.length, 2, "the killed attempt and the retry each priced one event");
   const warning = readEvents(root).find((e) => e.type === "warning");
   assert.match(String(warning?.message ?? ""),
-    /build check was killed by SIGKILL after \d+(?:\.\d+)?s; proceeding to model review/);
+    /check was killed by SIGKILL after \d+(?:\.\d+)?s; proceeding to model review/);
   assert.doesNotMatch(String(warning?.message ?? ""), /timed out/);
 });
 

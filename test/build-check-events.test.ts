@@ -35,7 +35,7 @@ test("timedOutPhrase reports the wall-clock time and lateness when the deadline 
   };
   assert.equal(
     timedOutPhrase(300_000, run),
-    "timed out after 712s (its 300s deadline fired 412s late: no host sleep measured: the host was starved or the harness stalled)",
+    "timed out after 712s (its 300s deadline fired 412s late: no host sleep measured: the host was starved or tumwater stalled)",
   );
 });
 
@@ -61,7 +61,7 @@ test("timedOutPhrase keeps sub-second deadline jitter out of the late wording", 
   const late: BuildCheckRun = { spawnedAt: 0, settledAt: 35_100, timeoutMs: 30_000, deadlineLateMs: 5_100 };
   assert.equal(
     timedOutPhrase(30_000, late),
-    "timed out after 35.1s (its 30s deadline fired 5.1s late: no host sleep measured: the host was starved or the harness stalled)",
+    "timed out after 35.1s (its 30s deadline fired 5.1s late: no host sleep measured: the host was starved or tumwater stalled)",
   );
 });
 
@@ -93,7 +93,7 @@ test("buildCheckSkipWarning for a timeout skip names the run's real deadline whe
   const run: BuildCheckRun = { spawnedAt: 0, settledAt: 712_000, timeoutMs: 300_000, deadlineLateMs: 412_000 };
   assert.equal(
     buildCheckSkipWarning("timeout", "build check", "proceeding to model review", 300_000, undefined, run),
-    "build check timed out after 712s (its 300s deadline fired 412s late: no host sleep measured: the host was starved or the harness stalled); proceeding to model review",
+    "build check timed out after 712s (its 300s deadline fired 412s late: no host sleep measured: the host was starved or tumwater stalled); proceeding to model review",
   );
 });
 

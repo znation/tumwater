@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { openQuestions } from "../backlog/backlog.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { changeBaseRev, commitMessage, headOf } from "../git/git.js";
@@ -195,7 +196,7 @@ async function structureBlocked(
 ): Promise<string | null> {
   const structure = await backlogStructureReason(wt, ctx.mainBranch, files);
   if (!structure) return null;
-  warnEventBestEffort(ctx.root, ctx.role, `landing blocked: ${structure}`);
+  warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${structure}`);
   return structure;
 }
 
@@ -216,7 +217,7 @@ export async function exemptSkipBlockReason(
   // unexplained merge_blocked retries on the feed (BUGS.md 2026-10-02). The batch stack-skip
   // caller may warn twice for one change (here, then again when the fallback's exempt arm
   // blocks it) — a duplicated line is harmless next to a silent block.
-  if (fix) warnEventBestEffort(ctx.root, ctx.role, `landing blocked: ${fix}`);
+  if (fix) warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${fix}`);
   return fix ?? null;
 }
 
@@ -294,7 +295,7 @@ async function verifyLanding(
   const check = await runScopedBuildCheck(
     ctx.root,
     ctx.role,
-    "landing",
+    "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
     wt,
     ctx.config,
     undefined,

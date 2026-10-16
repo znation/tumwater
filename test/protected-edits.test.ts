@@ -31,7 +31,7 @@ async function reason(
 for (const file of ["README.md", "TUMWATER.md"]) {
   test(`${file}: a changed, removed, or deleted prompt block is rejected`, async () => {
     const base = { [file]: BASE_README };
-    assert.match((await reason(base, { [file]: BASE_README.replace("the prompt", "other") }))!, new RegExp(`^${file.replace(".", "\\.")} changes the initial prompt`));
+    assert.match((await reason(base, { [file]: BASE_README.replace("the prompt", "other") }))!, new RegExp(`^${file.replace(".", "\\.")} changes the brief`));
     assert.ok(await reason(base, { [file]: "# T\n" }));
     assert.ok(await reason(base, { [file]: null }));
   });
@@ -50,8 +50,8 @@ test("a file whose base had no block may gain one", async () => {
 test("PRINCIPLES.md is editable only by the director and steward", async () => {
   const base = { "PRINCIPLES.md": "# P\n" };
   const edit = { "PRINCIPLES.md": "# P\n- x\n" };
-  assert.match((await reason(base, edit, "improve"))!, /edited by the improve loop/);
-  assert.match((await reason(base, edit, "feature-2"))!, /edited by the feature-2 loop/);
+  assert.match((await reason(base, edit, "improve"))!, /edited by the improve role/);
+  assert.match((await reason(base, edit, "feature-2"))!, /edited by the feature-2 role/);
   assert.equal(await reason(base, edit, "director"), undefined);
   assert.equal(await reason(base, edit, "steward"), undefined);
 });

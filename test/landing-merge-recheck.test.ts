@@ -118,7 +118,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
   );
   const warnings = warningMessagesOf(events);
   assert.ok(
-    warnings.includes("no npm on PATH; skipping landing build check"),
+    warnings.includes("no npm on PATH; skipping merge check"),
     `the operator sees why the check did not run: ${JSON.stringify(warnings)}`,
   );
   assert.equal(events.filter((e) => e.type === "merged").length, 1);

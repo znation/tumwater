@@ -278,5 +278,5 @@ test("the staleness, compile, and swap closures drive the real mechanics in a fi
 
   // The swap guard fires through the closure too: with nothing staged for the head it names
   // the head rather than leaking a bare ENOENT from the rename below it.
-  assert.throws(() => deps.swap(newHead), /no staged build for/);
+  assert.throws(() => deps.swap(newHead), /no staged update for/);
 });

@@ -555,58 +555,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
 - `npm run test` passes.
 
-### Plain terms text, part 15/19: Merge pipeline and review and check messages (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/landing/ + src/review/ + src/verdict/ + src/build/ + tests)
-
-**Goal.** Warnings and verdict reasons from the merge pipeline, the review gate and the check runner say merge, run, check and tumwater. These reach the feed, `tumwater history <role> <n>`, the failure digest and the authoring role's next prompt.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/landing/:
-  - landing-check-failures.ts: "merge check failed (kept for one retry): …" and "merge blocked: …". The display label `"batch check" | "landing check"` becomes "merge check".
-  - landing-merge.ts: "merge blocked: …".
-  - landing-drain.ts: "the stopped merge for <role> …".
-  - landing-vetting.ts: "merge queue head … is unreadable (torn or foreign) — dropped so the queue keeps moving".
-  - landing-pipeline.ts: "merge task for …".
-  - landing-batch.ts, landing-stack.ts, landing-core.ts and landing-slot.ts: their messages follow the rules. Part 2/19 already converted `LANDING_STAGE_LABELS`.
-  - These machine strings stay, marked:
-    - the `LandingChangeStatus` values `"landing"` and `"vetted"` (state series);
-    - the `build_check` scope `"landing"` (event log series);
-    - the `"harness"` source and the stage keys.
-- src/review/:
-  - review.ts: the suite-repeat explanations say "… the merge re-reviews it …".
-  - review-precheck.ts: "keeping the commit for another merge attempt", and "known-flaky failure, merge kept: …".
-  - protected-edits.ts rejection reasons: "changes the brief between the tumwater:prompt markers — only you edit it (tumwater brief); restore the block", and "… role — only the director and steward roles may edit it".
-  - suite-rerun.ts: "tumwater's pre-check already verified".
-  - review-followup.ts and secret-leaks.ts: "pi" → "the agent" where either backend reaches the text.
-- src/verdict/:
-  - fix-claim.ts: "include the fix in the same commit", and the other reasons in the same form.
-  - no-change.ts: its text is only about pi and stays.
-  - Part 19/19 converts reply-contract.ts with the prompts.
-- src/build/:
-  - build-check-events.ts: "merge check", "batch check", and "no host sleep measured: the host was starved or tumwater stalled".
-  - build-check-report.ts: "check failed (…)".
-  - build-stage.ts: tumwater's own build swap is the update, so "could not stamp the compiled update", "no staged update for …", and "an interrupted update swap left dist/ missing — restored it …".
-  - dep-install.ts: "until a later merge re-syncs it".
-  - build-check-detect.ts and build-info.ts: their prose follows the rules.
-
-**Files touched.**
-- src: the modules named above in src/landing/, src/review/, src/verdict/fix-claim.ts, and src/build/.
-- Tests:
-  - test/landing-*.test.ts, test/lander*.test.ts, test/review*.test.ts, test/protected-edits.test.ts, test/suite-rerun.test.ts, test/fix-claim.test.ts.
-  - test/build-*.test.ts, test/dep-install.test.ts.
-  - Any e2e suite that asserts these warnings.
-
-**Acceptance criteria.**
-- A merge whose post-rebase check fails logs `merge check failed …` and `merge blocked: …`.
-- The protected-edit rejection names "the brief" and says "only you edit it".
-- The `build_check` warnings say "merge check" or "batch check", and the build-swap warnings say "update".
-- `npm run test` passes.
-
 ### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests)
 
 **Goal.** stderr and warning text from the gates, the self-update redeployer, the orchestrator and the supervisor say tumwater, update, version, restart, your checkout and the team.
@@ -3378,6 +3326,58 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 15/19: Merge pipeline and review and check messages (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/landing/ + src/review/ + src/verdict/ + src/build/ + tests; done 2026-10-16)
+
+**Goal.** Warnings and verdict reasons from the merge pipeline, the review gate and the check runner say merge, run, check and tumwater. These reach the feed, `tumwater history <role> <n>`, the failure digest and the authoring role's next prompt.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/landing/:
+  - landing-check-failures.ts: "merge check failed (kept for one retry): …" and "merge blocked: …". The display label `"batch check" | "landing check"` becomes "merge check".
+  - landing-merge.ts: "merge blocked: …".
+  - landing-drain.ts: "the stopped merge for <role> …".
+  - landing-vetting.ts: "merge queue head … is unreadable (torn or foreign) — dropped so the queue keeps moving".
+  - landing-pipeline.ts: "merge task for …".
+  - landing-batch.ts, landing-stack.ts, landing-core.ts and landing-slot.ts: their messages follow the rules. Part 2/19 already converted `LANDING_STAGE_LABELS`.
+  - These machine strings stay, marked:
+    - the `LandingChangeStatus` values `"landing"` and `"vetted"` (state series);
+    - the `build_check` scope `"landing"` (event log series);
+    - the `"harness"` source and the stage keys.
+- src/review/:
+  - review.ts: the suite-repeat explanations say "… the merge re-reviews it …".
+  - review-precheck.ts: "keeping the commit for another merge attempt", and "known-flaky failure, merge kept: …".
+  - protected-edits.ts rejection reasons: "changes the brief between the tumwater:prompt markers — only you edit it (tumwater brief); restore the block", and "… role — only the director and steward roles may edit it".
+  - suite-rerun.ts: "tumwater's pre-check already verified".
+  - review-followup.ts and secret-leaks.ts: "pi" → "the agent" where either backend reaches the text.
+- src/verdict/:
+  - fix-claim.ts: "include the fix in the same commit", and the other reasons in the same form.
+  - no-change.ts: its text is only about pi and stays.
+  - Part 19/19 converts reply-contract.ts with the prompts.
+- src/build/:
+  - build-check-events.ts: "merge check", "batch check", and "no host sleep measured: the host was starved or tumwater stalled".
+  - build-check-report.ts: "check failed (…)".
+  - build-stage.ts: tumwater's own build swap is the update, so "could not stamp the compiled update", "no staged update for …", and "an interrupted update swap left dist/ missing — restored it …".
+  - dep-install.ts: "until a later merge re-syncs it".
+  - build-check-detect.ts and build-info.ts: their prose follows the rules.
+
+**Files touched.**
+- src: the modules named above in src/landing/, src/review/, src/verdict/fix-claim.ts, and src/build/.
+- Tests:
+  - test/landing-*.test.ts, test/lander*.test.ts, test/review*.test.ts, test/protected-edits.test.ts, test/suite-rerun.test.ts, test/fix-claim.test.ts.
+  - test/build-*.test.ts, test/dep-install.test.ts.
+  - Any e2e suite that asserts these warnings.
+
+**Acceptance criteria.**
+- A merge whose post-rebase check fails logs `merge check failed …` and `merge blocked: …`.
+- The protected-edit rejection names "the brief" and says "only you edit it".
+- The `build_check` warnings say "merge check" or "batch check", and the build-swap warnings say "update".
+- `npm run test` passes.
 
 ### Plain terms text, part 2/19: Role state labels say due and merging and approved and waiting (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/status-model.ts + LANDING_STAGE_LABELS in src/landing/landing-slot.ts + src/landing/landing-queue-render.ts + the phase matchers in src/ui/fleet-alerts.ts and src/ui/gui/gui-client.ts and src/ui/gui/gui-client-model.ts + tests; done 2026-10-16)
 

@@ -379,7 +379,7 @@ test("an uncommitted PRINCIPLES.md edit is a finding for a non-steward role only
 
   const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
   assert.equal(findings.length, 1);
-  assert.match(findings[0]!, /PRINCIPLES\.md is edited by the feature loop/);
+  assert.match(findings[0]!, /PRINCIPLES\.md is edited by the feature role/);
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "steward"), []);
 });
 

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The stack lander — the merge-half machinery of a multi-change batch (extracted from
  * landing-batch.ts, whose header scopes that file to the vet and merge halves): assemble the
  * vetted changes as a cherry-picked stack on main's current tip, run ONE scope-`batch` build
@@ -205,7 +206,7 @@ async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: re
       // a doc-only re-stack (like verifyLanding's exempt arm: nothing ran on this tip).
       if (seed !== undefined) noteGreenBaseline(seed);
       for (const e of entries) await deleteRef(ctx.root, landingRefName(e.role));
-      return { kind: "landed" };
+      return { kind: "landed" }; // vocabulary-ok: persisted state value or event type, renamed by a later series
     }
     // Main moved under the batch while the check ran (a human commit): diverged history, ff
     // failed. Re-stack on the tip that won.

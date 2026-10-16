@@ -209,10 +209,10 @@ test("gate pre-check rejects a failing build with zero reviewer runs", async () 
     // baseline run is priced too.
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed", "baseline:passed"]);
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
-    assert.match(result.detail ?? "", /^build check failed \(\`npm run build\`\): /);
+    assert.match(result.detail ?? "", /^check failed \(\`npm run build\`\): /);
     assert.equal(state.lastReview?.verdict, "reject");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/); // header + first output line
+    assert.match(reasons[0] ?? "", /^check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/); // header + first output line
     assert.ok(!reasons.some((r) => r.includes("baseline")), "a green main needs no attribution note");
     assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
     const rejected = readEvents(root).find((e) => e.type === "review_rejected");
@@ -236,9 +236,9 @@ test("a red pre-check on the declared test script rejects with zero pi runs", as
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
     assert.equal(await aheadOfMain(wt, "main"), 0); // branch reset to main
-    assert.match(result.detail ?? "", /^build check failed \(\`npm run test\`\): /);
+    assert.match(result.detail ?? "", /^check failed \(\`npm run test\`\): /);
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(\`npm run test\`\): 1 failing/); // header names the script that ran
+    assert.match(reasons[0] ?? "", /^check failed \(\`npm run test\`\): 1 failing/); // header names the script that ran
     assert.equal(state.unreviewFailures, 0); // a deterministic verdict resets strikes like a model reject
   });
 });
@@ -280,7 +280,7 @@ test("gate pre-check names the failing assertion, not the stack frame the tail o
     assert.equal(result.decision, "rejected");
     assert.ok(!fs.existsSync(marker), "no pi run before the reject");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.equal(reasons[0], "build check failed (`npm run test`): AssertionError [ERR_ASSERTION]: 1 == 2");
+    assert.equal(reasons[0], "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: 1 == 2");
     assert.ok(reasons.some((r) => r.startsWith("at ")), "the rest of the clipped tail still follows");
     assert.ok(reasons.includes("actual: 1,"), "real diff content is not skipped as noise");
   });
@@ -326,7 +326,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
       `the fleet-wide main_red_hold fires; got: ${JSON.stringify(holds)}`,
     );
     assert.ok(
-      warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; landing kept`),
+      warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; merge kept`),
       `the role's warning names both heads; got: ${JSON.stringify(warnings)}`,
     );
   });
@@ -354,7 +354,7 @@ test("a pre-check that fails twice with no verdict for main rejects, saying the 
     assert.equal(result.decision, "rejected", "the author's failure is the safe default");
     assert.ok(!fs.existsSync(marker), "no pi run");
     const reasons = state.lastReview?.reasons ?? [];
-    assert.match(reasons[0] ?? "", /^build check failed \(`.*`\): boom$/);
+    assert.match(reasons[0] ?? "", /^check failed \(`.*`\): boom$/);
     assert.equal(
       reasons.at(-1),
       "main's baseline was unavailable (its check was skipped (timeout)), so the failure is attributed to this change",
@@ -439,7 +439,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
     assert.deepEqual(buildCheckEvents(root), ["gate:failed", "gate:failed"], "main was never consulted");
     const warnings = warningMessagesOf(events);
     assert.ok(
-      warnings.includes(`known-flaky failure, landing kept: ${flakyHeadline}`),
+      warnings.includes(`known-flaky failure, merge kept: ${flakyHeadline}`),
       `the known flake is named; got: ${JSON.stringify(warnings)}`,
     );
   });
@@ -558,7 +558,7 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
     assert.equal(result.verifiedHead, undefined); // no suite ran green — nothing to hand the landing path
     assert.ok(fs.existsSync(marker), "the reviewer still ran after the warning");
     const warning = readEvents(root).find((e) => e.type === "warning");
-    assert.match(String(warning?.message), /build check timed out after 0\.4s; proceeding to model review/);
+    assert.match(String(warning?.message), /check timed out after 0\.4s; proceeding to model review/);
   });
 });
 
@@ -658,7 +658,7 @@ test("a reused approval still rejects a tree whose pre-check now fails", async (
     seedGreenMain(root);
     const result = await reviewAheadOfMain(gateCtx(root, wt, 2), state);
     assert.equal(result.decision, "rejected");
-    assert.match(result.detail ?? "", /^build check failed/);
+    assert.match(result.detail ?? "", /^check failed/);
     assert.equal(await aheadOfMain(wt, "main"), 0, "branch reset to main");
   });
 });
@@ -694,7 +694,7 @@ test("a green pre-check is named in the reviewer's prompt; no check means no suc
   });
 });
 
-// The suite-rerun tripwire (BUGS.md 2026-09-23): a reviewer told the harness's pre-check passed
+// The suite-rerun tripwire (BUGS.md 2026-09-23): a reviewer told tumwater's pre-check passed
 // that runs the full suite anyway — in a scratch copy under /tmp, like organize's and improve's
 // reviews that day — is named in the event feed, while a filtered run (one test file) is not.
 // After a timed-out pre-check no verified result exists: the prompt carries no no-re-run rule,
@@ -722,7 +722,7 @@ test("a reviewer that re-runs the suite behind a green pre-check is warned about
     assert.equal(result.decision, "approved", "the tripwire warns; it never changes the verdict");
     assert.match(fs.readFileSync(greenPrompts, "utf8"), /^- Do not re-run the check named above/m);
     assert.deepEqual(rerunWarnings(green.root), [
-      "reviewer re-ran the suite the harness's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
+      "reviewer re-ran the suite tumwater's pre-check already verified: cd /tmp/revrun && npm test 2>&1 | tail -15",
     ]);
   });
 
@@ -850,7 +850,7 @@ test("a pre-check that sleeps and fails on every attempt keeps the commit and re
     `the warning names the sleep; got: ${JSON.stringify(warnings)}`,
   );
   assert.ok(!warnings.some((m) => m.includes("flaky")), "a sleep is never mislabeled a flaky test");
-  assert.ok(!warnings.some((m) => m.startsWith("build check failed")), "no test-failure headline");
+  assert.ok(!warnings.some((m) => m.startsWith("check failed")), "no test-failure headline");
 });
 
 // The pass-after-sleep wording: when the run that failed spanned a sleep and the re-run

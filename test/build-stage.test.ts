@@ -70,7 +70,7 @@ test("swapDist replaces dist with the staged build, restores on failure, and cle
   swapDist(root, dist, HEAD_B);
   assert.deepEqual(fs.readdirSync(dist), ["new.js"]);
   assert.deepEqual(fs.readdirSync(stagingRootDir(root)), [], "prev and superseded stagings are gone");
-  assert.throws(() => swapDist(root, dist, HEAD_C), /no staged build for cccccccc/);
+  assert.throws(() => swapDist(root, dist, HEAD_C), /no staged update for cccccccc/);
   assert.deepEqual(fs.readdirSync(dist), ["new.js"], "a failed swap leaves dist untouched");
 });
 

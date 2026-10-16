@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./landing-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
@@ -57,7 +58,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
     try {
       await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     } catch (err) {
-      warnEventBestEffort(root, "harness", `the aborted landing for ${role} could not be settled: ${errorMessage(err)}`);
+      warnEventBestEffort(root, "harness", `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
       dropLanding(v.file);
       removeLandingChange(root, role);
     }
@@ -195,7 +196,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       } catch (writeErr) {
         warnEventBestEffort(
           root,
-          "harness",
+          "harness", // vocabulary-ok: event source stays "harness" until the event log rename
           `the merge error for ${head.state.role} could not be saved: ${errorMessage(writeErr)}`,
         );
       }
@@ -208,7 +209,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         const result = results[s] ?? (merge.userAborted ? "aborted" : undefined);
         if (result === undefined && !threw) {
           p.vetted.set(role, v);
-          setLandingChangeStatus(root, role, "vetted");
+          setLandingChangeStatus(root, role, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
           continue;
         }
         if (result !== undefined) {

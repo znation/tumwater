@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { REVIEW_RESUME_LIMIT, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { modelSelectorField, reviewRunConfig } from "../config/config-views.js";
@@ -453,7 +454,7 @@ export async function reviewAheadOfMain(
       warnEventBestEffort(
         root,
         role,
-        `${nudgeRepeat} the repeat fails this review: the commit stays, and the landing re-reviews it without a third suite run`,
+        `${nudgeRepeat} the repeat fails this review: the commit stays, and the merge re-reviews it without a third suite run`,
       );
     }
   }
@@ -491,7 +492,7 @@ export async function reviewAheadOfMain(
   // commit stays for the next landing's re-review, the discard counter never advances, and no
   // rejection is recorded against the author's diff.
   if (nudgeRepeat) {
-    const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the landing re-reviews it under the normal path.`;
+    const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the merge re-reviews it under the normal path.`;
     logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     state.reviewResume = undefined;
     recordReview(state, "failed", [message], head);

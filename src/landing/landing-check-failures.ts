@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { deleteRef, headOf, patchId } from "../git/git.js";
 import { landingRefName } from "../paths.js";
 import { recordReview } from "../tick/tick-apply.js";
@@ -124,7 +125,7 @@ export async function landingCheckRed(
   }
   const reason = firstCheckReason(red);
   const result = await keepPinOrAttribute(ctx, wt, reason, (head) =>
-    attributeRedCheck(ctx, role, head, "landing check", red, ctx.state),
+    attributeRedCheck(ctx, role, head, "merge check", red, ctx.state),
   );
   // The first red of a patch's in-lock check is exactly the retry that exists for load flakes,
   // so it is the ONE signal that could name a flaky test after the fact — and lastError, the
@@ -133,7 +134,7 @@ export async function landingCheckRed(
   // name the flaky test; the second red at LANDING_CHECK_FAILURE_LIMIT is attributed through
   // review_rejected, whose reasons are already durable.
   if (result === "merge_blocked") {
-    warnEventBestEffort(ctx.root, role, `landing check red (kept for one re-land): ${reason}`);
+    warnEventBestEffort(ctx.root, role, `merge check failed (kept for one retry): ${reason}`);
   }
   return result;
 }
@@ -154,7 +155,7 @@ export async function landingBlocked(
   blocked: string,
 ): Promise<TickResult> {
   return keepPinOrAttribute(ctx, wt, blocked, (head) =>
-    rejectChange(ctx, role, head, [`landing blocked: ${blocked}`], ctx.state),
+    rejectChange(ctx, role, head, [`merge blocked: ${blocked}`], ctx.state),
   );
 }
 
@@ -172,7 +173,7 @@ export async function attributeRedCheck(
   ctx: { root: string; mainBranch: string; config: TumwaterConfig },
   role: string,
   head: string,
-  label: "batch check" | "landing check",
+  label: "merge check",
   red: { check: BuildCheck; outcome: BuildCheckOutcome },
   state: LoopState,
 ): Promise<TickResult> {
@@ -193,7 +194,7 @@ export async function attributeRedCheck(
   }
   const reasons = checkFailureReasons(red.check, red.outcome);
   if (main.status === "unavailable") {
-    reasons.push(`main's own baseline was unavailable (${main.why}), so the red ${label} is attributed to this change`);
+    reasons.push(`main's own baseline was unavailable (${main.why}), so the failed ${label} is attributed to this change`);
   }
   // Terminal rejection: the sink deletes the pin; the shared `_merge` checkout persists.
   return rejectChange(ctx, role, head, reasons, state);

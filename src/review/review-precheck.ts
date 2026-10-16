@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The review gate's deterministic build pre-check — split out of review.ts so the gate keeps
  * one responsibility (running the model reviewer and acting on its verdict) while this module
  * owns the pre-review verification: the one scoped build-check run, its flake re-run, the
@@ -102,7 +103,7 @@ export async function gateBuildPrecheck(
       // the gate attributes nothing — it keeps the commit and reports the sleep, and the
       // landing path keeps the pin for a re-land (BUGS.md 2026-09-30).
       const detail = sleptPhrase("gate check", outcome.run!.sleptMs!, UNVERIFIED_TREE);
-      warnEventBestEffort(root, role, `${detail}; keeping the commit for a re-land`);
+      warnEventBestEffort(root, role, `${detail}; keeping the commit for another merge attempt`);
       return { resolved: { decision: "failed", detail, unverified: true } };
     }
     if (outcome.status === "failed") {
@@ -114,7 +115,7 @@ export async function gateBuildPrecheck(
       // clock-sensitive test rejected whichever unrelated change hit it (BUGS.md 2026-10-06).
       const flaky = failureHeadline(outcome.outputTail) ?? describeCheck(check);
       if (isKnownFlake(root, flaky)) {
-        const detail = `known-flaky failure, landing kept: ${flaky}`;
+        const detail = `known-flaky failure, merge kept: ${flaky}`;
         recordReview(state, "failed", [detail], head);
         warnEventBestEffort(root, role, detail);
         return { resolved: { decision: "failed", detail, unverified: true } };
@@ -141,7 +142,7 @@ export async function gateBuildPrecheck(
         // and the author's next tick re-lands the change once main is green again.
         const detail = mainRedNotMine(main.sha);
         recordReview(state, "failed", [detail], head);
-        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; landing kept`);
+        warnEventBestEffort(root, role, `gate check failed on ${shortSha(head)}, but ${detail}; merge kept`);
         return { resolved: { decision: "failed", detail, mainRed: true } };
       }
       // Main green: the change broke the check — rejected deterministically through the shared

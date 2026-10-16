@@ -30,7 +30,7 @@ test("a red check's reasons lead with the headline and drop it from the tail", (
   ];
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ outputTail: tail }));
   assert.deepEqual(reasons, [
-    "build check failed (`npm run test`): AssertionError [ERR_ASSERTION]: expected 1 to equal 2",
+    "check failed (`npm run test`): AssertionError [ERR_ASSERTION]: expected 1 to equal 2",
     "at process.processTicksAndRejections (node:internal/process/task_queues:95:5)",
     "actual: 1,",
     "expected: 2,",
@@ -49,7 +49,7 @@ test("a command check names the command, not an npm script", () => {
     outcome({ outputTail: ["error[E0308]: mismatched types"] }),
   );
   assert.deepEqual(reasons, [
-    "build check failed (`cargo fmt --check && cargo test`): error[E0308]: mismatched types",
+    "check failed (`cargo fmt --check && cargo test`): error[E0308]: mismatched types",
     // The headline IS the tail's only line here — the dedup must not leave an empty rest.
   ]);
 });
@@ -57,11 +57,11 @@ test("a command check names the command, not an npm script", () => {
 test("a red check with no output tail falls back to a bare build-check-failed reason", () => {
   assert.deepEqual(
     checkFailureReasons(NPM_CHECK, outcome({})),
-    ["build check failed (`npm run test`)"],
+    ["check failed (`npm run test`)"],
   );
   assert.deepEqual(
     checkFailureReasons(NPM_CHECK, outcome({ outputTail: [] })),
-    ["build check failed (`npm run test`)"],
+    ["check failed (`npm run test`)"],
   );
 });
 
@@ -69,7 +69,7 @@ test("a tail that is all framing still names its first line as the headline", ()
   const tail = ["✖ failing tests:", "test at dist/test/some.test.js:12:3"];
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ outputTail: tail }));
   assert.equal(reasons.length, 2, "the dedup keeps the non-headline framing line");
-  assert.equal(reasons[0], "build check failed (`npm run test`): ✖ failing tests:");
+  assert.equal(reasons[0], "check failed (`npm run test`): ✖ failing tests:");
   assert.deepEqual(reasons.slice(1), ["test at dist/test/some.test.js:12:3"]);
 });
 
@@ -77,7 +77,7 @@ test("an unverified red with an empty tail still says why the tree is unverified
   // The passthrough's empty-tail arm: a verdict-less remap that somehow lost its reason
   // lines must not degrade to an empty reason list — the safe default names the check.
   const reasons = checkFailureReasons(NPM_CHECK, outcome({ unverified: true, outputTail: [] }));
-  assert.deepEqual(reasons, ["build check failed (`npm run test`)"]);
+  assert.deepEqual(reasons, ["check failed (`npm run test`)"]);
 });
 
 // --- The clipBuildTail/failureHeadline unit coverage, moved here from build-check.test.ts
@@ -211,7 +211,7 @@ test("failureHeadline names an unhandled error whose message the tail window wou
 test("failureHeadline skips node:test's summary block, not the failure it frames", () => {
   // node --test's spec reporter ends a failing run with the summary THEN the detail; when both
   // fit in the ten-line window the first non-frame line was `ℹ todo 0` and two real rejections
-  // surfaced as `build check failed (test): ℹ todo 0` (BUGS.md 2026-09-22). Output is real
+  // surfaced as `check failed (test): ℹ todo 0` (BUGS.md 2026-09-22). Output is real
   // spec-reporter shape (reproduced with a test that throws a plain string).
   const tail = clipBuildTail(
     [

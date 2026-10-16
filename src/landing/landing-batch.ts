@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Two of the three halves of a landing (plans/merge-queue.md 5/5, PLANS.md land-queue speed
  * 2c): the per-change vet (vetRequest) that landing-vetting.ts's vetting stage runs for every
  * queued change, and the merge (landVetted) its one merge slot runs over the vetted ones — a
@@ -215,7 +216,7 @@ export async function landVetted(
   // ── The degenerate case: one vetted change lands on its own ──────────────────────────
   if (vetted.length === 1) {
     const req = vetted[0]!;
-    report(0, "landing");
+    report(0, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
     await landOne(0, req);
     return results;
   }
@@ -229,7 +230,7 @@ export async function landVetted(
   const entries: StackEntry[] = vetted.map((req) => ({ role: req.role, sha: req.sha, summary: req.summary }));
   let abandon = false;
   // Every stacked change is landing now: they share the assembly, the check, and the ff.
-  for (let s = 0; s < vetted.length; s++) report(s, "landing");
+  for (let s = 0; s < vetted.length; s++) report(s, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
   // Stack positions [0, landedCount) are on main. `suspect` is how many of the rest, from the
   // front, the last red check ran over — the prefix that still holds what broke it; null when
   // no red check stands against the rest, which are then tried together.
@@ -247,7 +248,7 @@ export async function landVetted(
         // after it unattempted for the next drain.
         const { state } = wiringFor(entries[front]!.role);
         const entry = entries[front]!;
-        await emit(front, await attributeRedCheck(ctx, entry.role, entry.sha, "batch check", outcome, state));
+        await emit(front, await attributeRedCheck(ctx, entry.role, entry.sha, "merge check", outcome, state));
         report(front, "done");
         break;
       }
@@ -261,7 +262,7 @@ export async function landVetted(
       report(front, "done");
       break;
     }
-    if (outcome.kind === "landed") {
+    if (outcome.kind === "landed") { // vocabulary-ok: persisted state value or event type, renamed by a later series
       for (let s = front; s < front + size; s++) {
         await emit(s, "changed");
         report(s, "done");
@@ -296,10 +297,10 @@ export async function landVetted(
     // rebase + verifyLanding re-check every change whose tree differs from the one its vet
     // judged. Only the change being landed reads `landing`; the rest are back to awaiting
     // their turn, and each one landed is done.
-    for (let s = landedCount; s < vetted.length; s++) report(s, "vetted");
+    for (let s = landedCount; s < vetted.length; s++) report(s, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
     for (let s = landedCount; s < vetted.length; s++) {
       const req = vetted[s]!;
-      report(s, "landing");
+      report(s, "landing"); // vocabulary-ok: persisted state value or event scope, renamed by a later series
       await landOne(s, req);
       if (results[s] === "aborted") aborted = true;
       report(s, "done");

@@ -55,7 +55,7 @@ test("a stack of three whose second change breaks the check lands the first, rej
     );
     // beta: rejected deterministically with the check's own output, no pi run.
     assert.equal(states.beta!.lastReview?.verdict, "reject");
-    assert.match(states.beta!.lastReview!.reasons[0]!, /^build check failed \(.*\): planted failure: beta breaks the suite$/);
+    assert.match(states.beta!.lastReview!.reasons[0]!, /^check failed \(.*\): planted failure: beta breaks the suite$/);
     assert.equal(states.beta!.unreviewFailures, 0);
     const rejected = eventsOfType(root, "review_rejected");
     assert.deepEqual(rejected.map((e) => e.loop), ["beta"], "one review_rejected, for beta");
@@ -119,7 +119,7 @@ test("a doc-only stack that breaks backlog structure is blocked, not waved throu
   // The exemption is a fast path, not a blind eye: two changes each clean alone — each adds
   // its own new "## Notes" section to PLANS.md — stack into a duplicate heading. landStack's
   // exempt arm must run the same structure cross-check verifyLanding's does: warn with the
-  // one "landing blocked:" phrasing and hand the stack to the one-at-a-time fallback instead
+  // one "merge blocked:" phrasing and hand the stack to the one-at-a-time fallback instead
   // of landing a malformed backlog with no check ever running.
   const roles = ["alpha", "beta"];
   const { root, shas, wiringFor } = await batchFixture(roles, {
@@ -156,7 +156,7 @@ test("a doc-only stack that breaks backlog structure is blocked, not waved throu
       0,
       "no check of any scope ran — the structure block fires first",
     );
-    const blocked = eventsOfType(root, "warning").filter((e) => String(e.message).includes("landing blocked"));
+    const blocked = eventsOfType(root, "warning").filter((e) => String(e.message).includes("merge blocked"));
     assert.equal(blocked.length, 2, JSON.stringify(eventsOfType(root, "warning")));
     assert.ok(blocked.every((e) => String(e.message).includes('"## Notes"')));
     assert.deepEqual(
@@ -228,7 +228,7 @@ for (const baseline of ["red", "unavailable"] as const) {
         assert.equal(await refSha(root, landingRefName("alpha")), null);
         const reasons = states.alpha.lastReview!.reasons;
         assert.match(reasons[0]!, /: planted failure$/);
-        assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped \(toolchain\)\), so the red batch check is attributed to this change$/);
+        assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped \(toolchain\)\), so the failed merge check is attributed to this change$/);
       }
     });
   });

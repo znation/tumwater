@@ -83,17 +83,17 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
   const { root } = baselineFixture(ROLE, "attr-green-marker");
   const restore = fakeNpm("echo ok; exit 0");
   try {
-    const { head, state, result } = await attribute(root, "landing check", red());
+    const { head, state, result } = await attribute(root, "merge check", red());
     assert.equal(result, "rejected", "main green means the change broke the check");
     assert.equal(state.unreviewFailures, 0, "the strike count reset with the rejection");
     assert.equal(state.lastReview?.verdict, "reject");
     assert.deepEqual(state.lastReview?.reasons, [
-      `build check failed (\`npm run test\`): ${CHANGE_REASON}`,
+      `check failed (\`npm run test\`): ${CHANGE_REASON}`,
     ]);
     assert.equal(state.lastReview?.head, head);
     assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was deleted");
     assert.deepEqual(reviewRejectedEvents(root), [
-      { loop: ROLE, head, reasons: [`build check failed (\`npm run test\`): ${CHANGE_REASON}`] },
+      { loop: ROLE, head, reasons: [`check failed (\`npm run test\`): ${CHANGE_REASON}`] },
     ]);
     const saved = loadLoopState(root, ROLE);
     assert.equal(saved.unreviewFailures, 0, "the reset was persisted");
@@ -107,11 +107,11 @@ test("attributeRedCheck returns main_red and keeps the change recoverable when m
   const { root } = baselineFixture(ROLE, "attr-red-marker");
   const restore = fakeNpm("echo baseline-failure; exit 1");
   try {
-    const { head, state, result } = await attribute(root, "landing check", red());
+    const { head, state, result } = await attribute(root, "merge check", red());
     assert.equal(result, "main_red", "the failure is main's, not the change's");
     assert.equal(
       state.lastError,
-      `landing check failed: main ${shortSha(head)} is red — not this change's failure`,
+      `merge check failed: main ${shortSha(head)} is red — not this change's failure`,
     );
     assert.equal(state.lastReview, undefined, "no rejection was recorded against the author");
     assert.equal(state.unreviewFailures, 3, "the strike count was left untouched");
@@ -132,11 +132,11 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
   // A repo declaring no build check: mainTipVerdict reads `unavailable` ("it declares no
   // check"), and the safe default still rejects — but says so in the reasons.
   const root = makeRepo(path.join(tmpdir("attr-red-none-"), "project"));
-  const { state, result } = await attribute(root, "batch check", red());
+  const { state, result } = await attribute(root, "merge check", red());
   assert.equal(result, "rejected", "no verdict still rejects — the safe default");
   assert.deepEqual(state.lastReview?.reasons, [
-    `build check failed (\`npm run test\`): ${CHANGE_REASON}`,
-    "main's own baseline was unavailable (it declares no check), so the red batch check is attributed to this change",
+    `check failed (\`npm run test\`): ${CHANGE_REASON}`,
+    "main's own baseline was unavailable (it declares no check), so the failed merge check is attributed to this change",
   ]);
   assert.equal(state.unreviewFailures, 0, "the strike count reset with the rejection");
   assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was deleted");
@@ -159,11 +159,11 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
       outcome: {
         status: "failed",
         script: "test",
-        outputTail: ["batch build check ran while the host slept 119s mid-run; the tree is unverified"],
+        outputTail: ["merge check ran while the host slept 119s mid-run; the tree is unverified"],
         unverified: true,
       },
     };
-    const { head, state, result } = await attribute(root, "batch check", flag);
+    const { head, state, result } = await attribute(root, "merge check", flag);
     assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable landing");
     assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
     assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref was not deleted");
@@ -177,11 +177,11 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
       outcome: {
         status: "failed",
         script: "test",
-        outputTail: ["landing build check ran while the host slept 59s mid-run; the tree is unverified"],
+        outputTail: ["merge check ran while the host slept 59s mid-run; the tree is unverified"],
         run: { sleptMs: 59_000 } as BuildCheckRun,
       },
     };
-    const { state: state2, result: result2 } = await attribute(root, "landing check", measured);
+    const { state: state2, result: result2 } = await attribute(root, "merge check", measured);
     assert.equal(result2, "merge_blocked");
     assert.equal(state2.unreviewFailures, 3, "no strike here either");
     assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref still was not deleted");
@@ -204,7 +204,7 @@ test("attributeRedCheck still rejects when the events feed is unwritable", async
     fs.rmSync(file, { recursive: true, force: true });
     fs.mkdirSync(file, { recursive: true });
 
-    const { result } = await attribute(root, "landing check", red());
+    const { result } = await attribute(root, "merge check", red());
 
     assert.equal(result, "rejected", "the deterministic reject stands despite the broken feed");
     assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was still deleted");
@@ -228,7 +228,7 @@ test("attributeRedCheck still reports main_red when the events feed is unwritabl
     fs.rmSync(file, { recursive: true, force: true });
     fs.mkdirSync(file, { recursive: true });
 
-    const { head, state, result } = await attribute(root, "landing check", red());
+    const { head, state, result } = await attribute(root, "merge check", red());
 
     assert.equal(result, "main_red", "a broken feed must not attribute main's red to the change");
     assert.equal(state.lastReview, undefined, "no rejection was recorded against the author");

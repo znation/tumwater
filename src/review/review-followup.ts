@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The review gate's bounded follow-up turns on the reviewer's own session — split out of
  * review.ts so the gate keeps its decision logic and the session-continuation plumbing lives
  * here. Both turns resume the just-finished review's session with tightly capped budgets and

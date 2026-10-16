@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { resolveFromNodeModules } from "./build-check-detect.js";
 import { readJsonFile } from "../files/json-files.js";
@@ -140,6 +141,6 @@ export async function syncRootInstall(
     warnEventBestEffort(
       root,
       role,
-      `the root install did not pick up main's dependencies (${r.packages.join(", ")})${r.detail ? `: ${r.detail}` : ""}; checks install into their own trees until a later landing re-syncs it`,
+      `the root install did not pick up main's dependencies (${r.packages.join(", ")})${r.detail ? `: ${r.detail}` : ""}; checks install into their own trees until a later merge re-syncs it`,
     );
 }

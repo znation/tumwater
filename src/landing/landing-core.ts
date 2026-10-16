@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { deleteRef, headOf, setRef } from "../git/git.js";
 import { landingRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";

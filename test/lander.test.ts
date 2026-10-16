@@ -84,7 +84,7 @@ test("the gate's verdict is durable on disk before the tick's end save", async (
       // What disk holds at tick start: the superseded rejection's verdict.
       state.lastReview = {
         verdict: "reject",
-        reasons: ["build check failed (test): stale"],
+        reasons: ["check failed (test): stale"],
         head: "0".repeat(40),
         at: Date.now() - 3_600_000,
       };
@@ -442,7 +442,7 @@ for (const main of ["green", "red"] as const) {
     assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
     assert.equal(await refSha(root, REF), sha);
     assert.equal(state.landingCheckFailures?.count, 1);
-    assert.match(state.lastError ?? "", /^merge failed: merge_blocked — build check failed .*planted landing failure/);
+    assert.match(state.lastError ?? "", /^merge failed: merge_blocked — check failed .*planted landing failure/);
 
     const second = await landApprovedChange(ctx, request(sha));
     if (main === "green") {
@@ -454,7 +454,7 @@ for (const main of ["green", "red"] as const) {
     } else {
       assert.equal(second, "main_red", "main fails too: not this change's failure");
       assert.equal(await refSha(root, REF), sha, "the pin is kept for a re-land once main is green");
-      assert.match(state.lastError ?? "", /^landing check failed: main \S+ is red — not this change's failure$/);
+      assert.match(state.lastError ?? "", /^merge check failed: main \S+ is red — not this change's failure$/);
       assert.equal(eventsOfType(root, "review_rejected").length, 0);
     }
     assert.equal(state.landingCheckFailures, undefined, "the streak ends at the attribution");
@@ -481,7 +481,7 @@ test("a kept-for-re-land red landing check logs a warning naming the failing tes
   assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one re-land");
   assert.equal(await refSha(root, REF), sha, "the pin is kept");
 
-  const warning = warningMessages(root).find((m) => m.includes("landing check red (kept for one re-land)"));
+  const warning = warningMessages(root).find((m) => m.includes("merge check failed (kept for one retry)"));
   assert.ok(warning, "the kept-for-re-land red is recorded durably as a warning");
   assert.match(warning!, /the flaky test/, "the warning names the failing test");
   assert.equal(mainSha(root), tip, "nothing landed");

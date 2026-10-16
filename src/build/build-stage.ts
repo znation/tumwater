@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { distDir, stampBuild } from "./build-info.js";
@@ -140,7 +141,7 @@ export async function compileStaged(
   }
   const stamped = await stampBuild(root, staged, mainHead);
   if (stamped) pruneStaleStagings(root, staged); // Superseded stagings die with the new build's success.
-  return stamped ? { ok: true, detail: "" } : { ok: false, detail: "could not stamp the compiled build" };
+  return stamped ? { ok: true, detail: "" } : { ok: false, detail: "could not stamp the compiled update" };
 }
 
 /** Classify one failed compile spawn into its terminal CompileResult, or null when the error
@@ -185,7 +186,7 @@ function missingSpawnInputs(execPath: string, cwd: string, tsc: string): string 
  * it is safe; only the respawned child reads them. Other staged builds are cleaned up. */
 export function swapDist(root: string, dist: string, mainHead: string): void {
   const staged = stagingDir(root, mainHead);
-  if (!fs.existsSync(staged)) throw new Error(`no staged build for ${shortSha(mainHead)}`);
+  if (!fs.existsSync(staged)) throw new Error(`no staged update for ${shortSha(mainHead)}`);
   const prev = path.join(stagingRootDir(root), "dist.prev");
   removeTree(prev);
   const hadDist = fs.existsSync(dist);
@@ -200,8 +201,8 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
         // A restore failure leaves dist/ MISSING — the operator must hear that plus where
         // the old build sits, not just the raw ENOENT/ENOSPC of whichever rename lost.
         throw new Error(
-          `could not restore the previous dist after a failed build swap for ${shortSha(mainHead)}` +
-            `: ${errorMessage(err)}; dist is missing and the old build is preserved at ${prev}` +
+          `could not restore the previous dist after a failed update swap for ${shortSha(mainHead)}` +
+            `: ${errorMessage(err)}; dist is missing and the old update is preserved at ${prev}` +
             ` (restore failed: ${errorMessage(restoreErr)})`,
         );
       }
@@ -209,7 +210,7 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
     // The raw error alone ("ENOTDIR", "EACCES") never says which move failed or which
     // staged build was lost: name the head and the dist path the swap was serving.
     throw new Error(
-      `could not move the staged build for ${shortSha(mainHead)} into ${dist}: ${errorMessage(err)}`,
+      `could not move the staged update for ${shortSha(mainHead)} into ${dist}: ${errorMessage(err)}`,
     );
   }
   // The swap is committed: the rename above put the new build at dist/. Everything below is
@@ -258,12 +259,12 @@ export function recoverInterruptedSwap(root: string, dist: string): boolean {
 export function repairInterruptedSwap(root: string, dist = distDir()): void {
   try {
     if (recoverInterruptedSwap(root, dist))
-      warnEventBestEffort(root, "harness", "an interrupted build swap left dist/ missing — restored it from .tumwater/build/dist.prev");
+      warnEventBestEffort(root, "harness", "an interrupted update swap left dist/ missing — restored it from .tumwater/build/dist.prev"); // vocabulary-ok: event source stays "harness" until the event log rename
   } catch (err) {
     warnEventBestEffort(
       root,
-      "harness",
-      `dist/ is missing after an interrupted build swap and could not be restored from .tumwater/build/dist.prev: ${errorMessage(err)}`,
+      "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+      `dist/ is missing after an interrupted update swap and could not be restored from .tumwater/build/dist.prev: ${errorMessage(err)}`,
     );
   }
 }
@@ -274,7 +275,7 @@ function removeSupersededQuiet(root: string, dir: string): void {
   try {
     removeTree(dir);
   } catch (err) {
-    warnCleanup(root, `could not remove superseded build tree ${dir}: ${errorMessage(err)}`);
+    warnCleanup(root, `could not remove superseded update tree ${dir}: ${errorMessage(err)}`);
   }
 }
 
@@ -299,7 +300,7 @@ function sweepSupersededStagings(root: string): void {
  * event log is unwritable too, the new dist/ is already in place and stays the outcome. */
 function warnCleanup(root: string, message: string): void {
   try {
-    warnEvent(root, "harness", message);
+    warnEvent(root, "harness", message); // vocabulary-ok: event source stays "harness" until the event log rename
   } catch {
     // Cleanup must not throw; the swap already succeeded.
   }

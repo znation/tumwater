@@ -156,7 +156,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       const second = runs[1] ?? "";
       assert.match(second, /is already in the worktree as uncommitted edits/);
       assert.match(second, /revision 1\b/);
-      assert.match(second, /build check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
+      assert.match(second, /check failed \(\`npm run build\`\): src\/bad\.ts\(3,5\)/);
     },
   );
 });

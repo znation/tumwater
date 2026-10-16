@@ -89,8 +89,8 @@ test("a fix-claim block in the landing's exempt arm warns, names the reason to t
   assert.equal(blocked.length, 1, "the lander is told the block reason for lastError");
   assert.match(blocked[0]!, /^md-only BUGS.md edit moves/);
   assert.deepEqual(
-    warningMessages(root).filter((m) => m.startsWith("landing blocked:")),
-    [`landing blocked: ${blocked[0]}`],
+    warningMessages(root).filter((m) => m.startsWith("merge blocked:")),
+    [`merge blocked: ${blocked[0]}`],
     "the warning names the reason, like a structure block does",
   );
   assertWorktreeSettled(wt);

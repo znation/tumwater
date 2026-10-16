@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** False-fix detection for md-only BUGS.md edits (BUGS.md 2026-09-22): an md-only diff is
  * exempt from the review gate by design, so nothing else verifies that a bug it moves to
  * Fixed actually has code behind it — commit 9cea8c3 landed a Fix paragraph naming
@@ -261,10 +262,10 @@ export async function falseFixReason(
     // resubmitted the same diff as a false positive (BUGS.md 2026-10-13).
     return baseBody === undefined
       ? `md-only BUGS.md edit moves "${heading}" to Fixed, but its Fix paragraph names code ` +
-          `that exists nowhere on this tree: ${names} — land the fix in the same commit, ` +
+          `that exists nowhere on this tree: ${names} — include the fix in the same commit, ` +
           `or keep the bug Open until the code exists`
       : `md-only BUGS.md edit rewrites the already-Fixed entry "${heading}", and its Fix ` +
-          `paragraph now names code that exists nowhere on this tree: ${names} — land that ` +
+          `paragraph now names code that exists nowhere on this tree: ${names} — include that ` +
           `code in the same commit, or leave the entry's text as it was`;
   }
   // One-line records are compressions of entries the base already holds as Fixed, and history
@@ -284,7 +285,7 @@ export async function falseFixReason(
     return (
       `md-only BUGS.md edit adds the one-line Fixed record "${truncate(record, RECORD_QUOTE_MAX)}", ` +
       `which names code that exists nowhere on this tree or in the base's Fixed section: ` +
-      `${missingSymbolNames(missing)} — copy names from the entry it compresses, or land the ` +
+      `${missingSymbolNames(missing)} — copy names from the entry it compresses, or include the ` +
       `code in the same commit`
     );
   }

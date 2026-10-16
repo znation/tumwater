@@ -883,7 +883,7 @@ test("gate rejects an md-only edit to the initial prompt block with no pi run", 
   await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
-    assert.match(result.detail!, /README\.md changes the initial prompt/);
+    assert.match(result.detail!, /README\.md changes the brief/);
     assert.ok(!fs.existsSync(marker), "deterministic rejection — no reviewer run at all");
   });
 });
@@ -894,7 +894,7 @@ test("gate rejects an md-only PRINCIPLES.md edit except from the steward", async
   await withPi(`touch '${marker}'`, async () => {
     const { result } = await reviewGate(root, wt);
     assert.equal(result.decision, "rejected");
-    assert.match(result.detail!, /PRINCIPLES\.md is edited by the improve loop/);
+    assert.match(result.detail!, /PRINCIPLES\.md is edited by the improve role/);
     assert.ok(!fs.existsSync(marker));
     const steward = await reviewGate(root, wt, { role: "steward" });
     assert.equal(steward.result.decision, "exempt");

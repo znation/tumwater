@@ -77,7 +77,7 @@ export interface BuildCheckOutcome {
   run?: BuildCheckRun;
   /** Set when runScopedBuildCheck remapped a verdict-less merge-scope outcome (a kill, or a
    * timeout whose deadline fired on time) to "failed": the tree is unverified, not red.
-   * checkFailureReasons passes such reasons through verbatim — the "build check failed" prefix
+   * checkFailureReasons passes such reasons through verbatim — the "check failed" prefix
    * would send the author hunting a test failure that never happened (BUGS.md 2026-09-28). */
   unverified?: boolean;
   /** The runner's own summary counts (`ℹ tests/pass/fail/skipped N`), parsed from the combined

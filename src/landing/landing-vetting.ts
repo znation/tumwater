@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";
@@ -64,8 +65,8 @@ function dropTornHead(root: string): void {
   dropLanding(stale);
   warnEventBestEffort(
     root,
-    "harness",
-    `land queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue can drain`,
+    "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+    `merge queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue keeps moving`,
   );
 }
 
@@ -215,7 +216,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
           controller: new AbortController(),
           userAborted: false,
         });
-        setLandingChangeStatus(root, role, "vetted");
+        setLandingChangeStatus(root, role, "vetted"); // vocabulary-ok: persisted state value, renamed by a later series
       } else {
         const result = verdict.kind === "stack" ? "aborted" : verdict.result;
         await settleLandingOutcome(root, entry, author.state, result, Date.now() - startedAt, usage, file);

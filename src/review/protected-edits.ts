@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { promptBlockOf } from "../brief/brief.js";
 import { readTextOrNull } from "../files/files.js";
@@ -29,10 +30,10 @@ export async function protectedEditReason(
       if (base === null) continue;
       const head = promptBlockOf(readTextOrNull(path.join(wt, file)) ?? "");
       if (head !== base)
-        return `${file} changes the initial prompt between the tumwater:prompt markers — only the operator edits it (tumwater brief); restore the block`;
+        return `${file} changes the brief between the tumwater:prompt markers — only you edit it (tumwater brief); restore the block`;
     }
   }
   if (files.includes("PRINCIPLES.md") && !PRINCIPLES_ROLES.has(baseRoleOf(role)))
-    return `PRINCIPLES.md is edited by the ${role} loop — only the director and steward roles may edit it; record an objection in PLANS.md instead and revert the edit`;
+    return `PRINCIPLES.md is edited by the ${role} role — only the director and steward roles may edit it; record an objection in PLANS.md instead and revert the edit`;
   return undefined;
 }
