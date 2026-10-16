@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { LoopState } from "../loop/loop-state.js";
 import { enqueueRolePrompt, removeSameStemSiblings, takeQueuedFile } from "./inbox.js";
 import { movePromptImages, stripVanishedImageReferences } from "./inbox-attachments.js";
@@ -150,7 +151,7 @@ export class PendingPrompt {
         warnEventBestEffort(
           this.root,
           this.role,
-          `could not move every re-queued prompt attachment: ${moved.problem}`,
+          `could not move every attachment of the prompt returned to the inbox: ${moved.problem}`,
         );
       }
       return stripVanishedImageReferences(moved.text).text;

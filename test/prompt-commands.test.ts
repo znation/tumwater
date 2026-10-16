@@ -106,9 +106,9 @@ test("prompt --list renders a hand-placed unstamped file without an age suffix",
 test("prompt --list on empty queues says so, in prose and JSON", async () => {
   const root = makeRoot();
   const prose = await expectOk(() => cmdPrompt(root, ["--list"]));
-  assert.equal(prose.stdout.trim(), "nothing queued");
+  assert.equal(prose.stdout.trim(), "every inbox is empty");
   const scoped = await expectOk(() => cmdPrompt(root, ["--list", "--role", "clean"]));
-  assert.equal(scoped.stdout.trim(), "nothing queued for clean");
+  assert.equal(scoped.stdout.trim(), "clean's inbox is empty");
   const json = await expectOk(() => cmdPrompt(root, ["--list", "--json"]));
   assert.deepEqual(JSON.parse(json.stdout), { prompts: [] });
 });
@@ -128,11 +128,11 @@ test("prompt --list --role scopes the listing to that loop's queue alone", async
 test("prompt enqueue defaults to the director queue and confirms; --role aims at one loop", async () => {
   const root = makeRoot();
   const director = await expectOk(() => cmdPrompt(root, ["do the thing"]));
-  assert.match(director.stdout, /queued for the director loop/);
+  assert.match(director.stdout, /added to the director's inbox/);
   assert.equal(inboxSize(root, DIRECTOR_ROLE), 1);
   assert.equal(inboxSize(root, "clean"), 0);
   const wakeup = await expectOk(() => cmdPrompt(root, ["--role", "clean", "clean something"]));
-  assert.match(wakeup.stdout, /queued for the clean loop/);
+  assert.match(wakeup.stdout, /added to clean's inbox/);
   assert.equal(inboxSize(root, "clean"), 1);
   // The enqueue also wrote a wake marker through submitRolePromptAndWake: its return line.
   assert.equal(wakeup.stdout.trim().split("\n").length, 2);
@@ -162,7 +162,7 @@ test("prompt cancel without --role reports an ambiguous position with a --role e
   enqueueRolePrompt(root, DIRECTOR_ROLE, "one");
   enqueueRolePrompt(root, "clean", "two");
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "1"]));
-  assert.match(o, /position 1 is queued for more than one loop/);
+  assert.match(o, /position 1 is in more than one role's inbox/);
   assert.match(o, /--role/);
   // Nothing was removed by the refused cancel.
   assert.equal(inboxSize(root, DIRECTOR_ROLE), 1);
@@ -173,7 +173,7 @@ test("prompt cancel without --role misses cleanly when no loop's queue reaches t
   const root = makeRoot();
   enqueueRolePrompt(root, "clean", "only one");
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "3"]));
-  assert.match(o, /no prompt at position 3 \(longest queue holds 1\)/);
+  assert.match(o, /no prompt at position 3 \(longest inbox holds 1\)/);
 });
 
 test("prompt cancel/edit without --role names the longest queue, not the total across loops", async () => {
@@ -182,12 +182,12 @@ test("prompt cancel/edit without --role names the longest queue, not the total a
   enqueueRolePrompt(root, DIRECTOR_ROLE, "two");
   enqueueRolePrompt(root, "clean", "only for clean");
   // --list shows three numbered entries (director 1-2, clean 1), but per-loop numbering
-  // means no position 99 exists; the miss must say the longest queue holds 2, not report the
+  // means no position 99 exists; the miss must say the longest inbox holds 2, not report the
   // total 3 as a per-loop position count or claim it is "across all loops".
   const miss = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "99"]));
-  assert.match(miss, /no prompt at position 99 \(longest queue holds 2\)/);
+  assert.match(miss, /no prompt at position 99 \(longest inbox holds 2\)/);
   const editMiss = await expectFailAsync(() => cmdPrompt(root, ["--edit", "99", "x"]));
-  assert.match(editMiss, /no prompt at position 99 \(longest queue holds 2\)/);
+  assert.match(editMiss, /no prompt at position 99 \(longest inbox holds 2\)/);
   // Neither miss touched a queue.
   assert.equal(inboxSize(root, DIRECTOR_ROLE), 2);
   assert.equal(inboxSize(root, "clean"), 1);
@@ -202,7 +202,7 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   assert.equal(stdout, "cancelled: a\n");
   assert.equal(inboxSize(root, "clean"), 1);
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
-  assert.match(o, /no prompt at position 5 \(1 queued\)/);
+  assert.match(o, /no prompt at position 5 \(1 in the inbox\)/);
 });
 
 test("prompt --file queues the file's contents verbatim for the director", async () => {
@@ -210,7 +210,7 @@ test("prompt --file queues the file's contents verbatim for the director", async
   const file = path.join(root, "note.md");
   fs.writeFileSync(file, "Refactor the parser.\nWith care.\n");
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--file", file]));
-  assert.match(stdout, /queued for the director loop/);
+  assert.match(stdout, /added to the director's inbox/);
   assert.equal(inboxSize(root), 1);
   // The parser hands the file's contents to the enqueue path whole; the queue layer's
   // pre-existing trim (inbox-submit.ts) strips the trailing newline, so the queued text is
@@ -222,7 +222,7 @@ test("prompt --at 90m queues a prompt whose marker decodes to now+90m", async (t
   t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--at", "90m", "re-check coverage"]));
   // The confirmation names the delivery delay in the same duration vocabulary --at parsed.
-  assert.match(stdout, /queued for the director loop — delivers in 90m/);
+  assert.match(stdout, /added to the director's inbox — delivers in 90m/);
   const file = fs.readdirSync(dirOf(root, DIRECTOR_ROLE)).find((f) => f.endsWith(".md"));
   const text = fs.readFileSync(path.join(dirOf(root, DIRECTOR_ROLE), file ?? ""), "utf8");
   assert.equal(notBeforeMs(text), Date.now() + 90 * 60_000);
@@ -351,11 +351,11 @@ test("prompt --edit with no --role resolves by the --list numbering: ambiguity a
 
   // Two loops show "1." in --list: the ambiguity names them and the --role escape hatch.
   const ambiguous = await expectFailAsync(() => cmdPrompt(root, ["--edit", "1", "edited"]));
-  assert.match(ambiguous, /position 1 is queued for more than one loop \(director, clean\) — name one with --role <id>/);
+  assert.match(ambiguous, /position 1 is in more than one role's inbox \(director, clean\) — name one with --role <id>/);
   assert.deepEqual(queuedRolePrompts(root, "clean"), ["also first"], "an ambiguity edits nothing");
 
   const missing = await expectFailAsync(() => cmdPrompt(root, ["--edit", "5", "edited"]));
-  assert.match(missing, /no prompt at position 5 \(longest queue holds 1\)/);
+  assert.match(missing, /no prompt at position 5 \(longest inbox holds 1\)/);
 
   // Cancel clean's entry, so only the director holds position 1: the edit resolves there
   // and its confirmation names the loop, since the caller scoped nothing.
@@ -375,7 +375,7 @@ test("prompt --edit refuses the sibling modes and out-of-range positions exit no
   assert.match((await expectFailAsync(() => cmdPrompt(root, ["old", "--edit", "1", "new"]))), /unexpected argument "old"/);
 
   const outOfRange = await expectFailAsync(() => cmdPrompt(root, ["--role", "bugfix", "--edit", "9", "new"]));
-  assert.match(outOfRange, /no prompt at position 9 \(1 queued\)/);
+  assert.match(outOfRange, /no prompt at position 9 \(1 in the inbox\)/);
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
 
@@ -386,7 +386,7 @@ test("prompt --attach saves the image beside the queue file, ends the text with 
   const img = path.join(root, "shot.png");
   fs.writeFileSync(img, Buffer.from("png-bytes"));
   const { stdout } = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "fix the layout"]));
-  assert.match(stdout, /queued for the feature loop with 1 image\(s\)/);
+  assert.match(stdout, /added to feature's inbox with 1 image\(s\)/);
   const dir = dirOf(root, "feature");
   const md = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
   assert.equal(md.length, 1);
@@ -653,7 +653,7 @@ test("prompt --edit <n> with no text fails on an ambiguous or missing position b
   await expectOk(() => cmdPrompt(root, ["--role", "clean", "a"]));
   await expectOk(() => cmdPrompt(root, ["--role", "feature", "b"]));
   const amb = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--edit", "1"])));
-  assert.match(amb.result, /more than one loop/);
+  assert.match(amb.result, /in more than one role's inbox/);
   assert.equal(amb.received, null);
   const miss = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--edit", "5"])));
   assert.match(miss.result, /no prompt at position/);
@@ -667,7 +667,7 @@ test("prompt --edit <n> with --role and an out-of-range position fails before an
   // position; an out-of-range position fails on that read (naming the count) before an
   // editor ever opens, so the failure must not depend on $EDITOR being configured.
   const res = await withEditor(root, "", () => expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--edit", "5"])));
-  assert.match(res.result, /no prompt at position 5 \(1 queued\)/);
+  assert.match(res.result, /no prompt at position 5 \(1 in the inbox\)/);
   assert.equal(res.received, null, "the editor never opened");
 });
 
@@ -676,7 +676,7 @@ test("prompt --edit <n> reports gone when the file is dequeued while the editor 
   await expectOk(() => cmdPrompt(root, ["--role", "clean", "vanishing"]));
   const dir = dirOf(root, "clean");
   const { result } = await withEditor(root, `fs.rmSync(${JSON.stringify(path.join(dir, fs.readdirSync(dir)[0] as string))}); fs.writeFileSync(file, "changed\\n");`, () => expectOk(() => cmdPrompt(root, ["--edit", "1"])));
-  assert.match(result.stdout, /prompt 1 is no longer queued/);
+  assert.match(result.stdout, /prompt 1 is no longer in the inbox/);
   assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith(".md")).length, 0);
 });
 
@@ -689,7 +689,7 @@ test("prompt --edit <n> reports gone when the file vanished before its body was 
   fs.mkdirSync(dir, { recursive: true }); // the bare-edit command never queues, so the inbox dir is not yet made
   fs.symlinkSync(path.join(dir, "vanished-target.md"), path.join(dir, `${Date.now()}-000001-${process.pid}.md`));
   const { result, received } = await withEditor(root, "", () => expectOk(() => cmdPrompt(root, ["--role", "clean", "--edit", "1"])));
-  assert.match(result.stdout, /prompt 1 is no longer queued/);
+  assert.match(result.stdout, /prompt 1 is no longer in the inbox/);
   assert.equal(received, null, "the editor never opened — gone is reported off the read, not the editor");
 });
 
@@ -705,7 +705,7 @@ test("prompt --edit <n> with a buffer over the prompt cap fails with the length 
   const { result } = await withEditor(root, `fs.writeFileSync(file, ${JSON.stringify(over)});`, () =>
     expectFailAsync(() => cmdPrompt(root, ["--role", "clean", "--edit", "1"])),
   );
-  assert.match(result, /rides into the clean tick's prefill/);
+  assert.match(result, /rides into the clean run's prefill/);
   assert.ok(before.equals(fs.readFileSync(file)), "no write landed when the edit was rejected");
 });
 
@@ -738,7 +738,7 @@ test("prompt --attach refuses an image the target loop cannot read, and names wh
     writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
     const ok = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
     assert.match(`${ok.stdout}${ok.stderr}`, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
-    assert.match(`${ok.stdout}${ok.stderr}`, /queued for the feature loop/);
+    assert.match(`${ok.stdout}${ok.stderr}`, /added to feature's inbox/);
     assert.equal(queuedRolePrompts(root, "feature").length, 1);
   } finally {
     if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;

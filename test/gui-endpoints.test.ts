@@ -933,7 +933,7 @@ test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bod
   assert.equal(ok.captured.status, 200);
   assert.deepEqual(ok.data, { ok: true, status: "answered", question: T1, decision: "use\nink", committed: false });
   const md = fs.readFileSync(file, "utf8");
-  assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by operator:\\*\\*\\n\\nuse\\nink\\n`));
+  assert.match(md, new RegExp(`## Answered[\\s\\S]*### ${T1}[\\s\\S]*\\*\\*Answered \\d{4}-\\d{2}-\\d{2} by the user:\\*\\*\\n\\nuse\\nink\\n`));
 
   // The first title is stale now (the second entry is position 1), and position 5 is out of range.
   const stale = await serve({ position: 1, title: T1, decision: "x" });
@@ -981,13 +981,13 @@ test("handleBacklogFile files a bug or plan and wakes its loop, and 400s bad inp
   const bug = await serveBacklogFile(root, { kind: "bug", title: "  x  y " });
   assert.equal(bug.captured.status, 200);
   assert.deepEqual(bug.data, { ok: true, file: "BUGS.md", title: "x y", committed: false });
-  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), new RegExp(`### x y \\(reported by the operator ${today}`));
+  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), new RegExp(`### x y \\(reported by the user ${today}`));
   assert.deepEqual(queuedTexts(root, "bugfix"), [bugWakeText("x y")]);
 
   const plan = await serveBacklogFile(root, { kind: "plan", title: "add z" });
   assert.equal(plan.captured.status, 200);
   assert.deepEqual(plan.data, { ok: true, file: "PLANS.md", title: "add z", committed: false });
-  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the operator/);
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the user/);
   assert.deepEqual(queuedTexts(root, "feature"), [planWakeText("add z")]);
 
   const bugsBefore = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
@@ -1013,11 +1013,11 @@ test("handleBacklogFile files an optional normalized body and 400s a bad one unt
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned" }, { heading: "## Done" }]);
   const plan = await serveBacklogFile(root, { kind: "plan", title: "add z", body: "Goal.\r\n\r\n- a  \n- b\n\n" });
   assert.equal(plan.captured.status, 200);
-  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the operator[^\n]*\n\nGoal\.\n\n- a\n- b\n/);
+  assert.match(fs.readFileSync(path.join(root, "PLANS.md"), "utf8"), /### add z \(reported by the user[^\n]*\n\nGoal\.\n\n- a\n- b\n/);
   assert.deepEqual(queuedTexts(root, "feature"), [planWakeText("add z")]);
   const bug = await serveBacklogFile(root, { kind: "bug", title: "sym", body: "Steps.\n1. go" });
   assert.equal(bug.captured.status, 200);
-  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), /### sym \(reported by the operator[^\n]*\n\nSteps\.\n1\. go\n/);
+  assert.match(fs.readFileSync(path.join(root, "BUGS.md"), "utf8"), /### sym \(reported by the user[^\n]*\n\nSteps\.\n1\. go\n/);
 
   const bugsBefore = fs.readFileSync(path.join(root, "BUGS.md"), "utf8");
   const plansBefore = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");

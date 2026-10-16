@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The QUESTIONS.md reader/writer core — the shared home of the open-question outbox logic: listing
  * the open questions in QUESTIONS.md and answering one, which moves its entry from `## Open` to
  * `## Answered` with a dated operator answer. It does the markdown surgery — cut exactly one
@@ -224,7 +225,7 @@ export function tryAnswerQuestion(root: string, n: number, rawDecision: string, 
 }
 /** `tumwater questions answer <n> <decision>`: move the Nth open question's full block —
  * heading plus body, verbatim — from `## Open` to the end of `## Answered`, followed by a
- * `**Answered <today> by operator:** <decision>` paragraph stamped with the local date — the
+ * `**Answered <today> by the user:** <decision>` paragraph stamped with the local date — the
  * positional decision is free-form operator prose, so it folds to one line (collapseWhitespace,
  * the pause `--reason` precedent): verbatim multi-line text could carry a line that starts with
  * `## ` or `### ` and grow a phantom section no reader wrote. The `--file` form (`keepLines`)
@@ -285,7 +286,7 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
 
   // Append the block at the end of ## Answered: before the next `## ` heading when one
   // follows, at the file's end otherwise — the section is last in the documented skeleton.
-  const stamp = `**Answered ${formatDate(new Date())} by operator:**`;
+  const stamp = `**Answered ${formatDate(new Date())} by the user:**`;
   const stamped = decision.includes("\n") ? [stamp, "", ...decision.split("\n")] : [`${stamp} ${decision}`];
   const answerLines = moved.concat("", ...stamped, "");
   if (scanned.answeredIdx === -1) {

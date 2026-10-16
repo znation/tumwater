@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { removeQuiet, unlinkAllMissingTolerant } from "../files/files.js";
@@ -299,6 +300,6 @@ export function stripVanishedImageReferences(text: string): { text: string; drop
   const body = kept.join("\n").replace(/\n+$/, "");
   const note =
     `[image attachments dropped: ${plural(dropped, "image file")} ${agree(dropped, "was", "were")}` +
-    ` missing when this prompt was re-queued and ${agree(dropped, "is", "are")} no longer on disk]`;
+    ` missing when this prompt was returned to the inbox and ${agree(dropped, "is", "are")} no longer on disk]`;
   return { text: `${body}\n\n${note}`, dropped };
 }

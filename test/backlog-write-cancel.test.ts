@@ -22,15 +22,15 @@ test("cancelBug removes a middle entry and leaves every other byte apart from th
   fs.writeFileSync(file, before);
   const removed = cancelBug(repo, 2);
   assert.equal(removed.file, "BUGS.md");
-  assert.equal(removed.title, "second (reported by the operator 2026-10-02)");
+  assert.equal(removed.title, "second (reported by the user 2026-10-02)");
   const expected = before.replace(
-    "### second (reported by the operator 2026-10-02)\n\nbody two\n\n",
+    "### second (reported by the user 2026-10-02)\n\nbody two\n\n",
     "",
   );
   assert.equal(fs.readFileSync(file, "utf8"), expected);
   assert.deepEqual(openBugs(repo), [
-    "first (reported by the operator 2026-10-01)",
-    "third (reported by the operator 2026-10-03)",
+    "first (reported by the user 2026-10-01)",
+    "third (reported by the user 2026-10-03)",
   ]);
 });
 
@@ -42,11 +42,11 @@ test("cancelBug removes the first and the last entry", () => {
   cancelBug(repo, 1);
   assert.equal(
     fs.readFileSync(file, "utf8"),
-    before.replace("### first (reported by the operator 2026-10-01)\n\nbody one\n\n", ""),
+    before.replace("### first (reported by the user 2026-10-01)\n\nbody one\n\n", ""),
   );
   // The file now holds two entries; the last of them is position 2.
   cancelBug(repo, 2);
-  assert.deepEqual(openBugs(repo), ["second (reported by the operator 2026-10-02)"]);
+  assert.deepEqual(openBugs(repo), ["second (reported by the user 2026-10-02)"]);
 });
 
 test("cancelling a section's only entry leaves the ## heading and no ### entry", () => {
@@ -59,7 +59,7 @@ test("cancelling a section's only entry leaves the ## heading and no ### entry",
       "",
       "## Open",
       "",
-      "### only (reported by the operator 2026-10-01)",
+      "### only (reported by the user 2026-10-01)",
       "",
       "body",
       "",
@@ -86,14 +86,14 @@ test("an entry quoting ## and ### inside a code fence is removed whole", () => {
       "",
       "## Open",
       "",
-      "### fenced (reported by the operator 2026-10-01)",
+      "### fenced (reported by the user 2026-10-01)",
       "",
       "```",
       "## Fixed",
       "### not an entry",
       "```",
       "",
-      "### after (reported by the operator 2026-10-02)",
+      "### after (reported by the user 2026-10-02)",
       "",
       "body after",
       "",
@@ -108,7 +108,7 @@ test("an entry quoting ## and ### inside a code fence is removed whole", () => {
   assert.ok(!md.includes("### fenced"), "the fenced entry is removed whole");
   assert.ok(!md.includes("### not an entry"), "the fence's quoted heading goes with it");
   assert.match(md, /### after /, "the entry after the quoted fence survives");
-  assert.deepEqual(openBugs(repo), ["after (reported by the operator 2026-10-02)"]);
+  assert.deepEqual(openBugs(repo), ["after (reported by the user 2026-10-02)"]);
 });
 
 test("an out-of-range cancel fails and leaves the file byte-identical", async () => {
@@ -139,7 +139,7 @@ test("tumwater plan --cancel removes only from PLANS.md and wakes no loop", asyn
   assert.match(r.stdout, /cancelled plan in PLANS\.md: Add an export command/);
   const remaining = plannedPlans(repo);
   assert.equal(remaining.length, 1);
-  assert.match(remaining[0]!, /^Remove an export command \(reported by the operator \d{4}-\d{2}-\d{2}\)$/);
+  assert.match(remaining[0]!, /^Remove an export command \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
   // No new prompt: a removal wakes nothing.
   assert.equal(queuedRolePrompts(repo, "feature").length, queuedBefore);
   // The bug file is untouched by a plan cancel.
@@ -155,9 +155,9 @@ test("tumwater bug --cancel --json prints {file, title} and removes the entry", 
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as { file: string; title: string };
   assert.equal(payload.file, "BUGS.md");
-  assert.match(payload.title, /^second symptom \(reported by the operator \d{4}-\d{2}-\d{2}\)$/);
+  assert.match(payload.title, /^second symptom \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
   assert.equal(openBugs(repo).length, 1);
-  assert.match(openBugs(repo)[0]!, /^first symptom \(reported by the operator \d{4}-\d{2}-\d{2}\)$/);
+  assert.match(openBugs(repo)[0]!, /^first symptom \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
 });
 
 test("a non-decimal or positional cancel fails and writes nothing", async () => {

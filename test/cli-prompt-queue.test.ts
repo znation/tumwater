@@ -26,7 +26,7 @@ test("prompt queues for the director and logs an event; empty text fails", async
 
   r = await cli(repo, "prompt", "add dark mode");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the director loop/);
+  assert.match(r.stdout, /added to the director's inbox/);
   assert.equal(inboxSize(repo), 1);
   assert.equal(dequeuePrompt(repo), "add dark mode");
 
@@ -42,7 +42,7 @@ test("prompt --list shows queued prompts numbered in execution order", async () 
   // An empty set of queues is a clean one-liner, not an error.
   let r = await cli(repo, "prompt", "--list");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /nothing queued/);
+  assert.match(r.stdout, /every inbox is empty/);
 
   submitPrompt(repo, "first task");
   // Full text verbatim — including newlines: --list is the inspection command that shows
@@ -63,7 +63,7 @@ test("prompt --list --role with an empty queue names the role, not an error", as
 
   const r = await cli(repo, "prompt", "--list", "--role", "qa");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /^nothing queued for qa$/m);
+  assert.match(r.stdout, /^qa's inbox is empty$/m);
 });
 
 test("prompt --cancel removes the Nth queued prompt and reports its text", async () => {
@@ -106,7 +106,7 @@ test("prompt --cancel fails on out-of-range or non-numeric positions without sid
   // shows, since a no-`--role` cancel addresses every loop's numbered section, not just one.
   let r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no prompt at position 2 \(longest queue holds 1\)/);
+  assert.match(r.stderr, /no prompt at position 2 \(longest inbox holds 1\)/);
 
   // Non-numeric or non-positive values are rejected by the parser before any file is touched.
   for (const bad of ["0", "abc", "1.5"]) {
@@ -140,7 +140,7 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
   // The fallback relaxes the config READ, not the id validation: an unknown id is refused.
   r = await cli(repo, "prompt", "--list", "--role", "qa");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /nothing queued for qa/);
+  assert.match(r.stdout, /qa's inbox is empty/);
   r = await cli(repo, "prompt", "--list", "--role", "nope");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role/);
@@ -154,7 +154,7 @@ test("prompt --list survives a broken tumwater.json; named-role writes still fai
   // No --role: the director queue needs no config read, so steering still works.
   r = await cli(repo, "prompt", "steer the director");
   assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /queued for the director loop/);
+  assert.match(r.stdout, /added to the director's inbox/);
   r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /cancelled \(director\): steer the director/);
@@ -183,7 +183,7 @@ test("prompt --cancel without --role cancels the entry --list shows, whichever l
   submitRolePrompt(repo, "qa", "qa task two");
   r = await cli(repo, "prompt", "--cancel", "1");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /position 1 is queued for more than one loop \(director, qa\)/);
+  assert.match(r.stderr, /position 1 is in more than one role's inbox \(director, qa\)/);
   assert.match(r.stderr, /--role/);
   assert.deepEqual(queuedPrompts(repo), ["director task"]);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task two"]);
@@ -213,7 +213,7 @@ test("prompt --cancel reports a concurrently dequeued prompt as gone and exits c
   // A concurrent dequeue is a normal race, not an error: exit 0 with the explanation.
   const r = await cli(repo, "prompt", "--cancel", "2");
   assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
-  assert.match(r.stdout, /prompt 2 is no longer queued/);
+  assert.match(r.stdout, /prompt 2 is no longer in the inbox/);
   assert.match(r.stdout, /director already took it/);
 
   // Nothing was removed or logged: the prompt ran (or will), it was not cancelled.
@@ -272,7 +272,7 @@ test("prompt --role queues for one loop only, wakes it, and validates the role",
   // the targeted loop is woken so a sleeping fleet sees the prompt within one poll.
   let r = await cli(repo, "prompt", "--role", "qa", "check", "the", "flow");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the qa loop/);
+  assert.match(r.stdout, /added to qa's inbox/);
   assert.match(r.stdout, /wake requested for qa/);
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["check the flow"]);
   assert.equal(inboxSize(repo), 0);
@@ -288,7 +288,7 @@ test("prompt --role queues for one loop only, wakes it, and validates the role",
   // `--role director` is the historical queue: same behavior as the flagless form.
   r = await cli(repo, "prompt", "--role", "director", "route this");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the director loop/);
+  assert.match(r.stdout, /added to the director's inbox/);
   assert.equal(dequeuePrompt(repo), "route this");
 });
 
@@ -334,7 +334,7 @@ test("prompt --cancel --role fails on an out-of-range position with the loop's c
   submitRolePrompt(repo, "qa", "qa task one");
   const r = await cli(repo, "prompt", "--cancel", "5", "--role", "qa");
   assert.equal(r.code, 1, `expected a failed exit:\n${r.stdout}`);
-  assert.match(r.stderr, /no prompt at position 5 \(1 queued\)/);
+  assert.match(r.stderr, /no prompt at position 5 \(1 in the inbox\)/);
 
   // No side effects: the sole prompt is still queued and nothing was logged.
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
@@ -356,7 +356,7 @@ test("prompt --cancel --role reports a concurrently dequeued prompt as gone and 
 
   const r = await cli(repo, "prompt", "--cancel", "2", "--role", "qa");
   assert.equal(r.code, 0, `expected clean exit for a gone prompt:\n${r.stderr}`);
-  assert.match(r.stdout, /prompt 2 is no longer queued/);
+  assert.match(r.stdout, /prompt 2 is no longer in the inbox/);
   assert.match(r.stdout, /qa already took it/);
 
   // The vanished file was left untouched and the real prompt is still queued.
@@ -499,7 +499,7 @@ test("prompt --file - reads the prompt from stdin", async () => {
     cwd: repo, timeout: 20_000, input: "hi from stdin\n", encoding: "utf8",
   });
   assert.equal(r.status, 0);
-  assert.match(r.stdout, /queued for the director loop/);
+  assert.match(r.stdout, /added to the director's inbox/);
   // The queue layer's pre-existing trim (inbox-submit.ts) strips the trailing newline.
   assert.equal(dequeuePrompt(repo), "hi from stdin");
 });

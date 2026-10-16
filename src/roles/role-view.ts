@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** One loop's read-only inspection payload — the collector behind `tumwater role <id>`:
  * what the loop IS (catalog entry or custom, enabled, paused, tier), what it RUNS ON
  * (resolved provider/model, the budget fallback pair), what it CARRIES (the instructions
@@ -294,7 +295,7 @@ export function rolePayload(
     const own = quietHoursStatus(cfg.quietHoursPerRole?.[baseRoleOf(role)], now);
     if (own.window !== null) quietHours.push({ scope: "role", window: own.window, inWindow: own.inWindow });
     const fleet = quietHoursStatus(cfg.quietHours, now);
-    if (fleet.window !== null) quietHours.push({ scope: "fleet", window: fleet.window, inWindow: fleet.inWindow });
+    if (fleet.window !== null) quietHours.push({ scope: "fleet", window: fleet.window, inWindow: fleet.inWindow }); // vocabulary-ok: persisted --json scope value
   }
   return {
     id: role,

@@ -107,7 +107,7 @@ test("a custom loop's task is its find text, and it reads as enabled and custom"
   writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const p = rolePayload(dir, "greeter", NO_MODELS);
   assert.equal(p.custom, true);
-  assert.equal(p.title, "user-defined loop");
+  assert.equal(p.title, "custom role");
   assert.equal(p.find, "Say hello to the project.");
   assert.equal(p.enabled, true); // a custom absent from `roles` stays enabled
   assert.equal(p.tier, 1); // customs are not catalog work roles
@@ -160,17 +160,17 @@ test("renderRoleMarkdown renders the payload's sections, with verbatim text fenc
   enqueueRolePrompt(dir, "feature", "check the scheduler first");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /^# tumwater role: feature$/m);
-  assert.match(md, /- Loop: "feature" \(feature implementer\)$/m);
+  assert.match(md, /- Role: "feature" \(feature implementer\)$/m);
   assert.match(md, /- State: enabled, not paused/);
-  assert.match(md, /- Scheduling tier: 0 \(work\)/);
+  assert.match(md, /- Priority: work/);
   assert.match(md, /- Model: prov-a\/model-a \(default tier\)/m);
-  assert.match(md, /- Budget fallback: fp\/fm \(priced\)/); // no definitions file in the fixture
-  assert.match(md, /- Min tick interval: 20s/);
-  assert.match(md, /- Queued prompts: 1/);
+  assert.match(md, /- Over-cap model: fp\/fm \(priced\)/); // no definitions file in the fixture
+  assert.match(md, /- Min run interval: 20s/);
+  assert.match(md, /- Inbox: 1/);
   assert.match(md, /## Instructions override\n\n```\nBe terse\.\nThen terser\.\n```/); // verbatim, fenced
   assert.match(md, /## Find text/);
   assert.match(md, /check the scheduler first/); // the queued prompt rides in the preview
-  assert.match(md, /## Next tick prompt/);
+  assert.match(md, /## Next run's prompt/);
 });
 
 test("the role view names the per-provider concurrency key and its cap when a cap map sets one", () => {
@@ -200,10 +200,10 @@ test("with several prompts queued, the next-tick block discloses that only the o
   enqueueRolePrompt(dir, "feature", "cover the empty-input case");
   enqueueRolePrompt(dir, "feature", "also test the NaN path");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
-  assert.match(md, /- Queued prompts: 2/);
+  assert.match(md, /- Inbox: 2/);
   assert.match(
     md,
-    /_\(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; 1 more waits?\)_/,
+    /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
   ); // tick-prompt dequeues exactly one per tick — the block says so rather than reading as a contradiction
 });
 
@@ -218,31 +218,31 @@ test("inspectMarkdownLines carries the notebook and next-tick blocks renderRoleM
   const lines = inspectMarkdownLines(p);
   // The Notebook block is verbatim and fenced, then the Next tick prompt block, then the
   // "more waits" disclosure when several prompts are queued.
-  assert.deepEqual(lines.slice(0, 5), ["## Notebook", "", "```", "the scheduler lives in fleet.ts", "```"]);
-  assert.ok(lines.includes("## Next tick prompt"));
+  assert.deepEqual(lines.slice(0, 5), ["## Notes", "", "```", "the scheduler lives in fleet.ts", "```"]);
+  assert.ok(lines.includes("## Next run's prompt"));
   assert.match(
     lines.join("\n"),
-    /_\(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; 1 more waits?\)_/,
+    /_\(the next run's prompt embeds the oldest inbox message — one is taken per run; 1 more waits?\)_/,
   );
   // The extraction is in place: the full document still shows Find text before Notebook
   // before Next tick prompt, with the same fenced notebook body.
   const md = renderRoleMarkdown(p);
   const findAt = md.indexOf("## Find text");
-  const notebookAt = md.indexOf("## Notebook");
-  const nextAt = md.indexOf("## Next tick prompt");
+  const notebookAt = md.indexOf("## Notes");
+  const nextAt = md.indexOf("## Next run's prompt");
   assert.ok(findAt >= 0 && notebookAt > findAt && nextAt > notebookAt);
-  assert.match(md, /## Notebook\n\n```\nthe scheduler lives in fleet\.ts\n```/);
+  assert.match(md, /## Notes\n\n```\nthe scheduler lives in fleet\.ts\n```/);
 });
 
 test("unset things render as explicit placeholder lines, not omissions", () => {
   const dir = root();
   const md = renderRoleMarkdown(rolePayload(dir, "director", NO_MODELS));
   assert.match(md, /- Model: pi default \(strong tier\)/m);
-  assert.ok(!md.includes("Budget fallback")); // no fallback configured: no line at all
+  assert.ok(!md.includes("Over-cap model")); // no fallback configured: no line at all
   assert.match(md, /## Instructions override\n\n_\(none\)_/);
-  assert.match(md, /_\(none — the director is driven by its queued prompts, not a find text\)_/);
-  assert.match(md, /## Notebook\n\n_\(none yet/); // the director has no notebook
-  assert.match(md, /## Next tick prompt\n\n_\(nothing to run this tick\)_/);
+  assert.match(md, /_\(none — the director is driven by its inbox, not by instructions\)_/);
+  assert.match(md, /## Notes\n\n_\(none yet/); // the director has no notebook
+  assert.match(md, /## Next run's prompt\n\n_\(nothing to do this run\)_/);
 });
 
 test("a role's notebook renders verbatim, or reads as none yet", () => {
@@ -251,14 +251,14 @@ test("a role's notebook renders verbatim, or reads as none yet", () => {
   fs.mkdirSync(path.dirname(notes), { recursive: true });
   fs.writeFileSync(notes, "the scheduler lives in fleet.ts\n");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
-  assert.match(md, /## Notebook\n\n```\nthe scheduler lives in fleet\.ts\n```/);
+  assert.match(md, /## Notes\n\n```\nthe scheduler lives in fleet\.ts\n```/);
   assert.equal(rolePayload(dir, "feature", NO_MODELS).note, "the scheduler lives in fleet.ts\n");
 
   // Empty or missing degrades to the placeholder, never a throw or a blank section.
   fs.writeFileSync(notes, "");
   const blank = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.equal(rolePayload(dir, "feature", NO_MODELS).note, null);
-  assert.match(blank, /## Notebook\n\n_\(none yet/);
+  assert.match(blank, /## Notes\n\n_\(none yet/);
 });
 
 test("the State line distinguishes disabled from paused, alone and together", () => {
@@ -273,8 +273,8 @@ test("a custom loop renders as user-defined, on the maintenance tier", () => {
   const dir = root();
   writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const md = renderRoleMarkdown(rolePayload(dir, "greeter", NO_MODELS));
-  assert.match(md, /- Loop: "greeter" \(user-defined loop\) — user-defined loop/);
-  assert.match(md, /- Scheduling tier: 1 \(maintenance\/observer\)/);
+  assert.match(md, /- Custom role: "greeter" \(custom role\)/);
+  assert.match(md, /- Priority: maintenance or observer/);
 });
 
 test("the Model line shows a thinking level and drops a missing pair half", () => {
@@ -288,7 +288,7 @@ test("a one-sided fallback pair renders with its missing half dropped", () => {
   const dir = root();
   writeConfig(dir, { fallbackModel: { provider: "fp-only" } });
   const md = renderRoleMarkdown(rolePayload(dir, "qa", NO_MODELS));
-  assert.match(md, /- Budget fallback: fp-only \(priced\)/);
+  assert.match(md, /- Over-cap model: fp-only \(priced\)/);
 });
 
 test("a fallback pair priced free in pi's definitions renders as free", () => {
@@ -300,7 +300,7 @@ test("a fallback pair priced free in pi's definitions renders as free", () => {
     JSON.stringify({ providers: { "lm-studio": { models: [{ id: "qwen3.8-27b" }] } } }),
   ); // no cost field: free
   const md = renderRoleMarkdown(rolePayload(dir, "qa", file));
-  assert.match(md, /- Budget fallback: lm-studio\/qwen3\.8-27b \(free\)/);
+  assert.match(md, /- Over-cap model: lm-studio\/qwen3\.8-27b \(free\)/);
 });
 
 test("a fenced block grows past any backtick run in the verbatim text", () => {
@@ -537,7 +537,7 @@ test("role payload reports image input and the renderer's Images line", () => {
   assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
 });
 
-// Recent tick outcomes (the `tumwater role <id>` section): the loop's last few tick_end
+// Recent runs (the `tumwater role <id>` section): the loop's last few tick_end
 // results, read from the event log so the command answers with the fleet stopped. Newest
 // first, at most 8, each with its time, result, duration, and summary.
 test("role payload surfaces the newest tick_end outcomes ordered newest-first", () => {
@@ -594,7 +594,7 @@ test("a role with no tick_end events carries no recentOutcomes", () => {
   const dir = root();
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.recentOutcomes, undefined);
-  assert.ok(!renderRoleMarkdown(p).includes("Recent tick outcomes"));
+  assert.ok(!renderRoleMarkdown(p).includes("Recent runs"));
 });
 
 // The loop's own spend (PLANS.md): rolePayload sums this role's tick_end usage over the same
@@ -613,9 +613,9 @@ test("role payload sums the loop's usage and renders a Spend line", () => {
   assert.deepEqual(p.usage, { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 });
   const md = renderRoleMarkdown(p);
   assert.match(md, /- Spend: \$0\.05 · 12\.5k tokens · \$0\.05 notional/);
-  // The line sits after Queued prompts and before the schedule lines.
-  assert.ok(md.indexOf("- Queued prompts: 0") < md.indexOf("- Spend:"));
-  assert.ok(md.indexOf("- Spend:") < md.indexOf("- Next tick:"));
+  // The line sits after Inbox and before the schedule lines.
+  assert.ok(md.indexOf("- Inbox: 0") < md.indexOf("- Spend:"));
+  assert.ok(md.indexOf("- Spend:") < md.indexOf("- Next run:"));
 
   // A zero notional omits the notional suffix.
   writeEvents(dir, [
@@ -653,7 +653,7 @@ test("a torn tick_end line contributes nothing to the usage sum", () => {
   assert.deepEqual(p.usage, { tokens: 700, costUsd: 0.01, notionalCostUsd: 0 });
 });
 
-test("role markdown renders the Recent tick outcomes section before the instructions", () => {
+test("role markdown renders the Recent runs section before the instructions", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
@@ -661,11 +661,11 @@ test("role markdown renders the Recent tick outcomes section before the instruct
     { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", summary: "nothing to do" },
   ]);
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
-  assert.match(md, /## Recent tick outcomes/);
+  assert.match(md, /## Recent runs/);
   assert.match(md, /- .* · changed · 30s — added a thing/);
   // A durationless outcome omits the span, keeping the summary after the result.
   assert.match(md, /- .* · no_change — nothing to do/);
-  assert.ok(md.indexOf("## Recent tick outcomes") < md.indexOf("## Instructions override"));
+  assert.ok(md.indexOf("## Recent runs") < md.indexOf("## Instructions override"));
 });
 
 // The loop's schedule (PLANS.md): the role view says when the loop next runs and when it
@@ -686,21 +686,21 @@ test("role payload and render surface the loop's schedule from persisted state",
   assert.equal(p.backoffSeconds, 120);
   assert.equal(p.lastTickEndedAt, now - 180_000);
   const md = renderRoleMarkdown(p, now);
-  assert.match(md, /- Next tick: sleeping in 5m/); // sleeping prefix while backing off
+  assert.match(md, /- Next run: sleeping in 5m/); // sleeping prefix while backing off
   // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
-  assert.match(md, /- Last tick: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
+  assert.match(md, /- Last run: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
 
   // A due loop (nextRunAt at/past now) reads `due now`.
   state.nextRunAt = now;
   saveLoopState(dir, state);
-  assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now), /- Next tick: due now/);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now), /- Next run: due now/);
 
   // A scheduled loop out of backoff reads plain `in <Ns>` with no backoff prefix.
   state.nextRunAt = now + 60_000;
   state.backoffSeconds = 0;
   saveLoopState(dir, state);
   const plain = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now);
-  assert.match(plain, /- Next tick: in 1m/);
+  assert.match(plain, /- Next run: in 1m/);
   assert.doesNotMatch(plain, /backoff/);
 
   // A never-ticked, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
@@ -711,8 +711,8 @@ test("role payload and render surface the loop's schedule from persisted state",
   assert.equal(fresh.backoffSeconds, 0);
   assert.equal(fresh.lastTickEndedAt, undefined);
   const freshMd = renderRoleMarkdown(fresh, now);
-  assert.match(freshMd, /- Next tick: not scheduled yet/);
-  assert.match(freshMd, /- Last tick: never/);
+  assert.match(freshMd, /- Next run: not scheduled yet/);
+  assert.match(freshMd, /- Last run: never/);
 });
 
 // The role view's Schedule must not understate a quiet yield-scaled loop's effective gap: a
@@ -733,18 +733,18 @@ test("role schedule surfaces the yield multiplier a quiet scalable loop is servi
   const p = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(p.yieldMultiplier, 2);
   const md = renderRoleMarkdown(p, now);
-  assert.match(md, /- Next tick: in 5m ×2/); // the stretched-gap suffix rides the line
+  assert.match(md, /- Next run: in 5m ×2/); // the stretched-gap suffix rides the line
   // A due quiet loop reads `due now ×2`, matching nextRunCell's `now ×N`.
   state.nextRunAt = now;
   saveLoopState(dir, state);
-  assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now), /- Next tick: due now ×2/);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now), /- Next run: due now ×2/);
   // A landing inside the recent window resets the multiplier to 1, so no suffix rides.
   state.nextRunAt = now - 60_000;
   state.recentOutcomes = "L".repeat(2) + "n".repeat(8);
   saveLoopState(dir, state);
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).yieldMultiplier, 1);
   const settled = renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now);
-  assert.match(settled, /- Next tick: due now$/m);
+  assert.match(settled, /- Next run: due now$/m);
   assert.doesNotMatch(settled, /×/);
 });
 
@@ -758,7 +758,7 @@ test("the role view names the quiet-hours windows governing the loop and whether
     { scope: "fleet", window: "12:00-13:00", inWindow: false },
   ]);
   const md = renderRoleMarkdown(p);
-  assert.match(md, /- Last tick: .*\n- Quiet hours: 23:00-07:00 \(own window; holding now — quiet until 07:00\)\n- Quiet hours: 12:00-13:00 \(fleet window; not holding now\)/);
+  assert.match(md, /- Last run: .*\n- Quiet hours: 23:00-07:00 \(own window; holding now — quiet until 07:00\)\n- Quiet hours: 12:00-13:00 \(team window; not holding now\)/);
   // The director is exempt from both gates.
   assert.equal("quietHours" in rolePayload(dir, "director", NO_MODELS, at), false);
 });
@@ -792,7 +792,7 @@ test("role payload carries the daily cap verdict and renders a Daily cap line", 
   assert.deepEqual(p.dailyCap, { capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["coverage"] });
   assert.match(
     renderRoleMarkdown(p),
-    /^- Daily cap: \$1\.20 of \$1\.00 spent today \(holding now — no new ticks until local midnight\)$/m,
+    /^- Daily cap: \$1\.20 of \$1\.00 spent today \(holding now — no new runs until local midnight\)$/m,
   );
 
   // A spend stamped on an earlier day counts 0.

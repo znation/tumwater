@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The entry-writing half of `tumwater bug` and `tumwater plan` — the operator-authored
  * backlog writes, mirroring the read half in backlog.ts: file a bug into BUGS.md's `## Open`
  * or a plan request into PLANS.md's `## Planned`, stamped the way loops write those
@@ -24,7 +25,7 @@ import { primaryWorktreeLockPath } from "../paths.js";
 /** Today's stamp body every operator-filed entry carries, parenthesized by the caller that
  * builds the heading. Computed once per call (not module load) so a long-lived process
  * stamps with the date it filed on. */
-const operatorStamp = () => `reported by the operator ${formatDate(new Date())}`;
+const operatorStamp = () => `reported by the user ${formatDate(new Date())}`;
 
 /** The kind's open-section markdown file and its `## ` heading: bugs live in BUGS.md's `Open`
  * section, plan requests in PLANS.md's `Planned`. Every position-based writer (cancel, edit,
@@ -423,12 +424,12 @@ export function fileBugFromText(root: string, text: string, usage: string): File
 /** The loop prompt a filed bug wakes the `bugfix` loop with — one wording for the CLI's
  * `tumwater bug` and the dashboard's backlog-file endpoint. */
 export function bugWakeText(title: string): string {
-  return `Operator filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`;
+  return `The user filed a new bug with \`tumwater bug\`: "${title}" — it is under BUGS.md ## Open; fix it.`;
 }
 
 /** The loop prompt a requested plan wakes the `feature` loop with, shared like bugWakeText. */
 export function planWakeText(title: string): string {
-  return `Operator requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`;
+  return `The user requested a plan with \`tumwater plan\`: "${title}" — it is under PLANS.md ## Planned; flesh out the plan stub.`;
 }
 
 /** The loop each operator-filed kind wakes and the wording it wakes it with, keyed by the
@@ -456,7 +457,7 @@ function appendOperatorEntry(
   return { file: fileName, title, stamp };
 }
 
-/** `tumwater bug "<symptom>"`: append one `### <symptom> (reported by the operator <date>)`
+/** `tumwater bug "<symptom>"`: append one `### <symptom> (reported by the user <date>)`
  * entry to BUGS.md's `## Open`. The symptom is operator prose, so it folds to one line
  * (collapseWhitespace, the questions answer precedent) — a multi-line raw text could carry
  * a `## `/`### ` line and grow a phantom section no reader wrote. An empty symptom fails
@@ -467,7 +468,7 @@ export function fileBug(root: string, rawText: string, usage: string): FiledEntr
   return appendOperatorEntry(root, "BUGS.md", BUGS_TEMPLATE, "Open", symptom, "");
 }
 
-/** `tumwater plan "<title>" [body...]`: append one `### <title> (reported by the operator
+/** `tumwater plan "<title>" [body...]`: append one `### <title> (reported by the user
  * <date>)` entry to PLANS.md's `## Planned`, with the optional body as the entry text. No
  * goal/approach/acceptance-criteria scaffolding is invented — the feature loop's
  * plan-refinement pass fleshes the stub out on pickup. An empty title fails with the usage

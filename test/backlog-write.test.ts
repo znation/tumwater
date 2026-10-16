@@ -25,10 +25,10 @@ test("fileBug appends an operator-stamped entry to ## Open and the readers list 
   await initProject(repo, "bug write test");
   const filed = fileBug(repo, "the config parser rejects empty values", 'tumwater bug "<symptom>"');
   const md = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
-  assert.match(md, /### the config parser rejects empty values \(reported by the operator \d{4}-\d{2}-\d{2}\)/);
+  assert.match(md, /### the config parser rejects empty values \(reported by the user \d{4}-\d{2}-\d{2}\)/);
   assert.equal(filed.file, "BUGS.md");
   assert.equal(filed.title, "the config parser rejects empty values");
-  assert.match(filed.stamp, /^reported by the operator \d{4}-\d{2}-\d{2}$/);
+  assert.match(filed.stamp, /^reported by the user \d{4}-\d{2}-\d{2}$/);
   // Placement: the entry sits before ## Fixed.
   assert.ok(md.indexOf("### the config parser") < md.indexOf("## Fixed"));
   const expected = `the config parser rejects empty values (${filed.stamp})`;
@@ -53,7 +53,7 @@ test("filePlan appends to ## Planned with the body as entry text", async () => {
   await initProject(repo, "plan write test");
   const filed = filePlan(repo, "Add an export command", "keep it JSON first", 'tumwater plan "<title>" [body...]');
   const md = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
-  assert.match(md, /### Add an export command \(reported by the operator \d{4}-\d{2}-\d{2}\)/);
+  assert.match(md, /### Add an export command \(reported by the user \d{4}-\d{2}-\d{2}\)/);
   assert.match(md, /keep it JSON first/);
   assert.ok(md.indexOf("### Add an export command") < md.indexOf("## Done"));
   assert.equal(filed.file, "PLANS.md");
@@ -152,8 +152,8 @@ test("tumwater bug files the entry, confirms, and wakes the bugfix loop", async 
   assert.match(r.stdout, /filed bug in BUGS\.md: the config parser rejects empty values/);
   const queued = queuedRolePrompts(repo, "bugfix");
   assert.equal(queued.length, 1);
-  assert.match(queued[0]!, /Operator filed a new bug with `tumwater bug`/);
-  assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /### the config parser rejects empty values \(reported by the operator/);
+  assert.match(queued[0]!, /The user filed a new bug with `tumwater bug`/);
+  assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /### the config parser rejects empty values \(reported by the user/);
 });
 
 test("tumwater plan files the entry and wakes the feature loop", async () => {
@@ -175,7 +175,7 @@ test("tumwater bug --json prints the {file, title, stamp} payload", async () => 
   const payload = JSON.parse(r.stdout) as { file: string; title: string; stamp: string };
   assert.equal(payload.file, "BUGS.md");
   assert.equal(payload.title, "a symptom");
-  assert.match(payload.stamp, /^reported by the operator \d{4}-\d{2}-\d{2}$/);
+  assert.match(payload.stamp, /^reported by the user \d{4}-\d{2}-\d{2}$/);
 });
 
 test("a repeated --json fails with the shared duplicate-flag wording and writes nothing", async () => {
@@ -208,7 +208,7 @@ test("a symptom that fits the cap but whose wake prompt does not fails before an
   const r = await cli(repo, "bug", title);
   assert.equal(r.code, 1);
   assert.match(r.stderr, new RegExp(`the prompt is ${DIRECTOR_PROMPT_MAX_CHARS + 1} chars`));
-  assert.match(r.stderr, /rides into the bugfix tick's prefill/);
+  assert.match(r.stderr, /rides into the bugfix run's prefill/);
   assert.match(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), /_None yet\._/);
   assert.equal(queuedRolePrompts(repo, "bugfix").length, 0);
 });
@@ -297,10 +297,10 @@ test("filePlanFromText and fileBugFromText keep the body's line structure", asyn
   await initProject(repo, "from text");
   filePlanFromText(repo, "# Plan it\n\nGoal.\n\n- a\n- b\n", "usage");
   const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
-  assert.match(plans, /### Plan it \(reported by the operator [^)]*\)\n\nGoal\.\n\n- a\n- b\n/);
+  assert.match(plans, /### Plan it \(reported by the user [^)]*\)\n\nGoal\.\n\n- a\n- b\n/);
   fileBugFromText(repo, "Bug sym\n\n1. step\n2. step\n", "usage");
   const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
-  assert.match(bugs, /### Bug sym \(reported by the operator [^)]*\)\n\n1\. step\n2\. step\n/);
+  assert.match(bugs, /### Bug sym \(reported by the user [^)]*\)\n\n1\. step\n2\. step\n/);
 });
 
 test("filePlanFromText refuses a structure-breaking body and an empty title, writing nothing", async () => {

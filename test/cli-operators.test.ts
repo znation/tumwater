@@ -323,7 +323,7 @@ test("role prints one loop's standing prompt, and a queued prompt survives inspe
   assert.equal(r.code, 0);
   assert.match(r.stdout, /# tumwater role: feature/);
   assert.match(r.stdout, /Implement the SINGLE most valuable planned feature in PLANS\.md/); // the find text, verbatim
-  assert.match(r.stdout, /## Next tick prompt/);
+  assert.match(r.stdout, /## Next run's prompt/);
 
   // A queued per-role prompt appears inside the previewed next prompt AND survives — two
   // inspections in a row both show it, and the queue file count is unchanged.

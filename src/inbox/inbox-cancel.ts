@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { logEventBestEffort } from "../events/events.js";
 import { roleInboxDir } from "../paths.js";
@@ -133,7 +134,7 @@ export function queueFileNameProblem(name: unknown): string | null {
   if (name.includes("/") || name.includes("\\") || name.includes("\0") || name === "..") {
     return `file must be a plain queue-file basename${gotSuffix(name)} — send just the name, not a path`;
   }
-  if (!name.endsWith(".md")) return `file must name a queued prompt's .md file${gotSuffix(name)}`;
+  if (!name.endsWith(".md")) return `file must name an inbox message's .md file${gotSuffix(name)}`;
   return null;
 }
 

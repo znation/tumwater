@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The CLI shells of `tumwater bug` and `tumwater plan` — flag classification, the preflights,
  * and the confirmation each case prints — over the entry-writing primitives in
  * backlog-write.ts (the read half's mirror, backlog.ts). cli.ts reaches the file, cancel,
@@ -160,7 +161,7 @@ async function announceFiled(
   wakeText: (title: string) => string,
   json: boolean,
 ): Promise<void> {
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${command}: ${filed.title}`)), filed.file);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${command}: ${filed.title}`)), filed.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   const wake = submitRolePromptAndWake(root, role, wakeText(filed.title));
   sayFiled(command, filed, json);
   if (!json) say(wake);
@@ -205,7 +206,7 @@ export async function cancelAndAnnounce(
   if (position === null) fail(`--cancel needs a position (usage: tumwater ${command} --cancel <n>)`);
   await requireReadyRepo(root);
   const removed = cancel(position);
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`)), removed.file);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, removed.file, stampedSubject("operator", `Cancel ${command}: ${removed.title}`)), removed.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   if (json) sayJson({ file: removed.file, title: removed.title });
   else say(`cancelled ${command} in ${removed.file}: ${removed.title}`);
 }
@@ -245,7 +246,7 @@ export async function releaseAndAnnounce(
   if (position === null) fail(`--release needs a position (usage: tumwater ${command} --release <n>)`);
   await requireReadyRepo(root);
   const released = release(position);
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`)), released.file);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, released.file, stampedSubject("operator", `Release ${command}: ${released.title}`)), released.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   const wake = requestWake(root, [role]);
   if (json) sayJson({ file: released.file, title: released.title });
   else {
@@ -483,7 +484,7 @@ export async function editAndAnnounce(
     text = after;
   } else if (path !== null) text = readPromptFileArg(path);
   const edited = text === null ? edit(position, positionals) : editText(position, text);
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, edited.file, stampedSubject("operator", `Edit ${command}: ${edited.title}`)), edited.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
   if (json) sayJson({ file: edited.file, title: edited.title });
   else say(`edited ${command} in ${edited.file}: ${edited.title}`);
 }

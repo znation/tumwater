@@ -166,7 +166,7 @@ test("requirePromptText carries a custom role into the over-long message", () =>
   const { res, captured } = fakeRes();
   const long = "x".repeat(DIRECTOR_PROMPT_MAX_CHARS + 1);
   assert.equal(requirePromptText(res, { text: long }, "feature"), null);
-  assert.match(captured.body, /into the feature tick's prefill/);
+  assert.match(captured.body, /into the feature run's prefill/);
 });
 
 test("requirePausedFlag returns an explicit boolean and rejects everything else", () => {
@@ -204,7 +204,7 @@ test("rejectBadQueueFileName refuses each unsafe shape with the shared 400", () 
   for (const [name, phrase] of [
     ["../secret.md", "plain queue-file basename"],
     ["sub/dir.md", "plain queue-file basename"],
-    ["prompt.txt", "queued prompt's .md file"],
+    ["prompt.txt", "inbox message's .md file"],
     [undefined, "file required"],
   ] as const) {
     const { res, captured } = fakeRes();

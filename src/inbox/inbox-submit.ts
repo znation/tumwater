@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { enqueueRolePrompt, promptPreview } from "./inbox.js";
 import { unlinkAllMissingTolerant } from "../files/files.js";
 import {
@@ -13,6 +14,7 @@ import { tooLongMessage } from "../text/text.js";
 import { defaultConfig, loadConfigSafe } from "../config/config.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
+import { roleLabel } from "../roles/role-labels.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
  * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox/inbox.ts,
@@ -40,7 +42,7 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
     "the prompt",
     prompt.length,
     DIRECTOR_PROMPT_MAX_CHARS,
-    `it rides into the ${role} tick's prefill`,
+    `it rides into the ${roleLabel(role)} run's prefill`,
   );
 }
 

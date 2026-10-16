@@ -29,7 +29,7 @@ test("questions answer keeps single-dash decision words as prose", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /answered question 1/);
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
-  assert.match(md, /\*\*Answered .* by operator:\*\* -50% spend cap/);
+  assert.match(md, /\*\*Answered .* by the user:\*\* -50% spend cap/);
 
   // Unknown double-dash flags stay refused, never baked into the decision.
   const bad = await cli(repo, "questions", "answer", "1", "--rol", "x");
@@ -54,7 +54,7 @@ test("questions answer keeps a decision token spelled --json as prose", async ()
   assert.equal(r.code, 0);
   assert.match(r.stdout, /answered question 1/, "the flag was not consumed from the decision");
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
-  assert.match(md, /\*\*Answered .* by operator:\*\* keep --json output/);
+  assert.match(md, /\*\*Answered .* by the user:\*\* keep --json output/);
 
   // Unknown double-dash tokens stay refused past the number, never baked into the decision.
   fs.writeFileSync(
@@ -83,7 +83,7 @@ test("questions answer --json reports the decision as written, with whitespace c
   const payload = JSON.parse(r.stdout) as { decision: string };
   assert.equal(payload.decision, "a b");
   const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
-  assert.match(md, /\*\*Answered .* by operator:\*\* a b\n/);
+  assert.match(md, /\*\*Answered .* by the user:\*\* a b\n/);
 });
 
 test("questions answer refuses a non-integer or non-positive question number", async () => {
@@ -141,7 +141,7 @@ test("questions answer --file keeps the decision's lines, in either flag positio
     const r = await cli(repo, "questions", "answer", ...args);
     assert.equal(r.code, 0, r.stderr);
     const md = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
-    assert.match(md, /\*\*Answered [^\n]* by operator:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
+    assert.match(md, /\*\*Answered [^\n]* by the user:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
   }
   const j = await cli(repo, "questions", "answer", "--json", "1", "--file", ans);
   assert.equal(j.code, 1, "no question left to answer");
@@ -193,5 +193,5 @@ test("questions answer --file - reads stdin", async () => {
   fs.writeFileSync(path.join(repo, "QUESTIONS.md"), OPEN_ONE);
   const r = spawnSync(process.execPath, [CLI, "questions", "answer", "1", "--file", "-"], { cwd: repo, input: MULTI, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /by operator:\*\*\n\n- keep A\n/);
+  assert.match(fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8"), /by the user:\*\*\n\n- keep A\n/);
 });

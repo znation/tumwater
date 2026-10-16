@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { increment } from "../collections.js";
 import { readTextOrNull } from "../files/files.js";
@@ -293,7 +294,7 @@ export function renderBacklogStructureBlock(root: string): string | undefined {
   // The task wording lives in the clean role's find text (src/roles/role-catalog.ts); the block
   // only carries the evidence, like the digest and coverage blocks do.
   return `Plan headings filed under the wrong section of PLANS.md — invisible to the readers
-that scan one section, so no loop sees them as backlog work:
+that scan one section, so no role sees them as backlog work:
 <backlog-structure>
 ${listed}
 </backlog-structure>`;
@@ -608,7 +609,7 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   if (listed.length === 0) return undefined;
   return `Actionable backlog — each entry with the 1-based line range it occupies in its file.
 Read the entries you need by those ranges; the files' closed sections make a full heading map
-grow with every tick. Blocked parts of a multi-part series are shown as one line per series.
+grow with every run. Blocked parts of a multi-part series are shown as one line per series.
 <backlog-index>
 ${listed.join("\n")}
 </backlog-index>`;

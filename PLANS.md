@@ -21,81 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 7/19: Inbox and backlog command output and the role page (planned 2026-10-16 by user; requires part 3/19, part 6/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/inbox/ + src/backlog/backlog-write.ts + backlog-cli.ts + question-answer.ts + backlog-structure.ts + src/roles/role-render.ts + role-view.ts + roles.ts + tests)
-
-**Goal.** These commands speak of the inbox, notes, runs and custom roles:
-- `tumwater prompt` with `--list`, `--cancel` and `--edit`.
-- `tumwater bug`, `tumwater plan` and `tumwater questions --answer`.
-- `tumwater role <id>`.
-
-The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the user" instead of "the operator".
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `cmdPrompt` (src/inbox/prompt-commands.ts):
-
-  | Today | New |
-  | --- | --- |
-  | "queued for the <role> loop" | "added to <role>'s inbox" |
-  | "queued for the director loop" | "added to the director's inbox" |
-  | "nothing queued for X" | "X's inbox is empty" |
-  | "nothing queued" | "every inbox is empty" |
-  | "is no longer queued" | "is no longer in the inbox" |
-  | "is queued for more than one loop" | "is in more than one role's inbox" |
-
-  "— delivers in …" stays, and role names go through `roleLabel`. Part 9/19 copies these exact phrases into the TUI.
-- The other inbox modules:
-  - src/inbox/inbox-cancel.ts: "… must name an inbox message's .md file".
-  - src/inbox/inbox-submit.ts: "run's prefill", and the image refusal follows the rules.
-  - src/inbox/pending-prompt.ts: "re-queued" → "returned to the inbox".
-  - src/inbox/inbox.ts and inbox-attachments.ts: their messages follow the rules.
-- The backlog writers:
-  - src/backlog/backlog-write.ts: `operatorStamp` "reported by the operator <date>" → "reported by the user <date>". `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the leading word `reported`, so parsing is unchanged.
-  - `bugWakeText` → "The user filed a new bug with `tumwater bug`: …", and `planWakeText` → "The user requested a plan with `tumwater plan`: …".
-  - src/backlog/question-answer.ts: the answer stamp becomes `**Answered <date> by the user:**`.
-  - src/backlog/backlog-cli.ts: its `operator` author strings are machine strings; mark them.
-  - The stranded-heading block in src/backlog/backlog-structure.ts: "no role sees them as backlog work".
-- `renderRoleMarkdown` and `inspectMarkdownLines` (src/roles/role-render.ts):
-
-  | Today | New |
-  | --- | --- |
-  | "Notebook" | "Notes" |
-  | "none yet — the role's own earlier ticks write it, and the director has none" | "none yet — the role's own earlier runs write them, and the director has none" |
-  | "Next tick prompt" | "Next run's prompt" |
-  | "nothing to run this tick" | "nothing to do this run" |
-  | the note on the oldest queued prompt | "embeds the oldest inbox message — one is taken per run" |
-  | "- Next tick:" / "- Last tick:" | "- Next run:" / "- Last run:" |
-  | "- Loop: … — user-defined loop" | "- Custom role: …" |
-  | "- Scheduling tier: N (work)" | "- Priority: work" (or maintenance, observer) |
-  | "- Budget fallback:" | "- Over-cap model:" |
-  | "- Min tick interval:" | "- Min run interval:" |
-  | "- Queued prompts:" | "- Inbox:" |
-  | "## Recent tick outcomes" | "## Recent runs" |
-
-  The director's line says it is driven by its inbox, not by instructions.
-- src/roles/role-view.ts: its prose follows the rules. src/roles/roles.ts: "user-defined loop" → "custom role"; the role ids `dry` and `telemetry` stay for the role ids series. The `role --json` keys stay for the scripting series.
-
-**Files touched.**
-- src:
-  - src/inbox/prompt-commands.ts, src/inbox/inbox.ts, src/inbox/inbox-cancel.ts, src/inbox/inbox-submit.ts, src/inbox/inbox-attachments.ts, src/inbox/pending-prompt.ts.
-  - src/backlog/backlog-write.ts, src/backlog/question-answer.ts, src/backlog/backlog-cli.ts, src/backlog/backlog-structure.ts.
-  - src/roles/role-render.ts, src/roles/role-view.ts, src/roles/roles.ts.
-- Tests:
-  - test/prompt-commands.test.ts, test/cli-prompt-queue.test.ts, test/cli-prompt-strictness.test.ts, test/inbox*.test.ts.
-  - test/backlog-write*.test.ts, test/question-commands.test.ts, test/questions-answer-editor.test.ts.
-  - test/role-view.test.ts, test/roles.test.ts, test/tui-role-prompt.test.ts, test/status-data-inbox.test.ts, and the role-payload cases in test/gui-endpoints.test.ts.
-
-**Acceptance criteria.**
-- `tumwater prompt --role bugfix "x"` prints `added to bugfix's inbox`, and `prompt --list` with nothing pending says every inbox is empty.
-- `tumwater bug "x"` writes a heading ending `(reported by the user <date>)`, and `bug --list` still shows its age.
-- `tumwater role feature` shows `Notes`, `Next run's prompt`, `- Priority: work`, `- Over-cap model:`, `- Inbox:` and `## Recent runs`.
-- `npm run test` passes.
-
 ### Plain terms text, part 8/19: Help and completion prose use the glossary (planned 2026-10-16 by user; requires part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches src/cli/help.ts + src/cli/completion.ts + tests)
 
 **Goal.** `tumwater help`, every `tumwater help <command>` topic, the did-you-mean suggestion and the shell completion derived from HELP read in plain terms. They match the output that parts 1/19–7/19 now produce.
@@ -3060,6 +2985,81 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The settings view's cards are titled "Health" and "Brief". The report view's charts read "Runs by role" and "Estimated spend by role".
 - The pause control reads "Pause the team", and while paused it reads "The team is paused — click to resume it".
 - Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
+- `npm run test` passes.
+
+### Plain terms text, part 7/19: Inbox and backlog command output and the role page (planned 2026-10-16 by user; requires part 3/19, part 6/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/inbox/ + src/backlog/backlog-write.ts + backlog-cli.ts + question-answer.ts + backlog-structure.ts + src/roles/role-render.ts + role-view.ts + roles.ts + tests; done 2026-10-16)
+
+**Goal.** These commands speak of the inbox, notes, runs and custom roles:
+- `tumwater prompt` with `--list`, `--cancel` and `--edit`.
+- `tumwater bug`, `tumwater plan` and `tumwater questions --answer`.
+- `tumwater role <id>`.
+
+The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the user" instead of "the operator".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `cmdPrompt` (src/inbox/prompt-commands.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "queued for the <role> loop" | "added to <role>'s inbox" |
+  | "queued for the director loop" | "added to the director's inbox" |
+  | "nothing queued for X" | "X's inbox is empty" |
+  | "nothing queued" | "every inbox is empty" |
+  | "is no longer queued" | "is no longer in the inbox" |
+  | "is queued for more than one loop" | "is in more than one role's inbox" |
+
+  "— delivers in …" stays, and role names go through `roleLabel`. Part 9/19 copies these exact phrases into the TUI.
+- The other inbox modules:
+  - src/inbox/inbox-cancel.ts: "… must name an inbox message's .md file".
+  - src/inbox/inbox-submit.ts: "run's prefill", and the image refusal follows the rules.
+  - src/inbox/pending-prompt.ts: "re-queued" → "returned to the inbox".
+  - src/inbox/inbox.ts and inbox-attachments.ts: their messages follow the rules.
+- The backlog writers:
+  - src/backlog/backlog-write.ts: `operatorStamp` "reported by the operator <date>" → "reported by the user <date>". `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the leading word `reported`, so parsing is unchanged.
+  - `bugWakeText` → "The user filed a new bug with `tumwater bug`: …", and `planWakeText` → "The user requested a plan with `tumwater plan`: …".
+  - src/backlog/question-answer.ts: the answer stamp becomes `**Answered <date> by the user:**`.
+  - src/backlog/backlog-cli.ts: its `operator` author strings are machine strings; mark them.
+  - The stranded-heading block in src/backlog/backlog-structure.ts: "no role sees them as backlog work".
+- `renderRoleMarkdown` and `inspectMarkdownLines` (src/roles/role-render.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "Notebook" | "Notes" |
+  | "none yet — the role's own earlier ticks write it, and the director has none" | "none yet — the role's own earlier runs write them, and the director has none" |
+  | "Next tick prompt" | "Next run's prompt" |
+  | "nothing to run this tick" | "nothing to do this run" |
+  | the note on the oldest queued prompt | "embeds the oldest inbox message — one is taken per run" |
+  | "- Next tick:" / "- Last tick:" | "- Next run:" / "- Last run:" |
+  | "- Loop: … — user-defined loop" | "- Custom role: …" |
+  | "- Scheduling tier: N (work)" | "- Priority: work" (or maintenance, observer) |
+  | "- Budget fallback:" | "- Over-cap model:" |
+  | "- Min tick interval:" | "- Min run interval:" |
+  | "- Queued prompts:" | "- Inbox:" |
+  | "## Recent tick outcomes" | "## Recent runs" |
+
+  The director's line says it is driven by its inbox, not by instructions.
+- src/roles/role-view.ts: its prose follows the rules. src/roles/roles.ts: "user-defined loop" → "custom role"; the role ids `dry` and `telemetry` stay for the role ids series. The `role --json` keys stay for the scripting series.
+
+**Files touched.**
+- src:
+  - src/inbox/prompt-commands.ts, src/inbox/inbox.ts, src/inbox/inbox-cancel.ts, src/inbox/inbox-submit.ts, src/inbox/inbox-attachments.ts, src/inbox/pending-prompt.ts.
+  - src/backlog/backlog-write.ts, src/backlog/question-answer.ts, src/backlog/backlog-cli.ts, src/backlog/backlog-structure.ts.
+  - src/roles/role-render.ts, src/roles/role-view.ts, src/roles/roles.ts.
+- Tests:
+  - test/prompt-commands.test.ts, test/cli-prompt-queue.test.ts, test/cli-prompt-strictness.test.ts, test/inbox*.test.ts.
+  - test/backlog-write*.test.ts, test/question-commands.test.ts, test/questions-answer-editor.test.ts.
+  - test/role-view.test.ts, test/roles.test.ts, test/tui-role-prompt.test.ts, test/status-data-inbox.test.ts, and the role-payload cases in test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- `tumwater prompt --role bugfix "x"` prints `added to bugfix's inbox`, and `prompt --list` with nothing pending says every inbox is empty.
+- `tumwater bug "x"` writes a heading ending `(reported by the user <date>)`, and `bug --list` still shows its age.
+- `tumwater role feature` shows `Notes`, `Next run's prompt`, `- Priority: work`, `- Over-cap model:`, `- Inbox:` and `## Recent runs`.
 - `npm run test` passes.
 
 ### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests) — done 2026-10-16

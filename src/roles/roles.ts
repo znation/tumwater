@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The role registries and classification helpers over the built-in role catalog. The catalog
  * itself — each loop's identity and its "find something to do" prompt text — lives in
  * role-catalog.ts (split out 2026-10-01, organize); this module re-exports ROLES and Role so
@@ -148,5 +149,5 @@ export function unknownRoleMessage(role: string, validIds: readonly string[]): s
  * Custom loops run the `default` tier — the harness cannot judge what an arbitrary loop's
  * work needs, so it gets the fleet's ordinary model. */
 export function customRole(name: string, task: string): Role {
-  return { id: name, title: "user-defined loop", find: task, tier: "default" };
+  return { id: name, title: "custom role", find: task, tier: "default" };
 }

@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { ensureParentDir, readTextIfExists, writeTextAtomic } from "../files/files.js";
@@ -97,7 +98,7 @@ export function queuedFileAtPosition(root: string, role: string, position: numbe
   const files = queuedFiles(root, role);
   const file = files[position - 1];
   if (position < 1 || position > files.length || !file) {
-    throw new Error(`no prompt at position ${position} (${files.length} queued)`);
+    throw new Error(`no prompt at position ${position} (${files.length} in the inbox)`);
   }
   return file;
 }

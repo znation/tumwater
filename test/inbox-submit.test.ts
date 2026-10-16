@@ -67,7 +67,7 @@ test("a role prompt's over-cap error names the target loop's tick, not the direc
     const message = String((err as Error).message);
     // The cap is shared, but the reason names the loop the prompt actually rides into:
     // `tumwater prompt --role qa` that says "director" points the operator at the wrong queue.
-    return message.includes("the qa tick's prefill") && !message.includes("director");
+    return message.includes("the qa run's prefill") && !message.includes("director");
   });
   assert.equal(inboxSize(dir, "qa"), 0); // rejected before the queue write
   assert.equal(eventsOfType(dir, "prompt_enqueued").length, 0);

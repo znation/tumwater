@@ -21,13 +21,13 @@ test("editBug replaces a middle entry's title in place and keeps every other byt
     "",
     "## Open",
     "",
-    "### first (reported by the operator 2026-10-01)",
+    "### first (reported by the user 2026-10-01)",
     "",
     "body one",
     "",
-    "### second (reported by the operator 2026-10-02)",
+    "### second (reported by the user 2026-10-02)",
     "",
-    "### third (reported by the operator 2026-10-03)",
+    "### third (reported by the user 2026-10-03)",
     "",
     "## Fixed",
     "",
@@ -41,14 +41,14 @@ test("editBug replaces a middle entry's title in place and keeps every other byt
   assert.equal(
     fs.readFileSync(file, "utf8"),
     before.replace(
-      "### second (reported by the operator 2026-10-02)",
-      "### the corrected symptom (reported by the operator 2026-10-02)",
+      "### second (reported by the user 2026-10-02)",
+      "### the corrected symptom (reported by the user 2026-10-02)",
     ),
   );
   assert.deepEqual(openBugs(repo), [
-    "first (reported by the operator 2026-10-01)",
-    "the corrected symptom (reported by the operator 2026-10-02)",
-    "third (reported by the operator 2026-10-03)",
+    "first (reported by the user 2026-10-01)",
+    "the corrected symptom (reported by the user 2026-10-02)",
+    "third (reported by the user 2026-10-03)",
   ]);
 });
 
@@ -60,13 +60,13 @@ test("editBug replaces the first and the last entry, dropping a bug's stale body
   // A bug has no body, so the rebuilt entry is its heading alone: the old body goes with it.
   assert.match(
     fs.readFileSync(file, "utf8"),
-    /### corrected first \(reported by the operator 2026-10-01\)\n\n### second /,
+    /### corrected first \(reported by the user 2026-10-01\)\n\n### second /,
   );
   editBug(repo, 3, "corrected third", 'tumwater bug "<symptom>"');
   assert.deepEqual(openBugs(repo), [
-    "corrected first (reported by the operator 2026-10-01)",
-    "second (reported by the operator 2026-10-02)",
-    "corrected third (reported by the operator 2026-10-03)",
+    "corrected first (reported by the user 2026-10-01)",
+    "second (reported by the user 2026-10-02)",
+    "corrected third (reported by the user 2026-10-03)",
   ]);
 });
 
@@ -80,14 +80,14 @@ test("editing an entry that quotes ## and ### inside a code fence replaces it wh
       "",
       "## Open",
       "",
-      "### fenced (reported by the operator 2026-10-01)",
+      "### fenced (reported by the user 2026-10-01)",
       "",
       "```",
       "## Fixed",
       "### not an entry",
       "```",
       "",
-      "### after (reported by the operator 2026-10-02)",
+      "### after (reported by the user 2026-10-02)",
       "",
       "## Fixed",
       "",
@@ -98,10 +98,10 @@ test("editing an entry that quotes ## and ### inside a code fence replaces it wh
   editBug(repo, 1, "replaced fenced", 'tumwater bug "<symptom>"');
   const md = fs.readFileSync(file, "utf8");
   assert.ok(!md.includes("### not an entry"), "the fence's quoted heading goes with the replaced entry");
-  assert.match(md, /### replaced fenced \(reported by the operator 2026-10-01\)\n\n### after /);
+  assert.match(md, /### replaced fenced \(reported by the user 2026-10-01\)\n\n### after /);
   assert.deepEqual(openBugs(repo), [
-    "replaced fenced (reported by the operator 2026-10-01)",
-    "after (reported by the operator 2026-10-02)",
+    "replaced fenced (reported by the user 2026-10-01)",
+    "after (reported by the user 2026-10-02)",
   ]);
 });
 
@@ -112,7 +112,7 @@ test("edit text quoting ## headings is folded to one line, never a phantom secti
   editBug(repo, 2, "quotes\n## Fixed\ninside", 'tumwater bug "<symptom>"');
   const md = fs.readFileSync(file, "utf8");
   assert.equal((md.match(/^## /gm) ?? []).length, 2); // ## Open and ## Fixed only.
-  assert.match(openBugs(repo)[1]!, /^quotes ## Fixed inside \(reported by the operator 2026-10-02\)$/);
+  assert.match(openBugs(repo)[1]!, /^quotes ## Fixed inside \(reported by the user 2026-10-02\)$/);
 });
 
 test("editPlan replaces a plan's heading and body in place, keeping its stamp and position", () => {
@@ -127,7 +127,7 @@ test("editPlan replaces a plan's heading and body in place, keeping its stamp an
     "",
     "first body",
     "",
-    "### second (reported by the operator 2026-10-02)",
+    "### second (reported by the user 2026-10-02)",
     "",
     "old body",
     "",
@@ -143,8 +143,8 @@ test("editPlan replaces a plan's heading and body in place, keeping its stamp an
   assert.equal(
     fs.readFileSync(file, "utf8"),
     before.replace(
-      "### second (reported by the operator 2026-10-02)\n\nold body",
-      "### A corrected title (reported by the operator 2026-10-02)\n\ncorrected body text",
+      "### second (reported by the user 2026-10-02)\n\nold body",
+      "### A corrected title (reported by the user 2026-10-02)\n\ncorrected body text",
     ),
   );
 });
@@ -222,7 +222,7 @@ test("tumwater bug --edit replaces the entry, confirms, and wakes no loop", asyn
   assert.equal(queuedRolePrompts(repo, "bugfix").length, queuedBefore);
   const bugs = openBugs(repo);
   assert.equal(bugs.length, 2);
-  assert.match(bugs[1]!, /^the corrected symptom \(reported by the operator \d{4}-\d{2}-\d{2}\)$/);
+  assert.match(bugs[1]!, /^the corrected symptom \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
 });
 
 test("tumwater plan --edit --json prints {file, title} and edits in place", async () => {
@@ -236,7 +236,7 @@ test("tumwater plan --edit --json prints {file, title} and edits in place", asyn
   assert.equal(payload.title, "A corrected title");
   const plans = plannedPlans(repo);
   assert.equal(plans.length, 1);
-  assert.match(plans[0]!, /^A corrected title \(reported by the operator \d{4}-\d{2}-\d{2}\)$/);
+  assert.match(plans[0]!, /^A corrected title \(reported by the user \d{4}-\d{2}-\d{2}\)$/);
   assert.match(fs.readFileSync(path.join(repo, "PLANS.md"), "utf8"), /corrected body/);
 });
 
@@ -323,13 +323,13 @@ test("bug --edit --file writes the body; positional edit drops it", async () => 
   const repo = makeRepo();
   await initProject(repo, "cli bug edit file");
   const bugs = path.join(repo, "BUGS.md");
-  fs.writeFileSync(bugs, "# Bugs\n\n## Open\n\n### a (reported by the operator 2026-10-01)\n\n## Fixed\n\n_None yet._\n");
+  fs.writeFileSync(bugs, "# Bugs\n\n## Open\n\n### a (reported by the user 2026-10-01)\n\n## Fixed\n\n_None yet._\n");
   const md = path.join(repo, "e.md");
   fs.writeFileSync(md, "sym\nline1\nline2\n");
   const r = await cli(repo, "bug", "--edit", "1", "--file", md, "--json");
   assert.equal(r.code, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), { file: "BUGS.md", title: "sym" });
-  assert.match(fs.readFileSync(bugs, "utf8"), /### sym \(reported by the operator 2026-10-01\)\n\nline1\nline2\n/);
+  assert.match(fs.readFileSync(bugs, "utf8"), /### sym \(reported by the user 2026-10-01\)\n\nline1\nline2\n/);
   assert.equal((await cli(repo, "bug", "--edit", "1", "x")).code, 0);
   const after = fs.readFileSync(bugs, "utf8");
   assert.match(after, /### x \(/);

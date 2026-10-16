@@ -28,9 +28,9 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
 
     tui.key(undefined, "n", { ctrl: true });
     assert.match(tui.lastFrame(), /Notebook: clean \(1\/1\)/); // the tab strip names the mode
-    assert.match(tui.lastFrame(), /## Notebook/);
+    assert.match(tui.lastFrame(), /## Notes/);
     assert.match(tui.lastFrame(), /the scheduler lives in fleet\.ts/);
-    assert.match(tui.lastFrame(), /## Next tick prompt/);
+    assert.match(tui.lastFrame(), /## Next run's prompt/);
     // The assembled prompt opens the block (the queued prompt embeds further down, past the
     // pane window): the preview seam's output is what renders, not a placeholder.
     assert.match(tui.lastFrame(), /You are the "clean" loop/);
@@ -58,7 +58,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
     tui.key(undefined, "t", { ctrl: true }); // → activity
     tui.key(undefined, "t", { ctrl: true }); // → transcript
     assert.match(tui.lastFrame(), /Transcript: clean \(1\/1\)/);
-    assert.doesNotMatch(tui.lastFrame(), /## Notebook/);
+    assert.doesNotMatch(tui.lastFrame(), /## Notes/);
   });
 });
 
@@ -67,8 +67,8 @@ test("a loop with no notebook shows the none-yet placeholder, not the transcript
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "n", { ctrl: true });
-    assert.match(tui.lastFrame(), /## Notebook/);
-    assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier ticks write it/);
+    assert.match(tui.lastFrame(), /## Notes/);
+    assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier runs write them/);
     assert.doesNotMatch(tui.lastFrame(), /\(no transcript yet\)/);
   });
 });
@@ -79,15 +79,15 @@ test("PgUp/PgDn page the notebook body and clamp at both ends", async () => {
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "n", { ctrl: true });
-    assert.match(tui.lastFrame(), /## Notebook/); // head shows the heading…
+    assert.match(tui.lastFrame(), /## Notes/); // head shows the heading…
     assert.match(tui.lastFrame(), /note line 1\b/);
 
     tui.key(undefined, "pagedown");
-    assert.doesNotMatch(tui.lastFrame(), /## Notebook/); // …and one page scrolls past it
+    assert.doesNotMatch(tui.lastFrame(), /## Notes/); // …and one page scrolls past it
     assert.match(tui.lastFrame(), /note line \d+/);
 
     for (let i = 0; i < 10; i++) tui.key(undefined, "pageup"); // clamps at the head
-    assert.match(tui.lastFrame(), /## Notebook/);
+    assert.match(tui.lastFrame(), /## Notes/);
     assert.match(tui.lastFrame(), /note line 1\b/);
 
     // Clamp at the tail: the last page is the last page — another PgDn repaints the same window.
@@ -112,7 +112,7 @@ test("Ctrl+X twice in the notebook view clears the loop's notebook; the first pr
     tui.key(undefined, "x", { ctrl: true });
     assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "");
     assert.match(tui.lastFrame(), /notebook cleared/);
-    assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier ticks write it/);
+    assert.match(tui.lastFrame(), /_\(none yet — the role's own earlier runs write them/);
   });
 });
 

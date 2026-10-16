@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
 import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
@@ -43,19 +44,19 @@ export function inspectMarkdownLines(p: RoleViewPayload): string[] {
   const lines: string[] = [];
   lines.push(
     ...fencedOrNone(
-      "Notebook",
+      "Notes",
       p.note,
-      "none yet — the role's own earlier ticks write it, and the director has none",
+      "none yet — the role's own earlier runs write them, and the director has none",
     ),
   );
-  lines.push(...fencedOrNone("Next tick prompt", p.nextPrompt, "nothing to run this tick"));
+  lines.push(...fencedOrNone("Next run's prompt", p.nextPrompt, "nothing to do this run"));
   // tick-prompt.ts dequeues exactly one queued prompt per tick, so with more than one
   // waiting the block above shows only the oldest — say so, so the count line and the
   // block never read as a contradiction (the 2026-10-04 BUGS.md entry under ## Fixed).
   if (p.inboxCount > 1 && p.nextPrompt !== null && p.nextPrompt.trim() !== "") {
     const more = p.inboxCount - 1;
     lines.push(
-      `_(the Next tick prompt embeds the oldest queued prompt — one is consumed per tick; ${more} more ${agree(more, "waits", "wait")})_`,
+      `_(the next run's prompt embeds the oldest inbox message — one is taken per run; ${more} more ${agree(more, "waits", "wait")})_`,
     );
   }
   return lines;
@@ -128,7 +129,7 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
 /** One quiet-hours bullet: the window, whose it is, and whether it holds the loop now — with
  * the same `quiet until <end>` text the status table uses. */
 function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): string {
-  const whose = w.scope === "role" ? "own window" : "fleet window";
+  const whose = w.scope === "role" ? "own window" : "team window";
   const state = w.inWindow ? `holding now — quiet until ${quietWindowEnd(w.window)}` : "not holding now";
   return `- Quiet hours: ${w.window} (${whose}; ${state})`;
 }
@@ -161,17 +162,17 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
     p.lastTickEndedAt !== undefined
       ? `${formatTimestamp(p.lastTickEndedAt)} (${humanSeconds(secondsSince(p.lastTickEndedAt, now))} ago)`
       : "never";
-  return [`- Next tick: ${next}`, `- Last tick: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
+  return [`- Next run: ${next}`, `- Last run: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
 }
 
 /** Render one loop's inspection payload as Markdown. `now` is injected (default Date.now())
  * so the schedule lines stay a pure function of the payload — the test pins a fixed clock. */
 export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
-  lines.push(`- Loop: "${p.id}" (${p.title})${p.custom ? " — user-defined loop" : ""}`);
+  lines.push(`- ${p.custom ? "Custom role" : "Role"}: "${p.id}" (${p.title})`);
   const state = [p.enabled ? "enabled" : "disabled", p.paused ? "paused" : "not paused"].join(", ");
   lines.push(`- State: ${state}`);
-  lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
+  lines.push(`- Priority: ${p.tier === 0 ? "work" : "maintenance or observer"}`);
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
   // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
   // bounds the role's concurrent ticks, plus the cap itself. Present only while
@@ -204,7 +205,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   }
   if (p.fallback) {
     const pair = fallbackPairLabel(p.fallback, agentDefault(p));
-    lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
+    lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
   // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
   // a pi seam, so its role view is byte-identical to before.
@@ -213,8 +214,8 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
       p.billing === "subscription" && p.billingWindow ? ` (${claudeWindowLabel(p.billingWindow)} window)` : "";
     lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`);
   }
-  lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
-  lines.push(`- Queued prompts: ${p.inboxCount}`);
+  lines.push(`- Min run interval: ${p.minTickIntervalSeconds}s`);
+  lines.push(`- Inbox: ${p.inboxCount}`);
   // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
   // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,
   // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
@@ -229,7 +230,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // it holds the loop now. Absent without a cap, so old goldens are unchanged.
   if (p.dailyCap) {
     const dc = p.dailyCap;
-    let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new ticks until local midnight" : "not holding"})`;
+    let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new runs until local midnight" : "not holding"})`;
     if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
     lines.push(cap);
   }
@@ -242,7 +243,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // one line per outcome so `tumwater role <id>` shows what the loop has been DOING, not just
   // what it is. Absent (never ticked) renders nothing new, so old goldens are byte-identical.
   if (p.recentOutcomes && p.recentOutcomes.length > 0) {
-    lines.push("", "## Recent tick outcomes", "");
+    lines.push("", "## Recent runs", "");
     for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);
   }
   lines.push("");
@@ -251,7 +252,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     ...fencedOrNone(
       "Find text",
       p.find,
-      "none — the director is driven by its queued prompts, not a find text",
+      "none — the director is driven by its inbox, not by instructions",
     ),
   );
   lines.push(...inspectMarkdownLines(p));

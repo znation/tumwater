@@ -503,7 +503,7 @@ test("a user-defined loop's tick prompt identifies it and carries its task as th
   const role = customRole("docs-auditor", "Keep the docs current.");
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   // The title is what identifies the loop inside its own prompt and commit context.
-  assert.match(prompt, /"docs-auditor" loop \(user-defined loop\)/);
+  assert.match(prompt, /"docs-auditor" loop \(custom role\)/);
   // The task IS the role-specific find-something-to-do text — no catalog prose around it.
   assert.ok(prompt.includes("Keep the docs current."), "the task rides in as the run's task");
   // COMMON_RULES ride along with every tick prompt — including the blanket tumwater.json ban
@@ -516,7 +516,7 @@ test("customRole yields the pinned shape while built-in prompts keep their catal
   const custom = customRole("docs-auditor", "Keep the docs current.");
   assert.deepEqual(custom, {
     id: "docs-auditor",
-    title: "user-defined loop",
+    title: "custom role",
     find: "Keep the docs current.",
     tier: "default",
   });

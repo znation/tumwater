@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The CLI layer of `tumwater prompt` — the steering-prompt command: submit a prompt to the
  * director (default) or one role's queue, `--list` what is queued with per-loop position
  * numbering, or `--cancel <n>` a queued prompt by position. Split out of
@@ -42,16 +43,17 @@ import {
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { imagePromptGuidance } from "./inbox-submit.js";
+import { roleLabel } from "../roles/role-labels.js";
 
 /** Fail with the ambiguity or miss message of a list-wide position resolution, else return
  * the resolved value narrowed. Shared by sayListedOutcome and the editor form so the wordings
  * cannot drift. */
 function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss, position: number): T {
   if (listed.status === "ambiguous") {
-    fail(`position ${position} is queued for more than one loop (${(listed as { roles: string[] }).roles.join(", ")}) — name one with --role <id>`);
+    fail(`position ${position} is in more than one role's inbox (${(listed as { roles: string[] }).roles.join(", ")}) — name one with --role <id>`);
   }
   if (listed.status === "missing") {
-    fail(`no prompt at position ${position} (longest queue holds ${(listed as { queued: number }).queued})`);
+    fail(`no prompt at position ${position} (longest inbox holds ${(listed as { queued: number }).queued})`);
   }
   return listed as T;
 }
@@ -92,7 +94,7 @@ function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
  * command. One helper so the cancel and edit wordings cannot drift. */
 function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
   if (outcome.status === "gone") {
-    say(`prompt ${position} is no longer queued — ${role} already took it`);
+    say(`prompt ${position} is no longer in the inbox — ${roleLabel(role)} already took it`);
     return;
   }
   // A resolved cancel carries the removed text; a resolved edit carries what it wrote.
@@ -195,7 +197,7 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       return;
     }
     if (prompts.length === 0) {
-      say(role !== null ? `nothing queued for ${role}` : "nothing queued");
+      say(role !== null ? `${roleLabel(role)}'s inbox is empty` : "every inbox is empty");
       return;
     }
     say(renderQueuedList(prompts, Date.now()));
@@ -303,15 +305,13 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   }
   const wake = submitRolePromptAndWake(root, target, parsed.text, images, dueMs);
   const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
+  const owner = target === DIRECTOR_ROLE ? "the director's" : `${roleLabel(target)}'s`;
   if (parsed.atDelayMs !== null) {
     // A deferred prompt's confirmation names the delivery delay, in the same duration
-    // vocabulary --at parsed (durationLabel), so the operator can re-type it.
-    const deferred = ` — delivers in ${durationLabel(parsed.atDelayMs)}`;
-    say(role === null ? `queued for the director loop${deferred}${attached}` : `queued for the ${role} loop${deferred}${attached}`);
-  } else if (role === null) {
-    say(`queued for the director loop${attached}`);
+    // vocabulary --at parsed (durationLabel), so the user can re-type it.
+    say(`added to ${owner} inbox — delivers in ${durationLabel(parsed.atDelayMs)}${attached}`);
   } else {
-    say(`queued for the ${role} loop${attached}`);
+    say(`added to ${owner} inbox${attached}`);
   }
   say(wake);
 }

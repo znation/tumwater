@@ -33,7 +33,7 @@ test("prompt keeps single-dash positionals as prompt content", async () => {
   // bullets init accepts.
   const r = await cli(repo, "prompt", "-x");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /queued for the director loop/);
+  assert.match(r.stdout, /added to the director's inbox/);
   assert.equal(dequeuePrompt(repo), "-x");
 });
 

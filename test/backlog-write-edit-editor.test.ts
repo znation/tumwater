@@ -40,7 +40,7 @@ test("plan --edit <n> round-trips through the editor, keeping stamp and the show
   assert.match(r.stdout, /edited plan in PLANS\.md: New title/);
   assert.equal(fs.readFileSync(s.received, "utf8").trim(), shown.trim());
   const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
-  assert.match(plans, /### New title \(reported by the operator \d{4}-\d{2}-\d{2}\)\n\nnew body line/);
+  assert.match(plans, /### New title \(reported by the user \d{4}-\d{2}-\d{2}\)\n\nnew body line/);
   assert.match(plans, /### Neighbour/);
   assert.doesNotMatch(plans, /Old title/);
 });

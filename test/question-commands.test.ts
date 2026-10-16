@@ -111,9 +111,9 @@ test("answering question 1 moves only its block to ## Answered with the dated de
   assert.ok(md.includes("## Answered\n\n### First: which renderer? (asked by director 2026-10-01)"));
   const today = new Date();
   const stamp = dateOf(today);
-  assert.ok(md.includes(`**Answered ${stamp} by operator:** use ink`));
+  assert.ok(md.includes(`**Answered ${stamp} by the user:** use ink`));
   // The decision is the last content in the Answered section.
-  assert.ok(md.trimEnd().endsWith(`**Answered ${stamp} by operator:** use ink`));
+  assert.ok(md.trimEnd().endsWith(`**Answered ${stamp} by the user:** use ink`));
   // The first question's body travelled with its heading, intact.
   assert.ok(md.includes("- **Option A (recommended):** fix in place."));
   // The Open section did not leak its old position numbering or a stray placeholder.
@@ -177,7 +177,7 @@ test("answering in a file with no ## Answered section grows one at the end", () 
   const md = read(path.join(root, "QUESTIONS.md"));
   assert.ok(md.includes("## Answered\n\n### Only: ship it? (asked by feature 2026-10-04)"));
   assert.ok(md.includes("Yes or no."));
-  assert.ok(md.includes("by operator:** ship it"));
+  assert.ok(md.includes("by the user:** ship it"));
   assert.deepEqual(openQuestionEntries(root), []);
 });
 
@@ -253,7 +253,7 @@ _None yet._
   const md = read(file);
   // The answered question sits at the end of ## Answered, before ## Archive.
   assert.ok(md.includes("## Answered\n\n### Which renderer?\n\nfix in place\n\n**Answered"), md);
-  assert.ok(md.includes("by operator:** use ink\n\n## Archive"), md);
+  assert.ok(md.includes("by the user:** use ink\n\n## Archive"), md);
   // The later section is untouched, placeholder included.
   assert.ok(md.includes("## Archive\n\n_None yet._\n"), md);
   assert.deepEqual(openQuestionEntries(root).map((q) => q.title), []);
@@ -441,7 +441,7 @@ test("tryAnswerQuestion with keepLines writes the stamp, a blank line, then the 
   const out = tryAnswerQuestion(root, 1, text, undefined, true);
   assert.equal(out.status, "answered");
   if (out.status === "answered") assert.equal(out.decision, text);
-  assert.match(fs.readFileSync(file, "utf8"), /\*\*Answered \d{4}-\d{2}-\d{2} by operator:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
+  assert.match(fs.readFileSync(file, "utf8"), /\*\*Answered \d{4}-\d{2}-\d{2} by the user:\*\*\n\n- keep A\n- drop B\n\nbecause X\n/);
 });
 
 test("a single-line decision with keepLines matches the positional answer byte for byte", () => {
@@ -494,5 +494,5 @@ test("a question answered through answerQuestion is listed first", () => {
   answerQuestion(root, 1, "use ink");
   const out = answeredQuestionList(root, 10).split("\n");
   assert.match(out[1] as string, /^- First: which renderer\?/);
-  assert.match(out[1] as string, /by operator: use ink/);
+  assert.match(out[1] as string, /by the user: use ink/);
 });

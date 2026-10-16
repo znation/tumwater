@@ -1839,7 +1839,7 @@ test("the backlog pane answers the selected open question through tryAnswerQuest
   for (const ch of "yes") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   const after = fs.readFileSync(qPath, "utf8");
-  assert.match(after, /## Answered[\s\S]*### Second\?[\s\S]*\*\*Answered \d{4}-\d{2}-\d{2} by operator:\*\* yes/);
+  assert.match(after, /## Answered[\s\S]*### Second\?[\s\S]*\*\*Answered \d{4}-\d{2}-\d{2} by the user:\*\* yes/);
   assert.match(after, /## Open[\s\S]*### First\?[\s\S]*## Answered/);
   assert.equal(keys.state().answerFor, null);
   assert.equal(keys.state().selectedEntry, null);

@@ -53,7 +53,7 @@ test("a throwing role-prompt submit flashes the error and keeps the editor open"
     tui.key(oversized, oversized);
     tui.key(undefined, "return");
     assert.match(tui.lastFrame(), new RegExp(`error: the prompt is ${oversized.length} chars`));
-    assert.match(tui.lastFrame(), /rides into the clean tick's prefill/);
+    assert.match(tui.lastFrame(), /rides into the clean run's prefill/);
     assert.deepEqual(queuedRolePrompts(repo, "clean"), [], "nothing queued behind the failure");
     // The editor stays open with the oversized text kept, so the operator can trim it.
     assert.match(tui.lastFrame(), /Enter send to clean/);
