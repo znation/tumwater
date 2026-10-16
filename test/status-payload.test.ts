@@ -383,9 +383,9 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
 
 // The operator pause on the GUI surface: /api/status — and
 // therefore `status --json`, same payload — carries `paused` while the marker exists, and a
-// paused fleet's idle role loops read `paused` in their phase payload ahead of budget paused.
+// paused fleet's idle roles read `paused` in their phase payload ahead of waiting: budget spent.
 
-test("the status payload carries the operator pause flag; its phase outranks budget paused", async () => {
+test("the status payload carries the operator pause flag; its phase outranks waiting: budget spent", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui fleet pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
@@ -400,13 +400,13 @@ test("the status payload carries the operator pause flag; its phase outranks bud
   assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "paused");
 
   // Drop the marker (what `tumwater pause` does) with spend at the cap: the flag flips and
-  // the idle loop's phase reads `paused`, ahead of budget paused.
+  // the idle loop's phase reads `paused`, ahead of waiting: budget spent.
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 10;
   saveConfig(repo, cfg);
   const s = freshLoopState("clean");
   s.dayStamp = todayStamp();
-  s.dayCostUsd = 12.5; // >= cap → budget paused too
+  s.dayCostUsd = 12.5; // >= cap → waiting: budget spent too
   saveLoopState(repo, s);
   const marker = pausedPath(repo);
   writeMarker(marker, { at: Date.now() });
@@ -416,17 +416,17 @@ test("the status payload carries the operator pause flag; its phase outranks bud
   assert.equal(
     payload.loops.find((l) => l.role === "clean")?.phase,
     "paused",
-    "user pause outranks budget paused in the phase payload",
+    "user pause outranks waiting: budget spent in the phase payload",
   );
   // The director is exempt — its phase keeps its own label.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // Removing the marker (what `tumwater resume` does) reverts both: flag false, and with the
-  // spend still at the cap the loop falls back to budget paused.
+  // spend still at the cap the loop falls back to waiting: budget spent.
   fs.rmSync(marker);
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.paused, false);
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
@@ -509,10 +509,10 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
 
 // The per-role cap on the payload surface: `status --json`
 // carries the held roles beside pausedRoles, and a held idle loop's phase reads
-// `cap paused` — the loopPhase ladder naming the specific spend state.
-test("the status payload carries capPaused; a held idle loop's phase reads cap paused", async () => {
+// `waiting: daily cap spent` — the loopPhase ladder naming the specific spend state.
+test("the status payload carries capPaused; a held idle loop's phase reads waiting: daily cap spent", async () => {
   const repo = makeRepo();
-  await initProject(repo, "gui cap paused test");
+  await initProject(repo, "gui waiting: daily cap spent test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
   writeOrchestratorMarker(repo, ["clean"]);
 
@@ -533,18 +533,18 @@ test("the status payload carries capPaused; a held idle loop's phase reads cap p
   assert.deepEqual(payload.pausedRoles, []);
   assert.equal(
     payload.loops.find((l) => l.role === "clean")?.phase,
-    "cap paused",
+    "waiting: daily cap spent",
     "the held idle loop's phase names its own cap",
   );
   // The director is exempt — its phase keeps its own label even when a cap entry names it.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // No caps configured: the field is present and empty, and the phase reverts to idle.
   cfg.maxDailyCostUsdPerRole = {};
   saveConfig(repo, cfg);
   payload = statusPayload(repo) as typeof payload;
   assert.deepEqual(payload.capPaused, []);
-  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "cap paused");
+  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: daily cap spent");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });

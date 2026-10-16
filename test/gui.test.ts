@@ -728,13 +728,20 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", fleet: true, want: "backoff 3m" },
     { state: { nextRunAt: now - 5_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "now" },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", fleet: true, want: "-" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "landing 1m · build check", fleet: true, want: "-" },
-    // A parked waiter: reserved (running) but holding no permit, rendered "awaiting slot" —
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", fleet: true, want: "-" },
+    // A parked waiter: reserved (running) but holding no permit, rendered "waiting to start" —
     // an INACTIVE phase prefix, so the phase-prefix check alone misclassifies it. The TUI
     // catches it via s.running; the GUI copy must too, or a parked loop reads "1h" (or
     // "backoff 1h") while it is actually queued behind a slot and may run at any moment.
-    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "awaiting slot 5s", fleet: true, want: "-" },
-    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "awaiting slot 5s", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", fleet: true, want: "-" },
+    { state: { nextRunAt: now + 3_600_000, backoffSeconds: 900, running: true, parkedSince: now - 5_000 }, phase: "waiting to start 5s", fleet: true, want: "-" },
+    // A provider-key waiter ("waiting for <provider> 5s") is active too.
+    {
+      state: { nextRunAt: now + 3_600_000, backoffSeconds: 0, running: true, parkedSince: now - 5_000 },
+      phase: "waiting for anthropic 5s",
+      fleet: true,
+      want: "-",
+    },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: false, want: "-" },
     // Yield-scaled clocks: the payload's yieldMultiplier rides the cell as ×N, the same
     // rule nextRunCell applies — a quiet role's effective gap is longer than the countdown.

@@ -417,7 +417,7 @@ test("vets leave one permit for authoring: at cap 3 two review, the third waits 
     await waitForFile(path.join(flags, "beta-reviewing"));
     await sleep(500); // a few more polls: nothing more may start
     assert.deepEqual([...pipeline.vetting.keys()], ["alpha", "beta"], "only vetLimit(3) vets exist");
-    assert.equal(rowOf("gamma"), "queued", "the third change waits in the queue, not parked on a permit");
+    assert.equal(rowOf("gamma"), "due", "the third change waits in the queue, not parked on a permit");
     assert.ok(await within(ctx.semaphore.acquire(0), 5_000), "a role tick takes the permit the vets left free");
     ticked = true;
 
@@ -610,7 +610,7 @@ test("a vetted change merges while an earlier queue entry is still in review", a
     assert.equal(await isMergedInto(root, shas.alpha!, "main"), false);
     assert.deepEqual([...pipeline.vetting.keys()], ["alpha"], "the head is still in review");
     assert.match(rowOf("alpha"), REVIEWING, "the head's row shows its own vet");
-    assert.equal(rowOf("beta"), "queued", "beta's row is back to its own state");
+    assert.equal(rowOf("beta"), "due", "beta's row is back to its own state");
 
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
     await waitFor(drained(root, pipeline), "alpha to land", 30_000);
@@ -642,7 +642,7 @@ test("a shutdown reaches every vet and keeps their pins; a vetted change waits o
     await waitForFile(path.join(flags, "alpha-reviewing"));
     await waitForFile(path.join(flags, "beta-reviewing"));
     await waitFor(() => pipeline.vetted.has("gamma"), "gamma to be vetted", 30_000);
-    assert.equal(rowOf("gamma"), "vetted, awaiting merge");
+    assert.equal(rowOf("gamma"), "approved, waiting to merge");
 
     await bg.stop();
     shutdown.abort();

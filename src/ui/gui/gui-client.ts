@@ -205,7 +205,7 @@ const FORMAT_JS = String.raw`  // format:start
     // phase rather than throwing: the browser copy is untyped, and its sibling phaseInfo/
     // loopRank already coerce the same way, so one bad row must not blank the whole table.
     const phase = String(l.phase || "");
-    const active = isActivePhase(phase) || phase.startsWith("awaiting slot") || phase.startsWith("director working");
+    const active = isActivePhase(phase) || phase.startsWith("waiting to start") || phase.startsWith("waiting for ") || phase.startsWith("director working");
     if (!fleetRunning || active) return "-";
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";

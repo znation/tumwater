@@ -112,7 +112,7 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
       if (ticks > 0) {
         await waitFor(() => pipeline.vetting.get("beta")?.parked === true, "beta's vet to park for the permit", 30_000);
         assert.match(rowOf("alpha"), REVIEWING, "one free: the vet holding the permit shows its stage");
-        assert.equal(rowOf("beta"), "queued", "one free: the parked vet's role reads plainly queued");
+        assert.equal(rowOf("beta"), "due", "one free: the parked vet's role reads plainly due");
         assert.deepEqual(readLandingMarker(root)?.changes?.map((c) => c.role), ["alpha"], "one free: no record for the parked vet");
         assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked vet is not in flight");
         assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");

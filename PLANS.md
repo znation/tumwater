@@ -71,79 +71,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `tumwater logs --count` prints lines like `3 × run finished (tick_end)`, and `--count --json` is unchanged. The dashboard tally chips show labels, with the raw type as their title.
 - `npm run test` passes.
 
-### Plain terms text, part 2/19: Role state labels say due and merging and approved and waiting (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/status-model.ts + LANDING_STAGE_LABELS in src/landing/landing-slot.ts + src/landing/landing-queue-render.ts + the phase matchers in src/ui/fleet-alerts.ts and src/ui/gui/gui-client.ts and src/ui/gui/gui-client-model.ts + tests)
-
-**Goal.** Every surface shows a role's state with the Wording rules' labels: `tumwater status`, the TUI, the dashboard pill and `tumwater queue`. For example, `due` replaces `queued`, `merging` replaces `landing`, `approved, waiting to merge` replaces `vetted, awaiting merge`, `waiting to start` replaces `awaiting slot`, and every hold reads `waiting: <reason>`. The work is mostly mechanical. A few modules match these labels by string, and all of them change together in this part.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- Labels returned by `loopPhase` (src/ui/status-model.ts):
-
-  | Today | New |
-  | --- | --- |
-  | `queued` | `due` |
-  | `vetted, awaiting merge` | `approved, waiting to merge` |
-  | `landing <t> · <stage> <t>` | `merging <t> · <stage> <t>` |
-  | `awaiting slot <t>` | `waiting to start <t>` |
-  | `awaiting <key> slot <t>` | `waiting for <key> <t>` |
-  | `main red` | `main's check is failing` |
-  | `budget paused` | `waiting: budget spent` |
-  | `cap paused` | `waiting: daily cap spent` |
-  | `disk hold` | `waiting: low disk` |
-  | `held: bootstrap` | `waiting: bootstrap` |
-  | `held: maintenance quota a/b` (built by `loopRowCells`) | `waiting: maintenance allowance used a/b` |
-  | `idle: sibling mid-entry` | `idle: another <base role> instance is working on it` |
-  | `waiting for prompts` (idle director) | `ready for messages` |
-
-  These stay: working, reviewing, director working, paused, quiet until, sleeping (for …), failing, stopped, deferred (…), idle: no unclaimed …, and the ` · no change ×N` suffix.
-- Update `LOOP_RANK_RULES` and `ACTIVE_PHASE_PREFIXES` so each state keeps its rank:
-  - Rank 0 (active): `working`, `reviewing` and `merging`.
-  - Rank 1: the prefixes `approved`, `waiting to start` and `waiting for `. The last covers a waiter parked on a provider key. It is also why the idle director's label moves away from "waiting for …".
-  - Rank 2: the phases `failing` and `main's check is failing`.
-  - Rank 3: the phase `paused` and the prefix `waiting:`.
-- `LANDING_STAGE_LABELS` (src/landing/landing-slot.ts): change only this constant there; part 15/19 converts the rest of that file.
-  - `check-wait` → "waiting to check".
-  - `build-check` → "checking".
-  - `provider-wait` → "waiting for the provider".
-  - `merging` → "finishing the merge", so no row reads "merging · merging".
-  - The other stages stay.
-- src/landing/landing-queue-render.ts, the whole module:
-  - `queueEntryLandingLabel` uses the labels above.
-  - `renderLandingQueue` prints `merge queue empty`, `merge queue (N):` and `<roleLabel> run #N`.
-- The dashboard client parses these labels, so every client parser changes in this part, not later. Tests feed literal strings, so a server-only change would pass while the dashboard silently broke.
-  - `ACTIVE_PHASE_PREFIXES` and `LOOP_RANK_RULES` reach the browser by interpolation: gui-client.ts's `isActivePhase` and gui-client-model.ts's loop sort. Their new values reach the client automatically, but check both.
-  - `phaseInfo` and the gui-client.ts active check hold their own literals. Rewrite them as below.
-- Code that matches these labels, changed in the same part so nothing goes stale:
-  - The red-main filter in `fleetAlerts` (`l.phase === "main red"`, src/ui/fleet-alerts.ts). Change only that line; part 3/19 converts the rest of the file.
-  - The active check in src/ui/gui/gui-client.ts's next-run cell (`phase.startsWith("awaiting slot")`).
-  - `phaseInfo` (src/ui/gui/gui-client-model.ts):
-    - Match the new labels, keep each `after(n)` offset equal to the new prefix's length, and rewrite the provider-key regex for `waiting for <key> <t>`.
-    - Update the pill words: "Merging"; "Approved" with "waiting to merge"; "Waiting to start"; "Main's check failing" with "blocked until main's check passes"; "Due" with "starts on the next poll"; "Waiting" with the reason "budget", "daily cap", "low disk", "bootstrap" or "maintenance"; "Ready" with "runs when you send it a message"; "failed runs in a row"; "starts no new runs".
-    - Keep every `key` value, because they are internal state keys owned by the code series.
-  - Add no header to the gui files in this part.
-- `status --json` and `/api/status` ship the rendered label as `phase`, so the payload values change here. This delivers the "Script interfaces" row's `phase` value `landing` → `merging`.
-- Add the header to status-model.ts and landing-queue-render.ts.
-
-**Files touched.**
-- src: src/ui/status-model.ts, src/landing/landing-queue-render.ts, src/landing/landing-slot.ts (`LANDING_STAGE_LABELS` only), src/ui/fleet-alerts.ts (one matcher), src/ui/gui/gui-client.ts (one matcher), src/ui/gui/gui-client-model.ts (`phaseInfo` only).
-- Tests, where most hits are the same substitution:
-  - test/status-model.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts, test/status-payload.test.ts.
-  - test/gui-client.test.ts (it pins the `phaseInfo` twin), test/gui-client-loops.test.ts, test/gui.test.ts, test/gui-operator.test.ts.
-  - test/fleet-alerts.test.ts, test/landing-queue.test.ts, test/cli-queue.test.ts.
-  - The loop and e2e fixtures that assert a phase. Find them by grepping for `awaiting slot`, `vetted, awaiting merge`, `main red`, `disk hold`, `held: ` and `"queued"` phases.
-
-**Acceptance criteria.**
-- The `loopPhase` fixtures yield `due`, `approved, waiting to merge`, `merging 2m · checking 10s`, `waiting to start 3m`, `waiting for omlx 3m`, `main's check is failing`, `waiting: low disk` and `ready for messages`. `loopRank` gives each the rank its old label had.
-- A new test in test/gui-client.test.ts builds each label with the server's `loopPhase` rather than writing it by hand. It passes each label through the browser `phaseInfo`, `isActivePhase` and loop sort taken from `GUI_CLIENT_JS`, and asserts the same key, tone, live flag and rank as before.
-- The red-main alert still fires, and a parked waiter still shows no next-run time.
-- `tumwater queue` prints `merge queue (N):` lines tagged `[merging 2m · reviewing]` or `[approved, waiting to merge]`.
-- `npm run test` passes.
-
 ### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
 
 **Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
@@ -3551,6 +3478,79 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 2/19: Role state labels say due and merging and approved and waiting (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/status-model.ts + LANDING_STAGE_LABELS in src/landing/landing-slot.ts + src/landing/landing-queue-render.ts + the phase matchers in src/ui/fleet-alerts.ts and src/ui/gui/gui-client.ts and src/ui/gui/gui-client-model.ts + tests; done 2026-10-16)
+
+**Goal.** Every surface shows a role's state with the Wording rules' labels: `tumwater status`, the TUI, the dashboard pill and `tumwater queue`. For example, `due` replaces `queued`, `merging` replaces `landing`, `approved, waiting to merge` replaces `vetted, awaiting merge`, `waiting to start` replaces `awaiting slot`, and every hold reads `waiting: <reason>`. The work is mostly mechanical. A few modules match these labels by string, and all of them change together in this part.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- Labels returned by `loopPhase` (src/ui/status-model.ts):
+
+  | Today | New |
+  | --- | --- |
+  | `queued` | `due` |
+  | `vetted, awaiting merge` | `approved, waiting to merge` |
+  | `landing <t> · <stage> <t>` | `merging <t> · <stage> <t>` |
+  | `awaiting slot <t>` | `waiting to start <t>` |
+  | `awaiting <key> slot <t>` | `waiting for <key> <t>` |
+  | `main red` | `main's check is failing` |
+  | `budget paused` | `waiting: budget spent` |
+  | `cap paused` | `waiting: daily cap spent` |
+  | `disk hold` | `waiting: low disk` |
+  | `held: bootstrap` | `waiting: bootstrap` |
+  | `held: maintenance quota a/b` (built by `loopRowCells`) | `waiting: maintenance allowance used a/b` |
+  | `idle: sibling mid-entry` | `idle: another <base role> instance is working on it` |
+  | `waiting for prompts` (idle director) | `ready for messages` |
+
+  These stay: working, reviewing, director working, paused, quiet until, sleeping (for …), failing, stopped, deferred (…), idle: no unclaimed …, and the ` · no change ×N` suffix.
+- Update `LOOP_RANK_RULES` and `ACTIVE_PHASE_PREFIXES` so each state keeps its rank:
+  - Rank 0 (active): `working`, `reviewing` and `merging`.
+  - Rank 1: the prefixes `approved`, `waiting to start` and `waiting for `. The last covers a waiter parked on a provider key. It is also why the idle director's label moves away from "waiting for …".
+  - Rank 2: the phases `failing` and `main's check is failing`.
+  - Rank 3: the phase `paused` and the prefix `waiting:`.
+- `LANDING_STAGE_LABELS` (src/landing/landing-slot.ts): change only this constant there; part 15/19 converts the rest of that file.
+  - `check-wait` → "waiting to check".
+  - `build-check` → "checking".
+  - `provider-wait` → "waiting for the provider".
+  - `merging` → "finishing the merge", so no row reads "merging · merging".
+  - The other stages stay.
+- src/landing/landing-queue-render.ts, the whole module:
+  - `queueEntryLandingLabel` uses the labels above.
+  - `renderLandingQueue` prints `merge queue empty`, `merge queue (N):` and `<roleLabel> run #N`.
+- The dashboard client parses these labels, so every client parser changes in this part, not later. Tests feed literal strings, so a server-only change would pass while the dashboard silently broke.
+  - `ACTIVE_PHASE_PREFIXES` and `LOOP_RANK_RULES` reach the browser by interpolation: gui-client.ts's `isActivePhase` and gui-client-model.ts's loop sort. Their new values reach the client automatically, but check both.
+  - `phaseInfo` and the gui-client.ts active check hold their own literals. Rewrite them as below.
+- Code that matches these labels, changed in the same part so nothing goes stale:
+  - The red-main filter in `fleetAlerts` (`l.phase === "main red"`, src/ui/fleet-alerts.ts). Change only that line; part 3/19 converts the rest of the file.
+  - The active check in src/ui/gui/gui-client.ts's next-run cell (`phase.startsWith("awaiting slot")`).
+  - `phaseInfo` (src/ui/gui/gui-client-model.ts):
+    - Match the new labels, keep each `after(n)` offset equal to the new prefix's length, and rewrite the provider-key regex for `waiting for <key> <t>`.
+    - Update the pill words: "Merging"; "Approved" with "waiting to merge"; "Waiting to start"; "Main's check failing" with "blocked until main's check passes"; "Due" with "starts on the next poll"; "Waiting" with the reason "budget", "daily cap", "low disk", "bootstrap" or "maintenance"; "Ready" with "runs when you send it a message"; "failed runs in a row"; "starts no new runs".
+    - Keep every `key` value, because they are internal state keys owned by the code series.
+  - Add no header to the gui files in this part.
+- `status --json` and `/api/status` ship the rendered label as `phase`, so the payload values change here. This delivers the "Script interfaces" row's `phase` value `landing` → `merging`.
+- Add the header to status-model.ts and landing-queue-render.ts.
+
+**Files touched.**
+- src: src/ui/status-model.ts, src/landing/landing-queue-render.ts, src/landing/landing-slot.ts (`LANDING_STAGE_LABELS` only), src/ui/fleet-alerts.ts (one matcher), src/ui/gui/gui-client.ts (one matcher), src/ui/gui/gui-client-model.ts (`phaseInfo` only).
+- Tests, where most hits are the same substitution:
+  - test/status-model.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts, test/status-payload.test.ts.
+  - test/gui-client.test.ts (it pins the `phaseInfo` twin), test/gui-client-loops.test.ts, test/gui.test.ts, test/gui-operator.test.ts.
+  - test/fleet-alerts.test.ts, test/landing-queue.test.ts, test/cli-queue.test.ts.
+  - The loop and e2e fixtures that assert a phase. Find them by grepping for `awaiting slot`, `vetted, awaiting merge`, `main red`, `disk hold`, `held: ` and `"queued"` phases.
+
+**Acceptance criteria.**
+- The `loopPhase` fixtures yield `due`, `approved, waiting to merge`, `merging 2m · checking 10s`, `waiting to start 3m`, `waiting for omlx 3m`, `main's check is failing`, `waiting: low disk` and `ready for messages`. `loopRank` gives each the rank its old label had.
+- A new test in test/gui-client.test.ts builds each label with the server's `loopPhase` rather than writing it by hand. It passes each label through the browser `phaseInfo`, `isActivePhase` and loop sort taken from `GUI_CLIENT_JS`, and asserts the same key, tone, live flag and rank as before.
+- The red-main alert still fires, and a parked waiter still shows no next-run time.
+- `tumwater queue` prints `merge queue (N):` lines tagged `[merging 2m · reviewing]` or `[approved, waiting to merge]`.
+- `npm run test` passes.
 
 ### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests) — done 2026-10-16
 

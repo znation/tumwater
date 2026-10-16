@@ -275,29 +275,29 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
     { role: "bugfix" }, // exempt roles keep their ordinary phase
   ]);
   const out = renderStatus(tmpdir(), { ...snap, running: true });
-  assert.match(out, /feature\s+main red/);
+  assert.match(out, /feature\s+main's check is failing/);
   assert.match(out, /main_red — code merges blocked until main is green/);
-  assert.match(out, /bugfix\s+queued/);
+  assert.match(out, /bugfix\s+due/);
 });
 
-test("renderStatus shows budget paused in idle role loops' state cells while the cap is reached", () => {
+test("renderStatus shows waiting: budget spent in idle role loops' state cells while the cap is reached", () => {
   const root = tmpdir();
   // Spend below the cap: ordinary labels.
   const under = renderStatus(
     root,
     { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 10, capUsd: 50, capHitAt: null, free: false, fallback: null }), running: true },
   );
-  assert.match(under, /feature\s+queued/);
-  assert.doesNotMatch(under, /budget paused/);
+  assert.match(under, /feature\s+due/);
+  assert.doesNotMatch(under, /waiting: budget spent/);
 
-  // Spend at the cap: idle role loops whose tier resolved to pause read `budget paused`;
+  // Spend at the cap: idle role loops whose tier resolved to pause read `waiting: budget spent`;
   // the director keeps its own phase.
   const reached = renderStatus(
     root,
     { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: null }), budgetPausedRoles: ["feature"], running: true },
   );
-  assert.match(reached, /feature\s+budget paused/);
-  assert.match(reached, /director\s+waiting for prompts/);
+  assert.match(reached, /feature\s+waiting: budget spent/);
+  assert.match(reached, /director\s+ready for messages/);
 
   // The header badge shows the reached budget on the same render.
   assert.match(headerOf(reached), /· budget: \$50\.00\/\$50 today$/);
@@ -317,9 +317,9 @@ test("renderStatus shows paused only for the individually paused idle role", () 
     },
   );
   assert.match(out, /docs\s+paused/);
-  assert.match(out, /feature\s+queued/);
+  assert.match(out, /feature\s+due/);
   assert.doesNotMatch(out, /feature\s+paused/);
-  assert.match(out, /director\s+waiting for prompts/);
+  assert.match(out, /director\s+ready for messages/);
 
   // An empty set changes nothing — the fleet-wide flag alone drives the cell, as before.
   const none = renderStatus(
@@ -331,29 +331,29 @@ test("renderStatus shows paused only for the individually paused idle role", () 
 
 // Regression (review of the editable-budget feature): the snapshot's budget object is now
 // unconditional, so a DISABLED cap (capUsd 0) must not read as reached — spend ≥ 0 would
-// otherwise flag every idle loop `budget paused` on a fleet with no cap at all.
-test("renderStatus never reads budget paused while the cap is disabled, even past any spend", () => {
+// otherwise flag every idle loop `waiting: budget spent` on a fleet with no cap at all.
+test("renderStatus never reads waiting: budget spent while the cap is disabled, even past any spend", () => {
   const root = tmpdir();
   // Cap disabled (0) with today's spend far above zero: the gate is off by definition.
   const out = renderStatus(
     root,
     { ...snapshotWith([{ role: "feature" }, { role: "director" }], { spentUsd: 999, capUsd: 0, capHitAt: null, free: false, fallback: null }), running: true },
   );
-  assert.doesNotMatch(out, /budget paused/, "no loop reads budget paused with the cap disabled");
-  assert.match(out, /feature\s+queued/);
-  assert.match(out, /director\s+waiting for prompts/);
+  assert.doesNotMatch(out, /waiting: budget spent/, "no loop reads waiting: budget spent with the cap disabled");
+  assert.match(out, /feature\s+due/);
+  assert.match(out, /director\s+ready for messages/);
   // The badge stays standing and says no cap.
   assert.match(headerOf(out), /· budget: \$999\.00 today · no cap$/);
 });
 
-test("renderStatus shows paused in idle role loops' state cells ahead of budget paused and main red", () => {
+test("renderStatus shows paused in idle role loops' state cells ahead of waiting: budget spent and main red", () => {
   const root = tmpdir();
   // No pause: ordinary labels.
   const unpaused = renderStatus(
     root,
     { ...snapshotWith([{ role: "feature" }, { role: "director" }]), running: true },
   );
-  assert.match(unpaused, /feature\s+queued/);
+  assert.match(unpaused, /feature\s+due/);
   assert.doesNotMatch(unpaused, /\bpaused\b/);
 
   // Marker present with the cap also reached and main red: idle role loops read `paused`
@@ -371,22 +371,22 @@ test("renderStatus shows paused in idle role loops' state cells ahead of budget 
     },
   );
   assert.match(paused, /feature\s+paused/);
-  assert.doesNotMatch(paused, /budget paused/);
-  assert.doesNotMatch(paused, /main red/);
-  assert.match(paused, /director\s+waiting for prompts/);
+  assert.doesNotMatch(paused, /waiting: budget spent/);
+  assert.doesNotMatch(paused, /main's check is failing/);
+  assert.match(paused, /director\s+ready for messages/);
 });
 
 test("renderStatus keeps role loops working under the fallback and pauses them without one", () => {
   const root = tmpdir();
   const loops = [{ role: "feature" }, { role: "director" }];
   // At the cap WITH a usable free fallback: the loops keep ticking on it, so no row reads
-  // `budget paused` — the header badge is where the operator learns the cap is spent.
+  // `waiting: budget spent` — the header badge is where the operator learns the cap is spent.
   const degraded = renderStatus(root, {
     ...snapshotWith(loops, { spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" } }),
     running: true,
   });
-  assert.doesNotMatch(degraded, /budget paused/, "a fallback fleet is not a stopped fleet");
-  assert.match(degraded, /feature\s+queued/);
+  assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback fleet is not a stopped fleet");
+  assert.match(degraded, /feature\s+due/);
   assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · fallback: local-free \(cost n\/a\)$/);
 
   // The same spend with no usable fallback pauses the role loops, exactly as before — per
@@ -396,7 +396,7 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
     budgetPausedRoles: ["feature"],
     running: true,
   });
-  assert.match(stopped, /feature\s+budget paused/);
+  assert.match(stopped, /feature\s+waiting: budget spent/);
 });
 
 test("status table groups a landing role above queued/sleeping rows with newer last ticks", () => {
@@ -425,7 +425,7 @@ test("status table groups a landing role above queued/sleeping rows with newer l
   assert.ok(rowOf("landing-r") >= 0, "the landing role has a row");
   assert.ok(rowOf("landing-r") < rowOf("sleepy"), "landing sorts above a sleeping row with a newer last tick");
   assert.ok(rowOf("landing-r") < rowOf("queued-z"), "landing sorts above a queued row with a newer last tick");
-  assert.match(lines[rowOf("landing-r")]!, /landing \dm\d+s/);
+  assert.match(lines[rowOf("landing-r")]!, /merging \dm\d+s/);
 });
 
 /** `line` expanded to one entry per terminal display column — a wide character fills both of
@@ -531,7 +531,7 @@ test("no rendered line carries trailing padding, blank trailing cells included",
   assert.equal(t.cellAt(t.lines[t.lines.length - 1] ?? "", 7), "$0.00");
 });
 
-test("a rendered fleet shows active rows equal to permit holders: parked waiters read `awaiting slot`", async () => {
+test("a rendered fleet shows active rows equal to permit holders: parked waiters read `waiting to start`", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   // A live-looking orchestrator (this process's pid) so loopPhase renders in-flight states.
@@ -549,7 +549,7 @@ test("a rendered fleet shows active rows equal to permit holders: parked waiters
   }
   const text = renderStatus(repo, snapshot(repo));
   // The waiters show their true state, not `working`.
-  assert.equal(text.split("\n").filter((l) => l.includes("awaiting slot")).length, 2);
+  assert.equal(text.split("\n").filter((l) => l.includes("waiting to start")).length, 2);
   // Exactly one active working row: the only real permit holder.
   assert.equal(text.split("\n").filter((l) => /\bworking \d/.test(l)).length, 1);
   fs.rmSync(orchestratorStatePath(repo), { force: true });
@@ -601,17 +601,17 @@ test("the state cell hides the pooled worktree slot and its pin", () => {
 // The disk floor (plans/disk-floor.md, part 4/4): a published hold reads in the header badge
 // AND in each idle loop's state cell, so the rendered table explains the stopped fleet
 // itself.
-test("renderStatus shows a disk hold in the header and the loop's state cell", () => {
+test("renderStatus shows a waiting: low disk in the header and the loop's state cell", () => {
   const held = snapshotWith([{ role: "clean" }]);
   held.running = true;
   held.disk = { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true };
   const text = renderStatus(tmpdir(), held);
   assert.match(headerOf(text), /· disk 8\.2 GB free — holding new work$/);
-  assert.match(rowOf(text, "clean"), /disk hold/);
+  assert.match(rowOf(text, "clean"), /waiting: low disk/);
 });
 
 // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress badge rides the header
-// and each held idle loop's state cell reads `held: bootstrap`.
+// and each held idle loop's state cell reads `waiting: bootstrap`.
 test("renderStatus shows the bootstrap progress and hold in the header and state cell", () => {
   const snap = snapshotWith(
     [{ role: "clean" }],
@@ -628,7 +628,7 @@ test("renderStatus shows the bootstrap progress and hold in the header and state
   snap.running = true;
   const text = renderStatus(tmpdir(), snap);
   assert.match(headerOf(text), /· bootstrap: 2\/5 plans done/);
-  assert.match(rowOf(text, "clean"), /held: bootstrap/);
+  assert.match(rowOf(text, "clean"), /waiting: bootstrap/);
 });
 
 /** A running feature loop whose currentWork is a hostile OSC 52 sequence plus a C1 byte: the

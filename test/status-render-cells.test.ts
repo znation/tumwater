@@ -242,7 +242,7 @@ test("the last-result cell keeps the prior completed result and its summary whil
     assert.doesNotMatch(row, /\bqueued\b/, "the live landing status is not a last result");
     assert.doesNotMatch(row, /add the widget/, "the pending change's summary is not paired with the prior result");
   }
-  assert.match(rowOf(inFlight, "feature"), /^feature\s+landing\b/, "the state column carries the in-flight landing");
+  assert.match(rowOf(inFlight, "feature"), /^feature\s+merging\b/, "the state column carries the in-flight landing");
 });
 
 test("the last-result cell shows the landing's outcome beside the summary of the change it landed", () => {
@@ -260,15 +260,15 @@ test("the last-result cell shows the landing's outcome beside the summary of the
 
 test("a pending change after a main-red tick does not keep the state cell reading main red", () => {
   // The last-result cell keeps the main_red pair (it IS the last completed outcome), but the
-  // state cell's "main red" claims the loop is blocked NOW — and a tick that queued a change
+  // state cell's "main's check is failing" says the loop is blocked NOW — and a queued change
   // got past the red-main gate, so main was green at its tick.
   const s = freshLoopState("feature");
   applyTickOutcome(s, defaultConfig(), "feature", { result: "main_red", summary: "code merges blocked until main is green" });
-  assert.equal(loopPhase(s, true), "main red", "fixture sanity: the blocked tick reads main red");
+  assert.equal(loopPhase(s, true), "main's check is failing", "fixture sanity: the blocked tick reads main red");
   applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   assert.match(loopPhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }), "feature");
-  assert.doesNotMatch(row, /main red/);
+  assert.doesNotMatch(row, /main's check is failing/);
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }));
   assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main_red — code merges blocked until main is green", `prior pair kept: ${row}`);
 });
@@ -324,7 +324,7 @@ test("nextRunCell reads - for a loop in flight or a fleet that is not running", 
   // A landing is in flight though the loop itself is not running: the rendered phase says so.
   const landing = freshLoopState("dry");
   landing.nextRunAt = now + 60_000;
-  assert.equal(nextRunCell(landing, "landing 1m · build check", now, true), "-");
+  assert.equal(nextRunCell(landing, "merging 1m · checking", now, true), "-");
   const idle = freshLoopState("feature");
   idle.nextRunAt = now + 60_000;
   assert.equal(nextRunCell(idle, "queued", now, false), "-", "a stopped fleet's nextRunAts are stale leftovers, not plans");

@@ -177,4 +177,4 @@ export function rowReader(root: string, roles: string[]): (role: string) => stri
   };
 }
 
-export const REVIEWING = /^landing \d+s · reviewing \d+s$/;
+export const REVIEWING = /^merging \d+s · reviewing \d+s$/;

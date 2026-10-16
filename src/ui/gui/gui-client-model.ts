@@ -27,34 +27,34 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("director working")) return { key: "working", label: "Working (director)", tone: "blue", live: true, detail: after(16) };
     if (p.startsWith("working")) return { key: "working", label: "Working", tone: "blue", live: true, detail: after(7) };
     if (p.startsWith("reviewing")) return { key: "reviewing", label: "Reviewing", tone: "violet", live: true, detail: after(9) };
-    if (p.startsWith("landing")) return { key: "landing", label: "Landing", tone: "orange", live: true, detail: after(7) };
-    if (p.startsWith("vetted")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting for the merge slot" };
-    if (p.startsWith("awaiting slot")) return { key: "awaiting", label: "Waiting for a slot", tone: "gray", live: false, detail: after(13) ? "for " + after(13) : "" };
+    if (p.startsWith("merging")) return { key: "landing", label: "Merging", tone: "orange", live: true, detail: after(7) };
+    if (p.startsWith("approved")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting to merge" };
+    if (p.startsWith("waiting to start")) return { key: "awaiting", label: "Waiting to start", tone: "gray", live: false, detail: after(16) ? "for " + after(16) : "" };
     // A waiter parked on a full provider key (provider-concurrency part 5/5): the phase reads
-    // awaiting <key> slot 2m, and this chip names the provider alongside the wait, so the
+    // waiting for <key> 2m, and this chip names the provider alongside the wait, so the
     // operator sees which cap is full — the same chip and tone as a fleet-total waiter.
-    if (p.startsWith("awaiting ")) {
-      const m = after(9).match(/^(\S+) slot(?:\s+(.*))?$/);
+    if (p.startsWith("waiting for ")) {
+      const m = after(12).match(/^(\S+)(?:\s+(.*))?$/);
       const prov = m ? m[1] : "";
       const dur = m && m[2] ? m[2].trim() : "";
       return {
-        key: "awaiting", label: "Waiting for a slot", tone: "gray", live: false,
+        key: "awaiting", label: "Waiting to start", tone: "gray", live: false,
         detail: (prov ? "on " + prov : "") + (dur ? " for " + dur : ""),
       };
     }
-    if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed ticks in a row" };
-    if (p === "main red") return { key: "mainred", label: "Main red", tone: "red", live: false, detail: "blocked until main's suite passes" };
-    if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
-    if (p === "budget paused") return { key: "budget", label: "Budget paused", tone: "amber", live: false, detail: "today's cap is spent" };
-    if (p === "cap paused") return { key: "cap", label: "Cap paused", tone: "amber", live: false, detail: "its own daily cap is spent" };
-    if (p === "disk hold") return { key: "disk", label: "Disk hold", tone: "amber", live: false, detail: "free space is below the floor" };
-    if (p === "held: bootstrap") return { key: "bootstrap", label: "Bootstrap hold", tone: "amber", live: false, detail: "waiting for enough plans to be done" };
-    if (p.startsWith("held: maintenance quota")) return { key: "quota", label: "Maintenance hold", tone: "amber", live: false, detail: after(24) };
+    if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed runs in a row" };
+    if (p === "main's check is failing") return { key: "mainred", label: "Main's check failing", tone: "red", live: false, detail: "blocked until main's check passes" };
+    if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };
+    if (p === "waiting: budget spent") return { key: "budget", label: "Waiting", tone: "amber", live: false, detail: "budget" };
+    if (p === "waiting: daily cap spent") return { key: "cap", label: "Waiting", tone: "amber", live: false, detail: "daily cap" };
+    if (p === "waiting: low disk") return { key: "disk", label: "Waiting", tone: "amber", live: false, detail: "low disk" };
+    if (p === "waiting: bootstrap") return { key: "bootstrap", label: "Waiting", tone: "amber", live: false, detail: "bootstrap" };
+    if (p.startsWith("waiting: maintenance allowance used")) return { key: "quota", label: "Waiting", tone: "amber", live: false, detail: "maintenance " + after(35) };
     if (p.startsWith("sleeping")) return { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
     if (p.startsWith("idle: ")) return { key: "idle", label: "Idle", tone: "gray", live: false, detail: p.slice(6) };
     if (p.startsWith("deferred (")) return { key: "deferred", label: "Deferred", tone: "gray", live: false, detail: p.slice(10, -1) };
-    if (p === "queued") return { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — starts on the next poll" };
-    if (p === "waiting for prompts") return { key: "waiting", label: "Waiting", tone: "gray", live: false, detail: "runs when you send it a prompt" };
+    if (p === "due") return { key: "queued", label: "Due", tone: "gray", live: false, detail: "starts on the next poll" };
+    if (p === "ready for messages") return { key: "waiting", label: "Ready", tone: "gray", live: false, detail: "runs when you send it a message" };
     if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the fleet is not running" };
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
@@ -123,7 +123,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // loop-sort:end
   // The fleet table's section for each rank. The running director has its own section so it
   // does not join the In-progress rows an operator scans against maxConcurrent; the permit
-  // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting for a slot") keep
+  // holders (rank 0) and the pipeline waiters (rank 1, labeled "Waiting to start") keep
   // sharing In progress (BUGS.md 2026-10-06).
   const LOOP_GROUPS = [["Director", -1], ["In progress", 0, 1], ["Needs attention", 2], ["Paused", 3], ["Idle", 4]];
   // The payload's alerts (fleet-alerts.ts fleetAlerts — the TUI's attention lines use the same

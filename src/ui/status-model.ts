@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -131,8 +132,8 @@ export function loopPhase(
   // passed gets it (callers derive it via landingForRole), and a stopped harness never
   // shows it — a dead fleet's marker is stale by definition.
   if (landing) {
-    if (landing.status === "vetted") return "vetted, awaiting merge";
-    const head = landing.startedAt === undefined ? "landing" : `landing ${duration(Date.now() - landing.startedAt)}`;
+    if (landing.status === "vetted") return "approved, waiting to merge"; // vocabulary-ok: persisted status value
+    const head = landing.startedAt === undefined ? "merging" : `merging ${duration(Date.now() - landing.startedAt)}`;
     if (!landing.stage) return head;
     const base = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
     const staged = landing.stageSince === undefined ? base : `${base} ${duration(Date.now() - landing.stageSince)}`;
@@ -161,9 +162,9 @@ export function loopPhase(
         permits !== undefined &&
         isBindingLimit(permits, s.parkedOn)
       ) {
-        return `awaiting ${s.parkedOn} slot ${parkedTime}`;
+        return `waiting for ${s.parkedOn} ${parkedTime}`;
       }
-      return `awaiting slot ${parkedTime}`;
+      return `waiting to start ${parkedTime}`;
     }
     // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight tick
     // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
@@ -186,7 +187,7 @@ export function loopPhase(
     // so a running loop keeps its live detail.
     return root ? workingDetail(root, s, live) : "working";
   }
-  if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from both gates
+  if (s.role === DIRECTOR_ROLE) return "ready for messages"; // exempt from both gates
   if (userPaused) {
     // A timed per-role pause (`pause --role <id> --for`): the marker's `until` gives the
     // operator a countdown, mirroring the fleet header badge and the GUI loop-list's
@@ -203,21 +204,21 @@ export function loopPhase(
   // The loop's OWN daily cap: the more specific spend
   // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
   // "user intent is more specific than spend state" argument extended one level down.
-  if (capPaused) return "cap paused";
+  if (capPaused) return "waiting: daily cap spent";
   // The loop's OWN quiet-hours window (PLANS.md, quietHoursPerRole): the fleet gate's own
   // wording — `quiet until <end>` — scoped to the one loop the operator scheduled. Shown
   // after the cap and before the fleet's budget pause: the loop's own schedule is more
   // specific than either.
   if (quietHold) return `quiet until ${quietWindowEnd(quietHold)}`;
-  if (budgetPaused) return "budget paused";
+  if (budgetPaused) return "waiting: budget spent";
   // The disk floor (plans/disk-floor.md, part 4/4): the fleet starts no new work below the
   // floor, so an idle loop reads "disk hold" — the fleet-wide gate's own wording, ranked with
   // the budget pause (LOOP_RANK_RULES). In-flight ticks keep their live detail above, exactly
   // as under every autonomous gate.
-  if (diskHeld) return "disk hold";
+  if (diskHeld) return "waiting: low disk";
   // New-project bootstrap (plans/work-ratio.md, part 2/2): the idle loop is held until enough
   // plans are Done. The literal label names the reason, like the gates above.
-  if (bootstrapHeld) return "held: bootstrap";
+  if (bootstrapHeld) return "waiting: bootstrap";
   // The maintenance allowance's own hold (plans/work-ratio.md, part 1b/4): the label carries the
   // figures so the operator sees how far over the window is; the string is preformatted by the
   // snapshot's holder, like roleQuietPaused's window.
@@ -234,7 +235,7 @@ export function loopPhase(
   // the fleet-level verdict is fresher than the loop's own, so the label is stale until the
   // loop's next tick — which can be hours away (BUGS.md 2026-09-30). A check older than the
   // red tick, a failed or skipped one, or an unknown tick end all keep the label.
-  if (heldByMainRed(s, mainCheck)) return "main red";
+  if (heldByMainRed(s, mainCheck)) return "main's check is failing";
   // An error streak at or past the warning threshold (tick-apply.ts's ERROR_STREAK_WARN): the
   // loop is retrying the same failure on the error ladder, and the operator must see
   // "failing" — not a sleepy label — while it is stuck (BUGS.md 2026-09-15). The streak
@@ -268,7 +269,7 @@ export function loopPhase(
         cell = `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
         break;
       case "claim-hold":
-        cell = "idle: sibling mid-entry";
+        cell = `idle: another ${baseRoleOf(s.role)} instance is working on it`;
         break;
       case "deferred-backlog":
         cell = "deferred (backlog open)";
@@ -280,7 +281,7 @@ export function loopPhase(
         cell = "deferred (plans full)";
         break;
       default:
-        cell = "queued";
+        cell = "due";
     }
   }
   // Two or more consecutive no-change ticks earn the suffix (N=1 is a single quiet tick —
@@ -348,7 +349,7 @@ export function loopRowCells(
     // The maintenance allowance's verdict (status/status-data.ts maintenanceQuota): an idle loop
     // it holds reads `held: maintenance quota <used>/<allowance>` — the fleet gate's figures.
     snap.maintenanceQuota.held.includes(s.role)
-      ? `held: maintenance quota ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
+      ? `waiting: maintenance allowance used ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
       : undefined,
     // The permit pool's live state (plans/provider-concurrency.md §8): names the parked
     // waiter's provider key in `awaiting <key> slot` when that key is at its cap.
@@ -365,7 +366,7 @@ export function loopRowCells(
  * browser dashboard (gui-client.ts) interpolates this list into its isActivePhase, exactly as
  * gui-client-model.ts interpolates LOOP_RANK_RULES, so the two dashboards cannot disagree
  * about which phases are in flight. */
-export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "landing"] as const;
+export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "merging"] as const;
 
 /** Whether `key` is the binding limit in the published permit snapshot: its cap is set and
  * its in-use already meets or exceeds it, so the pool is granting nothing more on that key and
@@ -414,10 +415,10 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
 }> = [
   { rank: -1, prefixes: ["director working"] },
   { rank: 0, active: true },
-  { rank: 1, prefixes: ["vetted", "awaiting slot"] },
-  { rank: 2, phases: ["failing", "main red"] },
-  { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold", "held: bootstrap"] },
-  { rank: 3, prefixes: ["paused", "held: maintenance quota"] },
+  { rank: 1, prefixes: ["approved", "waiting to start", "waiting for "] },
+  { rank: 2, phases: ["failing", "main's check is failing"] },
+  { rank: 3, phases: ["paused"] },
+  { rank: 3, prefixes: ["paused", "waiting:"] },
 ];
 
 /** The rank LOOP_RANK_RULES assigns `phase`: -1 for director working, 4 for idle, otherwise the

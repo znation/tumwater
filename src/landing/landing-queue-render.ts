@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The renderer behind `tumwater queue` — the operator-facing text for the land queue view the
  * reader gathers (landing-queue.ts's readLandingQueue, beside it): one line per queued landing
  * in execution order, plus the count of queue files the reader skipped. Pure function of the
@@ -5,6 +6,7 @@
  * pinned by a test. */
 
 import { humanSeconds, secondsSince } from "../text/datetime.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { shortSha } from "../text/format.js";
 import { plural } from "../text/phrases.js";
 import type { LandingQueueView } from "./landing-queue.js";
@@ -19,8 +21,8 @@ export function queueEntryLandingLabel(sha: string, inFlight: LandingInFlight | 
   if (!inFlight) return "";
   const change = landingChanges(inFlight).find((c) => c.sha === sha);
   if (!change || change.status === "done") return "";
-  if (change.status === "vetted") return "vetted, awaiting merge";
-  let label = "landing";
+  if (change.status === "vetted") return "approved, waiting to merge"; // vocabulary-ok: persisted status value
+  let label = "merging";
   if (change.startedAt) label += ` ${humanSeconds(secondsSince(change.startedAt, now))}`;
   if (change.stage) label += ` · ${LANDING_STAGE_LABELS[change.stage]}`;
   if (change.stageSince !== undefined) label += ` ${humanSeconds(secondsSince(change.stageSince, now))}`;
@@ -38,14 +40,14 @@ export function renderLandingQueue(view: LandingQueueView, now: number, inFlight
   const depth = view.entries.length + view.unreadable;
   const lines: string[] = [];
   if (depth === 0) {
-    lines.push("land queue empty");
+    lines.push("merge queue empty");
   } else {
-    lines.push(`land queue (${depth}):`);
+    lines.push(`merge queue (${depth}):`);
     view.entries.forEach((e, i) => {
       const age = humanSeconds(secondsSince(e.enqueuedAt, now));
       const label = queueEntryLandingLabel(e.sha, inFlight, now);
       const tag = label ? ` · [${label}]` : "";
-      lines.push(`  ${i + 1}. ${e.role} tick #${e.tick} · ${shortSha(e.sha)} · ${age} ago${tag} · ${e.summary}`);
+      lines.push(`  ${i + 1}. ${roleLabel(e.role)} run #${e.tick} · ${shortSha(e.sha)} · ${age} ago${tag} · ${e.summary}`);
     });
   }
   if (view.unreadable > 0) {

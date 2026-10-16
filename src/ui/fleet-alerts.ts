@@ -141,7 +141,7 @@ export function fleetAlerts(
       actions: [],
     });
   }
-  const red = loops.filter((l) => l.phase === "main red");
+  const red = loops.filter((l) => l.phase === "main's check is failing");
   if (red.length) {
     out.push({
       key: "mainred",

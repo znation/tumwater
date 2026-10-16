@@ -130,7 +130,7 @@ test("snapshot prefers the running orchestrator's published budget over the pers
 // exempt like the scheduler's gate.
 test("snapshot lists the roles held by their own per-role cap in capPaused", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cap paused snapshot test");
+  await initProject(repo, "waiting: daily cap spent snapshot test");
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsdPerRole = { clean: 1, dry: 5, director: 1 };
   saveConfig(repo, cfg);
@@ -169,7 +169,7 @@ test("snapshot lists the roles held by their own per-role cap in capPaused", asy
 // the scheduler holds it beside `feature`.
 test("snapshot resolves a per-role cap through the base role and its summed instance spend", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cap paused instances snapshot test");
+  await initProject(repo, "waiting: daily cap spent instances snapshot test");
   const cfg = loadConfig(repo);
   cfg.roles.feature = { ...(cfg.roles.feature ?? { enabled: true }), instances: 2 };
   cfg.maxDailyCostUsdPerRole = { feature: 1 };
@@ -186,12 +186,12 @@ test("snapshot resolves a per-role cap through the base role and its summed inst
 });
 
 // The per-tier budget pause (part 5c/8): a role whose model tier resolved to no usable free
-// pair while the cap is reached reads `budget paused`, per role — computed over the same
+// pair while the cap is reached reads `waiting: budget spent`, per role — computed over the same
 // resolution the scheduler's gate folds, demotions published by the running orchestrator
 // included.
 test("snapshot lists the roles whose budget tier resolved to pause in budgetPausedRoles", async () => {
   const repo = makeRepo();
-  await initProject(repo, "budget paused snapshot test");
+  await initProject(repo, "waiting: budget spent snapshot test");
   const cfg = loadConfig(repo);
   cfg.maxDailyCostUsd = 1;
   cfg.provider = "paid";

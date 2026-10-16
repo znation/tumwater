@@ -84,7 +84,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "429 Rate limit exceeded" },
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true, stuckMs: 720_000 },
-    { role: "coverage", phase: "main red", errorStreak: false, inFlight: false },
+    { role: "coverage", phase: "main's check is failing", errorStreak: false, inFlight: false },
     { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
     { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
@@ -174,7 +174,7 @@ test("a streak behind a working label still raises the failing alert; a healthil
 
   const healthyWorking: AlertLoop[] = [
     { role: "feature", phase: "working 30s · turn 1", errorStreak: false, inFlight: true },
-    { role: "qa", phase: "landing 1s · build-check", errorStreak: false, inFlight: true },
+    { role: "qa", phase: "merging 1s · build-check", errorStreak: false, inFlight: true },
   ];
   assert.equal(fleetAlerts(base, [], healthyWorking, now).filter((a) => a.key === "failing").length, 0);
 });
@@ -209,11 +209,11 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
     resultInfo(result: string): { tone: string };
   }>(["format", "view-model"], ["phaseInfo", "resultInfo"]);
   const family: Record<string, string | undefined> = { blue: "blue", violet: "blue", orange: "blue", indigo: "blue", red: "red", amber: "yellow", gray: undefined };
-  for (const phase of ["working 1m", "reviewing 2m", "landing 1m · merging", "vetted, awaiting merge", "awaiting slot 5s", "failing", "main red",
-    "paused", "budget paused", "cap paused", "disk hold", "held: bootstrap", "sleeping (for 5m)", "queued", "waiting for prompts", "stopped"]) {
+  for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "approved, waiting to merge", "waiting to start 5s", "failing", "main's check is failing",
+    "paused", "waiting: budget spent", "waiting: daily cap spent", "waiting: low disk", "waiting: bootstrap", "sleeping (for 5m)", "due", "ready for messages", "stopped"]) {
     const page = phaseInfo(phase).tone;
     // Awaiting a slot is pipeline work (blue) in the terminal; the page draws it quietly gray.
-    if (phase.startsWith("awaiting slot")) continue;
+    if (phase.startsWith("waiting to start")) continue;
     assert.equal(phaseTone(phase), family[page], `${phase}: page ${page}`);
   }
   const resultFamily: Record<string, string | undefined> = { green: "green", indigo: "cyan", red: "red", amber: "yellow", gray: undefined };
@@ -226,7 +226,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
 // The disk floor (plans/disk-floor.md, part 4/4): a hold raises one amber alert naming the
 // reading and the floor. Below the reclaim threshold but not held is the header badge's
 // quieter business, so it raises no alert; no disk block raises nothing.
-test("a disk hold raises one amber alert naming the free space and the floor", () => {
+test("a waiting: low disk raises one amber alert naming the free space and the floor", () => {
   const held = fleetAlerts(
     { ...base, disk: { freeGB: 8.2, holdGB: 10, reclaimGB: 40, held: true } },
     [], [], Date.now(),

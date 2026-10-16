@@ -92,9 +92,9 @@ test("a suffixed phase still parses to its real key, and the streak renders once
   // The payload's phase already carries the suffix from status-model loopPhase, and the pill
   // parser feeds phaseDetail its info — so the queued/idle/deferred rows must see the clean
   // phase (no "other" fallback, no swallowed or doubled " · no change ×N").
-  assert.equal(phaseInfo("queued · no change ×2").key, "queued");
-  assert.equal(phaseDetail({ phase: "queued · no change ×2", noChangeStreak: 2, nextRunAt: now - 5_000, backoffSeconds: 0 },
-    phaseInfo("queued · no change ×2"), { running: true }), "due — starts on the next poll · no change ×2");
+  assert.equal(phaseInfo("due · no change ×2").key, "queued");
+  assert.equal(phaseDetail({ phase: "due · no change ×2", noChangeStreak: 2, nextRunAt: now - 5_000, backoffSeconds: 0 },
+    phaseInfo("due · no change ×2"), { running: true }), "starts on the next poll · no change ×2");
   assert.equal(phaseInfo("idle: no unclaimed plans · no change ×2").detail, "no unclaimed plans");
   assert.equal(phaseDetail({ phase: "idle: no unclaimed plans · no change ×2", noChangeStreak: 2 },
     phaseInfo("idle: no unclaimed plans · no change ×2"), { running: true }), "no unclaimed plans · no change ×2");
@@ -102,16 +102,16 @@ test("a suffixed phase still parses to its real key, and the streak renders once
   assert.equal(phaseDetail({ phase: "deferred (backlog open) · no change ×2", noChangeStreak: 2 },
     phaseInfo("deferred (backlog open) · no change ×2"), { running: true }), "backlog open · no change ×2");
   // A suffixed phase with a missing/zero streak parses clean and renders no suffix at all.
-  assert.equal(phaseDetail({ phase: "queued · no change ×3", nextRunAt: now - 5_000, backoffSeconds: 0 },
-    phaseInfo("queued · no change ×3"), { running: true }), "due — starts on the next poll");
+  assert.equal(phaseDetail({ phase: "due · no change ×3", nextRunAt: now - 5_000, backoffSeconds: 0 },
+    phaseInfo("due · no change ×3"), { running: true }), "starts on the next poll");
 });
 
 test("a queued loop's second line keeps the phase's reason, a working loop's keeps the phase detail", () => {
   const queued = { key: "queued", label: "Queued", tone: "gray", live: false, detail: "due — not running: no work to claim, deferred, or starting on the next poll" };
-  assert.equal(phaseDetail({ phase: "queued", nextRunAt: now - 5_000, backoffSeconds: 0 }, queued, { running: true }),
+  assert.equal(phaseDetail({ phase: "due", nextRunAt: now - 5_000, backoffSeconds: 0 }, queued, { running: true }),
     "due — not running: no work to claim, deferred, or starting on the next poll");
   // Backoff wins over the reason: when it will actually run again is the useful line.
-  assert.equal(phaseDetail({ phase: "queued", nextRunAt: now + 60_000, backoffSeconds: 20 }, queued, { running: true }),
+  assert.equal(phaseDetail({ phase: "due", nextRunAt: now + 60_000, backoffSeconds: 20 }, queued, { running: true }),
     "backing off — retries in 1m");
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m12s · turn 4" };
   assert.equal(phaseDetail({ phase: "working 3m12s · turn 4" }, working, { running: true }), "3m12s · turn 4");
@@ -126,7 +126,7 @@ test("a live loop's activity shows its current work, or the stage's placeholder"
   assert.ok(row({ role: "feature", phase: "working 0s" }).activity.includes("Starting up…"));
   assert.ok(row({ role: "feature", phase: "reviewing 1m" }).activity.includes("Reviewing the change…"));
   // A landing in progress prefers its summary from the payload.
-  assert.ok(row({ role: "feature", phase: "landing 1m" }, { landing: { feature: "Landing 3 commits" } })
+  assert.ok(row({ role: "feature", phase: "merging 1m" }, { landing: { feature: "Landing 3 commits" } })
     .activity.includes("Landing 3 commits"));
 });
 
@@ -256,7 +256,7 @@ test("a row hides the pooled worktree slot and its pin", () => {
 // Parallel work instances, part 6/7: an idle instance's activity names the entry it claimed;
 // the reason an unclaimed one is idle rides on its phase pill instead.
 test("an idle instance's activity shows its claimed entry, and its pill the idle reason", () => {
-  const claimed = row({ role: "feature-2", phase: "queued", claim: "Plan A" });
+  const claimed = row({ role: "feature-2", phase: "due", claim: "Plan A" });
   assert.match(claimed.activity, /Plan A/);
   const skipped = row({ role: "feature-2", phase: "idle: no unclaimed plans", instanceOf: "feature" });
   assert.ok(!skipped.activity.includes("no unclaimed"));

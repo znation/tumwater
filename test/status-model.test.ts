@@ -34,13 +34,13 @@ test("a parked waiter names its provider key when that key is the binding limit"
   const phase = (s2: typeof s) =>
     loopPhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined, permits);
   // omlx is at its cap (inUse 3 == limit 3): the parked waiter is queued on it.
-  assert.match(phase(s), /^awaiting omlx slot 2m/);
-  // Parked on a key under its cap (claude 1/6) is a fleet-total wait: bare `awaiting slot`.
+  assert.match(phase(s), /^waiting for omlx 2m/);
+  // Parked on a key under its cap (claude 1/6) is a fleet-total wait: bare `waiting to start`.
   s.parkedOn = "claude";
-  assert.match(phase(s), /^awaiting slot 2m/);
-  // No permit snapshot published: bare `awaiting slot` regardless of parkedOn.
+  assert.match(phase(s), /^waiting to start 2m/);
+  // No permit snapshot published: bare `waiting to start` regardless of parkedOn.
   s.parkedOn = "omlx";
-  assert.match(loopPhase(s, true), /^awaiting slot 2m/);
+  assert.match(loopPhase(s, true), /^waiting to start 2m/);
 });
 
 test("workingDetail without a pi log shows only the elapsed time", () => {
@@ -174,7 +174,7 @@ test("loopPhase surfaces the live detail only while a tick is in flight", () => 
   const root = tmpdir();
   writePiLog(root, "feature", [SESSION, assistantLine("working", { tokens: 3_000 })]);
   const s = freshLoopState("feature");
-  assert.equal(loopPhase(s, true), "queued", "idle loop is not working");
+  assert.equal(loopPhase(s, true), "due", "idle loop is not working");
   s.running = true;
   s.lastTickStartedAt = Date.now() - 5_000;
   assert.match(loopPhase(s, true, root), /^working \ds · turn 2/);
@@ -303,22 +303,22 @@ test("loopPhase names a consecutive no-change streak on the resting state cell",
   assert.equal(loopPhase(running, true), "working");
 });
 
-test("loopPhase reads budget paused for idle role loops while the cap is reached", () => {
+test("loopPhase reads waiting: budget spent for idle role loops while the cap is reached", () => {
   const s = freshLoopState("feature");
   // Not paused: ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true, undefined, false), "queued");
+  assert.equal(loopPhase(s, true, undefined, false), "due");
   // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
-  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
+  assert.equal(loopPhase(s, true, undefined, true), "waiting: budget spent");
 
   // A sleeping loop is paused too (the cap holds it past nextRunAt).
   const sleeping = freshLoopState("clean");
   sleeping.nextRunAt = Date.now() + 3_600_000;
   assert.equal(loopPhase(sleeping, true, undefined, false), "sleeping (for 1h)");
-  assert.equal(loopPhase(sleeping, true, undefined, true), "budget paused");
+  assert.equal(loopPhase(sleeping, true, undefined, true), "waiting: budget spent");
 
   // The director is exempt from the cap: its phase never changes.
   const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, true), "waiting for prompts");
+  assert.equal(loopPhase(d, true, undefined, true), "ready for messages");
 
   // In-flight ticks finish even while paused — only NEW ticks are blocked.
   const running = freshLoopState("feature");
@@ -329,14 +329,14 @@ test("loopPhase reads budget paused for idle role loops while the cap is reached
   assert.equal(loopPhase(s, false, undefined, true), "stopped");
 });
 
-test("loopPhase reads cap paused for idle role loops held by their own per-role cap", () => {
+test("loopPhase reads waiting: daily cap spent for idle role loops held by their own per-role cap", () => {
   const s = freshLoopState("feature");
   // Not held: ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "queued");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
   // Held by its own cap: the label names the specific spend state, ahead of its sleep/queue
   // state and ahead of the fleet's budget pause (which is the less specific one).
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, true), "cap paused");
-  assert.equal(loopPhase(s, true, undefined, true, null, false, undefined, undefined, true), "cap paused");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, true), "waiting: daily cap spent");
+  assert.equal(loopPhase(s, true, undefined, true, null, false, undefined, undefined, true), "waiting: daily cap spent");
 
   // User intent still wins: an operator-paused loop reads `paused` even while over its cap.
   assert.equal(loopPhase(s, true, undefined, false, null, true, undefined, undefined, true), "paused");
@@ -344,11 +344,11 @@ test("loopPhase reads cap paused for idle role loops held by their own per-role 
   // A sleeping loop is cap-paused too (the cap holds it past nextRunAt).
   const sleeping = freshLoopState("clean");
   sleeping.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(loopPhase(sleeping, true, undefined, false, null, false, undefined, undefined, true), "cap paused");
+  assert.equal(loopPhase(sleeping, true, undefined, false, null, false, undefined, undefined, true), "waiting: daily cap spent");
 
   // The director is exempt from the cap, like the scheduler's gate: its phase never changes.
   const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, true), "waiting for prompts");
+  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, true), "ready for messages");
 
   // In-flight ticks finish even while held — only NEW ticks are blocked.
   const running = freshLoopState("feature");
@@ -356,22 +356,22 @@ test("loopPhase reads cap paused for idle role loops held by their own per-role 
   assert.equal(loopPhase(running, true, undefined, false, null, false, undefined, undefined, true), "working");
 
   // The held loop groups with the other paused states in the shared rank.
-  assert.equal(loopRank("cap paused"), 3);
+  assert.equal(loopRank("waiting: daily cap spent"), 3);
 });
 
 test("loopPhase shows main red for idle loops whose last tick was blocked by a red main", () => {
   // Blocked: the label explains why the loop keeps waking and landing nothing — ahead of its
-  // sleep/queue state, like budget paused.
+  // sleep/queue state, like waiting: budget spent.
   const s = freshLoopState("feature");
   s.lastResult = "main_red";
-  assert.equal(loopPhase(s, true), "main red", "queued loop shows the blockage");
+  assert.equal(loopPhase(s, true), "main's check is failing", "queued loop shows the blockage");
   s.nextRunAt = Date.now() + 3_600_000;
-  assert.equal(loopPhase(s, true), "main red", "sleeping loop shows the blockage too");
+  assert.equal(loopPhase(s, true), "main's check is failing", "sleeping loop shows the blockage too");
 
   // Other results keep their ordinary labels; a green wake overwrites lastResult and self-corrects.
   const other = freshLoopState("feature");
   other.lastResult = "no_change";
-  assert.equal(loopPhase(other, true), "queued");
+  assert.equal(loopPhase(other, true), "due");
 
   // In-flight ticks are untouched (the label describes the finished tick only).
   const running = freshLoopState("feature");
@@ -403,29 +403,29 @@ test("loopPhase retires a stale main red when main's newest check passed after i
   // A passed check from BEFORE the red tick says nothing about main now.
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() - 600_000 }),
-    "main red",
+    "main's check is failing",
     "a check older than the red tick keeps the blockage",
   );
   // A newer failed check means main is genuinely still red.
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "failed", at: Date.now() - 60_000 }),
-    "main red",
+    "main's check is failing",
   );
   // A skipped check is not green evidence either.
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, undefined, { status: "skipped", at: Date.now() - 60_000 }),
-    "main red",
+    "main's check is failing",
   );
   // No recorded tick end: the comparison cannot be made, so the blockage stands.
   const undated = freshLoopState("feature");
   undated.lastResult = "main_red";
   assert.equal(
     loopPhase(undated, true, undefined, false, undefined, false, undefined, { status: "passed", at: Date.now() }),
-    "main red",
+    "main's check is failing",
     "no tick end keeps the blockage (conservative)",
   );
   // Without a mainCheck at all the old behavior stands (direct callers, hand-built states).
-  assert.equal(loopPhase(s, true), "main red");
+  assert.equal(loopPhase(s, true), "main's check is failing");
 });
 
 // The same staleness through the single-homed row derivation and the alert it feeds: the
@@ -438,7 +438,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   snap.running = true;
   snap.mainCheck = { status: "passed", at: Date.now() - 60_000 };
   const cells = loopRowCells(snap, tmpdir(), s);
-  assert.notEqual(cells.phase, "main red", "the row derivation sees the snapshot's newer green check");
+  assert.notEqual(cells.phase, "main's check is failing", "the row derivation sees the snapshot's newer green check");
   assert.equal(
     fleetAlerts(snap, [], [{ role: "feature", phase: cells.phase, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
@@ -448,7 +448,7 @@ test("loopRowCells retires the stale main red and fleetAlerts raises no banner f
   // And the banner still raises while the phase genuinely reads main red (an older check).
   snap.mainCheck = { status: "passed", at: Date.now() - 600_000 };
   const stale = loopRowCells(snap, tmpdir(), s).phase;
-  assert.equal(stale, "main red");
+  assert.equal(stale, "main's check is failing");
   assert.ok(
     fleetAlerts(snap, [], [{ role: "feature", phase: stale, errorStreak: false, inFlight: false }], Date.now())
       .some((a) => a.key === "mainred"),
@@ -475,13 +475,13 @@ test("loopPhase shows failing for a quiet-kill streak at the give-up threshold",
 
 // The operator pause: while the `tumwater pause` marker exists,
 // every idle role loop's state cell reads `paused` — after the director exemption and ahead
-// of budget paused / main red, because user intent is the most specific reason: it tells the
+// of waiting: budget spent, because user intent is the most specific reason: it tells the
 // operator what to do (`resume`).
 
 test("loopPhase reads paused for idle role loops while the fleet is user-paused", () => {
   const s = freshLoopState("feature");
   // Not paused (the flag defaults off): ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true), "queued");
+  assert.equal(loopPhase(s, true), "due");
   // Paused: an idle role loop shows why it isn't ticking — ahead of its sleep/queue state.
   assert.equal(loopPhase(s, true, undefined, false, undefined, true), "paused");
 
@@ -493,7 +493,7 @@ test("loopPhase reads paused for idle role loops while the fleet is user-paused"
 
   // The director is exempt from the operator pause: its phase never changes.
   const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, false, undefined, true), "waiting for prompts");
+  assert.equal(loopPhase(d, true, undefined, false, undefined, true), "ready for messages");
 
   // In-flight ticks finish even while paused — only NEW ticks are blocked, so a running loop
   // keeps its live detail instead of reading `paused`.
@@ -539,7 +539,7 @@ test("loopPhase appends the per-role pause resume countdown only for a live dead
   assert.equal(phaseTone("paused · resumes in 2m"), "yellow", "the timed pause keeps the paused yellow tone");
 });
 
-test("loopPhase prefers paused over budget paused and main red", () => {
+test("loopPhase prefers paused over waiting: budget spent and main red", () => {
   const s = freshLoopState("feature");
   // All three hold: the user pause wins — while both gates block, `paused` names the fix.
   s.lastResult = "main_red";
@@ -551,7 +551,7 @@ test("loopPhase prefers paused over budget paused and main red", () => {
   assert.equal(loopPhase(red, true, undefined, false, undefined, true), "paused");
 
   // Without the user pause the other labels keep their own precedence (budget before main red).
-  assert.equal(loopPhase(s, true, undefined, true), "budget paused");
+  assert.equal(loopPhase(s, true, undefined, true), "waiting: budget spent");
 });
 
 // The landing cell (BUGS.md 2026-09-22, re-opened 2026-09-23): the marker's stage scopes the
@@ -564,7 +564,7 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   // The record wins over the idle state…
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }),
-    "landing 1m30s · merging",
+    "merging 1m30s · finishing the merge",
   );
   // …and it is the caller's job to pass it only for the landing role: without it the loop
   // keeps its ordinary state (the "other roles" case — the record is filtered upstream).
@@ -573,12 +573,12 @@ test("loopPhase renders the landing cell ahead of every idle state, only when th
   assert.equal(loopPhase(s, false, undefined, false, undefined, false, { status: "landing", startedAt, stage: "merging" }), "stopped");
   // Only a record with no stage at all — an older writer's marker mid-upgrade — keeps the
   // bare elapsed label: there is nothing more it can honestly say.
-  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "landing 1m30s");
+  assert.equal(loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt }), "merging 1m30s");
   // A change the vetting stage approved waits for the merge slot: it reads that state instead —
   // no elapsed and no stage, because nothing of its own is running (BUGS.md 2026-09-23).
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "vetted", startedAt, stage: "merging" }),
-    "vetted, awaiting merge",
+    "approved, waiting to merge",
   );
 });
 
@@ -597,13 +597,13 @@ test("the build-check and merging landing stages render their label and never re
   const startedAt = Date.now() - 90_000;
   for (const [stage, label] of [
     ["rebasing", "rebasing"],
-    ["check-wait", "waiting for a check slot"],
-    ["build-check", "build check"],
+    ["check-wait", "waiting to check"],
+    ["build-check", "checking"],
     ["resolve-wait", "waiting to resolve conflicts"],
-    ["merging", "merging"],
+    ["merging", "finishing the merge"],
   ] as const) {
     const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt, stage });
-    assert.match(phase, new RegExp(`^landing 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
+    assert.match(phase, new RegExp(`^merging 1m3[01]s · ${label}$`), `${stage}: ${phase}`);
   }
 });
 
@@ -617,22 +617,22 @@ test("loopPhase appends the per-stage elapsed after a staged landing, when the c
   // build-check (a plain staged arm): the stage elapsed appends after the stage.
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check", stageSince }),
-    "landing 1m30s · build check 30s",
+    "merging 1m30s · checking 30s",
   );
   // Without stageSince the current label is unchanged (the old generation's cell).
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check" }),
-    "landing 1m30s · build check",
+    "merging 1m30s · checking",
   );
   // reviewing (a scrutinized arm): the stage elapsed renders before the in-flight detail tail;
   // without a log the tail is the bare staged label carrying it.
   assert.equal(
     loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing", stageSince }),
-    "landing 1m30s · reviewing 30s",
+    "merging 1m30s · reviewing 30s",
   );
   assert.equal(
     loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing" }),
-    "landing 1m30s · reviewing",
+    "merging 1m30s · reviewing",
   );
 });
 
@@ -653,11 +653,11 @@ test("the reviewing landing stage carries the reviewer run's live detail, timed 
   // the frame's `live` for a non-running loop is null — the branch reads the gate itself.
   s.lastTickStartedAt = Date.now() - 3_600_000;
   const phase = loopPhase(s, true, root, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
-  assert.match(phase, /^landing 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
+  assert.match(phase, /^merging 1m3[01]s · reviewing · turn 2 · ctx 22\.0k · bash npm test$/, `unexpected shape: ${phase}`);
 
   // No log to read (or no root): the honest stage label alone.
   const bare = loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt: Date.now() - 90_000, stage: "reviewing" });
-  assert.equal(bare, "landing 1m30s · reviewing");
+  assert.equal(bare, "merging 1m30s · reviewing");
 });
 
 test("the resolving landing stage carries the conflict resolver's live detail, not the review's", () => {
@@ -676,8 +676,8 @@ test("the resolving landing stage carries the conflict resolver's live detail, n
   ]);
   const landing = { status: "landing", startedAt: Date.now() - 90_000, stage: "resolving" } as const;
   const phase = loopPhase(freshLoopState("clean"), true, root, false, null, false, landing);
-  assert.match(phase, /^landing 1m3[01]s · resolving conflicts · turn 2 · ctx 12\.0k · bash grep/, `unexpected shape: ${phase}`);
-  assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, landing), "landing 1m30s · resolving conflicts");
+  assert.match(phase, /^merging 1m3[01]s · resolving conflicts · turn 2 · ctx 12\.0k · bash grep/, `unexpected shape: ${phase}`);
+  assert.equal(loopPhase(freshLoopState("clean"), true, undefined, false, null, false, landing), "merging 1m30s · resolving conflicts");
 });
 
 test("a landing cell with no recorded start renders the bare `landing` head", () => {
@@ -686,11 +686,11 @@ test("a landing cell with no recorded start renders the bare `landing` head", ()
   const s = freshLoopState("feature");
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined, stage: "merging" }),
-    "landing · merging",
+    "merging · finishing the merge",
   );
   assert.equal(
     loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt: undefined }),
-    "landing",
+    "merging",
   );
 });
 
@@ -711,13 +711,13 @@ test("a new landing's reviewing cell starts at its run's label line, not at the 
     startedAt: Date.now() - 5_000,
     stage: "reviewing",
   });
-  assert.match(phase, /^landing \ds · reviewing · turn 1$/, `the previous review bled through: ${phase}`);
+  assert.match(phase, /^merging \ds · reviewing · turn 1$/, `the previous review bled through: ${phase}`);
 });
 
 test("loopPhase describes each loop state", () => {
   const s = freshLoopState("clean");
   assert.equal(loopPhase(s, false), "stopped");
-  assert.equal(loopPhase(s, true), "queued");
+  assert.equal(loopPhase(s, true), "due");
   s.running = true;
   assert.equal(loopPhase(s, true), "working");
   s.running = false;
@@ -726,17 +726,17 @@ test("loopPhase describes each loop state", () => {
   // not a future start ("in …"). 90s buckets to "2m" in humanSeconds.
   assert.match(loopPhase(s, true), /^sleeping \(for 2m\)$/);
   const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true), "waiting for prompts");
+  assert.equal(loopPhase(d, true), "ready for messages");
 });
 
 // BUGS.md 2026-09-24 — the display must mirror the concurrency cap: a tick parked in the
-// semaphore queue holds no permit, so it renders its true state (`awaiting slot`) and stays
+// semaphore queue holds no permit, so it renders its true state (`waiting to start`) and stays
 // out of the active set an operator counts against maxConcurrent.
-test("a parked waiter renders `awaiting slot` and stays out of the active set", () => {
+test("a parked waiter renders `waiting to start` and stays out of the active set", () => {
   const s = freshLoopState("clean");
   s.running = true;
   s.parkedSince = Date.now() - 5_000;
-  assert.match(loopPhase(s, true), /^awaiting slot 5s$/);
+  assert.match(loopPhase(s, true), /^waiting to start 5s$/);
   // Permit granted (the orchestrator clears parkedSince at acquire): the same loop becomes
   // an active, permit-holding working tick again.
   s.parkedSince = undefined;
@@ -744,9 +744,9 @@ test("a parked waiter renders `awaiting slot` and stays out of the active set", 
   // The parked label is not an active phase: sortLoopsByState puts it behind the working and
   // landing rows, so active-row counting never includes a waiter.
   const sorted = sortLoopsByState([
-    { role: "clean", phase: "awaiting slot 5s" },
+    { role: "clean", phase: "waiting to start 5s" },
     { role: "feature", phase: "working 5s" },
-    { role: "bugfix", phase: "landing 5s" },
+    { role: "bugfix", phase: "merging 5s" },
   ]);
   assert.deepEqual(sorted.map((r) => r.role), ["bugfix", "feature", "clean"]);
 });
@@ -759,14 +759,14 @@ test("a running director renders its own phase, outside the cap's active set", (
   const d = freshLoopState("director");
   d.running = true;
   assert.equal(loopPhase(d, true), "director working");
-  assert.equal(loopPhase(freshLoopState("director"), true), "waiting for prompts", "an idle director keeps its exempt label");
+  assert.equal(loopPhase(freshLoopState("director"), true), "ready for messages", "an idle director keeps its exempt label");
   const root = tmpdir();
   d.lastTickStartedAt = Date.now() - 90_000;
   assert.match(loopPhase(d, true, root), /^director working 1m(29|30|31)s$/);
   // Its own label is not a permit-holder phase: the active set against the cap is permit holders.
   assert.equal(isActivePhase(loopPhase(d, true)), false);
   assert.equal(isActivePhase("working 5s"), true);
-  assert.equal(isActivePhase("landing 5s"), true);
+  assert.equal(isActivePhase("merging 5s"), true);
   // It ranks and sorts ahead of the permit holders (rank -1), so its work stays visible.
   assert.equal(loopRank("director working 1m"), -1);
   assert.equal(loopRank("working 5s"), 0);
@@ -787,7 +787,7 @@ test("a stalled running director still raises the stuck alert", () => {
     fleetAlerts(snap, [], stalled, Date.now()).some((a) => a.key === "stuck"),
     "a stalled director is stuck even though it holds no permit",
   );
-  const idle = [{ role: "director", phase: "waiting for prompts", errorStreak: false, inFlight: false }];
+  const idle = [{ role: "director", phase: "ready for messages", errorStreak: false, inFlight: false }];
   assert.equal(
     fleetAlerts(snap, [], idle, Date.now()).some((a) => a.key === "stuck"),
     false,
@@ -800,7 +800,7 @@ test("a stalled running director still raises the stuck alert", () => {
 test("loopPhase reads quiet until <end> for idle loops held by their own quietHoursPerRole window", () => {
   const s = freshLoopState("feature");
   // Not held: ordinary phase labels are untouched.
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "queued");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false), "due");
   // Held by its own wrapping window: the fleet badge's wording with the loop's own end.
   assert.equal(
     loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, "23:00-07:00"),
@@ -825,16 +825,16 @@ test("loopPhase reads quiet until <end> for idle loops held by their own quietHo
   );
 });
 
-// The disk floor (plans/disk-floor.md, part 4/4): an idle role loop reads `disk hold` while the
+// The disk floor (plans/disk-floor.md, part 4/4): an idle role reads `waiting: low disk` while the
 // gate holds — the fleet-wide verdict, ranked with the budget pause. In-flight ticks keep
 // their detail, the director keeps its prompt label, and a stopped orchestrator still reads
 // stopped.
-test("loopPhase reads disk hold for idle role loops while the disk floor holds", () => {
+test("loopPhase reads waiting: low disk for idle role loops while the disk floor holds", () => {
   const s = freshLoopState("feature");
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "queued");
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "disk hold");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "due");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "waiting: low disk");
   const d = freshLoopState("director");
-  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "waiting for prompts");
+  assert.equal(loopPhase(d, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "ready for messages");
   const running = freshLoopState("feature");
   running.running = true;
   assert.equal(loopPhase(running, true, undefined, false, null, false, undefined, undefined, false, undefined, true), "working");
@@ -842,17 +842,17 @@ test("loopPhase reads disk hold for idle role loops while the disk floor holds",
 });
 
 // New-project bootstrap (plans/work-ratio.md, part 2/2): an idle held loop reads
-// `held: bootstrap` — the fleet gate's own wording, ranked with the disk hold. In-flight
+// `waiting: bootstrap` — the fleet gate's own wording, ranked with the waiting: low disk. In-flight
 // ticks keep their detail, and a stopped orchestrator still reads stopped.
-test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds", () => {
+test("loopPhase reads waiting: bootstrap for idle role loops while bootstrap holds", () => {
   const s = freshLoopState("clean");
-  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "queued");
+  assert.equal(loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false), "due");
   assert.equal(
     loopPhase(s, true, undefined, false, null, false, undefined, undefined, false, undefined, false, true),
-    "held: bootstrap",
+    "waiting: bootstrap",
   );
-  assert.equal(loopRank("held: bootstrap"), 3, "the hold ranks with the other paused states");
-  assert.equal(loopRank("held: maintenance quota 32/32"), 3, "the allowance hold ranks as paused too");
+  assert.equal(loopRank("waiting: bootstrap"), 3, "the hold ranks with the other paused states");
+  assert.equal(loopRank("waiting: maintenance allowance used 32/32"), 3, "the allowance hold ranks as paused too");
   const running = freshLoopState("clean");
   running.running = true;
   assert.equal(
@@ -869,12 +869,12 @@ test("loopPhase reads held: bootstrap for idle role loops while bootstrap holds"
 // and null for everything else.
 test("idleClaimText names the claimed entry, or why an extra instance is idle", () => {
   const claim = { file: "PLANS.md" as const, key: "plan a", title: "Plan A", at: 1, source: "assigned" as const };
-  assert.equal(idleClaimText({ role: "feature", claim }, "queued"), "Plan A");
+  assert.equal(idleClaimText({ role: "feature", claim }, "due"), "Plan A");
   assert.equal(idleClaimText({ role: "feature", claim }, "sleeping (for 30m)"), "Plan A");
-  assert.equal(idleClaimText({ role: "feature", claim }, "landing 3m"), "Plan A");
+  assert.equal(idleClaimText({ role: "feature", claim }, "merging 3m"), "Plan A");
   // No claim: null — the phase label carries any idle reason itself.
-  assert.equal(idleClaimText({ role: "feature-2" }, "queued"), null);
-  assert.equal(idleClaimText({ role: "feature" }, "queued"), null);
+  assert.equal(idleClaimText({ role: "feature-2" }, "due"), null);
+  assert.equal(idleClaimText({ role: "feature" }, "due"), null);
   assert.equal(idleClaimText({ role: "feature-2" }, "sleeping (for 30m)"), null);
   assert.equal(idleClaimText({ role: "feature-2" }, "working 3m"), null);
 });
@@ -883,11 +883,11 @@ test("loopPhase names the scheduling poll's skip for a due, idle loop", () => {
   const due = (role: string, extra: Partial<ReturnType<typeof freshLoopState>>) => ({ ...freshLoopState(role), nextRunAt: Date.now() - 1_000, ...extra });
   assert.equal(loopPhase(due("feature-2", { skipReason: "no-free-entry" }), true), "idle: no unclaimed plans");
   assert.equal(loopPhase(due("bugfix-2", { skipReason: "no-free-entry" }), true), "idle: no unclaimed bugs");
-  assert.equal(loopPhase(due("feature", { skipReason: "claim-hold" }), true), "idle: sibling mid-entry");
+  assert.equal(loopPhase(due("feature", { skipReason: "claim-hold" }), true), "idle: another feature instance is working on it");
   assert.equal(loopPhase(due("clean", { skipReason: "deferred-backlog" }), true), "deferred (backlog open)");
   assert.equal(loopPhase(due("clean", { skipReason: "deferred-no-work" }), true), "deferred (no new work)");
   assert.equal(loopPhase(due("plan", { skipReason: "deferred-plans-full" }), true), "deferred (plans full)");
-  assert.equal(loopPhase(due("clean", {}), true), "queued");
+  assert.equal(loopPhase(due("clean", {}), true), "due");
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", nextRunAt: Date.now() + 600_000 }), true), /^sleeping \(/);
   assert.match(loopPhase(due("clean", { skipReason: "claim-hold", running: true, lastTickStartedAt: Date.now() - 90_000 }), true), /^working/);
 });

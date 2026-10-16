@@ -49,13 +49,13 @@ type LandingStage =
 /** How each landing stage names itself in the landing cell. */
 export const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
   rebasing: "rebasing",
-  "check-wait": "waiting for a check slot",
-  "build-check": "build check",
+  "check-wait": "waiting to check",
+  "build-check": "checking",
   reviewing: "reviewing",
   "resolve-wait": "waiting to resolve conflicts",
   resolving: "resolving conflicts",
-  "provider-wait": "waiting for a provider slot",
-  merging: "merging",
+  "provider-wait": "waiting for the provider",
+  merging: "finishing the merge",
 };
 
 /** Where one change stands in the landing pipeline (land-queue speed 2c) — the per-change status

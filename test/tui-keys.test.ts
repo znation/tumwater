@@ -1213,7 +1213,7 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
   assert.equal(keys.state().view, 5);
   assert.equal(
     keys.state().paneCache,
-    "land queue empty",
+    "merge queue empty",
     "the cache holds the queue (empty here) before the collector resolves",
   );
   const before = renders;
@@ -1222,7 +1222,7 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
   await pending;
   assert.equal(
     keys.state().paneCache,
-    "land queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
+    "merge queue empty\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
     "the pane caches the queue above renderFleetChange's roster text",
   );
   assert.ok(renders > before, "a resolution repaints the pane");

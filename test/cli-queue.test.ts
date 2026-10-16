@@ -8,7 +8,7 @@ import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/pa
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
-// The `queue` command: the durable land queue in execution order, via the CLI the way the
+// The `queue` command: the durable merge queue in execution order, via the CLI the way the
 // cli-diff tests `diff` — an initialized repo, child-process runs, output assertions.
 
 function entry(role: string, sha: string, tick = 1, summary = `summary from ${role} #${tick}`): LandingEntry {
@@ -21,7 +21,7 @@ test("an empty queue prints the empty line and exits 0", async () => {
   assert.ok(!fs.existsSync(landQueueDir(repo)), "no queue dir yet");
   const r = await cli(repo, "queue");
   assert.equal(r.code, 0);
-  assert.equal(r.stdout.trim(), "land queue empty");
+  assert.equal(r.stdout.trim(), "merge queue empty");
 });
 
 test("queue lists each waiting landing in execution order with its fields", async () => {
@@ -32,10 +32,10 @@ test("queue lists each waiting landing in execution order with its fields", asyn
   const r = await cli(repo, "queue");
   assert.equal(r.code, 0);
   const lines = r.stdout.trimEnd().split("\n");
-  assert.equal(lines[0], "land queue (2):");
+  assert.equal(lines[0], "merge queue (2):");
   // Oldest first, one 1-based line each: role, tick, short sha, age, and summary.
-  assert.match(lines[1]!, /^  1\. improve tick #3 · aaaaaaaa · \d+s ago · tidy the parser$/);
-  assert.match(lines[2]!, /^  2\. organize tick #4 · bbbbbbbb · \d+s ago · split the module$/);
+  assert.match(lines[1]!, /^  1\. improve run #3 · aaaaaaaa · \d+s ago · tidy the parser$/);
+  assert.match(lines[2]!, /^  2\. organize run #4 · bbbbbbbb · \d+s ago · split the module$/);
 });
 
 test("queue --json prints the collector's {entries, unreadable} document with raw fields", async () => {
@@ -83,6 +83,6 @@ test("queue prints the in-flight label only while an orchestrator is alive", asy
   fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });
   fs.writeFileSync(orchestratorStatePath(repo), JSON.stringify({ pid: process.pid, startedAt: Date.now() }));
   const live = await cli(repo, "queue");
-  assert.match(live.stdout, /ago · \[landing 2m · reviewing\] · tidy the parser/);
+  assert.match(live.stdout, /ago · \[merging 2m · reviewing\] · tidy the parser/);
   assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight.sha, sha);
 });

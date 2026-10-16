@@ -34,7 +34,7 @@ async function postRaw<T>(base: string, path: string, body: string): Promise<T> 
 }
 // The daily cost budget on the GUI surface (plans/daily-cost-budget.md): /api/status carries
 // raw `budget` while enabled and null when disabled plus the preformatted `budgetBadge` the
-// page renders as its header badge, and a paused fleet's idle role loops read `budget paused`
+// page renders as its header badge, and a paused fleet's idle roles read `waiting: budget spent`
 // in their phase payload.
 
 test("status payload carries the daily budget while enabled and null when disabled", async () => {
@@ -110,11 +110,11 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(p.landQueue.inFlight?.sha, "abc1234");
   assert.match(
     p.loops.find((l) => l.role === "clean")!.phase,
-    /^landing \d+s · build check$/,
+    /^merging \d+s · checking$/,
     "the landing role's phase is marker-driven, stage included",
   );
   assert.equal(p.landQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
-  assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "queued", "other roles keep their normal phase");
+  assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "due", "other roles keep their normal phase");
   // The row-level inFlight flag (isActivePhase over the rendered phase) is the permit-holder
   // cap set the payload exports: the landing role is in flight, every other row is not. (The
   // GUI's row actions read their own live flag from the phase, which also includes the exempt
@@ -125,7 +125,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
 
 // Regression (review of the editable-budget feature): the payload's budget object is now
 // unconditional, so a DISABLED cap must not read as reached — with a running orchestrator,
-// spend ≥ 0 = cap would otherwise export every idle role loop as `budget paused`.
+// spend ≥ 0 = cap would otherwise export every idle role loop as `waiting: budget spent`.
 test("a disabled cap never pauses the fleet in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui no-cap test");
@@ -147,13 +147,13 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
   };
   assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, agent: "pi", fallback: null, tiers: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
-  // No loop reads budget paused — the gate is off by definition while the cap is 0.
+  // No loop reads waiting: budget spent — the gate is off by definition while the cap is 0.
   for (const l of payload.loops) {
-    assert.notEqual(l.phase, "budget paused", `${l.role} must not read budget paused with the cap disabled`);
+    assert.notEqual(l.phase, "waiting: budget spent", `${l.role} must not read waiting: budget spent with the cap disabled`);
   }
-  assert.match(payload.loops.find((l) => l.role === "clean")?.phase ?? "", /^(queued|sleeping)/);
+  assert.match(payload.loops.find((l) => l.role === "clean")?.phase ?? "", /^(due|sleeping)/);
   // The director is exempt as always.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
 });
 
 // The operator module is served through string interpolation into GUI_CLIENT_JS, so a
@@ -170,7 +170,7 @@ test("GUI_CLIENT_JS carries the operator module as a byte-exact contiguous splic
   );
 });
 
-test("a paused fleet's idle role loops read budget paused in the phase payload", async () => {
+test("a paused fleet's idle role loops read waiting: budget spent in the phase payload", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui budget pause test");
   // A live orchestrator (this process) so loopPhase doesn't short-circuit to "stopped"…
@@ -185,9 +185,9 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   saveLoopState(repo, s);
 
   let payload = statusPayload(repo) as { loops: Array<{ role: string; phase: string }> };
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
   // The director is exempt from the cap — its phase keeps its own label.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "waiting for prompts");
+  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // Under the cap again: the idle loop goes back to its sleep/queue state.
   const under = freshLoopState("clean");
@@ -195,7 +195,7 @@ test("a paused fleet's idle role loops read budget paused in the phase payload",
   under.dayCostUsd = 1;
   saveLoopState(repo, under);
   payload = statusPayload(repo) as typeof payload;
-  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "budget paused");
+  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 });
 
 // POST /api/budget — the dashboard badge editor's save path: one shared setter with the

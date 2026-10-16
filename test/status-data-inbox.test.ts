@@ -188,12 +188,12 @@ test("the marker is cross-checked per change and each row reads its own change's
     "only the records whose entry is still queued survive the cross-check",
   );
   const text = renderStatus(repo, snap);
-  assert.match(text, /^bugfix +landing 1m30s/m, "the change under review reads landing with its own elapsed");
-  assert.match(text, /^feature +vetted, awaiting merge/m);
-  assert.match(text, /^dry +landing 20m\S* · build check/m, "a second vet in flight reads its own elapsed and stage");
-  assert.doesNotMatch(text, /^clean +landing/m, "a finished change keeps no live landing label");
-  assert.match(text, /^clean +queued/m, "its row reads its own state again");
-  assert.doesNotMatch(text, /^plan +landing/m, "a record with no queued entry never displays");
+  assert.match(text, /^bugfix +merging 1m30s/m, "the change under review reads landing with its own elapsed");
+  assert.match(text, /^feature +approved, waiting to merge/m);
+  assert.match(text, /^dry +merging 20m\S* · checking/m, "a second vet in flight reads its own elapsed and stage");
+  assert.doesNotMatch(text, /^clean +merging/m, "a finished change keeps no live landing label");
+  assert.match(text, /^clean +due/m, "its row reads its own state again");
+  assert.doesNotMatch(text, /^plan +merging/m, "a record with no queued entry never displays");
 
   // Only finished records left with a queued entry: nothing is in flight any more.
   for (const f of fs.readdirSync(landQueueDir(repo))) {

@@ -1,4 +1,4 @@
-/** Durable land queue (plans/merge-queue.md 3/5): the file discipline — enqueue ordering,
+/** Durable merge queue (plans/merge-queue.md 3/5): the file discipline — enqueue ordering,
  * head selection, per-role filter, drop, and the stat-keyed content cache. The pipeline's full
  * path (landing-drain.ts) is pinned through landHead in the loop tests and the orchestrator's
  * e2e; the interlock (a role with a queued or in-flight landing never ticks) is pinned in the
@@ -265,13 +265,13 @@ test("renderLandingQueue prints the unreadable skip count exactly once", () => {
     now,
   ).split("\n");
   assert.deepEqual(lines, [
-    "land queue (3):",
-    "  1. improve tick #3 · aaaaaaaa · 5s ago · tidy",
+    "merge queue (3):",
+    "  1. improve run #3 · aaaaaaaa · 5s ago · tidy",
     "  (+2 unreadable queue files skipped)",
   ]);
   assert.equal(
     renderLandingQueue({ entries: [], unreadable: 1 }, now),
-    "land queue (1):\n  (+1 unreadable queue file skipped)",
+    "merge queue (1):\n  (+1 unreadable queue file skipped)",
     "a depth held only by skipped files states the skip once",
   );
 });
@@ -295,8 +295,8 @@ test("renderLandingQueue marks entries with a live in-flight record and leaves t
     ],
   };
   const lines = renderLandingQueue(view, now, inFlight).split("\n");
-  assert.match(lines[1]!, / · 5m ago · \[landing 2m · reviewing\] · s a$/);
-  assert.match(lines[2]!, / · 5m ago · \[vetted, awaiting merge\] · s b$/);
+  assert.match(lines[1]!, / · 5m ago · \[merging 2m · reviewing\] · s a$/);
+  assert.match(lines[2]!, / · 5m ago · \[approved, waiting to merge\] · s b$/);
   assert.equal(lines[3], renderLandingQueue(view, now).split("\n")[3]);
   const plain = renderLandingQueue(view, now);
   const done = { ...inFlight, changes: [{ ...inFlight.changes[0]!, status: "done" as const }] };
@@ -304,20 +304,20 @@ test("renderLandingQueue marks entries with a live in-flight record and leaves t
   assert.equal(renderLandingQueue(view, now, { ...base, sha: "9".repeat(40), changes: undefined }), plain);
   assert.equal(renderLandingQueue(view, now, undefined), plain);
   const noStage = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stage: undefined }] };
-  assert.match(renderLandingQueue(view, now, noStage), /\[landing 2m\] · s a/);
+  assert.match(renderLandingQueue(view, now, noStage), /\[merging 2m\] · s a/);
   // A record carrying stageSince appends the per-stage elapsed after the stage (PLANS.md
-  // 2026-10-15): `landing 2m · reviewing 30s`.
+  // 2026-10-15): `merging 2m · reviewing 30s`.
   const withSince = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stageSince: now - 30_000 }] };
-  assert.match(renderLandingQueue(view, now, withSince).split("\n")[1]!, /\[landing 2m · reviewing 30s\] · s a$/);
+  assert.match(renderLandingQueue(view, now, withSince).split("\n")[1]!, /\[merging 2m · reviewing 30s\] · s a$/);
 });
 
 test("queueEntryLandingLabel reads an older-generation marker with no changes array as one landing record", () => {
   const now = 1_000_000_000;
   const old = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 60_000, stage: "merging" as const };
-  assert.equal(queueEntryLandingLabel("1".repeat(40), old, now), "landing 1m · merging");
+  assert.equal(queueEntryLandingLabel("1".repeat(40), old, now), "merging 1m · finishing the merge");
   assert.equal(queueEntryLandingLabel("2".repeat(40), old, now), "");
   // A newer generation's one-change marker carries stageSince at the top level; the label
   // appends it, while an old one without it keeps the current text.
   const withSince = { ...old, stageSince: now - 30_000 };
-  assert.equal(queueEntryLandingLabel("1".repeat(40), withSince, now), "landing 1m · merging 30s");
+  assert.equal(queueEntryLandingLabel("1".repeat(40), withSince, now), "merging 1m · finishing the merge 30s");
 });

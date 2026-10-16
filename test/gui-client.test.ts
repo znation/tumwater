@@ -49,6 +49,8 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     [loopPhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
     [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
     [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, false, undefined, false, true), "bootstrap", false],
+    [loopPhase(at({ running: true, parkedSince: now - 120_000, parkedOn: "omlx" }), true, undefined, false, null, false, undefined, undefined, false, undefined, false, false, undefined,
+      { inUse: 3, limit: 8, reserve: 0, byKey: { omlx: { inUse: 3, limit: 3, waiting: 1 } } }), "awaiting", false],
     [loopPhase(at({ lastResult: "main_red" }), true), "mainred", false],
     [loopPhase(at({ consecutiveErrors: 9 }), true), "failing", false],
     [loopPhase(at({ nextRunAt: now + 600_000 }), true), "sleeping", false],
@@ -62,35 +64,37 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     const info = model.phaseInfo(phase);
     assert.equal(info.key, key, `"${phase}" reads as ${key}`);
     assert.equal(info.live, live, `"${phase}" live flag`);
+    assert.equal(model.loopRank(phase), loopRank(phase), `"${phase}" ranks as the server ranks it`);
     assert.ok(info.label && info.label !== phase || key === "other", `"${phase}" gets a status word`);
   }
+  assert.equal(model.phaseInfo("waiting for omlx 2m").detail, "on omlx for 2m", "provider waiter names its key");
   // A queued loop is not necessarily waiting for a slot; the detail must not claim it is.
-  assert.ok(!model.phaseInfo("queued").detail.includes("free slot"), "queued detail does not blame slots");
-  assert.doesNotMatch(model.phaseInfo("queued").detail, /slot|deferred/);
+  assert.ok(!model.phaseInfo("due").detail.includes("free slot"), "due detail does not blame slots");
+  assert.doesNotMatch(model.phaseInfo("due").detail, /slot|deferred/);
   assert.equal(model.phaseInfo("idle: no unclaimed plans").detail, "no unclaimed plans");
   assert.equal(model.phaseInfo("deferred (backlog open)").detail, "backlog open");
-  for (const p of ["idle: no unclaimed bugs", "idle: sibling mid-entry", "deferred (no new work)"])
+  for (const p of ["idle: no unclaimed bugs", "idle: another feature instance is working on it", "deferred (no new work)"])
     assert.equal(model.loopRank(p), loopRank(p), p);
   // The label's tail rides along as the pill's detail line.
   assert.equal(model.phaseInfo("working 3m12s · turn 4 · ctx 18.2k · bash npm test").detail, "3m12s · turn 4 · ctx 18.2k · bash npm test");
-  assert.equal(model.phaseInfo("landing 1m · build check").detail, "1m · build check");
-  assert.equal(model.phaseInfo("awaiting slot 2m").detail, "for 2m");
+  assert.equal(model.phaseInfo("merging 1m · checking").detail, "1m · checking");
+  assert.equal(model.phaseInfo("waiting to start 2m").detail, "for 2m");
   // The per-role cap's label reads with the other held states (amber) and its own detail.
-  const cap = model.phaseInfo("cap paused");
-  assert.deepEqual([cap.label, cap.tone, cap.live], ["Cap paused", "amber", false], "cap paused reads like budget paused");
+  const cap = model.phaseInfo("waiting: daily cap spent");
+  assert.deepEqual([cap.label, cap.tone, cap.live], ["Waiting", "amber", false], "waiting: daily cap spent reads like waiting: budget spent");
   // The bootstrap hold ranks with the paused states, not as an idle "other".
-  const boot = model.phaseInfo("held: bootstrap");
+  const boot = model.phaseInfo("waiting: bootstrap");
   assert.deepEqual(
     [boot.label, boot.tone, boot.live],
-    ["Bootstrap hold", "amber", false],
-    "held: bootstrap reads like a hold",
+    ["Waiting", "amber", false],
+    "waiting: bootstrap reads like a hold",
   );
   // The maintenance allowance's hold reads like the other held states, carrying its figures.
-  const quota = model.phaseInfo("held: maintenance quota 32/32");
+  const quota = model.phaseInfo("waiting: maintenance allowance used 32/32");
   assert.deepEqual(
     [quota.label, quota.tone, quota.live, quota.detail],
-    ["Maintenance hold", "amber", false, "32/32"],
-    "held: maintenance quota reads like a hold",
+    ["Waiting", "amber", false, "maintenance 32/32"],
+    "waiting: maintenance allowance used reads like a hold",
   );
   // The timed per-role pause (`paused · resumes in <s>`) reads as a paused pill, not an idle
   // "other" — otherwise the GUI would group it under Idle and its phaseDetail countdown guard
@@ -111,19 +115,19 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "sleepy", phase: "sleeping (for 5m)", lastTickEndedAt: t(3) },
     { role: "working-b", phase: "working 2m", lastTickEndedAt: t(1) },
     { role: "reviewing-a", phase: "reviewing 1m", lastTickEndedAt: null },
-    { role: "queued-z", phase: "queued", lastTickEndedAt: t(5) },
-    { role: "landing-x", phase: "landing 2m · merging", lastTickEndedAt: t(0) },
+    { role: "queued-z", phase: "due", lastTickEndedAt: t(5) },
+    { role: "landing-x", phase: "merging 2m · finishing the merge", lastTickEndedAt: t(0) },
     { role: "director", phase: "director working 1m", lastTickEndedAt: t(7) },
-    { role: "vetted-v", phase: "vetted, awaiting merge", lastTickEndedAt: t(4) },
-    { role: "parked-p", phase: "awaiting slot 10s", lastTickEndedAt: t(6) },
+    { role: "vetted-v", phase: "approved, waiting to merge", lastTickEndedAt: t(4) },
+    { role: "parked-p", phase: "waiting to start 10s", lastTickEndedAt: t(6) },
     { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
-    { role: "main-red", phase: "main red", lastTickEndedAt: t(0) },
+    { role: "main-red", phase: "main's check is failing", lastTickEndedAt: t(0) },
     { role: "broken", phase: "failing", lastTickEndedAt: t(2) },
     { role: "held", phase: "paused", lastTickEndedAt: t(9) },
     { role: "timed", phase: "paused · resumes in 2m", lastTickEndedAt: t(8) },
-    { role: "broke", phase: "budget paused", lastTickEndedAt: t(1) },
-    { role: "capped", phase: "cap paused", lastTickEndedAt: t(2) },
-    { role: "bootstrapped", phase: "held: bootstrap", lastTickEndedAt: t(0) },
+    { role: "broke", phase: "waiting: budget spent", lastTickEndedAt: t(1) },
+    { role: "capped", phase: "waiting: daily cap spent", lastTickEndedAt: t(2) },
+    { role: "bootstrapped", phase: "waiting: bootstrap", lastTickEndedAt: t(0) },
   ];
   const order = model.sortLoops(loops).map((l) => l.role);
   assert.deepEqual(order, [
@@ -139,8 +143,8 @@ test("the page's loop order is status-model's, rank by rank", () => {
   for (const l of loops) assert.equal(model.loopRank(l.phase), loopRank(l.phase), l.phase);
   // Ties break on the name, and the input is left alone.
   const tied = [
-    { role: "zeta", phase: "queued", lastTickEndedAt: t(4) },
-    { role: "alpha", phase: "queued", lastTickEndedAt: t(4) },
+    { role: "zeta", phase: "due", lastTickEndedAt: t(4) },
+    { role: "alpha", phase: "due", lastTickEndedAt: t(4) },
   ];
   assert.deepEqual(model.sortLoops(tied).map((l) => l.role), ["alpha", "zeta"]);
   assert.deepEqual(tied.map((l) => l.role), ["zeta", "alpha"], "sortLoops returns a new array");
@@ -148,7 +152,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
 
 // The running director buckets into its own group so it does not join the In-progress rows an
 // operator scans against maxConcurrent (BUGS.md 2026-10-06). In progress still holds the
-// pipeline waiters (rank 1), which the page labels `Waiting for a slot`.
+// pipeline waiters (rank 1), which the page labels `Waiting to start`.
 test("the running director buckets outside the In-progress group", () => {
   const groupOf = (phase: string): string | number | undefined => {
     const rank = model.loopRank(phase);
@@ -156,8 +160,8 @@ test("the running director buckets outside the In-progress group", () => {
   };
   assert.equal(groupOf("director working 1m"), "Director");
   assert.equal(groupOf("working 5s"), "In progress");
-  assert.equal(groupOf("landing 5s"), "In progress");
-  assert.equal(groupOf("awaiting slot 5s"), "In progress");
+  assert.equal(groupOf("merging 5s"), "In progress");
+  assert.equal(groupOf("waiting to start 5s"), "In progress");
 });
 
 test("tick results read as words with the tone of their outcome", () => {
@@ -173,9 +177,9 @@ test("tick results read as words with the tone of their outcome", () => {
   assert.deepEqual(model.resultInfo("some_future_result"), { label: "some future result", tone: "gray" });
   // A problem without a summary explains itself with the loop's last error; a success never
   // borrows a stale one.
-  assert.equal(model.resultWhy({ lastResult: "error", lastSummary: null, lastError: "429 Rate limit exceeded", phase: "queued" }), "429 Rate limit exceeded");
-  assert.equal(model.resultWhy({ lastResult: "changed", lastSummary: "Add --watch", lastError: "old failure", phase: "queued" }), "Add --watch");
-  assert.equal(model.resultWhy({ lastResult: "no_change", lastSummary: null, lastError: "old failure", phase: "queued" }), "");
+  assert.equal(model.resultWhy({ lastResult: "error", lastSummary: null, lastError: "429 Rate limit exceeded", phase: "due" }), "429 Rate limit exceeded");
+  assert.equal(model.resultWhy({ lastResult: "changed", lastSummary: "Add --watch", lastError: "old failure", phase: "due" }), "Add --watch");
+  assert.equal(model.resultWhy({ lastResult: "no_change", lastSummary: null, lastError: "old failure", phase: "due" }), "");
 });
 
 test("the page shows the payload's alerts, led by its own offline notice", () => {

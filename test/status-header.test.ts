@@ -170,7 +170,7 @@ test("renderStatus shows the land-queue badge in the header and the label in the
     pid: 4242,
   });
   assert.doesNotMatch(idle, /land queue/);
-  assert.match(idle, /^clean +queued/m, "an idle loop keeps its ordinary state cell");
+  assert.match(idle, /^clean +due/m, "an idle loop keeps its ordinary state cell");
 
   // Two queued landings: the header badge appears…
   const queued = {
@@ -181,7 +181,7 @@ test("renderStatus shows the land-queue badge in the header and the label in the
   };
   const text = renderStatus(root, queued);
   assert.match(headerOf(text), /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
-  assert.match(text, /clean +queued/, "a merely queued role shows its normal state");
+  assert.match(text, /clean +due/, "a merely queued role shows its normal state");
 
   // …and the role whose in-flight record is attached reads `landing <elapsed> · <stage>` in
   // its row — no work-item prefix (the loop is not running, so stateCell returns the phase),
@@ -195,8 +195,8 @@ test("renderStatus shows the land-queue badge in the header and the label in the
     } as StatusSnapshot["landQueue"],
   };
   const text2 = renderStatus(root, landing);
-  assert.match(text2, /clean +landing 1m3[01]s · build check/, "the landing role reads the marker's elapsed and stage");
-  assert.match(text2, /bugfix +queued/, "other roles are untouched");
+  assert.match(text2, /clean +merging 1m3[01]s · checking/, "the landing role reads the marker's elapsed and stage");
+  assert.match(text2, /bugfix +due/, "other roles are untouched");
 });
 
 test("the status header carries a mainCheck badge only after a merge-scope check", () => {
