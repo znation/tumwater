@@ -53,6 +53,24 @@ failure breaker has not demoted, so a local server that is down falls through to
 step of a tier's own list is usable the tier borrows another tier's list as before, and otherwise
 pauses. `"pause"` is a whole-tier value, never a list element.
 
+A step may also be an object, `{ "model": "<model id>", "maxDailyCostUsd": 5 }`, which lets a paid
+model sit in the chain with a daily cap of its own (a bare id is the same as `{ "model": … }`). A
+priced step is usable only while the team is under `maxDailyCostUsd` **and** the step's real spend
+for the local day, summed over every role, is under its own cap, so priced steps never run past a
+cap: at the team cap only free steps remain. For an API-billed Claude step, a run's
+`--max-budget-usd` is also lowered to what is left of the step's cap. For example, subscription
+Claude first, then HF capped at $5 a day, then a local model:
+
+```json
+"fallback": {
+  "default": [
+    { "model": "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731:deepinfra", "maxDailyCostUsd": 5 },
+    "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
+  ]
+},
+"maxDailyCostUsd": 15
+```
+
 The legacy `provider` key and `fallbackModel` object still parse for existing configs, but
 tumwater writes the model id forms above.
 

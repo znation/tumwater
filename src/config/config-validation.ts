@@ -8,6 +8,7 @@ import {
   CUSTOM_LOOP_KEYS,
   CUSTOM_NAME_RE,
   CUSTOM_TASK_MAX_CHARS,
+  FALLBACK_STEP_KEYS,
   HARNESS_PI_FLAGS,
   MODEL_TRIPLE_KEYS,
   REVIEW_KEYS,
@@ -366,6 +367,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
       for (const [tier, v] of Object.entries(f)) {
         if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems);
+        else if (isJsonObject(v)) checkFallbackStep(`fallback.${tier}`, v, problems);
         else if (!isNonBlankString(v))
           problems.push(
             `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
@@ -414,18 +416,33 @@ function checkSelectorHalves(
   checkSelectorValue(`${prefix}${key}`, obj[key], legacyProvider, problems);
 }
 
-/** Validate a `fallback` list (a tier's ordered chain): non-empty, each element a non-blank
- * model id that is not `"pause"` (a whole-tier value only) and parses to both halves. */
+/** Validate a `fallback` list (a tier's ordered chain): non-empty, each element a step — a
+ * non-blank model id that is not `"pause"` (a whole-tier value only) and parses to both
+ * halves, or a `{ model, maxDailyCostUsd? }` object (checkFallbackStep). */
 function checkFallbackList(name: string, list: unknown[], problems: string[]): void {
   if (list.length === 0) problems.push(`${name} list must not be empty — name at least one model id`);
   list.forEach((el, i) => {
     const at = `${name}[${i}]`;
-    if (!isNonBlankString(el))
-      problems.push(`${name} list element ${i} must be a non-empty model id (got ${show(el)})`);
+    if (isJsonObject(el)) checkFallbackStep(at, el, problems);
+    else if (!isNonBlankString(el))
+      problems.push(`${name} list element ${i} must be a non-empty model id or a step object (got ${show(el)})`);
     else if (el === "pause")
       problems.push(`${name} list element ${i} is "pause" — "pause" is only valid as a whole-tier value`);
     else checkSelectorValue(at, el, undefined, problems);
   });
+}
+
+/** Validate one object step `{ model, maxDailyCostUsd? }`: only those keys, `model` a non-blank
+ * selector (not `"pause"`) and `maxDailyCostUsd`, when present, a positive finite number. */
+function checkFallbackStep(at: string, step: Record<string, unknown>, problems: string[]): void {
+  checkKnownKeys(step, FALLBACK_STEP_KEYS, at, problems);
+  const m = step.model;
+  if (!isNonBlankString(m)) problems.push(`${at}.model must be a non-empty model id (got ${show(m)})`);
+  else if (m === "pause") problems.push(`${at}.model is "pause" — "pause" is only valid as a whole-tier value`);
+  else checkSelectorValue(`${at}.model`, m, undefined, problems);
+  const cap = step.maxDailyCostUsd;
+  if (cap !== undefined && !(typeof cap === "number" && Number.isFinite(cap) && cap > 0))
+    problems.push(`${at}.maxDailyCostUsd must be a positive number (got ${show(cap)})`);
 }
 
 /** Report one selector string that parses to an empty provider or model half. `name` is the

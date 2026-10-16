@@ -104,3 +104,14 @@ test("fallback lists: non-empty, each element a model id, pause only as a whole-
     assert.match(validationError({ fallback: bad }), /fallback list/);
   assert.match(validationError({ fallback: { default: [] } }), /fallback\.default list/);
 });
+
+test("a fallback chain step may be an object with a positive maxDailyCostUsd", () => {
+  assert.doesNotThrow(() =>
+    validateConfig({ fallback: [{ model: "hf/m", maxDailyCostUsd: 5 }, "omlx/local", { model: "omlx/b" }] }),
+  );
+  assert.doesNotThrow(() => validateConfig({ fallback: { default: { model: "hf/m", maxDailyCostUsd: 1.5 } } }));
+  assert.match(validationError({ fallback: [{ model: "hf/m", maxDailyCostUsd: 0 }] }), /fallback\[0\]\.maxDailyCostUsd must be a positive number/);
+  assert.match(validationError({ fallback: [{ model: "hf/m", maxDailyCostUsd: "5" }] }), /maxDailyCostUsd must be a positive number/);
+  assert.match(validationError({ fallback: [{ maxDailyCostUsd: 5 }] }), /fallback\[0\]\.model must be a non-empty model id/);
+  assert.match(validationError({ fallback: [{ model: "hf/m", cap: 5 }] }), /cap/);
+});

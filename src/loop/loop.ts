@@ -128,8 +128,8 @@ export class LoopRunner {
       signal: this.signal,
       runSignal: () => this.runSignal(),
       warn: (message) => this.warn(message),
-      foldUsage: (run, provider) => this.foldUsage(run, provider),
-      foldLandingUsage: (run, provider) => this.foldLandingUsage(run, provider),
+      foldUsage: (run, provider, pair) => this.foldUsage(run, provider, pair),
+      foldLandingUsage: (run, provider, pair) => this.foldLandingUsage(run, provider, pair),
       tickNumber: () => this.state.ticks,
       sleep: this.sleep,
     });
@@ -285,8 +285,8 @@ export class LoopRunner {
    * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
    * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
    * wiring (src/landing/landing-slot.ts) reach them. */
-  private foldUsage(run: PiRunResult, provider?: string): void {
-    this.usage.fold(this.state, run, true, provider);
+  private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {
+    this.usage.fold(this.state, run, true, provider, pair);
   }
 
   /** Run pi for the orchestrator's landing slot (merge queue 3/5): runRolePi's shared wiring
@@ -313,10 +313,10 @@ export class LoopRunner {
    * (reviewer, conflict resolution) into the AUTHORING role's counters, so the fleet's daily
    * cost and the per-role usage windows attribute that spend to the role that authored the
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
-  foldLandingUsage(run: PiRunResult, provider?: string): void {
+  foldLandingUsage(run: PiRunResult, provider?: string, pair?: string): void {
     // authoring=false: a landing/review run's usage counts toward cost and prompt tokens, but
     // never toward the tick's pre-edit counter (src/tick/tick-usage.ts fold).
-    this.usage.fold(this.state, run, false, provider);
+    this.usage.fold(this.state, run, false, provider, pair);
   }
 
   /** Run one full tick of this role loop (the pipeline lives in src/loop/loop-tick.ts):

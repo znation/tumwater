@@ -12,6 +12,7 @@ import {
   budgetSpend,
   budgetWarning,
   modelPairName,
+  pairDailyCost,
   type BudgetGate,
 } from "../budget/budget.js";
 import {
@@ -72,6 +73,9 @@ export interface BudgetGateState {
    * `directorFrom` is null while the director keeps the live config. */
   directorFrom: TumwaterConfig | null;
   directorView: TumwaterConfig;
+  /** The resolved-pairs key `directorView` was derived under, so a step crossing its own cap
+   * re-derives it. */
+  directorKey: string;
   /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
    * the transitions — set when the warning logs, reset whenever spend falls back below the
    * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
@@ -90,6 +94,7 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     prevWindowMoved: false,
     directorFrom: null,
     directorView: config,
+    directorKey: "",
     fallbackConfig: config,
     warned: false,
   };
@@ -230,8 +235,17 @@ export function pollBudgetGate(
   // A used-up subscription window (claudeWindowUsedUp, the rule the fleet hold reads too): while
   // it stands a subscription claude pair is no fallback — it would meet the same window.
   const windowOut = claudeWindowUsedUp(account, now);
-  const pairFreeAt = (p: FallbackModelConfig) =>
-    piPairFree(providers, p.provider, p.model, account) && !(windowOut !== null && pairIsClaude(p));
+  // A priced step (one pi does not price at zero, or claude on API billing) is usable only
+  // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
+  // can be passed; at the cap only free steps remain, as before.
+  const pairFreeAt = (p: FallbackModelConfig) => {
+    if (piPairFree(providers, p.provider, p.model, account)) return !(windowOut !== null && pairIsClaude(p));
+    if (reached) return false;
+    return (
+      p.maxDailyCostUsd === undefined ||
+      pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd
+    );
+  };
   // The breaker map is keyed by every pair the tiers would run on absent a demotion
   // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
   // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
@@ -354,7 +368,13 @@ export function pollBudgetGate(
   // A used-up window moves the subscription claude jobs to their tier's fallback below the cap
   // too; with no fallback to move to, nothing changes and the claude hold applies.
   const windowMove = windowOut !== null && pairNames.length > 0;
-  const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}`;
+  // The resolved pairs are part of the key: a priced step crossing its own daily cap changes
+  // the resolution without a config or window change, and the view must follow it.
+  const resolvedKey = MODEL_TIERS.map((t) => {
+    const rp = priceResolved[t].pair;
+    return rp ? modelPairName(rp) : "-";
+  }).join(",");
+  const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}|${resolvedKey}`;
   if ((onFallback || windowMove) && (state.from !== liveConfig || state.fromKey !== fromKey)) {
     state.from = liveConfig;
     state.fromKey = fromKey;
@@ -413,8 +433,9 @@ export function pollBudgetGate(
   // holds it on the claude hold.
   const directorMoved = windowMove && seamIsClaude(configForRole(liveConfig, DIRECTOR_ROLE));
   if (!directorMoved) state.directorFrom = null;
-  else if (state.directorFrom !== liveConfig) {
+  else if (state.directorFrom !== liveConfig || state.directorKey !== resolvedKey) {
     state.directorFrom = liveConfig;
+    state.directorKey = resolvedKey;
     state.directorView = applyFallbackModel(liveConfig, priceResolved, (seam) => !seamIsClaude(seam));
   }
   const windowResumed = state.prevWindowMoved && !windowMove;

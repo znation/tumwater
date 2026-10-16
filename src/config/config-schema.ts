@@ -22,9 +22,17 @@ import { objectOrEmpty } from "../files/json-object.js";
 export const MODEL_TIERS = ["small", "default", "strong"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
 
-/** One tier's fallback: a selector string, or an ordered list of them tried first to last
- * (the first usable step runs; plans/fallback-chain.md "Terms"). */
-type FallbackChain = string | string[];
+/** One fallback step: a selector string, or `{ model, maxDailyCostUsd? }` — the object form
+ * caps the real spend on that step's model per local day, summed over roles (plans/
+ * fallback-chain.md "Spend per step"). A string is the same as `{ model }`. */
+export type FallbackStep = string | { model: string; maxDailyCostUsd?: number };
+
+/** The keys an object fallback step may carry (validation's checkKnownKeys list). */
+export const FALLBACK_STEP_KEYS: readonly string[] = ["model", "maxDailyCostUsd"];
+
+/** One tier's fallback: a step, or an ordered list of them tried first to last (the first
+ * usable step runs; plans/fallback-chain.md "Terms"). */
+type FallbackChain = FallbackStep | FallbackStep[];
 
 /** The agent backends an `agent` value may name (plans/agent-backends.md "Config"). The
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
@@ -126,6 +134,9 @@ export interface FallbackModelConfig {
   model?: string;
   /** pi thinking level for fallback runs; falls back to the top-level value. */
   thinking?: string;
+  /** The step's own daily spend cap in USD (a chain step written as an object); set only on a
+   * pair resolved from a chain step, never read from `fallbackModel`. */
+  maxDailyCostUsd?: number;
 }
 
 /** Idle backoff: how long a loop sleeps after a tick that changed nothing. */
@@ -346,7 +357,7 @@ export interface TumwaterConfig {
    * or an ordered list of selectors, or a map by tier whose values are selectors, lists, or
    * `"pause"` (each tier's own entry is consulted when that tier runs at the cap;
    * part 5a/8). Setting `fallback` and `fallbackModel` both is a validation error. */
-  fallback?: FallbackChain | Partial<Record<ModelTier, FallbackChain>>;
+  fallback?: string | FallbackStep[] | Partial<Record<ModelTier, FallbackChain>>;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free
@@ -355,6 +366,10 @@ export interface TumwaterConfig {
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
    * explicit human prompt outranks the autonomous-spend cap. */
   fallbackModel?: FallbackModelConfig;
+  /** Each moved tier's chain-step cap by pair name (`modelPairName`), recorded by
+   * applyFallbackModel on the derived view only so a run's per-run budget cap can read its
+   * step's limit; never read from tumwater.json. */
+  fallbackStepCaps?: Record<string, number>;
   /** Friction threshold in assistant turns: a changed tick is flagged high-friction only when it
    * used MORE than this many turns AND ran longer than thrashMinutes (Friction trailer line on
    * its commit, warning event, and extra review scrutiny) — difficulty is a signal that the work

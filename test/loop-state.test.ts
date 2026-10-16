@@ -420,3 +420,21 @@ test("readOrchestratorInfo and orchestratorAlive handle missing, valid, dead-pid
   assert.equal(readOrchestratorInfo(dir), null);
   assert.equal(orchestratorAlive(dir), false);
 });
+
+test("loadLoopState heals dayCostByPair: bad entries drop, a non-object becomes {}, __proto__ stays an own key", () => {
+  const dir = tmpdir("loop-state-pair-");
+  const write = (role: string, raw: string) => {
+    const file = statePath(dir, role);
+    ensureParentDir(file);
+    fs.writeFileSync(file, raw);
+  };
+  write("a", JSON.stringify({ role: "a", dayCostByPair: { "hf/m": 2, bad: "x", neg: -1 } }));
+  assert.deepEqual(loadLoopState(dir, "a").dayCostByPair, { "hf/m": 2 });
+  write("b", JSON.stringify({ role: "b", dayCostByPair: "oops" }));
+  assert.deepEqual(loadLoopState(dir, "b").dayCostByPair, {});
+  write("c", '{"role":"c","dayCostByPair":{"__proto__":3}}');
+  const c = loadLoopState(dir, "c").dayCostByPair!;
+  assert.ok(Object.hasOwn(c, "__proto__"));
+  assert.equal(Object.getPrototypeOf(c), Object.prototype);
+  assert.equal(loadLoopState(dir, "fresh").dayCostByPair, undefined, "an absent map stays absent");
+});

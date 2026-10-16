@@ -97,6 +97,28 @@ test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's 
   });
 });
 
+test("a fallback step's own cap lowers the claude run's --max-budget-usd to the step's remaining budget", async () => {
+  const root = tmpdir();
+  await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
+    writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
+    saveLoopState(root, {
+      ...freshLoopState("feature"),
+      dayStamp: todayStamp(),
+      dayCostUsd: 4,
+      dayCostByPair: { "claude/claude-sonnet-5-5": 3 },
+    });
+    const config = defaultConfig();
+    config.agent = "claude";
+    config.model = "claude-sonnet-5-5";
+    config.maxDailyCostUsd = 15;
+    config.fallbackStepCaps = { "claude/claude-sonnet-5-5": 5 };
+    const { loopPi } = makeHost(root, config);
+    const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-1-author");
+    assert.equal(result.ok, true, `${result.errorMessage}`);
+    assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "2");
+  });
+});
+
 // PLANS.md "Agent backends, part 7a/7", objection 1: the per-role cap is keyed by BASE role
 // and sums the whole instance group's spend, matching the scheduler's role-cap gate. A
 // `feature-2` run must see `maxDailyCostUsdPerRole.feature`, not a nonexistent `feature-2` key.

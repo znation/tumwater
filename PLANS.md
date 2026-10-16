@@ -5,49 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 4/7: Priced fallback steps with their own daily caps (planned 2026-10-16 by user; requires part 3/7 landed; design in plans/fallback-chain.md "When a step is available" and "Spend per step"; touches src/config/ src/loop/loop-state.ts src/budget/budget.ts src/tick/tick-usage.ts src/loop/loop-pi.ts src/gates/budget-gates.ts docs/backends.md and their tests)
-
-**Goal.** A fallback must be free today, because it only ever runs at the cap. Once a used-up window also moves work (part 1/7), the step after the subscription is often a paid one. For example, "spend up to $5 a day on HF Inference Providers, then go local". This part lets a step be an object with its own daily cap, and lets priced steps sit in a chain. A priced step is usable only while the team is under `maxDailyCostUsd` and the step is under its own cap, so no cap can be passed.
-
-**Approach.**
-- Config (src/config/config-schema.ts, config-validation.ts):
-  - A chain element may be `{ "model": "<model id>", "maxDailyCostUsd"?: number }`.
-  - Add `FALLBACK_STEP_KEYS`. `model` is required, and `maxDailyCostUsd` must be a positive number.
-  - A string element is the same as `{ "model": … }`.
-- src/loop/loop-state.ts: `LoopState.dayCostByPair?: Record<string, number>`.
-  - It holds real USD per `modelPairName` for the local day in `dayStamp`.
-  - It is healed on load like `dayCostUsd`: non-numbers and negatives drop, and a `__proto__` key is kept as an own property.
-- src/budget/budget.ts:
-  - `recordDailyCost(s, usd, now, pair?)` also folds into `dayCostByPair[pair]`, and the day rollover clears it.
-  - `pairDailyCost(states, pair, now)` sums it over roles.
-- src/tick/tick-usage.ts: `fold` passes the run's pair, built from the run's own resolved config. src/loop/loop-pi.ts already has `opts.config`; pass `modelPairName(opts.config)` beside the hold key. Estimated (subscription) spend never folds into it.
-- src/gates/budget-gates.ts: the usable predicate per step becomes:
-  - **Free step:** usable when its breaker is serving (today's rule).
-  - **Priced step:** usable when `!reached`, the step's pair spend is under its own cap (if it has one), and its breaker is serving.
-
-  At the cap only free steps remain usable, which is today's behavior. Priced steps also join the breaker map.
-- **Per-run cap.** `applyFallbackModel` records each moved tier's step cap on the derived config: `fallbackStepCaps?: Record<pairName, number>`, set only on the derived view and never read from tumwater.json.
-  - `authoringBudgetCap` (src/loop/loop-pi.ts) lowers an API-billed Claude run's `--max-budget-usd` to the step's remaining budget when its pair has one.
-  - Subscription runs still get no per-run cap.
-- docs/backends.md: the step-object form, the "priced steps never run past a cap" rule, and an example chain of subscription Claude, then HF capped at $5, then local.
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/loop/loop-state.ts, src/budget/budget.ts, src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/budget-gates.ts.
-- Docs: docs/backends.md.
-- Tests: test/config-validation-model.test.ts, test/loop-state.test.ts, test/budget.test.ts, test/tick-usage.test.ts, test/budget-gates.test.ts, test/loop-pi-claude.test.ts, and test/orchestrator-fallback.test.ts.
-
-**Acceptance criteria.**
-- `recordDailyCost` with a pair:
-  - It accumulates per pair and resets at local midnight.
-  - A run with only estimated cost leaves `dayCostByPair` untouched.
-  - A corrupt stored map heals to `{}`.
-- Below the cap, with a rejected window and `fallback: [{ model: HF, maxDailyCostUsd: 5 }, LOCAL]`:
-  - The tier resolves to HF.
-  - Once the HF pair's spend reaches $5 it resolves to LOCAL.
-  - At the team cap it resolves to LOCAL, whatever the HF spend.
-- An API-billed Claude step with $2 left on its cap gets `--max-budget-usd 2` or less.
-- Existing configs with only free fallbacks resolve exactly as before, and `npm test` passes.
-
 ### Fallback chain, part 5/7: A chain's first Claude model stops at the end of the subscription window, and a Claude model listed after it spends extra usage within its caps (planned 2026-10-16 by user; requires part 4/7 landed; design in plans/fallback-chain.md "Config" and "Overage"; touches src/agent/claude/claude-account.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
 
 **Goal.** This account allows extra usage (`overageStatus: "allowed"` in every recorded `rate_limit_event`). So today a used-up window does not stop Claude: runs continue on paid extra usage, and their whole cost counts toward the team cap, until `maxDailyCostUsd` moves Claude model jobs to the over-cap model. That spend has no place in the chain and no cap of its own.
@@ -2301,6 +2258,50 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `GET /api/backlog` answers `refused: true` for an entry carrying a Refused note and `refused: false` for one without. The `/api/backlog` test in `test/gui.test.ts` deep-equals `{ title, body }`, so add `refused: false` to its expected objects and add one refused entry to its fixture to assert `refused: true`.
 - Client (`test/gui-client-boot.test.ts`, modeled on "entry-cancel arms on the first click and posts the cancel on the second"): one `entry-release` act on `plans:1` posts `["/api/backlog-release", { kind: "plan", position: 2, title }]` right away, and `bugs:0` posts `kind: "bug"`. A drawer test, or a grep-level check like those the existing drawer tests use, shows the button renders only when `refused` is true.
 - `npm run test` passes.
+
+### Fallback chain, part 4/7: Priced fallback steps with their own daily caps (done 2026-10-16; planned 2026-10-16 by user; requires part 3/7 landed; design in plans/fallback-chain.md "When a step is available" and "Spend per step"; touches src/config/ src/loop/loop-state.ts src/budget/budget.ts src/tick/tick-usage.ts src/loop/loop-pi.ts src/gates/budget-gates.ts docs/backends.md and their tests)
+
+**Goal.** A fallback must be free today, because it only ever runs at the cap. Once a used-up window also moves work (part 1/7), the step after the subscription is often a paid one. For example, "spend up to $5 a day on HF Inference Providers, then go local". This part lets a step be an object with its own daily cap, and lets priced steps sit in a chain. A priced step is usable only while the team is under `maxDailyCostUsd` and the step is under its own cap, so no cap can be passed.
+
+**Approach.**
+- Config (src/config/config-schema.ts, config-validation.ts):
+  - A chain element may be `{ "model": "<model id>", "maxDailyCostUsd"?: number }`.
+  - Add `FALLBACK_STEP_KEYS`. `model` is required, and `maxDailyCostUsd` must be a positive number.
+  - A string element is the same as `{ "model": … }`.
+- src/loop/loop-state.ts: `LoopState.dayCostByPair?: Record<string, number>`.
+  - It holds real USD per `modelPairName` for the local day in `dayStamp`.
+  - It is healed on load like `dayCostUsd`: non-numbers and negatives drop, and a `__proto__` key is kept as an own property.
+- src/budget/budget.ts:
+  - `recordDailyCost(s, usd, now, pair?)` also folds into `dayCostByPair[pair]`, and the day rollover clears it.
+  - `pairDailyCost(states, pair, now)` sums it over roles.
+- src/tick/tick-usage.ts: `fold` passes the run's pair, built from the run's own resolved config. src/loop/loop-pi.ts already has `opts.config`; pass `modelPairName(opts.config)` beside the hold key. Estimated (subscription) spend never folds into it.
+- src/gates/budget-gates.ts: the usable predicate per step becomes:
+  - **Free step:** usable when its breaker is serving (today's rule).
+  - **Priced step:** usable when `!reached`, the step's pair spend is under its own cap (if it has one), and its breaker is serving.
+
+  At the cap only free steps remain usable, which is today's behavior. Priced steps also join the breaker map.
+- **Per-run cap.** `applyFallbackModel` records each moved tier's step cap on the derived config: `fallbackStepCaps?: Record<pairName, number>`, set only on the derived view and never read from tumwater.json.
+  - `authoringBudgetCap` (src/loop/loop-pi.ts) lowers an API-billed Claude run's `--max-budget-usd` to the step's remaining budget when its pair has one.
+  - Subscription runs still get no per-run cap.
+- docs/backends.md: the step-object form, the "priced steps never run past a cap" rule, and an example chain of subscription Claude, then HF capped at $5, then local.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/loop/loop-state.ts, src/budget/budget.ts, src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/config-validation-model.test.ts, test/loop-state.test.ts, test/budget.test.ts, test/tick-usage.test.ts, test/budget-gates.test.ts, test/loop-pi-claude.test.ts. (The chain-resolution and step-cap tests landed in test/budget-gates.test.ts rather than test/orchestrator-fallback.test.ts; the per-run pair key is `seamPairName` in src/config/config-views.ts, threaded through src/loop/loop.ts and src/landing/landing-slot.ts.)
+
+**Acceptance criteria.**
+- `recordDailyCost` with a pair:
+  - It accumulates per pair and resets at local midnight.
+  - A run with only estimated cost leaves `dayCostByPair` untouched.
+  - A corrupt stored map heals to `{}`.
+- Below the cap, with a rejected window and `fallback: [{ model: HF, maxDailyCostUsd: 5 }, LOCAL]`:
+  - The tier resolves to HF.
+  - Once the HF pair's spend reaches $5 it resolves to LOCAL.
+  - At the team cap it resolves to LOCAL, whatever the HF spend.
+- An API-billed Claude step with $2 left on its cap gets `--max-budget-usd 2` or less.
+- Existing configs with only free fallbacks resolve exactly as before, and `npm test` passes.
+
 
 ### Plain terms event log, part 8/9: Switch the remaining event call sites to source (done 2026-10-16; planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
 

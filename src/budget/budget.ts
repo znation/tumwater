@@ -49,13 +49,35 @@ export function dailyCost(
  * authoritative across an in-flight tick; the value persists at tick end with the rest of the
  * state. Both operands are guarded through spendNumber so a corrupt stored value or a
  * non-finite/negative run cost cannot poison the window with a string/NaN/negative sum. */
-export function recordDailyCost(s: LoopState, usd: number, now = Date.now()): void {
+export function recordDailyCost(s: LoopState, usd: number, now = Date.now(), pair?: string): void {
   const stamp = todayStamp(now);
   if (s.dayStamp !== stamp) {
     s.dayStamp = stamp;
     s.dayCostUsd = 0;
+    s.dayCostByPair = {};
   }
   s.dayCostUsd = spendNumber(s.dayCostUsd) + spendNumber(usd);
+  // The per-step split (a priced fallback step's own cap): folded under the run's pair name,
+  // an own property so a `__proto__` pair cannot reach the prototype.
+  if (pair !== undefined) {
+    const by = (s.dayCostByPair ??= {});
+    const sum = spendNumber(Object.hasOwn(by, pair) ? by[pair] : 0) + spendNumber(usd);
+    Object.defineProperty(by, pair, { value: sum, enumerable: true, writable: true, configurable: true });
+  }
+}
+
+/** One model pair's spend for the local day, summed over every loop's per-pair window
+ * (`dayCostByPair`): $0 for a stale day stamp or a pair no run has charged. */
+export function pairDailyCost(
+  states: Pick<LoopState, "dayStamp" | "dayCostByPair">[],
+  pair: string,
+  now = Date.now(),
+): number {
+  const today = todayStamp(now);
+  return states.reduce((sum, s) => {
+    const by = s.dayStamp === today ? s.dayCostByPair : undefined;
+    return sum + (by !== undefined && Object.hasOwn(by, pair) ? spendNumber(by[pair]) : 0);
+  }, 0);
 }
 
 /** The fleet's spend for the local day: every loop's daily window summed. */

@@ -8,6 +8,7 @@
  * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts. */
 import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
 import { formatModelSelector, isAgentId, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
+import { modelPairName } from "../budget/budget.js";
 import { isJsonObject } from "../files/json-object.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -297,6 +298,16 @@ export function seamHoldKey(
   cfg: Pick<ResolvedModelConfig, "agent" | "provider">,
 ): string | undefined {
   return cfg.agent !== undefined && cfg.agent !== "pi" ? cfg.agent : cfg.provider;
+}
+
+/** The `modelPairName` a resolved seam's run is charged under (LoopState.dayCostByPair): the
+ * routed backend's id stands in for the provider on a non-pi seam, exactly as the fallback
+ * pairs carry it (config-fallbacks.ts's seamKeyedFallbackProvider), so a run and the chain
+ * step it ran on name one key. */
+export function seamPairName(
+  cfg: Pick<ResolvedModelConfig, "agent" | "provider" | "model">,
+): string {
+  return modelPairName({ provider: seamHoldKey(cfg), model: cfg.model });
 }
 
 /** The key a resolved seam's run counts against the per-provider cap

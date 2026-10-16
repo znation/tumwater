@@ -264,3 +264,13 @@ test("fold splits per-provider spend into providerCost, keyed by provider, guard
   u.reset();
   assert.deepEqual(u.serializeProviderCost(), {});
 });
+
+test("fold charges a real run's cost to its pair and leaves dayCostByPair alone for an estimated one", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+  u.fold(s, run({ costUsd: 2 }), true, "hf", "hf/m");
+  u.fold(s, run({ costUsd: 3, billing: "subscription" }), true, "claude", "claude/sonnet");
+  assert.deepEqual(s.dayCostByPair, { "hf/m": 2 });
+  u.fold(s, run({ costUsd: 3, billing: "subscription", usedOverage: true }), true, "claude", "claude/sonnet");
+  assert.deepEqual(s.dayCostByPair, { "hf/m": 2, "claude/sonnet": 3 });
+});

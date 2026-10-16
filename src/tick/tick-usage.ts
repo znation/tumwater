@@ -110,7 +110,7 @@ export class TickUsage {
    * the loop's lifetime totals on `s`. `authoring` is false for a landing/review run folded
    * through foldLandingUsage: those never advance the tick's pre-edit counter, which measures
    * the authoring search. */
-  fold(s: LoopState, run: PiRunResult, authoring = true, provider?: string): void {
+  fold(s: LoopState, run: PiRunResult, authoring = true, provider?: string, pair?: string): void {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
     s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
     s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;
@@ -122,7 +122,7 @@ export class TickUsage {
       // The daily cost budget window (plans/daily-cost-budget.md): every real-money pi run of
       // a tick folds here exactly once, so the fleet's spend for the local day is complete at
       // each tick end.
-      recordDailyCost(s, run.costUsd);
+      recordDailyCost(s, run.costUsd, Date.now(), pair);
       this.bumpProviderCost(provider, run.costUsd, 'costUsd');
     } else {
       this.notionalCostUsd += run.costUsd;

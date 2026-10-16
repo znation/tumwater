@@ -7,6 +7,7 @@ import {
   budgetReached,
   dailyCost,
   fleetDailyCost,
+  pairDailyCost,
   projectCapHit,
   recordDailyCost,
   todayStamp,
@@ -359,4 +360,22 @@ test("projectCapHit extrapolates today's linear burn to the cap's instant, or st
   // the spend) and inside today.
   const hit = projectCapHit({ spentUsd: 30, capUsd: 50 }, now);
   assert.ok(hit !== null && hit > now && hit < midnight + 24 * 3600_000);
+});
+
+test("recordDailyCost with a pair accumulates per pair, resets at local midnight, and pairDailyCost sums roles", () => {
+  const { dayA, dayB } = midnightPair();
+  const a = freshLoopState("feature");
+  const b = freshLoopState("plan");
+  recordDailyCost(a, 1, dayA, "hf/m");
+  recordDailyCost(a, 0.5, dayA, "hf/m");
+  recordDailyCost(a, 2, dayA, "__proto__");
+  recordDailyCost(b, 0.25, dayA, "hf/m");
+  recordDailyCost(b, 4, dayA); // no pair: counts for the day, not for any pair
+  assert.equal(pairDailyCost([a, b], "hf/m", dayA), 1.75);
+  assert.equal(pairDailyCost([a, b], "__proto__", dayA), 2);
+  assert.equal(pairDailyCost([a, b], "other/x", dayA), 0);
+  assert.equal(b.dayCostUsd, 4.25);
+  assert.equal(pairDailyCost([a, b], "hf/m", dayB), 0, "a stale day reads as $0");
+  recordDailyCost(a, 3, dayB, "hf/m");
+  assert.equal(a.dayCostByPair?.["hf/m"], 3, "the rollover cleared yesterday's per-pair spend");
 });

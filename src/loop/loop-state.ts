@@ -265,6 +265,10 @@ export interface LoopState {
   /** This loop's spend for `dayStamp`'s local day (the daily cost budget window). Deliberately
    * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
   dayCostUsd?: number;
+  /** Real USD spent for `dayStamp`'s local day per model pair name (`modelPairName`): the
+   * per-step spend a priced fallback step's own `maxDailyCostUsd` is checked against. Rolls
+   * over with `dayCostUsd`; estimated (subscription) spend never folds in. */
+  dayCostByPair?: Record<string, number>;
   lastError?: string;
   /** Epoch ms (Date.now()) of the last time this loop landed a change on main (set only in
    * applyLandingOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
@@ -348,6 +352,18 @@ function healNumber(value: unknown, fallback: number): number {
   return nonNegativeNumber(value, fallback);
 }
 
+/** Heal the per-pair daily spend map: a non-object reads as `{}`, entries that are not
+ * non-negative finite numbers drop, and a `__proto__` key stays an own property. */
+function healPairCosts(value: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return out;
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v === "number" && Number.isFinite(v) && v >= 0)
+      Object.defineProperty(out, k, { value: v, enumerable: true, writable: true, configurable: true });
+  }
+  return out;
+}
+
 /** Heal one OPTIONAL numeric field of a persisted record in place, preserving the field's
  * absent shape: an absent field stays absent (an older state file with no such field reads
  * unchanged), while a present field heals by healNumber's rule. Every optional numeric field
@@ -391,6 +407,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   s.peakContextTokens = healNumber(s.peakContextTokens, 0);
   s.totalCostUsd = healNumber(s.totalCostUsd, 0);
   s.dayCostUsd = healNumber(s.dayCostUsd, 0);
+  if (s.dayCostByPair !== undefined) s.dayCostByPair = healPairCosts(s.dayCostByPair);
   healOptionalNumber(s, "lastTickStartedAt");
   healOptionalNumber(s, "lastTickEndedAt");
   healOptionalNumber(s, "lastLandedAt");

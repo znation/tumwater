@@ -11,6 +11,7 @@
 import {
   MODEL_TIERS,
   type FallbackModelConfig,
+  type FallbackStep,
   type ModelTier,
   type TumwaterConfig,
 } from "./config-schema.js";
@@ -134,6 +135,8 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
  * for the doctor's `image input` check naming the tier a text-only loop reroutes to. */
 export { BORROW_ORDER };
 
+type FallbackChain = FallbackStep | FallbackStep[];
+
 /** A tier's OWN fallback chain, first step first — what the `fallback` key declares at that
  * tier's map entry (a selector or a list of them), or (default only) the string/list form of
  * `fallback` or the legacy `fallbackModel` object (a one-element chain). Empty when the tier
@@ -143,7 +146,7 @@ export { BORROW_ORDER };
  * carries none. */
 function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelConfig[] {
   const fb = config.fallback;
-  let raw: string | string[] | undefined;
+  let raw: FallbackChain | undefined;
   if (fb !== undefined) {
     // The top-level string/list form names the default tier's own chain; `"pause"` is rejected
     // by validation but defensively names no model (matching the map entries below).
@@ -158,7 +161,13 @@ function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelCon
   if (raw === undefined || raw === "pause") return [];
   return (Array.isArray(raw) ? raw : [raw])
     .filter((s) => s !== "pause")
-    .map((s) => fallbackSelectorFields(s, config));
+    .map((s) => {
+      const step = typeof s === "string" ? { model: s } : s;
+      const fields = fallbackSelectorFields(step.model, config);
+      return step.maxDailyCostUsd !== undefined
+        ? { ...fields, maxDailyCostUsd: step.maxDailyCostUsd }
+        : fields;
+    });
 }
 
 /** Every step of every tier's own chain, as the pair and its 0-based index in that chain — the
@@ -426,6 +435,7 @@ export function applyFallbackModel(
           })
         : undefined;
     const model: Partial<Record<ModelTier, string>> = {};
+    const stepCaps: Record<string, number> = {};
     for (const tier of MODEL_TIERS) {
       // A free seam keeps the tier's own primary selector — the backend namespace a resolved
       // seam has cleared, plus the ambient thinking level `topTierSelector` alone omits. A moved
@@ -447,9 +457,12 @@ export function applyFallbackModel(
       }
       const sel = selectorOf(resolved[tier]);
       if (sel !== undefined) model[tier] = sel;
+      const cap = resolved[tier].pair?.maxDailyCostUsd;
+      if (cap !== undefined) stepCaps[modelPairName(resolved[tier].pair)] = cap;
     }
     return {
       ...config,
+      ...(Object.keys(stepCaps).length > 0 ? { fallbackStepCaps: stepCaps } : {}),
       provider: undefined,
       model,
       thinking: undefined,

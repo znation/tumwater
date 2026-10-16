@@ -2,7 +2,7 @@
 import { dropLanding, type LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
-import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
+import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
@@ -424,11 +424,13 @@ export function landingUsage(author: LoopRunner, root: string): {
   foldUsage: (run: PiRunResult) => void;
 } {
   const usage: LandingUsage = { tokens: 0, cost: 0, providerCost: {} };
-  const reviewProvider = seamHoldKey(reviewRunConfig(author.config));
+  const reviewConfig = reviewRunConfig(author.config);
+  const reviewProvider = seamHoldKey(reviewConfig);
+  const reviewPair = seamPairName(reviewConfig);
   return {
     usage,
     foldUsage: (run) => {
-      author.foldLandingUsage(run, reviewProvider);
+      author.foldLandingUsage(run, reviewProvider, reviewPair);
       // A claude reviewer's or resolver's billing/window readings reach the account file the
       // moment this run folds, not at the author's next tick end — so a pi-author fleet's
       // claude reviewer still updates the five-hour window before the author's next tick

@@ -5,11 +5,11 @@ import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
-import { configForRole, seamHoldKey, type ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, seamHoldKey, seamPairName, type ResolvedModelConfig } from "../config/config-views.js";
 import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
-import { dailyCost, fleetDailyCost } from "../budget/budget.js";
+import { dailyCost, fleetDailyCost, pairDailyCost } from "../budget/budget.js";
 import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
@@ -49,12 +49,14 @@ function sleepFor(ms: number): Promise<void> {
  * seam, an account that is not API-billed, a disabled cap (0), or no remaining budget at all
  * (a non-positive cap is dropped by the argv builder). Spend is read from the persisted loop
  * states: each role's daily window is what the budget gate and the dashboards sum, and this
- * runs before the authoring run records its own cost. */
+ * runs before the authoring run records its own cost. A pair with a step cap of its own (a
+ * priced fallback step, `fallbackStepCaps`) is also held to that step's remaining budget. */
 function authoringBudgetCap(
   root: string,
   role: string,
   cfg: TumwaterConfig,
   agent: string,
+  pair: string,
 ): number | undefined {
   if (role === DIRECTOR_ROLE || agent !== "claude") return undefined;
   if (readClaudeAccount(root)?.billing !== "api") return undefined;
@@ -71,6 +73,10 @@ function authoringBudgetCap(
         : dailyCost(loadLoopState(root, role), now);
     cap = Math.min(cap, perRole - spent);
   }
+  // A fallback step with its own cap (applyFallbackModel's fallbackStepCaps, set only on the
+  // derived view) lowers the run to what is left of the step's budget for the day.
+  const stepCap = cfg.fallbackStepCaps?.[pair];
+  if (stepCap !== undefined) cap = Math.min(cap, stepCap - pairDailyCost(states, pair, now));
   // Round the subtraction's floating-point residue off so the argv carries a clean number.
   cap = Math.round(cap * 1e6) / 1e6;
   return cap > 0 ? cap : undefined;
@@ -93,13 +99,13 @@ interface LoopPiHost {
    * (seamHoldKey of the run's config), which the fold stamps onto the fleet-hold's rate-limit
    * and backend-failure observations so a storm is blamed on the backend that actually failed
    * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
-  foldUsage(run: PiRunResult, provider?: string): void;
+  foldUsage(run: PiRunResult, provider?: string, pair?: string): void;
   /** Fold a landing/review run's usage into the authoring role's counters WITHOUT touching
    * the tick's pre-edit prefix (TickUsage.fold's authoring=false): the reviewer's and conflict
    * resolver's context is not the authoring tick's pre-edit search. `provider` is the review
    * seam's hold key — a 429 storm on a claude reviewer must hold `claude`, not the pi author's
    * provider. */
-  foldLandingUsage(run: PiRunResult, provider?: string): void;
+  foldLandingUsage(run: PiRunResult, provider?: string, pair?: string): void;
   tickNumber(): number;
   /** The transient retry's pause before re-running, injectable so tests record the wait
    * instead of living through it (a hint-less 429 waits a real minute). Unset means the
@@ -138,7 +144,7 @@ export class LoopPi {
     const resolved = config ?? configForRole(this.host.config(), this.host.role);
     const maxBudgetUsd =
       kind === "author"
-        ? authoringBudgetCap(this.host.root, this.host.role, this.host.config(), resolved.agent ?? "pi")
+        ? authoringBudgetCap(this.host.root, this.host.role, this.host.config(), resolved.agent ?? "pi", seamPairName(resolved))
         : undefined;
     return {
       cwd: wt,
@@ -256,8 +262,10 @@ export class LoopPi {
     // is always the run's own resolved seam (reviewRunConfig for the reviewer, the role's
     // config or fallback pair for the author), so this names the backend that failed.
     const provider = seamHoldKey(opts.config);
+    // The run's model pair name, the key of the per-step daily spend (LoopState.dayCostByPair).
+    const pair = seamPairName(opts.config);
     const fold = (run: PiRunResult): void =>
-      authoring ? this.host.foldUsage(run, provider) : this.host.foldLandingUsage(run, provider);
+      authoring ? this.host.foldUsage(run, provider, pair) : this.host.foldLandingUsage(run, provider, pair);
     // The run re-keys the calling tick's provider lease to the provider THIS run uses, if it is
     // not already there (plans/provider-concurrency.md §5): a budget handback or a model-failure
     // switch that moved this run onto another seam moves the tick's lease with it, so a

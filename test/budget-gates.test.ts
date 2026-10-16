@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { gateRoleConfig, newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";
+import { applyFallbackModel, resolveTierFallbacks } from "../src/config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
@@ -714,4 +715,58 @@ test("a chain's demoted first step moves the default tier to the next step inste
   assert.equal(p.servingResolved.default.step, 1);
   assert.deepEqual(Object.keys(state.breakers).sort(), ["free/llama-free", "free/qwen-free"]);
   assert.deepEqual(p.pairs.map((x) => x.model).sort(), ["llama-free", "qwen-free"]);
+});
+
+test("a priced fallback step runs below the team cap and its own cap; past either, the free step does", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  rejectedWindow(root);
+  const cfg = configWith(10);
+  cfg.fallback = [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallbackModel = undefined;
+  const spent = (pairUsd: number, totalUsd = pairUsd) => {
+    const s = spentLoopState("feature", totalUsd);
+    s.dayCostByPair = { "paid/gpt-x": pairUsd };
+    return [s];
+  };
+  const resolved = (states: ReturnType<typeof spent>) =>
+    poll(root, newBudgetGateState(cfg), cfg, models, states).priceResolved.default.pair;
+
+  assert.equal(resolved(spent(2))?.model, "gpt-x", "under both caps the priced step is the tier's pair");
+  assert.equal(resolved(spent(2))?.maxDailyCostUsd, 5);
+  assert.equal(resolved(spent(5))?.model, "qwen-free", "the step at its own cap hands over to the free step");
+  assert.equal(resolved(spent(2, 10))?.model, "qwen-free", "at the team cap only the free step remains");
+});
+
+test("one gate state follows a priced step's spend across its own cap during a window move", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  rejectedWindow(root);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.roles.feature = { enabled: true };
+  cfg.fallback = [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallbackModel = undefined;
+  const state = newBudgetGateState(cfg);
+  const at = (pairUsd: number) => {
+    const s = spentLoopState("feature", pairUsd);
+    s.dayCostByPair = { "paid/gpt-x": pairUsd };
+    return poll(root, state, cfg, models, [s]);
+  };
+  assert.equal(configForRole(at(2).roleConfig, "feature").model, "gpt-x");
+  const over = at(5);
+  assert.equal(configForRole(over.roleConfig, "feature").model, "qwen-free");
+  assert.equal(over.roleConfig.fallbackStepCaps, undefined);
+});
+
+test("applyFallbackModel records a moved tier's step cap on the derived view only", () => {
+  const cfg = configWith(10);
+  cfg.fallback = [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallbackModel = undefined;
+  const view = applyFallbackModel(cfg, resolveTierFallbacks(cfg, () => true));
+  assert.deepEqual(view.fallbackStepCaps, { "paid/gpt-x": 5 });
+  assert.equal(cfg.fallbackStepCaps, undefined);
+  const free = configWith(10);
+  assert.equal(applyFallbackModel(free, resolveTierFallbacks(free, () => true)).fallbackStepCaps, undefined);
 });
