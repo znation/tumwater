@@ -120,12 +120,12 @@ export class Semaphore {
         const idx = this.rekeyWaiters.indexOf(w);
         if (idx >= 0) this.rekeyWaiters.splice(idx, 1);
         if (w.granted) {
-          this.keyInUse.set(w.key, (this.keyInUse.get(w.key) ?? 0) - 1);
+          this.bumpKeyInUse(w.key, -1);
         }
         w.resolve();
         parkedRekey = null;
       } else if (currentKey !== undefined) {
-        this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
+        this.bumpKeyInUse(currentKey, -1);
       }
       this.inUse -= 1;
       this.drive();
@@ -134,7 +134,7 @@ export class Semaphore {
       if (to === currentKey || closed) return;
       // Give the old key back first, waking that key's waiters.
       if (currentKey !== undefined) {
-        this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
+        this.bumpKeyInUse(currentKey, -1);
       }
       currentKey = to;
       lease.key = to;
@@ -151,14 +151,14 @@ export class Semaphore {
         if (w.granted) this.drive();
         return;
       }
-      if (to !== undefined) this.keyInUse.set(to, (this.keyInUse.get(to) ?? 0) + 1);
+      if (to !== undefined) this.bumpKeyInUse(to, 1);
       this.drive();
     };
     const lease: SemaphoreLease = { key: currentKey, release, rekey };
 
     if (this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key))) {
       this.inUse += 1;
-      if (key !== undefined) this.keyInUse.set(key, (this.keyInUse.get(key) ?? 0) + 1);
+      if (key !== undefined) this.bumpKeyInUse(key, 1);
       return lease;
     }
     await new Promise<void>((resolve) => {
@@ -190,22 +190,22 @@ export class Semaphore {
   forceLease(key?: string): SemaphoreLease {
     let currentKey = key;
     if (currentKey !== undefined) {
-      this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) + 1);
+      this.bumpKeyInUse(currentKey, 1);
     }
     const release = (): void => {
       if (currentKey !== undefined) {
-        this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
+        this.bumpKeyInUse(currentKey, -1);
       }
       this.drive();
     };
     const rekey = async (to?: string): Promise<void> => {
       if (to === currentKey) return;
       if (currentKey !== undefined) {
-        this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
+        this.bumpKeyInUse(currentKey, -1);
       }
       currentKey = to;
       lease.key = to;
-      if (to !== undefined) this.keyInUse.set(to, (this.keyInUse.get(to) ?? 0) + 1);
+      if (to !== undefined) this.bumpKeyInUse(to, 1);
       this.drive();
     };
     const lease: SemaphoreLease = { key: currentKey, release, rekey };
@@ -229,7 +229,7 @@ export class Semaphore {
         if (this.keyAtCap(w.key)) continue;
         w.granted = true;
         this.rekeyWaiters.splice(i, 1);
-        this.keyInUse.set(w.key, (this.keyInUse.get(w.key) ?? 0) + 1);
+        this.bumpKeyInUse(w.key, 1);
         w.resolve();
         granted = true;
         break;
@@ -241,7 +241,7 @@ export class Semaphore {
         if (w.key !== undefined && this.keyAtCap(w.key)) continue; // skip a full key, keep its place
         this.waiters.splice(i, 1);
         this.inUse += 1;
-        if (w.key !== undefined) this.keyInUse.set(w.key, (this.keyInUse.get(w.key) ?? 0) + 1);
+        if (w.key !== undefined) this.bumpKeyInUse(w.key, 1);
         w.resolve();
         granted = true;
         break;
@@ -261,6 +261,13 @@ export class Semaphore {
   private keyAtCap(key: string): boolean {
     const cap = this.keyCaps.get(key);
     return cap !== undefined && (this.keyInUse.get(key) ?? 0) >= cap;
+  }
+
+  /** Add `delta` to `key`'s held permits, initializing an absent key at zero first — the
+   * single home of the get-or-init bump that release, rekey, force and drive all repeated
+   * (an absent key implicitly holds zero, so the first bump must not read `undefined`). */
+  private bumpKeyInUse(key: string, delta: number): void {
+    this.keyInUse.set(key, (this.keyInUse.get(key) ?? 0) + delta);
   }
 
   /** Release a held permit. The finishing work gives back its permit first, and a queued waiter
