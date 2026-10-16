@@ -4,7 +4,7 @@ import { resolvedAgentConfig } from "../config/config-views.js";
 import { envPath, findOnPath } from "../files/files.js";
 
 /** Which agent binary the harness spawns and where that value came from — the per-agent
- * resolution `TUMWATER_<ID>_BIN` → `agents.<id>.bin` (pi's legacy `agentBin` alias) → the
+ * resolution `TUMWATER_<ID>_BIN` → `backends.<id>.bin` (pi's legacy `agentBin` alias) → the
  * backends' defaults (plans/agent-backends.md "Config"; plans/portability.md §5/7), the
  * executability rule the preflight askers share, and the missing-binary wording they quote.
  * The spawn (src/agent/run-agent.ts) resolves through each backend's resolveBin; the startup
@@ -36,7 +36,7 @@ export interface ResolvedAgentBin {
  * report. Exported so src/agent/run-agent.ts's spawn errors and doctor's checks quote the same
  * string. `binEnv` is the environment variable a backend reads (pi's TUMWATER_PI_BIN by
  * default; claude's adapter passes TUMWATER_CLAUDE_BIN), and `configKey` is the tumwater.json
- * key the "config" source names (pi's legacy `agentBin`, or `agents.<id>.bin`), so a claude
+ * key the "config" source names (pi's legacy `agentBin`, or `backends.<id>.bin`), so a claude
  * failure names its own var and key rather than pi's. */
 export function agentBinSourceLabel(
   source: AgentBinSource,
@@ -67,7 +67,7 @@ export function piMissingMessage(resolved: ResolvedAgentBin): string {
 /** The missing-binary message for any agent's resolved binary, used by the startup gate's walk
  * over every enabled seam's agent. pi delegates to piMissingMessage so its pinned wording is
  * untouched; any other agent names itself, the resolved value, and where it came from, so a
- * wrong `agents.<id>.bin` or `TUMWATER_<ID>_BIN` never reads as a missing pi. */
+ * wrong `backends.<id>.bin` or `TUMWATER_<ID>_BIN` never reads as a missing pi. */
 export function agentMissingMessage(resolved: ResolvedAgentBin, agent: string): string {
   if (agent === "pi") return piMissingMessage(resolved);
   if (resolved.source === "default") {
@@ -84,15 +84,15 @@ function agentBinEnv(agent: string): string {
 }
 
 /** The tumwater.json key that names one agent's binary: pi's legacy `agentBin`, or the
- * per-agent `agents.<id>.bin`. Shared by the missing-binary and spawn-error wording so a
+ * per-agent `backends.<id>.bin`. Shared by the missing-binary and spawn-error wording so a
  * non-pi failure never names pi's key. */
 export function agentBinConfigKey(agent: string): string {
-  return agent === "pi" ? "agentBin" : `agents.${agent}.bin`;
+  return agent === "pi" ? "agentBin" : `backends.${agent}.bin`;
 }
 
 /** The source label for one agent's resolved binary, deriving the env var and config key from
  * the agent id when the caller has no backend defaults in hand. pi keeps its pinned legacy
- * wording; any other agent names its own `TUMWATER_<ID>_BIN` and `agents.<id>.bin`. One home
+ * wording; any other agent names its own `TUMWATER_<ID>_BIN` and `backends.<id>.bin`. One home
  * for the convention agentMissingMessage and doctor's ok detail both read. */
 export function agentBinSourceLabelFor(agent: string, source: AgentBinSource): string {
   return agent === "pi"
@@ -151,7 +151,7 @@ function resolveBinFrom(
 }
 
 /** Resolve which binary one agent spawns: `TUMWATER_<ID>_BIN` → the effective
- * `agents.<id>.bin` (config-views.ts resolvedAgentConfig, so pi's legacy `agentBin` still
+ * `backends.<id>.bin` (config-views.ts resolvedAgentConfig, so pi's legacy `agentBin` still
  * names pi) → the agent's default. `agent` defaults to pi, the historical backend; the
  * backends pass their own id, binEnv and defaultBin, while the startup gate derives the
  * reserved agents' conventional env name and default binary when it walks every enabled seam. */

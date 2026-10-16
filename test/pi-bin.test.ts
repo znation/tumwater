@@ -100,22 +100,22 @@ test("resolveAgentBin normalizes a path-shaped value against the process cwd; a 
   assert.equal(resolveAgentBin({ agentBin: "pi-wrapper" }).source, "config");
 });
 
-// plans/agent-backends.md "Config": each backend reads its own `agents.<id>.bin`, while the
+// plans/agent-backends.md "Config": each backend reads its own `backends.<id>.bin`, while the
 // legacy `agentBin` remains pi's alias and `TUMWATER_<ID>_BIN` outranks both.
 test("resolveAgentBin reads each agent's own entry; agentBin stays pi's legacy alias", () => {
-  assert.deepEqual(resolveAgentBin({ agents: { pi: { bin: "/opt/pi" } }, agentBin: "/legacy" }), {
+  assert.deepEqual(resolveAgentBin({ backends: { pi: { bin: "/opt/pi" } }, agentBin: "/legacy" }), {
     bin: "/opt/pi",
     source: "config",
   });
   assert.deepEqual(
-    resolveAgentBin({ agents: { claude: { bin: "/opt/claude" } }, agentBin: "/legacy" }, "claude"),
+    resolveAgentBin({ backends: { claude: { bin: "/opt/claude" } }, agentBin: "/legacy" }, "claude"),
     { bin: "/opt/claude", source: "config" },
   );
   // The default binary is the agent's own name, so an unconfigured claude does not resolve as pi.
   assert.deepEqual(resolveAgentBin({}, "claude"), { bin: "claude", source: "default" });
   process.env.TUMWATER_CLAUDE_BIN = "/env/claude";
   try {
-    assert.deepEqual(resolveAgentBin({ agents: { claude: { bin: "/opt/claude" } } }, "claude"), {
+    assert.deepEqual(resolveAgentBin({ backends: { claude: { bin: "/opt/claude" } } }, "claude"), {
       bin: "/env/claude",
       source: "env",
     });
@@ -130,8 +130,8 @@ test("agentMissingMessage names the agent and its own source, not pi's", () => {
     "claude not found on PATH — install it or add its bin directory to your PATH",
   );
   const configured = agentMissingMessage({ bin: "/opt/claude", source: "config" }, "claude");
-  assert.match(configured, /^claude not found — resolved "\/opt\/claude" from agents\.claude\.bin in tumwater\.json/);
-  assert.match(configured, /point agents\.claude\.bin in tumwater\.json at a working claude binary/);
+  assert.match(configured, /^claude not found — resolved "\/opt\/claude" from backends\.claude\.bin in tumwater\.json/);
+  assert.match(configured, /point backends\.claude\.bin in tumwater\.json at a working claude binary/);
   assert.match(
     agentMissingMessage({ bin: "/env/claude", source: "env" }, "claude"),
     /from TUMWATER_CLAUDE_BIN/,

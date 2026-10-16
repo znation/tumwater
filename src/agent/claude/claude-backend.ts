@@ -174,7 +174,7 @@ export const claudeBackend: AgentBackend = {
       model: run.config.model,
       thinking: run.config.thinking,
       ...(resumeSessionId !== undefined ? { resumeSessionId } : { sessionId }),
-      // The operator's `agents.claude.args` passthrough, appended after the harness flags (the
+      // The operator's `backends.claude.args` passthrough, appended after the harness flags (the
       // builder rejects any entry that repeats a harness-managed flag). resolvedAgentConfig
       // owns the view so a caller cannot mutate the loaded config through the returned array.
       args: resolvedAgentConfig(run.config, "claude").args,

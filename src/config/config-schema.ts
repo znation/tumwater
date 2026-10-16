@@ -198,7 +198,7 @@ export interface TumwaterConfig {
    * names a backend always runs that backend; any other provider runs on pi. Typed as a string
    * so a test or later backend can register an id outside the schema's reserved AGENT_IDS;
    * validation still rejects an unknown id in a loaded file. */
-  agent?: string;
+  backend?: string;
   /** The branch the fleet merges into and bases every role worktree on — the resolved
    * "main". Omitted, the fleet targets whatever branch the primary checkout has checked
    * out (the default that makes it branch-agnostic); an explicit value must exist. */
@@ -227,7 +227,7 @@ export interface TumwaterConfig {
    * resolves the legacy `agentBin`/`piArgs` as its `bin`/`args` when the new form leaves a
    * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds
    * an empty map. */
-  agents?: Record<string, AgentConfig>;
+  backends?: Record<string, AgentConfig>;
   /** Max pi runs in flight at once across all loops, landings included: every landing vet
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
@@ -391,10 +391,10 @@ export const TOP_LEVEL_KEYS = [
   "provider",
   "model",
   "thinking",
-  "agent",
+  "backend",
   "baseBranch",
   "agentBin",
-  "agents",
+  "backends",
   "check",
   "piArgs",
   "maxConcurrent",
@@ -441,8 +441,8 @@ export interface AgentConfig {
   args?: string[];
 }
 
-/** The keys an `agents.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
- * field (`agents.claude.binary`) is a load error rather than a silently inert entry. */
+/** The keys an `backends.<id>` entry may hold; validation feeds checkKnownKeys so a typo'd
+ * field (`backends.claude.binary`) is a load error rather than a silently inert entry. */
 export const AGENT_KEYS = ["bin", "args"];
 
 /** The keys tumwater.json's `bootstrap` section may hold. */

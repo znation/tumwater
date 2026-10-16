@@ -637,7 +637,7 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.maxDailyCostUsd, 50);
   assert.equal(cfg.notify, null);
   // agents resolves to the default empty map when the file names none.
-  assert.deepEqual(cfg.agents, {});
+  assert.deepEqual(cfg.backends, {});
   // customRoles is deliberately not served: the panel's reach is the curated set.
   assert.equal("customRoles" in cfg, false);
 });

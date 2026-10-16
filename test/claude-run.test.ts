@@ -141,7 +141,7 @@ test("agent: claude with no model resolves the author tier default that reaches 
     claudeResult({ totalCostUsd: 0.01 }),
   ], async (fake) => {
     const config = defaultConfig();
-    config.agent = "claude";
+    config.backend = "claude";
     const run = claudeRun(dir, { config: configForRole(config, "feature") });
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
@@ -374,7 +374,7 @@ test("claude rejects a run with no resolved model", async () => {
   await assert.rejects(runAgent(run), /no model resolved/);
 });
 
-test("claude resolves its binary from TUMWATER_CLAUDE_BIN or agents.claude.bin", () => {
+test("claude resolves its binary from TUMWATER_CLAUDE_BIN or backends.claude.bin", () => {
   const restore = setEnv("TUMWATER_CLAUDE_BIN", "/opt/claude");
   try {
     assert.deepEqual(claudeBackend.resolveBin({}), { bin: "/opt/claude", source: "env" });
@@ -384,21 +384,21 @@ test("claude resolves its binary from TUMWATER_CLAUDE_BIN or agents.claude.bin",
   }
   // Part 4c/7: the config entry names claude's binary too, and env stays the override.
   assert.deepEqual(
-    claudeBackend.resolveBin({ agents: { claude: { bin: "/opt/claude" } } }),
+    claudeBackend.resolveBin({ backends: { claude: { bin: "/opt/claude" } } }),
     { bin: "/opt/claude", source: "config" },
   );
 });
 
-test("a claude spawn error names agents.claude.bin, not pi's agentBin", async () => {
+test("a claude spawn error names backends.claude.bin, not pi's agentBin", async () => {
   const dir = tmpdir();
   const restoreHome = setEnv("HOME", tmpdir());
   try {
     const run = claudeRun(dir);
-    run.config = { ...run.config, agents: { claude: { bin: "/no/such/dir-xyz/claude-here" } } };
+    run.config = { ...run.config, backends: { claude: { bin: "/no/such/dir-xyz/claude-here" } } };
     const result = await runAgent(run);
     assert.equal(result.ok, false);
     assert.match(result.errorMessage ?? "", /failed to spawn \/no\/such\/dir-xyz\/claude-here/);
-    assert.match(result.errorMessage ?? "", /resolved from agents\.claude\.bin in tumwater\.json/);
+    assert.match(result.errorMessage ?? "", /resolved from backends\.claude\.bin in tumwater\.json/);
   } finally {
     restoreHome();
   }
@@ -415,7 +415,7 @@ test("a backend that exits before reading a large stdin prompt does not crash th
   try {
     const run = claudeRun(dir, {
       prompt: "x".repeat(512 * 1024),
-      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", agents: { claude: { bin } } },
+      config: { ...defaultConfig(), backend: "claude", model: "claude-sonnet-5-5", backends: { claude: { bin } } },
     });
     // The stdin stream's 'error' must be handled: unhandled it is thrown from the event loop
     // and takes the whole process down, before the run's own exit status is ever folded. The
@@ -434,7 +434,7 @@ test("each run gets its own TMPDIR, removed when the run settles", async () => {
   const seen = path.join(dir, "seen-tmpdir");
   writeScript(bin, `printf %s "$TMPDIR" > '${seen}'; touch "$TMPDIR/x"`);
   try {
-    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", agents: { claude: { bin } } };
+    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", backends: { claude: { bin } } };
     await runAgent(claudeRun(dir, { config }));
     const first = fs.readFileSync(seen, "utf8");
     await runAgent(claudeRun(dir, { config }));
@@ -453,7 +453,7 @@ test("an unremovable scratch dir does not make the run throw", async () => {
   const bin = path.join(dir, "claude-ro");
   writeScript(bin, `mkdir "$TMPDIR/ro" && touch "$TMPDIR/ro/f" && chmod 555 "$TMPDIR/ro"`);
   try {
-    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", agents: { claude: { bin } } };
+    const config = { ...defaultConfig(), agent: "claude" as const, model: "claude-sonnet-5-5", backends: { claude: { bin } } };
     const result = await runAgent(claudeRun(dir, { config }));
     assert.equal(typeof result.ok, "boolean", "the run settles with a result");
   } finally {
@@ -461,11 +461,11 @@ test("an unremovable scratch dir does not make the run throw", async () => {
   }
 });
 
-test("agents.claude.args reaches the fake's recorded argv after the harness flags", async () => {
+test("backends.claude.args reaches the fake's recorded argv after the harness flags", async () => {
   const dir = tmpdir();
   await withClaudeReplay([claudeResult({ totalCostUsd: 0 })], async (fake) => {
     const run = claudeRun(dir);
-    run.config = { ...run.config, agents: { claude: { args: ["--debug"] } } };
+    run.config = { ...run.config, backends: { claude: { args: ["--debug"] } } };
     const result = await runAgent(run);
     assert.equal(result.ok, true, `${result.errorMessage}`);
     const argv = readRunBlocks(fake.argvFile)[0]!.split("\n");

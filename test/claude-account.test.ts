@@ -237,8 +237,8 @@ test("seedClaudeAccount: a claude.ai login seeds subscription billing", () => {
     );
     fs.chmodSync(bin, 0o755);
     const config = defaultConfig() as TumwaterConfig;
-    config.agent = "claude";
-    config.agents = { claude: { bin } };
+    config.backend = "claude";
+    config.backends = { claude: { bin } };
 
     const seeded = seedClaudeAccount(root, config, 321);
     assert.equal(seeded?.billing, "subscription");

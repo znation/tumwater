@@ -196,12 +196,12 @@ export function setConfigKey(
         // Merge one field of one backend's entry, preserving the other field and the other
         // backends. validateConfig in writeConfigMutation owns the value type, so a bad
         // value fails there and nothing is written.
-        const agents = { ...(record.agents as Record<string, Record<string, unknown>> | undefined) };
+        const agents = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
         const entry = { ...(agents[parsed.id] ?? {}) };
         oldValue = entry[parsed.field];
         entry[parsed.field] = value;
         agents[parsed.id] = entry;
-        const next = { ...cfg, agents } as unknown as TumwaterConfig;
+        const next = { ...cfg, backends: agents } as unknown as TumwaterConfig;
         // Writers keep one spelling: the new pi form drops its legacy alias so the file can
         // never hold both (validateConfig's raw pass rejects a file that does).
         if (parsed.id === "pi") {
@@ -263,25 +263,25 @@ export function setConfigKey(
     // own roles section to the catalog — that would silently rewrite what the operator wrote.
     // When the key IS `roles` the value is the replacement, so it is left alone.
     if (key !== "roles") preserveFileRoles(root, next);
-    // Writers keep one spelling: a whole-section `agents` set (the GUI Save path) drops the
+    // Writers keep one spelling: a whole-section `backends` set (the GUI Save path) drops the
     // legacy aliases the new pi form now carries, so the file can never hold both.
-    if (key === "agents" && isJsonObject(value)) {
+    if (key === "backends" && isJsonObject(value)) {
       const pi = isJsonObject(value.pi) ? value.pi : undefined;
       const record = next as unknown as Record<string, unknown>;
       if (pi?.bin !== undefined) delete record.agentBin;
       if (pi?.args !== undefined) delete record.piArgs;
       return next;
     }
-    // Writers keep one spelling: a legacy top-level set drops the matching agents.pi field, so
+    // Writers keep one spelling: a legacy top-level set drops the matching backends.pi field, so
     // the file can never hold both (validateConfig's raw pass rejects a file that does).
     if (key === "agentBin" || key === "piArgs") {
-      const record = next as unknown as { agents?: Record<string, Record<string, unknown>> };
-      const agents = { ...(record.agents ?? {}) };
+      const record = next as unknown as { backends?: Record<string, Record<string, unknown>> };
+      const agents = { ...(record.backends ?? {}) };
       const entry = { ...(agents.pi ?? {}) };
       delete entry[key === "agentBin" ? "bin" : "args"];
       if (Object.keys(entry).length === 0) delete agents.pi;
       else agents.pi = entry;
-      return { ...next, agents };
+      return { ...next, backends: agents };
     }
     return next;
   });
@@ -330,7 +330,7 @@ function preservingFileRoles<T extends TumwaterConfig>(root: string, candidate: 
 }
 
 /** The config with top-level `key` set to `section`, or removed when `section` is empty — the
- * unset shape for the per-role maps, `model` tiers and `agents`, which never leave an empty
+ * unset shape for the per-role maps, `model` tiers and `backends`, which never leave an empty
  * object in the file. A whole-config write, so the file's own roles section is kept. */
 function withSectionOrDropped(root: string, cfg: TumwaterConfig, key: string, section: object): TumwaterConfig {
   const next =
@@ -404,19 +404,19 @@ export function unsetConfigKey(
     }
     if (parsed.kind === "agent") {
       // Presence is judged against the FILE, so unsetting a field only the default (or the
-      // legacy alias's resolved view) carries is a no-op success. The entry and the `agents`
+      // legacy alias's resolved view) carries is a no-op success. The entry and the `backends`
       // section are dropped when they empty, so the file never keeps an empty object.
-      const rawAgents = objectOrEmpty(raw.agents);
+      const rawAgents = objectOrEmpty(raw.backends);
       const rawEntryCandidate = rawAgents[parsed.id];
       const rawEntry = objectOrEmpty(rawEntryCandidate);
       if (!Object.hasOwn(rawEntry, parsed.field)) return cfg; // absent file field: a no-op success
       oldValue = rawEntry[parsed.field];
-      const agents = { ...(record.agents as Record<string, Record<string, unknown>> | undefined) };
+      const agents = { ...(record.backends as Record<string, Record<string, unknown>> | undefined) };
       const entry = { ...(agents[parsed.id] ?? {}) };
       delete entry[parsed.field];
       if (Object.keys(entry).length === 0) delete agents[parsed.id];
       else agents[parsed.id] = entry;
-      return withSectionOrDropped(root, cfg, "agents", agents);
+      return withSectionOrDropped(root, cfg, "backends", agents);
     }
     const rawRolesCandidate = raw.roles;
     const rawRoles = objectOrEmpty(rawRolesCandidate);
@@ -525,7 +525,7 @@ export function applyConfigRequest(
       else candidateRecord.roles = roles;
       // Collapse legacy/new pi spellings before writing so a merged config (which always
       // carries the default piArgs) never lands both forms in the file — the next load's raw
-      // pass rejects a file holding both `piArgs` and `agents.pi.args`.
+      // pass rejects a file holding both `piArgs` and `backends.pi.args`.
       const collapsed = collapseAgentAliases(candidate);
       validateConfig(collapsed); // throws listing every problem — nothing is written on failure
       writeJsonAtomic(configPath(root), collapsed, true);

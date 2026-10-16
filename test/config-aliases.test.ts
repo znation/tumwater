@@ -88,3 +88,29 @@ test("config set and unset reach the renamed role and top-level keys", () => {
   assert.ok(u.ok, JSON.stringify(u));
   assert.ok(!("tickTimeoutSeconds" in (readJson(file) as object)));
 });
+
+test("agent and agents load as backend and backends, and config set writes the new names", () => {
+  const dir = tmpdir();
+  const file = writeConfig(dir, { agent: "claude", agents: { claude: { args: ["--x"] } } });
+  const cfg = loadConfig(dir);
+  assert.equal(cfg.backend, "claude");
+  assert.deepEqual(cfg.backends?.claude?.args, ["--x"]);
+  const detail = checkConfigKeyNames(dir).detail;
+  assert.match(detail, /agent → backend/);
+  assert.match(detail, /agents → backends/);
+  const r = setConfigKey(dir, "agents.pi.bin", "/opt/pi");
+  assert.ok(r.ok, JSON.stringify(r));
+  const written = readJson(file) as Record<string, unknown>;
+  assert.ok(!("agent" in written) && !("agents" in written));
+  assert.equal(written.backend, "claude");
+  assert.deepEqual((written.backends as Record<string, unknown>).pi, { bin: "/opt/pi" });
+  assert.ok(setConfigKey(dir, "maxDailyCostUsd", "5").ok);
+  assert.equal(loadConfig(dir).backend, "claude");
+});
+
+test("agentBin beside agents.pi.bin is refused naming backends.pi.bin", () => {
+  const dir = tmpdir();
+  writeConfig(dir, { agentBin: "/a", agents: { pi: { bin: "/b" } } });
+  const { error } = loadConfigSafe(dir);
+  assert.match(error ?? "", /agentBin and backends\.pi\.bin set the same value/);
+});

@@ -28,7 +28,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     ["maxDailyCostUsd", "Daily spend cap (USD)"],
     ["quietHours", "Quiet hours"],
     ["notify", "Notify hook"],
-    ["agents", "Agent backends (JSON)"],
+    ["backends", "Agent backends (JSON)"],
   ];
   // One row per key: the current value into an inline field (esc'd, like every rendered
   // value on the page), Save submits the row's form. A null (unset) key renders empty —

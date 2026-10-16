@@ -34,7 +34,7 @@ function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
 
 test("renderSettings renders one row per curated key, esc'd, with the key's config name shown", () => {
   const { renderSettings, SETTINGS_KEYS } = settingsScope();
-  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined, agents: { pi: { bin: "pi" } } });
+  const html = renderSettings({ provider: "a&b", model: "gpt-5", fallback: "omlx/free", maxDailyCostUsd: 30, quietHours: null, notify: undefined, backends: { pi: { bin: "pi" } } });
   // The browser list is a hand copy of the server constant; pin key and order to it so the
   // two cannot drift — an added editable key must appear here too.
   assert.deepEqual(SETTINGS_KEYS.map(([key]) => key), [...EDITABLE_CONFIG_KEYS]);
@@ -55,7 +55,7 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
   assert.match(html, /id='set-quietHours' value=''/);
   assert.match(html, /id='set-notify' value=''/);
   // An object value renders as compact JSON (esc'd), so it can round-trip through the field.
-  assert.match(html, /id='set-agents' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
+  assert.match(html, /id='set-backends' value='\{&quot;pi&quot;:\{&quot;bin&quot;:&quot;pi&quot;\}\}'/);
 });
 
 test("fetchSettings builds the panel and fills it from GET /api/config; a failure renders the error panel", async () => {
@@ -105,12 +105,12 @@ test("saveSetting posts the row's key and value and flashes the outcome", async 
   const { saveSetting: saveAgents } = settingsScope({
     postJson: async (_path: string, body: unknown) => {
       agentBody = body;
-      return { ok: true, key: "agents", value: "ok", oldValue: null };
+      return { ok: true, key: "backends", value: "ok", oldValue: null };
     },
     showFlash: () => {},
   });
-  await saveAgents({ dataset: { key: "agents" }, querySelector: () => ({ value: '{"pi":{"bin":"pi"}}' }) });
-  assert.deepEqual(agentBody, { key: "agents", value: { pi: { bin: "pi" } } });
+  await saveAgents({ dataset: { key: "backends" }, querySelector: () => ({ value: '{"pi":{"bin":"pi"}}' }) });
+  assert.deepEqual(agentBody, { key: "backends", value: { pi: { bin: "pi" } } });
   // A server-side refusal: the flash is the error pattern, with the server's message.
   const { saveSetting: saveFail } = settingsScope({
     postJson: async () => {

@@ -266,7 +266,7 @@ test("a claude-routed selector is never free, even if models.json prices its nam
   // cost n/a: pi's pricing cannot see claude CLI billing (part 6/7 makes subscriptions free).
   const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
   const cfg = fleetAt("claude", "claude-sonnet-5-5");
-  cfg.agent = "claude";
+  cfg.backend = "claude";
   assert.equal(fleetModelsFree(cfg, file), false, "a claude-routed seam is not free");
   // The same for a fallback selector that routes to claude by its provider namespace.
   assert.equal(
@@ -277,14 +277,14 @@ test("a claude-routed selector is never free, even if models.json prices its nam
   // A non-agent provider under agent: claude still runs on pi and can be free.
   const piRouted = writeModels();
   const mixed = fleetAt("lm-studio", "qwen3.8-27b");
-  mixed.agent = "claude";
+  mixed.backend = "claude";
   assert.equal(fleetModelsFree(mixed, piRouted), true, "a provider/id fallback runs on pi");
 });
 
 test("a subscription claude seam is free; API billing, overage, and an absent account keep today's refusal", () => {
   const file = writeModels(JSON.stringify({ providers: { claude: { models: [{ id: "claude-sonnet-5-5" }] } } }));
   const cfg = fleetAt("claude", "claude-sonnet-5-5");
-  cfg.agent = "claude";
+  cfg.backend = "claude";
   const api = { billing: "api" as const, observedAt: 1, windows: {} };
   const sub = { billing: "subscription" as const, observedAt: 1, windows: {} };
   assert.equal(fleetModelsFree(cfg, file, null), false, "no account file reads no subscription");

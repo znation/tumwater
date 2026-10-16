@@ -176,9 +176,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // The agent backend for bare/no-model selectors (plans/agent-backends.md "Config"): a
   // non-blank id from the schema's reserved set. An unknown id would fall back to pi at run
   // time (src/agent/run-agent.ts), silently running the wrong backend against a named one.
-  checkString(r, "", "agent", false);
-  if (typeof r.agent === "string" && !isAgentId(r.agent))
-    problems.push(`agent must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.agent)})`);
+  checkString(r, "", "backend", false);
+  if (typeof r.backend === "string" && !isAgentId(r.backend))
+    problems.push(`backend must name a backend (${AGENT_IDS.join(", ")}; got ${show(r.backend)})`);
   checkStringArray(r, "", "piArgs");
   // A piArgs entry that repeats a harness-managed flag is appended after the harness's own and
   // pi's parser is last-wins, so it silently overrides it (see HARNESS_PI_FLAGS). Name the
@@ -192,9 +192,9 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // that repeats a flag the backend's own harness invocation sets is appended last and wins,
   // so it silently overrides the harness — refused here for the two backends whose reserved
   // sets are known (claude-args.ts HARNESS_CLAUDE_FLAGS, config-schema.ts HARNESS_PI_FLAGS).
-  checkObjectSection(r, "agents", problems, (o) => {
+  checkObjectSection(r, "backends", problems, (o) => {
     for (const [id, entry] of Object.entries(o)) {
-      const prefix = `agents.${id}`;
+      const prefix = `backends.${id}`;
       if (!isJsonObject(entry)) {
         problems.push(`${prefix} must be an object with optional bin and args (got ${show(entry)})`);
         continue;
@@ -220,16 +220,16 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   // value from the default. The effective value resolves through config-views.ts
   // resolvedAgentConfig; a load-time mirror into `agents` would instead leak a duplicate
   // spelling into every later config write.
-  if (rawFile && isJsonObject(r.agents)) {
-    const pi = r.agents.pi;
+  if (rawFile && isJsonObject(r.backends)) {
+    const pi = r.backends.pi;
     if (isJsonObject(pi)) {
       if (r.agentBin !== undefined && pi.bin !== undefined)
         problems.push(
-          "agentBin and agents.pi.bin set the same value — keep one (agents.pi.bin is the current spelling; agentBin is its legacy alias)",
+          "agentBin and backends.pi.bin set the same value — keep one (backends.pi.bin is the current spelling; agentBin is its old name)",
         );
       if (r.piArgs !== undefined && pi.args !== undefined)
         problems.push(
-          "piArgs and agents.pi.args set the same value — keep one (agents.pi.args is the current spelling; piArgs is its legacy alias)",
+          "piArgs and backends.pi.args set the same value — keep one (backends.pi.args is the current spelling; piArgs is its old name)",
         );
     }
   }

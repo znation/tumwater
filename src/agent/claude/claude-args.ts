@@ -22,7 +22,7 @@ import path from "node:path";
  * override the isolation flags, the session choice, or the model the harness resolved. Each is
  * rejected by claudeArgs with the offending arg named. This is exactly the design's reserved
  * set (plans/agent-backends.md "Config"); config validation (config-validation.ts) mirrors this
- * set for `agents.claude.args`, so a value that passes validation is never accepted by
+ * set for `backends.claude.args`, so a value that passes validation is never accepted by
  * validation and then thrown here. */
 export const HARNESS_CLAUDE_FLAGS: ReadonlySet<string> = new Set([
   "-p",
@@ -79,7 +79,7 @@ export interface ClaudeArgOptions {
   /** The role-notes MCP config (part 5/7), as the JSON string claude's `--mcp-config`
    * accepts. When present, it is passed verbatim. */
   mcpConfig?: string;
-  /** The configured `agents.claude.args` passthrough, appended last. */
+  /** The configured `backends.claude.args` passthrough, appended last. */
   args?: string[];
   /** The tick prompt, returned as stdin rather than as an argv element. */
   prompt: string;

@@ -125,7 +125,7 @@ test("completion --config-keys prints parseable keys for this repo's roles, or t
   const ok = await cli(dir, "completion", "--config-keys");
   assert.equal(ok.code, 0);
   const keys = ok.stdout.split("\n").filter(Boolean);
-  for (const k of ["maxDailyCostUsd", "model.strong", "agents.claude.bin", "quietHoursPerRole.feature", "roles.qa.model", "roles.docs-bot.enabled"])
+  for (const k of ["maxDailyCostUsd", "model.strong", "backends.claude.bin", "quietHoursPerRole.feature", "roles.qa.model", "roles.docs-bot.enabled"])
     assert.ok(keys.includes(k), k);
   assert.ok(!keys.some((k) => k.startsWith("roles.feature-2.")));
   for (const k of keys) assert.notEqual(parseConfigKey(k).kind, "error", k);

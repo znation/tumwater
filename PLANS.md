@@ -21,55 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms commands, part 4/6: Rename the agent and agents config keys to backend and backends (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/pi/pi-bin.ts and src/agent/agent-backend.ts and src/cli/ and src/ui/gui/gui-client-settings.ts plus tests)
-
-**Goal.** The config names the agent backend `backend` (default for bare model ids) and `backends` (per-backend `bin`/`args`). Old files keep working. The legacy `agentBin`/`piArgs` now chain to `backends.pi.bin`/`.args`.
-
-**Approach.**
-- Add the rows `agent` → `backend` and `agents` → `backends`, scope `"top"`, to `CONFIG_KEY_RENAMES`. `canonicalConfigKey` already maps `agents.<id>.<field>` → `backends.<id>.<field>` by its first segment (part 1/6).
-- Schema (src/config/config-schema.ts):
-  - `TumwaterConfig.agent` → `backend` and `agents` → `backends`, with their `TOP_LEVEL_KEYS` entries.
-  - `AgentConfig`, `AGENT_KEYS` and `AGENT_IDS` keep their names until Plain terms code cleanup.
-- `ResolvedModelConfig` (src/config/config-views.ts): today it is `Omit<TumwaterConfig, "model" | "agent"> & {…, agent?}`. Make it `Omit<TumwaterConfig, "model"> & {…, agent?}`.
-  - A resolved seam's own `agent` is the backend that seam runs on. It is an internal field and keeps its name.
-  - The configured default is now `backend`.
-  - `defaultConfig()` (typed as the resolved view) sets `backend: "pi"` and `backends: {}`, and no longer sets `agent`. Every reader already defaults a missing seam `agent` to pi.
-  - This matters: whole-config writes serialize the merged defaults. A default `agent` key would put both `agent` and `backend` on disk, and the next load would refuse the file.
-- Readers of the configured default and section:
-  - src/config/config-views.ts: `routeModel(…, config.backend ?? "pi", …)` in both places, and `resolvedAgentConfig` reading `config.backends?.[id]`;
-  - src/config/config-fallbacks.ts: the `config.agent` read;
-  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `collapseAgentAliases` reading `backends.pi`;
-  - src/agent/agent-backend.ts: its config view type's `agents?` field;
-  - src/pi/pi-bin.ts: the config-key wording becomes `` `backends.${agent}.bin` ``, while pi's is still `agentBin`.
-  - Seam-level `.agent` reads (run-agent.ts, review.ts, loop-pi.ts, doctor) are the resolved field and do not change. Let typecheck separate the two.
-- Validation (src/config/config-validation.ts):
-  - `checkString(r, "", "backend", …)`, the `backends` section check, and the prefix `backends.<id>`;
-  - the legacy-alias rule reads `r.backends.pi`, and its messages say `agentBin and backends.pi.bin set the same value — keep one (backends.pi.bin is the current spelling; agentBin is its old name)`, and the same for `piArgs`/`backends.pi.args`.
-  - Chaining needs no new code: normalization moves a file's `agents` to `backends` first, so `agentBin` together with `agents.pi.bin` is refused too.
-- Keys and writes:
-  - src/config/config-keys.ts: `parseConfigKey`'s dotted head becomes `backends`; `DOTTED_KEY_HEADS`; the error reads `unknown backend field "x" for backends.<id> (valid fields: bin, args)`. The parsed kind may stay `"agent"`.
-  - src/config/config-write.ts: the set and unset agent branches read and write `backends`.
-  - src/cli/config-commands.ts: `config get` reads `record.backends`.
-  - src/cli/completion.ts: emits `backends.<id>.<field>`.
-- Dashboard: `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts) `"agents"` → `"backends"`, and the browser copy in src/ui/gui/gui-client-settings.ts's `SETTINGS_KEYS` gets the same key change. Its label text belongs to Plain terms text.
-- Out of scope: the status payload's `budget.agent` and `role --json`'s `agent` are script keys owned by Plain terms scripting.
-- Tests:
-  - TypeScript configs that set the top-level `agent`/`agents` (config-views, config-validation, config-write, config-unset-key, config, pi-bin, claude-run, startup-gate, doctor-checks, gui-client-settings, gui-endpoints, completion and the rest typecheck names). Seam/`ResolvedModelConfig` `agent:` values stay.
-  - New cases in test/config-aliases.test.ts:
-    - `{"agent":"claude"}` loads as `backend`;
-    - `agents.pi.bin` loads as `backends.pi.bin`;
-    - `agentBin` together with `agents.pi.bin` is refused naming `backends.pi.bin`;
-    - `config set agents.claude.args '["--x"]'` writes `backends.claude.args`.
-
-**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-views.ts, config-fallbacks.ts, config-validation.ts, config-keys.ts, config-write.ts, config-editable-keys.ts; src/agent/agent-backend.ts; src/pi/pi-bin.ts; src/cli/config-commands.ts, completion.ts; src/ui/gui/gui-client-settings.ts; comments in src/agent/claude/claude-args.ts, claude-backend.ts, src/agent/run-agent.ts. Tests as listed.
-
-**Acceptance criteria.**
-- A file with `"agent": "claude"` and `"agents": {"claude": {"args": ["--x"]}}` loads as `backend`/`backends` and runs claude seams with `--x`. Doctor names both renames.
-- `tumwater config set agents.pi.bin /opt/pi` writes `backends.pi.bin`. A file with `agentBin` and `backends.pi.bin` is refused naming both.
-- `tumwater config set maxDailyCostUsd 5` on a file holding `"agent": "claude"` writes a file with `backend` and no `agent`, and that file loads again.
-- The dashboard Settings view edits `backends`, and `/api/config` serves it. `tumwater completion --config-keys` lists `backend`, `backends.pi.bin` and `backends.claude.args`, and no `agents.` key.
-- `npm run test` passes.
-
 ### Plain terms commands, part 6/6: Show one run's trail as tumwater history role n and rename the result class changes to merged (planned 2026-10-16 by user; requires part 4/6 and part 5/6 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and src/tick/tick-detail.ts and src/history/ and src/ui/tui/tui-keys.ts plus tests)
 
 **Goal.** `tumwater history <role> <n> [--last] [--stat] [--json]` prints one run's full trail. `history <role> --last` prints the newest one. The bare `history [flags]` listing is unchanged. `tumwater tick …` stays as a hidden alias. `history --result merged` replaces `--result changes`, which keeps working unlisted.
@@ -3850,6 +3801,55 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - Instances sum: with `roles.feature: {enabled: true, instances: 2}`, `maxDailyCostUsdPerRole: {"feature": 1}`, and `feature` and `feature-2` each at `dayCostUsd: 0.6` today, `rolePayload(root, "feature-2", …)` carries `over: true`, `spentUsd: 1.2`, and `roleIds` holding both ids. The rendered line ends with `· shared by feature, feature-2`.
 - A spend stamped on an earlier day counts 0 and reads `(not holding)`. A cap of `0` yields no `dailyCap`. The director's payload carries no `dailyCap`. A config without `maxDailyCostUsdPerRole` yields a payload with no `dailyCap` key, and the existing render tests' output is unchanged.
 - In `test/gui-client-drawer.test.ts`, a role payload with a holding `dailyCap` paints `<dt>Daily cap</dt>` with the same wording as the CLI line. A payload without the field paints no Daily cap row.
+- `npm run test` passes.
+
+### Plain terms commands, part 4/6: Rename the agent and agents config keys to backend and backends (done 2026-10-16; planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/pi/pi-bin.ts and src/agent/agent-backend.ts and src/cli/ and src/ui/gui/gui-client-settings.ts plus tests)
+
+**Goal.** The config names the agent backend `backend` (default for bare model ids) and `backends` (per-backend `bin`/`args`). Old files keep working. The legacy `agentBin`/`piArgs` now chain to `backends.pi.bin`/`.args`.
+
+**Approach.**
+- Add the rows `agent` → `backend` and `agents` → `backends`, scope `"top"`, to `CONFIG_KEY_RENAMES`. `canonicalConfigKey` already maps `agents.<id>.<field>` → `backends.<id>.<field>` by its first segment (part 1/6).
+- Schema (src/config/config-schema.ts):
+  - `TumwaterConfig.agent` → `backend` and `agents` → `backends`, with their `TOP_LEVEL_KEYS` entries.
+  - `AgentConfig`, `AGENT_KEYS` and `AGENT_IDS` keep their names until Plain terms code cleanup.
+- `ResolvedModelConfig` (src/config/config-views.ts): today it is `Omit<TumwaterConfig, "model" | "agent"> & {…, agent?}`. Make it `Omit<TumwaterConfig, "model"> & {…, agent?}`.
+  - A resolved seam's own `agent` is the backend that seam runs on. It is an internal field and keeps its name.
+  - The configured default is now `backend`.
+  - `defaultConfig()` (typed as the resolved view) sets `backend: "pi"` and `backends: {}`, and no longer sets `agent`. Every reader already defaults a missing seam `agent` to pi.
+  - This matters: whole-config writes serialize the merged defaults. A default `agent` key would put both `agent` and `backend` on disk, and the next load would refuse the file.
+- Readers of the configured default and section:
+  - src/config/config-views.ts: `routeModel(…, config.backend ?? "pi", …)` in both places, and `resolvedAgentConfig` reading `config.backends?.[id]`;
+  - src/config/config-fallbacks.ts: the `config.agent` read;
+  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `collapseAgentAliases` reading `backends.pi`;
+  - src/agent/agent-backend.ts: its config view type's `agents?` field;
+  - src/pi/pi-bin.ts: the config-key wording becomes `` `backends.${agent}.bin` ``, while pi's is still `agentBin`.
+  - Seam-level `.agent` reads (run-agent.ts, review.ts, loop-pi.ts, doctor) are the resolved field and do not change. Let typecheck separate the two.
+- Validation (src/config/config-validation.ts):
+  - `checkString(r, "", "backend", …)`, the `backends` section check, and the prefix `backends.<id>`;
+  - the legacy-alias rule reads `r.backends.pi`, and its messages say `agentBin and backends.pi.bin set the same value — keep one (backends.pi.bin is the current spelling; agentBin is its old name)`, and the same for `piArgs`/`backends.pi.args`.
+  - Chaining needs no new code: normalization moves a file's `agents` to `backends` first, so `agentBin` together with `agents.pi.bin` is refused too.
+- Keys and writes:
+  - src/config/config-keys.ts: `parseConfigKey`'s dotted head becomes `backends`; `DOTTED_KEY_HEADS`; the error reads `unknown backend field "x" for backends.<id> (valid fields: bin, args)`. The parsed kind may stay `"agent"`.
+  - src/config/config-write.ts: the set and unset agent branches read and write `backends`.
+  - src/cli/config-commands.ts: `config get` reads `record.backends`.
+  - src/cli/completion.ts: emits `backends.<id>.<field>`.
+- Dashboard: `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts) `"agents"` → `"backends"`, and the browser copy in src/ui/gui/gui-client-settings.ts's `SETTINGS_KEYS` gets the same key change. Its label text belongs to Plain terms text.
+- Out of scope: the status payload's `budget.agent` and `role --json`'s `agent` are script keys owned by Plain terms scripting.
+- Tests:
+  - TypeScript configs that set the top-level `agent`/`agents` (config-views, config-validation, config-write, config-unset-key, config, pi-bin, claude-run, startup-gate, doctor-checks, gui-client-settings, gui-endpoints, completion and the rest typecheck names). Seam/`ResolvedModelConfig` `agent:` values stay.
+  - New cases in test/config-aliases.test.ts:
+    - `{"agent":"claude"}` loads as `backend`;
+    - `agents.pi.bin` loads as `backends.pi.bin`;
+    - `agentBin` together with `agents.pi.bin` is refused naming `backends.pi.bin`;
+    - `config set agents.claude.args '["--x"]'` writes `backends.claude.args`.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-views.ts, config-fallbacks.ts, config-validation.ts, config-keys.ts, config-write.ts, config-editable-keys.ts; src/agent/agent-backend.ts; src/pi/pi-bin.ts; src/cli/config-commands.ts, completion.ts; src/ui/gui/gui-client-settings.ts; comments in src/agent/claude/claude-args.ts, claude-backend.ts, src/agent/run-agent.ts. Tests as listed.
+
+**Acceptance criteria.**
+- A file with `"agent": "claude"` and `"agents": {"claude": {"args": ["--x"]}}` loads as `backend`/`backends` and runs claude seams with `--x`. Doctor names both renames.
+- `tumwater config set agents.pi.bin /opt/pi` writes `backends.pi.bin`. A file with `agentBin` and `backends.pi.bin` is refused naming both.
+- `tumwater config set maxDailyCostUsd 5` on a file holding `"agent": "claude"` writes a file with `backend` and no `agent`, and that file loads again.
+- The dashboard Settings view edits `backends`, and `/api/config` serves it. `tumwater completion --config-keys` lists `backend`, `backends.pi.bin` and `backends.claude.args`, and no `agents.` key.
 - `npm run test` passes.
 
 ### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests) (done 2026-10-16)

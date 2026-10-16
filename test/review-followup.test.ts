@@ -100,8 +100,8 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
 });
 
 test("a claude gate session resumes through the ledger without a pi session file", async () => {
-  const config = defaultConfig() as TumwaterConfig & { agent?: string };
-  config.agent = "claude";
+  const config = defaultConfig() as TumwaterConfig;
+  config.backend = "claude";
   const restoreHome = setEnv("HOME", tmpdir());
   try {
     const { ctx, captured } = makeCtx(config);

@@ -300,7 +300,7 @@ test("dotted writes preserve the file's own roles section", () => {
   for (const [key, value] of [
     ["maxDailyCostUsdPerRole.clean", "1.5"],
     ["model.small", "m-small"],
-    ["agents.pi.bin", "/bin/pi"],
+    ["backends.pi.bin", "/bin/pi"],
   ] as const) {
     const r = setConfigKey(dir, key, value);
     assert.ok(r.ok, `${key}: ${JSON.stringify(r)}`);
@@ -403,36 +403,36 @@ test("setConfigKey rejects an unknown tier and a non-string tier model, leaving 
   assert.equal(fs.readFileSync(file, "utf8"), before, "rejected tier sets change nothing");
 });
 
-test("setConfigKey merges agents.<id>.bin/.args, dropping the legacy alias for pi", () => {
+test("setConfigKey merges backends.<id>.bin/.args, dropping the legacy alias for pi", () => {
   const dir = tmpdir();
   saveConfig(dir, defaultConfig());
   const file = path.join(dir, "tumwater.json");
 
   // args writes the array and bin the string, each merging one field of one backend and
   // preserving the others — the same one-entry-merge contract as the per-role maps.
-  let r = setConfigKey(dir, "agents.claude.args", '["--debug"]');
+  let r = setConfigKey(dir, "backends.claude.args", '["--debug"]');
   assert.ok(r.ok && Array.isArray(r.value) && r.oldValue === undefined, JSON.stringify(r));
-  r = setConfigKey(dir, "agents.claude.bin", "/opt/claude");
+  r = setConfigKey(dir, "backends.claude.bin", "/opt/claude");
   assert.ok(r.ok && r.value === "/opt/claude" && r.oldValue === undefined, JSON.stringify(r));
-  assert.ok(setConfigKey(dir, "agents.pi.bin", "/opt/pi").ok);
-  assert.deepEqual((readJson(file) as { agents: unknown }).agents, {
+  assert.ok(setConfigKey(dir, "backends.pi.bin", "/opt/pi").ok);
+  assert.deepEqual((readJson(file) as { backends: unknown }).backends, {
     claude: { args: ["--debug"], bin: "/opt/claude" },
     pi: { bin: "/opt/pi" },
   });
 
   // Re-setting one field reports the previous value and leaves the sibling alone.
-  r = setConfigKey(dir, "agents.claude.args", '["--debug"]');
+  r = setConfigKey(dir, "backends.claude.args", '["--debug"]');
   assert.ok(r.ok && r.oldValue !== undefined, JSON.stringify(r));
-  assert.deepEqual((readJson(file) as { agents: Record<string, Record<string, unknown>> }).agents.claude, {
+  assert.deepEqual((readJson(file) as { backends: Record<string, Record<string, unknown>> }).backends.claude, {
     args: ["--debug"],
     bin: "/opt/claude",
   });
 
   // A type-invalid value fails validation and leaves the file untouched.
   const before = fs.readFileSync(file, "utf8");
-  const bad = setConfigKey(dir, "agents.claude.bin", "42");
+  const bad = setConfigKey(dir, "backends.claude.bin", "42");
   assert.equal(bad.ok, false);
-  if (!bad.ok) assert.match(bad.error, /agents\.claude\.bin must be a string/);
+  if (!bad.ok) assert.match(bad.error, /backends\.claude\.bin must be a string/);
   assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected agent set changes nothing");
 
   // Legacy alias: a new-form pi set drops piArgs so the file never holds both spellings.
@@ -441,45 +441,45 @@ test("setConfigKey merges agents.<id>.bin/.args, dropping the legacy alias for p
   withLegacy.piArgs = ["--old"];
   saveConfig(legacy, withLegacy);
   const legacyFile = path.join(legacy, "tumwater.json");
-  assert.ok(setConfigKey(legacy, "agents.pi.args", '["--new"]').ok);
+  assert.ok(setConfigKey(legacy, "backends.pi.args", '["--new"]').ok);
   const rawLegacy = readJson(legacyFile) as Record<string, unknown>;
   assert.ok(!("piArgs" in rawLegacy), "the legacy piArgs key is gone");
-  assert.deepEqual((rawLegacy.agents as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
+  assert.deepEqual((rawLegacy.backends as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(legacy), "the written file passes the alias rule");
 });
 
 // The other direction of the one-spelling rule: setting a LEGACY top-level key drops the
-// new-form agents.pi field it would collide with in the file, rather than relying on
+// new-form backends.pi field it would collide with in the file, rather than relying on
 // collapseAgentAliases (which drops the legacy side, so the value just set would vanish).
 test("setConfigKey's legacy top-level pi keys replace the new-form field they collide with", () => {
   const dir = tmpdir();
   const base = defaultConfig();
-  base.agents = { pi: { bin: "/opt/pi", args: ["--new"] } };
+  base.backends = { pi: { bin: "/opt/pi", args: ["--new"] } };
   saveConfig(dir, base);
   const file = path.join(dir, "tumwater.json");
 
-  // piArgs set drops agents.pi.args but keeps the entry's surviving bin field.
+  // piArgs set drops backends.pi.args but keeps the entry's surviving bin field.
   let r = setConfigKey(dir, "piArgs", '["--legacy"]');
   assert.ok(r.ok && Array.isArray(r.value), JSON.stringify(r));
   assert.deepEqual(r.oldValue, [], "the merged default piArgs is the reported previous value");
   let raw = readJson(file) as Record<string, unknown>;
   assert.deepEqual(raw.piArgs, ["--legacy"]);
-  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { bin: "/opt/pi" });
-  assert.doesNotThrow(() => loadConfig(dir), "piArgs beside agents.pi.bin passes the alias rule");
+  assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { bin: "/opt/pi" });
+  assert.doesNotThrow(() => loadConfig(dir), "piArgs beside backends.pi.bin passes the alias rule");
 
   // agentBin set drops the entry's last remaining field, so the emptied pi entry is removed.
   r = setConfigKey(dir, "agentBin", "/legacy/pi");
   assert.ok(r.ok && r.oldValue === undefined, JSON.stringify(r));
   raw = readJson(file) as Record<string, unknown>;
   assert.equal(raw.agentBin, "/legacy/pi");
-  assert.ok(!("pi" in ((raw.agents as Record<string, unknown>) ?? {})), "the emptied agents.pi entry is gone");
+  assert.ok(!("pi" in ((raw.backends as Record<string, unknown>) ?? {})), "the emptied backends.pi entry is gone");
   assert.doesNotThrow(() => loadConfig(dir), "the legacy-only spelling reloads");
 });
 
-test("whole-config writes keep one pi spelling: agents.pi.args survives an unrelated set", () => {
+test("whole-config writes keep one pi spelling: backends.pi.args survives an unrelated set", () => {
   const dir = tmpdir();
   const withNew = defaultConfig();
-  withNew.agents = { pi: { args: ["--new"] } };
+  withNew.backends = { pi: { args: ["--new"] } };
   // saveConfig itself collapses the default piArgs the merged config always carries.
   saveConfig(dir, withNew);
   const file = path.join(dir, "tumwater.json");
@@ -487,26 +487,26 @@ test("whole-config writes keep one pi spelling: agents.pi.args survives an unrel
   assert.doesNotThrow(() => loadConfig(dir), "the saved file reloads");
 
   // Any later whole-config write (an unrelated top-level key) re-derives the merged config
-  // and must not reintroduce the default piArgs beside agents.pi.args.
+  // and must not reintroduce the default piArgs beside backends.pi.args.
   assert.ok(setConfigKey(dir, "maxConcurrent", "4").ok);
   const raw = readJson(file) as Record<string, unknown>;
   assert.ok(!("piArgs" in raw), "the unrelated set did not reintroduce piArgs");
-  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
+  assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(dir), "the config still reloads");
 });
 
-test("setConfigKey whole-section agents drops the legacy aliases (the GUI Save path)", () => {
+test("setConfigKey whole-section backends drops the legacy aliases (the GUI Save path)", () => {
   const dir = tmpdir();
   const legacy = defaultConfig();
   legacy.piArgs = ["--old"];
   saveConfig(dir, legacy);
   const file = path.join(dir, "tumwater.json");
-  const r = setConfigKey(dir, "agents", '{"pi":{"bin":"/opt/pi","args":["--new"]}}');
+  const r = setConfigKey(dir, "backends", '{"pi":{"bin":"/opt/pi","args":["--new"]}}');
   assert.ok(r.ok, JSON.stringify(r));
   const raw = readJson(file) as Record<string, unknown>;
   assert.ok(!("piArgs" in raw), "the legacy piArgs alias is gone");
   assert.ok(!("agentBin" in raw), "no agentBin alias was written");
-  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { bin: "/opt/pi", args: ["--new"] });
+  assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { bin: "/opt/pi", args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(dir), "the written file passes the alias rule");
 });
 
@@ -568,13 +568,13 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
   const typo = parseConfigKey("model.stong");
   assert.equal(typo.kind, "error");
   if (typo.kind === "error") assert.match(typo.error, /did you mean `strong`/);
-  // agents.<id>.<field> names one backend field; a typo'd field names the valid ones.
-  assert.deepEqual(parseConfigKey("agents.claude.bin"), { kind: "agent", id: "claude", field: "bin" });
-  assert.deepEqual(parseConfigKey("agents.pi.args"), { kind: "agent", id: "pi", field: "args" });
-  const badField = parseConfigKey("agents.claude.binary");
+  // backends.<id>.<field> names one backend field; a typo'd field names the valid ones.
+  assert.deepEqual(parseConfigKey("backends.claude.bin"), { kind: "agent", id: "claude", field: "bin" });
+  assert.deepEqual(parseConfigKey("backends.pi.args"), { kind: "agent", id: "pi", field: "args" });
+  const badField = parseConfigKey("backends.claude.binary");
   assert.equal(badField.kind, "error");
   if (badField.kind === "error")
-    assert.match(badField.error, /unknown agent field "binary" for agents\.claude \(valid fields: bin, args\)/);
+    assert.match(badField.error, /unknown backend field "binary" for backends\.claude \(valid fields: bin, args\)/);
 });
 
 // The cross-process read-modify-write race (BUGS.md 2026-10-07): `tumwater config set` (CLI),

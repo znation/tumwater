@@ -75,7 +75,7 @@ test("applyConfigRequest keeps one pi spelling when writing the merged config", 
   const root = tmpdir();
   const wt = tmpdir();
   const config = defaultConfig();
-  config.agents = { pi: { args: ["--new"] } };
+  config.backends = { pi: { args: ["--new"] } };
   // saveConfig collapses the default piArgs the merged config always carries, so the live file
   // starts with only the new spelling.
   saveConfig(root, config);
@@ -84,10 +84,10 @@ test("applyConfigRequest keeps one pi spelling when writing the merged config", 
   assert.equal(result?.error, undefined);
   assert.deepEqual(result?.applied, ["docs"]);
   // The full-file overwrite re-derives the merged config and must not reintroduce the default
-  // piArgs beside agents.pi.args — the next load's raw pass rejects a file holding both.
+  // piArgs beside backends.pi.args — the next load's raw pass rejects a file holding both.
   const raw = readJson(path.join(root, "tumwater.json")) as Record<string, unknown>;
   assert.ok(!("piArgs" in raw), "no piArgs alias was written");
-  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
+  assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(root), "the written file passes the alias rule");
 });
 

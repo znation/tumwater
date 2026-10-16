@@ -103,7 +103,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   assert.equal(snapshot(repo, modelsFile).claudeWindow, undefined);
 
   // Every seam claude on subscription billing: the window block is present and `only`.
-  cfg.agent = "claude";
+  cfg.backend = "claude";
   saveConfig(repo, cfg);
   const resetsAt = Date.now() + 3_600_000;
   writeClaudeAccount(repo, {
@@ -134,7 +134,7 @@ test("snapshot carries the claude subscription window and classifies paying seam
   // Mixed: the fleet on claude with one role on a priced pi model — the daily spend and the
   // window both stand. The top-level legacy provider is cleared so the claude default is not
   // read as a bare id under a pi provider.
-  cfg.agent = "claude";
+  cfg.backend = "claude";
   delete (cfg as { provider?: unknown }).provider;
   delete (cfg as { model?: unknown }).model;
   cfg.roles.clean!.provider = "paid";

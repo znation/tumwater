@@ -79,7 +79,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
         : parsed.kind === "tier"
           ? modelTierMap(record.model)[parsed.tier] // a string is shorthand for { default }
           : parsed.kind === "agent"
-            ? (record.agents as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
+            ? (record.backends as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
                 parsed.field
               ]
             : parsed.kind === "role"

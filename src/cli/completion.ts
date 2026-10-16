@@ -83,7 +83,7 @@ export function completionConfigKeys(root: string): string[] {
   const keys: string[] = [
     ...TOP_LEVEL_KEYS,
     ...MODEL_TIERS.map((tier) => `model.${tier}`),
-    ...AGENT_IDS.flatMap((id) => AGENT_KEYS.map((field) => `agents.${id}.${field}`)),
+    ...AGENT_IDS.flatMap((id) => AGENT_KEYS.map((field) => `backends.${id}.${field}`)),
     ...DOTTED_MAP_KEYS.flatMap((map) => roleIds.map((id) => `${map}.${id}`)),
     ...roleIds.flatMap((id) => ROLE_ENTRY_KEYS.map((field) => `roles.${id}.${field}`)),
   ];

@@ -77,7 +77,7 @@ export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole", "
  * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head
  * (`modle.small`, `maxDailyCostUsdPerRoll.feature`) gets the same did-you-mean the sibling
  * unknown-key errors attach. */
-const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model", "agents"] as const;
+const DOTTED_KEY_HEADS = [...DOTTED_MAP_KEYS, "roles", "model", "backends"] as const;
 
 /** A parsed config key: a bare top-level key (whole-value semantics, unchanged), a dotted
  * per-role map entry, a dotted role-entry field, or the error a malformed dotted shape
@@ -105,15 +105,15 @@ export function parseConfigKey(key: string): ParsedConfigKey {
     return { kind: "map", map: first as (typeof DOTTED_MAP_KEYS)[number], role: second };
   if (parts.length === 3 && first === "roles" && second !== undefined && second !== "" && third !== undefined && third !== "")
     return { kind: "role", id: second, field: third };
-  // `agents.<id>.<field>` names one field of one agent backend's entry (the way
+  // `backends.<id>.<field>` names one field of one agent backend's entry (the way
   // `roles.<id>.<field>` names one role field). The id is shape-checked only — routing owns
   // which agent ids exist (part 4b); a typo'd field is refused here with the valid ones named.
-  if (parts.length === 3 && first === "agents" && second !== undefined && second !== "" && third !== undefined) {
+  if (parts.length === 3 && first === "backends" && second !== undefined && second !== "" && third !== undefined) {
     if ((AGENT_KEYS as readonly string[]).includes(third))
       return { kind: "agent", id: second, field: third as "bin" | "args" };
     return {
       kind: "error",
-      error: `unknown agent field "${third}" for agents.${second} (valid fields: ${AGENT_KEYS.join(", ")})${typoSuffix(third, AGENT_KEYS)}`,
+      error: `unknown backend field "${third}" for backends.${second} (valid fields: ${AGENT_KEYS.join(", ")})${typoSuffix(third, AGENT_KEYS)}`,
     };
   }
   // `model.<tier>` names one entry of the tier model map — the way `roles.<id>.model`

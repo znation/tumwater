@@ -73,12 +73,12 @@ export function defaultConfig(): ResolvedModelConfig {
   return {
     // The agent backend for bare selectors and the no-model default (plans/agent-backends.md
     // "Config"): pi, the historical backend.
-    agent: "pi",
+    backend: "pi",
     piArgs: [],
     // Agent backends (plans/agent-backends.md, part 4a/7): empty until a file names one.
     // Keeping the map always present means read sites need no `?? {}`; the legacy
     // agentBin/piArgs are read as pi's entry through resolvedAgentConfig (config-views.ts).
-    agents: {},
+    backends: {},
     maxConcurrent: 6,
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
@@ -168,8 +168,8 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     // Clone each backend entry (and its args array) so the result owns its data like every
     // other section. The legacy agentBin/piArgs stay beside it; resolvedAgentConfig picks
     // between them.
-    agents: Object.fromEntries(
-      Object.entries(cfg.agents ?? base.agents ?? {}).map(([id, a]) => [
+    backends: Object.fromEntries(
+      Object.entries(cfg.backends ?? base.backends ?? {}).map(([id, a]) => [
         id,
         { ...a, ...(a.args ? { args: [...a.args] } : {}) },
       ]),
@@ -263,8 +263,8 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return {
     ...c,
     piArgs: [...c.piArgs],
-    agents: Object.fromEntries(
-      Object.entries(c.agents ?? {}).map(([id, a]) => [id, { ...a, ...(a.args ? { args: [...a.args] } : {}) }]),
+    backends: Object.fromEntries(
+      Object.entries(c.backends ?? {}).map(([id, a]) => [id, { ...a, ...(a.args ? { args: [...a.args] } : {}) }]),
     ),
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
@@ -305,12 +305,12 @@ export function liveConfig(root: string): TumwaterConfig {
 }
 
 /** Writes emit one spelling per pi field (plans/agent-backends.md "Back-compat"): when the
- * new `agents.pi` form carries `bin`/`args`, the legacy top-level alias for that field is
+ * new `backends.pi` form carries `bin`/`args`, the legacy top-level alias for that field is
  * dropped from the serialized candidate. A merged config always carries the default `piArgs`,
  * so without this a whole-config write would put both spellings on disk and the next load's
  * raw pass would reject the file; a config that uses only the legacy spellings is unchanged. */
 export function collapseAgentAliases(config: TumwaterConfig): TumwaterConfig {
-  const pi = config.agents?.pi;
+  const pi = config.backends?.pi;
   if (pi === undefined) return config;
   const record = config as unknown as Record<string, unknown>;
   const dropAgentBin = pi.bin !== undefined && "agentBin" in record;

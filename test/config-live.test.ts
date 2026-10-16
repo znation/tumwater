@@ -124,13 +124,13 @@ test("flipping agent over a bare-id model logs one model_changed", () => {
   // flip relabels the tier. (A bare `claude-…` id routes to claude over pi already — rule 3a —
   // so the flip would not relabel it.)
   const config = cloneConfig(defaultConfig());
-  config.agent = "pi";
+  config.backend = "pi";
   config.model = "sonnet";
   const { root, live } = liveReload(config);
   live.poll();
 
   const edited = cloneConfig(config);
-  edited.agent = "claude";
+  edited.backend = "claude";
   writeConfig(root, edited);
   live.poll();
 
@@ -365,7 +365,7 @@ test("a live edit adding a claude reviewer verifies the binary and seeds the acc
   const claudeBin = tmpdir("live-claude-bin-");
   writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
   const next = cloneConfig(start);
-  next.agents = { claude: { bin: path.join(claudeBin, "claude") } };
+  next.backends = { claude: { bin: path.join(claudeBin, "claude") } };
   next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
   writeConfig(root, next);
   live.poll();
@@ -387,7 +387,7 @@ test("a live edit adding a missing claude binary warns but keeps the fleet runni
   const { root, live } = liveReload(start);
   live.poll();
   const next = cloneConfig(start);
-  next.agents = { claude: { bin: "/no/such/claude" } };
+  next.backends = { claude: { bin: "/no/such/claude" } };
   next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
   writeConfig(root, next);
   live.poll();

@@ -61,7 +61,7 @@ export interface AgentInvocation {
  * per-agent entries plus pi's legacy aliases. Every field is optional, so a bare `{}` or
  * pi-bin.ts's resolvedAgentConfig view both type-check. */
 export interface AgentBinConfig {
-  agents?: Record<string, AgentConfig>;
+  backends?: Record<string, AgentConfig>;
   agentBin?: string;
   piArgs?: string[];
 }
@@ -123,7 +123,7 @@ export interface AgentBackend {
    * below a configured model's floor. Optional — a backend with no version gate omits it. */
   minVersion?(model: string): string | undefined;
   /** Resolve which binary this backend spawns and where the value came from, reading its own
-   * `agents.<id>.bin` entry through pi/pi-bin.ts's resolveBackendBin. */
+   * `backends.<id>.bin` entry through pi/pi-bin.ts's resolveBackendBin. */
   resolveBin(config: AgentBinConfig): ResolvedAgentBin;
   /** Build the argv, stdin and environment for one run. */
   invocation(run: AgentRunSpec): AgentInvocation;

@@ -16,26 +16,26 @@ import { baseRoleOf } from "../roles/loop-ids.js";
  * the seam's tier), so consumers of a role/reviewer/fallback view never see a map. `agent`
  * names the agent backend the selector routes to (plans/agent-backends.md); a provider naming
  * a registered agent id wins, any other provider routes to pi, a bare id or no model routes to
- * the top-level `agent`. */
-export type ResolvedModelConfig = Omit<TumwaterConfig, "model" | "agent"> & {
+ * the top-level `backend`. */
+export type ResolvedModelConfig = Omit<TumwaterConfig, "model"> & {
   model?: string;
   /** The routed backend id; typed as a string so a test can register a fake backend under an
    * id outside the config schema's reserved set (src/agent/agent-backend.ts). */
   agent?: string;
 };
 
-/** The effective `agents.<id>` entry as a run sees it (plans/agent-backends.md "Back-compat"):
+/** The effective `backends.<id>` entry as a run sees it (plans/agent-backends.md "Back-compat"):
  * the file's own entry, with the legacy top-level `agentBin`/`piArgs` read as the pi backend's
  * `bin`/`args` when the new form leaves a field absent. Pure — it never writes those legacy
- * values back into `config.agents`, so a config write that re-serializes the merged config
+ * values back into `config.backends`, so a config write that re-serializes the merged config
  * cannot leak a second spelling into the file (which validateConfig would then reject).
  * pi-backend.ts and claude-backend.ts read `.bin` through resolveAgentBin (pi-bin.ts);
  * claude-backend.ts reads `.args` for passthrough argv. */
 export function resolvedAgentConfig(
-  config: { agents?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
+  config: { backends?: Record<string, AgentConfig>; agentBin?: string; piArgs?: string[] },
   id: string,
 ): AgentConfig {
-  const entry = config.agents?.[id];
+  const entry = config.backends?.[id];
   // A view must own its array: returning the config's own `args` reference would let a caller
   // that appends passthrough argv silently mutate the loaded config, breaking the
   // purity promised above. `args` is the only mutable field, so a sliced copy suffices.
@@ -106,7 +106,7 @@ export function withModelOverrides(
   const model = ownSel ? ownSel.model : topSel?.model;
   // The routed backend decides whether the provider half survives: a pi provider name is kept,
   // a backend namespace such as `claude` is dropped (that backend takes no provider).
-  const routed = routeModel(provider, model, config.agent ?? "pi", tier);
+  const routed = routeModel(provider, model, config.backend ?? "pi", tier);
   return {
     ...config,
     provider: routed.agent === "pi" ? provider : undefined,
@@ -329,7 +329,7 @@ export function fleetModelLabel(config: TumwaterConfig): string | null {
   const entries = MODEL_TIERS.map((tier) => {
     const sel = tierModel(config, tier);
     if (!sel) return null;
-    const { agent } = routeModel(sel.provider, sel.model, config.agent ?? "pi", tier);
+    const { agent } = routeModel(sel.provider, sel.model, config.backend ?? "pi", tier);
     return { tier, label: agentQualifiedSelector({ ...sel, agent }) };
   }).filter((e): e is { tier: ModelTier; label: string } => e !== null);
   if (entries.length === 0) return null;

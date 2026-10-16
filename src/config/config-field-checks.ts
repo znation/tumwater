@@ -276,7 +276,7 @@ export function checkStringArrayField(
 
 /** Report every passthrough arg in `args` whose flag the harness sets itself — the one screen
  * behind both of validateConfig's reserved-flag checks (top-level `piArgs` and each
- * `agents.<id>.args`). `argsPath` names the array in the message (`piArgs`, `agents.pi.args`),
+ * `backends.<id>.args`). `argsPath` names the array in the message (`piArgs`, `backends.pi.args`),
  * and `whyFor` resolves the flag's reason against the reserved set it is screened against, or
  * undefined when the flag is not reserved. The flag is matched even when the arg carries its
  * value as `--flag=value` (split on the first `=`), so that joined spelling cannot slip past

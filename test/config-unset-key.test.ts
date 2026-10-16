@@ -10,21 +10,21 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { setConfigKey, unsetConfigKey } from "../src/config/config-write.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
-test("unsetConfigKey removes agents.<id> fields and drops the entry/section when they empty", () => {
+test("unsetConfigKey removes backends.<id> fields and drops the entry/section when they empty", () => {
   const dir = tmpdir();
   const base = defaultConfig();
-  base.agents = { claude: { bin: "claude", args: ["--debug"] } };
+  base.backends = { claude: { bin: "claude", args: ["--debug"] } };
   saveConfig(dir, base);
   const file = path.join(dir, "tumwater.json");
 
-  let r = unsetConfigKey(dir, "agents.claude.bin");
+  let r = unsetConfigKey(dir, "backends.claude.bin");
   assert.ok(r.ok && r.oldValue === "claude", JSON.stringify(r));
-  assert.deepEqual((readJson(file) as { agents: unknown }).agents, { claude: { args: ["--debug"] } });
-  r = unsetConfigKey(dir, "agents.claude.args");
+  assert.deepEqual((readJson(file) as { backends: unknown }).backends, { claude: { args: ["--debug"] } });
+  r = unsetConfigKey(dir, "backends.claude.args");
   assert.ok(r.ok && Array.isArray(r.oldValue), JSON.stringify(r));
-  assert.ok(!("agents" in (readJson(file) as Record<string, unknown>)), "the emptied section is dropped");
+  assert.ok(!("backends" in (readJson(file) as Record<string, unknown>)), "the emptied section is dropped");
   // An absent field is a no-op success with the reported value undefined.
-  const miss = unsetConfigKey(dir, "agents.pi.bin");
+  const miss = unsetConfigKey(dir, "backends.pi.bin");
   assert.ok(miss.ok && miss.oldValue === undefined, JSON.stringify(miss));
 });
 

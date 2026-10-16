@@ -121,12 +121,12 @@ test("the startup gate checks every enabled seam's agent and names that agent's 
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    cfg.agents = { claude: { bin: "/no/such/claude" } };
+    cfg.backends = { claude: { bin: "/no/such/claude" } };
     cfg.review = { model: "claude/claude-opus-5-5" };
     fs.writeFileSync(file, JSON.stringify(cfg));
     assert.match(
       String(await runStartupProblem(repo, null)),
-      /claude not found — resolved "\/no\/such\/claude" from agents\.claude\.bin in tumwater\.json/,
+      /claude not found — resolved "\/no\/such\/claude" from backends\.claude\.bin in tumwater\.json/,
     );
   });
 });
@@ -145,7 +145,7 @@ test("a claude seam that exists only as a fallback is checked and its account se
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    cfg.agents = { claude: { bin: path.join(claudeBin, "claude") } };
+    cfg.backends = { claude: { bin: path.join(claudeBin, "claude") } };
     cfg.fallback = "claude/claude-sonnet-5-5";
     cfg.roles = { feature: { enabled: true } };
     fs.writeFileSync(file, JSON.stringify(cfg));

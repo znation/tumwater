@@ -62,7 +62,7 @@ function seamKeyedFallbackProvider(
   config: TumwaterConfig,
   provider: string | undefined,
 ): string | undefined {
-  const agent = provider === undefined ? config.agent : isAgentId(provider) ? provider : "pi";
+  const agent = provider === undefined ? config.backend : isAgentId(provider) ? provider : "pi";
   return agent !== "pi" ? agent : provider;
 }
 

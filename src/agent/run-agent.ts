@@ -53,7 +53,7 @@ const SPAWN_ERROR_PREFIX = "failed to spawn";
 /** The spawn-error message for a resolved binary: the default source keeps today's text
  * ("failed to spawn pi: …"); a configured source names the binary and where it came from —
  * the backend's own env var and config key (agentBinConfigKey) — so a wrong
- * `agents.claude.bin` does not read as pi's legacy `agentBin`. */
+ * `backends.claude.bin` does not read as pi's legacy `agentBin`. */
 function spawnErrorMessage(
   resolved: ResolvedAgentBin,
   errMessage: string,

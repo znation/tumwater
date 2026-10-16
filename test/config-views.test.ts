@@ -248,11 +248,11 @@ test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => 
   // bare `claude-…` id: it routes to claude over pi already, so the flip no longer relabels
   // it — a non-claude bare id keeps testing the flip.)
   const bare: TumwaterConfig = defaultConfig();
-  bare.agent = "pi";
+  bare.backend = "pi";
   bare.model = "local-model";
   assert.equal(fleetModelLabel(bare), "local-model");
   const onClaude: TumwaterConfig = defaultConfig();
-  onClaude.agent = "claude";
+  onClaude.backend = "claude";
   onClaude.model = "local-model";
   assert.equal(fleetModelLabel(onClaude), "claude/local-model");
 });
@@ -354,7 +354,7 @@ test("a non-pi fallback pair is keyed by its backend, in both selector forms", (
   // non-pi backend must carry that backend as its provider — a namespaced `claude/<id>` and
   // a bare `<id>` on a claude fleet both read `claude`, so a tick on either form is handed
   // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
-  const claude: TumwaterConfig = { ...defaultConfig(), agent: "claude" };
+  const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
   assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {
     provider: "claude",
     model: "claude-sonnet-5-5",
@@ -504,7 +504,7 @@ test("applyFallbackModel keeps a free agent-default tier's ambient thinking", ()
   // (sonnet/haiku/opus), and the ambient thinking level applies to all of them. A free seam has
   // no own selector to carry the level, so the kept tier must name the routed default plus it.
   const config: TumwaterConfig = defaultConfig();
-  config.agent = "claude";
+  config.backend = "claude";
   config.thinking = "high";
   config.fallback = "free/qwen-free";
   const resolved = resolveTierFallbacks(config, () => true);
@@ -540,7 +540,7 @@ test("fallbackRoleConfig resolves the role's tier pair and is null when it pause
 });
 
 test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin/args", () => {
-  // A config with only the legacy spellings resolves them under agents.pi.
+  // A config with only the legacy spellings resolves them under backends.pi.
   const legacy: TumwaterConfig = defaultConfig();
   legacy.agentBin = "/opt/pi";
   legacy.piArgs = ["--no-skills"];
@@ -550,13 +550,13 @@ test("resolvedAgentConfig reads the legacy agentBin/piArgs as the pi entry's bin
   const mixed: TumwaterConfig = defaultConfig();
   mixed.agentBin = "/legacy";
   mixed.piArgs = ["--legacy"];
-  mixed.agents = { pi: { bin: "/new", args: ["--new"] } };
+  mixed.backends = { pi: { bin: "/new", args: ["--new"] } };
   assert.deepEqual(resolvedAgentConfig(mixed, "pi"), { bin: "/new", args: ["--new"] });
   assert.deepEqual(resolvedAgentConfig(defaultConfig(), "pi"), { bin: undefined, args: [] });
   // A non-pi backend reads its own entry and never falls back to the pi legacy fields.
   const claude: TumwaterConfig = defaultConfig();
   claude.agentBin = "/legacy";
-  claude.agents = { claude: { bin: "claude", args: ["--verbose"] } };
+  claude.backends = { claude: { bin: "claude", args: ["--verbose"] } };
   assert.deepEqual(resolvedAgentConfig(claude, "claude"), { bin: "claude", args: ["--verbose"] });
   assert.deepEqual(resolvedAgentConfig(claude, "unknown"), {});
 });
@@ -566,14 +566,14 @@ test("resolvedAgentConfig returns args detached from the config it reads", () =>
   // `args` must not write back into the loaded config.
   const config: TumwaterConfig = defaultConfig();
   config.piArgs = ["--no-skills"];
-  config.agents = { claude: { args: ["--verbose"] } };
+  config.backends = { claude: { args: ["--verbose"] } };
   resolvedAgentConfig(config, "pi").args!.push("--evil");
   resolvedAgentConfig(config, "claude").args!.push("--evil");
   assert.deepEqual(config.piArgs, ["--no-skills"], "the pi view's args do not alias config.piArgs");
   assert.deepEqual(
-    config.agents.claude!.args,
+    config.backends.claude!.args,
     ["--verbose"],
-    "the claude view's args do not alias config.agents.claude.args",
+    "the claude view's args do not alias config.backends.claude.args",
   );
 });
 
@@ -620,7 +620,7 @@ test("routeModel: a registered provider runs its agent; any other provider runs 
 
 test("agent: claude with no model runs each seam on its tier's claude default", () => {
   const config: TumwaterConfig = defaultConfig();
-  config.agent = "claude";
+  config.backend = "claude";
   // Author (default tier), readme (small), plan (strong): sonnet, haiku, opus.
   const feature = configForRole(config, "feature");
   assert.equal(feature.agent, "claude");
@@ -643,7 +643,7 @@ test("agent: claude with no model runs each seam on its tier's claude default", 
 
 test("a provider/id selector routes its seam alone to that agent", () => {
   const config: TumwaterConfig = defaultConfig();
-  config.agent = "pi";
+  config.backend = "pi";
   config.review = { ...config.review, model: "claude/claude-opus-5-5:high" };
   const review = reviewConfig(config);
   assert.equal(review.agent, "claude");
@@ -657,7 +657,7 @@ test("a provider/id selector routes its seam alone to that agent", () => {
 
 test("a mixed fallback under agent: claude runs on pi while the primary stays claude", () => {
   const config: TumwaterConfig = defaultConfig();
-  config.agent = "claude";
+  config.backend = "claude";
   config.fallback = "omlx/Qwen3.8-27B-MLX";
   assert.equal(configForRole(config, "feature").agent, "claude");
   const fb = fallbackRoleConfig(config, "feature");

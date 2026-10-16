@@ -702,16 +702,16 @@ test("seedConfig overlays a valid tumwater.example.json on the defaults", () => 
   assert.deepEqual(Object.keys(seeded.roles), Object.keys(base.roles));
 });
 
-test("seedConfig + saveConfig round-trips a template that sets agents.pi.args", () => {
+test("seedConfig + saveConfig round-trips a template that sets backends.pi.args", () => {
   const root = tmpdir();
-  fs.writeFileSync(exampleConfigPath(root), JSON.stringify({ agents: { pi: { args: ["--new"] } } }));
+  fs.writeFileSync(exampleConfigPath(root), JSON.stringify({ backends: { pi: { args: ["--new"] } } }));
   const seeded = seedConfig(root);
-  // The merged seed carries the default piArgs beside the template's agents.pi.args; saving
+  // The merged seed carries the default piArgs beside the template's backends.pi.args; saving
   // must collapse them so the freshly written tumwater.json reloads.
   saveConfig(root, seeded);
   const raw = JSON.parse(fs.readFileSync(path.join(root, "tumwater.json"), "utf8")) as Record<string, unknown>;
-  assert.ok(!("piArgs" in raw), "the default piArgs is not written beside agents.pi.args");
-  assert.deepEqual((raw.agents as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
+  assert.ok(!("piArgs" in raw), "the default piArgs is not written beside backends.pi.args");
+  assert.deepEqual((raw.backends as Record<string, Record<string, unknown>>).pi, { args: ["--new"] });
   assert.doesNotThrow(() => loadConfig(root), "the seeded config reloads");
 });
 
