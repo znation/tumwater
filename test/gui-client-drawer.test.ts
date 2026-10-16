@@ -616,6 +616,43 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
   assert.doesNotMatch(minimal.paintedFor("drawerrole"), /Configuration/);
 });
 
+// The loop drawer's Spend row mirrors role-render.ts's Spend line from the same /api/role
+// usage payload: how much the loop burned over its retained event window. Present only when
+// usage is non-zero on the payload; an absent or all-zero usage renders no Spend row.
+test("the loop drawer renders a Spend row from the role payload's usage", async () => {
+  const responses: Record<string, unknown> = {
+    "/api/role?role=clean": {
+      note: null,
+      nextPrompt: null,
+      inboxCount: 0,
+      usage: { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 },
+    },
+  };
+  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<dt>Spend<\/dt><dd[^>]*>\$0\.05 · 12\.5k tokens · \$0\.05 notional<\/dd>/);
+
+  // A zero notional omits the notional suffix.
+  const noNotional = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0, usage: { tokens: 1200, costUsd: 0.01, notionalCostUsd: 0 } } },
+  });
+  noNotional.scope.toggleLoop("clean");
+  await flush();
+  assert.match(noNotional.paintedFor("drawerrole"), /<dt>Spend<\/dt><dd[^>]*>\$0\.01 · 1200 tokens<\/dd>/);
+
+  // No usage on the payload: no Spend row.
+  const none = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0 } },
+  });
+  none.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(none.paintedFor("drawerrole"), /<dt>Spend<\/dt>/);
+});
+
 // A default pi fleet runs on pi's own saved default model: rolePayload sets `piDefault`
 // (a formatted selector) and leaves `provider`/`model` undefined, and the CLI's role view
 // names that default in its Model line (modelLine's `pi default (…)` branch). The

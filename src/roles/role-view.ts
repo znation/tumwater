@@ -27,7 +27,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
-import { eventRole, readEvents } from "../events/event-read.js";
+import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
@@ -131,6 +131,13 @@ export interface RoleViewPayload {
    * never-ticked loop. Read straight from the event log so the command runs with the fleet
    * stopped and never touches the live state. */
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
+  /** The loop's own spend over its retained event window — tokens, real cost, and notional
+   * (subscription) cost summed from the same `tick_end` events `recentOutcomes` reads, each
+   * folded through the shared `eventUsage` finiteness guard so a torn field contributes 0.
+   * The sum's window is the single `readEvents` call `recentOutcomes` already makes, so the
+   * two per-loop facts cannot drift on what they cover. Absent when all three are 0 (the
+   * report's zero-means-absent convention), so a never-costly loop's JSON is unchanged. */
+  usage?: { tokens: number; costUsd: number; notionalCostUsd: number };
 }
 
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
@@ -202,14 +209,18 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // and taking the last 8 yields the newest 8, reversed to newest-first. Durations and
   // summaries ride along only when the event carried them (a torn or empty line drops them),
   // and an empty result is omitted so a never-ticked loop carries no `recentOutcomes` at all.
-  const recentOutcomes = readEvents(root)
-    // The event log is read without a shape filter, so a torn or hand-edited tick_end line can
-    // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
-    // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
-    // an absent one (the same "a torn line carries no usable timestamp" rule eventTick/tickStartMap
-    // apply), so it contributes no outcome; a non-numeric durationMs is dropped like a missing one.
+  // One event-log read serves both per-loop facts — the recent outcomes and the spend sum — so
+  // the two cannot drift on what they cover: filtered to this role's tick_end events once, then
+  // the outcome projection keeps the newest valid 8 while the usage fold sums the whole window.
+  const events = readEvents(root);
+  const tickEnds = events.filter((ev) => ev.type === "tick_end" && eventRole(ev) === role);
+  // The event log is read without a shape filter, so a torn or hand-edited tick_end line can
+  // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
+  // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
+  // an absent one (the same "a torn line carries no usable timestamp" rule eventTick/tickStartMap
+  // apply), so it contributes no outcome; a non-numeric durationMs is dropped like a missing one.
+  const recentOutcomes = tickEnds
     .filter((ev) => {
-      if (ev.type !== "tick_end" || eventRole(ev) !== role) return false;
       return finiteNumber(ev.ts, null) !== null && typeof ev.result === "string" && ev.result !== "";
     })
     .slice(-8)
@@ -220,6 +231,23 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
       ...(typeof ev.summary === "string" && ev.summary !== "" ? { summary: ev.summary } : {}),
     }))
     .reverse();
+  // The loop's own spend over the same retained window, summed per-tick_end through the shared
+  // eventUsage guard (a torn or hand-edited tick_end line contributes nothing: a non-numeric
+  // field reads as 0, and a line without a usable ts is as unusable as an absent one, matching
+  // recentOutcomes's drop rule so a torn tick never silently spends). Omitted when all three
+  // sums are 0, keeping a never-costly loop's JSON unchanged (the report's zero-means-absent
+  // convention).
+  const usage = tickEnds.reduce<{ tokens: number; costUsd: number; notionalCostUsd: number }>(
+    (acc, ev) => {
+      if (finiteNumber(ev.ts, null) === null) return acc;
+      const u = eventUsage(ev);
+      acc.tokens += u.tokens;
+      acc.costUsd += u.costUsd;
+      acc.notionalCostUsd += u.notionalCostUsd;
+      return acc;
+    },
+    { tokens: 0, costUsd: 0, notionalCostUsd: 0 },
+  );
   // The role's notebook, read for display. The same degradation as every other read here: a
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
   let note: string | null = null;
@@ -277,5 +305,6 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     yieldMultiplier: yieldMultiplierFor(state),
     ...(state.lastTickEndedAt !== undefined ? { lastTickEndedAt: state.lastTickEndedAt } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
+    ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
   };
 }

@@ -596,6 +596,62 @@ test("a role with no tick_end events carries no recentOutcomes", () => {
   assert.ok(!renderRoleMarkdown(p).includes("Recent tick outcomes"));
 });
 
+// The loop's own spend (PLANS.md): rolePayload sums this role's tick_end usage over the same
+// retained event window recentOutcomes reads, through the shared eventUsage finiteness guard,
+// and the renderer names it as a Spend line (a notional suffix only when non-zero).
+test("role payload sums the loop's usage and renders a Spend line", () => {
+  const dir = root();
+  const now = Date.now();
+  writeEvents(dir, [
+    { ts: now - 180_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 6000, costUsd: 0.02 },
+    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 },
+    // Another role's spend is not folded into this loop's sum.
+    { ts: now - 60_000, loop: "other", type: "tick_end", tick: 1, result: "changed", tokens: 99999, costUsd: 9.99 },
+  ]);
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.deepEqual(p.usage, { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 });
+  const md = renderRoleMarkdown(p);
+  assert.match(md, /- Spend: \$0\.05 · 12\.5k tokens · \$0\.05 notional/);
+  // The line sits after Queued prompts and before the schedule lines.
+  assert.ok(md.indexOf("- Queued prompts: 0") < md.indexOf("- Spend:"));
+  assert.ok(md.indexOf("- Spend:") < md.indexOf("- Next tick:"));
+
+  // A zero notional omits the notional suffix.
+  writeEvents(dir, [
+    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 3, result: "changed", tokens: 1200, costUsd: 0.01 },
+  ]);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Spend: \$0\.01 · 1200 tokens$/m);
+});
+
+test("a never-costly or never-ticked loop carries no usage field or Spend line", () => {
+  const dir = root();
+  // Never ticked: no usage at all, and the render stays byte-identical (no Spend line).
+  const neverTicked = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(neverTicked.usage, undefined);
+  assert.doesNotMatch(renderRoleMarkdown(neverTicked), /- Spend:/);
+  // Ticked but with all-zero usage: the zero-means-absent convention drops the field.
+  writeEvents(dir, [
+    { ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+  ]);
+  const zero = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(zero.usage, undefined);
+  assert.doesNotMatch(renderRoleMarkdown(zero), /- Spend:/);
+});
+
+test("a torn tick_end line contributes nothing to the usage sum", () => {
+  const dir = root();
+  const now = Date.now();
+  writeEvents(dir, [
+    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.01 },
+    // A non-numeric cost reads as 0 via eventUsage's finiteness guard; its tokens still count.
+    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 200, costUsd: "not-a-number" },
+    // A torn ts (no usable timestamp) is as unusable as an absent tick and spends nothing.
+    { ts: "not-a-number", loop: "feature", type: "tick_end", tick: 3, result: "changed", tokens: 999, costUsd: 0.5 },
+  ]);
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.deepEqual(p.usage, { tokens: 700, costUsd: 0.01, notionalCostUsd: 0 });
+});
+
 test("role markdown renders the Recent tick outcomes section before the instructions", () => {
   const dir = root();
   const now = Date.now();

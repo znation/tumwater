@@ -1,4 +1,5 @@
 import { agree, shortSpanPhrase } from "../text/phrases.js";
+import { compactTokens, usd } from "../text/format.js";
 import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
@@ -204,6 +205,16 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
   lines.push(`- Queued prompts: ${p.inboxCount}`);
+  // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
+  // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+  // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
+  // (plans/agent-backends.md part 6a). Absent for a never-costly loop, so old `tumwater role`
+  // goldens are byte-identical.
+  if (p.usage) {
+    let spend = `- Spend: ${usd(p.usage.costUsd)} · ${compactTokens(p.usage.tokens)} tokens`;
+    if (p.usage.notionalCostUsd !== 0) spend += ` · ${usd(p.usage.notionalCostUsd)} notional`;
+    lines.push(spend);
+  }
   // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastTickEndedAt, read from
   // the same persisted state): when it may tick again, and when it last did — the one
   // place the fleet's `next run`/`last tick` vocabulary was absent. Rendered from the

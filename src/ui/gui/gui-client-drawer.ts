@@ -325,6 +325,21 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     }
     if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min tick interval", view.minTickIntervalSeconds + "s"));
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
+    // The loop's own spend over its retained event window (rolePayload's usage, summed from the
+    // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+    // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
+    // — mirroring role-render.ts's Spend line, so the drawer and tumwater role <id> read one
+    // loop's spend identically. Each numeric field is coerced (foreign shapes read as 0) and an
+    // all-zero usage is absent on the payload, so this row never renders for a never-costly loop.
+    if (view.usage && typeof view.usage === "object") {
+      const u = view.usage;
+      const real = Number(u.costUsd) || 0;
+      const tokens = Number(u.tokens) || 0;
+      const notional = Number(u.notionalCostUsd) || 0;
+      let spend = fmtUsd(real) + " · " + fmtTokens(tokens) + " tokens";
+      if (notional !== 0) spend += " · " + fmtUsd(notional) + " notional";
+      rows.push(kvRow("Spend", spend));
+    }
     if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(kvRow("Instructions override", clamp(view.instructions), view.instructions));
     if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
     return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";
