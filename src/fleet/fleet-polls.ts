@@ -22,12 +22,12 @@ import { groupBy } from "../collections.js";
  * resolve to (the run's resolved config — configForRole; undefined when pi's own default
  * is in charge). Structural, so tests stand in plain objects for the runner — its real
  * getters are readonly, and only these fields are ever read. */
-export type HoldInputs = {
+export interface HoldInputs {
   role: string;
   provider?: string;
   lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
   lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
-};
+}
 
 /** The HoldObservation list both fleet-wide failure polls step their reducer with, gathered
  * from each runner's two episodic fields: lastRateLimit (stamped "rate-limit", carrying the

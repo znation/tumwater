@@ -11,7 +11,7 @@ import { clientScope, clientRegion, ESC_LINE } from "./helpers/gui-client-scope.
 // gui-client-composer.test.ts uses: the script's own esc() and the settings blob, run in one
 // function scope with stand-ins for the DOM and the server.
 
-type SettingsFns = {
+interface SettingsFns {
   SETTINGS_KEYS: ReadonlyArray<readonly [string, string]>;
   renderSettings(d: unknown): string;
   fetchSettings(): Promise<void>;
@@ -22,7 +22,7 @@ type SettingsFns = {
   fetchDoctor(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
-};
+}
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(

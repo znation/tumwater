@@ -159,7 +159,7 @@ test("the report charts carry a cursor-following hover label", async () => {
   assert.equal(GUI_PAGE.match(/attachReportTip\(\);/g)?.length, 1, "attached once, at start-up");
 });
 test("the Usage charts render bars on a shared scale, stacks per loop, and a labeled today", () => {
-  type Builders = {
+  interface Builders {
     chartTokens(d: ReportData): string;
     chartTicksByRole(d: ReportData): string;
     chartCommits(d: ReportData): string;
@@ -167,7 +167,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
     niceMax(v: number, integer: boolean): number;
     reportDayLabels(series: ReportDay[]): string[];
     REPORT_PALETTE: string[];
-  };
+  }
   const { chartTokens, chartTicksByRole, chartCommits, chartCostByRole, niceMax, reportDayLabels, REPORT_PALETTE } = clientScope<Builders>(
     ["format", "report-chart"],
     ["chartTokens", "chartTicksByRole", "chartCommits", "chartCostByRole", "niceMax", "reportDayLabels", "REPORT_PALETTE"],
@@ -253,10 +253,10 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   assert.equal(parseRects(chartCostByRole(hostile)).length, 0, "a day without spend renders no cost segments");
 });
 test("the Usage charts count a loop named after an Object.prototype key", () => {
-  type Builders = {
+  interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
     chartTicksByRole(d: ReportData): string;
-  };
+  }
   const { reportRoleOrder, chartTicksByRole } = clientScope<Builders>(
     ["format", "report-chart"],
     ["reportRoleOrder", "chartTicksByRole"],
@@ -604,12 +604,12 @@ test("the report window pickers normalize a persisted value outside their menu",
 });
 
 test("the Usage notional chart and Spent-tile figure render only when notional spend exists", async () => {
-  type Builders = {
+  interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
     chartTicksByRole(d: ReportData): string;
     chartCostByRole(d: ReportData): string;
     chartNotionalByRole(d: ReportData): string;
-  };
+  }
   const { reportRoleOrder, chartTicksByRole, chartCostByRole, chartNotionalByRole } = clientScope<Builders>(
     ["format", "report-chart"],
     ["reportRoleOrder", "chartTicksByRole", "chartCostByRole", "chartNotionalByRole"],

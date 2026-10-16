@@ -12,7 +12,7 @@ import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js"
 // served script plus the drawer blob, run in one function scope with stand-ins for the DOM
 // and the server.
 
-type FakeEl = {
+interface FakeEl {
   innerHTML: string;
   hidden: boolean;
   scrollTop: number;
@@ -20,9 +20,9 @@ type FakeEl = {
   scrollHeight: number;
   listeners: Record<string, (ev?: unknown) => void>;
   addEventListener(type: string, fn: (ev?: unknown) => void): void;
-};
+}
 
-type DrawerScope = {
+interface DrawerScope {
   openLoopRole(): string | null;
   openEntryKey(): string | null;
   startNoteEdit(role: string, text: string): void;
@@ -37,7 +37,7 @@ type DrawerScope = {
   loadLoopTicks(force: boolean): Promise<void>;
   refreshEntry(): Promise<void>;
   refreshDrawer(): Promise<void>;
-};
+}
 
 /** Run the drawer blob after the script's own esc() and the real format and view-model
  * regions, with `inject` bound as free variables, and hand back the names asked for. */

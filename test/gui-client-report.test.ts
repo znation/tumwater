@@ -10,7 +10,7 @@ import type { ReportData, ReportDay } from "../src/report/report-data.js";
 // document/window/Element, the three globals the region reaches for.
 
 type Style = Record<string, string>;
-type El = {
+interface El {
   id: string;
   style: Style;
   children: El[];
@@ -19,7 +19,7 @@ type El = {
   textContent: string;
   addEventListener(type: string, fn: (ev?: unknown) => void): void;
   getBoundingClientRect(): { width: number; height: number };
-};
+}
 
 function makeEl(id = ""): El {
   const el: El = {
@@ -200,11 +200,11 @@ test("reportBaseRoles folds each instance into its `instanceOf` base role, once,
 });
 
 test("the Rejections by loop chart stacks per role in the ticks order and stays empty without a map", () => {
-  type Builders = {
+  interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
     chartTicksByRole(d: ReportData): string;
     chartRejectionsByRole(d: ReportData): string;
-  };
+  }
   const { reportRoleOrder, chartTicksByRole, chartRejectionsByRole } = clientScope<Builders>(
     ["format", "report-chart"],
     ["reportRoleOrder", "chartTicksByRole", "chartRejectionsByRole"],

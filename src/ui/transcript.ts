@@ -13,13 +13,13 @@ const THINKING_MAX_CHARS = 80;
 const TEXT_LINE_MAX_COLS = 120;
 const TEXT_LINES_PER_MESSAGE = 4;
 
-type ContentBlock = {
+interface ContentBlock {
   type?: unknown;
   thinking?: unknown;
   text?: unknown;
   name?: unknown;
   arguments?: unknown;
-};
+}
 
 /** The content blocks of one message, each null-coalesced to an object: a `content` that is
  * not an array (absent or torn) reads as no blocks, and a null/undefined entry reads as an

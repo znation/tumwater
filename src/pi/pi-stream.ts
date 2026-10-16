@@ -116,7 +116,7 @@ interface PiStreamEvent {
 }
 
 /** One content block's fields, each unknown until the consumer guards what it reads. */
-type ContentBlock = { type?: unknown; text?: unknown; name?: unknown };
+interface ContentBlock { type?: unknown; text?: unknown; name?: unknown }
 
 /** The text prefix of a pi `read` result that carries an image (plans/image-input.md
  * "Detecting a blind read"): such a read's text block begins `Read image file [<path>…]`, and

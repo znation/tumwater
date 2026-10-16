@@ -42,13 +42,13 @@ class FakeCtx {
 }
 const freqs = (ctx: FakeCtx | undefined) => (ctx ? ctx.oscs.map((o) => o.frequency.value) : []);
 
-type Sound = {
+interface Sound {
   armAudio(): void;
   playAlertCue(tone: string, now?: number): void;
   setSoundMuted(muted: boolean): void;
   ctxs: FakeCtx[];
   storeCalls: Array<[string, string]>;
-};
+}
 
 /** The sound region in one scope; its created AudioContexts are `scope.ctxs`. */
 function soundScope(inject: Record<string, unknown> = {}): Sound {
@@ -140,7 +140,7 @@ test("newNeedsYouKeys returns only the newly appeared needs-you keys; a null pre
     "a new key cues; known and informational ones do not");
 });
 
-type Cue = { armAudio(): void; cueNewNeedsYou(alerts: unknown[], now?: number): string[] };
+interface Cue { armAudio(): void; cueNewNeedsYou(alerts: unknown[], now?: number): string[] }
 
 test("the alerts-band diff plays each new alert's cue once and stays silent on repeats", () => {
   FakeCtx.created = [];

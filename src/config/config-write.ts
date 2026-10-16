@@ -263,11 +263,11 @@ export function unknownRoleFieldError(id: string, field: string): string | null 
  * and unsetConfigKey share; writeConfigMutation's validateConfig owns the type truth of the
  * merged candidate, so the cast is safe — a type-invalid merge fails there and nothing is
  * written. */
-type ConfigRecord = {
+interface ConfigRecord {
   roles?: Record<string, Record<string, unknown>>;
   model?: string | Record<string, string>;
   [key: string]: unknown;
-};
+}
 
 /** Set ONE top-level key of tumwater.json from its raw CLI text (`tumwater config set`'s
  * engine): the key must be a member of TOP_LEVEL_KEYS — the same protection checkKnownKeys

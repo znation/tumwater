@@ -31,7 +31,7 @@ const toks = (tag: string): Tok[] =>
  * These names exist only as data keys in the synthetic metrics/blame JSON, never on disk. */
 const key = (...parts: string[]): string => parts.join("/");
 
-type Blame = { cls: string[]; t: number[] };
+interface Blame { cls: string[]; t: number[] }
 
 function run(data: string, env: Record<string, string> = {}): { status: number | null; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, [AUTHORS, data], { encoding: "utf8", env: { ...process.env, ...env } });

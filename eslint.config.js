@@ -92,6 +92,7 @@ export default tseslint.config(
       "@typescript-eslint/prefer-includes": "error",
       "@typescript-eslint/prefer-regexp-exec": "error",
       "@typescript-eslint/no-unused-expressions": "error",  // flags dead no-op expressions (stray literals) left by missed edits
+      "@typescript-eslint/consistent-type-definitions": "error",  // object shapes spell `interface Foo { … }`, not `type Foo = { … }`
     },
   },
   {

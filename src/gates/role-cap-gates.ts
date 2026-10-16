@@ -35,10 +35,10 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
 /** A runner as the gate reads it — the role and the loop state whose daily window is judged. */
-type CapObservation = {
+interface CapObservation {
   role: string;
   state: Pick<LoopState, "dayStamp" | "dayCostUsd">;
-};
+}
 
 /** The stateless verdict: is this role over its own per-role cap as of `now`? True iff a cap
  * is configured, it is a finite number above zero (0 disables that role's cap, like the fleet

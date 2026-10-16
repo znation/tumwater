@@ -13,7 +13,7 @@ import { clientRegion, ESC_LINE } from "./helpers/gui-client-scope.js";
 // real format region, plus the composer blob, run in one function scope with stand-ins for the
 // DOM and the server.
 
-type FakeEl = {
+interface FakeEl {
   value: string;
   placeholder: string;
   innerHTML: string;
@@ -34,10 +34,10 @@ type FakeEl = {
   focus(opts?: Record<string, unknown>): void;
   scrollIntoView(opts?: Record<string, unknown>): void;
   setSelectionRange(a: number, b: number): void;
-};
+}
 
 /** The composer functions the tests drive, as the blob declares them. */
-type ComposerFns = {
+interface ComposerFns {
   renderComposer(d: unknown): void;
   setTarget(t: string): void;
   draftForDirector(text: string): void;
@@ -45,7 +45,7 @@ type ComposerFns = {
   addPromptImages(files: Array<{ name: string; type: string; size: number }>): number;
   isImageFile(f: { name: unknown }): boolean;
   fmtImageSize(n: number): string;
-};
+}
 
 /** The composer's DOM: one input, its picker and counter, the queued-prompts link, the hint,
  * the image chip box, and the form with its send button. */

@@ -60,11 +60,11 @@ export interface AgentInvocation {
 /** The config fields a backend's resolveBin reads (plans/agent-backends.md "Config"): the
  * per-agent entries plus pi's legacy aliases. Every field is optional, so a bare `{}` or
  * pi-bin.ts's resolvedAgentConfig view both type-check. */
-export type AgentBinConfig = {
+export interface AgentBinConfig {
   agents?: Record<string, AgentConfig>;
   agentBin?: string;
   piArgs?: string[];
-};
+}
 
 /** One run's native-stdout-to-canonical translator (plans/agent-backends.md "Canonical event
  * stream"): `translate` takes one complete native line (no trailing newline) and returns the

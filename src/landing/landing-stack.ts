@@ -38,7 +38,7 @@ import type { LandingScopeContext } from "./landing-core.js";
 export const BATCH_RESTACK_ATTEMPTS = 2;
 
 /** One stacked change as the fast-forward lands it: its role, its post-pick sha, its summary. */
-export type StackEntry = { role: string; sha: string; summary: string };
+export interface StackEntry { role: string; sha: string; summary: string }
 
 /** Assemble a batch's stack in `wtPath` (the shared `_merge` checkout a landing drain passes)
  * on main's CURRENT tip, once

@@ -23,7 +23,7 @@ const SCRIPT = fileURLToPath(new URL("../../docs/code-metrics/eslint-cc.cjs", im
  * These names exist only as data in the synthetic report and are never read from disk. */
 const key = (...parts: string[]): string => parts.join("/");
 
-type Message = { ruleId: string | null; severity: number; message: string; line: number; column: number };
+interface Message { ruleId: string | null; severity: number; message: string; line: number; column: number }
 
 function complexity(n: number): Message {
   return { ruleId: "complexity", severity: 1, message: `Function 'f' has a complexity of ${n}. Maximum allowed is 0.`, line: 1, column: 1 };

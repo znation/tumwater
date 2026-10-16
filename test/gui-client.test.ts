@@ -13,9 +13,9 @@ import { parseBudgetInput } from "../src/ui/tui/tui-input.js";
 // renderer, the History table, and the operator actions with stand-ins for the DOM and the
 // server.
 
-type PhaseInfo = { key: string; label: string; tone: string; live: boolean; detail: string };
-type Alert = { key: string; tone: string; title: string; detail?: string; actions?: Array<{ label: string; act: string; arg?: string }> };
-type Model = {
+interface PhaseInfo { key: string; label: string; tone: string; live: boolean; detail: string }
+interface Alert { key: string; tone: string; title: string; detail?: string; actions?: Array<{ label: string; act: string; arg?: string }> }
+interface Model {
   phaseInfo(phase: string): PhaseInfo;
   resultInfo(result: string | null): { label: string; tone: string };
   resultWhy(l: object): string;
@@ -27,7 +27,7 @@ type Model = {
   splitTitle(t: string): { title: string; meta: string };
   queuedPrompts(d: object): Array<{ role: string; preview: string; file: string; queuedAtMs: number | null }>;
   LOOP_GROUPS: Array<Array<string | number>>;
-};
+}
 const model = clientScope<Model>(["format", "view-model"],
   ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS"]);
 

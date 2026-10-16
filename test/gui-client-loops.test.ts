@@ -8,11 +8,11 @@ import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 // between live work, the landing placeholder, and the last result, the stalled-work red
 // flag, and the per-row operator controls.
 
-type PhaseInfo = { key: string; label: string; tone: string; live: boolean; detail: string };
-type Loops = {
+interface PhaseInfo { key: string; label: string; tone: string; live: boolean; detail: string }
+interface Loops {
   phaseDetail(l: object, info: PhaseInfo, d: object): string;
   loopCells(l: object, d: object): { info: PhaseInfo; cells: string[] };
-};
+}
 const { phaseDetail, loopCells } = clientScope<Loops>(
   ["format", "view-model", "loops-table"], ["phaseDetail", "loopCells"], {
     icon: iconStub,

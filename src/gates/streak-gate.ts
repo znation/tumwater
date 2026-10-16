@@ -37,10 +37,10 @@ import { logEventBestEffort } from "../events/events.js";
 
 /** One runner's streak as the gate reads it — the same Pick pollErrorStorm uses
  * (src/fleet/fleet-polls.ts): LoopState.consecutiveErrors and lastError. */
-type StreakObservation = {
+interface StreakObservation {
   role: string;
   state: Pick<LoopState, "consecutiveErrors" | "lastError">;
-};
+}
 
 /** The gate's cross-poll memory: per role, the streak level already accounted for at its
  * last trip or last ack-while-paused. In memory only, like every gate state — the marker

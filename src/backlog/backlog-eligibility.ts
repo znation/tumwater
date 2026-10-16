@@ -207,7 +207,7 @@ export function holdMark(hold: EntryHold): string {
  * backlog index carries, so a hold is observable rather than inferred. The planned entries
  * are read once and reused as the prerequisite set. Questions carry no holds. */
 /** The holds' shape, derived from two files so it needs a stat key spanning both. */
-type BacklogHolds = { plans: EntryHold[]; bugs: EntryHold[] };
+interface BacklogHolds { plans: EntryHold[]; bugs: EntryHold[] }
 
 /** `/api/status` polls the holds on the 1-second dashboard poll and the TUI recomputes them
  * each frame while PLANS.md/BUGS.md change only when a loop lands an edit. The file reads

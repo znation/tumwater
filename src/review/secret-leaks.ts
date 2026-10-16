@@ -20,7 +20,7 @@ function looksLikeSecret(value: string): boolean {
   return value.length >= MIN_SECRET_LENGTH && !/\s/.test(value) && !value.startsWith("/");
 }
 
-type Secret = { name: string; value: string };
+interface Secret { name: string; value: string }
 
 /** The environment entries that look like credentials: a secret-like name and a value of at
  * least 16 characters with no whitespace that is not a path (so `GOOGLE_APPLICATION_CREDENTIALS`

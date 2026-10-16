@@ -366,7 +366,7 @@ export function writeLandingOutcome(
  * landed event's own notional field (plans/agent-backends.md part 6a). The single home of the
  * shape: writeLandingOutcome and landingUsage build it here, and landing-pipeline.ts's
  * VettedLanding and settleLandingOutcome carry the same object. */
-export type LandingUsage = { tokens: number; cost: number; notionalCost?: number };
+export interface LandingUsage { tokens: number; cost: number; notionalCost?: number }
 
 /** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
