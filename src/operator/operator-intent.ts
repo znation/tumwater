@@ -8,6 +8,8 @@ import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { submitRolePrompt } from "../inbox/inbox-submit.js";
 import type { PromptImageInput } from "../inbox/inbox-attachments.js";
+import { questionAsker } from "../backlog/question-answer.js";
+import { knownRoleIdsCached } from "../config/config.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
 import { clearBackoff } from "../scheduling/backoff.js";
@@ -342,4 +344,14 @@ export async function runManualReclaim(root: string): Promise<string> {
   const result = await reclaimPass(root, "manual", { reclaimGB: 0 });
   if (!result) return "nothing to reclaim";
   return `reclaimed ${result.worktrees.join(", ")} — freed ${formatGB(result.freedGB)}`;
+}
+
+/** Wake the role named in an answered question's `(asked by <role> …)` clause, so it reads the
+ * decision it was blocked on without waiting out its backoff. Returns requestWake's confirmation,
+ * or null when the heading names no known role (asked by the user, an unknown or removed role,
+ * or no clause) — never throws for an unknown asker. */
+export function wakeQuestionAsker(root: string, title: string): string | null {
+  const asker = questionAsker(title);
+  if (asker === null || !knownRoleIdsCached(root).includes(asker)) return null;
+  return requestWake(root, [asker]);
 }

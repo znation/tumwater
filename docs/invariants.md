@@ -167,7 +167,7 @@ passes a readable one".
 commit the one file they wrote as `tumwater(operator): File <kind>: <title>` while
 holding the primary-worktree lock `ffMainTo` takes, so the entry reaches main and the primary
 checkout stays clean for the next fast-forward. Only that file is committed (other staged paths
-stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; a refused or no-op write commits nothing. When the primary is not on the base branch, or git fails, the commit is skipped
+stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
 **Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-cli.ts`

@@ -32,6 +32,7 @@ import { errorMessage } from "../text/text.js";
 import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
+import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
 import { answeredQuestionList, answeredQuestionPayload, questionListPayload } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
@@ -251,6 +252,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
     warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
+    if (!jsonFlag) sayAskerWake(root, answered.title);
     return;
   }
   const decision = words.slice(2).join(" ").trim();
@@ -265,6 +267,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     const answered = answerQuestionFromText(root, n, edited, question.title);
     warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
+    if (!jsonFlag) sayAskerWake(root, answered.title);
     return;
   }
   if (decision === "")
@@ -274,6 +277,13 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   const { title, decision: landedDecision } = answerQuestion(root, n, decision);
   warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
   sayAnswered(n, title, jsonFlag, landedDecision);
+  if (!jsonFlag) sayAskerWake(root, title);
+}
+
+/** Prose-mode follow-up to `questions answer`: wake the asking role and print the confirmation. */
+function sayAskerWake(root: string, title: string): void {
+  const wake = wakeQuestionAsker(root, title);
+  if (wake !== null) say(wake);
 }
 
 /** `tumwater role <id>`: one loop's standing prompt and next tick's assembled prompt. */

@@ -921,6 +921,15 @@ test("handlePromptEdit rewrites the named file, leaving a sibling intact, with g
   assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
 });
 
+test("handleQuestionAnswer wakes the role named in the asked-by clause", async () => {
+  const root = tmpdir();
+  const T = "Ship X? (asked by plan 2026-10-12)";
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), `# Questions\n\n## Open\n\n### ${T}\n\nbody\n\n## Answered\n`);
+  const r = await captureJson((res) => handleQuestionAnswer(fakeReq(JSON.stringify({ position: 1, title: T, decision: "yes" })), res, root));
+  assert.equal(r.captured.status, 200);
+  assert.equal(typeof (r.data as { wake?: unknown }).wake, "string");
+});
+
 test("handleQuestionAnswer answers, goes gone on stale input, and guards bad bodies and fences", async () => {
   const root = tmpdir();
   const file = path.join(root, "QUESTIONS.md");

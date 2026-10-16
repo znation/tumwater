@@ -52,6 +52,14 @@ export function questionFilingDate(title: string): string | null {
   return m === null ? null : (m[1] as string);
 }
 
+/** The role id named in the heading's `(asked by <role> …)` clause — the first word after
+ * `asked by` — or null when the heading has no such clause. Taken from the title only, like
+ * questionFilingDate. */
+export function questionAsker(title: string): string | null {
+  const m = /\(asked by ([A-Za-z0-9_-]+)/.exec(title);
+  return m === null ? null : (m[1] as string);
+}
+
 /** The ` · since <date> (…)` suffix naming how long an open question has waited for an answer,
  * from its heading's stamp (see questionFilingDate), or "" when the heading is undated —
  * rendered through backlog.ts's ageSuffix, the one place the wording lives (shared with the

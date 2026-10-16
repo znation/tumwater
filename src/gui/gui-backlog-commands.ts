@@ -12,7 +12,7 @@ import { stampedSubject } from "../git/commit-message.js";
 import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome } from "../backlog/backlog-write.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
-import { submitRolePromptAndWake } from "../operator/operator-intent.js";
+import { submitRolePromptAndWake, wakeQuestionAsker } from "../operator/operator-intent.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
@@ -86,7 +86,8 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
   }
   if (outcome.status === "answered") {
     const committed = await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
-    sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision, committed });
+    const wake = wakeQuestionAsker(root, outcome.title);
+    sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision, committed, ...(wake === null ? {} : { wake }) });
   } else if (outcome.status === "fenced") {
     sendJson(res, 409, { ok: false, error: UNCLOSED_FENCE_MESSAGE });
   } else {

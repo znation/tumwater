@@ -21,28 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Answering a question wakes the role that asked it: `tumwater questions answer`, the dashboard and the TUI wake the role named in the heading's `(asked by <role> …)` clause, as `plan --release` wakes the role it hands work back to (planned 2026-10-16 by plan; independent of every other Planned entry)
-
-**Goal.** A loop that hits a fork that is the user's call writes a QUESTIONS.md `## Open` entry headed `… (asked by <role> YYYY-MM-DD)`, then sleeps. When the operator answers, nothing tells that loop. The answer path (`answerQuestion`/`answerQuestionFromText` in src/cli/question-commands.ts, called by `cmdQuestions` in src/cli/cli-query-commands.ts; `handleQuestionAnswer` in src/gui/gui-backlog-commands.ts; the answer-mode Enter branch in src/ui/tui/tui-editors.ts) commits the file and never calls `requestWake`. The role that asked waits out its backoff before it reads the decision it was blocked on. `plan --release` already calls `requestWake(root, [role])` (src/backlog/backlog-cli.ts), and `submitRolePromptAndWake` (src/operator/operator-intent.ts) pairs a prompt with its wake. Answering a question is the same kind of hand-back.
-
-**Approach.**
-- src/backlog/question-answer.ts: add `export function questionAsker(title: string): string | null` beside `questionFilingDate`. It returns the first word after `asked by` in the heading's parenthetical (`/\(asked by ([A-Za-z0-9_-]+)/`), or null when there is none. Doc comment: taken from the title only, like the filing date.
-- src/operator/operator-intent.ts: add `export function wakeQuestionAsker(root: string, title: string): string | null`. It reads `questionAsker(title)`. When that id is in `knownRoleIdsCached(root)` (src/config/config.ts, which covers the director and instance ids like `feature-2`), it returns `requestWake(root, [asker])`. Otherwise it returns null, which covers "asked by the user", an unknown or removed role, and no clause. Never throw for an unknown asker.
-- Call it after the successful commit on every answer surface:
-  - `cmdQuestions` (src/cli/cli-query-commands.ts), at all three answered branches (`--file`, editor, positional). In prose mode, print the wake confirmation on its own line after `sayAnswered`'s line when it is non-null. Leave the `--json` payload as it is, following the `--release` precedent of printing the wake only in prose.
-  - `handleQuestionAnswer` (src/gui/gui-backlog-commands.ts): on `answered`, add `wake: <text>` to the 200 payload only when the result is non-null, so the payload for a question with no asker stays the same.
-  - The TUI answer branch in src/ui/tui/tui-editors.ts: on `answered`, append ` · woke <asker>` to the existing `answered question #N: …` flash when the wake ran. Use `questionAsker` for the name. Leave the other flash strings alone.
-- docs/cli.md "Answer open questions" row: add that answering wakes the role named in the question's `(asked by …)` clause. docs/invariants.md: next to the sentence that says question answers commit as `Answer question: <title>`, add that an answer wakes a known asking role and wakes no role for an unknown or missing asker, pinned to the new test.
-
-**Files touched.** src/backlog/question-answer.ts, src/operator/operator-intent.ts, src/cli/cli-query-commands.ts, src/gui/gui-backlog-commands.ts, src/ui/tui/tui-editors.ts, docs/cli.md, docs/invariants.md, and tests in test/cli-questions-list.test.ts (or a new test/question-asker.test.ts) and test/gui-endpoints.test.ts.
-
-**Acceptance criteria.**
-- Unit: `questionAsker("Ship X? (asked by plan 2026-10-12)")` is `"plan"`, `"… (asked by feature-2 2026-10-12)"` gives `"feature-2"`, and a heading with no clause gives null.
-- Unit: in a temp initialized project, `wakeQuestionAsker(root, "Q? (asked by plan 2026-10-12)")` returns requestWake's confirmation text, and the plan role's loop state now has `nextRunAt` at or before now. `wakeQuestionAsker(root, "Q? (asked by nobody 2026-10-12)")` and a heading with no clause return null and write no wake marker.
-- Spawned CLI: `tumwater questions answer 1 "yes"` on a question asked by `plan` prints the answered line, then the wake confirmation. The same command with `--json` prints the payload the existing strictness tests assert, unchanged.
-- test/gui-endpoints.test.ts: the existing answer assertion (a question with no `asked by` clause) still deep-equals its payload. A new case on a question asked by a known role sees a `wake` string in the 200 payload.
-- `npm run test` passes.
-
 ### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests)
 
 **Goal.** Every prompt tumwater assembles opens with `You are the "<id>" role` and speaks the glossary: each role's run prompt, the director's, the reviewer's, the conflict resolver's and every follow-up. Each prompt also maps the older names the model will still meet in code, git history and logs. The shared preamble spells the attribution stamps that roles copy into BUGS.md and PLANS.md. As the series' last part, it lands only after every other text part.
@@ -2689,6 +2667,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Answering a question wakes the role that asked it: `tumwater questions answer`, the dashboard and the TUI wake the role named in the heading's `(asked by <role> …)` clause, as `plan --release` wakes the role it hands work back to (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry)
+
+**Goal.** A loop that hits a fork that is the user's call writes a QUESTIONS.md `## Open` entry headed `… (asked by <role> YYYY-MM-DD)`, then sleeps. When the operator answers, nothing tells that loop. The answer path (`answerQuestion`/`answerQuestionFromText` in src/cli/question-commands.ts, called by `cmdQuestions` in src/cli/cli-query-commands.ts; `handleQuestionAnswer` in src/gui/gui-backlog-commands.ts; the answer-mode Enter branch in src/ui/tui/tui-editors.ts) commits the file and never calls `requestWake`. The role that asked waits out its backoff before it reads the decision it was blocked on. `plan --release` already calls `requestWake(root, [role])` (src/backlog/backlog-cli.ts), and `submitRolePromptAndWake` (src/operator/operator-intent.ts) pairs a prompt with its wake. Answering a question is the same kind of hand-back.
+
+**Approach.**
+- src/backlog/question-answer.ts: add `export function questionAsker(title: string): string | null` beside `questionFilingDate`. It returns the first word after `asked by` in the heading's parenthetical (`/\(asked by ([A-Za-z0-9_-]+)/`), or null when there is none. Doc comment: taken from the title only, like the filing date.
+- src/operator/operator-intent.ts: add `export function wakeQuestionAsker(root: string, title: string): string | null`. It reads `questionAsker(title)`. When that id is in `knownRoleIdsCached(root)` (src/config/config.ts, which covers the director and instance ids like `feature-2`), it returns `requestWake(root, [asker])`. Otherwise it returns null, which covers "asked by the user", an unknown or removed role, and no clause. Never throw for an unknown asker.
+- Call it after the successful commit on every answer surface:
+  - `cmdQuestions` (src/cli/cli-query-commands.ts), at all three answered branches (`--file`, editor, positional). In prose mode, print the wake confirmation on its own line after `sayAnswered`'s line when it is non-null. Leave the `--json` payload as it is, following the `--release` precedent of printing the wake only in prose.
+  - `handleQuestionAnswer` (src/gui/gui-backlog-commands.ts): on `answered`, add `wake: <text>` to the 200 payload only when the result is non-null, so the payload for a question with no asker stays the same.
+  - The TUI answer branch in src/ui/tui/tui-editors.ts: on `answered`, append ` · woke <asker>` to the existing `answered question #N: …` flash when the wake ran. Use `questionAsker` for the name. Leave the other flash strings alone.
+- docs/cli.md "Answer open questions" row: add that answering wakes the role named in the question's `(asked by …)` clause. docs/invariants.md: next to the sentence that says question answers commit as `Answer question: <title>`, add that an answer wakes a known asking role and wakes no role for an unknown or missing asker, pinned to the new test.
+
+**Files touched.** src/backlog/question-answer.ts, src/operator/operator-intent.ts, src/cli/cli-query-commands.ts, src/gui/gui-backlog-commands.ts, src/ui/tui/tui-editors.ts, docs/cli.md, docs/invariants.md, and tests in test/cli-questions-list.test.ts (or a new test/question-asker.test.ts) and test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- Unit: `questionAsker("Ship X? (asked by plan 2026-10-12)")` is `"plan"`, `"… (asked by feature-2 2026-10-12)"` gives `"feature-2"`, and a heading with no clause gives null.
+- Unit: in a temp initialized project, `wakeQuestionAsker(root, "Q? (asked by plan 2026-10-12)")` returns requestWake's confirmation text, and the plan role's loop state now has `nextRunAt` at or before now. `wakeQuestionAsker(root, "Q? (asked by nobody 2026-10-12)")` and a heading with no clause return null and write no wake marker.
+- Spawned CLI: `tumwater questions answer 1 "yes"` on a question asked by `plan` prints the answered line, then the wake confirmation. The same command with `--json` prints the payload the existing strictness tests assert, unchanged.
+- test/gui-endpoints.test.ts: the existing answer assertion (a question with no `asked by` clause) still deep-equals its payload. A new case on a question asked by a known role sees a `wake` string in the 200 payload.
+- `npm run test` passes.
 
 ### An operator's own commits wake idle maintenance roles: `workLanded` counts `tumwater(operator):` subjects like human commits, so editing the brief, filing a plan or bug, or answering a question is news to a deferred role (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry)
 

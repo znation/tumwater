@@ -10,6 +10,7 @@ import {
   requestWake,
   cancelWakes,
   submitRolePromptAndWake,
+  wakeQuestionAsker,
   rolePauseMessage,
   roleResumeMessage,
 } from "../../operator/operator-intent.js";
@@ -23,7 +24,7 @@ import {
   scheduledStopAt,
 } from "../../fleet/fleet-state.js";
 import { durationLabel } from "../../cli/cli-args.js";
-import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../backlog/question-answer.js";
+import { questionAsker, tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE } from "../../backlog/question-answer.js";
 import { editQueuedFile, readQueuedPromptBody } from "../../inbox/inbox-edit.js";
 import { collapseWhitespace } from "../../text/text.js";
 import { fleetPausePhrase, fleetResumePhrase } from "../../text/phrases.js";
@@ -966,14 +967,16 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             if (outcome.status === "fenced") {
               deps.flashMessage(UNCLOSED_FENCE_MESSAGE);
             } else {
+              let woke = "";
               if (outcome.status === "answered") {
                 deps.commitBacklogEdit("QUESTIONS.md", `Answer question: ${outcome.title}`);
+                if (wakeQuestionAsker(root, outcome.title) !== null) woke = ` · woke ${questionAsker(outcome.title)}`;
               }
               exitAnswerMode();
               deps.clearBacklogSelection();
               deps.flashMessage(
                 outcome.status === "answered"
-                  ? `answered question #${target.position}: ${outcome.title}`
+                  ? `answered question #${target.position}: ${outcome.title}${woke}`
                   : "that question was already answered or moved — nothing recorded",
               );
             }
