@@ -230,6 +230,40 @@ test("an added line in a test file naming a nonexistent path yields no finding",
   assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
 });
 
+test("an added line in a backlog prose file naming a nonexistent path yields no finding", async () => {
+  // Planned features routinely name the file they will create, which is by definition absent
+  // from the tree; the missing-path heuristic is for real references, so it spares the backlog
+  // prose files. Built from segments so this test source holds no literal path token.
+  const keep = ["src", "keep.ts"].join("/");
+  const absent = ["src", "x", "src", "x", "a.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    "PLANS.md": "Start.\n",
+  });
+  fs.writeFileSync(path.join(wt, "PLANS.md"), `Start.\nAdd a \`${absent}\` module.\n`);
+
+  assert.deepEqual(await stageCheckFindings(wt, "main", EXEMPT, "feature"), []);
+});
+
+test("a source line naming the same absent path still yields the finding", async () => {
+  const keep = ["src", "keep.ts"].join("/");
+  const absent = ["src", "x", "src", "x", "a.ts"].join("/");
+  const { wt } = await repoWith({
+    [keep]: "export const keep = 1;\n",
+    "PLANS.md": "Start.\n",
+  });
+  // The prose file is spared, but the same path named from a source file is still a real
+  // reference and must keep the finding.
+  fs.writeFileSync(path.join(wt, "PLANS.md"), `Start.\nAdd a \`${absent}\` module.\n`);
+  fs.writeFileSync(path.join(wt, "src", "notes.ts"), `export const note = \"${absent}\";\n`);
+
+  const findings = await stageCheckFindings(wt, "main", EXEMPT, "feature");
+
+  assert.equal(findings.length, 1);
+  assert.match(findings[0]!, /added lines name paths that do not exist in the tree/);
+  assert.ok(findings[0]!.includes(absent));
+});
+
 test("an added line outside test/ naming a nonexistent path still yields a finding", async () => {
   const keep = ["src", "keep.ts"].join("/");
   const testFile = ["test", "existing.test.ts"].join("/");

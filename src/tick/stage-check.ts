@@ -242,6 +242,13 @@ async function missingPathFindings(
     if (e.oldPath) oldPaths.add(e.oldPath);
     if (e.status === "D") oldPaths.add(e.path);
   }
+  // Backlog prose files routinely name the file a plan proposes to create, which is by
+  // definition absent from the tree; the added-nonexistent-path heuristic targets real
+  // references, so it spares them (the rename/delete stale-reference scan still covers them).
+  function isBacklogProse(path: string): boolean {
+    const base = path.slice(path.lastIndexOf("/") + 1);
+    return base === "PLANS.md" || base === "BUGS.md" || base === "QUESTIONS.md";
+  }
   const seen = new Set<string>();
   const missing: string[] = [];
   // A path-shaped token: at least one slash and a final `.<ext>` segment. Scanned inside the
@@ -256,9 +263,10 @@ async function missingPathFindings(
     }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
     // A test file's fixtures routinely name paths from the software under test, which need
-    // not exist here; the added-nonexistent-path heuristic targets real references, so it
-    // spares added lines in test/ (the rename/delete scan above still covers the file).
-    if (file?.startsWith("test/")) continue;
+    // not exist here, and a backlog prose file names the paths a plan proposes to create; the
+    // added-nonexistent-path heuristic targets real references, so it spares added lines in
+    // test/ and the backlog prose files (the rename/delete scan above still covers them).
+    if (file !== null && (file.startsWith("test/") || isBacklogProse(file))) continue;
     for (const m of line.slice(1).matchAll(tokenRe)) {
       const p = m[0];
       const top = p.slice(0, p.indexOf("/"));
