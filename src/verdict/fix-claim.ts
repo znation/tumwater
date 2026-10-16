@@ -33,7 +33,7 @@
  * forward any name the base's Fixed section already holds, and nothing else unbacked. */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { readTextOrNull, walkFiles } from "../files/files.js";
 import {
   fenceTracker,
@@ -164,18 +164,23 @@ function unwrapSymbol(span: string): string {
   return out;
 }
 
-/** The tree's code text: every tracked-source-shaped file under src/, test/, and scripts/,
- * plus package.json and tsconfig.json, concatenated. Markdown is deliberately excluded —
- * the BUGS.md entry itself names the symbols it claims, so a doc haystack would back any
- * claim, including a false one. */
+/** The tree's code text: every non-documentation tracked-source-shaped file under src/,
+ * test/, and scripts/, plus package.json and tsconfig.json, concatenated. The walk is
+ * language-neutral — markdown is the one thing excluded, not a fixed source-extension list
+ * — so a Rust, Python, or Go tree backs its symbols like a TypeScript one does; a JS/TS-only
+ * haystack left every symbol in a non-JS project unbacked and blocked every md-only BUGS.md
+ * Fixed edit there (BUGS.md 2026-10-06). Markdown is deliberately excluded — the BUGS.md
+ * entry itself names the symbols it claims, so a doc haystack would back any claim including
+ * a false one. */
 export function sourceHaystack(root: string): string {
   const parts: string[] = [];
   const skipDirs = new Set(["node_modules", "dist"]);
+  const docExts = new Set([".md", ".markdown"]);
   for (const dir of ["src", "test", "scripts"])
     walkFiles(
       join(root, dir),
       (p, entry) => {
-        if (!/\.(ts|mts|cts|js|mjs|cjs)$/.test(entry.name)) return;
+        if (docExts.has(extname(entry.name).toLowerCase())) return;
         try {
           if (statSync(p).isFile()) parts.push(readFileSync(p, "utf8"));
         } catch {

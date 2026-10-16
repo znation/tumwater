@@ -281,6 +281,78 @@ test("sourceHaystack tolerates unreadable files and stays usable", () => {
   }
 });
 
+// Regression coverage for the 2026-10-06 record (BUGS.md): the haystack was hard-coded to
+// JS/TS extensions, so in a non-JS project (../nostalgia is Rust) it read nothing, every
+// symbol came back unbacked, and every md-only BUGS.md Fixed edit was blocked at landing.
+// The haystack is now language-neutral (markdown excluded, not a fixed source-extension
+// list), so a Rust tree backs its symbols and still rejects a phantom one.
+
+test("sourceHaystack reads non-JS source, so a Rust symbol backs a claim", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "lib.rs"), "pub fn known_titles() {}\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(haystack.includes("known_titles"), "Rust source text is in the haystack");
+  assert.deepEqual(
+    unbackedSymbols(root, ["known_titles", "src/lib.rs"], haystack),
+    [],
+    "both the symbol and the path are backed",
+  );
+});
+
+test("sourceHaystack still excludes markdown living under the walked source dirs", () => {
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.mkdirSync(path.join(root, "src", "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "a.ts"), "const marker = 1;\n");
+  fs.writeFileSync(path.join(root, "src", "docs", "notes.md"), "`marker` claimed here\n");
+  const haystack = sourceHaystack(root);
+  assert.ok(haystack.includes("const marker = 1;"));
+  assert.ok(!haystack.includes("claimed here"), "a doc haystack would back any claim");
+});
+
+test("falseFixReason passes an md-only Fixed edit in a non-JS (Rust) project", async () => {
+  // The ../nostalgia block: the haystack walked no .rs file, so the Rust symbols its entry
+  // named were all unbacked and the md-only edit was rejected. A language-neutral haystack
+  // backs them, so the edit lands.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "lib.rs"), "pub fn known_titles() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### Now Playing (found 2026-10-06)\n\n**Symptom:** the fallback plays nothing.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### Now Playing (found 2026-10-06, fixed 2026-10-06)\n\n" +
+      "**Fix:** `known_titles` in `src/lib.rs` now returns the fallback titles.\n",
+  );
+  assert.equal(await falseFixReason(root, "main", ["BUGS.md"]), undefined);
+});
+
+test("falseFixReason still flags a phantom symbol in a non-JS project", async () => {
+  // Language-neutral must not mean check-neutral: a Rust tree with content still rejects a
+  // Fix claim naming code that exists nowhere on the tree.
+  const root = makeRepo();
+  fs.mkdirSync(path.join(root, "src"), { recursive: true });
+  fs.writeFileSync(path.join(root, "src", "lib.rs"), "pub fn known_titles() {}\n");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### A bug (found 2026-10-06)\n\n**Symptom:** x.\n",
+  );
+  sh(root, "git", "add", "-A");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Fixed\n\n### A bug (found 2026-10-06, fixed 2026-10-06)\n\n" +
+      "**Fix:** `phantomRustSymbol` fixes it.\n",
+  );
+  const reason = await falseFixReason(root, "main", ["BUGS.md"]);
+  assert.match(reason!, /phantomRustSymbol/);
+});
+
 test("falseFixReason flags a new Fixed entry whose Fix names nothing on the tree", async () => {
   const root = makeRepo();
   fs.writeFileSync(
