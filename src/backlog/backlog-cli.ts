@@ -35,6 +35,14 @@ export function planTitleOf(positionals: string[]): string {
   return collapseWhitespace(positionals[0] ?? "");
 }
 
+/** A positional alongside `--file` on a `plan|bug` command is refused: the entry's text comes
+ * from the file, so a stray positional almost always means the operator pasted prose or
+ * forgot `--file`. The one home of that check, shared by fileAndAnnounce and editAndAnnounce
+ * so the two `--file` preflights cannot drift on the message. */
+function rejectStrayWithFile(stray: unknown): void {
+  if (stray !== undefined) fail(`unexpected argument ${JSON.stringify(stray)} — with --file the entry comes from the file`);
+}
+
 /** The one home of the prose-carrying file commands' flag classification (the `bug`/`plan`
  * file forms and their `--edit` forms): `--json` is the one boolean, refused on a repeat
  * (the "each flag at most once" rule every spec-parsed command and the questions parser
@@ -110,8 +118,7 @@ export async function fileAndAnnounce(
     const rest = args.filter((_, i) => i !== fileFlag && i !== fileFlag + 1);
     rejectRepeatFlag(rest.includes("--file"), "--file");
     const { json, positionals } = scanProseFlags(rest, command);
-    const stray = positionals[0];
-    if (stray !== undefined) fail(`unexpected argument ${JSON.stringify(stray)} — with --file the entry comes from the file`);
+    rejectStrayWithFile(positionals[0]);
     await requireReadyRepo(root);
     const text = readPromptFileArg(file);
     const wakeProblem = promptLengthProblem(wakeText(splitEntryFile(text).title), role);
@@ -372,10 +379,7 @@ export async function editAndAnnounce(
     name: "--edit",
     example: "--edit 2",
   });
-  if (path !== null) {
-    const stray = positionals[0];
-    if (stray !== undefined) fail(`unexpected argument ${JSON.stringify(stray)} — with --file the entry comes from the file`);
-  }
+  if (path !== null) rejectStrayWithFile(positionals[0]);
   if (position === null) fail(`--edit needs a position (usage: tumwater ${command} --edit <n>)`);
   await requireReadyRepo(root);
   let text: string | null = null;
