@@ -15,6 +15,7 @@ import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } fro
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
+import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
@@ -115,6 +116,12 @@ export interface RoleViewPayload {
    * backoff is in force. */
   nextRunAt: number;
   backoffSeconds: number;
+  /** The yield multiplier the loop's recent-yield ring earns right now — the same
+   * `×N` the status `next run` cell rides (status-render.ts's nextRunCell reads
+   * yieldMultiplierFor) — so the role view's Schedule cannot understate a quiet
+   * yield-scaled loop's effective gap. 1 for every role outside the scalable set and
+   * for a scalable role whose recent ring still holds a landing. */
+  yieldMultiplier: number;
   /** When the loop's last tick ended, epoch ms — absent for a never-ticked loop, so the
    * JSON shape stays unchanged until the loop has acted. */
   lastTickEndedAt?: number;
@@ -267,6 +274,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     // is omitted (JSON unchanged) until the loop has actually ticked.
     nextRunAt: state.nextRunAt,
     backoffSeconds: state.backoffSeconds,
+    yieldMultiplier: yieldMultiplierFor(state),
     ...(state.lastTickEndedAt !== undefined ? { lastTickEndedAt: state.lastTickEndedAt } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
   };

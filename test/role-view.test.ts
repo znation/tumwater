@@ -657,3 +657,36 @@ test("role payload and render surface the loop's schedule from persisted state",
   assert.match(freshMd, /- Next tick: not scheduled yet/);
   assert.match(freshMd, /- Last tick: never/);
 });
+
+// The role view's Schedule must not understate a quiet yield-scaled loop's effective gap: a
+// scalable role (bugfix here) whose recent-yield ring holds a run of empties earns a ×N
+// multiplier (yieldMultiplier 2 at 10 empties) that stretches its min-tick gap beyond what
+// nextRunAt's countdown shows, so the `Next tick` line rides the same `×N` suffix the status
+// `next run` cell and the GUI twin carry (nextRunCell/fmtNextRun). Work roles (feature, plan,
+// director) are not scalable and never show the suffix.
+test("role schedule surfaces the yield multiplier a quiet scalable loop is serving", () => {
+  const dir = root();
+  const now = 1_700_000_000_000;
+  // A bugfix loop 5m from its nextRunAt, out of backoff, with ten empties in its yield ring.
+  const state = freshLoopState("bugfix");
+  state.nextRunAt = now + 300_000;
+  state.backoffSeconds = 0;
+  state.recentOutcomes = "n".repeat(10); // 10 empties => yieldMultiplier 2
+  saveLoopState(dir, state);
+  const p = rolePayload(dir, "bugfix", NO_MODELS);
+  assert.equal(p.yieldMultiplier, 2);
+  const md = renderRoleMarkdown(p, now);
+  assert.match(md, /- Next tick: in 5m ×2/); // the stretched-gap suffix rides the line
+  // A due quiet loop reads `due now ×2`, matching nextRunCell's `now ×N`.
+  state.nextRunAt = now;
+  saveLoopState(dir, state);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now), /- Next tick: due now ×2/);
+  // A landing inside the recent window resets the multiplier to 1, so no suffix rides.
+  state.nextRunAt = now - 60_000;
+  state.recentOutcomes = "L".repeat(2) + "n".repeat(8);
+  saveLoopState(dir, state);
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).yieldMultiplier, 1);
+  const settled = renderRoleMarkdown(rolePayload(dir, "bugfix", NO_MODELS), now);
+  assert.match(settled, /- Next tick: due now$/m);
+  assert.doesNotMatch(settled, /×/);
+});

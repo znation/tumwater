@@ -132,15 +132,20 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
  * loop that has not ticked. `now` is injected (default Date.now()) so the renderer stays a
  * pure function of the payload and the test can pin a fixed clock. */
 function scheduleLine(p: RoleViewPayload, now: number): string[] {
+  // The yield multiplier rides the line as `×N` exactly like nextRunCell/fmtNextRun: a quiet
+  // yield-scaled loop's effective gap is longer than nextRunAt's countdown shows (isEligible
+  // gates on the multiplier too), so the Schedule must not understate when the loop acts next.
+  const mult = p.yieldMultiplier;
+  const suffix = mult > 1 ? ` ×${mult}` : "";
   let next: string;
   if (p.nextRunAt <= 0) {
     next = "not scheduled yet";
   } else {
     const remain = secondsUntil(p.nextRunAt, now);
     if (remain <= 0) {
-      next = "due now";
+      next = `due now${suffix}`;
     } else {
-      next = `in ${humanSeconds(remain)}`;
+      next = `in ${humanSeconds(remain)}${suffix}`;
       if (p.backoffSeconds > 0) next = `backoff ${next}`;
     }
   }
