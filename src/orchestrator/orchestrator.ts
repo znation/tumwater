@@ -368,6 +368,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // ran meets the hold as it stands then, not as this poll left it.
       const {
         roleConfig,
+        directorConfig,
         userPaused,
         pausedRoles: pausedRolesSet,
         capPaused,
@@ -475,6 +476,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             runners,
             liveConfig,
             roleConfig,
+            directorConfig,
             piDefault,
             startHeld: () => tickStartHeld() || reviewHeldNow(),
           },

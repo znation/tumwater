@@ -78,6 +78,8 @@ export interface LandingPipelineContext {
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
   roleConfig: TumwaterConfig;
+  /** The director's config (the live config unless a used-up window moved it to its fallback). */
+  directorConfig: TumwaterConfig;
   /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
    * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2),
    * read by a landing's review and resolver runs just as a role tick reads it. */

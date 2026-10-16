@@ -5,32 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 2/7: The director follows a used-up Claude window to its tier's fallback (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Director"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/landing/landing-vetting.ts src/orchestrator/orchestrator-scheduling.ts docs/backends.md and their tests)
-
-**Goal.** The director keeps the live config whatever the gates say (`gateRoleConfig`), because your own prompt outranks the daily cap. That reasoning is about spend, not availability. While a subscription window is rejected, a director on subscription Claude cannot run at all.
-
-Today its prompt goes back to the inbox after each failed run and runs again on the next poll, until the repeated-failure pause stops it (BUGS.md 2026-10-16, "A director prompt sent while the Claude subscription window is rejected …"). After that bug fix it waits for the reset instead. This part moves it to its tier's fallback instead, when one is available.
-
-**Approach.**
-- If that BUGS.md entry is still under `## Open`, fix it first in this part, as its fix sketch says. The director then waits on the `claude` hold while its own model job is subscription Claude. Include its test, and move the entry to `## Fixed`.
-- Extend `gateRoleConfig(role, liveConfig, roleConfig)` (src/gates/budget-gates.ts) with the poll's window verdict.
-  - The director's config is the live config, except that while `windowOut` is set and its own model job is subscription Claude, its tier's resolved pair replaces it. Build it with `applyFallbackModel` over the live config, with a keep predicate that is false only for subscription Claude jobs.
-  - The cap still never moves the director: a priced director primary keeps its model over the cap, as today.
-- Both callers share the function, so the scheduler's assignment (src/gates/gate-polls.ts) and the merge-path author (`resolveAuthor` in src/landing/landing-vetting.ts) cannot drift.
-- With nowhere to go (no usable fallback for its tier), the director waits on the hold, as the bug fix made it.
-- docs/backends.md: one sentence saying a used-up window moves the director too, and the cap still never does.
-
-**Files touched.**
-- Source: src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/landing/landing-vetting.ts, and src/orchestrator/orchestrator-scheduling.ts (only if the bug fix is done here).
-- Docs: docs/backends.md.
-- Tests: test/budget-gates.test.ts, test/orchestrator-scheduling.test.ts, and an orchestrator test with a fake claude.
-
-**Acceptance criteria.**
-- Director on subscription Claude, with a rejected window and a zero-priced fallback: the director's run starts on the fallback pair, and its prompt is consumed.
-- The same setup at the cap, without a rejected window: the director keeps its Claude model (today's exemption).
-- No usable fallback: the director runs once, then waits until `resetsAt`, then runs the prompt and is not paused for repeated failures.
-- `npm test` passes.
-
 ### Fallback chain, part 3/7: `fallback` takes an ordered list per tier, and each tier runs on the first usable step (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Terms" and "Config"; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
 
 **Goal.** Each tier has exactly one fallback today, borrowed from another tier when it has none. Chains of more than one were left out of plans/fallback-model.md. This part lets `fallback` list several model ids per tier, tried in order. The breaker that demotes a fallback after three failed runs then moves the tier to the next step instead of pausing it. For example, a local server that is down falls through to a second local server.
@@ -2316,6 +2290,35 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Fallback chain, part 2/7: The director follows a used-up Claude window to its tier's fallback (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Director"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/landing/landing-vetting.ts src/orchestrator/orchestrator-scheduling.ts docs/backends.md and their tests, done 2026-10-16)
+
+**Goal.** The director keeps the live config whatever the gates say (`gateRoleConfig`), because your own prompt outranks the daily cap. That reasoning is about spend, not availability. While a subscription window is rejected, a director on subscription Claude cannot run at all.
+
+Today its prompt goes back to the inbox after each failed run and runs again on the next poll, until the repeated-failure pause stops it (BUGS.md 2026-10-16, "A director prompt sent while the Claude subscription window is rejected …"). After that bug fix it waits for the reset instead. This part moves it to its tier's fallback instead, when one is available.
+
+**Approach.**
+- If that BUGS.md entry is still under `## Open`, fix it first in this part, as its fix sketch says. The director then waits on the `claude` hold while its own model job is subscription Claude. Include its test, and move the entry to `## Fixed`.
+- Extend `gateRoleConfig(role, liveConfig, roleConfig)` (src/gates/budget-gates.ts) with the poll's window verdict.
+  - The director's config is the live config, except that while `windowOut` is set and its own model job is subscription Claude, its tier's resolved pair replaces it. Build it with `applyFallbackModel` over the live config, with a keep predicate that is false only for subscription Claude jobs.
+  - The cap still never moves the director: a priced director primary keeps its model over the cap, as today.
+- Both callers share the function, so the scheduler's assignment (src/gates/gate-polls.ts) and the merge-path author (`resolveAuthor` in src/landing/landing-vetting.ts) cannot drift.
+- With nowhere to go (no usable fallback for its tier), the director waits on the hold, as the bug fix made it.
+- docs/backends.md: one sentence saying a used-up window moves the director too, and the cap still never does.
+
+**Files touched.**
+- Source: src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/landing/landing-vetting.ts, and src/orchestrator/orchestrator-scheduling.ts (only if the bug fix is done here).
+- Docs: docs/backends.md.
+- Tests: test/budget-gates.test.ts, test/orchestrator-scheduling.test.ts, and an orchestrator test with a fake claude.
+
+**Acceptance criteria.**
+- Director on subscription Claude, with a rejected window and a zero-priced fallback: the director's run starts on the fallback pair, and its prompt is consumed.
+- The same setup at the cap, without a rejected window: the director keeps its Claude model (today's exemption).
+- No usable fallback: the director runs once, then waits until `resetsAt`, then runs the prompt and is not paused for repeated failures.
+- `npm test` passes.
+
+**Landed differently.** The BUGS.md director-hold bug was already fixed before this part, so no fix was made here. `pollBudgetGate` returns a `directorConfig` (the live config, or the tier-fallback view while the window move stands and the director's own model job is subscription Claude); `gateRoleConfig` takes it as an optional fourth argument and both callers pass it (the scheduler through `FleetGatePoll`, the landing author through `LandingPipelineContext`). `src/orchestrator/orchestrator-scheduling.ts` needed no change: the director's provider is read from its runner config, so a moved director is no longer on the `claude` hold. Tests are in test/budget-gates.test.ts and test/gate-polls.test.ts; no orchestrator test with a fake claude was added.
+
 
 ### `tumwater plan --top <n>` and `tumwater bug --top <n>` move an entry to the head of its section so feature or bugfix picks it next (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-write.ts, src/backlog/backlog-cli.ts, src/cli.ts, src/cli/help.ts, docs/cli.md and their tests; done 2026-10-16)
 

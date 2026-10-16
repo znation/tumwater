@@ -42,14 +42,15 @@ export function vetLimit(maxConcurrent: number): number {
  * (runners are never removed from the array on disable — only a warning event fires); a role
  * disabled before this process started has no runner, so a throwaway one supplies the same
  * wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and save
- * on. Both share the live config, like every runner — the director keeps liveConfig (its
- * budget-gate exemption), every other role takes roleConfig (gateRoleConfig's single home
- * for the rule; the scheduler assigns the live runners by it every poll). */
+ * on. Both share the live config, like every runner — the director takes directorConfig (the live
+ * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
+ * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
+ * by it every poll). */
 function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
-  const { root, mainBranch, signal, runners, liveConfig, roleConfig } = ctx;
+  const { root, mainBranch, signal, runners, liveConfig, roleConfig, directorConfig } = ctx;
   return (
     runners.find((r) => r.role === role) ??
-    new LoopRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig), mainBranch, signal)
+    new LoopRunner(root, role, gateRoleConfig(role, liveConfig, roleConfig, directorConfig), mainBranch, signal)
   );
 }
 

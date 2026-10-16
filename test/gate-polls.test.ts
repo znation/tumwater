@@ -190,7 +190,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
   assert.equal(out.gate, "open");
   const cfgOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config;
   assert.deepEqual(cfgOf(0).model, { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" });
-  assert.equal(cfgOf(1), config, "the director keeps the live config");
+  assert.deepEqual(cfgOf(1).model, cfgOf(0).model, "the director follows its tier to the fallback pair too");
   assert.equal((runners[0] as unknown as { budgetFallbackActive?: boolean }).budgetFallbackActive, false, "the cap flag stays off");
   const limited = readEvents(root, 100).filter((e) => e.type === "claude_window_limited");
   assert.equal(limited.length, 1);
@@ -205,6 +205,7 @@ test("pollFleetGates: a used-up claude window moves claude roles to the fallback
   assert.equal(back.length, 1);
   assert.equal(back[0]!.reason, "window");
   assert.equal(cfgOf(0), config, "the live config is back");
+  assert.equal(cfgOf(1), config, "the director's too");
 });
 
 test("pollFleetGates: a cap reopen while the claude window is still used up hands nothing back", () => {

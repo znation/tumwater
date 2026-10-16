@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
+import { gateRoleConfig, newBudgetGateState, pollBudgetGate, tickOnPair } from "../src/gates/budget-gates.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
+import { BUDGET_WARNING_FRACTION } from "../src/budget/budget.js";
 import { IDLE_FALLBACK_BREAKER } from "../src/budget/fallback-breaker.js";
 import { readEvents } from "../src/events/event-read.js";
 import { spentLoopState } from "./fixtures/loop-fixtures.js";
@@ -652,4 +654,41 @@ test("a used-up claude window leaves a claude-pinned role under a priced pi tier
   const p = poll(root, state, cfg, models);
   assert.equal(configForRole(p.roleConfig, "bugfix").agent, "claude");
   assert.equal(configForRole(p.roleConfig, "plan").provider, "paid");
+});
+
+test("a used-up claude window moves a subscription claude director to its tier's fallback; no window leaves it on the live config", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  rejectedWindow(root);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  const state = newBudgetGateState(cfg);
+  const p = poll(root, state, cfg, models);
+  const director = configForRole(p.directorConfig, DIRECTOR_ROLE);
+  assert.equal(director.provider, "free", "the director runs on the fallback pair");
+  assert.equal(director.model, "qwen-free");
+  assert.equal(gateRoleConfig(DIRECTOR_ROLE, cfg, p.roleConfig, p.directorConfig), p.directorConfig);
+  assert.equal(gateRoleConfig(DIRECTOR_ROLE, cfg, p.roleConfig), cfg, "omitted means the live config");
+  writeClaudeAccount(root, { billing: "subscription", observedAt: Date.now(), windows: {} });
+  assert.equal(poll(root, state, cfg, models).directorConfig, cfg, "the live config returns on reset");
+});
+
+test("the cap alone never moves the director, and a window with no fallback leaves it for the hold", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  const capped = poll(root, newBudgetGateState(cfg), cfg, models, [spentLoopState("feature", 10)]);
+  assert.equal(capped.onFallback, true);
+  assert.equal(capped.directorConfig, cfg, "the cap leaves the director on its Claude model");
+
+  rejectedWindow(root);
+  const bare = configWith(10);
+  bare.provider = undefined;
+  bare.model = "claude/claude-sonnet-5-5";
+  bare.fallback = undefined;
+  bare.fallbackModel = undefined;
+  assert.equal(poll(root, newBudgetGateState(bare), bare, models).directorConfig, bare);
 });

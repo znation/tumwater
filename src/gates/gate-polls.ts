@@ -127,6 +127,8 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
 interface FleetGatePoll {
   gate: BudgetGate;
   roleConfig: TumwaterConfig;
+  /** The director's config this poll (pollBudgetGate's `directorConfig`). */
+  directorConfig: TumwaterConfig;
   userPaused: boolean;
   pausedRoles: ReadonlySet<string>;
   capPaused: ReadonlySet<string>;
@@ -214,6 +216,7 @@ export function pollFleetGates(
     budgetActive,
     windowTiers,
     windowResumed,
+    directorConfig,
   } = pollBudgetGate(states.budget, {
     root,
     states: runners.map((r) => r.state),
@@ -247,7 +250,7 @@ export function pollFleetGates(
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
   // the reload, can never tick on the wrong model.
   for (const r of runners) {
-    r.config = gateRoleConfig(r.role, liveConfig, roleConfig);
+    r.config = gateRoleConfig(r.role, liveConfig, roleConfig, directorConfig);
     // An image reroute must never spend past the daily cap: while the gate has the fleet on
     // its free fallback pairs, a reroute looks only among those pairs (plans/image-input.md
     // "Reroute target" "Regime"). Set beside the config assignment so the scheduler's regime
@@ -503,6 +506,7 @@ export function pollFleetGates(
   return {
     gate,
     roleConfig,
+    directorConfig,
     userPaused,
     pausedRoles: pausedRolesNow,
     capPaused,

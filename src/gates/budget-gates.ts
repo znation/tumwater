@@ -67,6 +67,10 @@ export interface BudgetGateState {
   /** Whether the previous poll had the window move active (a used-up window with a fallback
    * to move to), for the one return-on-reset poll. */
   prevWindowMoved: boolean;
+  /** The director's window view (directorWindowView) and the live config it was derived from;
+   * `directorFrom` is null while the director keeps the live config. */
+  directorFrom: TumwaterConfig | null;
+  directorView: TumwaterConfig;
   /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
    * the transitions — set when the warning logs, reset whenever spend falls back below the
    * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
@@ -83,6 +87,8 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     from: null,
     fromKey: "",
     prevWindowMoved: false,
+    directorFrom: null,
+    directorView: config,
     fallbackConfig: config,
     warned: false,
   };
@@ -132,6 +138,10 @@ interface BudgetGatePoll {
   /** True on exactly the poll the window move ends (the window reset): the orchestrator hands
    * back the in-flight ticks still on the fallback pairs, unless the cap still holds. */
   windowResumed: boolean;
+  /** The config the director runs under: the live config, except while the window move stands
+   * and its own model job is subscription claude — then its tier's fallback pair
+   * (gateRoleConfig's `directorConfig`). The cap never moves it. */
+  directorConfig: TumwaterConfig;
 }
 
 /** Is this fallback pair a claude one (the agent namespace in the pair's provider)? */
@@ -163,8 +173,10 @@ export function tickOnPair(
 }
 
 /** The config a runner runs on while the budget gate stands: the director keeps the live
- * config — an explicit human prompt outranks the autonomous-spend cap — and every other role
- * takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
+ * config — an explicit human prompt outranks the autonomous-spend cap — except while a used-up
+ * window has its own subscription claude model unable to run, when it takes `directorConfig`
+ * (pollBudgetGate's view: the tier's fallback pair; omitted means the live config). Every other
+ * role takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
  * rule, so the scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway landing
  * author's construction (src/landing/landing-vetting.ts's resolveAuthor) cannot drift apart —
  * say, an exemption granted to one more role in one copy and not the other. */
@@ -172,8 +184,9 @@ export function gateRoleConfig(
   role: string,
   liveConfig: TumwaterConfig,
   roleConfig: TumwaterConfig,
+  directorConfig: TumwaterConfig = liveConfig,
 ): TumwaterConfig {
-  return role === DIRECTOR_ROLE ? liveConfig : roleConfig;
+  return role === DIRECTOR_ROLE ? directorConfig : roleConfig;
 }
 
 /** Poll the daily cost budget gate: once the fleet's spend for the local day has reached
@@ -383,6 +396,17 @@ export function pollBudgetGate(
     const labels = tierFallbackLabels(priceResolved);
     for (const tier of MODEL_TIERS) if (moved.has(tier) && labels[tier] !== undefined) windowTiers[tier] = labels[tier];
   }
+  // The director follows availability, not the cap: while the window move stands and its own
+  // model job is subscription claude, its tier's resolved pair replaces the live config (only
+  // subscription claude jobs are unavailable, so a priced director primary keeps its model over
+  // the cap). With no fallback (windowMove false) it stays on the live config and the scheduler
+  // holds it on the claude hold.
+  const directorMoved = windowMove && seamIsClaude(configForRole(liveConfig, DIRECTOR_ROLE));
+  if (!directorMoved) state.directorFrom = null;
+  else if (state.directorFrom !== liveConfig) {
+    state.directorFrom = liveConfig;
+    state.directorView = applyFallbackModel(liveConfig, priceResolved, (seam) => !seamIsClaude(seam));
+  }
   const windowResumed = state.prevWindowMoved && !windowMove;
   state.prevWindowMoved = windowMove;
   return {
@@ -399,6 +423,7 @@ export function pollBudgetGate(
     windowOut,
     windowTiers,
     windowResumed,
+    directorConfig: directorMoved ? state.directorView : liveConfig,
   };
 }
 

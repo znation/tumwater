@@ -281,6 +281,7 @@ export async function landHead(
     runners: [runner],
     liveConfig: config,
     roleConfig: config,
+    directorConfig: config,
     startHeld: () => false,
   };
   const pipeline = newLandingPipeline();

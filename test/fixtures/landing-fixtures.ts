@@ -74,6 +74,7 @@ export function makePipeline(
       runners,
       liveConfig: config,
       roleConfig: config,
+      directorConfig: config,
       startHeld: opts.held ?? (() => false),
     },
     pipeline: newLandingPipeline(),

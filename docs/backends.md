@@ -126,7 +126,7 @@ free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: 
 API-equivalent cost is tracked as estimated spend, printed on its own line in `tumwater report`,
 and never counted in the spend totals. A rejected subscription usage window moves subscription
 Claude model jobs to their tier's `fallback` until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command); with no usable fallback they wait for the reset instead, so the team does not
-burn a failed run per role per poll. Pi model jobs and API-key Claude model jobs keep running, and a run
+burn a failed run per role per poll. A used-up window moves a subscription Claude director to its tier's fallback too (with no fallback it waits for the reset), while the cap still never moves the director. Pi model jobs and API-key Claude model jobs keep running, and a run
 cut off by the window keeps its worktree and continues on the fallback as a handoff. When the window resets, in-flight fallback runs are handed back to Claude (`budget_handback` with reason `window`). A
 subscription Claude job with no overage is free to the budget gate too: at the cap it stays
 put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
