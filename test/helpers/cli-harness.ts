@@ -55,7 +55,9 @@ interface SpawnedCli {
    * BUGS.md 2026-09-30). The deadline is measured on the injected `WaitClock` (wait.ts), whose
    * default is performance.now(): a wall-clock jump (a host sleep) must not spend a readiness
    * budget a printed-nothing child has not used (BUGS.md 2026-10-07), and a test may pass a
-   * `fakeClock` so the budget is logical and expires only when the test advances it. */
+   * `fakeClock` so the budget is logical and expires only when the test advances it. Rejects at
+   * once, with the exit status and captured stderr, when the child exits before `pred` matches:
+   * a startup failure must not read as a bare timeout with empty output (BUGS.md 2026-10-16). */
   waitFor(pred: (out: string) => boolean, what: string, ms?: number, clock?: WaitClock): Promise<void>;
   kill(): void;
 }
@@ -79,7 +81,14 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
   // process killed before its finally would otherwise leave the whole tree at PPID 1.
   const child = spawn(process.execPath, [CLI, ...args], { cwd, env: exitWithOwnerEnv(env), detached: true });
   let buffer = "";
+  let errBuffer = "";
+  let exited: string | undefined;
   child.stdout?.on("data", (d) => (buffer += d));
+  child.stderr?.on("data", (d) => (errBuffer += d));
+  // "close" fires after both pipes drained, so the buffers are complete when waitFor reads them.
+  child.once("close", (code, signal) => {
+    exited = signal ? `signal ${signal}` : `code ${code}`;
+  });
   return {
     child,
     out: () => buffer,
@@ -89,6 +98,8 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
         const poll = (): void => {
           if (pred(buffer)) {
             resolve();
+          } else if (exited !== undefined) {
+            reject(new Error(`the child exited (${exited}) before ${what}; output so far:\n${buffer}\nstderr:\n${errBuffer}`));
           } else if (clock.now() - started > ms) {
             reject(new Error(`timed out waiting for ${what}; output so far:\n${buffer}`));
           } else {
