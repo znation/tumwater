@@ -11,6 +11,7 @@ import {
   checkClaudeTranscripts,
   checkDiskSpace,
   checkEventLog,
+  checkFlakyChecks,
   checkGitBinary,
   checkInit,
   checkMergeLock,
@@ -32,6 +33,7 @@ import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { logEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
+import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { backdate } from "./helpers/backdate.js";
 import { withEnv } from "./helpers/env.js";
 import { fakeBins, readyRepo } from "./fixtures/doctor-fixtures.js";
@@ -882,4 +884,48 @@ test("checkWorktreePool sums the last day of slot_wait events and warns at ten m
   const later = checkWorktreePool(root, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
   assert.doesNotMatch(later.detail, /slot wait/);
+});
+
+test("checkFlakyChecks stays quiet for no flake and for a single one-off flake", () => {
+  const quiet = readyRepo();
+  assert.deepEqual(checkFlakyChecks(quiet), { level: "ok", detail: "no check flapped more than once in the last 24h" });
+
+  const one = readyRepo();
+  logEvent(one, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}test failed on flaky network` });
+  assert.deepEqual(checkFlakyChecks(one), { level: "ok", detail: "no check flapped more than once in the last 24h" });
+});
+
+test("checkFlakyChecks warns naming a check that flapped twice and aggregates across a duration difference", () => {
+  const root = readyRepo();
+  const flake = (headline: string) =>
+    logEvent(root, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+  // Same normalized check, different durations: two firings must read as one check's count of 2.
+  flake("test failed after 3s");
+  flake("test failed after 9s");
+  const out = checkFlakyChecks(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /flapped more than once in the last 24h: "test failed after <dur>" ×2/);
+});
+
+test("checkFlakyChecks warns naming both when two distinct checks flapped, most frequent first", () => {
+  const root = readyRepo();
+  const flake = (headline: string) =>
+    logEvent(root, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+  flake("network test failed");
+  flake("network test failed");
+  flake("database test failed");
+  flake("database test failed");
+  flake("database test failed");
+  const out = checkFlakyChecks(root);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /checks flapped more than once in the last 24h: "database test failed" ×3 \(and 1 more: "network test failed" ×2\)/);
+});
+
+test("checkFlakyChecks ignores flake warnings older than the window", () => {
+  const root = readyRepo();
+  // An old event outside the 24h window, stamped directly with writeEvents so its ts is ancient.
+  writeEvents(root, [
+    { ts: Date.now() - 48 * 3_600_000, loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}old test failed` },
+  ]);
+  assert.deepEqual(checkFlakyChecks(root), { level: "ok", detail: "no check flapped more than once in the last 24h" });
 });

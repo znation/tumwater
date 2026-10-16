@@ -61,7 +61,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 
-### A doctor check names checks the review gate kept recognizing as flakes: a "flaky checks" check surfaces the gate's flake memory (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `src/tick`, `src/loop`, `src/ui/status-*`, and `src/cli/`, and this touches none of them: only `src/doctor/` and the one exported window constant in `src/review/known-flakes.ts`, so it lands on any feature run alongside them)
+## Done
+### A doctor check names checks the review gate kept recognizing as flakes: a "flaky checks" check surfaces the gate's flake memory (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `src/tick`, `src/loop`, `src/ui/status-*`, and `src/cli/`, and this touches none of them: only `src/doctor/` and the one exported window constant in `src/review/known-flakes.ts`, so it lands on any feature run alongside them) — done 2026-10-16
 
 **Goal.** When a scoped check failure passes on its one immediate re-run, the review gate logs `gate check failed then passed on retry — flaky: <headline>` and the failure is excused (src/review/review-precheck.ts ~line 75-79); `src/review/known-flakes.ts` is the gate's memory of those warnings so a later repeat of the same normalized headline is not misattributed to whichever change happened to hit it. That memory is internal: no doctor check, `tumwater status`, TUI, or GUI ever names that the suite is flapping. So a genuinely flaky check silently burns a re-run each landing and hides real instability — an operator never learns which checks keep failing-and-passing, which is exactly the information that explains intermittent rejections and signals a suite that needs attention. The gate already owns the only two things a surfacing needs (`FLAKY_WARNING_PREFIX` and the 24h `KNOWN_FLAKE_WINDOW_MS`); only the read-and-name surface is missing.
 
@@ -78,9 +79,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Aggregation uses `normalizeClusterKey` and the slice-offset logic exactly as `flakeKeys` does, and the window is the gate's own exported `KNOWN_FLAKE_WINDOW_MS` — one shared constant, no drift between the memory and the surface.
 - Warnings are `ok`/`warn` only (observational, never a `fail`), so a flaky suite cannot fail a scripted doctor pre-flight; no other doctor check's output changes.
 - `npm run test` passes.
-
-
-## Done
 
 ### `tumwater logs --count` tallies each event type over the selected window (planned 2026-10-16 by plan; independent of every other Planned entry — it touches only `src/cli/log-commands.ts`, the `logs` arm of `src/cli.ts`, `src/cli/cli-flag-specs.ts`, `src/cli/help.ts`, and the `test/log-commands*.test.ts` suites; none of the three eligible waiting entries — per-provider 5/5, the no-change streak, recent-outcomes — touch `src/cli/` or its tests) — done 2026-10-16
 

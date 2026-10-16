@@ -53,6 +53,8 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
+import { FLAKY_WARNING_PREFIX, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
+import { normalizeClusterKey } from "../failure/failure-cluster.js";
 
 /** The environment/repo pre-flight checks, split out of
  * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
@@ -616,6 +618,41 @@ export function checkBuildCheck(
   }
   const where = path.relative(root, check.rootDir);
   return okOutcome(where ? `npm ${check.script} in ${where}` : `npm ${check.script}`);
+}
+
+/** The review gate's flake memory surfaced read-only: names which checks the gate kept
+ * excusing as flakes over its own KNOWN_FLAKE_WINDOW_MS window. The gate logs
+ * `gate check failed then passed on retry — flaky: <headline>` for each failure that passed
+ * on its one immediate re-run (src/review/known-flakes.ts); that record is internal to the
+ * gate's matching, so a genuinely flaky check silently burns a re-run per landing and hides
+ * real instability — exactly the information that explains intermittent rejections. This
+ * check reads the same window and the same normalized headline the gate matches with (the
+ * slice-offset logic and normalizeClusterKey shared with flakeKeys), and warns only when a
+ * normalized check flapped more than once, so a routine one-off flake stays quiet.
+ * ok/warn only — never a fail — so a flaky suite cannot fail a scripted doctor pre-flight
+ * (the checkStalledPlans precedent; the exit-code rule is outcome.ts's). */
+export function checkFlakyChecks(root: string): CheckOutcome {
+  const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
+  const counts = new Map<string, number>();
+  for (const e of events) {
+    if (e.type !== "warning" || typeof e.message !== "string") continue;
+    const at = e.message.indexOf(FLAKY_WARNING_PREFIX);
+    if (at < 0) continue;
+    const key = normalizeClusterKey(e.message.slice(at + FLAKY_WARNING_PREFIX.length));
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const flapped = [...counts.entries()]
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1]);
+  if (flapped.length === 0)
+    return okOutcome("no check flapped more than once in the last 24h");
+  const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
+  const [first, ...rest] = flapped;
+  const more =
+    rest.length > 0 ? ` (and ${rest.length} more: ${rest.map(render).join(", ")})` : "";
+  return warnOutcome(
+    `check${flapped.length === 1 ? "" : "s"} flapped more than once in the last 24h: ${render(first!)}${more}`,
+  );
 }
 
 /** Build provenance — is the harness about to run (this process's dist/) the code main

@@ -19,6 +19,7 @@ import {
   checkInit,
   checkDiskSpace,
   checkEventLog,
+  checkFlakyChecks,
   checkMergeLock,
   checkNodeVersion,
   checkProviderConcurrency,
@@ -112,6 +113,9 @@ export async function runDoctor(
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
     { name: "project check", ...checkBuildCheck(root, config) },
+    // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
+    // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).
+    { name: "flaky checks", ...checkFlakyChecks(root) },
     { name: "fix claims", ...checkFixClaims(root) },
     { name: "stranded plans", ...checkStrandedPlans(root) },
     { name: "backlog headings", ...checkBacklogHeadings(root) },
