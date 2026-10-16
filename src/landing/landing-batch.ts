@@ -115,7 +115,7 @@ async function vetRequestIn(ctx: BatchContext, req: LandRequest, w: BatchRoleWir
 }
 
 /** Land changes whose own vet already approved them — the merge slot's whole task
- * (landing-drain.ts, land-queue speed 2c), over every vetted entry up to landBatchMax. `vetted` is
+ * (landing-drain.ts, land-queue speed 2c), over every vetted entry up to mergeBatchMax. `vetted` is
  * in queue order, each request at the head its vet approved (the synced pin its landing ref names);
  * none is gated again, so no model review runs here (an adversarial review of a stack would blur
  * which change a criticism applies to, so each change was reviewed alone). The flow:

@@ -123,7 +123,7 @@ export function checkBudget(
 }
 
 /** The `maintenance quota` check: rolling-24 h maintenance landings against the allowance
- * (`maintenancePerWorkLanding` per work landing + the daily floor), naming the maintenance loops
+ * (`maintenancePerWorkMerge` per work landing + the daily floor), naming the maintenance loops
  * held when it is full. Read-only and built on the same verdict the scheduler and status use
  * (maintenanceQuotaForPoll). Only a live fleet's running loops and landing queue count as in
  * flight, since a dead fleet's leftover `running` flag and queue drain nothing. A held allowance
@@ -137,13 +137,13 @@ export function checkMaintenanceQuota(
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveFleet && s.running === true }));
   const queued = aliveFleet ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
-  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkLanding, loops, queued, now);
+  const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, loops, queued, now);
   if (held.length > 0) {
     return warnOutcome(
       `allowance reached — ${used}/${allowance} maintenance landings in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,
     );
   }
-  const base = `${used}/${allowance} maintenance landings in the last 24h (${config.maintenancePerWorkLanding} per work landing + ${MAINTENANCE_DAILY_FLOOR} floor)`;
+  const base = `${used}/${allowance} maintenance landings in the last 24h (${config.maintenancePerWorkMerge} per work landing + ${MAINTENANCE_DAILY_FLOOR} floor)`;
   const anyMaintenance = loops.some((l) => commitTier(l.role) === "maintenance");
   return okOutcome(anyMaintenance ? base : `${base}; no maintenance loop enabled`);
 }

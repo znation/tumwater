@@ -450,7 +450,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // landings count once here and in landQueue.
     maintenanceQuota: maintenanceQuotaForPoll(
       root,
-      cfg.maintenancePerWorkLanding,
+      cfg.maintenancePerWorkMerge,
       loops,
       new Set(landings.map((e) => e.role)),
       now,

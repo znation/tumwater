@@ -73,7 +73,7 @@ export interface LandingPipelineContext {
   semaphore: Semaphore;
   /** Live runners, searched first when resolving a landing's author. */
   runners: LoopRunner[];
-  /** The live config: supplies `landBatchMax` and the director's budget-exempt config. */
+  /** The live config: supplies `mergeBatchMax` and the director's budget-exempt config. */
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
   roleConfig: TumwaterConfig;
@@ -95,7 +95,7 @@ export interface LandingPipelineContext {
  *   permit (a vet still waiting for its permit is `parked`). Any verdict but an approval writes
  *   its outcome at once and frees its author.
  * - `vetted`: the approved changes waiting to merge, still queued.
- * - `merge`: the one task that writes main — every vetted change up to landBatchMax, in queue
+ * - `merge`: the one task that writes main — every vetted change up to mergeBatchMax, in queue
  *   order, through landVetted (a stack of two or more shares one check and one fast-forward).
  *   It never waits for an unvetted queue head.
  * A role is in at most one of them: its one queued change is vetted, then waits, then merges, so

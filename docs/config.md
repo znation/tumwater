@@ -8,7 +8,7 @@ intervals, per-role `instances` (`feature` and `bugfix` may each run 1–8 paral
 with its own branch and state; default 1), the daily spend cap
 (`maxDailyCostUsd`, with optional per-role caps `maxDailyCostUsdPerRole` — a loop over its own
 cap starts no new ticks until the next local day or a live edit), a
-`maintenancePerWorkLanding` ratio (default 2; a rolling 24 h allowance of that many
+`maintenancePerWorkMerge` ratio (default 2; a rolling 24 h allowance of that many
 code-maintenance landings per feature/bugfix/director landing, plus a floor of 12 — when the
 window reaches it the scheduler holds the enabled maintenance loops until it rolls under, and a
 fresh `tumwater wake <role>` or a queued prompt for one admits a single tick anyway), a nightly

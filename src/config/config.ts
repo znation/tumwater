@@ -8,6 +8,7 @@ import { CONFIG_BASENAME, configPath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { isJsonObject } from "../files/json-object.js";
 import { writeJsonAtomic } from "../files/json-files.js";
+import { normalizeConfigKeys } from "./config-aliases.js";
 import { validateConfig } from "./config-validation.js";
 
 /** Read and parse one of the config JSON files, phrasing a parse failure as
@@ -15,16 +16,22 @@ import { validateConfig } from "./config-validation.js";
  * surfaces (loadConfig throws it, config-example.ts's exampleConfigProblem returns it,
  * seedConfig/exampleDrift fall back on it). `problem` is set exactly when parsing failed;
  * `raw` is the parsed value otherwise (never null on failure paths, so callers need no
- * separate existence check). */
+ * separate existence check). Old key names (config-aliases.ts) come back renamed, with `renamed`
+ * listing each `<from> → <to>` applied. */
 export function parseJsonConfig(
   file: string,
   basename: string,
-): { raw?: unknown; problem?: string } {
+): { raw?: unknown; renamed?: string[]; problem?: string } {
+  let parsed: unknown;
   try {
-    return { raw: JSON.parse(fs.readFileSync(file, "utf8")) };
+    parsed = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (err) {
     return { problem: `${basename} is not valid JSON: ${errorMessage(err)}` };
   }
+  // Old key names read as their new names; a file holding both spellings of one key is refused.
+  const { raw, renamed, problems } = normalizeConfigKeys(parsed);
+  if (problems.length > 0) return { problem: `${basename}: ${problems.join("; ")}` };
+  return { raw, renamed };
 }
 
 /** Build the default TumwaterConfig: every role enabled except the opt-in telemetry (steward on its
@@ -75,7 +82,7 @@ export function defaultConfig(): ResolvedModelConfig {
     maxConcurrent: 6,
     // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
-    landBatchMax: 3,
+    mergeBatchMax: 3,
     // Two suites at once: one landing can verify while the next author's gate check runs,
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,
@@ -98,10 +105,10 @@ export function defaultConfig(): ResolvedModelConfig {
     // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
     // Work ratio 1a/4 and 1b/4 (plans/work-ratio.md): the maintenance allowance is
-    // maintenancePerWorkLanding × work landings + 12 per rolling 24 h, and the scheduler holds
+    // maintenancePerWorkMerge × work landings + 12 per rolling 24 h, and the scheduler holds
     // maintenance loops once the window reaches it. Two keeps roughly two upkeep landings per
     // shipped change while the fixed floor lets hygiene run on an empty backlog.
-    maintenancePerWorkLanding: 2,
+    maintenancePerWorkMerge: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
     // below this many GB free, the fleet holds new work until it climbs 5 GB back above it.
     // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.

@@ -4,6 +4,7 @@ import path from "node:path";
 import { increment } from "../collections.js";
 import {
   enabledRoleIds,
+  parseJsonConfig,
   loadConfig,
   loadConfigSafe,
   slotCount,
@@ -37,7 +38,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
+import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
@@ -173,6 +174,17 @@ export function checkInit(root: string): CheckOutcome {
   } catch (err) {
     return failOutcome(errorMessage(err));
   }
+}
+
+/** Whether tumwater.json still spells keys by an old name (config-aliases.ts). Both spellings
+ * load, so this only warns, naming each exact rename. Ok when the file is absent or broken
+ * (checkInit reports that) or nothing in it is renamed. */
+export function checkConfigKeyNames(root: string): CheckOutcome {
+  const file = configPath(root);
+  if (!fs.existsSync(file)) return okOutcome("no tumwater.json");
+  const { renamed } = parseJsonConfig(file, CONFIG_BASENAME);
+  if (renamed === undefined || renamed.length === 0) return okOutcome("current key names");
+  return warnOutcome(`old key names: ${renamed.join(", ")} — rename them in tumwater.json; both spellings work until then`);
 }
 
 /** Which file holds the project brief (the managed initial prompt + status sections,

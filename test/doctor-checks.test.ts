@@ -567,12 +567,12 @@ test("checkInit warns naming drifted template keys, never rewrites, and its reme
   const root = readyRepo();
   fs.writeFileSync(
     path.join(root, "tumwater.example.json"),
-    JSON.stringify({ minTickIntervalSeconds: 45, landBatchMax: 2 }),
+    JSON.stringify({ minTickIntervalSeconds: 45, mergeBatchMax: 2 }),
   );
   const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
   const warn = checkInit(root);
   assert.equal(warn.level, "warn");
-  assert.match(warn.detail, /minTickIntervalSeconds, landBatchMax/);
+  assert.match(warn.detail, /minTickIntervalSeconds, mergeBatchMax/);
   assert.match(warn.detail, /re-run `tumwater init`/);
   // Read-only: the warning never touches the local file.
   assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before);

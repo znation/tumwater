@@ -245,7 +245,7 @@ export interface TumwaterConfig {
   /** Max vetted changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
    * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
    * fast-forwarded to main in one ff. 1 lands every vetted change on its own (no coalescing). */
-  landBatchMax: number;
+  mergeBatchMax: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the whole
    * harness process — every gate, landing, batch, and main-baseline check takes one permit
    * (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
@@ -291,7 +291,7 @@ export interface TumwaterConfig {
    * off switch because a large value effectively disables the allowance. Once the window reaches
    * the allowance the scheduler holds maintenance loops until it rolls under (part 1b/4), except
    * a fresh `tumwater wake` or queued prompt admits one tick. */
-  maintenancePerWorkLanding: number;
+  maintenancePerWorkMerge: number;
   /** Quiet hours: a daily local-time window — "HH:MM-HH:MM", e.g. "23:00-07:00" — during
    * which role loops start no new ticks (in-flight ticks finish; a tick due inside the
    * window starts at window end). A window may wrap midnight (start > end); an empty string
@@ -399,7 +399,7 @@ export const TOP_LEVEL_KEYS = [
   "piArgs",
   "maxConcurrent",
   "maxConcurrentPerProvider",
-  "landBatchMax",
+  "mergeBatchMax",
   "maxConcurrentChecks",
   "worktreeSlots",
   "minTickIntervalSeconds",
@@ -410,7 +410,7 @@ export const TOP_LEVEL_KEYS = [
   "sessionRetentionDays",
   "maxDailyCostUsd",
   "maxDailyCostUsdPerRole",
-  "maintenancePerWorkLanding",
+  "maintenancePerWorkMerge",
   "quietHours",
   "quietHoursPerRole",
   "diskHoldGB",

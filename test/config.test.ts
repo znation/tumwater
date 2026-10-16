@@ -47,7 +47,7 @@ test("defaultConfig enables every role including director, except the opt-in tel
   assert.equal(config.roles.telemetry?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
   // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
-  assert.equal(config.landBatchMax, 3);
+  assert.equal(config.mergeBatchMax, 3);
   // Land-queue speed 2b: two check suites at once, process-wide.
   assert.equal(config.maxConcurrentChecks, 2);
   assert.ok(config.idleBackoff.maxSeconds >= config.idleBackoff.initialSeconds);
@@ -633,12 +633,12 @@ test("changedConfigKeys reports added, removed, and changed top-level keys", () 
   const prev = defaultConfig();
   const next = defaultConfig();
   next.provider = "huggingface"; // present in both, changed
-  delete (next as { landBatchMax?: number }).landBatchMax; // removed
+  delete (next as { mergeBatchMax?: number }).mergeBatchMax; // removed
   (next as unknown as Record<string, unknown>).piArgs = ["--foo"]; // changed array
-  assert.deepEqual(changedConfigKeys(prev, next), ["landBatchMax", "piArgs", "provider"]);
+  assert.deepEqual(changedConfigKeys(prev, next), ["mergeBatchMax", "piArgs", "provider"]);
   // A key only in one object is still reported; unknown keys are surfaced rather than dropped.
   (prev as unknown as Record<string, unknown>).unknownKey = 1;
-  assert.deepEqual(changedConfigKeys(prev, next), ["landBatchMax", "piArgs", "provider", "unknownKey"]);
+  assert.deepEqual(changedConfigKeys(prev, next), ["mergeBatchMax", "piArgs", "provider", "unknownKey"]);
 });
 
 test("changedConfigKeys reports a roles.<id> edit per role, never the whole roles map", () => {
@@ -764,19 +764,19 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   const root = tmpdir();
   fs.writeFileSync(
     exampleConfigPath(root),
-    JSON.stringify({ minTickIntervalSeconds: 45, landBatchMax: 2 }),
+    JSON.stringify({ minTickIntervalSeconds: 45, mergeBatchMax: 2 }),
   );
   // No local file yet: nothing to compare, so no drift.
   assert.deepEqual(exampleDrift(root), []);
 
-  writeConfig(root, { landBatchMax: 3 });
+  writeConfig(root, { mergeBatchMax: 3 });
   // Whole-key comparison: a key present in both files is the local file's business even when
   // the values differ; only keys the template sets and the file lacks are drift.
   assert.deepEqual(exampleDrift(root), ["minTickIntervalSeconds"]);
 
   fs.writeFileSync(
     path.join(root, "tumwater.json"),
-    JSON.stringify({ minTickIntervalSeconds: 20, landBatchMax: 3 }),
+    JSON.stringify({ minTickIntervalSeconds: 20, mergeBatchMax: 3 }),
   );
   assert.deepEqual(exampleDrift(root), []);
 

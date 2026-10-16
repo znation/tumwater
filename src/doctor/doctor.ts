@@ -16,6 +16,7 @@ import {
   checkBuildCheck,
   checkClaudeTranscripts,
   checkGitBinary,
+  checkConfigKeyNames,
   checkInit,
   checkDiskSpace,
   checkEventLog,
@@ -81,6 +82,7 @@ export async function runDoctor(
     { name: "git binary", ...checkGitBinary(pathEnv) },
     { name: "repo", ...(await checkRepo(root, config)) },
     { name: "init", ...checkInit(root) },
+    { name: "config key names", ...checkConfigKeyNames(root) },
     { name: "brief", ...checkBrief(root) },
     // New-project bootstrap (plans/work-ratio.md, part 2/2): an active hold reports as ok
     // information, never a warning — a young project is not misconfigured.

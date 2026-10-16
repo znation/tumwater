@@ -15,6 +15,7 @@ import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
 import { show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
+import { canonicalConfigKey, normalizeConfigKeys } from "./config-aliases.js";
 import { loadConfig, parseJsonConfig, collapseAgentAliases } from "./config.js";
 import {
   checkDailyBudgetUsd,
@@ -143,6 +144,7 @@ export function setConfigKey(
   key: string,
   rawValue: string,
 ): { ok: true; value: unknown; oldValue: unknown } | { ok: false; error: string } {
+  key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
   let value: unknown;
@@ -357,6 +359,7 @@ export function unsetConfigKey(
   root: string,
   key: string,
 ): { ok: true; oldValue: unknown } | { ok: false; error: string } {
+  key = canonicalConfigKey(key);
   const parsed = parseConfigKey(key);
   if (parsed.kind === "error") return fail(parsed.error);
   if (parsed.kind === "role") {
@@ -480,9 +483,13 @@ export function applyConfigRequest(
   let applied: string[] = [];
   let error: string | undefined;
   try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!isJsonObject(parsed))
-      throw new Error(`config request must be a JSON object (got ${show(parsed)})`);
+    const unnormalized: unknown = JSON.parse(raw);
+    if (!isJsonObject(unnormalized))
+      throw new Error(`config request must be a JSON object (got ${show(unnormalized)})`);
+    // Old key spellings read as the new ones; a request setting both fails with the pair named.
+    const normalized = normalizeConfigKeys(unnormalized);
+    if (normalized.problems.length > 0) throw new Error(normalized.problems.join("; "));
+    const parsed = normalized.raw as Record<string, unknown>;
     for (const key of Object.keys(parsed)) {
       if (key !== "customLoops") ignored.push(key);
     }

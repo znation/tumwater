@@ -1,6 +1,6 @@
 /** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): the arithmetic,
  * the setting, and the gate behind the maintenance allowance — code-maintenance landings in a
- * rolling 24 h window are capped at `maintenancePerWorkLanding × work landings +
+ * rolling 24 h window are capped at `maintenancePerWorkMerge × work landings +
  * MAINTENANCE_DAILY_FLOOR`, and `pollMaintenanceQuotaGate` puts that verdict in front of the
  * scheduler so the enabled maintenance loops stop starting new ticks past it.
  *

@@ -234,7 +234,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     }
   }
   checkNumber(r, "", "maxConcurrent", POSITIVE_INTEGER);
-  checkNumber(r, "", "landBatchMax", POSITIVE_INTEGER);
+  checkNumber(r, "", "mergeBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
   checkNumber(r, "", "worktreeSlots", POSITIVE_INTEGER);
   checkNumber(r, "", "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
@@ -246,7 +246,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   checkNumber(r, "", "maxDailyCostUsd", DOLLAR_CAP);
   // Work ratio 1a/4: the maintenance allowance ratio is a number of 0 or more (a larger value
   // effectively disables the cap, so there is no separate off switch).
-  checkNumber(r, "", "maintenancePerWorkLanding", NON_NEGATIVE);
+  checkNumber(r, "", "maintenancePerWorkMerge", NON_NEGATIVE);
   // Disk floor (plans/disk-floor.md, part 1/4): 0 disables the hold, so only a negative
   // value or a non-number is a problem.
   checkNumber(r, "", "diskHoldGB", NON_NEGATIVE);

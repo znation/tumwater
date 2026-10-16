@@ -39,7 +39,7 @@ import { readJson } from "./helpers/json-read.js";
  * own process. The slices are balanced by measured per-test duration (~6.9s vs ~10.6s at
  * 2026-10-04); keep them roughly equal when moving tests between the files. */
 
-test("landBatchMax caps each merge's stack, read from the live config at each drain", async () => {
+test("mergeBatchMax caps each merge's stack, read from the live config at each drain", async () => {
   const root = makeRepo();
   const roles = ["alpha", "beta", "gamma"];
   await queueChanges(root, roles);
@@ -49,7 +49,7 @@ test("landBatchMax caps each merge's stack, read from the live config at each dr
   pipeline.merge = busySlot();
   try {
     await pumpUntil(ctx, pipeline, () => pipeline.vetted.size === 3, "all three to be vetted");
-    ctx.liveConfig = { ...config, landBatchMax: 2 }; // a live edit, as the scheduler hands it over
+    ctx.liveConfig = { ...config, mergeBatchMax: 2 }; // a live edit, as the scheduler hands it over
     pipeline.merge = null;
     await drainLandings(ctx, pipeline);
     assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha", "beta"], "the first merge stacks two, in queue order");

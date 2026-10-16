@@ -168,7 +168,7 @@ test("checkBudget: director spend is never named under a per-role cap", () => {
 
 const MNOW = new Date(2026, 9, 12, 12, 0).getTime();
 const mcfg = (c: object = {}): TumwaterConfig =>
-  qcfg({ maintenancePerWorkLanding: 2, roles: { feature: { enabled: true }, clean: { enabled: true } }, ...c });
+  qcfg({ maintenancePerWorkMerge: 2, roles: { feature: { enabled: true }, clean: { enabled: true } }, ...c });
 function mergedRoot(role: string, n: number): string {
   const root = tmpdir("tw-mq-");
   writeEvents(root, Array.from({ length: n }, (_, i) => ({ ts: MNOW - 3_600_000, loop: role, type: "merged", commit: `m${i}` })));

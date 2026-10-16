@@ -83,16 +83,16 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
   );
 });
 
-test("validateConfig bounds maintenancePerWorkLanding to a number of 0 or more", () => {
+test("validateConfig bounds maintenancePerWorkMerge to a number of 0 or more", () => {
   // Work ratio 1a/4: zero and fractions are valid; a negative value or a string is not.
   for (const v of [0, 2, 2.5])
-    assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maintenancePerWorkLanding: v }));
+    assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maintenancePerWorkMerge: v }));
   assert.match(
-    validationError({ ...defaultConfig(), maintenancePerWorkLanding: -1 }),
-    /maintenancePerWorkLanding must be a number of 0 or more \(got -1\)/,
+    validationError({ ...defaultConfig(), maintenancePerWorkMerge: -1 }),
+    /maintenancePerWorkMerge must be a number of 0 or more \(got -1\)/,
   );
   assert.match(
-    validationError({ ...defaultConfig(), maintenancePerWorkLanding: "2" }),
-    /maintenancePerWorkLanding must be a number of 0 or more \(got "2"\)/,
+    validationError({ ...defaultConfig(), maintenancePerWorkMerge: "2" }),
+    /maintenancePerWorkMerge must be a number of 0 or more \(got "2"\)/,
   );
 });

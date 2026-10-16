@@ -107,56 +107,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/loop-ids.test.ts still passes, so the instance regex is unchanged in behavior.
 - `npm run test` passes.
 
-### Plain terms commands, part 1/6: Accept renamed config keys through one alias table starting with mergeBatchMax and maintenancePerWorkMerge (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/cli/config-commands.ts and src/doctor/ plus the two keys' readers and tumwater.example.json)
-
-**Goal.** tumwater.json may spell a renamed key either way: load reads both, a file setting both is refused naming the pair, every writer writes only the new name, and `tumwater doctor` names each old key with its exact rename. This part builds the machinery and moves the two smallest keys: `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge`. Parts 2/6–4/6 only add rows.
-
-**Approach.**
-- New module `src/config/config-aliases.ts`:
-  - `interface ConfigKeyRename { from: string; to: string; scope: "top" | "role" }`. `"top"` is a top-level key. `"role"` is a field of every `roles.<id>` entry.
-  - `CONFIG_KEY_RENAMES: readonly ConfigKeyRename[]`, with this part's two `"top"` rows.
-  - `normalizeConfigKeys(raw: unknown): { raw: unknown; renamed: string[]; problems: string[] }`. It is pure and never mutates its input; a non-object passes through unchanged.
-    - A `from` present with its `to` absent moves the value to `to` and records `"<from> → <to>"` in `renamed`. Role rows use dotted paths: `roles.<id>.<from> → roles.<id>.<to>`.
-    - Both present records the problem `sets both <from> and <to> — keep <to> (<from> is its old name)`.
-    - A non-object `roles` or role entry is left for validateConfig to report.
-  - `canonicalConfigKey(key: string): string` maps a key a person typed to its current spelling:
-    - a top-level `from` → its `to`;
-    - a dotted key whose first segment is a top-level `from` gets that segment replaced, so part 4/6's `agents.<id>.<field>` works with no new code;
-    - `roles.<id>.<from>` → `roles.<id>.<to>`;
-    - anything else passes through unchanged.
-- **Readers.** `parseJsonConfig` in src/config/config.ts runs `normalizeConfigKeys` after `JSON.parse`:
-  - On problems it returns `{ problem: "<basename>: " + problems.join("; ") }`; otherwise `{ raw, renamed }`.
-  - Every file reader goes through it, so all of them see only new names:
-    - `loadPresentConfig`;
-    - config-write.ts's `rawConfigObject`, which feeds `preserveFileRoles` and every `unsetConfigKey` presence check;
-    - config-example.ts's `parseExampleTemplate` and both sides of `exampleDrift`, so an old-key local file shows no false drift against the new-key template.
-- **Writers.** `loadConfig` now returns only new names, so every whole-config write (`writeConfigMutation`, `saveConfig`, `applyConfigRequest`, `init`'s seed through `seedConfig`) emits only new names, and the first write migrates the file.
-  - `setConfigKey` and `unsetConfigKey` (src/config/config-write.ts) and `cmdConfig`'s get, set and unset (src/cli/config-commands.ts, including `screenOperableKey`) apply `canonicalConfigKey` first.
-  - The CLI confirmation names the canonical key: `set mergeBatchMax to 4`.
-  - The dashboard's `/api/config-set` reaches the same path through `setConfigKey`.
-- **The director's request.** `applyConfigRequest` runs the parsed request object through `normalizeConfigKeys` before its allowed-key screen. A request that sets both spellings fails with the problem text, and an old spelling never lands in `ignored`. This part's rows do not reach the request; part 3/6 relies on the wiring.
-- **The two keys.** Rename the `TumwaterConfig` fields `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge` (src/config/config-schema.ts). That covers:
-  - their `TOP_LEVEL_KEYS` entries, so completion and the unknown-key list follow;
-  - `defaultConfig`, and the `checkNumber` lines in config-validation.ts;
-  - the readers: src/landing/landing-drain.ts, src/gates/gate-polls.ts, src/doctor/doctor-holds.ts, src/status/status-data.ts;
-  - comments that name the key, and tumwater.example.json;
-  - test code that builds a `TumwaterConfig` in TypeScript (typecheck finds every one). JSON fixtures written to tumwater.json may keep old keys, because the alias reads them.
-  - Function and variable names keep their old words until Plain terms code merge.
-- **Doctor.** Add `checkConfigKeyNames(root)` in src/doctor/doctor-checks.ts:
-  - It reads `parseJsonConfig(configPath(root), CONFIG_BASENAME)`. It is ok when the file is absent, broken (checkInit reports that) or has nothing renamed.
-  - Otherwise it warns: `old key names: landBatchMax → mergeBatchMax, … — rename them in tumwater.json; both spellings work until then`.
-  - Register it in src/doctor/doctor.ts right after `init` as `{ name: "config key names", ... }`.
-- The help text names neither key; nothing to change there.
-
-**Files touched.** src/config/config-aliases.ts (new), src/config/config.ts, src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-write.ts, src/config/config-example.ts, src/cli/config-commands.ts, src/landing/landing-drain.ts, src/landing/landing-pipeline.ts (comment), src/gates/gate-polls.ts, src/gates/maintenance-quota.ts (comment), src/doctor/doctor-holds.ts, src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/status/status-data.ts, tumwater.example.json. Tests: test/config-aliases.test.ts (new), test/config.test.ts, test/config-validation.test.ts, test/config-validation-model.test.ts, test/config-write.test.ts, test/config-unset-key.test.ts, test/doctor-checks.test.ts, test/doctor-holds.test.ts, test/landing-drain-vetting.test.ts.
-
-**Acceptance criteria.**
-- A tumwater.json holding `"landBatchMax": 5` loads with `mergeBatchMax` 5. `tumwater config get landBatchMax` and `config get mergeBatchMax` both print `5`. `config set landBatchMax 4` prints `set mergeBatchMax to 4` and leaves the file with `mergeBatchMax: 4` and no `landBatchMax`.
-- A file setting both `maintenancePerWorkLanding` and `maintenancePerWorkMerge` fails to load with a message naming both and saying to keep `maintenancePerWorkMerge`, and doctor's `init` check fails with it.
-- Doctor's `config key names` check warns with the exact rename for an old-key file, and is ok for a new-key file.
-- `defaultConfig()`, `TOP_LEVEL_KEYS`, tumwater.example.json and `tumwater completion --config-keys` name only the new keys.
-- `npm run test` passes.
-
 ### Plain terms commands, part 2/6: Rename tickTimeoutSeconds and minTickIntervalSeconds to runTimeoutSeconds and minRunIntervalSeconds (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and the timeout and interval readers and tumwater.example.json plus tests)
 
 **Goal.** Mechanical. The run timeout and the minimum gap between runs get their plain names: top-level `runTimeoutSeconds`, and `minRunIntervalSeconds` both at the top level and in `roles.<id>`. Old spellings still load through part 1/6's alias table.
@@ -4002,6 +3952,56 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms commands, part 1/6: Accept renamed config keys through one alias table starting with mergeBatchMax and maintenancePerWorkMerge (done 2026-10-16; planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/cli/config-commands.ts and src/doctor/ plus the two keys' readers and tumwater.example.json)
+
+**Goal.** tumwater.json may spell a renamed key either way: load reads both, a file setting both is refused naming the pair, every writer writes only the new name, and `tumwater doctor` names each old key with its exact rename. This part builds the machinery and moves the two smallest keys: `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge`. Parts 2/6–4/6 only add rows.
+
+**Approach.**
+- New module `src/config/config-aliases.ts`:
+  - `interface ConfigKeyRename { from: string; to: string; scope: "top" | "role" }`. `"top"` is a top-level key. `"role"` is a field of every `roles.<id>` entry.
+  - `CONFIG_KEY_RENAMES: readonly ConfigKeyRename[]`, with this part's two `"top"` rows.
+  - `normalizeConfigKeys(raw: unknown): { raw: unknown; renamed: string[]; problems: string[] }`. It is pure and never mutates its input; a non-object passes through unchanged.
+    - A `from` present with its `to` absent moves the value to `to` and records `"<from> → <to>"` in `renamed`. Role rows use dotted paths: `roles.<id>.<from> → roles.<id>.<to>`.
+    - Both present records the problem `sets both <from> and <to> — keep <to> (<from> is its old name)`.
+    - A non-object `roles` or role entry is left for validateConfig to report.
+  - `canonicalConfigKey(key: string): string` maps a key a person typed to its current spelling:
+    - a top-level `from` → its `to`;
+    - a dotted key whose first segment is a top-level `from` gets that segment replaced, so part 4/6's `agents.<id>.<field>` works with no new code;
+    - `roles.<id>.<from>` → `roles.<id>.<to>`;
+    - anything else passes through unchanged.
+- **Readers.** `parseJsonConfig` in src/config/config.ts runs `normalizeConfigKeys` after `JSON.parse`:
+  - On problems it returns `{ problem: "<basename>: " + problems.join("; ") }`; otherwise `{ raw, renamed }`.
+  - Every file reader goes through it, so all of them see only new names:
+    - `loadPresentConfig`;
+    - config-write.ts's `rawConfigObject`, which feeds `preserveFileRoles` and every `unsetConfigKey` presence check;
+    - config-example.ts's `parseExampleTemplate` and both sides of `exampleDrift`, so an old-key local file shows no false drift against the new-key template.
+- **Writers.** `loadConfig` now returns only new names, so every whole-config write (`writeConfigMutation`, `saveConfig`, `applyConfigRequest`, `init`'s seed through `seedConfig`) emits only new names, and the first write migrates the file.
+  - `setConfigKey` and `unsetConfigKey` (src/config/config-write.ts) and `cmdConfig`'s get, set and unset (src/cli/config-commands.ts, including `screenOperableKey`) apply `canonicalConfigKey` first.
+  - The CLI confirmation names the canonical key: `set mergeBatchMax to 4`.
+  - The dashboard's `/api/config-set` reaches the same path through `setConfigKey`.
+- **The director's request.** `applyConfigRequest` runs the parsed request object through `normalizeConfigKeys` before its allowed-key screen. A request that sets both spellings fails with the problem text, and an old spelling never lands in `ignored`. This part's rows do not reach the request; part 3/6 relies on the wiring.
+- **The two keys.** Rename the `TumwaterConfig` fields `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge` (src/config/config-schema.ts). That covers:
+  - their `TOP_LEVEL_KEYS` entries, so completion and the unknown-key list follow;
+  - `defaultConfig`, and the `checkNumber` lines in config-validation.ts;
+  - the readers: src/landing/landing-drain.ts, src/gates/gate-polls.ts, src/doctor/doctor-holds.ts, src/status/status-data.ts;
+  - comments that name the key, and tumwater.example.json;
+  - test code that builds a `TumwaterConfig` in TypeScript (typecheck finds every one). JSON fixtures written to tumwater.json may keep old keys, because the alias reads them.
+  - Function and variable names keep their old words until Plain terms code merge.
+- **Doctor.** Add `checkConfigKeyNames(root)` in src/doctor/doctor-checks.ts:
+  - It reads `parseJsonConfig(configPath(root), CONFIG_BASENAME)`. It is ok when the file is absent, broken (checkInit reports that) or has nothing renamed.
+  - Otherwise it warns: `old key names: landBatchMax → mergeBatchMax, … — rename them in tumwater.json; both spellings work until then`.
+  - Register it in src/doctor/doctor.ts right after `init` as `{ name: "config key names", ... }`.
+- The help text names neither key; nothing to change there.
+
+**Files touched.** src/config/config-aliases.ts (new), src/config/config.ts, src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-write.ts, src/config/config-example.ts, src/cli/config-commands.ts, src/landing/landing-drain.ts, src/landing/landing-pipeline.ts (comment), src/gates/gate-polls.ts, src/gates/maintenance-quota.ts (comment), src/doctor/doctor-holds.ts, src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/status/status-data.ts, tumwater.example.json. Tests: test/config-aliases.test.ts (new), test/config.test.ts, test/config-validation.test.ts, test/config-validation-model.test.ts, test/config-write.test.ts, test/config-unset-key.test.ts, test/doctor-checks.test.ts, test/doctor-holds.test.ts, test/landing-drain-vetting.test.ts.
+
+**Acceptance criteria.**
+- A tumwater.json holding `"landBatchMax": 5` loads with `mergeBatchMax` 5. `tumwater config get landBatchMax` and `config get mergeBatchMax` both print `5`. `config set landBatchMax 4` prints `set mergeBatchMax to 4` and leaves the file with `mergeBatchMax: 4` and no `landBatchMax`.
+- A file setting both `maintenancePerWorkLanding` and `maintenancePerWorkMerge` fails to load with a message naming both and saying to keep `maintenancePerWorkMerge`, and doctor's `init` check fails with it.
+- Doctor's `config key names` check warns with the exact rename for an old-key file, and is ok for a new-key file.
+- `defaultConfig()`, `TOP_LEVEL_KEYS`, tumwater.example.json and `tumwater completion --config-keys` name only the new keys.
+- `npm run test` passes.
 
 ### Plain terms groundwork, part 2/4: Add the vocabulary guard test for modules that opt in to plain terms (done 2026-10-16; planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts)
 

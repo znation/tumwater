@@ -4,6 +4,7 @@ import {
   setConfigKey,
   unsetConfigKey,
 } from "../config/config-write.js";
+import { canonicalConfigKey } from "../config/config-aliases.js";
 import { parseConfigKey, unknownConfigKeyError, unknownRoleFieldError } from "../config/config-keys.js";
 import { modelTierMap } from "../config/config-schema.js";
 import { unknownRoleMessage } from "../roles/roles.js";
@@ -43,7 +44,8 @@ export const CONFIG_USAGE =
  * the process with whichever message applies; returns the parsed key and the freshly loaded
  * config for the caller's own read/mutation. (An unknown role id in the FILE is already a
  * validation error — this is the same rule at the CLI boundary.) */
-function screenOperableKey(root: string, k: string) {
+function screenOperableKey(root: string, key: string) {
+  const k = canonicalConfigKey(key);
   const parsed = parseConfigKey(k); // shape only — the verbs below own the unknown-key wording
   if (parsed.kind === "error") fail(parsed.error);
   if (parsed.kind === "top") {
@@ -69,8 +71,7 @@ function screenOperableKey(root: string, k: string) {
 export async function cmdConfig(root: string, args: string[] = []): Promise<void> {
   const [sub, key, ...rest] = args;
   if (sub === "get") {
-    const k = key ?? "";
-    const { parsed, config } = screenOperableKey(root, k);
+    const { parsed, config } = screenOperableKey(root, key ?? "");
     const record = config as unknown as Record<string, unknown>;
     const value =
       parsed.kind === "map"
@@ -85,7 +86,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
               ? (record.roles as Record<string, Record<string, unknown>> | undefined)?.[parsed.id]?.[
                   parsed.field
                 ]
-              : record[k];
+              : record[canonicalConfigKey(key ?? "")];
     sayJsonLine(value === undefined ? null : value); // Absent optional key → JSON null.
     return;
   }
@@ -93,7 +94,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
     // cli.ts's arity gate requires exactly two args (`unset <key>`) before cmdConfig runs;
     // this is the defensive tail for a direct caller, matching the bare-config tail below.
     if (key === undefined) fail(CONFIG_USAGE);
-    const k = key;
+    const k = canonicalConfigKey(key);
     // The same screens get runs first, so a typo'd top-level key, role id, or role field
     // fails identically — unsetConfigKey's own parse/field checks are the mutation-side
     // backstop, not the wording the operator sees.
@@ -122,7 +123,7 @@ export async function cmdConfig(root: string, args: string[] = []): Promise<void
       );
     const result = setConfigKey(root, key ?? "", raw);
     if (!result.ok) fail(result.error);
-    say(`set ${key} to ${JSON.stringify((result as { value: unknown }).value)}`);
+    say(`set ${canonicalConfigKey(key ?? "")} to ${JSON.stringify((result as { value: unknown }).value)}`);
     // A bare `roles` set replaces the FILE's section, but the built-in catalog always merges
     // per entry at load, so the replacement cannot disable a role by omission. Say so here
     // rather than let the confirmation imply the role is gone.

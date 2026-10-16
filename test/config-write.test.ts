@@ -621,18 +621,18 @@ test("a concurrent config write cannot drop another process's update", async () 
   }
 });
 
-test("setConfigKey writes maintenancePerWorkLanding and rejects a negative value untouched", () => {
+test("setConfigKey writes maintenancePerWorkMerge and rejects a negative value untouched", () => {
   const dir = tmpdir();
   saveConfig(dir, defaultConfig());
-  assert.deepEqual(setConfigKey(dir, "maintenancePerWorkLanding", "3"), {
+  assert.deepEqual(setConfigKey(dir, "maintenancePerWorkMerge", "3"), {
     ok: true,
     value: 3,
     oldValue: 2,
   });
-  assert.equal(loadConfig(dir).maintenancePerWorkLanding, 3);
-  const rejected = setConfigKey(dir, "maintenancePerWorkLanding", "-1");
+  assert.equal(loadConfig(dir).maintenancePerWorkMerge, 3);
+  const rejected = setConfigKey(dir, "maintenancePerWorkMerge", "-1");
   assert.equal(rejected.ok, false);
-  if (!rejected.ok) assert.match(rejected.error, /maintenancePerWorkLanding must be a number of 0 or more/);
-  assert.equal(loadConfig(dir).maintenancePerWorkLanding, 3, "the failed write left the file untouched");
+  if (!rejected.ok) assert.match(rejected.error, /maintenancePerWorkMerge must be a number of 0 or more/);
+  assert.equal(loadConfig(dir).maintenancePerWorkMerge, 3, "the failed write left the file untouched");
 });
 

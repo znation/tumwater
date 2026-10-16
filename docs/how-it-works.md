@@ -71,7 +71,7 @@ merge step lands them, so other loops keep ticking while a change is under revie
   run in one dedicated `_merge` checkout, reserved outside the pool so a vet waiting for a slot
   can never deadlock behind the merge lock.
 - **Batching.** When several changes are queued, each is reviewed alone, then up to
-  `landBatchMax` (default 3) land together under one check. A red batch lands its longest
+  `mergeBatchMax` (default 3) land together under one check. A red batch lands its longest
   passing prefix and checks the rest again. A change that is red on its own is rejected, unless
   main is red too, in which case its pin is kept for later.
 - **Parallel vetting.** Each queued change is rebased, checked and reviewed in a slot leased
@@ -82,7 +82,7 @@ merge step lands them, so other loops keep ticking while a change is under revie
   at most `maxConcurrent` − 1 of those permits (at least one), so a deep queue always leaves one
   for authoring. A change that
   fails vetting frees its author at once, and the merge step lands vetted changes in queue
-  order, up to `landBatchMax` per stack, without waiting on a slower review ahead of them. A
+  order, up to `mergeBatchMax` per stack, without waiting on a slower review ahead of them. A
   vetted change whose base moved is checked again before it lands; a change whose landing check
   fails twice is judged by main's own check, like a red gate check.
 

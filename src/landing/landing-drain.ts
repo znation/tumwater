@@ -66,7 +66,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
 }
 
 /** Start the merge when the slot is free and something is vetted: every vetted change, up to
- * landBatchMax, in queue order among the vetted — an unvetted entry ahead of them in the queue
+ * mergeBatchMax, in queue order among the vetted — an unvetted entry ahead of them in the queue
  * (a slow review) does not hold them back. A vetted change whose queue entry is gone is
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: LandingPipelineContext, p: LandingPipeline): void {
@@ -82,7 +82,7 @@ export function drainMerge(ctx: LandingPipelineContext, p: LandingPipeline): voi
     const v = p.vetted.get(q.entry.role);
     return v?.file === q.file ? [v] : [];
   });
-  picks.splice(ctx.liveConfig.landBatchMax);
+  picks.splice(ctx.liveConfig.mergeBatchMax);
   if (picks.length === 0) return;
   for (const v of picks) p.vetted.delete(v.entry.role);
   p.merge = startMerge(ctx, p, picks);

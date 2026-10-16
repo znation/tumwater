@@ -187,14 +187,14 @@ test("role instructions are capped like a custom loop's task", () => {
   assert.doesNotThrow(() => validateConfig({ roles: { feature: { instructions: "" } } }));
 });
 
-test("landBatchMax is validated like maxConcurrent: a positive integer", () => {
+test("mergeBatchMax is validated like maxConcurrent: a positive integer", () => {
   // 0 would disable the drain, a fraction would slice an empty batch, a string is a typo —
   // all of them must fail the same validation their sibling does.
-  assert.match(validationError({ landBatchMax: 0 }), /landBatchMax must be an integer of at least 1 \(got 0\)/);
-  assert.match(validationError({ landBatchMax: -1 }), /landBatchMax must be an integer of at least 1 \(got -1\)/);
-  assert.match(validationError({ landBatchMax: 2.5 }), /landBatchMax must be an integer of at least 1 \(got 2\.5\)/);
-  assert.match(validationError({ landBatchMax: "3" }), /landBatchMax must be an integer of at least 1 \(got "3"\)/);
-  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), landBatchMax: 1 }));
+  assert.match(validationError({ mergeBatchMax: 0 }), /mergeBatchMax must be an integer of at least 1 \(got 0\)/);
+  assert.match(validationError({ mergeBatchMax: -1 }), /mergeBatchMax must be an integer of at least 1 \(got -1\)/);
+  assert.match(validationError({ mergeBatchMax: 2.5 }), /mergeBatchMax must be an integer of at least 1 \(got 2\.5\)/);
+  assert.match(validationError({ mergeBatchMax: "3" }), /mergeBatchMax must be an integer of at least 1 \(got "3"\)/);
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), mergeBatchMax: 1 }));
   // A typo'd cap must not silently disable coalescing: unknown top-level keys fail validation.
   assert.match(validationError({ landBatchmax: 1 }), /landBatchmax/);
 });
