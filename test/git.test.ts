@@ -461,18 +461,21 @@ test("runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"
   // the call must settle at deadline + grace, not wait out the sleeps. This pins the detached
   // process group: if the child were not its own group leader (execFile drops `detached`), the
   // negative-pid kill would fall back to the direct child alone and orphan the grandchild.
-  writeScript(path.join(dir, "git"), `trap '' TERM\nsleep 30 &\necho $! > "${pidFile}"\nwait`);
+  // The 0.7s pause stands in for a loaded host starting the shim slowly: the 2s deadline must
+  // leave the script time to record the pid before the group kill lands.
+  writeScript(path.join(dir, "git"), `trap '' TERM\nsleep 0.7\nsleep 30 &\necho $! > "${pidFile}"\nwait`);
   const restorePath = pathPrepend(dir);
   const started = Date.now();
   let grand: number | undefined;
   try {
     await assert.rejects(
-      runGit(dir, ["status"], undefined, 200, 300),
+      runGit(dir, ["status"], undefined, 2_000, 300),
       (err: unknown) =>
-        err instanceof Error && err.message === "git status failed: timed out after 200ms",
+        err instanceof Error && err.message === "git status failed: timed out after 2000ms",
     );
     const elapsed = Date.now() - started;
     assert.ok(elapsed < 5_000, `settled in ${elapsed}ms, not after the 30s sleeps`);
+    assert.ok(fs.existsSync(pidFile), "the fake git wrote grand.pid before the group kill (start race)");
     grand = Number(fs.readFileSync(pidFile, "utf8").trim());
     assert.ok(Number.isInteger(grand) && grand > 0, `recorded grandchild pid: ${grand}`);
     // The grandchild must not outlive its group: a single-PID teardown would orphan it.
