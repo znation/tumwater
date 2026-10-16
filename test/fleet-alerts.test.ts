@@ -83,9 +83,9 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   const loops: AlertLoop[] = [
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "429 Rate limit exceeded" },
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
-    { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", errorStreak: false, inFlight: true },
+    { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true, stuckMs: 720_000 },
     { role: "coverage", phase: "main red", errorStreak: false, inFlight: false },
-    { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", errorStreak: false, inFlight: true },
+    { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
     { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
   const alerts = fleetAlerts(
@@ -102,7 +102,10 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
   assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"], ["loop", "qa"]], "each failing loop opens from the alert");
   assert.equal(by.stuck?.title, "feature and docs look stuck");
-  assert.equal(by.stuck?.detail, "feature: tool call stalled: bash (12m) · docs: no pi output for 6m00s");
+  // The tool-call stall gains the honest silence span from stuckMs (" for 12m00s"); the
+  // "no pi output for 6m00s" phrase already carries its duration, so it does not double even
+  // with a stuckMs present.
+  assert.equal(by.stuck?.detail, "feature: tool call stalled: bash for 12m00s · docs: no pi output for 6m00s");
   assert.equal(by.build?.tone, "amber");
   assert.equal(by.build?.title, "The fleet runs an old build: main is 3 commits ahead and the restart is blocked");
   assert.doesNotMatch(by.build?.detail ?? "", /T10:00:54/, "ISO instants read in local time");
@@ -144,12 +147,13 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
   const [stuckOne] = fleetAlerts(
     base,
     [],
-    [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash (12m)", errorStreak: false, inFlight: true }],
+    [{ role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true }],
     now,
   );
   assert.equal(stuckOne?.key, "stuck");
   assert.equal(stuckOne?.title, "feature looks stuck");
-  assert.equal(stuckOne?.detail, "feature: tool call stalled: bash (12m)");
+  // No stuckMs: the fallback keeps today's detail — the stall cause with no duration suffix.
+  assert.equal(stuckOne?.detail, "feature: tool call stalled: bash");
 });
 
 // A failing streak is the alert's tell, not the rendered phase: while a loop's own tick runs

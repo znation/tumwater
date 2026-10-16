@@ -385,11 +385,12 @@ export function renderStatusSpans(
   // One footnote under the table when any custom loop exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
   if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
-  const loops = withMetrics.map(({ s, phase }) => ({
+  const loops = withMetrics.map(({ s, phase, live }) => ({
     role: s.role,
     phase,
     errorStreak: onErrorStreak(s),
     inFlight: isActivePhase(phase),
+    ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
     ...(s.lastError ? { lastError: s.lastError } : {}),
     // The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
     // present, so the TUI's images attention line keys on it like the dashboard's.

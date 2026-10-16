@@ -86,6 +86,10 @@ export function statusPayload(root: string, now = Date.now()): object {
       // GUI's row actions derive their own live flag from the phase instead (BUGS.md
       // 2026-10-06).
       inFlight: isActivePhase(phase),
+      // The stuck alert's silence span (ms since the last pi log write, capped to the tick by
+      // progressOfTick) — the dashboards render it as "for <duration>" on a tool-call stall.
+      // Present only while the loop holds a live tail, so the common payload shape is unchanged.
+      ...(live?.quietMs !== undefined ? { stuckMs: live.quietMs } : {}),
       // What a working loop is doing right now (first assistant text of the in-flight run).
       // Null when idle — never show a stale item from a finished tick.
       currentWork: live?.currentWork ?? null,

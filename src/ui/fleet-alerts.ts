@@ -14,7 +14,7 @@ import { pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
-import { STALL_RE } from "./tick-progress-model.js";
+import { STALL_RE, duration } from "./tick-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp } from "../text/datetime.js";
 
@@ -50,11 +50,27 @@ export interface AlertLoop {
   /** The loop's image reroute target as `<tier> (<model>)`, when a peer tier reads images.
    * Absent (or null) when no other tier reads images — the amber no-target alert. */
   imageReroute?: string | null;
+  /** ms the in-flight run has been silent (its stall span), from the live tail's quietMs and
+   * capped to the tick by progressOfTick; absent when the caller holds no live tail. */
+  stuckMs?: number;
 }
 
 function listRoles(loops: readonly AlertLoop[]): string {
   const names = loops.map((l) => l.role);
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+/** The stuck alert's per-loop detail: the stall phrase the phase rendered, plus — when that
+ * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
+ * ms since the loop's last pi log write, capped to the tick by progressOfTick). A
+ * "no pi output for <d>" phrase already carries its duration, so only a tool-call stall gets
+ * a " for <duration>" suffix, and only when the caller holds a live tail (stuckMs present). */
+function stuckDetail(l: AlertLoop): string {
+  const cause = (STALL_RE.exec(l.phase)?.[0] ?? "").trim();
+  if (cause && !cause.startsWith("no pi output for") && l.stuckMs !== undefined) {
+    return `${l.role}: ${cause} for ${duration(l.stuckMs)}`;
+  }
+  return `${l.role}: ${cause}`;
 }
 
 /** ISO instants in server text (a restart cooldown's deadline) in local time. */
@@ -163,7 +179,7 @@ export function fleetAlerts(
       key: "stuck",
       tone: "amber",
       title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
-      detail: stuck.map((l) => `${l.role}: ${(STALL_RE.exec(l.phase)?.[0] ?? "").trim()}`).join(" · "),
+      detail: stuck.map(stuckDetail).join(" · "),
       actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
     });
   }
