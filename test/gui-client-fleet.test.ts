@@ -17,7 +17,8 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     endQueuedEdit(): void;
     setBacklogTab(tab: string): void;
     beginBacklogNew(kind: string): void;
-  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew"], {
+    toggleBacklogSeries(name: string): void;
+  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew", "toggleBacklogSeries"], {
     backlogTab,
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
@@ -189,6 +190,33 @@ test("the Plans tab lists pickable rows first and blocked rows under a Blocked d
   const bugsHtml = bugs.panels["backlog"] ?? "";
   assert.ok(bugsHtml.indexOf("Live") < bugsHtml.indexOf("Blocked (1)"));
   assert.ok(bugsHtml.indexOf("Blocked (1)") < bugsHtml.indexOf("Dead"));
+});
+
+test("the Plans tab shows a blocked series as one row that expands on click", () => {
+  const { scope, panels } = backlogScope("plans");
+  const slot = { name: "S", label: "S, 2 blocked parts (2/3–3/3)" };
+  const status = {
+    questions: [], bugs: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {},
+    plans: ["Ready", "S1", "S2", "S3", "Other"],
+    planHolds: ["", "", " [blocked: requires S]", " [blocked: requires S]", " [refused]"],
+    planBlocked: [false, false, true, true, true],
+    planSeries: [null, null, slot, slot, null],
+  };
+  scope.renderBacklog(status);
+  let html = panels["backlog"] ?? "";
+  assert.match(html, /Blocked \(3\)/);
+  assert.equal(html.split("data-action='seriestoggle'").length - 1, 1);
+  assert.match(html, /S, 2 blocked parts \(2\/3–3\/3\)/);
+  assert.ok(html.includes("Other"));
+  assert.ok(!html.includes("data-index='2'") && !html.includes("data-index='3'"));
+  scope.toggleBacklogSeries("S");
+  html = panels["backlog"] ?? "";
+  const at = (s: string) => html.indexOf(s);
+  assert.ok(at("seriestoggle") < at("data-index='2'"));
+  assert.ok(at("data-index='2'") < at("data-index='3'"));
+  assert.ok(at("data-index='3'") < at("data-index='4'"));
+  scope.toggleBacklogSeries("S");
+  assert.ok(!(panels["backlog"] ?? "").includes("data-index='2'"));
 });
 
 // The "In flight" stat tile counts the running set, not just the permit holders: a running

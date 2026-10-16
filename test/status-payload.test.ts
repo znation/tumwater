@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
+import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
@@ -633,4 +634,29 @@ test("status payload carries scheduledStopAt only while running with a stop mark
   writeJsonFile(orchestratorStatePath(repo), { pid: process.pid, startedAt: now, roles: [] });
   payload = statusPayload(repo, now) as typeof payload;
   assert.equal(payload.scheduledStopAt, now + 3600_000);
+});
+
+test("status payload's planSeries folds a series' blocked parts into one slot", () => {
+  const repo = makeRepo();
+  writeBacklogFile(repo, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: [
+        "### Ready one (planned 2026-10-01)\n\nBody.",
+        "### Series S, part 1/3: first (planned 2026-10-01)\n\nBody.",
+        "### Series S, part 2/3: second (planned 2026-10-01; requires part 1/3 landed)\n\nBody.",
+        "### Series S, part 3/3: third (planned 2026-10-01; requires part 2/3 landed)\n\nBody.",
+        "### Lone, part 2/2: only (planned 2026-10-01; requires part 1/2 landed)\n\nBody.",
+      ].join("\n\n"),
+    },
+    { heading: "## Done" },
+  ]);
+  const payload = statusPayload(repo) as { plans: string[]; planSeries: ({ name: string; label: string } | null)[] };
+  const rows = payload.plans.map((title) => ({ title, hold: { blockedBy: [] } as never, claimer: undefined }));
+  const series = groupBlockedSeries(rows.slice(2, 4)).find((g) => g.kind === "series");
+  assert.equal(series?.kind, "series");
+  if (series?.kind !== "series") return;
+  const slot = { name: series.series, label: `${series.series}, 2 blocked parts (${partsLabel(series.rows)})` };
+  assert.deepEqual(payload.planSeries, [null, null, slot, slot, null]);
+  assert.match(slot.label, /2 blocked parts \(2\/3–3\/3\)$/);
 });

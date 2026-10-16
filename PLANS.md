@@ -2724,7 +2724,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboard's Plans tab shows each blocked series as one row that expands on click, so the Blocked group lists a few series instead of 100+ waiting parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `tumwater backlog` grouping plan edits only `src/backlog/backlog-render.ts`, help and docs. Plain terms text 8/19 and 9/19 edit help prose and the TUI tabs. None of them touches these files. The TUI backlog pane is left alone because text 9/19 owns the TUI tabs)
+## Done
+
+### The dashboard's Plans tab shows each blocked series as one row that expands on click, so the Blocked group lists a few series instead of 100+ waiting parts (planned 2026-10-16 by plan; done 2026-10-16; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `tumwater backlog` grouping plan edits only `src/backlog/backlog-render.ts`, help and docs. Plain terms text 8/19 and 9/19 edit help prose and the TUI tabs. None of them touches these files. The TUI backlog pane is left alone because text 9/19 owns the TUI tabs)
 
 **Goal.** The dashboard's Plans tab now lists the entries a role can pick first and gathers the rest under "Blocked (N)". In this repo, that group still has more than 80 rows, nearly all of them Plain terms parts that wait on an earlier part. `plan --list`, the prompt's backlog index and, once its plan lands, `tumwater backlog` all show such a series as one line through `groupBlockedSeries` in `src/backlog/backlog-structure.ts`. The Plans tab should do the same. Each series with two or more blocked parts becomes one row, "<series>, N blocked parts (2/5–5/5)", at the place of its first part. Clicking the row shows or hides those parts, and each part keeps its own row and `data-index` so the drawer still opens it. The Bugs tab is unchanged, because `plan --list` and the index only group plans.
 
@@ -2744,8 +2746,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test in `test/gui-client-fleet.test.ts`, "the Plans tab shows a blocked series as one row that expands on click". Use plans `[Ready, S1, S2, S3, Other]`, `planBlocked [false,false,true,true,true]`, `planHolds` with `[refused]` on Other, and `planSeries [null,null,{name:"S",label:"S, 2 blocked parts (2/3–3/3)"},<same>,null]`. Check that the HTML has `Blocked (3)`, one `data-action='seriestoggle'` row carrying the label, and the Other row, and that it has no `data-index='2'` or `data-index='3'` row. After `toggleBacklogSeries("S")`, both part rows appear after the series row and before Other, with `data-index='2'` and `data-index='3'`. A second toggle hides them again.
 - The existing test "the Plans tab lists pickable rows first and blocked rows under a Blocked divider" passes unchanged. Its payload has no `planSeries`. The Bugs tab never shows a series row.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater backlog` prints each blocked series as one heading with no body, so the plans a role can pick are not buried under thousands of lines of blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `renderBacklogMarkdown` in `src/backlog/backlog-render.ts` and reuses `groupBlockedSeries`/`partsLabel` from `src/backlog/backlog-structure.ts` unchanged; the dashboard plan edits only `src/ui/`; done 2026-10-16)
 

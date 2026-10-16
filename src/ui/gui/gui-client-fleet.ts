@@ -264,6 +264,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // guard so a poll does not repaint over the typed title.
   let backlogNew = null;
   let backlogNewPainted = false;
+  // Names of the blocked series whose parts the Plans tab currently shows.
+  let openSeries = new Set();
   function setBacklogTab(tab) {
     backlogTab = tab;
     store("backlog", tab);
@@ -276,6 +278,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   function beginBacklogNew(kind) {
     backlogNew = { kind };
     backlogNewPainted = false;
+    renderBacklog(backlogStatus);
+  }
+  function toggleBacklogSeries(name) {
+    if (openSeries.has(name)) openSeries.delete(name); else openSeries.add(name);
     renderBacklog(backlogStatus);
   }
   function endBacklogNew() {
@@ -351,8 +357,21 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           (key === "questions" ? "<button type='button' class='btn btn-sm backloglink' data-file='questions' data-index='" + i + "'>Answer</button>" : "") + "</div>";
       });
       const ready = rows.filter((r, i) => !blocked[i]);
-      const held = rows.filter((r, i) => blocked[i]);
-      html = ready.join("") + (held.length ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + held.length + ")</span></div>" + held.join("") : "");
+      const series = key === "plans" ? (d.planSeries || []) : [];
+      let heldCount = 0;
+      const held = [];
+      const seen = new Set();
+      rows.forEach((r, i) => {
+        if (!blocked[i]) return;
+        heldCount++;
+        const s = series[i];
+        if (!s) { held.push(r); return; }
+        if (seen.has(s.name)) return;
+        seen.add(s.name);
+        held.push("<div class='list-item list-series'><button type='button' class='li-open' data-action='seriestoggle' data-series='" + esc(s.name) + "'><span class='li-title'>" + esc(s.label) + "</span><span class='li-meta'>blocked: each waits on an earlier part</span></button></div>");
+        if (openSeries.has(s.name)) rows.forEach((r2, j) => { if (blocked[j] && series[j] && series[j].name === s.name) held.push(r2); });
+      });
+      html = ready.join("") + (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "");
     }
     if (key === "plans" || key === "bugs") {
       const kind = key === "plans" ? "plan" : "bug";
@@ -375,6 +394,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (b) setBacklogTab(b.dataset.tab);
   });
   $("backlog").addEventListener("click", async (ev) => {
+    const ser = clickClosest(ev, "button[data-action='seriestoggle']");
+    if (ser) { toggleBacklogSeries(ser.dataset.series); return; }
     const fresh = clickClosest(ev, "button[data-action='backlognew']");
     if (fresh) { beginBacklogNew(fresh.dataset.kind); return; }
     if (clickClosest(ev, "button[data-action='backlognewcancel']")) { endBacklogNew(); return; }

@@ -362,6 +362,7 @@ export const GUI_STYLES = String.raw`
   .list-item:hover { background: var(--surface-2); }
   .list-divider { padding: 6px 16px; background: var(--surface-2); }
   .list-divider:hover { background: var(--surface-2); }
+  .list-series .li-title { font-weight: 600; }
   .list-item.active { background: var(--accent-bg); }
   .li-icon { color: var(--t, var(--text-4)); padding-top: 2px; }
   .li-open { flex: 1; min-width: 0; display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }

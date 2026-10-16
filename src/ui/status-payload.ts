@@ -1,6 +1,7 @@
 // vocabulary: plain
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
-import { backlogHolds, backlogMarks } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, backlogMarks } from "../backlog/backlog-eligibility.js";
+import { groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -39,6 +40,16 @@ export function statusPayload(root: string, now = Date.now()): object {
   // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
   const marks = backlogMarks(root);
   const holds = backlogHolds(root);
+  const plans = plannedPlans(root);
+  // Which blocked plans fold into a series row: the grouping `plan --list` and the prompt's
+  // backlog index use, as a slot per plan (null for a plan that stays an ordinary row).
+  const working = backlogInProgress(root);
+  const planSeries: ({ name: string; label: string } | null)[] = plans.map(() => null);
+  for (const g of groupBlockedSeries(holds.plans.map((hold, i) => ({ i, title: plans[i]!, hold, claimer: working.plans[i] ?? undefined })))) {
+    if (g.kind !== "series") continue;
+    const slot = { name: g.series, label: `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)})` };
+    for (const r of g.rows) planSeries[r.i] = slot;
+  }
   const loops = snap.loops.map((s) => {
     // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
@@ -275,7 +286,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     // Project status (planned features + open bugs + open questions), fresh per poll like
     // events — loops edit these files constantly, so there is no cache to go stale. The page
     // derives the header badge count from this list's length.
-    plans: plannedPlans(root),
+    plans,
     bugs: openBugs(root),
     // The holds and working-on-it marks beside those titles, index-for-index parallel
     // (backlogMarks and plannedPlans/openBugs walk the same sectionEntries file order): an
@@ -287,6 +298,9 @@ export function statusPayload(root: string, now = Date.now()): object {
     // lists unblocked rows first and gathers the rest under a Blocked divider.
     planBlocked: holds.plans.map((h) => h !== null),
     bugBlocked: holds.bugs.map((h) => h !== null),
+    // The series each blocked plan folds into (parallel to plans): the Plans tab shows one
+    // expandable row per series instead of every waiting part; null for an ordinary row.
+    planSeries,
     questions,
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
