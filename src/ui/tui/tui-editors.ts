@@ -238,6 +238,13 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     promptHistory = resetPromptRecall(promptHistory);
   };
 
+  /** The one-line editor's busy-guard wording: entering a mutually-exclusive editor while
+   * another holds the prompt line flashes `finish or cancel the <subject> first (Esc
+   * cancels)` instead of dropping the held mode's saved draft. Single-homes the sentence
+   * across handleKey's mode guards so the "first (Esc cancels)" wording cannot drift. */
+  const busyFlash = (subject: string): string =>
+    `finish or cancel the ${subject} first (Esc cancels)`;
+
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
   const exitBudgetMode = (): void => {
     if (!budgetMode) return;
@@ -320,18 +327,18 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         // draft (or parsing its text as a cap on Enter).
         deps.flashMessage(
           searchMode
-            ? "finish or cancel the search first (Esc cancels)"
+            ? busyFlash("search")
             : pauseEditMode
-              ? "finish or cancel the pause first (Esc cancels)"
+              ? busyFlash("pause")
               : deferMode
-                ? "finish or cancel the defer edit first (Esc cancels)"
+                ? busyFlash("defer edit")
                 : queuedEditFor
-                  ? "finish or cancel the queued edit first (Esc cancels)"
+                  ? busyFlash("queued edit")
                   : answerFor
-                    ? "finish or cancel the answer first (Esc cancels)"
+                    ? busyFlash("answer")
                     : entryEditFor
-                      ? "finish or cancel the entry edit first (Esc cancels)"
-                      : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
+                      ? busyFlash("entry edit")
+                      : busyFlash(`prompt for ${rolePromptFor}`),
         );
         return true;
       }
@@ -369,18 +376,18 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         // holds it. Flash the way out instead of silently dropping the held mode's saved draft.
         deps.flashMessage(
           budgetMode
-            ? "finish or cancel the budget edit first (Esc cancels)"
+            ? busyFlash("budget edit")
             : pauseEditMode
-              ? "finish or cancel the pause first (Esc cancels)"
+              ? busyFlash("pause")
               : searchMode
-                ? "finish or cancel the search first (Esc cancels)"
+                ? busyFlash("search")
                 : queuedEditFor
-                  ? "finish or cancel the queued edit first (Esc cancels)"
+                  ? busyFlash("queued edit")
                   : answerFor
-                    ? "finish or cancel the answer first (Esc cancels)"
+                    ? busyFlash("answer")
                     : entryEditFor
-                      ? "finish or cancel the entry edit first (Esc cancels)"
-                      : `finish or cancel the prompt for ${rolePromptFor} first (Esc cancels)`,
+                      ? busyFlash("entry edit")
+                      : busyFlash(`prompt for ${rolePromptFor}`),
         );
         return true;
       }
@@ -522,9 +529,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             deps.flashMessage(roleResumeMessage(root, role, resumeRole(root, role)));
           } else if (rolePromptFor || searchMode) {
             deps.flashMessage(
-              rolePromptFor
-                ? "finish or cancel the role prompt first (Esc cancels)"
-                : "finish or cancel the search first (Esc cancels)",
+              rolePromptFor ? busyFlash("role prompt") : busyFlash("search"),
             );
           } else {
             // An unpaused loop opens the one-line duration editor; nothing is written until
@@ -544,9 +549,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           deps.flashMessage(result.ok ? result.message : `error: ${result.error}`);
         } else if (rolePromptFor || searchMode) {
           deps.flashMessage(
-            rolePromptFor
-              ? "finish or cancel the role prompt first (Esc cancels)"
-              : "finish or cancel the search first (Esc cancels)",
+            rolePromptFor ? busyFlash("role prompt") : busyFlash("search"),
           );
         } else {
           // Ctrl+W opens the one-line wake editor; nothing is written until Enter. Empty wakes now.
