@@ -768,6 +768,29 @@ test("aborting runTui's injected signal closes it like a quit, not a hang", asyn
   assert.ok(tui.clearCalls >= 1, "the render interval is cleared on exit");
 });
 
+test("runTui resolves without a keypress when its injected signal was already aborted at mount", async () => {
+  // The executor's `aborted` check (`if (... || seams.abortSignal?.aborted) resolve()`)
+  // exists for the ordering where the abort landed before runTui reached its main await — a
+  // `run --tui` window that already closed or a fleet already stopped before the TUI's
+  // executor ran. The listener-only test above aborts after mount; this pins the other
+  // half: an already-aborted signal must end runTui through the same teardown, not hang
+  // waiting for a keypress.
+  const repo = await makeTuiRepo();
+  const controller = new AbortController();
+  controller.abort(); // already fired before runTui's executor runs
+  const tui = startTui(repo, undefined, { abortSignal: controller.signal });
+  try {
+    let settled = false;
+    void tui.done.then(() => { settled = true; });
+    await waitFor(() => settled, "an already-aborted signal resolves runTui without a keypress");
+    await flushImmediate();
+    assert.ok(tui.clearCalls >= 1, "the render interval was cleared through the quit teardown");
+    assert.notEqual(tui.rawModes.at(-1), true, "the terminal was not left in raw mode");
+  } finally {
+    await tui.quit(); // restores the patched globals; done already settled
+  }
+});
+
 // The flicker BUGS.md recorded: every changed frame used to erase the whole screen
 // (`\x1b[2J`) and repaint it. Ink's renderer diff-renders instead — a changed frame
 // rewrites only its changed lines, so no frame of a run ever carries a screen clear.
