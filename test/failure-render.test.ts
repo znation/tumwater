@@ -515,7 +515,7 @@ test("the digest replays harness decisions so a wrong response is visible", () =
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0, 12), loop: "feature", type: "tick_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" },
-    { ts: at(0, 13), loop: "harness", type: "fleet_paused" },
+    { ts: at(0, 13), loop: "harness", type: "team_paused" },
     { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" },
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
@@ -608,7 +608,7 @@ test("a landed list over the newest-10 cap names its remainder instead of readin
 
 test("each harness state transition renders its own bounded line", () => {
   // describeStateChange owns the whole transition vocabulary, but the digest tests above reach
-  // only budget_fallback, fleet_paused, build_stale, config_changed and tick_deferred. Each
+  // only budget_fallback, team_paused, build_stale, config_changed and tick_deferred. Each
   // case gets its own log so the section's newest-STATE_CHANGE_TOP cap never hides one.
   const cases: Array<[Record<string, unknown>, string]> = [
     [
@@ -629,7 +629,7 @@ test("each harness state transition renders its own bounded line", () => {
       "budget paused — 3 runs failed on over-cap model omlx/Qwen3.8-27B-MLX-oQ4",
     ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
-    [{ type: "fleet_resumed" }, "team resumed — roles run again"],
+    [{ type: "team_resumed" }, "team resumed — roles run again"],
     [
       { type: "role_paused", role: "docs" },
       "role docs paused — it starts no new runs",

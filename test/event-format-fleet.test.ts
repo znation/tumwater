@@ -201,7 +201,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
 // transition. Both are routine state changes an operator reads at a glance; the paused line
 // states the scope and the director exemption, the resumed line says role ticks are back.
 test("formatEvent renders the fleet pause and resume events plainly", () => {
-  const paused = formatEvent({ ts: 0, loop: "harness", type: "fleet_paused" } as never);
+  const paused = formatEvent({ ts: 0, loop: "harness", type: "team_paused" } as never);
   assert.match(
     paused,
     /tumwater\s+team paused — roles start no new runs \(director keeps running\)$/,
@@ -209,7 +209,7 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
-  const resumed = formatEvent({ ts: 0, loop: "harness", type: "fleet_resumed" } as never);
+  const resumed = formatEvent({ ts: 0, loop: "harness", type: "team_resumed" } as never);
   assert.match(resumed, /tumwater\s+team resumed — roles run again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });

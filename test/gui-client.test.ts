@@ -207,7 +207,7 @@ test("activity items sort into landings, problems, questions, notices, and routi
   assert.equal(kind("build_check", "failed"), "problem");
   assert.equal(kind("land_failed"), "problem");
   assert.equal(kind("tick_start"), "routine");
-  assert.equal(kind("fleet_paused"), "info");
+  assert.equal(kind("team_paused"), "info");
   assert.equal(kind("some_new_event"), "info", "an unknown event type is shown, not hidden");
 });
 

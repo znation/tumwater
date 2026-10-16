@@ -216,49 +216,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/script-keys.test.ts passes with this part's keys listed.
 - `npm run test` passes.
 
-### Plain terms event log, part 1/9: Normalize old event lines on read and rename the fleet pause events (planned 2026-10-16 by user; requires Plain terms text 19/19 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/log-commands.ts src/cli/help.ts src/gates/pause-gates.ts src/failure/failure-state-change.ts docs/cli.md test/)
-
-**Goal.** Every reader of `.tumwater/log/events.jsonl`, and of its rotated `events.jsonl.1`, sees old lines under today's names through one function, `normalizeLegacyEvent`. `tumwater logs --type` also accepts an old type name. This part maps one family, `fleet_paused`/`fleet_resumed` → `team_paused`/`team_resumed`, so every place the normalizer is wired in is tested against a real old line.
-
-**Approach.**
-- New module `src/events/event-legacy.ts`:
-  - `LEGACY_EVENT_TYPES` maps an old type name to its `HarnessEvent["type"]`. This part adds `fleet_paused → team_paused` and `fleet_resumed → team_resumed`.
-  - An ordered rewrite list, with entries `{ name, apply(ev) }`, starts empty. Later parts append field rewrites to it, and each rewrite runs in list order after the type rename.
-  - `normalizeLegacyEvent(ev)` rewrites the freshly parsed object in place and returns it: first the type rename, then each rewrite.
-    - It never throws. A field is rewritten only when it has the expected JS type, and a current line comes back untouched.
-    - Per line, it costs one map lookup plus each rewrite's own guard (`history` scans ~26k lines).
-  - `canonicalEventType(name)` returns the new name for an old one and any other string unchanged.
-  - The module's doc comment says that role ids (`dry`, `telemetry`) are deliberately not mapped here. The Plain terms role ids series aliases an event's `source` id through its own legacy-id table when it switches each id, so mapping them here would show `dedupe` while the role is still `dry`.
-  - If the vocabulary guard flags a line that holds an old name, end it with `// vocabulary-ok: legacy event name read from old logs`.
-- Wire it in at the two choke points:
-  - `parseEventLine` (src/events/event-read.ts) returns the normalized object. Every file read already goes through it:
-    - `readEvents`/`readEventsTailWithEnd`;
-    - event-window.ts's `scanEventsFile` (live log and archive) and `classifyLogText`;
-    - the `followFile` callback in `cmdLogs` (`logs -f`);
-    - report-data.ts's `foldLineInto` (the report fold cache's append path);
-    - maintenance-quota.ts's `foldLine`.
-
-    Grep src for any other `JSON.parse`/`parseJsonObject` of an event line and route it through `parseEventLine`.
-  - `logEvent` (src/events/events.ts) normalizes the `{ ts, ...event }` object it builds before appending it and before notifying `subscribeEvents` listeners. The written line and what notify and the `run` narration receive then match what readers see. Parts 6/9–9/9 rely on this to accept the deprecated `loop` input.
-- `cmdLogs` (src/cli/log-commands.ts): compare `e.type` against `canonicalEventType(type)` in the `--since` path, the `-n` path and the follow path. The empty-match prose still names the value the user typed. Add one clause to the `--type` help line in src/cli/help.ts and to docs/cli.md's `logs --type` mention: an older event name matches its current one.
-- Rename the family:
-  - the `HarnessEvent["type"]` union members and their comments in events.ts;
-  - the writer in `pollPauseGates` (src/gates/pause-gates.ts);
-  - `STATE_CHANGE_TYPES` and its switch in src/failure/failure-state-change.ts;
-  - the cases in event-format.ts;
-  - the keys of the groundwork's event-type label map behind `eventTypeLabel`, in both its server and browser forms.
-- Tests: add test/event-legacy.test.ts, and update what typecheck or the suite flags (test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, …). Leave event lines that tests write straight to disk (`writeEvents`, `writeLogLines`, `JSON.stringify` into events.jsonl) under their old names. They now exercise the normalizer. The same rule holds for every later part of this series.
-- **Self-hosting:** safe in one part. The running build writes `fleet_*` until it restarts, and the new build reads those lines as `team_*`. The old build reads no `team_*` line. The one exception is a standalone dashboard still on the old build, which shows the type raw until it restarts (display only).
-
-**Files touched.** src/events/event-legacy.ts (new), src/events/event-read.ts, src/events/events.ts, src/events/event-format.ts, src/cli/log-commands.ts, src/cli/help.ts, src/gates/pause-gates.ts, src/failure/failure-state-change.ts, the groundwork label-map module(s), docs/cli.md; test/event-legacy.test.ts (new), test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, test/event-format-fleet.test.ts, test/log-commands*.test.ts. Reads (does not edit): src/report/report-data.ts, src/gates/maintenance-quota.ts, src/events/event-window.ts.
-
-**Acceptance criteria.**
-- A `fleet_paused` line in events.jsonl, or in events.jsonl.1 reached through `readWindowEvents`, reads back as `team_paused` from `readEvents`, `readWindowEvents` and `parseEventLine`, and a current line is returned unchanged.
-- `tumwater logs --type fleet_paused` and `--type team_paused` both print that line, and `logs --json` prints it with `"type":"team_paused"`.
-- `logEvent` given an old type, through a cast, appends a line and hands subscribers an event that both carry the new type.
-- The pause gate logs `team_paused`/`team_resumed`, and the failure digest still lists them as state changes.
-- `npm run test` passes.
-
 ### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)
 
 **Goal.** Mechanical. The two busiest event types are written and read as `run_start` and `run_end`, and old `tick_start`/`tick_end` lines read as the new names. Every hunk is the same substitution, checked by typecheck and the suite.
@@ -2494,6 +2451,49 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 1/9: Normalize old event lines on read and rename the fleet pause events (planned 2026-10-16 by user; requires Plain terms text 19/19 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/log-commands.ts src/cli/help.ts src/gates/pause-gates.ts src/failure/failure-state-change.ts docs/cli.md test/) — done 2026-10-16
+
+**Goal.** Every reader of `.tumwater/log/events.jsonl`, and of its rotated `events.jsonl.1`, sees old lines under today's names through one function, `normalizeLegacyEvent`. `tumwater logs --type` also accepts an old type name. This part maps one family, `fleet_paused`/`fleet_resumed` → `team_paused`/`team_resumed`, so every place the normalizer is wired in is tested against a real old line.
+
+**Approach.**
+- New module `src/events/event-legacy.ts`:
+  - `LEGACY_EVENT_TYPES` maps an old type name to its `HarnessEvent["type"]`. This part adds `fleet_paused → team_paused` and `fleet_resumed → team_resumed`.
+  - An ordered rewrite list, with entries `{ name, apply(ev) }`, starts empty. Later parts append field rewrites to it, and each rewrite runs in list order after the type rename.
+  - `normalizeLegacyEvent(ev)` rewrites the freshly parsed object in place and returns it: first the type rename, then each rewrite.
+    - It never throws. A field is rewritten only when it has the expected JS type, and a current line comes back untouched.
+    - Per line, it costs one map lookup plus each rewrite's own guard (`history` scans ~26k lines).
+  - `canonicalEventType(name)` returns the new name for an old one and any other string unchanged.
+  - The module's doc comment says that role ids (`dry`, `telemetry`) are deliberately not mapped here. The Plain terms role ids series aliases an event's `source` id through its own legacy-id table when it switches each id, so mapping them here would show `dedupe` while the role is still `dry`.
+  - If the vocabulary guard flags a line that holds an old name, end it with `// vocabulary-ok: legacy event name read from old logs`.
+- Wire it in at the two choke points:
+  - `parseEventLine` (src/events/event-read.ts) returns the normalized object. Every file read already goes through it:
+    - `readEvents`/`readEventsTailWithEnd`;
+    - event-window.ts's `scanEventsFile` (live log and archive) and `classifyLogText`;
+    - the `followFile` callback in `cmdLogs` (`logs -f`);
+    - report-data.ts's `foldLineInto` (the report fold cache's append path);
+    - maintenance-quota.ts's `foldLine`.
+
+    Grep src for any other `JSON.parse`/`parseJsonObject` of an event line and route it through `parseEventLine`.
+  - `logEvent` (src/events/events.ts) normalizes the `{ ts, ...event }` object it builds before appending it and before notifying `subscribeEvents` listeners. The written line and what notify and the `run` narration receive then match what readers see. Parts 6/9–9/9 rely on this to accept the deprecated `loop` input.
+- `cmdLogs` (src/cli/log-commands.ts): compare `e.type` against `canonicalEventType(type)` in the `--since` path, the `-n` path and the follow path. The empty-match prose still names the value the user typed. Add one clause to the `--type` help line in src/cli/help.ts and to docs/cli.md's `logs --type` mention: an older event name matches its current one.
+- Rename the family:
+  - the `HarnessEvent["type"]` union members and their comments in events.ts;
+  - the writer in `pollPauseGates` (src/gates/pause-gates.ts);
+  - `STATE_CHANGE_TYPES` and its switch in src/failure/failure-state-change.ts;
+  - the cases in event-format.ts;
+  - the keys of the groundwork's event-type label map behind `eventTypeLabel`, in both its server and browser forms.
+- Tests: add test/event-legacy.test.ts, and update what typecheck or the suite flags (test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, …). Leave event lines that tests write straight to disk (`writeEvents`, `writeLogLines`, `JSON.stringify` into events.jsonl) under their old names. They now exercise the normalizer. The same rule holds for every later part of this series.
+- **Self-hosting:** safe in one part. The running build writes `fleet_*` until it restarts, and the new build reads those lines as `team_*`. The old build reads no `team_*` line. The one exception is a standalone dashboard still on the old build, which shows the type raw until it restarts (display only).
+
+**Files touched.** src/events/event-legacy.ts (new), src/events/event-read.ts, src/events/events.ts, src/events/event-format.ts, src/cli/log-commands.ts, src/cli/help.ts, src/gates/pause-gates.ts, src/failure/failure-state-change.ts, the groundwork label-map module(s), docs/cli.md; test/event-legacy.test.ts (new), test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, test/event-format-fleet.test.ts, test/log-commands*.test.ts. Reads (does not edit): src/report/report-data.ts, src/gates/maintenance-quota.ts, src/events/event-window.ts.
+
+**Acceptance criteria.**
+- A `fleet_paused` line in events.jsonl, or in events.jsonl.1 reached through `readWindowEvents`, reads back as `team_paused` from `readEvents`, `readWindowEvents` and `parseEventLine`, and a current line is returned unchanged.
+- `tumwater logs --type fleet_paused` and `--type team_paused` both print that line, and `logs --json` prints it with `"type":"team_paused"`.
+- `logEvent` given an old type, through a cast, appends a line and hands subscribers an event that both carry the new type.
+- The pause gate logs `team_paused`/`team_resumed`, and the failure digest still lists them as state changes.
+- `npm run test` passes.
 
 ### Plain terms scripting, part 1/5: Rename the doctor and retire and role and failure-digest JSON keys (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Script interfaces"; touches src/doctor and src/operator/retire.ts and src/roles and src/failure and the dashboard drawer) — done 2026-10-16
 

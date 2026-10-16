@@ -308,13 +308,13 @@ export function eventMessage(e: HarnessEvent): string {
       const roles = rolesPhrase(e.roles, "?");
       return `budget reopened: handed ${roles} back to the primary`;
     }
-    case "fleet_paused":
+    case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
       return `${fleetPausePhrase()} (director keeps running)`;
-    case "fleet_resumed":
+    case "team_resumed":
       return fleetResumePhrase();
     case "role_paused":
-      // Routine state change, like fleet_paused — no warning prefix.
+      // Routine state change, like team_paused — no warning prefix.
       return `${rolePausePhrase(textOr(e.role))} (the rest of the team keeps running)`;
     case "role_resumed":
       return roleResumePhrase(textOr(e.role));
@@ -350,7 +350,7 @@ export function eventMessage(e: HarnessEvent): string {
       // its bootstrap and the maintenance loops are admitted.
       return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
     case "disk_low":
-      // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
+      // Routine state change, like team_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
       return `waiting: low disk — ${gigabytes(e.freeGB)} free on the workspaces volume (floor ${gigabytes(e.holdGB)}); new work waits until space recovers`;
@@ -364,7 +364,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `disk reclaim (${textOr(e.mode, "pressure")}) — freed ${gigabytes(e.freedGB)} from ${from}; ${gigabytes(e.freeGB)} free now`;
     }
     case "rate_limit_hold": {
-      // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
+      // Routine state change, like team_paused — no warning prefix: the hold IS the harness
       // handling the storm. Names who saw the failure and when the fleet re-opens on its own.
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.

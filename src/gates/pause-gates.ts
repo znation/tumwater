@@ -44,7 +44,7 @@ export function newPauseGateState(): PauseGateState {
 export function pollPauseGates(root: string, state: PauseGateState): PauseGates {
   const userPaused = isFleetPaused(root);
   if (userPaused !== state.prevUserPaused) {
-    logEventBestEffort(root, { loop: "harness", type: userPaused ? "fleet_paused" : "fleet_resumed" });
+    logEventBestEffort(root, { loop: "harness", type: userPaused ? "team_paused" : "team_resumed" });
     state.prevUserPaused = userPaused;
   }
   const pausedRolesNow = pausedRoles(root);

@@ -10,6 +10,7 @@ import { compareCodeUnits, increment } from "../collections.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
+import { canonicalEventType } from "../events/event-legacy.js";
 import { eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
@@ -103,7 +104,9 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // parseTypeFlag, so the two cannot drift; `rest` here has both flags' value tokens removed.
   const { rest, type } = parseTypeFlag(grepped, TYPE_VALUE_ERROR);
   const grepLower = grepPattern === null ? null : grepPattern.toLowerCase();
-  const typeFilter = type === null ? null : (e: HarnessEvent) => e.type === type;
+  // An older event name matches its current one; the empty-match prose still names what was typed.
+  const wantedType = type === null ? null : canonicalEventType(type);
+  const typeFilter = type === null ? null : (e: HarnessEvent) => e.type === wantedType;
   // The composed feed rule every emit site threads today's grep-only predicate through:
   // an event passes when it is absent-or-matches the --grep substring AND absent-or-equals
   // the --type id, held in one place so the --since window, the -n tally, and the follow
@@ -153,7 +156,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // window events of the exact type are printed, and an all-filtered window answers with
     // the no-match prose (the type's own line) instead of the generic empty-window one —
     // "which land_failed in the last hour" filters the same as it would the -n view.
-    const filtered = type === null ? events : events.filter((e) => e.type === type);
+    const filtered = type === null ? events : events.filter((e) => e.type === wantedType);
     if (filtered.length === 0) {
       // In JSON mode an empty result answers silently — an empty output IS the machine-readable
       // answer, and prose would corrupt a consumer's NDJSON stream.

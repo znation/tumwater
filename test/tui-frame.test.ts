@@ -227,7 +227,7 @@ test("activity and transcript lines take the tones of what they report", () => {
   assert.equal(eventTone(ev("tick_end", { result: "no_change" })), "dim");
   assert.equal(eventTone(ev("build_check", { status: "failed" })), "red");
   assert.equal(eventTone(ev("question_posted")), "magenta");
-  assert.equal(eventTone(ev("fleet_paused")), undefined);
+  assert.equal(eventTone(ev("team_paused")), undefined);
   assert.equal(eventTone(ev("tick_start")), "dim");
   assert.equal(transcriptTone("── run @ 2026-09-29 16:07:56 ──"), "bold");
   assert.equal(transcriptTone("→ bash npm test"), "cyan");
@@ -260,7 +260,7 @@ test("the page's event kinds are tone's", () => {
   const cases: Array<[string, string | undefined]> = [
     ["merged", undefined], ["question_posted", undefined], ["tick_end", "error"], ["tick_end", "queued"], ["tick_end", "no_change"],
     ["tick_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["land_failed", undefined],
-    ["review_rejected", undefined], ["tick_start", undefined], ["landed", undefined], ["fleet_paused", undefined], ["orchestrator_start", undefined],
+    ["review_rejected", undefined], ["tick_start", undefined], ["landed", undefined], ["team_paused", undefined], ["orchestrator_start", undefined],
     ["warning", undefined], ["brand_new_event", undefined],
   ];
   for (const [type, result] of cases) {

@@ -25,8 +25,8 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "budget_paused",
     "budget_fallback",
     "budget_resumed",
-    "fleet_paused",
-    "fleet_resumed",
+    "team_paused",
+    "team_resumed",
     "role_paused",
     "role_resumed",
     "role_streak_paused",
@@ -112,8 +112,8 @@ test("budget_fallback and budget_resumed phrase the spend around the gate move",
 });
 
 test("fleet and role pauses render fixed and role-named lines", () => {
-  assert.equal(describeStateChange(ev({ type: "fleet_paused" })), "team paused — roles start no new runs");
-  assert.equal(describeStateChange(ev({ type: "fleet_resumed" })), "team resumed — roles run again");
+  assert.equal(describeStateChange(ev({ type: "team_paused" })), "team paused — roles start no new runs");
+  assert.equal(describeStateChange(ev({ type: "team_resumed" })), "team resumed — roles run again");
   assert.equal(
     describeStateChange(ev({ type: "role_paused", role: "steward" })),
     "role steward paused — it starts no new runs",

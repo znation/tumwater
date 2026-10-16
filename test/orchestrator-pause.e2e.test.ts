@@ -34,7 +34,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
     // The operator pauses the running fleet (what `tumwater pause` does: drop the marker).
     const marker = pausedPath(repo);
     writeMarker(marker, { at: Date.now() });
-    await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_paused"), "a fleet_paused event");
+    await waitFor(() => readEvents(repo).some((e) => e.type === "team_paused"), "a team_paused event");
 
     // The world changed under a paused fleet: advance main. An ungated loop would wake early…
     fs.writeFileSync(path.join(repo, "world.txt"), "changed\n");
@@ -60,12 +60,12 @@ test("a pause marker blocks new role ticks for any reason while the director run
     // Removing the marker mid-run (what `tumwater resume` does) lifts the pause on the next
     // poll: one transition event, then the blocked role ticks again without a restart.
     fs.rmSync(marker);
-    await waitFor(() => readEvents(repo).some((e) => e.type === "fleet_resumed"), "a fleet_resumed event");
+    await waitFor(() => readEvents(repo).some((e) => e.type === "team_resumed"), "a team_resumed event");
     await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after resume");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
-    assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
-    assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
+    assert.equal(eventsOfType(repo, "team_paused").length, 1);
+    assert.equal(eventsOfType(repo, "team_resumed").length, 1);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -102,8 +102,8 @@ test("starting already paused keeps role ticks blocked until resume — no resta
     await awaitSettledTick(repo, "clean", 1, "the paused role to tick after resume");
 
     // One transition event per direction for the whole run — including the startup read.
-    assert.equal(eventsOfType(repo, "fleet_paused").length, 1);
-    assert.equal(eventsOfType(repo, "fleet_resumed").length, 1);
+    assert.equal(eventsOfType(repo, "team_paused").length, 1);
+    assert.equal(eventsOfType(repo, "team_resumed").length, 1);
   } finally {
     await stopOrchestrator(orch, restore);
   }

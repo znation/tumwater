@@ -3,6 +3,7 @@ import { finiteNumber, parseJsonObject } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { readTailTextWithEnd } from "../files/tail.js";
+import { normalizeLegacyEvent } from "./event-legacy.js";
 import type { HarnessEvent } from "./events.js";
 
 /** The READ side of the event feed: everything that consumes events.jsonl after the fact —
@@ -23,10 +24,11 @@ import type { HarnessEvent } from "./events.js";
  * object either: the log is one JSON object per line, so anything else is corrupt (or foreign)
  * and reads as no data — the same object check readJsonFile applies to the harness's state
  * files. Without it, `readEvents` pushes the truthy non-object into the feed and `formatEvent`
- * renders it as an `Invalid Date undefined` line. */
+ * renders it as an `Invalid Date undefined` line. An old line comes back under today's names
+ * (normalizeLegacyEvent, event-legacy.ts). */
 export function parseEventLine(line: string): HarnessEvent | null {
   const parsed = parseJsonObject(line);
-  return parsed ? (parsed as HarnessEvent) : null;
+  return parsed ? normalizeLegacyEvent(parsed as HarnessEvent) : null;
 }
 
 /** The local calendar-day key ("YYYY-MM-DD") of an event's `ts`, or null when it carries no

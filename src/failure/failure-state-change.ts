@@ -24,8 +24,8 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "budget_paused",
   "budget_fallback",
   "budget_resumed",
-  "fleet_paused",
-  "fleet_resumed",
+  "team_paused",
+  "team_resumed",
   "role_paused",
   "role_resumed",
   "role_streak_paused",
@@ -105,10 +105,10 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "budget_resumed":
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
-    case "fleet_paused":
+    case "team_paused":
       text = fleetPausePhrase();
       break;
-    case "fleet_resumed":
+    case "team_resumed":
       text = fleetResumePhrase();
       break;
     case "role_paused":

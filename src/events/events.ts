@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { eventsLogPath } from "../paths.js";
 import { ensureParentDir, rotateIfLarge, sameStatIdentity, statOrNull, terminateTornTail } from "../files/files.js";
+import { normalizeLegacyEvent } from "./event-legacy.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 
 type EventListener = (event: HarnessEvent) => void;
@@ -64,8 +65,8 @@ export interface HarnessEvent {
     | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model)
-    | "fleet_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
-    | "fleet_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
+    | "team_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
+    | "team_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
     | "role_resumed" // the per-role pause was lifted (`tumwater resume --role <id>`); that role ticks again (carries role)
     | "role_streak_paused" // the error-streak circuit breaker auto-paused a role after ERROR_STREAK_BREAKER consecutive failed ticks (src/gates/streak-gate.ts); carries role, streak, lastError when one is recorded
@@ -148,7 +149,7 @@ export function usageFragment(
  * so it runs only when the file's shape differs from what this process's last append left —
  * a steady stream of events costs one stat, not an fd cycle, per event. */
 export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
-  const full = { ts: Date.now(), ...event };
+  const full = normalizeLegacyEvent({ ts: Date.now(), ...event }) as HarnessEvent;
   const file = eventsLogPath(root);
   ensureParentDir(file);
   rotateIfLarge(file, EVENTS_MAX_BYTES);
