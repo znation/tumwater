@@ -21,40 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms groundwork, part 4/4: Give the dashboard client browser twins of the label helpers (planned 2026-10-16 by user; requires part 1/4 and part 3/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/loop-ids.ts and src/ui/gui/gui-client-labels.ts and src/ui/gui/gui-client.ts plus a test)
-
-**Goal.** The browser dashboard gets `roleLabel`, `roleTitle` and `eventTypeLabel` under the same names, with exactly the server's answers, so the dashboard text parts can call them from any client module.
-
-**Approach.**
-- **Mechanism.** It follows the codebase's two existing patterns:
-  - The dashboard script is String.raw text and cannot import server modules (src/ui/gui/gui-client.ts's header comment). Data is interpolated at module build with `${JSON.stringify(X)}`, as `STALL_SOURCE`, `PROBLEM_RESULTS`, `LOOP_RANK_RULES` and `ENTRY_STAMP_META_SOURCE` are in gui-client-model.ts.
-  - The few lines of logic are hand-kept browser twins, pinned against their TypeScript originals by a test, like `humanSeconds` and `fmtNextRun`.
-  - Nothing new goes into the `/api/status` payload.
-- In `src/roles/loop-ids.ts`, export `INSTANCE_ID_SOURCE = "^(feature|bugfix)-([2-9]|[1-9][0-9]+)$"` and build `INSTANCE_RE` from it. Behavior is unchanged.
-- New module `src/ui/gui/gui-client-labels.ts`, carrying the `// vocabulary: plain` header. It exports `GUI_CLIENT_LABELS_JS`, a String.raw template with one marked region, `// labels:start` … `// labels:end`, holding:
-  - `const ROLE_TITLES = ${JSON.stringify(ROLE_TITLES)};`
-  - `const CUSTOM_ROLE_TITLE = ${JSON.stringify(CUSTOM_ROLE_TITLE)};`
-  - `const INSTANCE_ID = new RegExp(${JSON.stringify(INSTANCE_ID_SOURCE)});`
-  - `const EVENT_TYPE_LABELS = ${…};` and `const RUN_RESULT_LABELS = ${…};`
-  - `function roleLabel(id)`, the instance regex's base + `" #"` + index, else the id;
-  - `function roleTitle(id)`, the base through the regex, then an own-property lookup with `Object.prototype.hasOwnProperty.call`, else `CUSTOM_ROLE_TITLE`;
-  - `function eventTypeLabel(code)`, with the same lookup order and underscore fallback as the server.
-- Splice it into `GUI_CLIENT_JS` in src/ui/gui/gui-client.ts right after `FORMAT_JS`, before `GUI_CLIENT_MODEL_JS`, so every later module can call the three functions. No existing client code changes.
-- The vocabulary guard parses `GUI_CLIENT_LABELS_JS` as browser code (its name ends in `_JS`), so the module's header is enforced on the browser literals too.
-- New `test/gui-client-labels.test.ts`, using `clientScope(["labels"], ["roleLabel", "roleTitle", "eventTypeLabel"])` from test/helpers/gui-client-scope.ts. It asserts the browser and server functions agree on:
-  - every `ROLES` id, `director`, `feature-2`, `bugfix-10`, `feature-1`, `nightly`, `nightly-2` and `constructor`;
-  - every key of `EVENT_TYPE_LABELS` and `RUN_RESULT_LABELS`, plus one unknown code.
-- Docs: no change. docs/glossary.md from part 1/4 already names the terms these produce.
-
-**Files touched.** src/roles/loop-ids.ts, src/ui/gui/gui-client-labels.ts (new), src/ui/gui/gui-client.ts, test/gui-client-labels.test.ts (new). Reads (does not edit): src/roles/role-labels.ts, src/events/event-labels.ts, test/helpers/gui-client-scope.ts.
-
-**Acceptance criteria.**
-- The served dashboard script defines `roleLabel`, `roleTitle` and `eventTypeLabel` before the view-model region.
-- For every id and code listed above, the browser and server functions return identical strings.
-- Changing a title in the role catalog, or a label in event-labels.ts, changes the browser's answer with no edit to the client module, because the data is interpolated.
-- test/loop-ids.test.ts still passes, so the instance regex is unchanged in behavior.
-- `npm run test` passes.
-
 ### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests)
 
 **Goal.** Custom roles are declared under `customRoles`. Old files, and the director's `.tumwater-config-request.json`, may still say `customLoops`. A file or request that says both is refused.
@@ -3847,6 +3813,40 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms groundwork, part 4/4: Give the dashboard client browser twins of the label helpers (planned 2026-10-16 by user; done 2026-10-16; requires part 1/4 and part 3/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/loop-ids.ts and src/ui/gui/gui-client-labels.ts and src/ui/gui/gui-client.ts plus a test)
+
+**Goal.** The browser dashboard gets `roleLabel`, `roleTitle` and `eventTypeLabel` under the same names, with exactly the server's answers, so the dashboard text parts can call them from any client module.
+
+**Approach.**
+- **Mechanism.** It follows the codebase's two existing patterns:
+  - The dashboard script is String.raw text and cannot import server modules (src/ui/gui/gui-client.ts's header comment). Data is interpolated at module build with `${JSON.stringify(X)}`, as `STALL_SOURCE`, `PROBLEM_RESULTS`, `LOOP_RANK_RULES` and `ENTRY_STAMP_META_SOURCE` are in gui-client-model.ts.
+  - The few lines of logic are hand-kept browser twins, pinned against their TypeScript originals by a test, like `humanSeconds` and `fmtNextRun`.
+  - Nothing new goes into the `/api/status` payload.
+- In `src/roles/loop-ids.ts`, export `INSTANCE_ID_SOURCE = "^(feature|bugfix)-([2-9]|[1-9][0-9]+)$"` and build `INSTANCE_RE` from it. Behavior is unchanged.
+- New module `src/ui/gui/gui-client-labels.ts`, carrying the `// vocabulary: plain` header. It exports `GUI_CLIENT_LABELS_JS`, a String.raw template with one marked region, `// labels:start` … `// labels:end`, holding:
+  - `const ROLE_TITLES = ${JSON.stringify(ROLE_TITLES)};`
+  - `const CUSTOM_ROLE_TITLE = ${JSON.stringify(CUSTOM_ROLE_TITLE)};`
+  - `const INSTANCE_ID = new RegExp(${JSON.stringify(INSTANCE_ID_SOURCE)});`
+  - `const EVENT_TYPE_LABELS = ${…};` and `const RUN_RESULT_LABELS = ${…};`
+  - `function roleLabel(id)`, the instance regex's base + `" #"` + index, else the id;
+  - `function roleTitle(id)`, the base through the regex, then an own-property lookup with `Object.prototype.hasOwnProperty.call`, else `CUSTOM_ROLE_TITLE`;
+  - `function eventTypeLabel(code)`, with the same lookup order and underscore fallback as the server.
+- Splice it into `GUI_CLIENT_JS` in src/ui/gui/gui-client.ts right after `FORMAT_JS`, before `GUI_CLIENT_MODEL_JS`, so every later module can call the three functions. No existing client code changes.
+- The vocabulary guard parses `GUI_CLIENT_LABELS_JS` as browser code (its name ends in `_JS`), so the module's header is enforced on the browser literals too.
+- New `test/gui-client-labels.test.ts`, using `clientScope(["labels"], ["roleLabel", "roleTitle", "eventTypeLabel"])` from test/helpers/gui-client-scope.ts. It asserts the browser and server functions agree on:
+  - every `ROLES` id, `director`, `feature-2`, `bugfix-10`, `feature-1`, `nightly`, `nightly-2` and `constructor`;
+  - every key of `EVENT_TYPE_LABELS` and `RUN_RESULT_LABELS`, plus one unknown code.
+- Docs: no change. docs/glossary.md from part 1/4 already names the terms these produce.
+
+**Files touched.** src/roles/loop-ids.ts, src/ui/gui/gui-client-labels.ts (new), src/ui/gui/gui-client.ts, test/gui-client-labels.test.ts (new). Reads (does not edit): src/roles/role-labels.ts, src/events/event-labels.ts, test/helpers/gui-client-scope.ts.
+
+**Acceptance criteria.**
+- The served dashboard script defines `roleLabel`, `roleTitle` and `eventTypeLabel` before the view-model region.
+- For every id and code listed above, the browser and server functions return identical strings.
+- Changing a title in the role catalog, or a label in event-labels.ts, changes the browser's answer with no edit to the client module, because the data is interpolated.
+- test/loop-ids.test.ts still passes, so the instance regex is unchanged in behavior.
+- `npm run test` passes.
 
 ### Plain terms commands, part 2/6: Rename tickTimeoutSeconds and minTickIntervalSeconds to runTimeoutSeconds and minRunIntervalSeconds (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and the timeout and interval readers and tumwater.example.json plus tests) (done 2026-10-16)
 

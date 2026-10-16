@@ -13,8 +13,10 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 export const INSTANCE_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix"]);
 
 /** The instance-id shape: a base role, a dash, and an index of 2 or more (`-1` is not an
- * instance — the bare id already means instance 1). */
-const INSTANCE_RE = /^(feature|bugfix)-([2-9]|[1-9][0-9]+)$/;
+ * instance — the bare id already means instance 1). The source string is also interpolated into
+ * the dashboard script (gui-client-labels.ts). */
+export const INSTANCE_ID_SOURCE = "^(feature|bugfix)-([2-9]|[1-9][0-9]+)$";
+const INSTANCE_RE = new RegExp(INSTANCE_ID_SOURCE);
 
 /** The base role a loop id belongs to: `feature-2` → `feature`, `bugfix-10` → `bugfix`; any
  * other id — a bare role, a custom loop, `feature-1` — is returned unchanged. */
