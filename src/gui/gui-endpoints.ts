@@ -20,7 +20,7 @@ import { collectReport, collectReportSince } from "../report/report-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
 import { renderFailureMarkdown } from "../failure/failure-render.js";
 import { renderSinceReportMarkdown } from "../report/report-render.js";
-import { REPORT_SINCE_MAX_MS } from "../events/event-window.js";
+import { REPORT_SINCE_MAX_MS, reportSinceMsg } from "../events/event-window.js";
 import { humanSeconds } from "../text/datetime.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { readTranscript } from "../ui/transcript.js";
@@ -145,8 +145,7 @@ function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | n
     badRequest(res, "days and sinceMs are mutually exclusive; days counts whole local days, sinceMs totals a trailing window");
     return null;
   }
-  return sinceMsQuery(q, res, REPORT_SINCE_MAX_MS, (sinceMs) =>
-    `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`);
+  return sinceMsQuery(q, res, REPORT_SINCE_MAX_MS, reportSinceMsg);
 }
 
 /** Handle GET /api/failures?days=N[&role=<id>] or /api/failures?sinceMs=<ms>[&role=<id>]: the

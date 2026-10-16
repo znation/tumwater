@@ -29,18 +29,25 @@ export const LOGS_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
  * the CLI's flag validation and the collector's window read share one bound. */
 export const REPORT_SINCE_MAX_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Why a trailing-window length is refused, as the rejection text naming the out-of-range
+ * value (`sinceMs must be between 1 and 7d (got 604800000)`). The single home of the report
+ * window's bound wording, shared by the data-layer guard (assertReportSinceMs) and the
+ * dashboard's ?sinceMs= 400 (gui-endpoints.ts) so the two cannot drift apart; the `--since`
+ * CLI flag uses parseSinceFlag's own distinct wording. */
+export function reportSinceMsg(sinceMs: number): string {
+  return `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`;
+}
+
 /** Reject a trailing-window length outside the report bound before a collector reads the log.
  * The CLI's parseSinceFlag already rejects one, but both trailing-window collectors are also
  * called directly (tests, future callers), so the data layer enforces the bound too. A
  * non-finite length is refused here as well: NaN slips past both comparisons (`NaN <= 0` and
  * `NaN > MAX` are each false) and would reach the window arithmetic, so the guard tests
- * finiteness first — the same rule the persisted-state readers apply. One home for the message
- * keeps the usage report and the failure digest from drifting apart. */
+ * finiteness first — the same rule the persisted-state readers apply. The message comes from
+ * reportSinceMsg so the data layer and the dashboard share the bound's wording. */
 export function assertReportSinceMs(sinceMs: number): void {
   if (!Number.isFinite(sinceMs) || sinceMs <= 0 || sinceMs > REPORT_SINCE_MAX_MS)
-    throw new Error(
-      `sinceMs must be between 1 and ${humanSeconds(REPORT_SINCE_MAX_MS / 1000)} (got ${sinceMs})`,
-    );
+    throw new Error(reportSinceMsg(sinceMs));
 }
 
 /** The one-line note every windowed render prints when its read cannot prove the window was
