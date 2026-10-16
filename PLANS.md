@@ -2426,6 +2426,51 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `git diff --stat` shows only docs/cli.md, test/cli-doc.test.ts, and PLANS.md.
 - `npm run test` passes.
 
+### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it)
+
+**Goal.** README.md says "Every command, flag, and TUI key is in docs/cli.md", but cli.md mentions TUI keys only in passing inside command rows. A prototype scan on 2026-10-16 found these Ctrl keys handled in code: A B C D E F G L N O P Q R S T W X, plus the line-editing keys U and K. docs/cli.md names only A C E F N P Q W X. docs/how-it-works.md never names Ctrl+B (daily cap), Ctrl+C (interrupt the director), or Ctrl+D (quit). Add one reference table and a test that fails when a handler is added or removed without the table changing too.
+
+**Approach.**
+1. docs/cli.md: append a final section `## TUI keys` after the closing completion paragraph. Give it one sentence ("The hint line at the bottom of the TUI names the keys the current view takes."), then a `| Key | Where | What it does |` table with these rows. The wording comes from the hint labels in `src/ui/tui/tui-frame.ts` and the TUI paragraphs of docs/how-it-works.md:
+   - `Ctrl+T` | any view | next view (Activity, each role's Transcript, Backlog, Usage, Failures, History, Pending, Inbox, Health, Brief); it also leaves an open editor
+   - `Ctrl+D` | any view | quit the TUI (under `tumwater start --tui` this stops the team like Ctrl+C in the shell)
+   - `Ctrl+C` | any view | interrupt the director's in-flight run, as `tumwater abort --role director` does; a notice when none is in flight
+   - `Enter`, `↑`/`↓`, `PgUp`/`PgDn`, `Esc` | prompt line, panes | send the prompt, prompt history (or move through entries on Backlog), scroll, cancel an editor
+   - `Ctrl+U` / `Ctrl+K` | prompt line | delete to the start / to the end of the line
+   - `Ctrl+L` | prompt line | send later: set a delay for the next prompt
+   - `Ctrl+B` | Activity | edit the daily cost cap (empty means no cap)
+   - `Ctrl+F` | Activity | pause the team (`[duration] [reason]`), or resume it when paused
+   - `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop
+   - `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope
+   - `/` | Activity, History | search
+   - `Ctrl+S` / `Ctrl+O` | History | cycle the trailing window / the outcome filter
+   - `Ctrl+N` | History | the newest completed run's event trail, and back
+   - `Ctrl+E` | Usage, Failures | cycle the trailing window
+   - `Ctrl+R` | Transcript | send a prompt to that role
+   - `Ctrl+P` / `Ctrl+W` / `Ctrl+A` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run
+   - `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; `Ctrl+X` pressed twice on notes clears them
+   - `Ctrl+X` (twice) / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / edit its title / file a new plan or bug / answer the selected question
+   - `Ctrl+E` / `Ctrl+X` | Inbox | edit / cancel the selected queued prompt
+   Before writing each row, check its meaning against the handler in src/ui/tui/tui-keys.ts or src/ui/tui/tui-editors.ts. If a handler differs from the meaning above, write what the code does.
+2. test/tui-keys-doc.test.ts (new; modeled on test/cli-doc.test.ts, reading sources with `fs.readFileSync` and `fileURLToPath(new URL("../../…", import.meta.url))`). Add a helper `handledCtrlKeys(): Set<string>` that returns upper-case letters:
+   - In src/ui/tui/tui-keys.ts and src/ui/tui/tui-editors.ts, for every line containing `key.ctrl &&`, collect each `/key\.name === "([a-z])"/g` match. This covers the multi-name lines such as `key.ctrl && (key.name === "p" || key.name === "w")`.
+   - In src/ui/tui/tui-input.ts, collect `/case "([a-z])":\s*(?:\/\/[^\n]*\s*)*if \(key\.ctrl\)/g` (yields `u` and `k`).
+   Add a helper `documentedCtrlKeys(): Set<string>` that returns the `/Ctrl\+([A-Z])\b/g` letters in docs/cli.md from the `## TUI keys` heading to the next `## ` heading or the end of the file. Add three tests:
+   - "the code scan finds the TUI's Ctrl keys": the handled set's size is at least 19, and it contains `D`, `T`, `U`. This floor stops a regex regression from passing vacuously.
+   - "docs/cli.md's TUI keys table names every Ctrl key the TUI handles": `assert.deepEqual` of the sorted handled letters that are missing from the documented set against `[]`.
+   - "docs/cli.md's TUI keys table names no Ctrl key the TUI lacks": the same check in reverse.
+   Give the file a doc comment saying it compares the cli.md TUI keys table against the key handlers, tests only.
+
+**Files touched.** docs/cli.md, test/tui-keys-doc.test.ts (new).
+
+**Acceptance criteria.**
+- With only the test file added (before the doc edit), the second test fails and names B C D G L O R S T U K. Check this before editing the doc; if the set differs, fix the scan or the plan's key list to match the code, not the reverse.
+- On the tree as it lands, all three tests pass.
+- Temporarily adding a `Ctrl+Z` row to the table makes the third test fail and name `Z`. Revert that edit before landing.
+- Every table row's meaning matches its handler in src/ui/tui/tui-keys.ts, src/ui/tui/tui-editors.ts, or src/ui/tui/tui-input.ts.
+- No file under src/ changes. `git diff --stat` shows only docs/cli.md, test/tui-keys-doc.test.ts, and PLANS.md.
+- `npm run test` passes.
+
 ## Done
 
 ### Every relative link and backticked repo path in the current docs resolves, and a test keeps them that way (planned 2026-10-16 by plan; independent of every other Planned entry. It adds only test/docs-links.test.ts. No doc, source, payload, or event key changes) (done 2026-10-16)
