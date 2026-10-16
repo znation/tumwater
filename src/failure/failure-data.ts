@@ -28,6 +28,15 @@ import { eventsLogPath } from "../paths.js";
  * byte bound below for what these buy. */
 const ERROR_TOP = 7;
 const WARNING_TOP = 7;
+
+/** Warnings that name a failing check or a stalled tool call. Each is a once-per-window
+ * singleton, so ranking by count alone lets recurring housekeeping lines push it out of the
+ * digest; these rank first. */
+const URGENT_WARNING = /^(?:landing check red|merge check failed|tool call stalled)/;
+
+/** The pre-07b2664a wording of the merge-check warning, pooled under the current one so a
+ * window spanning the reword counts one cause, not two. */
+const OLD_MERGE_CHECK_WORDING = /^landing check red \(kept for one re-land\)/;
 const REVIEW_FAILURE_TOP = 5;
 const REJECTION_TOP = 5;
 const MERGED_TOP = 10;
@@ -159,6 +168,7 @@ function messageSection(
   events: HarnessEvent[],
   type: HarnessEvent["type"],
   top: number,
+  urgent?: (message: string) => boolean,
 ): ClusterSection {
   const selected = events.filter(
     (ev) => ev.type === type && typeof ev.message === "string" && ev.message !== "",
@@ -167,6 +177,7 @@ function messageSection(
     clusterMessages(
       selected.map((ev) => ({ message: ev.message as string, role: eventRole(ev), ts: ev.ts })),
       top,
+      urgent,
     ),
     selected.length,
   );
@@ -407,7 +418,16 @@ function assembleFailureReport(
     ),
     errorEvents.length,
   );
-  const warnings = messageSection(current, "warning", WARNING_TOP);
+  const warnings = messageSection(
+    current.map((ev) =>
+      ev.type === "warning" && typeof ev.message === "string"
+        ? { ...ev, message: ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)") }
+        : ev,
+    ),
+    "warning",
+    WARNING_TOP,
+    (m) => URGENT_WARNING.test(m),
+  );
   // Rejections cluster on (role, reasons[0]) — the field the event feed renders — so two
   // different rejection reasons from the same role stay separate rows. The section's total
   // counts every `review_rejected` in the window, reasons or not, so it equals the Deltas

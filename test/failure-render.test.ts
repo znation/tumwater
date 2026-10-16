@@ -1041,3 +1041,20 @@ test("the digest's table headers and section titles use plain terms, not raw res
   assert.match(deltas, /\| role \| runs \| error rate \| stalls \| rejections \|/);
   assert.match(md, /## Merged in the window/);
 });
+
+test("collectFailureReport keeps singleton merge-check and stall warnings past seven recurring housekeeping clusters", () => {
+  const root = tmpdir();
+  const events: Array<Record<string, unknown>> = [];
+  for (let k = 0; k < 7; k++) {
+    for (let i = 0; i < 2; i++) {
+      events.push({ ts: at(0), loop: "feature", type: "warning", message: `housekeeping kind${"abcdefg"[k]} repeated` });
+    }
+  }
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "landing check red (kept for one re-land): test a" });
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "merge check failed (kept for one retry): test b" });
+  events.push({ ts: at(0), loop: "feature", type: "warning", message: "tool call stalled: bash — no exit for 9m" });
+  writeEvents(root, events);
+  const keys = collectFailureReport(root, 1).warnings.clusters.map((c) => c.example);
+  assert.equal(keys.filter((e) => e.startsWith("merge check failed")).length, 2, "both tests' merge warnings survive, old wording pooled to the new");
+  assert.ok(keys.some((e) => e.startsWith("tool call stalled")), "stall warning survives");
+});

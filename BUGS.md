@@ -18,22 +18,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Progress 2026-10-16 (bugfix, third):** no repro. 30 concurrent runs of the test beside 8 CPU-spinning node processes all passed (the `timeout` wrapper on the spinners did not exist on this host, so the spinners ran unbounded until `pkill`; the load was real). `startParentDeathWatch` (src/process/supervisor.ts:79-104) reads correctly on the handed-down `expectedPpid` path. No code change; the entry stays open until a flake's failure message (signals sent, ESRCH or not, ppids seen) names the case.
 - **Progress 2026-10-16 (bugfix, fourth):** one more candidate closed, unconfirmed: the signal loop was bounded by a count (200 × 50 ms), so a grandchild starved for longer than that (the 145 s check suggests heavy load) could miss every poll and the verdict was read right after. The loop is now bounded by 60 s of wall clock. The entry stays open until a flake reads out.
 
-### The telemetry digest keeps only the 7 most frequent warning clusters, so recurring housekeeping lines push out the one-off warnings that name flaky tests: on 2026-10-16 all three flakes and the 11:24 red merge check were cut (found by operator session 2026-10-16 while checking why telemetry filed nothing)
-
-- **Symptom:** the 13:52 PDT telemetry run's digest listed seven clusters, then `_+9 more clusters holding 9 warnings_`:
-  - SUMMARY length (7×)
-  - stage self-check (5×)
-  - `agent_unknown_event: cost_unknown` (3×)
-  - `auto-restart … deferred — cooldown` (3×)
-  - high-friction run (3×)
-  - `pruned N stale session ledger line(s)` (3×)
-  - `pruned N old agent session/tool-output file(s)` (2×)
-
-  The nine hidden warnings included `landing check red (kept for one re-land)` for three different tests (the three flake entries above), feature's `merge check failed (kept for one retry)` at 11:24, and the 01:24 `tool call stalled`. Telemetry concluded that every warning "self-corrected". The 2026-10-14 Fixed entry added the landing-check-red warning so that "the failure digest and a later audit can name the flaky test", and the digest drops it.
-- **Reproduce:** feed `collectFailureReport` a window with seven warning texts that each recur twice and one `landing check red …` warning. The red one lands in `hiddenClusters`.
-- **Cause:** `WARNING_TOP = 7` (src/failure/failure-data.ts:30), and `clusterMessages` (src/failure/failure-cluster.ts) ranks clusters by count alone. A flaky test fails about once per window, so its warning is always a singleton. Routine info lines, from src/orchestrator/retention.ts and from the redeployer's cooldown deferral, recur on every restart. The plain-terms rewording 07b2664a (10:05) also changed `landing check red (kept for one re-land)` to `merge check failed (kept for one retry)` mid-window, so one kind of warning splits into two clusters.
-- **Expected / fix sketch:** rank by kind before count. Always list warnings that name a failing test or a stalled tool call. Fold pure housekeeping (pruning, cooldown deferrals) into one line, or log it as something other than `warning`. Pool the old and new wording of the merge-check warning under one key.
-
 ### The telemetry digest has no merge-failure section: a blocked or conflicted merge shows up only as a per-role loss cause with the placeholder "(no error text recorded)", and the top-5 loss cut hid all of 2026-10-16's (found by operator session 2026-10-16 while checking why telemetry filed nothing)
 
 - **Symptom:** by 13:52 PDT, 10-16 had five `land_failed merge_blocked` events and one `merge_conflict`. The blocks were feature-3's silent one at 07:05 and four after red merge checks: dry at 00:24 and 01:58, improve at 07:29, feature at 11:24. The conflict was plan's at 07:23. The 13:52 digest named none of them:
@@ -48,6 +32,24 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected / fix sketch:** add a "Merge failures" section. Count `land_failed` by result and role, and attach the nearest preceding warning for the same role: a red check, a structure or fix-claim block, or the new fast-forward reason once the entry above lands. List a block with no reason as its own cluster, since that is a signal in itself. Rename the time table's "error" column, or split rejected and blocked out of it, so it cannot sit beside "no run errors".
 
 ## Fixed
+
+### The telemetry digest keeps only the 7 most frequent warning clusters, so recurring housekeeping lines push out the one-off warnings that name flaky tests: on 2026-10-16 all three flakes and the 11:24 red merge check were cut (found by operator session 2026-10-16 while checking why telemetry filed nothing) (fixed 2026-10-16)
+
+- **Symptom:** the 13:52 PDT telemetry run's digest listed seven clusters, then `_+9 more clusters holding 9 warnings_`:
+  - SUMMARY length (7×)
+  - stage self-check (5×)
+  - `agent_unknown_event: cost_unknown` (3×)
+  - `auto-restart … deferred — cooldown` (3×)
+  - high-friction run (3×)
+  - `pruned N stale session ledger line(s)` (3×)
+  - `pruned N old agent session/tool-output file(s)` (2×)
+
+  The nine hidden warnings included `landing check red (kept for one re-land)` for three different tests (the three flake entries above), feature's `merge check failed (kept for one retry)` at 11:24, and the 01:24 `tool call stalled`. Telemetry concluded that every warning "self-corrected". The 2026-10-14 Fixed entry added the landing-check-red warning so that "the failure digest and a later audit can name the flaky test", and the digest drops it.
+- **Reproduce:** feed `collectFailureReport` a window with seven warning texts that each recur twice and one `landing check red …` warning. The red one lands in `hiddenClusters`.
+- **Cause:** `WARNING_TOP = 7` (src/failure/failure-data.ts:30), and `clusterMessages` (src/failure/failure-cluster.ts) ranks clusters by count alone. A flaky test fails about once per window, so its warning is always a singleton. Routine info lines, from src/orchestrator/retention.ts and from the redeployer's cooldown deferral, recur on every restart. The plain-terms rewording 07b2664a (10:05) also changed `landing check red (kept for one re-land)` to `merge check failed (kept for one retry)` mid-window, so one kind of warning splits into two clusters.
+- **Expected / fix sketch:** rank by kind before count. Always list warnings that name a failing test or a stalled tool call. Fold pure housekeeping (pruning, cooldown deferrals) into one line, or log it as something other than `warning`. Pool the old and new wording of the merge-check warning under one key.
+- **Fixed 2026-10-16 (bugfix):** `clusterMessages` takes an optional `urgent` predicate and ranks urgent clusters ahead of every count; the warnings section marks `landing check red`, `merge check failed` and `tool call stalled` urgent and pools the old merge-check wording into the new one. Housekeeping lines are not folded; they still rank by count below the urgent ones. Test: `collectFailureReport keeps singleton merge-check and stall warnings…` in test/failure-render.test.ts.
+- **Validation gap:** none — a fixture with seven recurring warning clusters plus the singletons reproduced it in the existing suite.
 
 ### The telemetry digest's window is the local calendar day, not the last 24 h, so whatever happens between telemetry's last run of a day and midnight is in no digest: three of the four silent merge blocks above fell in that gap (found by operator session 2026-10-16 while checking why telemetry filed nothing; fixed 2026-10-16)
 

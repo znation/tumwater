@@ -145,11 +145,13 @@ interface ClusterDraft {
  * rides lastSeen: a cluster that outlived a config change labels itself with the message as
  * it happens now, not the retired value it first emitted (BUGS.md 2026-09-30). `keyPrefix`
  * scopes a cluster to something the message itself omits (rejections key on role too) without
- * polluting the verbatim example. Returns the top-N clusters plus how many fell past the cut,
+ * polluting the verbatim example. `urgent` marks messages that outrank the count.
+ * Returns the top-N clusters plus how many fell past the cut,
  * so the render can mark the truncation instead of presenting the survivors as the whole. */
 export function clusterMessages(
   messages: Array<{ message: string; role: string; ts: number; keyPrefix?: string }>,
   top: number,
+  urgent?: (message: string) => boolean,
 ): { clusters: Cluster[]; hiddenClusters: number } {
   const drafts = new Map<string, ClusterDraft>();
   for (const { message, role, ts, keyPrefix } of messages) {
@@ -174,7 +176,13 @@ export function clusterMessages(
       });
     }
   }
-  const sorted = rankByCount(drafts.values(), (d) => d.count, (d) => d.key);
+  // Clusters whose example is `urgent` rank ahead of every other, whatever their count, so a
+  // once-per-window singleton survives the cut past recurring noise.
+  const sorted = rankByCount(
+    drafts.values(),
+    (d) => d.count + (urgent?.(d.example) ? Number.MAX_SAFE_INTEGER / 2 : 0),
+    (d) => d.key,
+  );
   return {
     clusters: sorted.slice(0, top).map((d) => ({
       key: d.key,
