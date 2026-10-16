@@ -249,47 +249,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
 - `npm run test` passes.
 
-### Plain terms text, part 11/19: Dashboard Roles card and view model and Merge queue card (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-loops.ts + gui-client-model.ts + gui-client-pending.ts + tests)
-
-**Goal.** The Roles card's rows, result pills and actions use the glossary and the shared labels. The "Land queue" card becomes the "Merge queue" card.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `renderLoops` and its row helpers (src/ui/gui/gui-client-loops.ts):
-  - Status text:
-    - "paused — it starts no new runs", and "your wake in …".
-    - A sleeping role: "sleeping — next check in …".
-    - ", nothing merged lately", " in this role's inbox", and "run N · merged <age>".
-    - "Merging the change…", and "No runs yet".
-  - Tag titles: "A custom role from tumwater.json", and "The model tier this role resolves at".
-  - Actions: "Click again to stop this run", "Wake every role", and the toast "every role woken".
-  - The empty state: "No roles are enabled in tumwater.json".
-  - Role names go through the `roleLabel` twin. Mark the class names `loop-name`, `c-loop` and `loop clickable`.
-- src/ui/gui/gui-client-model.ts:
-  - `resultInfo` takes its words from the browser twin of `eventTypeLabel`, capitalizing the first letter: "Merged", "Waiting to merge", "Interrupted", "Stopped by you", "Main's check failing", "No change", "Merge blocked", "Stalled". Its tone table stays.
-  - Mark the `key` literals in `phaseInfo`; part 2/19 already converted its labels.
-  - The alert-icon keys stay.
-- src/ui/gui/gui-client-pending.ts:
-  - The card title "Land queue" → "Merge queue". The empty states: "Merge queue empty", and "merge queue: N waiting".
-  - The Pending roster's text follows the rules.
-  - `pendingFleet` and the other identifiers stay.
-- Add the header to all three modules.
-
-**Files touched.**
-- src: src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts.
-- Tests: test/gui-client-loops.test.ts, test/gui-client.test.ts (the view-model twin pins), test/gui-client-pending.test.ts, test/gui.test.ts.
-
-**Acceptance criteria.**
-- A role whose last run merged shows a green "Merged" pill. `queued` reads "Waiting to merge" and `user_aborted` reads "Stopped by you". A row with a merge in flight reads "Merging the change…".
-- The pending card is titled "Merge queue", and its empty state says "Merge queue empty".
-- The three modules carry the header and pass the guard.
-- `npm run test` passes.
-
 ### Plain terms text, part 12/19: Dashboard role drawer and History view (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-drawer.ts + gui-client-history.ts + tests)
 
 **Goal.** The role drawer and the History view speak of roles, runs, merges and notes.
@@ -3115,6 +3074,47 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 11/19: Dashboard Roles card and view model and Merge queue card (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-loops.ts + gui-client-model.ts + gui-client-pending.ts + tests) — done 2026-10-16
+
+**Goal.** The Roles card's rows, result pills and actions use the glossary and the shared labels. The "Land queue" card becomes the "Merge queue" card.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderLoops` and its row helpers (src/ui/gui/gui-client-loops.ts):
+  - Status text:
+    - "paused — it starts no new runs", and "your wake in …".
+    - A sleeping role: "sleeping — next check in …".
+    - ", nothing merged lately", " in this role's inbox", and "run N · merged <age>".
+    - "Merging the change…", and "No runs yet".
+  - Tag titles: "A custom role from tumwater.json", and "The model tier this role resolves at".
+  - Actions: "Click again to stop this run", "Wake every role", and the toast "every role woken".
+  - The empty state: "No roles are enabled in tumwater.json".
+  - Role names go through the `roleLabel` twin. Mark the class names `loop-name`, `c-loop` and `loop clickable`.
+- src/ui/gui/gui-client-model.ts:
+  - `resultInfo` takes its words from the browser twin of `eventTypeLabel`, capitalizing the first letter: "Merged", "Waiting to merge", "Interrupted", "Stopped by you", "Main's check failing", "No change", "Merge blocked", "Stalled". Its tone table stays.
+  - Mark the `key` literals in `phaseInfo`; part 2/19 already converted its labels.
+  - The alert-icon keys stay.
+- src/ui/gui/gui-client-pending.ts:
+  - The card title "Land queue" → "Merge queue". The empty states: "Merge queue empty", and "merge queue: N waiting".
+  - The Pending roster's text follows the rules.
+  - `pendingFleet` and the other identifiers stay.
+- Add the header to all three modules.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts.
+- Tests: test/gui-client-loops.test.ts, test/gui-client.test.ts (the view-model twin pins), test/gui-client-pending.test.ts, test/gui.test.ts.
+
+**Acceptance criteria.**
+- A role whose last run merged shows a green "Merged" pill. `queued` reads "Waiting to merge" and `user_aborted` reads "Stopped by you". A row with a merge in flight reads "Merging the change…".
+- The pending card is titled "Merge queue", and its empty state says "Merge queue empty".
+- The three modules carry the header and pass the guard.
+- `npm run test` passes.
 
 ### `tumwater backlog --ready` shows only the plans and bugs no hold keeps from being picked (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/cli/cli-query-commands.ts` `cmdBacklog`, `src/backlog/backlog-render.ts`, `src/cli/cli-flag-specs.ts`, `src/cli/help.ts`, and `docs/cli.md`. The in-flight working-on-it-mark plan touches only `docs/cli.md`'s "Steer the project" row, and this one touches only its "Check state" row; done 2026-10-16)
 

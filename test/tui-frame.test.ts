@@ -256,7 +256,7 @@ test("sanitizeFrameLines strips terminal controls from attention and pane lines"
 });
 
 test("the page's event kinds are tone's", () => {
-  const { eventKind: pageKind } = clientScope<{ eventKind(item: { type: string; result?: string }): string }>(["format", "view-model"], ["eventKind"]);
+  const { eventKind: pageKind } = clientScope<{ eventKind(item: { type: string; result?: string }): string }>(["format", "labels", "view-model"], ["eventKind"]);
   const cases: Array<[string, string | undefined]> = [
     ["merged", undefined], ["question_posted", undefined], ["tick_end", "error"], ["tick_end", "queued"], ["tick_end", "no_change"],
     ["tick_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["land_failed", undefined],

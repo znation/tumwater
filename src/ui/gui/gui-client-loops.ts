@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's loops table, browser-side — the fleet's rows grouped by what the loops are
  * doing (working, landing, needs-attention, paused, idle), each with its status pill, current
  * work, spend, and per-row operator controls (prompt, wake, pause/resume, and the two-click
@@ -67,7 +68,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       else if (timed) msg = role + " paused for " + humanSeconds(forSeconds);
       else if (pausing || action === "resume") {
         msg = role + (d && d.changed
-          ? (pausing ? " paused — it starts no new ticks" : " resumed")
+          ? (pausing ? " paused — it starts no new runs" : " resumed")
           : (pausing ? " was already paused" : " was not paused"));
       }
       return msg;
@@ -90,15 +91,15 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const detail = phaseDetailBase(l, info, d);
     const w = scheduledWakeFor(l, d);
     if (!w) return detail;
-    return (detail ? detail + " · " : "") + "operator wake in " + humanSeconds(Math.max(0, Math.round((w.atMs - Date.now()) / 1000)));
+    return (detail ? detail + " · " : "") + "your wake in " + humanSeconds(Math.max(0, Math.round((w.atMs - Date.now()) / 1000)));
   }
   function phaseDetailBase(l, info, d) {
     const raw = fmtNextRun(l, d.running);
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;
-    const backoff = next.startsWith("sleeping ") ? "backing off — retries in " + next.slice(9) : "";
+    const backoff = next.startsWith("sleeping ") ? "sleeping — next check in " + next.slice(9) : "";
     // A yield-scaled clock: the loop's recent ticks landed nothing, so it ticks less often.
-    const note = slowed ? " · slowed ×" + slowed[1] + ", nothing landed lately" : "";
+    const note = slowed ? " · slowed ×" + slowed[1] + ", nothing merged lately" : "";
     // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
     // status-model loopPhase's · no change ×N suffix): how many completed ticks in a row
     // returned nothing to do. Shown only on a resting idle cell (sleeping/queued/idle/
@@ -118,20 +119,20 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const queued = (d.roleInbox || {})[l.role] || 0;
     const detail = phaseDetail(l, info, d);
     const stalled = info.live && STALL.test(l.phase);
-    const name = "<div class='loop-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(l.role) + "'>" + esc(l.role) + "</button>" +
-      (l.custom ? "<span class='tag' title='A user-defined loop from tumwater.json'>custom</span>" : "") +
-      (l.modelTier ? "<span class='tag' title='The tier of the top-level model map this loop resolves at'>" + esc(l.modelTier) + "</span>" : "") +
+    const name = "<div class='loop-name'><button type='button' class='linkish role' data-open='" + esc(l.role) + "' title='Open " + esc(roleLabel(l.role)) + "'>" + esc(roleLabel(l.role)) + "</button>" + // vocabulary-ok: CSS class the stylesheet and tests match
+      (l.custom ? "<span class='tag' title='A custom role from tumwater.json'>custom</span>" : "") +
+      (l.modelTier ? "<span class='tag' title='The model tier this role resolves at'>" + esc(l.modelTier) + "</span>" : "") +
       (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
-      (queued ? "<span class='tag t-indigo' title='" + esc(plural(queued, "prompt") + " queued for this loop") + "'>" + icon("chat") + queued + "</span>" : "") +
-      "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.ticks, "tick") + " · landed " + (l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never")) + (l.model ? " · " + esc(l.model) : "") +
+      (queued ? "<span class='tag t-indigo' title='" + esc(plural(queued, "message") + " in this role's inbox") + "'>" + icon("chat") + queued + "</span>" : "") +
+      "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.ticks, "run") + " · merged " + (l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never")) + (l.model ? " · " + esc(l.model) : "") +
       (l.modelFromPi ? " <span class='tag' title='pi&#39;s own default model, from its settings.json: tumwater.json names no model'>(pi default)</span>" : "") + "</div>";
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");
     let activity;
-    if (info.live || info.key === "vetted") {
+    if (info.live || info.key === "vetted") { // vocabulary-ok: internal phase key
       // Parallel work instances, part 6/7: while idle or landing, show the entry the instance
       // claimed before the landing summary placeholder.
       const text = l.currentWork || l.claim || landingSummary(d, l.role);
-      const pending = info.key === "working" ? "Starting up…" : info.key === "reviewing" ? "Reviewing the change…" : "Landing the change…";
+      const pending = info.key === "working" ? "Starting up…" : info.key === "reviewing" ? "Reviewing the change…" : "Merging the change…";
       activity = text ? "<div class='now clamp2' title='" + esc(text) + "'>" + esc(text) + "</div>" : "<div class='muted'>" + pending + "</div>";
     } else if (l.claim) {
       // An idle instance holding a claim names its entry; the pill detail carries why an
@@ -143,32 +144,32 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       const why = resultWhy(l);
       activity = "<div class='clamp2' title='" + esc(why || r.label) + "'><span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" +
         (why ? " <span class='now'>" + esc(why) + "</span>" : "") + "</div><div class='sub'>" + esc(fmtAgo(l.lastTickEndedAt)) + "</div>";
-    } else activity = "<div class='muted'>No ticks yet</div>";
+    } else activity = "<div class='muted'>No runs yet</div>";
     const spent = "<div>" + esc(fmtUsd(l.todayUsd)) + "</div><div class='sub'>" + esc(fmtUsd(l.costUsd)) + " total</div>";
     const b = (action, ic, title, cls) => "<button type='button' class='icon-btn rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +
       "' data-role='" + esc(l.role) + "' title='" + esc(title) + "' aria-label='" + esc(title) + "'>" + icon(ic) + "</button>";
-    let actions = b("prompt", "chat", "Prompt " + l.role);
+    let actions = b("prompt", "chat", "Message " + roleLabel(l.role));
     // The running set (info.live), not the permit-holder inFlight: the exempt running director
     // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
     if (info.live) {
       actions += abortConfirming(l.role)
-        ? "<button type='button' class='icon-btn rowaction confirming' data-action='abort' data-role='" + esc(l.role) + "' title='Click again to abort the running tick'>" + icon("stop") + "Abort?</button>"
-        : b("abort", "stop", "Abort " + l.role + "'s running tick", "danger");
-    } else actions += b("wake", "bolt", "Wake " + l.role + " now");
-    if (paused) actions += b("resume", "play", "Resume " + l.role);
+        ? "<button type='button' class='icon-btn rowaction confirming' data-action='abort' data-role='" + esc(l.role) + "' title='Click again to stop this run'>" + icon("stop") + "Stop?</button>"
+        : b("abort", "stop", "Stop " + roleLabel(l.role) + "'s run", "danger");
+    } else actions += b("wake", "bolt", "Wake " + roleLabel(l.role) + " now");
+    if (paused) actions += b("resume", "play", "Resume " + roleLabel(l.role));
     else if (rolePauseMenuOpen(l.role)) {
       actions += ROLE_PAUSE_CHOICES.map((c) => "<button type='button' class='icon-btn rowaction' data-action='pause-for' data-for='" + c[0] +
-        "' data-role='" + esc(l.role) + "' title='Pause " + esc(l.role) + " " + (c[0] ? "for " + c[1] : "until resumed") + "'>" + esc(c[1]) + "</button>").join("");
-    } else actions += b("pause", "pause", "Pause " + l.role) + b("pause-for", "clock", "Pause " + l.role + " for a duration");
+        "' data-role='" + esc(l.role) + "' title='Pause " + esc(roleLabel(l.role)) + " " + (c[0] ? "for " + c[1] : "until resumed") + "'>" + esc(c[1]) + "</button>").join("");
+    } else actions += b("pause", "pause", "Pause " + roleLabel(l.role)) + b("pause-for", "clock", "Pause " + roleLabel(l.role) + " for a duration");
     return { info, cells: [name, status, activity, spent, "<div class='actions'>" + actions + "</div>"] };
   }
   // loops-table:end
-  const LOOP_TDS = ["c-loop", "c-status", "c-activity", "c-today num", "c-actions"];
+  const LOOP_TDS = ["c-loop", "c-status", "c-activity", "c-today num", "c-actions"]; // vocabulary-ok: CSS class the stylesheet and tests match
   let loopKeys = "";
   // Rows are patched cell by cell: a working loop's elapsed time changes every second, and
   // rewriting only that cell keeps focus and hover on the row's buttons.
   function patchLoops(rows) {
-    const tbody = $("loops");
+    const tbody = $("loops"); // vocabulary-ok: the loops table element id
     const keys = rows.map((r) => r.key).join("|");
     if (keys !== loopKeys) {
       loopKeys = keys;
@@ -200,13 +201,13 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       rows.push({ key: "g" + gi, cls: "group", group: true, cells: [esc(g[0]) + "<span class='badge'>" + byGroup[gi].length + "</span>"] });
       for (const l of byGroup[gi]) {
         const { info, cells } = loopCells(l, d);
-        rows.push({ key: "l:" + l.role, role: l.role, cls: "loop clickable" + (info.live ? " live" : "") + (selected === l.role ? " selected" : ""), cells });
+        rows.push({ key: "l:" + l.role, role: l.role, cls: "loop clickable" + (info.live ? " live" : "") + (selected === l.role ? " selected" : ""), cells }); // vocabulary-ok: CSS class the stylesheet and tests match
       }
     });
-    if (!rows.length) rows.push({ key: "empty", cls: "group", group: true, cells: ["No loops are enabled in tumwater.json"] });
+    if (!rows.length) rows.push({ key: "empty", cls: "group", group: true, cells: ["No roles are enabled in tumwater.json"] });
     patchLoops(rows);
   }
-  $("loops").addEventListener("click", (ev) => {
+  $("loops").addEventListener("click", (ev) => { // vocabulary-ok: the loops table element id
     const b = clickClosest(ev, "button.rowaction");
     if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for)); return; }
     const tr = clickClosest(ev, "tr[data-role]");
@@ -215,14 +216,14 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   $("resetall").addEventListener("click", () =>
     postAction("/api/reset-counters", {}, (d) => (d && typeof d.message === "string" ? d.message : "counters reset")));
   $("wakeall").addEventListener("click", () =>
-    postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every loop woken")));
+    postAction("/api/wake", {}, (d) => (d && typeof d.message === "string" ? d.message : "every role woken")));
   // wake-later:start
   const WAKE_LATER_CHOICES = [[1800, "In 30 minutes"], [3600, "In 1 hour"], [7200, "In 2 hours"], [28800, "In 8 hours"]];
   function openWakeLaterMenu() {
     openPopover("wakelaterwrap", {
       menu: true,
       role: "menu",
-      html: "<div class='menu-title'>Wake every loop</div>" +
+      html: "<div class='menu-title'>Wake every role</div>" +
         WAKE_LATER_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-wakein='" + c[0] + "'>" +
           icon("clock") + esc(c[1]) + "</button>").join("") +
         "<button type='button' class='menu-item' role='menuitem' data-wakecancel='1'>" + icon("x") + "Cancel scheduled wakes</button>",

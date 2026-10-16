@@ -43,7 +43,7 @@ interface DrawerScope {
  * regions, with `inject` bound as free variables, and hand back the names asked for. */
 function drawerScope(names: string[], inject: Record<string, unknown>): DrawerScope {
   const keys = Object.keys(inject);
-  const code = [ESC_LINE, clientRegion("format"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS,
+  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), clientRegion("view-model"), GUI_CLIENT_DRAWER_JS,
     `return { ${names.join(", ")} };`].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => DrawerScope;
   return run(...keys.map((k) => inject[k]));
@@ -273,7 +273,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   const meta = t.paintedFor("drawermeta");
   assert.match(meta, /Working on/);
   assert.match(meta, /Adding drawer tests/);
-  assert.match(meta, /Landed<\/span> — did the thing/);
+  assert.match(meta, /Merged<\/span> — did the thing/);
   assert.match(meta, /Tokens, this tick<\/dt><dd title='12\.3k'>12\.3k</);
   assert.match(meta, /Peak context, this tick<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
@@ -527,7 +527,7 @@ test("the loop drawer shows the recent tick outcomes from the role payload", asy
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<h3>Recent outcomes/);
-  assert.match(role, /Landed/); // result "changed" renders as its labeled word
+  assert.match(role, /Merged/); // result "changed" renders as its labeled word
   assert.match(role, /added a thing/);
   assert.match(role, /30s/); // the duration span
   assert.match(role, /No change/); // result "no_change"

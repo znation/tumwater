@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's Pending view, browser-side: every loop's unlanded change as /api/diff
  * serves it (the same document `tumwater diff` prints from the shared change collectors). The
  * roster shows each role's branch, state, commits ahead of main with their subjects, and its
@@ -13,7 +14,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
     if (r.state === "absent") return "<span class='muted'>no worktree</span>";
     if (r.state === "no-base") return "<span class='muted'>no base</span>";
     if (r.state !== "ready") return "<span class='muted'>unknown</span>";
-    if (r.ahead === 0 && (!r.dirtyFiles || r.dirtyFiles.length === 0)) return "<span class='muted'>no unlanded work</span>";
+    if (r.ahead === 0 && (!r.dirtyFiles || r.dirtyFiles.length === 0)) return "<span class='muted'>no unmerged work</span>";
     return "<span class='res t-indigo'>pending</span>";
   }
   // One role's ahead cell: the commit count plus each unlanded commit's sha and subject, or a
@@ -32,18 +33,18 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   // opening that loop's drawer. Pure — the view paints what this returns.
   function pendingTableHtml(fleet) {
     if (!fleet || !Array.isArray(fleet.roles) || fleet.roles.length === 0)
-      return "<div class='empty'><strong>No loops yet</strong>Loops appear here once the fleet is configured.</div>";
+      return "<div class='empty'><strong>No roles yet</strong>Roles appear here once the team is configured.</div>";
     if (fleet.roles.every((r) => r.state === "no-base"))
-      return "<div class='empty'><strong>Main branch " + esc(fleet.mainBranch) + " does not exist</strong>There is no base to compare unlanded work against.</div>";
+      return "<div class='empty'><strong>Main branch " + esc(fleet.mainBranch) + " does not exist</strong>There is no base to compare unmerged work against.</div>";
     const rows = fleet.roles.map((r) =>
       "<tr class='clickable' data-open='" + esc(r.role) + "'>" +
-      "<td class='mono'>" + esc(r.role) + "</td>" +
+      "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
       "<td class='mono muted'>" + esc(r.branch) + "</td>" +
       "<td>" + pendingStateHtml(r) + "</td>" +
       "<td>" + pendingAheadHtml(r) + "</td>" +
       "<td class='num'>" + pendingDirtyHtml(r) + "</td></tr>",
     ).join("");
-    return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Loop</th><th>Branch</th>" +
+    return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Role</th><th>Branch</th>" + // vocabulary-ok: CSS class the stylesheet matches
       "<th>State</th><th>Ahead of " + esc(fleet.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
   // The Land queue card's body: every queued landing in execution order (oldest first), one
@@ -58,20 +59,20 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
     const entries = landQueue && Array.isArray(landQueue.entries) ? landQueue.entries : [];
     let body;
     if (depth === 0) {
-      body = "<div class='empty'>Land queue empty</div>";
+      body = "<div class='empty'>Merge queue empty</div>";
     } else if (entries.length === 0) {
-      body = "<div class='empty'>land queue: " + esc(depth) + " waiting</div>";
+      body = "<div class='empty'>merge queue: " + esc(depth) + " waiting</div>";
     } else {
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => {
         const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
         const tick = Number.isFinite(e.tick) ? e.tick : "?";
-        return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role || "?") +
-          " tick #" + esc(tick) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
+        return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role ? roleLabel(e.role) : "?") +
+          " run #" + esc(tick) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
           " ago" + (Array.isArray(labels) && labels[i] && typeof labels[i] === "string" ? " · [" + esc(labels[i]) + "]" : "") +
           " · " + esc(e.summary || "—") + "</div>";
       }).join("") + "</div>";
     }
-    return "<div class='card-head'><h2>Land queue</h2></div>" + body;
+    return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
   }
   // pending-table:end
   // Paint the Land queue card from the polled status payload, at paint-time age; no fetch of
@@ -82,7 +83,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
     card.innerHTML = pendingQueueHtml(status && status.landQueue, Date.now(), status && status.landQueueLabels);
   }
   function buildPendingView() {
-    if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every loop's unlanded change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
+    if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every role's unmerged change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +
       "<div class='toolbar'><button type='button' class='btn btn-sm' id='pendingrefresh'>" + icon("refresh") + "Refresh</button></div></div>" +
       "<div class='card' id='pendingqueue'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='pendingbody'><div class='empty'>Loading…</div></div>")) return;

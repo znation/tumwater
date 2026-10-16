@@ -17,7 +17,7 @@ test("GUI_CLIENT_JS carries the history module verbatim", () => {
 
 // The regions the History view's pieces run with: the shared format/view-model helpers, the
 // drill-down state and card renderer, then the table.
-const HISTORY_REGIONS = ["format", "view-model", "history-detail", "history-table"];
+const HISTORY_REGIONS = ["format", "labels", "view-model", "history-detail", "history-table"];
 
 test("the History table renders tick rows, escapes them, and filters by outcome", () => {
   const { historyTableHtml, historyClass } = clientScope<{
@@ -35,7 +35,7 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   assert.match(html, /<tr><td class='c-x'><\/td><td title='2026-09-29 15:29:00'>/, "a row for a loop no longer in the fleet is plain and carries no toggle");
   assert.match(html, /5m ago/);
   assert.match(html, /#5/);
-  assert.match(html, /<span class='res t-indigo'>Queued to land<\/span>/);
+  assert.match(html, /<span class='res t-indigo'>Waiting to merge<\/span>/);
   assert.match(html, /<td class='num c-dur'>45s<\/td>/);
   assert.match(html, /<td class='num c-dur'>4m<\/td>/);
   assert.match(html, /<td class='num c-dur'>—<\/td>/, "a missing duration is a dash, never NaN");

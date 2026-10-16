@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's view model, browser-side — the pure layer between the status payload and
  * what the page shows, with no DOM of its own: each loop's phase pill (label, tone, live
  * detail), its last result in words with the tone of its outcome, the loop sort order and
@@ -27,8 +28,8 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("director working")) return { key: "working", label: "Working (director)", tone: "blue", live: true, detail: after(16) };
     if (p.startsWith("working")) return { key: "working", label: "Working", tone: "blue", live: true, detail: after(7) };
     if (p.startsWith("reviewing")) return { key: "reviewing", label: "Reviewing", tone: "violet", live: true, detail: after(9) };
-    if (p.startsWith("merging")) return { key: "landing", label: "Merging", tone: "orange", live: true, detail: after(7) };
-    if (p.startsWith("approved")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting to merge" };
+    if (p.startsWith("merging")) return { key: "landing", label: "Merging", tone: "orange", live: true, detail: after(7) }; // vocabulary-ok: internal key the row classes and filters match
+    if (p.startsWith("approved")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting to merge" }; // vocabulary-ok: internal key the row classes and filters match
     if (p.startsWith("waiting to start")) return { key: "awaiting", label: "Waiting to start", tone: "gray", live: false, detail: after(16) ? "for " + after(16) : "" };
     // A waiter parked on a full provider key (provider-concurrency part 5/5): the phase reads
     // waiting for <key> 2m, and this chip names the provider alongside the wait, so the
@@ -55,7 +56,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("deferred (")) return { key: "deferred", label: "Deferred", tone: "gray", live: false, detail: p.slice(10, -1) };
     if (p === "due") return { key: "queued", label: "Due", tone: "gray", live: false, detail: "starts on the next poll" };
     if (p === "ready for messages") return { key: "waiting", label: "Ready", tone: "gray", live: false, detail: "runs when you send it a message" };
-    if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the fleet is not running" };
+    if (p === "stopped") return { key: "stopped", label: "Stopped", tone: "gray", live: false, detail: "the team is not running" };
     return { key: "other", label: p || "unknown", tone: "gray", live: false, detail: "" };
   }
   // A stalled tool call or a long silence, as the phase label names them (tick-progress-model.ts's
@@ -64,25 +65,25 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   // matcher so the two cannot drift from the wording the cell renders.
   const STALL = new RegExp(${JSON.stringify(STALL_SOURCE)});
   // A tick result (tick-outcome.ts TickResult) in words, with the tone of its outcome.
-  const RESULTS = {
-    changed: ["Landed", "green"],
-    queued: ["Queued to land", "indigo"],
-    no_change: ["No change", "gray"],
-    skipped: ["Skipped", "gray"],
-    refused: ["Refused", "amber"],
-    rejected: ["Rejected in review", "amber"],
-    review_error: ["Review failed", "red"],
-    merge_conflict: ["Merge conflict", "red"],
-    merge_blocked: ["Merge blocked", "red"],
-    error: ["Error", "red"],
-    aborted: ["Interrupted", "amber"],
-    quiet_killed: ["Stalled, resumed", "amber"],
-    user_aborted: ["Aborted by you", "gray"],
-    main_red: ["Main red", "red"],
+  const RESULT_TONES = {
+    changed: "green",
+    queued: "indigo",
+    no_change: "gray",
+    skipped: "gray",
+    refused: "amber",
+    rejected: "amber",
+    review_error: "red",
+    merge_conflict: "red",
+    merge_blocked: "red",
+    error: "red",
+    aborted: "amber",
+    quiet_killed: "amber",
+    user_aborted: "gray",
+    main_red: "red",
   };
   function resultInfo(result) {
-    const r = RESULTS[result];
-    return r ? { label: r[0], tone: r[1] } : { label: String(result || "—").replace(/_/g, " "), tone: "gray" };
+    const words = result ? eventTypeLabel(result) : "—";
+    return { label: words.charAt(0).toUpperCase() + words.slice(1), tone: hasOwn(RESULT_TONES, result) ? RESULT_TONES[result] : "gray" };
   }
   // The problem results and the named event sets are tone.ts's lists, interpolated at module
   // build (like STALL above) so the page cannot drift from the server's eventKind.
@@ -154,7 +155,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
   const ROUTINE_EVENTS = ${JSON.stringify(ROUTINE_EVENTS)};
   const PROBLEM_EVENTS = ${JSON.stringify(PROBLEM_EVENTS)};
   function eventKind(item) {
-    if (item.type === "merged") return "landing";
+    if (item.type === "merged") return "landing"; // vocabulary-ok: internal key the row classes and filters match
     if (item.type === "question_posted") return "attention";
     if (item.type === "entry_refused") return "attention";
     if (item.type === "tick_end") return PROBLEM_RESULTS.includes(item.result) ? "problem" : "routine";

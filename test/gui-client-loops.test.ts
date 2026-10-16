@@ -15,7 +15,7 @@ interface Loops {
   phaseInfo(l: string | null | undefined): PhaseInfo;
 }
 const { phaseDetail, loopCells, phaseInfo } = clientScope<Loops>(
-  ["format", "view-model", "loops-table"], ["phaseInfo", "phaseDetail", "loopCells"], {
+  ["format", "labels", "view-model", "loops-table"], ["phaseInfo", "phaseDetail", "loopCells"], {
     icon: iconStub,
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
     landingSummary: (d: { landing?: Record<string, string> }, role: string) => d.landing?.[role] || "",
@@ -35,19 +35,19 @@ test("a scheduled operator wake adds a second-line phrase to the rows it targets
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const d = { running: true, scheduledWake: { roles: ["feature"], atMs: Date.now() + 3_600_000 } };
   const l = (patch: object) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, ...patch });
-  assert.equal(phaseDetail(l({ role: "feature" }), info, d), "wakes in 2m · operator wake in 1h");
-  assert.equal(phaseDetail(l({ role: "feature-2", instanceOf: "feature" }), info, d), "wakes in 2m · operator wake in 1h");
+  assert.equal(phaseDetail(l({ role: "feature" }), info, d), "wakes in 2m · your wake in 1h");
+  assert.equal(phaseDetail(l({ role: "feature-2", instanceOf: "feature" }), info, d), "wakes in 2m · your wake in 1h");
   assert.equal(phaseDetail(l({ role: "plan" }), info, d), "wakes in 2m");
   assert.equal(phaseDetail(l({ role: "feature" }), info, { running: true }), "wakes in 2m");
-  assert.equal(phaseDetail({ phase: "sleeping", role: "feature" }, info, { running: false, scheduledWake: d.scheduledWake }), "operator wake in 1h");
+  assert.equal(phaseDetail({ phase: "sleeping", role: "feature" }, info, { running: false, scheduledWake: d.scheduledWake }), "your wake in 1h");
 });
 
 test("every pending scheduled wake shows on the loop it names, not only the earliest", () => {
   const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
   const d = { running: true, scheduledWakes: [{ roles: ["feature"], atMs: Date.now() + 3_600_000 }, { roles: ["plan"], atMs: Date.now() + 7_200_000 }] };
   const l = (role: string) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, role });
-  assert.match(phaseDetail(l("plan"), info, d), /operator wake in 2h$/);
-  assert.match(phaseDetail(l("feature"), info, d), /operator wake in 1h$/);
+  assert.match(phaseDetail(l("plan"), info, d), /your wake in 2h$/);
+  assert.match(phaseDetail(l("feature"), info, d), /your wake in 1h$/);
   assert.doesNotMatch(phaseDetail(l("qa"), info, d), /operator wake/);
 });
 
@@ -62,12 +62,12 @@ test("a sleeping loop's second line says when it wakes, and names a backoff", ()
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 0 }), info, { running: false }), "");
   // Backing off after failures — named, not left to look like a normal schedule.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30 }), info, { running: true }),
-    "backing off — retries in 2m");
-  // A yield-scaled clock rides as a note: nothing landed lately, so it ticks less often.
+    "sleeping — next check in 2m");
+  // A yield-scaled clock rides as a note: nothing merged lately, so it ticks less often.
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 0, yieldMultiplier: 3 }), info, { running: true }),
-    "wakes in 2m · slowed ×3, nothing landed lately");
+    "wakes in 2m · slowed ×3, nothing merged lately");
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30, yieldMultiplier: 2 }), info, { running: true }),
-    "backing off — retries in 2m · slowed ×2, nothing landed lately");
+    "sleeping — next check in 2m · slowed ×2, nothing merged lately");
 });
 
 test("the second line names a consecutive no-change streak on a resting idle cell", () => {
@@ -84,8 +84,8 @@ test("the second line names a consecutive no-change streak on a resting idle cel
   // stale until the tick ends, and the status label leaves those cells bare too.
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m · turn 4" };
   assert.equal(phaseDetail({ phase: "working 3m · turn 4", noChangeStreak: 2 }, working, { running: true }), "3m · turn 4");
-  const paused = { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
-  assert.equal(phaseDetail({ phase: "paused", noChangeStreak: 2 }, paused, { running: true }), "starts no new ticks");
+  const paused = { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new runs" };
+  assert.equal(phaseDetail({ phase: "paused", noChangeStreak: 2 }, paused, { running: true }), "starts no new runs");
 });
 
 test("a suffixed phase still parses to its real key, and the streak renders once", () => {
@@ -112,7 +112,7 @@ test("a queued loop's second line keeps the phase's reason, a working loop's kee
     "due — not running: no work to claim, deferred, or starting on the next poll");
   // Backoff wins over the reason: when it will actually run again is the useful line.
   assert.equal(phaseDetail({ phase: "due", nextRunAt: now + 60_000, backoffSeconds: 20 }, queued, { running: true }),
-    "backing off — retries in 1m");
+    "sleeping — next check in 1m");
   const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m12s · turn 4" };
   assert.equal(phaseDetail({ phase: "working 3m12s · turn 4" }, working, { running: true }), "3m12s · turn 4");
 });
@@ -154,7 +154,7 @@ test("an idle loop's activity is its last result in words with the reason that e
   assert.ok(clean.activity.includes("<span class='res t-gray'>No change</span>"));
   assert.ok(!clean.activity.includes("review crashed"));
   // Never ticked.
-  assert.ok(row({ role: "new", phase: "sleeping" }).activity.includes("No ticks yet"));
+  assert.ok(row({ role: "new", phase: "sleeping" }).activity.includes("No runs yet"));
 });
 
 test("the pause-for control offers duration choices and a timed pause shows its countdown", () => {
@@ -182,9 +182,9 @@ test("each row's actions match its state: wake when idle, abort (two-click) when
   assert.ok(!row({ role: "docs", phase: "sleeping", inFlight: false }, { pausedRoles: ["docs"] }).actions.includes("data-action='pause'"));
   // In flight: the abort button, armed only after the confirming first click.
   const armed = row({ role: "confirming", phase: "working 3m", inFlight: true }).actions;
-  assert.ok(armed.includes("confirming") && armed.includes("Abort?"));
+  assert.ok(armed.includes("confirming") && armed.includes("Stop?"));
   const inFlight = row({ role: "feature", phase: "working 3m", inFlight: true }).actions;
-  assert.ok(inFlight.includes("data-action='abort'") && !inFlight.includes("Abort?"));
+  assert.ok(inFlight.includes("data-action='abort'") && !inFlight.includes("Stop?"));
   assert.ok(!inFlight.includes("data-action='wake'"), "an in-flight loop has no wake button");
 });
 
@@ -193,17 +193,17 @@ test("a row's name cell tags custom loops and queued prompts, and shows today's 
     todayUsd: 1.5, costUsd: 20.25 }, { roleInbox: { watcher: 2 } }).cells.map(String);
   const name = cells[0] ?? "";
   assert.ok(name.includes("custom"), "a user-defined loop says so");
-  assert.ok(name.includes("2 prompts queued for this loop"));
-  assert.ok(name.includes("3 commits · 12 ticks"));
+  assert.ok(name.includes("2 messages in this role&#39;s inbox"));
+  assert.ok(name.includes("3 commits · 12 runs"));
   assert.equal(cells[3], "<div>$1.50</div><div class='sub'>$20.25 total</div>");
 });
 
 test("a row's name line names when the loop last landed, or 'never' when it has not", () => {
   const landed = loopCells({ role: "feature", phase: "sleeping", ticks: 4, commits: 2, todayUsd: 0, costUsd: 0,
     lastLandedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
-  assert.match(landed, /landed 3m ago/, "the row names the last-landed age through fmtAgo");
+  assert.match(landed, /merged 3m ago/, "the row names the last-landed age through fmtAgo");
   const fresh = loopCells({ role: "new", phase: "sleeping", ticks: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
-  assert.match(fresh, /landed never/, "a loop that has never landed says never");
+  assert.match(fresh, /merged never/, "a loop that has never landed says never");
 });
 
 test("a loop row renders its model tier tag and selector when the payload carries them", () => {

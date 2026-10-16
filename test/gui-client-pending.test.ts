@@ -15,7 +15,7 @@ test("GUI_CLIENT_JS carries the pending module verbatim", () => {
 
 test("pendingTableHtml lists every role's branch, state, commits ahead with subjects, and dirty count", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );
   const fleet = {
@@ -40,29 +40,29 @@ test("pendingTableHtml lists every role's branch, state, commits ahead with subj
   assert.match(html, /def67890 fix the thing/);
   assert.match(html, /title='notes\.txt'[^>]*>1 file</);
   // An idle loop reads as such with no work line; an absent worktree degrades.
-  assert.match(html, /no unlanded work/);
+  assert.match(html, /no unmerged work/);
   assert.match(html, /no worktree/);
   assert.doesNotMatch(html, /undefined|NaN/);
 });
 
 test("pendingTableHtml degrades empty, all-no-base, and absent documents without throwing", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );
-  assert.match(pendingTableHtml(null), /No loops yet/);
-  assert.match(pendingTableHtml({ mainBranch: "main", roles: [] }), /No loops yet/);
+  assert.match(pendingTableHtml(null), /No roles yet/);
+  assert.match(pendingTableHtml({ mainBranch: "main", roles: [] }), /No roles yet/);
   const noBase = pendingTableHtml({ mainBranch: "ghost", roles: [{ role: "feature", branch: "tumwater/feature", state: "no-base", ahead: 0, commits: [], dirtyFiles: [] }] });
   assert.match(noBase, /Main branch ghost does not exist/);
   // A role with no dirtyFiles/commits arrays (a malformed payload) still renders.
   const sparse = pendingTableHtml({ mainBranch: "main", roles: [{ role: "qa", branch: "tumwater/qa", state: "ready", ahead: 0 }] });
-  assert.match(sparse, /no unlanded work/);
+  assert.match(sparse, /no unmerged work/);
   assert.doesNotMatch(sparse, /undefined/);
 });
 
 test("pendingTableHtml escapes role, branch, and subject text", () => {
   const { pendingTableHtml } = clientScope<{ pendingTableHtml(fleet: unknown): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingTableHtml"],
   );
   const html = pendingTableHtml({
@@ -76,12 +76,12 @@ test("pendingTableHtml escapes role, branch, and subject text", () => {
   assert.match(html, /x&lt;y/);
 });
 
-// The Land queue card (pendingQueueHtml): the queued landings the status payload already
+// The Merge queue card (pendingQueueHtml): the queued landings the status payload already
 // carries, painted in execution order like `tumwater queue` — from a pure function of the
 // payload and a fixed `now` so the ages are pinned.
 test("pendingQueueHtml lists each queued landing in order with position, role, tick, short sha, age, and summary", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
@@ -89,14 +89,14 @@ test("pendingQueueHtml lists each queued landing in order with position, role, t
     { role: "feature", sha: "abcdef1234567890", tick: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
     { role: "bugfix", sha: "0123456789abcdef", tick: 7, summary: "fix the thing", enqueuedAt: now - 5_000 },
   ] }, now);
-  assert.match(html, /1\. feature tick #42 · abcdef12 · 3m ago · add the thing/);
-  assert.match(html, /2\. bugfix tick #7 · 01234567 · 5s ago · fix the thing/);
+  assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · add the thing/);
+  assert.match(html, /2\. bugfix run #7 · 01234567 · 5s ago · fix the thing/);
   assert.ok(html.indexOf("1. feature") < html.indexOf("2. bugfix"), "array order is the row order");
 });
 
 test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent labels", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number, labels?: unknown): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
@@ -113,14 +113,14 @@ test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent
 
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
-  assert.match(pendingQueueHtml({ depth: 0 }, now), /Land queue empty/);
-  assert.match(pendingQueueHtml(null, now), /Land queue empty/);
+  assert.match(pendingQueueHtml({ depth: 0 }, now), /Merge queue empty/);
+  assert.match(pendingQueueHtml(null, now), /Merge queue empty/);
   // A depth with no readable list is the unreadable-file count, stated without inventing rows.
-  assert.match(pendingQueueHtml({ depth: 2 }, now), /land queue: 2 waiting/);
+  assert.match(pendingQueueHtml({ depth: 2 }, now), /merge queue: 2 waiting/);
   // An entries field that is not an array, and an entry missing its sha/enqueuedAt, degrades.
   assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: "nope" }, now), /undefined|NaN/);
   const malformed = pendingQueueHtml({ depth: 1, entries: [
@@ -132,7 +132,7 @@ test("pendingQueueHtml states an empty, unreadable-only, or malformed queue with
 
 test("pendingQueueHtml escapes role and summary markup", () => {
   const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
-    ["format", "pending-table"],
+    ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;

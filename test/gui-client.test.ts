@@ -31,7 +31,7 @@ interface Model {
   LOOP_GROUPS: Array<Array<string | number>>;
   STALL: RegExp;
 }
-const model = clientScope<Model>(["format", "view-model"],
+const model = clientScope<Model>(["format", "labels", "view-model"],
   ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS", "STALL"]);
 
 test("every phase label loopPhase renders maps to a known status on the page", () => {
@@ -175,9 +175,9 @@ test("tick results read as words with the tone of their outcome", () => {
     assert.ok(info.label && !info.label.includes("_"), `${r} has a label`);
     assert.ok(["green", "indigo", "gray", "amber", "red"].includes(info.tone), `${r} has a tone`);
   }
-  assert.deepEqual(model.resultInfo("changed"), { label: "Landed", tone: "green" });
+  assert.deepEqual(model.resultInfo("changed"), { label: "Merged", tone: "green" });
   assert.deepEqual(model.resultInfo("error"), { label: "Error", tone: "red" });
-  assert.deepEqual(model.resultInfo("some_future_result"), { label: "some future result", tone: "gray" });
+  assert.deepEqual(model.resultInfo("some_future_result"), { label: "Some future result", tone: "gray" });
   // A problem without a summary explains itself with the loop's last error; a success never
   // borrows a stale one.
   assert.equal(model.resultWhy({ lastResult: "error", lastSummary: null, lastError: "429 Rate limit exceeded", phase: "due" }), "429 Rate limit exceeded");
@@ -347,7 +347,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   // Pause and resume always name the state they want — the endpoint rejects a body without it.
   await scope.rowAction("pause", "docs");
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });
-  assert.equal(flashes.shift(), "docs paused — it starts no new ticks");
+  assert.equal(flashes.shift(), "docs paused — it starts no new runs");
   await scope.rowAction("resume", "docs");
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: false } });
   assert.equal(flashes.shift(), "docs resumed");
@@ -365,7 +365,7 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
   assert.equal(flashes.shift(), "docs paused for 1h");
   await scope.rowAction("pause-for", "docs", 0);
   assert.deepEqual(posts.shift(), { path: "/api/pause-role", body: { role: "docs", paused: true } });
-  assert.equal(flashes.shift(), "docs paused — it starts no new ticks");
+  assert.equal(flashes.shift(), "docs paused — it starts no new runs");
 
   // wake-in: the first click opens the chooser (no post); a choice posts inSeconds. Only one
   // chooser is open at a time.

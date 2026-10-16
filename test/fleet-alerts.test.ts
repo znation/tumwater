@@ -207,7 +207,7 @@ test("the terminal's tones and the dashboard's tell the same story", () => {
   const { phaseInfo, resultInfo } = clientScope<{
     phaseInfo(phase: string): { tone: string };
     resultInfo(result: string): { tone: string };
-  }>(["format", "view-model"], ["phaseInfo", "resultInfo"]);
+  }>(["format", "labels", "view-model"], ["phaseInfo", "resultInfo"]);
   const family: Record<string, string | undefined> = { blue: "blue", violet: "blue", orange: "blue", indigo: "blue", red: "red", amber: "yellow", gray: undefined };
   for (const phase of ["working 1m", "reviewing 2m", "merging 1m · merging", "approved, waiting to merge", "waiting to start 5s", "failing", "main's check is failing",
     "paused", "waiting: budget spent", "waiting: daily cap spent", "waiting: low disk", "waiting: bootstrap", "sleeping (for 5m)", "due", "ready for messages", "stopped"]) {
