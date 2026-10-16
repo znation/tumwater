@@ -116,6 +116,12 @@ export function statusPayload(root: string, now = Date.now()): object {
       // clocks, PLANS.md): the payload carries the computed number, not the ring, so the
       // GUI's JS twin applies the same display rule without re-deriving the role sets.
       yieldMultiplier: yieldMultiplierFor(s),
+      // The consecutive no-change streak (tick-apply.ts applyTickOutcome's noChangeStreak, an
+      // observational counter): how many completed ticks in a row returned nothing to do. The
+      // TUI reads it off the rendered label; the GUI's phaseDetailBase re-derives the ` · no
+      // change ×N` suffix from this number (its row and drawer share noChangeStreak) so its
+      // JS twin applies the same display rule without re-parsing the phase text.
+      noChangeStreak: s.noChangeStreak ?? 0,
     };
   });
   return {

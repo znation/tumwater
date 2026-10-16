@@ -137,6 +137,13 @@ export interface LoopState {
    * `queued`, which preserves the streak, and applyLandingOutcome's rejected branch is the
    * accumulation point; a landed change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
+  /** Consecutive completed ticks that ended `no_change`. Observational only — the resting
+   * state cell's ` · no change ×N` suffix (status-model.ts loopPhase) — so a loop that keeps
+   * waking and returning nothing to do stops reading as an ordinary idle; a legitimately idle
+   * maintenance loop with an empty backlog can hold a long streak and that is expected, so it
+   * never warns (unlike consecutiveErrors/quietKillStreak). Reset by any completed result
+   * other than `no_change`. Absent on states written before the field existed — reads as 0. */
+  noChangeStreak?: number;
   /** Where in its cycle the loop was when it last persisted state: "review" means the
    * interruption hit during the review gate, so any uncommitted worktree edits are the
    * reviewer's stray output (discarded on resume), not author work. Set + saved around the
@@ -382,6 +389,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   healOptionalNumber(s, "cutOffStreak");
   healOptionalNumber(s, "quietKillStreak");
   healOptionalNumber(s, "consecutiveErrors");
+  healOptionalNumber(s, "noChangeStreak");
   healOptionalNumber(s, "unreviewFailures");
   healOptionalNumber(s, "parkedSince");
   if (s.skipReason !== undefined && !SKIP_REASONS.includes(s.skipReason)) delete s.skipReason;

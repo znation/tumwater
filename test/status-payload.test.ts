@@ -182,6 +182,21 @@ test("status payload carries todayUsd per loop from its daily window", async () 
   assert.equal(payload.loops.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
 });
 
+test("status payload carries the consecutive no-change streak per loop", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload no-change test");
+  // A streak on the state file rides the payload for the TUI/GUI to read.
+  const streaked = freshLoopState("clean");
+  streaked.noChangeStreak = 4;
+  saveLoopState(repo, streaked);
+  // A loop that never ticked (absent field) reads as an explicit zero.
+  saveLoopState(repo, freshLoopState("organize"));
+
+  let payload = statusPayload(repo) as { loops: Array<{ role: string; noChangeStreak: number }> };
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
+  assert.equal(payload.loops.find((l) => l.role === "organize")?.noChangeStreak, 0, "an absent field reads zero");
+});
+
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.
 
 test("status payload carries planned plans and open bugs, fresh per poll", async () => {

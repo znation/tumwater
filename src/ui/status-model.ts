@@ -231,27 +231,50 @@ export function loopPhase(
   // healthy tick resets the streak, and each retry re-arms it while the environment stays
   // broken.
   if (onErrorStreak(s)) return "failing";
+  // The resting state cell (sleeping / idle / deferred / queued): it is the only label that
+  // names what a loop has been RETURNING, so the consecutive no-change streak rides on it
+  // (tick-apply.ts applyTickOutcome's noChangeStreak, persisted in LoopState). A loop that
+  // keeps waking and returning nothing to do reads " · no change ×N" instead of an ordinary
+  // idle — the harness premise's silent no-op failure mode, otherwise indistinguishable from a
+  // healthy idle loop. Observational only: a legitimately idle maintenance loop with an empty
+  // backlog can hold a long streak and that is expected, so it never warns (unlike
+  // consecutiveErrors/quietKillStreak). N=1 and an absent field read 0 and render the label
+  // byte-identically; the error/quiet-kill/landing/paused cells return earlier and never carry
+  // the suffix. `noChangeStreak` is on the state accumulator, so its type is on the full
+  // LoopState.
+  let cell: string;
   if (s.nextRunAt > Date.now()) {
     // The loop is sleeping *now* until nextRunAt: show the remaining sleep duration
     // ("for 30m"), not a future start ("in 30m"). Floor at 1s so a sub-second remainder
     // never renders as "sleeping (for now)".
     const remain = Math.max(1, secondsUntil(s.nextRunAt, Date.now()));
-    return `sleeping (for ${humanSeconds(remain)})`;
+    cell = `sleeping (for ${humanSeconds(remain)})`;
+  } else {
+    switch (s.skipReason) {
+      case "no-free-entry":
+        cell = `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
+        break;
+      case "claim-hold":
+        cell = "idle: sibling mid-entry";
+        break;
+      case "deferred-backlog":
+        cell = "deferred (backlog open)";
+        break;
+      case "deferred-no-work":
+        cell = "deferred (no new work)";
+        break;
+      case "deferred-plans-full":
+        cell = "deferred (plans full)";
+        break;
+      default:
+        cell = "queued";
+    }
   }
-  switch (s.skipReason) {
-    case "no-free-entry":
-      return `idle: no unclaimed ${baseRoleOf(s.role) === "bugfix" ? "bugs" : "plans"}`;
-    case "claim-hold":
-      return "idle: sibling mid-entry";
-    case "deferred-backlog":
-      return "deferred (backlog open)";
-    case "deferred-no-work":
-      return "deferred (no new work)";
-    case "deferred-plans-full":
-      return "deferred (plans full)";
-    default:
-      return "queued";
-  }
+  // Two or more consecutive no-change ticks earn the suffix (N=1 is a single quiet tick —
+  // ordinary, not yet a pattern).
+  const streak = s.noChangeStreak ?? 0;
+  if (streak >= 2) cell += ` · no change ×${streak}`;
+  return cell;
 }
 
 /** One rendered loop-table row's sort key: the role name, its rendered phase label

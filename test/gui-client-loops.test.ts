@@ -12,9 +12,10 @@ interface PhaseInfo { key: string; label: string; tone: string; live: boolean; d
 interface Loops {
   phaseDetail(l: object, info: PhaseInfo, d: object): string;
   loopCells(l: object, d: object): { info: PhaseInfo; cells: string[] };
+  phaseInfo(l: string | null | undefined): PhaseInfo;
 }
-const { phaseDetail, loopCells } = clientScope<Loops>(
-  ["format", "view-model", "loops-table"], ["phaseDetail", "loopCells"], {
+const { phaseDetail, loopCells, phaseInfo } = clientScope<Loops>(
+  ["format", "view-model", "loops-table"], ["phaseInfo", "phaseDetail", "loopCells"], {
     icon: iconStub,
     pill: (info: PhaseInfo) => "<span class='pill t-" + info.tone + "'>" + info.label + "</span>",
     landingSummary: (d: { landing?: Record<string, string> }, role: string) => d.landing?.[role] || "",
@@ -67,6 +68,42 @@ test("a sleeping loop's second line says when it wakes, and names a backoff", ()
     "wakes in 2m · slowed ×3, nothing landed lately");
   assert.equal(phaseDetail(l({ nextRunAt: now + 120_000, backoffSeconds: 30, yieldMultiplier: 2 }), info, { running: true }),
     "backing off — retries in 2m · slowed ×2, nothing landed lately");
+});
+
+test("the second line names a consecutive no-change streak on a resting idle cell", () => {
+  const info = { key: "sleeping", label: "Sleeping", tone: "gray", live: false, detail: "" };
+  const l = (patch: object) => ({ phase: "sleeping", nextRunAt: now + 120_000, backoffSeconds: 0, ...patch });
+  // Two or more consecutive no_change ticks earn the suffix (status-payload noChangeStreak,
+  // mirrored from status-model loopPhase).
+  assert.equal(phaseDetail(l({ noChangeStreak: 2 }), info, { running: true }), "wakes in 2m · no change ×2");
+  assert.equal(phaseDetail(l({ noChangeStreak: 5 }), info, { running: true }), "wakes in 2m · no change ×5");
+  // N=1 and an absent field are ordinary single quiet ticks — no suffix.
+  assert.equal(phaseDetail(l({ noChangeStreak: 1 }), info, { running: true }), "wakes in 2m");
+  assert.equal(phaseDetail(l({}), info, { running: true }), "wakes in 2m");
+  // Live work, a pause, and a failure never carry the streak: a running loop's streak is
+  // stale until the tick ends, and the status label leaves those cells bare too.
+  const working = { key: "working", label: "Working", tone: "blue", live: true, detail: "3m · turn 4" };
+  assert.equal(phaseDetail({ phase: "working 3m · turn 4", noChangeStreak: 2 }, working, { running: true }), "3m · turn 4");
+  const paused = { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
+  assert.equal(phaseDetail({ phase: "paused", noChangeStreak: 2 }, paused, { running: true }), "starts no new ticks");
+});
+
+test("a suffixed phase still parses to its real key, and the streak renders once", () => {
+  // The payload's phase already carries the suffix from status-model loopPhase, and the pill
+  // parser feeds phaseDetail its info — so the queued/idle/deferred rows must see the clean
+  // phase (no "other" fallback, no swallowed or doubled " · no change ×N").
+  assert.equal(phaseInfo("queued · no change ×2").key, "queued");
+  assert.equal(phaseDetail({ phase: "queued · no change ×2", noChangeStreak: 2, nextRunAt: now - 5_000, backoffSeconds: 0 },
+    phaseInfo("queued · no change ×2"), { running: true }), "due — starts on the next poll · no change ×2");
+  assert.equal(phaseInfo("idle: no unclaimed plans · no change ×2").detail, "no unclaimed plans");
+  assert.equal(phaseDetail({ phase: "idle: no unclaimed plans · no change ×2", noChangeStreak: 2 },
+    phaseInfo("idle: no unclaimed plans · no change ×2"), { running: true }), "no unclaimed plans · no change ×2");
+  assert.equal(phaseInfo("deferred (backlog open) · no change ×2").detail, "backlog open");
+  assert.equal(phaseDetail({ phase: "deferred (backlog open) · no change ×2", noChangeStreak: 2 },
+    phaseInfo("deferred (backlog open) · no change ×2"), { running: true }), "backlog open · no change ×2");
+  // A suffixed phase with a missing/zero streak parses clean and renders no suffix at all.
+  assert.equal(phaseDetail({ phase: "queued · no change ×3", nextRunAt: now - 5_000, backoffSeconds: 0 },
+    phaseInfo("queued · no change ×3"), { running: true }), "due — starts on the next poll");
 });
 
 test("a queued loop's second line keeps the phase's reason, a working loop's keeps the phase detail", () => {

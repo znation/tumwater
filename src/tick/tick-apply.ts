@@ -113,6 +113,15 @@ export function applyTickOutcome(
   // tick-finalize.ts warns once when it crosses QUIET_KILL_RESUME_LIMIT, and the branch below uses
   // it to bound how many times a starved session is resumed (BUGS.md 2026-09-18).
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
+  // The no-change streak counts consecutive completed ticks that ended `no_change` (the
+  // resting state cell's ` · no change ×N` suffix — status-model.ts loopPhase). Any other
+  // completed result resets it, so a loop that lands between no-ops never shows a stale
+  // streak. Every completed result reaches this block (tick-finalize.ts calls
+  // applyTickOutcome for every outcome), so `changed`/`queued`/`error`/`aborted`/
+  // `quiet_killed`/`user_aborted` all reset it and only a `no_change` tick grows it.
+  // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately
+  // idle maintenance loop with an empty backlog can hold a long streak and that is expected.
+  s.noChangeStreak = outcome.result === "no_change" ? (s.noChangeStreak ?? 0) + 1 : 0;
   // The yield ring records the result beside the streaks: a landing or a counted empty
   // stretches the role's min-tick gap (yieldMultiplier, read by isEligible), an error-class
   // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).

@@ -184,6 +184,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
       cutOffStreak: "2",
       quietKillStreak: [1],
       consecutiveErrors: -1,
+      noChangeStreak: "lots",
       unreviewFailures: "lots",
       parkedSince: "soon",
     }),
@@ -203,6 +204,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
     "cutOffStreak",
     "quietKillStreak",
     "consecutiveErrors",
+    "noChangeStreak",
     "unreviewFailures",
     "parkedSince",
   ] as const) {

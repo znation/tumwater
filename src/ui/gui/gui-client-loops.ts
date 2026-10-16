@@ -99,10 +99,18 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const backoff = next.startsWith("backoff ") ? "backing off — retries in " + next.slice(8) : "";
     // A yield-scaled clock: the loop's recent ticks landed nothing, so it ticks less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing landed lately" : "";
-    if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note;
-    if (info.key === "queued") return (backoff || info.detail) + note;
+    // The consecutive no-change streak (status-payload noChangeStreak, mirrored from
+    // status-model loopPhase's · no change ×N suffix): how many completed ticks in a row
+    // returned nothing to do. Shown only on a resting idle cell (sleeping/queued/idle/
+    // deferred) — never on live work, a pause, a failure, or main-red, which the status
+    // label likewise leaves bare. Observational only: a legitimately idle maintenance loop
+    // can hold a long streak.
+    const noChange = ["sleeping", "queued", "idle", "deferred"].includes(info.key) && (l.noChangeStreak || 0) >= 2
+      ? " · no change ×" + l.noChangeStreak : "";
+    if (info.key === "sleeping") return (backoff || (next === "-" ? "" : next === "now" ? "wakes now" : "wakes in " + next)) + note + noChange;
+    if (info.key === "queued") return (backoff || info.detail) + note + noChange;
     if (info.key === "paused" && d.pausedRolesUntil && !d.paused && (d.pausedRoles || []).includes(l.role)) return info.detail + " · resumes in " + humanSeconds(Math.max(0, Math.round((d.pausedRolesUntil - Date.now()) / 1000)));
-    return info.detail;
+    return info.detail + noChange;
   }
   function loopCells(l, d) {
     const info = phaseInfo(l.phase);

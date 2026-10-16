@@ -267,6 +267,41 @@ test("workingDetail's stall flag uses the hours bucket for long silences", () =>
   assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 1h30m/);
 });
 
+test("loopPhase names a consecutive no-change streak on the resting state cell", () => {
+  // N=1 and an absent field render the ordinary label byte-identically: a single quiet tick
+  // is not yet a pattern.
+  const s = freshLoopState("feature");
+  s.nextRunAt = Date.now() + 3_600_000;
+  s.noChangeStreak = 1;
+  assert.equal(loopPhase(s, true), "sleeping (for 1h)");
+  s.noChangeStreak = 0;
+  assert.equal(loopPhase(s, true), "sleeping (for 1h)");
+  delete s.noChangeStreak;
+  assert.equal(loopPhase(s, true), "sleeping (for 1h)");
+  // Two or more consecutive no_change ticks earn the suffix (tick-apply
+  // applyTickOutcome's noChangeStreak).
+  s.noChangeStreak = 2;
+  assert.equal(loopPhase(s, true), "sleeping (for 1h) · no change ×2");
+  s.noChangeStreak = 5;
+  assert.equal(loopPhase(s, true), "sleeping (for 1h) · no change ×5");
+  // A dormant loop's idle/skip labels carry it too.
+  const idle = freshLoopState("feature");
+  idle.nextRunAt = 0;
+  idle.skipReason = "no-free-entry";
+  idle.noChangeStreak = 3;
+  assert.match(loopPhase(idle, true), /idle: no unclaimed plans · no change ×3$/);
+  // An error streak (failing) and live work never carry it: failing reads "failing" and a
+  // working loop's streak is stale until the tick ends.
+  const failing = freshLoopState("feature");
+  failing.consecutiveErrors = 3;
+  failing.noChangeStreak = 2;
+  assert.equal(loopPhase(failing, true), "failing");
+  const running = freshLoopState("feature");
+  running.running = true;
+  running.noChangeStreak = 2;
+  assert.equal(loopPhase(running, true), "working");
+});
+
 test("loopPhase reads budget paused for idle role loops while the cap is reached", () => {
   const s = freshLoopState("feature");
   // Not paused: ordinary phase labels are untouched.

@@ -634,6 +634,24 @@ test("applyTickOutcome: any non-quiet-kill outcome resets the quiet-kill streak"
   assert.equal(s.consecutiveErrors, 1);
 });
 
+test("applyTickOutcome: a no_change tick grows the no-change streak; any other result resets it", () => {
+  const cfg = testConfig();
+  // A no_change tick increments the streak, from absent or from a prior count.
+  const s = freshLoopState("feature");
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.noChangeStreak, 1);
+  applyTickOutcome(s, cfg, "feature", { result: "no_change" });
+  assert.equal(s.noChangeStreak, 2, "consecutive no_change ticks grow the streak");
+  // Every completed result other than no_change resets it, so a loop that lands between
+  // no-ops never shows a stale streak.
+  for (const result of ["changed", "queued", "error", "aborted", "quiet_killed", "user_aborted", "skipped", "refused", "main_red"] as const) {
+    const r = freshLoopState("feature");
+    r.noChangeStreak = 3;
+    applyTickOutcome(r, cfg, "feature", { result });
+    assert.equal(r.noChangeStreak, 0, `${result} resets the no-change streak`);
+  }
+});
+
 test("applyTickOutcome: other unproductive outcomes grow the idle backoff and clear the cut-off streak", () => {
   const cfg = testConfig();
   const s = freshLoopState("feature");
