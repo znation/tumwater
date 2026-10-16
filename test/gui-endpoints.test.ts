@@ -9,13 +9,13 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
 import { scheduledStopAt } from "../src/fleet/fleet-state.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { configPath, roleInboxDir, roleNotesPath } from "../src/paths.js";
+import { configPath, roleInboxDir, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
@@ -1078,6 +1078,44 @@ test("handleBacklogCancel removes the entry, answers gone for a stale title, 400
   }
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
+});
+
+test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing", async () => {
+  const root = tmpdir();
+  const note = "**Refused 2026-10-16 by feature: x**";
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: `### p1\n\n${note}\n\nbody\n\n### p2\n\nbody` }, { heading: "## Done" }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: `### b1\n\n${note.replace("feature", "bugfix")}\n\nbody` }, { heading: "## Fixed" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogRelease(fakeReq(JSON.stringify(body)), res, root));
+  const plansPath = path.join(root, "PLANS.md");
+  const bugsPath = path.join(root, "BUGS.md");
+  const wakePath = wakeRequestPath(root);
+
+  const stale = await serve({ kind: "plan", position: 1, title: "other" });
+  assert.deepEqual(stale.data, { ok: true, status: "gone" });
+  const unrefused = await serve({ kind: "plan", position: 2, title: "p2" });
+  assert.deepEqual(unrefused.data, { ok: true, status: "not_refused", title: "p2" });
+  assert.ok(fs.readFileSync(plansPath, "utf8").includes(note));
+  assert.ok(!fs.existsSync(wakePath));
+
+  const plan = await serve({ kind: "plan", position: 1, title: "p1" });
+  assert.deepEqual(plan.data, { ok: true, status: "released", file: "PLANS.md", title: "p1", committed: false });
+  assert.ok(!fs.readFileSync(plansPath, "utf8").includes("Refused"));
+  assert.match(fs.readFileSync(wakePath, "utf8"), /feature/);
+
+  const bug = await serve({ kind: "bug", position: 1, title: "b1" });
+  assert.deepEqual(bug.data, { ok: true, status: "released", file: "BUGS.md", title: "b1", committed: false });
+  assert.match(fs.readFileSync(wakePath, "utf8"), /bugfix/);
+
+  const bugsNow = fs.readFileSync(bugsPath, "utf8");
+  for (const body of [
+    { kind: "todo", position: 1, title: "x" },
+    { kind: "bug", position: 0, title: "b1" },
+    { kind: "bug", position: 1 },
+    { kind: "bug", position: 1, title: "" },
+  ]) {
+    assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
 });
 
 test("backlog 400s name the offending value, and stay terse when the field is missing", async () => {

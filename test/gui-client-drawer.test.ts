@@ -343,6 +343,22 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
   assert.match(t.paintedFor("entrybody"), /data-act='entry-cancel' data-arg='plans:1'/);
 });
 
+test("the entry drawer offers Release this entry only on a refused entry", async () => {
+  const t = openDrawer(["toggleEntry"], {
+    status: { roles: [] },
+    responses: {
+      "/api/backlog?file=plans&index=0": { title: "Held", body: "**Refused 2026-10-16 by feature: x**", refused: true },
+      "/api/backlog?file=plans&index=1": { title: "Open", body: "body", refused: false },
+    },
+  });
+  t.scope.toggleEntry("plans", 0);
+  await flush();
+  assert.match(t.paintedFor("entrybody"), /data-act='entry-release' data-arg='plans:0'/);
+  t.scope.toggleEntry("plans", 1);
+  await flush();
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
+});
+
 test("an open question entry offers the composer's answer action, an empty body says so", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },

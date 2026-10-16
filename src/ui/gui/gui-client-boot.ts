@@ -139,6 +139,19 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           ? "Cancelled “" + splitTitle(title).title + "” from " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + uncommittedTail(d)
           : "That entry was already removed or moved — refreshed";
       });
+    } else if (act === "entry-release") {
+      const [file, index] = arg.split(":");
+      const title = entryTitleAt(file, index);
+      if (title === undefined) return;
+      postAction("/api/backlog-release", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+        closeDrawer();
+        if (d && d.status === "released") {
+          return "Released “" + splitTitle(title).title + "” in " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (file === "bugs" ? "bugfix" : "feature") + " will pick it up" + uncommittedTail(d);
+        }
+        return d && d.status === "not_refused"
+          ? "That entry carries no Refused note — refreshed"
+          : "That entry was removed or moved — refreshed";
+      });
     } else if (act === "entry-edit") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);

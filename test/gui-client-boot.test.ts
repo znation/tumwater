@@ -205,6 +205,25 @@ test("entry-cancel arms on the first click and posts the cancel on the second", 
   assert.equal(posts.length, 1);
 });
 
+test("entry-release posts the release at once for plans and bugs", () => {
+  const posts: unknown[] = [];
+  const scope = clientScope<{ runAct(a: string, b: string): void }>(
+    ["run-act"], ["runAct"],
+    {
+      lastStatus: { plans: ["A", "B"], bugs: ["C"] },
+      closeDrawer: () => {},
+      postAction: (path: string, body: unknown) => posts.push([path, body]),
+      splitTitle: (t: string) => ({ title: t }),
+    },
+  );
+  scope.runAct("entry-release", "plans:1");
+  scope.runAct("entry-release", "bugs:0");
+  assert.deepEqual(posts, [
+    ["/api/backlog-release", { kind: "plan", position: 2, title: "B" }],
+    ["/api/backlog-release", { kind: "bug", position: 1, title: "C" }],
+  ]);
+});
+
 test("entry-cancel re-arms instead of firing when the entry at that position changed", () => {
   const posts: unknown[] = [];
   let armed: string | null = null;

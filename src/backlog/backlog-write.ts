@@ -541,6 +541,47 @@ export function editPlan(
   return editEntry(root, "PLANS.md", "Planned", n, title, body);
 }
 
+/** Drop the Refused note from `entry`'s slice of `lines`, in place. False (and `lines` untouched)
+ * when the entry carries no note; shared by releaseEntry and tryReleaseEntry so they cannot
+ * drift. */
+function liftRefusal(lines: string[], entry: ActionableEntryRange): boolean {
+  const slice = lines.slice(entry.start - 1, entry.end);
+  const kept = withoutRefusalNotes(slice);
+  if (kept.length === slice.length) return false;
+  lines.splice(entry.start - 1, slice.length, ...kept);
+  return true;
+}
+
+/** What `tryReleaseEntry` did: `released` wrote the file; `gone`, `moved` and `not_refused`
+ * refuse as data, writing nothing. */
+export type ReleaseEntryOutcome =
+  | { status: "released"; file: string; title: string }
+  | { status: "gone" }
+  | { status: "moved"; title: string }
+  | { status: "not_refused"; title: string };
+
+/** The non-exiting release the dashboard calls: releaseEntry's splice with tryCancelEntry's
+ * title check, all decided inside the lock. */
+export function tryReleaseEntry(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+  expectedTitle: string,
+): ReleaseEntryOutcome {
+  const { fileName, sectionTitle } = backlogTarget(kind);
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const file = path.join(root, fileName);
+    const md = readTextIfExists(file) ?? "";
+    const entry = findEntry(md, sectionTitle, n);
+    if (entry === undefined) return { status: "gone" };
+    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    const lines = md.split("\n");
+    if (!liftRefusal(lines, entry)) return { status: "not_refused", title: entry.title };
+    writeTextAtomic(file, lines.join("\n"));
+    return { status: "released", file: fileName, title: entry.title };
+  });
+}
+
 /** Lift the Refused note from the `n`th entry (1-based, as `--list` numbers them) of the
  * kind's open section and write the file, under the same lock the cancel and edit writers hold.
  * An out-of-range position fails with locateEntry's wording; an entry without a Refused note
@@ -549,10 +590,7 @@ export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { f
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withStateLock(primaryWorktreeLockPath(root), () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-    const slice = lines.slice(entry.start - 1, entry.end);
-    const kept = withoutRefusalNotes(slice);
-    if (kept.length === slice.length) fail(`${kind} #${n} "${entry.title}" carries no Refused note`);
-    lines.splice(entry.start - 1, slice.length, ...kept);
+    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused note`);
     writeTextAtomic(file, lines.join("\n"));
     return { file: fileName, title: entry.title };
   });

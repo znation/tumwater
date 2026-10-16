@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
-import { bodyStructureProblem, cancelBug, editPlan, tryCancelEntry, tryEditEntry } from "../src/backlog/backlog-write.js";
+import { bodyStructureProblem, cancelBug, editPlan, tryCancelEntry, tryEditEntry, tryReleaseEntry, releaseEntry } from "../src/backlog/backlog-write.js";
 import { openBugs, plannedPlans } from "../src/backlog/backlog.js";
 import { queuedRolePrompts } from "../src/inbox/inbox.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
@@ -184,6 +184,24 @@ test("tryCancelEntry leaves the bytes cancelBug leaves, and reads titles the sta
   cancelBug(a, 2);
   assert.deepEqual(tryCancelEntry(b, "bug", 2, title), { status: "cancelled", file: "BUGS.md", title });
   assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), fs.readFileSync(path.join(a, "BUGS.md"), "utf8"));
+});
+
+test("tryReleaseEntry leaves the bytes releaseEntry leaves and refuses without writing", () => {
+  const md = "# Bugs\n\n## Open\n\n### one\n\n**Refused 2026-10-16 by bugfix: x**\n\nbody\n\n### two\n\nbody\n\n## Fixed\n";
+  const a = makeRepo();
+  const b = makeRepo();
+  fs.writeFileSync(path.join(a, "BUGS.md"), md);
+  fs.writeFileSync(path.join(b, "BUGS.md"), md);
+  releaseEntry(a, "bug", 1);
+  assert.deepEqual(tryReleaseEntry(b, "bug", 1, "one"), { status: "released", file: "BUGS.md", title: "one" });
+  assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), fs.readFileSync(path.join(a, "BUGS.md"), "utf8"));
+  assert.ok(!fs.readFileSync(path.join(b, "BUGS.md"), "utf8").includes("Refused"));
+
+  fs.writeFileSync(path.join(b, "BUGS.md"), md);
+  assert.deepEqual(tryReleaseEntry(b, "bug", 1, "nope"), { status: "moved", title: "one" });
+  assert.deepEqual(tryReleaseEntry(b, "bug", 9, "one"), { status: "gone" });
+  assert.deepEqual(tryReleaseEntry(b, "bug", 2, "two"), { status: "not_refused", title: "two" });
+  assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), md);
 });
 
 test("tryCancelEntry answers gone and moved without writing", () => {
