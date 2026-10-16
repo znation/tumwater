@@ -138,8 +138,13 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // Mark the parked waiter while it waits: it holds no permit yet, so the dashboards
     // render `awaiting slot` (an inactive state) and the active rows keep tracking
     // maxConcurrent (BUGS.md 2026-09-24). Cleared the moment the permit is granted. The
-    // director never queues, so it is never a parked waiter.
+    // director never queues, so it is never a parked waiter. Its provider key rides beside
+    // `parkedSince` (provider-concurrency part 5/5): the key the admission lease will
+    // acquire, computed from the same runConfig admission uses, so a waiter named by a
+    // full key renders `awaiting <key> slot` on the dashboards.
+    const parkKey = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
     runner.state.parkedSince = usesSlot ? Date.now() : undefined;
+    runner.state.parkedOn = usesSlot && parkKey ? seamConcurrencyKey(parkKey, piDefault) : undefined;
     // The tick's own run time (null when it never ran, was cut off, or ended without
     // work): the drain-window sample is taken only for a work-bearing tick that finished
     // on its own (runTimedRoleTick; BUGS.md 2026-09-30).
@@ -169,6 +174,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
               // release below. A tick the start gate turns away releases within the same
               // microtask chain, so no poll ever counts it as a permit holder.
               runner.state.parkedSince = undefined;
+              runner.state.parkedOn = undefined;
               rolePermitHolders.add(runner);
             }
           : async () => {

@@ -5,7 +5,7 @@
  * travels with the per-loop display model. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
+import { budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, pauseBadge, pauseCountdown, permitsBadge, runWindowBadge, wakeBadge, loopWakeMarker } from "../src/ui/badges.js";
 import type { StatusSnapshot } from "../src/status/status-data.js";
 
 test("budgetBadge renders the standing daily-cost rule in every cap state", () => {
@@ -180,6 +180,23 @@ test("mainCheckBadge renders the shared counts fragment", () => {
 // header stays byte-identical. A disk block absent (an older orchestrator, an unmeasurable
 // volume) renders nothing, exactly as before the field existed. A recorded reclaim rides the
 // fragment whenever it has run, so its size and age stand even after space recovers.
+test("permitsBadge shows the fleet line slots and stays byte-identical without a pool", () => {
+  assert.equal(permitsBadge(undefined), "", "no permit snapshot: header unchanged");
+  // A map-less fleet publishes an empty byKey (no caps), so the whole badge stays empty and
+  // the header is unchanged.
+  assert.equal(permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {} }), "");
+  // With a per-provider cap map set, the fleet total and each capped key ride the badge;
+  // uncapped keys that happen to be in the snapshot are dropped.
+  assert.equal(
+    permitsBadge({ inUse: 5, limit: 8, reserve: 0, byKey: {
+      omlx: { inUse: 3, limit: 3, waiting: 1 },
+      claude: { inUse: 2, limit: 6, waiting: 0 },
+      huggingface: { inUse: 1, waiting: 0 },
+    } }),
+    " · slots 5/8 · claude 2/6 · omlx 3/3",
+  );
+});
+
 test("diskBadge shows the hold or low space and stays empty otherwise", () => {
   assert.equal(diskBadge(undefined), "", "no disk block: header unchanged");
   assert.equal(diskBadge({ freeGB: 100, holdGB: 10, reclaimGB: 40, held: false }), "", "comfortable space: no badge");

@@ -31,6 +31,10 @@ import {
   NO_COMMITS_MESSAGE,
 } from "../gates/readiness.js";
 import { agentBinSourceLabelFor, agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
+import { piModelsPath } from "../pi/pi-models.js";
+import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
+import { seamConcurrencyKey } from "../config/config-views.js";
+import { seamsInUse } from "../config/config-fallbacks.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
@@ -545,6 +549,50 @@ export function checkWorkInstances(
       `${multi.join(", ")} run instances but worktreeSlots ${slots} is below maxConcurrent ${config.maxConcurrent}`,
     );
   return warnOutcome(parts.join("; "));
+}
+
+/** Provider concurrency caps (plans/provider-concurrency.md §8): audit the
+ * `maxConcurrentPerProvider` map against the seams the config can actually spawn — each role,
+ * the review gate, the resolver, the director, and each tier's fallback — so the operator
+ * sees whether every cap names a provider in use and whether any cap actually binds. Warns on
+ * a cap key no seam resolves to (a typo, or a provider not in use), a cap at or above
+ * `maxConcurrent` (which never binds — the fleet total is the real ceiling), and a capped
+ * fleet whose seams include one with no key (pi's default provider is unreadable, so that
+ * seam cannot be capped). A config with no per-provider map or no caps is fine, and so is a
+ * well-formed map; a broken config is reported by the init check. Takes `root` to read pi's
+ * own default model (piSettingsPath), the same seam the orchestrator's admission uses, so a
+ * bare no-model pi seam keys exactly as the fleet would key it. */
+export function checkProviderConcurrency(config: TumwaterConfig | undefined, root: string): CheckOutcome {
+  if (!config) return okOutcome("no config to audit");
+  const caps = config.maxConcurrentPerProvider;
+  const capEntries = Object.entries(caps ?? {}).filter(([, v]) => Number.isInteger(v) && v > 0);
+  if (capEntries.length === 0) return okOutcome("no per-provider caps configured");
+  // The pi default model the orchestrator's admission seam carries: a bare no-model pi seam
+  // resolves its key only through it, so a fleet whose default is readable has keyed seams and
+  // only an unreadable default leaves a key-less seam to warn about.
+  const piDefault = readPiDefaultModel(piSettingsPath(piModelsPath()), root);
+  const seams = seamsInUse(config);
+  const keyed: string[] = [];
+  for (const s of seams) {
+    const k = seamConcurrencyKey(s, piDefault);
+    if (k !== undefined && !keyed.includes(k)) keyed.push(k);
+  }
+  const keySet = new Set(keyed);
+  const capKeys = capEntries.map(([k]) => k);
+  const warnings: string[] = [];
+  for (const key of capKeys) {
+    if (!keySet.has(key)) warnings.push(`cap key "${key}" resolves to no seam (a typo, or a provider not in use)`);
+  }
+  for (const [key, cap] of capEntries) {
+    if (cap >= config.maxConcurrent) warnings.push(`cap "${key}" ${cap} is at or above maxConcurrent ${config.maxConcurrent} — it never binds`);
+  }
+  const capSet = new Set(capKeys);
+  const keyless = seams.filter((s) => seamConcurrencyKey(s, piDefault) === undefined);
+  if (capSet.size > 0 && keyless.length > 0) {
+    warnings.push(`${keyless.length} seam(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
+  }
+  if (warnings.length === 0) return okOutcome(`${capEntries.length} provider cap${capEntries.length === 1 ? "" : "s"} — all seams resolve`);
+  return warnOutcome(warnings.join("; "));
 }
 
 /** Declared project check — names what the review gate's deterministic pre-check, the

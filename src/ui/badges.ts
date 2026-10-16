@@ -328,3 +328,20 @@ export function diskBadge(disk: StatusSnapshot["disk"]): string {
       ? ` · disk ${free}`
       : "";
 }
+
+/** The permit pool's header fragment (plans/provider-concurrency.md §8): `slots 5/8 · omlx
+ * 3/3 · claude 2/6` — the fleet total's in-use/cap followed by each capped provider key's own
+ * in-use/cap. The WHOLE fragment appears only while at least one key carries a cap (the
+ * `maxConcurrentPerProvider` map is set), so a fleet without it renders the header exactly
+ * as before; uncapped keys that happen to be in the snapshot are dropped rather than shown
+ * with a bare in-use that would read like a cap. */
+export function permitsBadge(permits: StatusSnapshot["permits"]): string {
+  if (!permits) return "";
+  const providers = Object.entries(permits.byKey)
+    .filter(([, e]) => e.limit !== undefined)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, e]) => `${k} ${e.inUse}/${e.limit}`)
+    .join(" · ");
+  if (providers.length === 0) return "";
+  return ` · slots ${permits.inUse}/${permits.limit} · ${providers}`;
+}

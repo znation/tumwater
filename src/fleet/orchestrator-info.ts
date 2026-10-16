@@ -21,6 +21,27 @@ import { errorMessage } from "../text/text.js";
  * verdict; `lastReclaim` names the most recent pressure pass that cleaned anything, absent
  * until one has. Published only when it changes; absent when statfs cannot measure the volume
  * or on an older orchestrator. */
+/** One keyed provider's live permits in the pool's snapshot (plans/provider-concurrency.md
+ * §8): `inUse` is the slots that key currently holds, `limit` its configured cap
+ * (absent when the key is uncapped — bounded only by the fleet total), `waiting` the
+ * acquirers parked on that key. */
+interface PermitKeyState {
+  inUse: number;
+  limit?: number;
+  waiting: number;
+}
+
+/** The permit pool's published state (plans/provider-concurrency.md §8): the fleet total's
+ * in-use/cap, the maintenance reserve, and each referenced provider key's own state. The
+ * orchestrator publishes it through the info file so observers (status, TUI, GUI) render the
+ * same facts without coupling to the scheduler's Semaphore. */
+export interface PermitSnapshot {
+  inUse: number;
+  limit: number;
+  reserve: number;
+  byKey: Record<string, PermitKeyState>;
+}
+
 export interface DiskStatus {
   freeGB: number;
   holdGB: number;
@@ -71,6 +92,11 @@ export interface OrchestratorInfo {
    * for an unbounded run or a `--once` round. Written once at startup, so every self-redeploy
    * generation publishes the same inherited deadline. */
   stopsAt?: number;
+  /** The permit pool's live state (plans/provider-concurrency.md §8): the fleet in-use/cap,
+   * the maintenance reserve, and each referenced provider key's in-use/cap/waiting. Written
+   * by the orchestrator's poll whenever it changes, like `budget` and `disk`; absent when the
+   * running orchestrator predates it or there is no pool. */
+  permits?: PermitSnapshot;
 }
 
 /** Assign one field of the orchestrator info file in place, but only when the value differs
@@ -135,6 +161,22 @@ function parseBuild(v: unknown): BuildStatus | undefined {
   return build;
 }
 
+/** The published permit snapshot, or undefined for any foreign shape. Each `byKey` entry must
+ * carry its two numbers; `limit` is kept only when it is a number, so a malformed provider
+ * map is dropped to `undefined` rather than reaching a render that reads it as a valid cap. */
+function parsePermits(v: unknown): PermitSnapshot | undefined {
+  if (!isJsonObject(v) || !isFiniteNumber(v.inUse) || !isFiniteNumber(v.limit) || !isFiniteNumber(v.reserve)) return undefined;
+  if (!isJsonObject(v.byKey)) return undefined;
+  const byKey: Record<string, PermitKeyState> = {};
+  for (const [key, value] of Object.entries(v.byKey)) {
+    if (!isJsonObject(value) || !isFiniteNumber(value.inUse) || !isFiniteNumber(value.waiting)) continue;
+    const entry: PermitKeyState = { inUse: value.inUse, waiting: value.waiting };
+    if (isFiniteNumber(value.limit)) entry.limit = value.limit;
+    byKey[key] = entry;
+  }
+  return { inUse: v.inUse, limit: v.limit, reserve: v.reserve, byKey };
+}
+
 function isLastReclaim(v: unknown): boolean {
   if (!isJsonObject(v)) return false;
   const mode = v.mode;
@@ -170,6 +212,10 @@ function normalizeInfoFields(rec: Record<string, unknown>): void {
   if (!isJsonObject(budget) || !isFiniteNumber(budget.spentUsd)) delete rec.budget;
 
   if (rec.stopsAt !== undefined && !isFiniteNumber(rec.stopsAt)) delete rec.stopsAt;
+
+  const permits = parsePermits(rec.permits);
+  if (permits === undefined) delete rec.permits;
+  else rec.permits = permits;
 
   const disk = rec.disk;
   if (

@@ -23,47 +23,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
 
-### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series)
-
-Design: plans/provider-concurrency.md §8 "Observability".
-
-**Goal.** The operator can see which provider is full and who is waiting for it. Doctor catches a
-cap that cannot work.
-
-**Approach.**
-- `OrchestratorInfo.permits` (src/fleet/orchestrator-info.ts) is the pool's `snapshot()`, written
-  through `assignInfoFieldIfChanged` each poll.
-- `LoopState.parkedOn` (src/loop/loop-state.ts) holds the parked waiter's key. It is set and
-  cleared with `parkedSince`, and healed like it.
-- status-model.ts renders `awaiting <key> slot <dur>` when that key is the binding limit in
-  `permits`, and today's `awaiting slot <dur>` otherwise. gui-client-model.ts puts the provider
-  in the "Waiting for a slot" chip's detail.
-- The fleet line in `tumwater status`, the TUI header and the GUI fleet tile reads
-  `slots 5/8 · omlx 3/3 · claude 2/6`. The provider part shows only while the map is set.
-- `tumwater role <id>` names the role's provider key and its cap.
-- A doctor check, "provider concurrency" (src/doctor/), lists each provider key a seam resolves
-  to, with its cap. The seams are the roles, the review gate, the resolver, the director and each
-  tier's fallback. It warns on:
-  - a cap key that no seam resolves to;
-  - a cap at or above `maxConcurrent`;
-  - a capped fleet with a key-less seam.
-- docs/backends.md "Match clients to slots" now says: cap the local provider at its slots minus
-  one for the director, then raise `maxConcurrent` freely. The README gets one sentence.
-
-**Files touched.** src/fleet/orchestrator-info.ts, src/orchestrator/orchestrator.ts,
-src/loop/loop-state.ts, src/orchestrator/orchestrator-launch.ts, src/ui/status-model.ts,
-src/ui/status-payload.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, the
-TUI header under src/ui/tui/, src/status/, src/roles/role-view.ts, src/doctor/, docs/backends.md,
-README.md, and their tests.
-
-**Acceptance criteria (this part).**
-- A parked omlx role renders `awaiting omlx slot` in `tumwater status`, the TUI and the GUI
-  payload. A role parked on the total renders `awaiting slot` as before.
-- The fleet line shows per-provider counts only while `maxConcurrentPerProvider` is set.
-  Without it, the status, TUI and GUI snapshots are unchanged.
-- Doctor warns on `{ "olmx": 3 }` when the seams resolve to `omlx`, and on a cap ≥
-  `maxConcurrent`. It passes a well-formed map.
-- `npm test` passes.
 
 ### Surface a per-loop consecutive "no change" streak: `tumwater status`, the TUI and the dashboard show how many ticks a loop has returned nothing to do (planned 2026-10-16 by plan; does not require any part of the per-provider concurrency-caps series (4/5, 5/5) or the per-provider-spend plan to land — those touch `src/loop/loop-state.ts` and the `src/status`/`src/ui` renders for other than a no-change counter, and no part derives anything from this streak; this adds one persisted counter and renders it, so it lands independently on any feature run)
 
@@ -145,6 +104,48 @@ README.md, and their tests.
 - `tumwater help logs` lists `--count`, existing logs goldens are unchanged without the flag, and `npm run test` passes.
 
 ## Done
+### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series) — done 2026-10-16
+
+Design: plans/provider-concurrency.md §8 "Observability".
+
+**Goal.** The operator can see which provider is full and who is waiting for it. Doctor catches a
+cap that cannot work.
+
+**Approach.**
+- `OrchestratorInfo.permits` (src/fleet/orchestrator-info.ts) is the pool's `snapshot()`, written
+  through `assignInfoFieldIfChanged` each poll.
+- `LoopState.parkedOn` (src/loop/loop-state.ts) holds the parked waiter's key. It is set and
+  cleared with `parkedSince`, and healed like it.
+- status-model.ts renders `awaiting <key> slot <dur>` when that key is the binding limit in
+  `permits`, and today's `awaiting slot <dur>` otherwise. gui-client-model.ts puts the provider
+  in the "Waiting for a slot" chip's detail.
+- The fleet line in `tumwater status`, the TUI header and the GUI fleet tile reads
+  `slots 5/8 · omlx 3/3 · claude 2/6`. The provider part shows only while the map is set.
+- `tumwater role <id>` names the role's provider key and its cap.
+- A doctor check, "provider concurrency" (src/doctor/), lists each provider key a seam resolves
+  to, with its cap. The seams are the roles, the review gate, the resolver, the director and each
+  tier's fallback. It warns on:
+  - a cap key that no seam resolves to;
+  - a cap at or above `maxConcurrent`;
+  - a capped fleet with a key-less seam.
+- docs/backends.md "Match clients to slots" now says: cap the local provider at its slots minus
+  one for the director, then raise `maxConcurrent` freely. The README gets one sentence.
+
+**Files touched.** src/fleet/orchestrator-info.ts, src/orchestrator/orchestrator.ts,
+src/loop/loop-state.ts, src/orchestrator/orchestrator-launch.ts, src/ui/status-model.ts,
+src/ui/status-payload.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, the
+TUI header under src/ui/tui/, src/status/, src/roles/role-view.ts, src/doctor/, docs/backends.md,
+README.md, and their tests.
+
+**Acceptance criteria (this part).**
+- A parked omlx role renders `awaiting omlx slot` in `tumwater status`, the TUI and the GUI
+  payload. A role parked on the total renders `awaiting slot` as before.
+- The fleet line shows per-provider counts only while `maxConcurrentPerProvider` is set.
+  Without it, the status, TUI and GUI snapshots are unchanged.
+- Doctor warns on `{ "olmx": 3 }` when the seams resolve to `omlx`, and on a cap ≥
+  `maxConcurrent`. It passes a well-formed map.
+- `npm test` passes.
+
 ### `tumwater role <id>` and the GUI loop drawer show the loop's recent tick outcomes: the last few `changed`/`queued`/`no_change`/`error` results with when and how long (planned 2026-10-16 by plan; independent of every other Planned entry — it reads only `src/events/` (the event log) and writes only `src/roles/` (role-view/role-render) plus the GUI drawer, no `src/loop`, `src/tick`, `src/status`, `src/ui/status-*`, or `src/report` file; the only overlap is that PLANS.md's per-provider part 5/5 also adds a field to `src/roles/role-view.ts` (its provider/cap line) — different fields, land in either order, the harness resolves the merge) — done 2026-10-16
 
 **Goal.** `tumwater role <id>` — the per-loop inspection command — tells you everything about what a loop IS (catalog, model, provider, tier, image input, fallback) but nothing about what it has been DOING: its only outcome signal is the current last result on the status row. The failure digest aggregates per-role outcomes over a whole window, and the waiting no-change-streak plan renders a single counter, but nobody shows a loop's discrete recent outcomes with their times. That is exactly the harness premise's diagnostic need — a loop that is no-op cycling (`no_change` after `no_change`), landing regularly, or erroring repeatedly is only distinguishable from an ordinary idle loop by reading its tick results over a short window. This plan shows them, read straight from the event log so it runs with the fleet stopped and never touches the live state.
@@ -7051,6 +7052,7 @@ so one command corrects the text and the images without moving the entry.
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
+
 
 
 

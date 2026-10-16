@@ -1,6 +1,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { readSlotsState } from "../git/slots-state.js";
 import type { BuildStatus } from "../build/build-info.js";
+import type { PermitSnapshot } from "../fleet/orchestrator-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
@@ -326,6 +327,11 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
+  /** The permit pool's live state (plans/provider-concurrency.md §8) as the orchestrator
+   * published it: fleet in-use/cap plus each referenced provider key's state. Only while the
+   * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
+   * provider part of the fleet line appears only while any key carries a cap. */
+  permits?: PermitSnapshot;
   /** The earlier of the `run --for` deadline (the running orchestrator's info file) and a
    * `tumwater stop --in` marker (epoch ms); absent when neither is set or the fleet is stopped. */
   runStopsAt?: number;
@@ -485,6 +491,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // must not speak for a stopped fleet — and only when the last poll could measure the
     // volume. Absent otherwise, so the surfaces render exactly as before.
     disk: running && info?.disk ? info.disk : undefined,
+    // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
+    permits: running && info?.permits ? info.permits : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped fleet.
     runStopsAt: running ? earliestStop(info?.stopsAt, scheduledStopAt(root)) : undefined,
     scheduledStopAt: running ? scheduledStopAt(root) : undefined,

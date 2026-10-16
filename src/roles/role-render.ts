@@ -130,6 +130,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   lines.push(`- State: ${state}`);
   lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
+  // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
+  // bounds the role's concurrent ticks, plus the cap itself. Present only while
+  // `maxConcurrentPerProvider` maps this seam's key — a cap-less default fleet has no
+  // resolvable key entry, so its role view renders no new line and stays byte-identical.
+  if (p.providerKey !== undefined && p.providerCap !== undefined) {
+    lines.push(`- Provider: ${p.providerKey} (cap ${p.providerCap})`);
+  }
   // Image input (plans/image-input.md "Surfaces", part 5/5): whether this loop's own model
   // reads images, and — when it cannot — where a tick that reads an image reroutes. Not just
   // `yes`/`no`: a text-only loop that falls back names the target, so `tumwater role <id>`

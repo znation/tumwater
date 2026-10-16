@@ -26,6 +26,18 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (p.startsWith("landing")) return { key: "landing", label: "Landing", tone: "orange", live: true, detail: after(7) };
     if (p.startsWith("vetted")) return { key: "vetted", label: "Approved", tone: "indigo", live: false, detail: "waiting for the merge slot" };
     if (p.startsWith("awaiting slot")) return { key: "awaiting", label: "Waiting for a slot", tone: "gray", live: false, detail: after(13) ? "for " + after(13) : "" };
+    // A waiter parked on a full provider key (provider-concurrency part 5/5): the phase reads
+    // awaiting <key> slot 2m, and this chip names the provider alongside the wait, so the
+    // operator sees which cap is full — the same chip and tone as a fleet-total waiter.
+    if (p.startsWith("awaiting ")) {
+      const m = after(9).match(/^(\S+) slot(?:\s+(.*))?$/);
+      const prov = m ? m[1] : "";
+      const dur = m && m[2] ? m[2].trim() : "";
+      return {
+        key: "awaiting", label: "Waiting for a slot", tone: "gray", live: false,
+        detail: (prov ? "on " + prov : "") + (dur ? " for " + dur : ""),
+      };
+    }
     if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed ticks in a row" };
     if (p === "main red") return { key: "mainred", label: "Main red", tone: "red", live: false, detail: "blocked until main's suite passes" };
     if (p === "paused") return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };

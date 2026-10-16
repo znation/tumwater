@@ -86,6 +86,7 @@ export function applyTickOutcome(
 ): void {
   s.running = false;
   s.parkedSince = undefined;
+  s.parkedOn = undefined;
   // The cut-off streak counts EVERY consecutive tick truncated at the context ceiling, past the
   // resume limit too: the next fresh tick's prompt names how many attempts the window has eaten
   // (buildCutOffNote), so the count must not freeze at the limit. Any other outcome resets it.

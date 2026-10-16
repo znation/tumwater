@@ -6,7 +6,7 @@ import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
-import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
@@ -212,6 +212,10 @@ export function renderStatusSpans(
     // while the hold is on, or the bare reading below the reclaim threshold. Empty in every
     // comfortable or unmeasured state, so an unaffected header stays byte-identical.
     ...badgeSpans(diskBadge(snap.disk), snap.disk?.held ? "yellow" : "blue"),
+    // The permit pool's live state (plans/provider-concurrency.md §8): the fleet line reads
+    // `slots 5/8 · omlx 3/3` only while the per-provider cap map is set (permitsBadge already
+    // omits the providers on a map-less fleet, so the header stays byte-identical).
+    ...badgeSpans(permitsBadge(snap.permits), "blue"),
     // New-project bootstrap (plans/work-ratio.md, part 2/2): the progress reading while the
     // hold is active. Empty in every normal project, so the header stays byte-identical.
     ...badgeSpans(bootstrapBadge(snap.bootstrap), "blue"),

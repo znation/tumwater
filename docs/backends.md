@@ -280,7 +280,10 @@ longer describe what runs.
   nearly every turn re-prefills from scratch (minutes each), requests queue behind those
   prefills, and starved ticks die as "no pi progress" watchdog kills even though the server is
   healthy. Symptom to look for: small-context requests timing out while the server log shows
-  continuous back-to-back prompt processing.
+  continuous back-to-back prompt processing. With per-provider caps
+  (`maxConcurrentPerProvider`, plans/provider-concurrency.md) the rule is: cap the local
+  provider at its slots minus one for the director, then raise `maxConcurrent`
+  freely — the provider cap, not the fleet total, is what bounds that server.
 - **A unified KV pool cannot exceed the model's training context; dedicated slots can grow per
   stream**: with unified KV on, llama.cpp treats the shared pool as the slot context and caps it at
   `n_ctx_train` — asking Qwen3.8-27B for 524288 logs "the slot context exceeds the training context

@@ -18,6 +18,30 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import { GATE_SESSION, SESSION, snapshotWith, toolStart, writePiLog } from "./fixtures/status-fixtures.js";
 
+test("a parked waiter names its provider key when that key is the binding limit", () => {
+  const root = tmpdir();
+  const s = freshLoopState("clean");
+  s.running = true;
+  s.parkedSince = Date.now() - 120_000;
+  s.parkedOn = "omlx";
+  const permits = {
+    inUse: 5,
+    limit: 8,
+    reserve: 0,
+    byKey: { omlx: { inUse: 3, limit: 3, waiting: 1 }, claude: { inUse: 1, limit: 6, waiting: 0 } },
+  };
+  const phase = (s2: typeof s) =>
+    loopPhase(s2, true, root, false, null, false, null, undefined, false, undefined, false, false, undefined, permits);
+  // omlx is at its cap (inUse 3 == limit 3): the parked waiter is queued on it.
+  assert.match(phase(s), /^awaiting omlx slot 2m/);
+  // Parked on a key under its cap (claude 1/6) is a fleet-total wait: bare `awaiting slot`.
+  s.parkedOn = "claude";
+  assert.match(phase(s), /^awaiting slot 2m/);
+  // No permit snapshot published: bare `awaiting slot` regardless of parkedOn.
+  s.parkedOn = "omlx";
+  assert.match(loopPhase(s, true), /^awaiting slot 2m/);
+});
+
 test("workingDetail without a pi log shows only the elapsed time", () => {
   const root = tmpdir();
   assert.equal(workingDetail(root, freshLoopState("clean")), "working");

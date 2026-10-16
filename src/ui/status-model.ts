@@ -1,6 +1,7 @@
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import type { LoopState } from "../loop/loop-state.js";
+import type { PermitSnapshot } from "../fleet/orchestrator-info.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { heldByMainRed } from "../status/status-polls.js";
 import { ERROR_STREAK_WARN, QUIET_KILL_RESUME_LIMIT } from "../tick/tick-apply.js";
@@ -122,6 +123,7 @@ export function loopPhase(
   diskHeld = false,
   bootstrapHeld = false,
   maintenanceQuotaHold?: string,
+  permits?: PermitSnapshot,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -146,7 +148,22 @@ export function loopPhase(
     // and runs no pi yet: render its true state and keep it OUT of the active set (isActivePhase)
     // so the operator can count active rows against the cap — a landing visibly counts, a
     // parked waiter visibly does not (BUGS.md 2026-09-24).
-    if (s.parkedSince) return `awaiting slot ${duration(Date.now() - s.parkedSince)}`;
+    if (s.parkedSince) {
+      const parkedTime = duration(Date.now() - s.parkedSince);
+      // The parked waiter's provider key, named only while that key is the binding limit in
+      // the published permit snapshot (plans/provider-concurrency.md §8): the key is at its
+      // cap, so THIS waiter is queued on its provider, not on the fleet total — `awaiting
+      // omlx slot` tells the operator exactly which cap is full. A role parked on the total
+      // (no key, or an uncapped one) reads today's `awaiting slot` as before.
+      if (
+        s.parkedOn !== undefined &&
+        permits !== undefined &&
+        isBindingLimit(permits, s.parkedOn)
+      ) {
+        return `awaiting ${s.parkedOn} slot ${parkedTime}`;
+      }
+      return `awaiting slot ${parkedTime}`;
+    }
     // The director bypasses maxConcurrent (`usesSlot` is false for it), so its in-flight tick
     // is a state of its own: a distinct label that `isActivePhase`'s cap-mirroring set
     // excludes while still carrying the live detail, so its work stays visible without
@@ -297,6 +314,9 @@ export function loopRowCells(
     snap.maintenanceQuota.held.includes(s.role)
       ? `held: maintenance quota ${snap.maintenanceQuota.used}/${snap.maintenanceQuota.allowance}`
       : undefined,
+    // The permit pool's live state (plans/provider-concurrency.md §8): names the parked
+    // waiter's provider key in `awaiting <key> slot` when that key is at its cap.
+    snap.permits,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -306,6 +326,16 @@ export function loopRowCells(
  * gui-client-model.ts interpolates LOOP_RANK_RULES, so the two dashboards cannot disagree
  * about which phases are in flight. */
 export const ACTIVE_PHASE_PREFIXES = ["working", "reviewing", "landing"] as const;
+
+/** Whether `key` is the binding limit in the published permit snapshot: its cap is set and
+ * its in-use already meets or exceeds it, so the pool is granting nothing more on that key and
+ * a waiter carrying it is queued on the key, not on the fleet total. A key without a cap in
+ * the snapshot (uncapped) is never binding. One home for the rule, shared by status-model's
+ * `awaiting <key> slot` and the GUI chip's provider detail. */
+function isBindingLimit(permits: PermitSnapshot, key: string): boolean {
+  const entry = permits.byKey[key];
+  return entry?.limit !== undefined && entry.inUse >= entry.limit;
+}
 
 /** Is this phase one of the PERMIT-HOLDER in-flight states — the rows an operator counts
  * against maxConcurrent? The three labels come from loopPhase: `working …`, `reviewing …`,

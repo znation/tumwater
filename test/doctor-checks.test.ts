@@ -15,6 +15,7 @@ import {
   checkInit,
   checkMergeLock,
   checkNodeVersion,
+  checkProviderConcurrency,
   checkRepo,
   checkStateDir,
   checkWorkInstances,
@@ -704,6 +705,58 @@ test("checkWorkInstances does not warn about a disabled instance role's pool", (
   const root = readyRepo();
   writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
   assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+});
+
+// Provider concurrency caps, part 5/5 (plans/provider-concurrency.md §8): the doctor check
+// audits the maxConcurrentPerProvider map against the seams the config can actually spawn.
+// A well-formed map whose key a seam resolves to is fine; a cap key no seam resolves to (a
+// typo or an unused provider) and a cap at or above maxConcurrent (which never binds) both
+// warn. A map-less config is fine — per-provider caps are optional.
+test("checkProviderConcurrency passes a well-formed map whose key a seam resolves to", () => {
+  // Every seam (each role, the director, the review gate) rides the default tier's omlx
+  // provider, so the omlx cap names a provider the fleet actually runs on and no seam is
+  // key-less: nothing to warn about.
+  const cfg = {
+    ...defaultConfig(),
+    maxConcurrent: 4,
+    model: { default: "omlx/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  const out = checkProviderConcurrency(cfg, readyRepo());
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, /1 provider cap/);
+});
+
+test("checkProviderConcurrency warns on a cap key no seam resolves to", () => {
+  // Every seam resolves to claude (the default tier's provider), so the omlx cap names a
+  // provider nothing runs on: a typo or a provider not in use.
+  const cfg = {
+    ...defaultConfig(),
+    maxConcurrent: 4,
+    model: { default: "claude/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  const out = checkProviderConcurrency(cfg, readyRepo());
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /cap key \"omlx\" resolves to no seam/);
+});
+
+test("checkProviderConcurrency warns on a cap at or above maxConcurrent", () => {
+  const cfg = {
+    ...defaultConfig(),
+    maxConcurrent: 3,
+    model: { default: "omlx/m" },
+    maxConcurrentPerProvider: { omlx: 3 },
+  };
+  const out = checkProviderConcurrency(cfg, readyRepo());
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /cap \"omlx\" 3 is at or above maxConcurrent 3/);
+});
+
+test("checkProviderConcurrency is fine without a per-provider map", () => {
+  const out = checkProviderConcurrency(defaultConfig(), readyRepo());
+  assert.equal(out.level, "ok");
+  assert.match(out.detail, /no per-provider caps configured/);
 });
 
 // claude transcript disk (plans/agent-backends.md "Sessions" retention, part 4e/7): doctor

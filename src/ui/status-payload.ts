@@ -6,7 +6,7 @@ import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
 import { queueEntryLandingLabel } from "../landing/landing-queue-render.js";
 import { snapshot } from "../status/status-data.js";
-import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, quietBadge, runWindowBadge } from "./badges.js";
+import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -141,6 +141,11 @@ export function statusPayload(root: string, now = Date.now()): object {
     // has published one — the same omit-undefined idiom as pausedUntil.
     ...(snap.disk ? { disk: snap.disk } : {}),
     diskBadge: diskBadge(snap.disk),
+    // The permit pool (plans/provider-concurrency.md §8): raw block machine-readable for
+    // `status --json`, plus the display-ready header badge — the same `slots 5/8 · omlx 3/3`
+    // string the TUI/status header renders. Omitted when no orchestrator has published one.
+    ...(snap.permits ? { permits: snap.permits } : {}),
+    permitsBadge: permitsBadge(snap.permits),
     // The `run --for` deadline: raw epoch ms (only when windowed) plus the display-ready badge.
     ...(snap.runStopsAt !== undefined ? { runStopsAt: snap.runStopsAt } : {}),
     ...(snap.scheduledStopAt !== undefined ? { scheduledStopAt: snap.scheduledStopAt } : {}),

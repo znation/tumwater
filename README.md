@@ -89,7 +89,8 @@ under the default `agent: "pi"`, so one config can mix a Claude strong tier with
 
 The default tier runs on pi through Hugging Face, the strong seams (the reviewer and the
 conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
-oMLX — all concurrently, under each provider's cap. Prefix `anthropic/` (`anthropic/claude-…`)
+oMLX — all concurrently, under each provider's cap (set it with `maxConcurrentPerProvider`;
+`tumwater status` shows each key's slots in use out of its cap). Prefix `anthropic/` (`anthropic/claude-…`)
 to keep a Claude model on pi instead (billed per token). See [plans/agent-backends.md §3](plans/agent-backends.md).
 
 For how the loops, review gate, scheduling, and self-redeploy work, see

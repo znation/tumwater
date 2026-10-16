@@ -392,6 +392,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // The latest poll's disk verdict, hoisted for tickStartHeld's permit-time reads
       // (plans/disk-floor.md, part 1/4).
       diskHeld = polledDiskHeld;
+      // Publish the permit pool's live state (plans/provider-concurrency.md §8): observers
+      // (status, TUI, GUI) read one file instead of coupling to this Semaphore, and the fleet
+      // line shows per-provider counts only while a cap map is configured. Written only when
+      // it changes, like budget and disk; a map-less fleet publishes `byKey` empty, which
+      // renders exactly as before.
+      if (assignInfoFieldIfChanged(info, "permits", semaphore.snapshot())) {
+        writeOrchestratorInfoBestEffort(root, info);
+      }
+
       // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
       // tick model's provider stands under a hold, and every role is held when the
       // reviewer's provider is (with the review gate on, nothing could land — and the land
