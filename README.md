@@ -68,7 +68,7 @@ force) and the dashboards and `tumwater role <id>` say which roles read images a
 run reroutes.
 
 Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
-same list, and `tumwater completion bash|zsh` prints shell completion. Settings live in
+same list, and `tumwater completion bash|zsh|fish` prints shell completion. Settings live in
 `tumwater.json` and edits apply live while the team runs; see [docs/config.md](docs/config.md).
 
 **Backends:** any OpenAI-compatible model pi can reach works, chosen by `model` in `tumwater.json`

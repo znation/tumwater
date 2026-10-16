@@ -72,13 +72,17 @@ test("the completion command works outside a repo and rejects other shells", asy
   const ok = await cli(dir, "completion", "bash");
   assert.equal(ok.code, 0);
   assert.match(ok.stdout, /complete -F _tumwater tumwater/);
-  for (const args of [["completion", "fish"], ["completion"]]) {
+  for (const args of [["completion", "tcsh"], ["completion"]]) {
     const bad = await cli(dir, ...args);
     assert.notEqual(bad.code, 0);
-    assert.match(bad.stderr, /bash or zsh/);
+    assert.match(bad.stderr, /bash, zsh, or fish/);
   }
+  const fish = await cli(dir, "completion", "fish");
+  assert.equal(fish.code, 0);
+  assert.match(fish.stdout, /complete -c tumwater/);
+  assert.doesNotMatch(fish.stdout, /COMPREPLY|compgen|complete -F/);
   const topic = await cli(dir, "help", "completion");
-  assert.match(topic.stdout, /tumwater completion <bash\|zsh>/);
+  assert.match(topic.stdout, /tumwater completion <bash\|zsh\|fish>/);
 });
 
 test("the bash script completes loop ids after --role and for role/history", async () => {
@@ -103,7 +107,7 @@ test("completion --roles prints the repo's loop ids, or the catalog on a broken 
   assert.deepEqual(broken.stdout.split("\n").filter(Boolean), allRoleIds());
   const bad = await cli(dir, "completion", "--roles", "bash");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.stderr, /bash or zsh/);
+  assert.match(bad.stderr, /bash, zsh, or fish/);
   assert.ok(completionSpec().flags.completion?.includes("--roles"));
 });
 
@@ -137,7 +141,7 @@ test("completion --config-keys prints parseable keys for this repo's roles, or t
   assert.ok(broken.stdout.split("\n").includes("roles.feature.enabled"));
   const bad = await cli(dir, "completion", "--config-keys", "bash");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.stderr, /bash or zsh/);
+  assert.match(bad.stderr, /bash, zsh, or fish/);
   assert.ok(completionSpec().flags.completion?.includes("--config-keys"));
 });
 
@@ -151,4 +155,43 @@ test("the bash script completes file names, template ids, and result classes aft
   assert.deepEqual(await complete(script, ["tumwater", "role", "qa", "--notes-file", "b"], 4, dir), ["brief.md"]);
   assert.deepEqual((await complete(script, ["tumwater", "init", "--template", ""], 3)).sort(), templateIds().sort());
   assert.deepEqual(await complete(script, ["tumwater", "history", "--result", "p"], 3), ["problems"]);
+});
+
+const fishScriptLines = (): string[] => completionScript("fish").split("\n");
+
+test("the fish script names every command, subcommand, and flag from the spec", () => {
+  const lines = fishScriptLines();
+  const spec = completionSpec();
+  const useLine = lines.find((l) => l.includes("__fish_use_subcommand"));
+  assert.ok(useLine);
+  assert.deepEqual(/-a "([^"]*)"/.exec(useLine)?.[1]?.split(" "), spec.commands);
+  for (const command of spec.commands) {
+    const subs = spec.subcommands[command] ?? [];
+    if (subs.length > 0)
+      assert.ok(
+        lines.some((l) => l.includes(`__fish_seen_subcommand_from ${command}; and test (__tumwater_argc) -eq 2`) && l.includes(`-a "${subs.join(" ")}"`)),
+        command,
+      );
+    for (const flag of spec.flags[command] ?? [])
+      assert.ok(lines.some((l) => l.includes(`__fish_seen_subcommand_from ${command}"`) && l.includes(` -l ${flag.slice(2)}`)), `${command} ${flag}`);
+  }
+});
+
+test("the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3", () => {
+  const lines = fishScriptLines();
+  const flagLines = (name: string) => lines.filter((l) => (l + " ").includes(` -l ${name} `));
+  for (const l of flagLines("role")) assert.ok(l.includes("completion --roles"), l);
+  for (const name of ["file", "attach", "notes-file"]) {
+    assert.ok(flagLines(name).length > 0, name);
+    for (const l of flagLines(name)) assert.ok(l.includes("-r -F"), l);
+  }
+  assert.ok(flagLines("template").some((l) => templateIds().every((id) => l.includes(id))));
+  assert.ok(flagLines("result").some((l) => l.includes("problems")));
+  assert.ok(lines.some((l) => l.includes("__fish_seen_subcommand_from get set unset") && l.includes("completion --config-keys")));
+});
+
+const fishInstalled = await run("fish", ["--version"]).then(() => true, () => false);
+
+test("the fish script parses under fish when fish is installed", { skip: !fishInstalled }, async () => {
+  await run("fish", ["--no-execute", "-c", completionScript("fish")]);
 });

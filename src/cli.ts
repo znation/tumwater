@@ -382,7 +382,7 @@ async function main(): Promise<void> {
       }
       const shell = args[0];
       if (args.length !== 1 || !SUPPORTED_SHELLS.includes(shell as CompletionShell))
-        fail(`completion takes one shell: bash or zsh${gotSuffix(args.length > 1 ? args[1] : shell)}`);
+        fail(`completion takes one shell: bash, zsh, or fish${gotSuffix(args.length > 1 ? args[1] : shell)}`);
       say(completionScript(shell as CompletionShell));
       break;
     }

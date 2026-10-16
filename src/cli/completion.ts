@@ -10,7 +10,7 @@ import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";
 import { HELP, helpStanzas } from "./help.js";
 
-export const SUPPORTED_SHELLS = ["bash", "zsh"] as const;
+export const SUPPORTED_SHELLS = ["bash", "zsh", "fish"] as const;
 export type CompletionShell = (typeof SUPPORTED_SHELLS)[number];
 
 interface CompletionSpec {
@@ -154,7 +154,40 @@ function bashScript(help: string): string {
   ].join("\n");
 }
 
+/** The value suffix a fish flag line carries: what completes after the flag. */
+function fishFlagValue(flag: string): string {
+  if (flag === "--role") return ` -x -a "(tumwater completion --roles 2>/dev/null)"`;
+  if (PATH_FLAGS.includes(flag)) return ` -r -F`;
+  if (flag === "--template") return ` -x -a "${templateIds().join(" ")}"`;
+  if (flag === "--result") return ` -x -a "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}"`;
+  return "";
+}
+
+function fishScript(help: string): string {
+  const spec = completionSpec(help);
+  const lines = [
+    `# tumwater completion (generated from \`tumwater help\`)`,
+    `complete -c tumwater -f`,
+    `function __tumwater_argc; count (commandline -opc); end`,
+    `complete -c tumwater -n __fish_use_subcommand -a "${spec.commands.join(" ")}"`,
+  ];
+  for (const command of spec.commands) {
+    const subs = spec.subcommands[command] ?? [];
+    if (subs.length > 0)
+      lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}; and test (__tumwater_argc) -eq 2" -a "${subs.join(" ")}"`);
+    for (const flag of spec.flags[command] ?? [])
+      lines.push(`complete -c tumwater -n "__fish_seen_subcommand_from ${command}" -l ${flag.slice(2)}${fishFlagValue(flag)}`);
+  }
+  lines.push(
+    `complete -c tumwater -n "__fish_seen_subcommand_from role history; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`,
+    `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from get set unset; and test (__tumwater_argc) -eq 3" -a "(tumwater completion --config-keys 2>/dev/null)"`,
+    ``,
+  );
+  return lines.join("\n");
+}
+
 export function completionScript(shell: CompletionShell, help: string = HELP): string {
+  if (shell === "fish") return fishScript(help);
   const bash = bashScript(help);
   return shell === "zsh" ? `autoload -U +X bashcompinit && bashcompinit\n${bash}` : bash;
 }

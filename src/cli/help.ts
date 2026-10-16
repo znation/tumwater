@@ -352,7 +352,7 @@ Usage:
   tumwater stop [--in <duration> | --cancel]
                                    Stop a running team (finishes current work, like Ctrl+C);
                                    --in schedules the stop, --cancel drops it
-  tumwater completion <bash|zsh>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc)
+  tumwater completion <bash|zsh|fish>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc; fish: tumwater completion fish | source)
   tumwater completion --roles      Print the role ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
