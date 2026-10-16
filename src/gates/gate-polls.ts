@@ -50,7 +50,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort } from "../events/events.js";
-import { assignInfoFieldIfChanged, writeOrchestratorInfoBestEffort, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { publishInfoFields, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
@@ -235,10 +235,11 @@ export function pollFleetGates(
   const engagedDemotion =
     states.budget.engaged !== null ? demotions[states.budget.engaged] : undefined;
   const budget = { spentUsd, capUsd };
-  const demotionsChanged = assignInfoFieldIfChanged(info, "fallbackDemotions", demotions);
-  const engagedChanged = assignInfoFieldIfChanged(info, "fallbackDemoted", engagedDemotion);
-  const budgetChanged = assignInfoFieldIfChanged(info, "budget", budget);
-  if (demotionsChanged || engagedChanged || budgetChanged) writeOrchestratorInfoBestEffort(root, info);
+  publishInfoFields(root, info, [
+    ["fallbackDemotions", demotions],
+    ["fallbackDemoted", engagedDemotion],
+    ["budget", budget],
+  ]);
   // The director keeps the live config — an explicit human prompt outranks the
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
@@ -409,7 +410,7 @@ export function pollFleetGates(
           held: diskHeld,
           ...(ctx.reclaim?.lastReclaim ? { lastReclaim: ctx.reclaim.lastReclaim } : {}),
         };
-  if (assignInfoFieldIfChanged(info, "disk", disk)) writeOrchestratorInfoBestEffort(root, info);
+  publishInfoFields(root, info, [["disk", disk]]);
 
   // Each runner as the two provider-failure polls read it (HoldInputs): the role, its two
   // episodic fields, and the provider its NEXT tick will run on (runProvider — the tier

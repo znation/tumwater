@@ -106,7 +106,7 @@ export interface OrchestratorInfo {
  * once after several fields. The comparison uses JSON serialization, matching
  * writeOrchestratorInfo's
  * own output, so a value equal to the stored one is never treated as a change. */
-export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
+function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
   info: OrchestratorInfo,
   field: K,
   value: OrchestratorInfo[K],
@@ -114,6 +114,27 @@ export function assignInfoFieldIfChanged<K extends keyof OrchestratorInfo>(
   if (JSON.stringify(value) === JSON.stringify(info[field])) return false;
   info[field] = value;
   return true;
+}
+
+/** Assign several non-recomputable info fields in place (each via assignInfoFieldIfChanged) and
+ * publish the file best-effort once when any of them changed — the publish idiom the
+ * orchestrator's poll (permits, build) and gate-polls (the budget trio, disk) apply to every
+ * field observers cannot recompute. Every field is staged regardless of the others (this is
+ * not a short-circuiting find), so a batch like the budget trio lands as exactly one write no
+ * matter how many of its fields changed, while an unchanged batch leaves the file untouched.
+ * Returns whether the file was written. The staging primitive and the best-effort writer are
+ * private to this module now that publishInfoFields is the only publish path. */
+export function publishInfoFields(
+  root: string,
+  info: OrchestratorInfo,
+  fields: ReadonlyArray<[keyof OrchestratorInfo, OrchestratorInfo[keyof OrchestratorInfo]]>,
+): boolean {
+  let changed = false;
+  for (const [field, value] of fields) {
+    if (assignInfoFieldIfChanged(info, field, value)) changed = true;
+  }
+  if (changed) writeOrchestratorInfoBestEffort(root, info);
+  return changed;
 }
 
 /** Read the running orchestrator's info file; null when it is missing or unreadable.
@@ -248,7 +269,7 @@ export function writeOrchestratorInfo(root: string, info: OrchestratorInfo): voi
  * retried the next time its value changes. Startup's first write stays strict
  * (writeOrchestratorInfo): it is what refuses a second fleet, so a repo that cannot publish it
  * must fail fast rather than boot. */
-export function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): void {
+function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): void {
   try {
     writeOrchestratorInfo(root, info);
   } catch (err) {

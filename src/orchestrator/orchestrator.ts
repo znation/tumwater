@@ -1,5 +1,5 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { assignInfoFieldIfChanged, writeOrchestratorInfo, writeOrchestratorInfoBestEffort, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
+import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { newLiveConfigReload } from "../config/config-live.js";
 import {
@@ -397,9 +397,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // line shows per-provider counts only while a cap map is configured. Written only when
       // it changes, like budget and disk; a map-less fleet publishes `byKey` empty, which
       // renders exactly as before.
-      if (assignInfoFieldIfChanged(info, "permits", semaphore.snapshot())) {
-        writeOrchestratorInfoBestEffort(root, info);
-      }
+      publishInfoFields(root, info, [["permits", semaphore.snapshot()]]);
 
       // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
       // tick model's provider stands under a hold, and every role is held when the
@@ -444,7 +442,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           now,
         );
         const build = redeploy.status(now);
-        if (assignInfoFieldIfChanged(info, "build", build)) writeOrchestratorInfoBestEffort(root, info);
+        publishInfoFields(root, info, [["build", build]]);
         if (action === "restart") {
           restart = true;
           // Only permit holders have a pi run to cut off (the director is guaranteed finished by
