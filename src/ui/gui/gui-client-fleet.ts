@@ -475,6 +475,12 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     if (!d) return;
     feedRole = syncRolePicker("feedrole", (d.loops || []).map((l) => l.role), feedRole, "feed-role");
   }
+  // An empty feed state: a li.empty with a bold head, a body, and the shared Clear-filter
+  // button that ends all three search/error/filter-empty rows — one home for the button's
+  // markup so the three cannot drift. The last empty state (nothing notable / no events yet)
+  // carries no Clear-filter action, so it stays literal.
+  const emptyFeedRow = (head, body) => "<li class='empty'><strong>" + head + "</strong>" + body +
+    "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>";
   function renderFeed(d) {
     syncFeedRoles(d);
     // Re-arm the debounced server search whenever the filter changed since the last paint (so a
@@ -511,17 +517,11 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";
       }).join("")
       : feedResults !== null
-        ? "<li class='empty'><strong>No events match this filter in the log's recent slice</strong>" +
-          "Widen the Search or Loop picker to look further back. " +
-          "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+        ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Loop picker to look further back. ")
         : feedError
-          ? "<li class='empty'><strong>Search unavailable</strong>" + esc(feedError) +
-            " — the running server may predate the /api/logs endpoint. " +
-            "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+          ? emptyFeedRow("Search unavailable", esc(feedError) + " — the running server may predate the /api/logs endpoint. ")
           : notable.length
-            ? "<li class='empty'><strong>No recent events match this filter</strong>" +
-              "Clear the Loop or Search box to see the recent feed again. " +
-              "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>"
+            ? emptyFeedRow("No recent events match this filter", "Clear the Loop or Search box to see the recent feed again. ")
             : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
               (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
   }
