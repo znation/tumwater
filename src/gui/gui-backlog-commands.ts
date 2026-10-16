@@ -13,7 +13,7 @@ import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from ".
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { badRequest, okGone, sendJson } from "./http-body.js";
-import { collapseWhitespace, errorMessage } from "../text/text.js";
+import { collapseWhitespace, errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -23,7 +23,7 @@ import type http from "node:http";
 function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unknown>): "bug" | "plan" | null {
   const kind = body.kind;
   if (kind !== "bug" && kind !== "plan") {
-    badRequest(res, 'kind must be "bug" or "plan"');
+    badRequest(res, `kind must be "bug" or "plan"${kind === undefined ? "" : gotSuffix(kind)}`);
     return null;
   }
   return kind;
@@ -40,11 +40,11 @@ function checkedEntryPositionAndTitle(
 ): { position: number; title: string } | null {
   const { position, title } = body;
   if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    badRequest(res, "position must be a positive integer");
+    badRequest(res, `position must be a positive integer${position === undefined ? "" : gotSuffix(position)}`);
     return null;
   }
   if (typeof title !== "string" || title === "") {
-    badRequest(res, "title must be a non-empty string");
+    badRequest(res, `title must be a non-empty string${title === undefined ? "" : gotSuffix(title)}`);
     return null;
   }
   return { position, title };

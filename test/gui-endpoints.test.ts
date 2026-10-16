@@ -1020,6 +1020,30 @@ test("handleBacklogCancel removes the entry, answers gone for a stale title, 400
   for (const role of ["bugfix", "feature", "director"]) assert.deepEqual(queuedTexts(root, role), []);
 });
 
+test("backlog 400s name the offending value, and stay terse when the field is missing", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogCancel(fakeReq(JSON.stringify(body)), res, root));
+
+  const badKind = await serve({ kind: "todo", position: 1, title: "x" });
+  assert.match((badKind.data as { error: string }).error, /kind must be "bug" or "plan" \(got "todo"\)/);
+  const badPosition = await serve({ kind: "bug", position: 0, title: "x" });
+  assert.match((badPosition.data as { error: string }).error, /position must be a positive integer \(got 0\)/);
+  const badTitle = await serve({ kind: "bug", position: 1, title: "" });
+  assert.match((badTitle.data as { error: string }).error, /title must be a non-empty string \(got ""\)/);
+
+  // A field the request never carried stays unnamed — no "(got undefined)".
+  const missingKind = await serve({ position: 1, title: "x" });
+  assert.match((missingKind.data as { error: string }).error, /^kind must be "bug" or "plan"$/);
+  assert.doesNotMatch((missingKind.data as { error: string }).error, /got undefined/);
+  const missingPosition = await serve({ kind: "bug", title: "x" });
+  assert.match((missingPosition.data as { error: string }).error, /^position must be a positive integer$/);
+  assert.doesNotMatch((missingPosition.data as { error: string }).error, /got undefined/);
+  const missingTitle = await serve({ kind: "bug", position: 1 });
+  assert.match((missingTitle.data as { error: string }).error, /^title must be a non-empty string$/);
+  assert.doesNotMatch((missingTitle.data as { error: string }).error, /got undefined/);
+});
+
 // ---- POST /api/backlog-edit: the entry drawer's edit ----
 test("handleBacklogEdit rewrites the entry, answers gone for a stale title, 400s bad input, wakes nobody", async () => {
   const root = tmpdir();
