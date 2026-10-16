@@ -218,7 +218,7 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
   assert.doesNotMatch(corrupt, /NaN/);
   assert.equal(
     describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef" })),
-    "restart pending — main 12345678 green; compiling",
+    "restart pending — main 12345678 green",
   );
   assert.equal(describeStateChange(ev({ type: "restart", to: "abcdef1234567890" })), "restarting onto update abcdef12");
   assert.equal(

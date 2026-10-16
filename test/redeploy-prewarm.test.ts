@@ -88,6 +88,25 @@ test("during the cooldown the deferred head's check and compile prewarm, so the 
   assert.deepEqual(f.calls.swap, [HEAD_B, HEAD_C]);
 });
 
+test("a hold that adopts the prewarmed compile still logs restart_pending once across polls", async () => {
+  // BUGS.md 2026-10-16: the adopted compile skipped the only branch that logged the hold, so a
+  // 10-minute drain ended in aborted runs with nothing before them in the event log.
+  const f = fakeDeps();
+  const { r, types } = harness(f.deps);
+  const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
+  await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000);
+  f.green(true);
+  await settle();
+  await r.poll(HEAD_C, IDLE, true, swappedAt + 61 * 60_000);
+  f.compiled(true);
+  await settle();
+  const busy = { roleInFlight: 2, directorInFlight: 0 };
+  const before = types().filter((t) => t === "restart_pending").length;
+  assert.equal(await r.poll(HEAD_C, busy, true, swappedAt + RESTART_COOLDOWN_MS), "hold");
+  assert.equal(await r.poll(HEAD_C, busy, true, swappedAt + RESTART_COOLDOWN_MS + 10), "hold");
+  assert.equal(types().filter((t) => t === "restart_pending").length, before + 1, "one restart_pending for the hold");
+});
+
 test("a prewarmed green check that could not run is not adopted — the episode re-runs it", async () => {
   // A rejection is no verdict (BUGS.md 2026-09-16): adopting one would replay the same dead end
   // on every retry, so the episode's own fresh check decides. The cooldown is injected directly

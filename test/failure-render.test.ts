@@ -652,7 +652,7 @@ test("each harness state transition renders its own bounded line", () => {
     [{ type: "config_changed" }, "config changed"],
     [
       { type: "restart_pending", head: "a".repeat(40) },
-      "restart pending — main aaaaaaaa green; compiling",
+      "restart pending — main aaaaaaaa green",
     ],
     [{ type: "restart", to: "b".repeat(40) }, "restarting onto update bbbbbbbb"],
     [

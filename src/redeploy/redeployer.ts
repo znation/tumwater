@@ -387,6 +387,9 @@ export class Redeployer {
       // lapse reaches the swap directly instead of paying green-check + compile from zero.
       this.green = this.probes.adoptGreen(mainHead);
       this.compiled = this.probes.adoptCompile(mainHead);
+      // An adopted compile skips the `!this.compiled` branch below, the only other place the
+      // hold is announced, so say it here or the episode logs nothing until `restart`.
+      if (this.compiled) this.logRestartPending(mainHead);
       return "hold";
     }
     if (!this.green?.done) return "hold";
@@ -411,19 +414,7 @@ export class Redeployer {
     }
     if (!this.compiled) {
       this.compiled = this.probes.adoptCompile(mainHead) ?? track(this.deps.compile(mainHead));
-      // Once per head, not once per episode: a rejected compile drops the episode and the next
-      // poll starts a fresh one, and a state stream that re-enters "compiling" it never left
-      // is noise on top of the missing terminal event (BUGS.md 2026-09-28).
-      if (this.pendingLoggedHead !== mainHead) {
-        this.pendingLoggedHead = mainHead;
-        this.log({
-          loop: "harness", // vocabulary-ok: event source
-          type: "restart_pending",
-          build: this.build.sha,
-          head: mainHead,
-          aheadCommits: this.staleness.aheadCommits,
-        });
-      }
+      this.logRestartPending(mainHead);
       return "hold";
     }
     if (!this.compiled.done) return "hold";
@@ -523,6 +514,21 @@ export class Redeployer {
   private endDrain(): "none" {
     this.drainSince = 0;
     return "none";
+  }
+
+  // Once per head, not once per episode: a rejected compile drops the episode and the next
+  // poll starts a fresh one, and a state stream that re-enters "compiling" it never left
+  // is noise on top of the missing terminal event (BUGS.md 2026-09-28).
+  private logRestartPending(mainHead: string): void {
+    if (this.pendingLoggedHead === mainHead) return;
+    this.pendingLoggedHead = mainHead;
+    this.log({
+      loop: "harness", // vocabulary-ok: event source
+      type: "restart_pending",
+      build: this.build.sha,
+      head: mainHead,
+      aheadCommits: this.staleness?.aheadCommits ?? 0,
+    });
   }
 
   /** deps.bootProblem, fail-closed: a gate that throws cannot vouch for the successor, so its

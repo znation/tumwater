@@ -186,7 +186,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restarts when idle`;
       break;
     case "restart_pending":
-      text = `restart pending — main ${shortSha(ev.head)} green; compiling`;
+      text = `restart pending — main ${shortSha(ev.head)} green`;
       break;
     case "restart":
       text = `restarting onto update ${shortSha(ev.to)}`;
