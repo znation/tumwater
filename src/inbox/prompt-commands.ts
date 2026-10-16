@@ -49,13 +49,19 @@ import { roleLabel } from "../roles/role-labels.js";
  * the resolved value narrowed. Shared by sayListedOutcome and the editor form so the wordings
  * cannot drift. */
 function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss, position: number): T {
-  if (listed.status === "ambiguous") {
-    fail(`position ${position} is in more than one role's inbox (${(listed as { roles: string[] }).roles.join(", ")}) — name one with --role <id>`);
+  if (isQueueMiss(listed)) {
+    if (listed.status === "ambiguous") {
+      fail(`position ${position} is in more than one role's inbox (${listed.roles.join(", ")}) — name one with --role <id>`);
+    }
+    fail(`no prompt at position ${position} (longest inbox holds ${listed.queued})`);
   }
-  if (listed.status === "missing") {
-    fail(`no prompt at position ${position} (longest inbox holds ${(listed as { queued: number }).queued})`);
-  }
-  return listed as T;
+  return listed;
+}
+
+/** Whether a list-wide outcome is one of the two miss shapes — the guard that narrows the
+ * miss fields (`roles`, `queued`) without a cast. */
+function isQueueMiss(listed: { status: string }): listed is ListedQueueMiss {
+  return listed.status === "ambiguous" || listed.status === "missing";
 }
 
 /** The shared tail of the list-wide cancel/edit branches: report an ambiguity (naming the
