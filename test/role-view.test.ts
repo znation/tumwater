@@ -686,7 +686,7 @@ test("role payload and render surface the loop's schedule from persisted state",
   assert.equal(p.backoffSeconds, 120);
   assert.equal(p.lastTickEndedAt, now - 180_000);
   const md = renderRoleMarkdown(p, now);
-  assert.match(md, /- Next tick: backoff in 5m/); // backoff prefix while backing off
+  assert.match(md, /- Next tick: sleeping in 5m/); // sleeping prefix while backing off
   // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
   assert.match(md, /- Last tick: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
 

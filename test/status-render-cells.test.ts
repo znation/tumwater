@@ -15,6 +15,7 @@ import { fleetDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dayKey } from "./helpers/oracles.js";
 import { assistantLine } from "./fixtures/pi-events.js";
+import { eventTypeLabel } from "../src/events/event-labels.js";
 import {
   PENDING_SHA,
   SESSION,
@@ -123,7 +124,7 @@ test("renderStatus shows the last-landed age in the table row, dash when never l
   const fresh = snapshotWith([{ role: "new", lastTickEndedAt: ts }]);
   const { lines: freshLines, cellAt, headers } = tableCells(renderStatus(tmpdir(), fresh));
   const freshRow = freshLines.find((l) => l.startsWith("new")) ?? "";
-  assert.equal(cellAt(freshRow, headers.indexOf("last landed")), "-", "never-landed cell is the dash");
+  assert.equal(cellAt(freshRow, headers.indexOf("last merged")), "-", "never-landed cell is the dash");
 });
 
 // The per-loop today-spend column: `today` sits between cost
@@ -138,7 +139,7 @@ test("the status table has a today column between cost and last tick", () => {
   assert.ok(cols.includes("today"), "table has a today column");
   assert.equal(cols.indexOf("cost"), cols.indexOf("today") - 1, "today sits directly after cost");
   assert.equal(
-    cols.indexOf("last tick"),
+    cols.indexOf("last run"),
     cols.indexOf("today") + 1,
     "today sits directly before last tick",
   );
@@ -253,7 +254,7 @@ test("the last-result cell shows the landing's outcome beside the summary of the
     applyLandingOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
     const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }), "feature");
     const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }));
-    assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), `${result} — add the widget`, `landing pair in the last-result cell: ${row}`);
+    assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), `${eventTypeLabel(result)} — add the widget`, `landing pair in the last-result cell: ${row}`);
     assert.doesNotMatch(row, /objected to the plan/, "the prior summary does not outlive its result");
   }
 });
@@ -268,9 +269,9 @@ test("a pending change after a main-red tick does not keep the state cell readin
   applyTickOutcome(s, defaultConfig(), "feature", { result: "queued", summary: "add the widget", commit: PENDING_SHA });
   assert.match(loopPhase(s, true), /^sleeping/, "the pending change's tick was not blocked");
   const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }), "feature");
-  assert.doesNotMatch(row, /main's check is failing/);
+  assert.doesNotMatch(row, /^feature\s+main's check is failing/);
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true, landQueue: { depth: 1 } }));
-  assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main_red — code merges blocked until main is green", `prior pair kept: ${row}`);
+  assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), "main's check is failing — code merges blocked until main is green", `prior pair kept: ${row}`);
 });
 // The `next run` column: nextRunCell's rules — a due idle
 // loop reads `now`, a future one its remaining time (`backoff `-prefixed while backing off),
@@ -287,7 +288,7 @@ test("nextRunCell reads now for a due idle loop and the remaining time for a fut
   backoff.backoffSeconds = 240;
   assert.equal(nextRunCell(due, "queued", now, true), "now");
   assert.equal(nextRunCell(future, "queued", now, true), "3m");
-  assert.equal(nextRunCell(backoff, "queued", now, true), "backoff 3m", "a backing-off loop says so — that is what wake clears");
+  assert.equal(nextRunCell(backoff, "queued", now, true), "sleeping 3m", "a backing-off loop says so — that is what wake clears");
 });
 
 test("nextRunCell shows ×N beside the time for a role whose yield scales its clock", () => {
@@ -302,7 +303,7 @@ test("nextRunCell shows ×N beside the time for a role whose yield scales its cl
   scaled.nextRunAt = now + 180_000;
   assert.equal(nextRunCell(scaled, "queued", now, true), "3m ×4");
   scaled.backoffSeconds = 240;
-  assert.equal(nextRunCell(scaled, "queued", now, true), "backoff 3m ×4");
+  assert.equal(nextRunCell(scaled, "queued", now, true), "sleeping 3m ×4");
   // A role the scaling never applies to stays unsuffixed even with a full empty ring.
   const work = freshLoopState("feature");
   work.recentOutcomes = "n".repeat(20);

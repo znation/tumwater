@@ -210,7 +210,7 @@ const FORMAT_JS = String.raw`  // format:start
     const sec = Math.round((l.nextRunAt - Date.now()) / 1000);
     const suffix = l.yieldMultiplier > 1 ? " ×" + l.yieldMultiplier : "";
     if (sec <= 0) return "now" + suffix;
-    return (l.backoffSeconds > 0 ? "backoff " : "") + humanSeconds(sec) + suffix;
+    return (l.backoffSeconds > 0 ? "sleeping " : "") + humanSeconds(sec) + suffix;
   };
   // next-run-fmt:end
   // A relative age for lists; the first minute reads "just now" so rows do not churn every

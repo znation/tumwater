@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TestCounts } from "../build/build-check-counts.js";
 import { claudeUtilizationPct, claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
@@ -5,7 +6,7 @@ import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from 
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
-import { pauseReasonSuffix } from "../text/phrases.js";
+import { pauseReasonSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
 /** The status header's BADGE fragments, phrased once for both observer surfaces: the terminal
@@ -26,11 +27,11 @@ import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
  * Shared by the TUI/status header and the GUI's. */
 export function buildBadge(build: StatusSnapshot["build"]): string {
   if (!build) return "";
-  const stale = build.stale ? ` — STALE: main +${build.aheadCommits ?? 0} commit(s) since` : "";
+  const stale = build.stale ? ` — update available (${plural(build.aheadCommits ?? 0, "commit")} behind)` : "";
   const restart = build.restartBlocked
-    ? `; restart BLOCKED: ${build.restartBlocked}`
+    ? `; restart blocked: ${build.restartBlocked}`
     : build.restartPending
-      ? "; restart pending"
+      ? " — restarts when idle"
       : "";
   return `, build ${shortSha(build.sha)}${stale}${restart}`;
 }
@@ -131,7 +132,7 @@ function untilReset(resetsAt: number, now: number): string {
  * `· Claude 5h · 64% · resets in 4h 12m` (`resets now` once the deadline has passed), with
  * the status word when no `utilization` was reported and an `overage` marker while the
  * account spends into overage. A rejected window reads
- * `claude seams held until 14:30` in place of `resets` while a future deadline holds the
+ * `claude model jobs wait until 14:30` in place of `resets` while a future deadline holds the
  * seams; a reset reading names neither. The one home of the string, so the TUI header and the
  * payload's preformatted badge cannot drift. */
 function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>, now: number): string {
@@ -140,7 +141,7 @@ function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindo
   parts.push(typeof w.utilization === "number" ? `${claudeUtilizationPct(w.utilization)}%` : claudeWindowStatusWord(w.status));
   if (w.isUsingOverage === true) parts.push("overage");
   if (w.status === "rejected" && claudeWindow.heldUntil !== null) {
-    parts.push(`claude seams held until ${clockHm(claudeWindow.heldUntil)}`);
+    parts.push(`claude model jobs wait until ${clockHm(claudeWindow.heldUntil)}`);
   } else if (w.status !== "reset" && typeof w.resetsAt === "number") {
     parts.push(w.resetsAt - now < 60_000 ? "resets now" : `resets in ${untilReset(w.resetsAt, now)}`);
   }
@@ -202,8 +203,8 @@ export function budgetBadge(
   const fallback =
     fleetBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
-        ? ` · fallback: ${tierEntries.join(", ")} (cost n/a)`
-        : ` · fallback: ${fallbackDisplayPair(budget.fallback, agentDefault)} (cost n/a)`
+        ? ` · over-cap model: ${tierEntries.join(", ")} (cost n/a)`
+        : ` · over-cap model: ${fallbackDisplayPair(budget.fallback, agentDefault)} (cost n/a)`
       : "";
   const forecast =
     budget.capHitAt !== null
@@ -220,7 +221,7 @@ export function budgetBadge(
  * renderStatus renders it in the TUI/status header and status-payload.ts ships its output
  * preformatted, so the GUI page cannot drift from this string. */
 export function landingBadge(landQueue: { depth: number }): string {
-  return landQueue.depth > 0 ? ` · land queue: ${landQueue.depth}` : "";
+  return landQueue.depth > 0 ? ` · merge queue: ${landQueue.depth}` : "";
 }
 
 /** The header's `run --for` window fragment: ` · stops in <duration>` while the deadline is
@@ -343,5 +344,5 @@ export function permitsBadge(permits: StatusSnapshot["permits"]): string {
     .map(([k, e]) => `${k} ${e.inUse}/${e.limit}`)
     .join(" · ");
   if (providers.length === 0) return "";
-  return ` · slots ${permits.inUse}/${permits.limit} · ${providers}`;
+  return ` · running ${permits.inUse} of ${permits.limit} · ${providers}`;
 }

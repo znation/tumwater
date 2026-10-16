@@ -1,3 +1,4 @@
+// vocabulary: plain
 import {
   claudeWindowEntries,
   readClaudeAccount,

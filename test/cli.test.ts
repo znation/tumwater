@@ -315,7 +315,7 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   // Bare status still renders the table — same command, human surface unchanged.
   r = await cli(repo, "status");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /loop/);
+  assert.match(r.stdout, /\brole\b/);
   assert.match(r.stdout, /last result/);
   assert.match(r.stdout, /feature/);
 

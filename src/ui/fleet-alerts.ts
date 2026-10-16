@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The fleet ALERT model: everything about the fleet that needs the operator — or that they
  * should know — phrased once for both observer surfaces: the dashboard's alert banners
  * (shipped in the status payload as `alerts`) and the TUI's attention lines
@@ -17,6 +18,7 @@ import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE, duration } from "./tick-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { roleLabel } from "../roles/role-labels.js";
 
 /** Something that needs the operator — or that they should know — about the fleet as a whole,
  * phrased once for both observer surfaces: the dashboard's alert banners (shipped in the status
@@ -56,21 +58,21 @@ export interface AlertLoop {
 }
 
 function listRoles(loops: readonly AlertLoop[]): string {
-  const names = loops.map((l) => l.role);
+  const names = loops.map((l) => roleLabel(l.role));
   return names.length <= 2 ? names.join(" and ") : `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
 }
 
 /** The stuck alert's per-loop detail: the stall phrase the phase rendered, plus — when that
  * phrase does not already carry one — the honest silence span from the live tail (stuckMs,
  * ms since the loop's last pi log write, capped to the tick by progressOfTick). A
- * "no pi output for <d>" phrase already carries its duration, so only a tool-call stall gets
+ * "no agent output for <d>" phrase already carries its duration, so only a tool-call stall gets
  * a " for <duration>" suffix, and only when the caller holds a live tail (stuckMs present). */
 function stuckDetail(l: AlertLoop): string {
   const cause = (STALL_RE.exec(l.phase)?.[0] ?? "").trim();
-  if (cause && !cause.startsWith("no pi output for") && l.stuckMs !== undefined) {
-    return `${l.role}: ${cause} for ${duration(l.stuckMs)}`;
+  if (cause && !cause.startsWith("no agent output for") && l.stuckMs !== undefined) {
+    return `${roleLabel(l.role)}: ${cause} for ${duration(l.stuckMs)}`;
   }
-  return `${l.role}: ${cause}`;
+  return `${roleLabel(l.role)}: ${cause}`;
 }
 
 /** ISO instants in server text (a restart cooldown's deadline) in local time. */
@@ -108,7 +110,7 @@ export function fleetAlerts(
         ? {
             key: "fallback",
             tone: "blue",
-            title: "Today's budget is spent — the loops switched to the free fallback model",
+            title: "Today's budget is spent — roles switched to the over-cap model",
             // Tiered fallbacks (part 7b/8): the snapshot's tier map stands exactly when the
             // tiers resolve to two or more distinct pairs, so list them and let the borrowed
             // ones' `(from …)` suffixes mark the borrow; a tier-free snapshot keeps the
@@ -121,7 +123,7 @@ export function fleetAlerts(
         : {
             key: "budget",
             tone: "red",
-            title: "Today's budget is spent, so the role loops are paused",
+            title: "Today's budget is spent, so the roles are paused",
             detail: `Spent ${usd(b.spentUsd)} of the ${usdCap(b.capUsd)} cap. They resume at midnight, or as soon as you raise the cap.`,
             actions: [{ label: "Raise the cap", act: "budget" }],
           },
@@ -136,7 +138,7 @@ export function fleetAlerts(
     out.push({
       key: "disk",
       tone: "amber",
-      title: `Disk space is low — the fleet is holding new work at ${formatGB(snap.disk.freeGB)} free`,
+      title: `Waiting: low disk — the team is holding new work at ${formatGB(snap.disk.freeGB)} free`,
       detail: `Free space is below the ${snap.disk.holdGB} GB floor. Build outputs are reclaimed first; new work starts again once space recovers.`,
       actions: [],
     });
@@ -146,8 +148,8 @@ export function fleetAlerts(
     out.push({
       key: "mainred",
       tone: "red",
-      title: `main is red — ${plural(red.length, "loop is", "loops are")} blocked`,
-      detail: "Code loops stop authoring until main's suite passes again, and pick up on their own once it does.",
+      title: `main's check is failing — ${plural(red.length, "role is", "roles are")} blocked`,
+      detail: "Code roles stop authoring until main's check passes, and pick up on their own once it does.",
       actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
@@ -163,11 +165,11 @@ export function fleetAlerts(
     out.push({
       key: "failing",
       tone: "red",
-      title: `${listRoles(failing)} ${agree(failing.length, "is", "are")} failing tick after tick`,
+      title: `${listRoles(failing)} ${agree(failing.length, "is", "are")} failing run after run`,
       detail: failing.some((l) => l.lastError)
-        ? failing.map((l) => `${l.role}: ${l.lastError || "see its transcript"}`).join(" · ")
-        : "The streak clears only on the next healthy tick; the transcript names each failure.",
-      actions: failing.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
+        ? failing.map((l) => `${roleLabel(l.role)}: ${l.lastError || "see its transcript"}`).join(" · ")
+        : "The streak clears only on the next healthy run; the transcript names each failure.",
+      actions: failing.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
     });
   }
   // A stall marker rides only a running label. The director is excluded from `inFlight` (it
@@ -180,7 +182,7 @@ export function fleetAlerts(
       tone: "amber",
       title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
       detail: stuck.map(stuckDetail).join(" · "),
-      actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
+      actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
     });
   }
   if (snap.build?.stale) {
@@ -190,15 +192,15 @@ export function fleetAlerts(
         ? {
             key: "build",
             tone: "amber",
-            title: `The fleet runs an old build: main is ${behind} ahead and the restart is blocked`,
+            title: `Update available (${behind} behind) — restart blocked`,
             detail: localizeInstants(snap.build.restartBlocked),
             actions: [],
           }
         : {
             key: "build",
             tone: "blue",
-            title: `main is ${behind} ahead of the running build`,
-            detail: snap.build.restartPending ? "The fleet restarts onto it once in-flight work drains." : "Restart tumwater start to pick it up.",
+            title: `Update available (${behind} behind)${snap.build.restartPending ? " — restarts when idle" : ""}`,
+            detail: snap.build.restartPending ? "The team restarts onto it once running work finishes." : "Restart tumwater start to pick it up.",
             actions: [],
           },
     );
@@ -222,8 +224,8 @@ export function fleetAlerts(
     out.push({
       key: "quiet",
       tone: "blue",
-      title: `Quiet hours — role loops start no new ticks until ${end}`,
-      detail: `The schedule (${snap.quietHours} local time, quietHours in tumwater.json) holds them. In-flight ticks finish, and the director still runs your prompts.`,
+      title: `Quiet hours — roles start no new runs until ${end}`,
+      detail: `The schedule (${snap.quietHours} local time, quietHours in tumwater.json) holds them. Runs in progress finish, and the director still runs your prompts.`,
       actions: [],
     });
   }
@@ -235,9 +237,9 @@ export function fleetAlerts(
       // The operator's pause reason (`pause --reason <text>`) states verbatim, so an
       // operator returning to a paused fleet knows why without digging through history.
       title: left
-        ? `The fleet is paused and resumes in ${left}${pauseReasonSuffix(snap.pauseReason)}`
-        : `The fleet is paused${pauseReasonSuffix(snap.pauseReason)}`,
-      detail: "Loops start no new ticks. In-flight ticks finish, and the director still runs your prompts.",
+        ? `The team is paused and resumes in ${left}${pauseReasonSuffix(snap.pauseReason)}`
+        : `The team is paused${pauseReasonSuffix(snap.pauseReason)}`,
+      detail: "Roles start no new runs. Runs in progress finish, and the director still runs your prompts.",
       actions: [{ label: "Resume now", act: "resume" }],
     });
   }
@@ -245,7 +247,7 @@ export function fleetAlerts(
     out.push({
       key: "stopped",
       tone: "gray",
-      title: "The fleet is not running",
+      title: "tumwater is not running — start it with `tumwater start`",
       detail: "Start it with tumwater start in the project directory; the dashboards pick it up on their own.",
       actions: [{ label: "Copy the command", act: "copy", arg: "tumwater start" }],
     });
@@ -264,8 +266,8 @@ export function fleetAlerts(
       key: "images",
       tone: "amber",
       title: `No configured model can read images for ${listRoles(noTarget)}`,
-      detail: "A tick that reads an image fails, and image attachments to these loops are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
-      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
+      detail: "A run that reads an image fails, and image attachments to these roles are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
+      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
     });
   } else if (textOnly.length > 0) {
     const targets = [...new Set(textOnly.map((l) => l.imageReroute ?? ""))].filter(Boolean);
@@ -273,7 +275,7 @@ export function fleetAlerts(
       key: "images",
       tone: "blue",
       title: `${listRoles(textOnly)} ${agree(textOnly.length, "runs", "run")} on models that can't read images`,
-      detail: `A tick that reads an image stops and reruns on ${targets.join(", ")}.`,
+      detail: `A run that reads an image stops and reruns on ${targets.join(", ")}.`,
       actions: [],
     });
   }

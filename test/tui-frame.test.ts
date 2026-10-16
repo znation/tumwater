@@ -69,19 +69,19 @@ test("a status render's spans read exactly as the plain text, clipped to width",
 test("attention lines mark each alert and fold the overflow into a count", () => {
   const alert = (key: string, tone: FleetAlert["tone"], title: string, detail = ""): FleetAlert => ({ key, tone, title, detail, actions: [] });
   const alerts = [
-    alert("failing", "red", "qa is failing tick after tick", "qa: 429"),
+    alert("failing", "red", "qa is failing run after run", "qa: 429"),
     alert("questions", "indigo", "1 question needs your answer", "Q1"),
-    alert("build", "blue", "main is 2 commits ahead of the running build", "Restart tumwater start to pick it up."),
-    alert("stopped", "gray", "The fleet is not running"),
+    alert("build", "blue", "Update available (2 commits behind) — restarts when idle", "Restart tumwater start to pick it up."),
+    alert("stopped", "gray", "tumwater is not running — start it with `tumwater start`"),
   ];
   const lines = alertLines(alerts, 200).map(plain);
   assert.deepEqual(lines, [
-    "! qa is failing tick after tick — qa: 429",
+    "! qa is failing run after run — qa: 429",
     "? 1 question needs your answer — Q1",
     "  +2 more — the dashboard lists them all",
   ]);
-  assert.deepEqual(alertLines(alerts.slice(0, 3), 200).map(plain).at(-1), "i main is 2 commits ahead of the running build — Restart tumwater start to pick it up.");
-  assert.equal(alertLines(alerts.slice(0, 1), 12).map(plain)[0], clipToWidth("! qa is failing tick after tick — qa: 429", 12));
+  assert.deepEqual(alertLines(alerts.slice(0, 3), 200).map(plain).at(-1), "i Update available (2 commits behind) — restarts when idle — Restart tumwater start to pick it up.");
+  assert.equal(alertLines(alerts.slice(0, 1), 12).map(plain)[0], clipToWidth("! qa is failing run after run — qa: 429", 12));
   assert.deepEqual(alertLines([], 80), []);
 });
 

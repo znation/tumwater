@@ -378,7 +378,7 @@ test("status payload carries the build badge pre-formatted by buildBadge", async
   writeOrchestratorMarker(repo, ["clean"], { build: stamp });
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.buildBadge, buildBadge(stamp), "one home for the badge text");
-  assert.match(payload.buildBadge, /build aaaaaaaa — STALE: main \+7 commit\(s\) since; restart BLOCKED: main cccccccc is red$/);
+  assert.match(payload.buildBadge, /build aaaaaaaa — update available \(7 commits behind\); restart blocked: main cccccccc is red$/);
 });
 
 // The operator pause on the GUI surface: /api/status — and

@@ -93,7 +93,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
   let p = statusPayload(repo) as typeof payload;
   assert.equal(p.landQueue.depth, 1);
-  assert.equal(p.landingBadge, " · land queue: 1");
+  assert.equal(p.landingBadge, " · merge queue: 1");
   assert.equal(p.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
 
   // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the

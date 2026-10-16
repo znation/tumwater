@@ -148,14 +148,14 @@ test("the header names the running build and flags a stale one", () => {
   const fresh = { ...snapshotWith([{ role: "clean" }]), running: true, pid: 4242, build: { sha: "a".repeat(40), builtAt: 1, stale: false, aheadCommits: 0, checkedHead: "b".repeat(40) } };
   assert.match(headerOf(renderStatus("/tmp/x", fresh)), /running \(pid 4242, build aaaaaaaa\)/);
   const stale = { ...fresh, build: { ...fresh.build, stale: true, aheadCommits: 7 } };
-  assert.match(headerOf(renderStatus("/tmp/x", stale)), /build aaaaaaaa — STALE: main \+7 commit\(s\) since\)/);
+  assert.match(headerOf(renderStatus("/tmp/x", stale)), /build aaaaaaaa — update available \(7 commits behind\)/);
   // A stale build also says what auto-restart made of it: pending resolves itself, BLOCKED
   // never will until main moves, and only the second one needs an operator (BUGS.md).
   const pending = { ...stale.build, restartPending: true };
-  assert.match(buildBadge(pending), /STALE: main \+7 commit\(s\) since; restart pending$/);
+  assert.match(buildBadge(pending), /update available \(7 commits behind\) — restarts when idle$/);
   const blocked = { ...stale.build, restartBlocked: "main cccccccc is red" };
-  assert.match(buildBadge(blocked), /since; restart BLOCKED: main cccccccc is red$/);
-  assert.equal(buildBadge(stale.build), ", build aaaaaaaa — STALE: main +7 commit(s) since", "silent when neither");
+  assert.match(buildBadge(blocked), /behind\); restart blocked: main cccccccc is red$/);
+  assert.equal(buildBadge(stale.build), ", build aaaaaaaa — update available (7 commits behind)", "silent when neither");
   const unstamped = { ...fresh, build: null };
   assert.match(headerOf(renderStatus("/tmp/x", unstamped)), /running \(pid 4242\)/, "no stamp: the pre-stamp header");
   assert.equal(buildBadge(null), "");
@@ -180,7 +180,7 @@ test("renderStatus shows the land-queue badge in the header and the label in the
     landQueue: { depth: 2 } as StatusSnapshot["landQueue"],
   };
   const text = renderStatus(root, queued);
-  assert.match(headerOf(text), /running \(pid 4242\) · land queue: 2/, "badge after the running part, before the budget badge");
+  assert.match(headerOf(text), /running \(pid 4242\) · merge queue: 2/, "badge after the running part, before the budget badge");
   assert.match(text, /clean +due/, "a merely queued role shows its normal state");
 
   // …and the role whose in-flight record is attached reads `landing <elapsed> · <stage>` in

@@ -72,7 +72,7 @@ test("quiet hours raise one informational alert only while the window holds", ()
   const [quiet] = fleetAlerts({ ...base, quietHours: "23:00-07:00", inQuietHours: true }, [], [], Date.now());
   assert.equal(quiet?.key, "quiet");
   assert.equal(quiet?.tone, "blue");
-  assert.match(quiet?.title ?? "", /Quiet hours — role loops start no new ticks until 07:00/);
+  assert.match(quiet?.title ?? "", /Quiet hours — roles start no new runs until 07:00/);
   assert.match(quiet?.detail ?? '', /\(23:00-07:00 local time, quietHours in tumwater.json\)/);
   assert.deepEqual(quiet?.actions, []);
   assert.equal(alertNeedsYou(quiet!), false, "a schedule is information, not a request");
@@ -85,7 +85,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
     { role: "qa", phase: "failing", errorStreak: true, inFlight: false },
     { role: "feature", phase: "working 30m · turn 2 · tool call stalled: bash", errorStreak: false, inFlight: true, stuckMs: 720_000 },
     { role: "coverage", phase: "main's check is failing", errorStreak: false, inFlight: false },
-    { role: "docs", phase: "working 1m · turn 1 · no pi output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
+    { role: "docs", phase: "working 1m · turn 1 · no agent output for 6m00s", errorStreak: false, inFlight: true, stuckMs: 360_000 },
     { role: "idle", phase: "sleeping (for 5m)", errorStreak: false, inFlight: false },
   ];
   const alerts = fleetAlerts(
@@ -97,34 +97,34 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   );
   assert.deepEqual(alerts.map((a) => a.key), ["mainred", "failing", "stuck", "build", "questions", "paused"]);
   const by = Object.fromEntries(alerts.map((a) => [a.key, a]));
-  assert.equal(by.mainred?.title, "main is red — 1 loop is blocked");
-  assert.equal(by.failing?.title, "bugfix and qa are failing tick after tick");
+  assert.equal(by.mainred?.title, "main's check is failing — 1 role is blocked");
+  assert.equal(by.failing?.title, "bugfix and qa are failing run after run");
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
   assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"], ["loop", "qa"]], "each failing loop opens from the alert");
   assert.equal(by.stuck?.title, "feature and docs look stuck");
   // The tool-call stall gains the honest silence span from stuckMs (" for 12m00s"); the
-  // "no pi output for 6m00s" phrase already carries its duration, so it does not double even
+  // "no agent output for 6m00s" phrase already carries its duration, so it does not double even
   // with a stuckMs present.
-  assert.equal(by.stuck?.detail, "feature: tool call stalled: bash for 12m00s · docs: no pi output for 6m00s");
+  assert.equal(by.stuck?.detail, "feature: tool call stalled: bash for 12m00s · docs: no agent output for 6m00s");
   assert.equal(by.build?.tone, "amber");
-  assert.equal(by.build?.title, "The fleet runs an old build: main is 3 commits ahead and the restart is blocked");
+  assert.equal(by.build?.title, "Update available (3 commits behind) — restart blocked");
   assert.doesNotMatch(by.build?.detail ?? "", /T10:00:54/, "ISO instants read in local time");
   assert.equal(by.questions?.title, "2 questions need your answer");
   assert.equal(by.questions?.detail, "Q1: which database? — and 1 more", "a question's date note is metadata, not the question");
-  assert.equal(by.paused?.title, "The fleet is paused and resumes in 12m");
+  assert.equal(by.paused?.title, "The team is paused and resumes in 12m");
   assert.equal(alerts.filter(alertNeedsYou).length, 6);
   // A build that is only behind (the restart will happen on its own) informs.
   const pending = fleetAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 1, restartPending: true } }, [], [], now);
-  assert.deepEqual(pending.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "main is 1 commit ahead of the running build"]]);
+  assert.deepEqual(pending.map((a) => [a.key, a.tone, a.title]), [["build", "blue", "Update available (1 commit behind) — restarts when idle"]]);
   // A standing pause has no countdown; an expired deadline is not claimed.
-  assert.equal(fleetAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The fleet is paused");
-  assert.equal(fleetAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The fleet is paused");
+  assert.equal(fleetAlerts({ ...base, paused: true }, [], [], now)[0]?.title, "The team is paused");
+  assert.equal(fleetAlerts({ ...base, paused: true, pausedUntil: now - 1 }, [], [], now)[0]?.title, "The team is paused");
 
   // The operator's why (`pause --reason <text>`) states verbatim in the title, timed or not.
   const withWhy = fleetAlerts({ ...base, paused: true, pauseReason: "deploying to prod" }, [], [], now);
-  assert.equal(withWhy[0]?.title, "The fleet is paused — \"deploying to prod\"");
+  assert.equal(withWhy[0]?.title, "The team is paused — \"deploying to prod\"");
   const timedWhy = fleetAlerts({ ...base, paused: true, pausedUntil: now + 12 * 60_000, pauseReason: "deploying to prod" }, [], [], now);
-  assert.equal(timedWhy[0]?.title, "The fleet is paused and resumes in 12m — \"deploying to prod\"");
+  assert.equal(timedWhy[0]?.title, "The team is paused and resumes in 12m — \"deploying to prod\"");
 });
 
 // The alert copy's count forms beyond the two-loop case above: a lone loop reads singular,
@@ -133,7 +133,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
 test("a lone failing or stuck loop reads singular; three loops list as a, b, and c", () => {
   const now = Date.now();
   const [one] = fleetAlerts(base, [], [{ role: "bugfix", phase: "failing", errorStreak: true, inFlight: false, lastError: "pi exited null" }], now);
-  assert.equal(one?.title, "bugfix is failing tick after tick");
+  assert.equal(one?.title, "bugfix is failing run after run");
   assert.equal(one?.detail, "bugfix: pi exited null");
   const three: AlertLoop[] = [
     { role: "bugfix", phase: "failing", errorStreak: true, inFlight: false },
@@ -141,8 +141,8 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
     { role: "docs", phase: "failing", errorStreak: true, inFlight: false },
   ];
   const [many] = fleetAlerts(base, [], three, now);
-  assert.equal(many?.title, "bugfix, qa, and docs are failing tick after tick");
-  assert.equal(many?.detail, "The streak clears only on the next healthy tick; the transcript names each failure.");
+  assert.equal(many?.title, "bugfix, qa, and docs are failing run after run");
+  assert.equal(many?.detail, "The streak clears only on the next healthy run; the transcript names each failure.");
   assert.deepEqual(many?.actions.map((a) => a.arg), ["bugfix", "qa", "docs"]);
   const [stuckOne] = fleetAlerts(
     base,
@@ -157,7 +157,7 @@ test("a lone failing or stuck loop reads singular; three loops list as a, b, and
 });
 
 // A failing streak is the alert's tell, not the rendered phase: while a loop's own tick runs
-// the phase reads "working"/"landing", but the red "failing tick after tick" banner must stay
+// the phase reads "working"/"landing", but the red "failing run after run" banner must stay
 // up (it clears only when the streak resets) — BUGS.md 2026-10-14. A plain working loop with no
 // streak raises nothing.
 test("a streak behind a working label still raises the failing alert; a healthily working loop raises none", () => {
@@ -168,7 +168,7 @@ test("a streak behind a working label still raises the failing alert; a healthil
   const [alert] = fleetAlerts(base, [], streakWorking, now);
   assert.equal(alert?.key, "failing");
   assert.equal(alert?.tone, "red");
-  assert.equal(alert?.title, "bugfix is failing tick after tick");
+  assert.equal(alert?.title, "bugfix is failing run after run");
   assert.equal(alert?.detail, "bugfix: review rejected: not converging");
   assert.deepEqual(alert?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"]]);
 
@@ -195,7 +195,7 @@ test("a fallback names its provider or nothing; a plain stale build asks for a m
 
   const stale = fleetAlerts({ ...base, build: { sha: "abc", builtAt: 0, stale: true, aheadCommits: 2 } }, [], [], Date.now());
   assert.deepEqual(stale.map((a) => [a.key, a.tone, a.title]), [
-    ["build", "blue", "main is 2 commits ahead of the running build"],
+    ["build", "blue", "Update available (2 commits behind)"],
   ]);
   assert.equal(stale[0]?.detail, "Restart tumwater start to pick it up.");
 });
@@ -279,7 +279,7 @@ test("images alert: a text-only loop with no target is amber and asks", () => {
   const [images] = fleetAlerts(base, [], noTarget, Date.now()).filter((a) => a.key === "images");
   assert.equal(images?.tone, "amber");
   assert.equal(images?.title, "No configured model can read images for feature");
-  assert.match(images?.detail ?? "", /image attachments to these loops are refused/);
+  assert.match(images?.detail ?? "", /image attachments to these roles are refused/);
   assert.equal(images?.actions[0]?.arg, "feature");
   assert.equal(alertNeedsYou(images!), true, "a blind read fails — it asks");
 });

@@ -83,11 +83,11 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
               : "");
       }
       // The permit pool (plans/provider-concurrency.md §8): the payload's preformatted
-      // permitsBadge — slots 5/8 · omlx 3/3 · claude 2/6 — upcased for the row's label
+      // permitsBadge — running 5 of 8 · omlx 3/3 · claude 2/6 — upcased for the row's label
       // style, the same reading the TUI/status header carries, so the two surfaces cannot
       // drift. Empty on a map-less fleet, so the sidebar stays unchanged.
       if (d.permitsBadge) {
-        const tok = String(d.permitsBadge).replace(/^ · slots /, "");
+        const tok = String(d.permitsBadge).replace(/^ · /, "");
         rows += row("blue", icon("gauge"), esc(tok),
           "Concurrent pi slots in use out of the fleet total, then each capped provider's own in-use/cap; a provider at its cap queues its next waits on it.");
       }

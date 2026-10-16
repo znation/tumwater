@@ -96,7 +96,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     const raw = fmtNextRun(l, d.running);
     const slowed = / ×(\d+)$/.exec(raw);
     const next = slowed ? raw.slice(0, slowed.index) : raw;
-    const backoff = next.startsWith("backoff ") ? "backing off — retries in " + next.slice(8) : "";
+    const backoff = next.startsWith("sleeping ") ? "backing off — retries in " + next.slice(9) : "";
     // A yield-scaled clock: the loop's recent ticks landed nothing, so it ticks less often.
     const note = slowed ? " · slowed ×" + slowed[1] + ", nothing landed lately" : "";
     // The consecutive no-change streak (status-payload noChangeStreak, mirrored from

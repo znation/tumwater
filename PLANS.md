@@ -21,59 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
-
-**Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
-- The columns become `role · state · runs · commits · output · peak ctx · cost · today · last run · last merged · last result · next run`.
-- An update badge replaces STALE, and `running 5 of 8` replaces `slots 5/8`.
-- Raw results show as labels.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `renderStatusSpans` (src/ui/status-render.ts):
-  - Column headers: `loop` → `role`, `ticks` → `runs`, `last tick` → `last run`, `last landed` → `last merged`.
-  - `gen` → `output`. The column counts the tokens the last run generated, not restarts, and "generation" is now a retired word for restarts, so `gen` would read wrong.
-  - `peak ctx`, `commits`, `cost`, `today`, `last result` and `next run` stay.
-  - The role cell prints `roleLabel(id)`, and the last-result cell prints `eventTypeLabel(result)`. "user-defined loop" → "custom role".
-  - Helper names (`lastTickCell`, `lastLandedCell`) stay for the code series.
-- `nextRunPhrase` (src/text/datetime.ts): the `backoff ` prefix → `sleeping `. The status cell and `tumwater role`'s schedule line share it, so update both suites.
-- src/ui/badges.ts:
-  - `buildBadge` → "update available (N commits behind) — restarts when idle", keeping "restart blocked".
-  - `landingBadge` → " · merge queue: N".
-  - `permitsBadge` → " · running 5 of 8".
-  - The claude window fragment "claude seams held until HH:MM" → "claude model jobs wait until HH:MM".
-  - `budgetBadge`'s "fallback:" → "over-cap model:".
-  - `bootstrapBadge`, `diskBadge`, `pauseBadge`, `quietBadge` and `wakeBadge` follow the rules.
-- `fleetAlerts` (src/ui/fleet-alerts.ts), every title and detail:
-  - Use the team, roles and runs.
-  - Main red → "main's check is failing", and "Code roles stop authoring until main's check passes".
-  - Budget → "over-cap model". The build alert → "Update available (N commits behind) — restarts when idle". Disk → "waiting: low disk".
-  - Quiet hours and pause follow the rules. Not running → "tumwater is not running — start it with `tumwater start`".
-  - The image alerts say "A run that reads an image …".
-  - Keep the `act` values and `AlertLoop` field names; the scripting series owns them.
-- `inFlightDetail` and `STALL_SOURCE` (src/ui/tick-progress-model.ts): "no pi output for 9m" → "no agent output for 9m", in both the emitted text and the regex. The dashboard model and the stuck alert interpolate that regex, so they follow. Add a test that feeds `inFlightDetail`'s actual output, not a literal, to the browser stall check.
-- src/ui/tone.ts has no visible text. Add the header, and mark the event-type and result lists and the `EventKind` value `"landing"` where the guard flags them.
-- Add the header alone to src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts and src/ui/transcript-tail.ts, which have no hits today.
-- Convert the prose in src/status/status-budget.ts, status-polls.ts and status-roles.ts and add the header. "pi default" stays, because it names pi's own default model.
-
-**Files touched.**
-- src: src/ui/status-render.ts, src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/tone.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts, src/status/status-budget.ts, src/status/status-polls.ts, src/status/status-roles.ts, src/text/datetime.ts.
-- Tests:
-  - test/status-render.test.ts, test/status-render-cells.test.ts, test/status-header.test.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/progress.test.ts.
-  - test/tui-frame.test.ts (the table rows), test/status-payload.test.ts (the preformatted badges), test/role-view.test.ts (the `sleeping` next run), test/gui-client.test.ts (the stall regex).
-
-**Acceptance criteria.**
-- The `tumwater status` header row reads `role state runs commits output peak ctx cost today last run last merged last result next run`.
-- A `feature-2` row starts `feature #2`, a `no_change` result reads `no change`, and the next run of a role sleeping after a failure reads `sleeping 12m`.
-- A build behind main shows `update available (3 commits behind) — restarts when idle` in both the header and the alert. A non-empty merge queue shows `merge queue: 2`, and permits show `running 5 of 8`.
-- A silent run's state reads `no agent output for 9m` and still raises the "looks stuck" alert.
-- `npm run test` passes.
-
 ### Plain terms text, part 5/19: Report and failure digest and history and the run drill-down say runs and merges (planned 2026-10-16 by user; requires part 1/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/report/ + src/failure/ + src/history/ + src/tick/tick-detail.ts + src/tick/tick-detail-data.ts + tests)
 
 **Goal.** These views read in runs, merges, roles and the team, and their outcome columns show labels:
@@ -3326,6 +3273,59 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (done 2026-10-16; planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
+
+**Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
+- The columns become `role · state · runs · commits · output · peak ctx · cost · today · last run · last merged · last result · next run`.
+- An update badge replaces STALE, and `running 5 of 8` replaces `slots 5/8`.
+- Raw results show as labels.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderStatusSpans` (src/ui/status-render.ts):
+  - Column headers: `loop` → `role`, `ticks` → `runs`, `last tick` → `last run`, `last landed` → `last merged`.
+  - `gen` → `output`. The column counts the tokens the last run generated, not restarts, and "generation" is now a retired word for restarts, so `gen` would read wrong.
+  - `peak ctx`, `commits`, `cost`, `today`, `last result` and `next run` stay.
+  - The role cell prints `roleLabel(id)`, and the last-result cell prints `eventTypeLabel(result)`. "user-defined loop" → "custom role".
+  - Helper names (`lastTickCell`, `lastLandedCell`) stay for the code series.
+- `nextRunPhrase` (src/text/datetime.ts): the `backoff ` prefix → `sleeping `. The status cell and `tumwater role`'s schedule line share it, so update both suites.
+- src/ui/badges.ts:
+  - `buildBadge` → "update available (N commits behind) — restarts when idle", keeping "restart blocked".
+  - `landingBadge` → " · merge queue: N".
+  - `permitsBadge` → " · running 5 of 8".
+  - The claude window fragment "claude seams held until HH:MM" → "claude model jobs wait until HH:MM".
+  - `budgetBadge`'s "fallback:" → "over-cap model:".
+  - `bootstrapBadge`, `diskBadge`, `pauseBadge`, `quietBadge` and `wakeBadge` follow the rules.
+- `fleetAlerts` (src/ui/fleet-alerts.ts), every title and detail:
+  - Use the team, roles and runs.
+  - Main red → "main's check is failing", and "Code roles stop authoring until main's check passes".
+  - Budget → "over-cap model". The build alert → "Update available (N commits behind) — restarts when idle". Disk → "waiting: low disk".
+  - Quiet hours and pause follow the rules. Not running → "tumwater is not running — start it with `tumwater start`".
+  - The image alerts say "A run that reads an image …".
+  - Keep the `act` values and `AlertLoop` field names; the scripting series owns them.
+- `inFlightDetail` and `STALL_SOURCE` (src/ui/tick-progress-model.ts): "no pi output for 9m" → "no agent output for 9m", in both the emitted text and the regex. The dashboard model and the stuck alert interpolate that regex, so they follow. Add a test that feeds `inFlightDetail`'s actual output, not a literal, to the browser stall check.
+- src/ui/tone.ts has no visible text. Add the header, and mark the event-type and result lists and the `EventKind` value `"landing"` where the guard flags them.
+- Add the header alone to src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts and src/ui/transcript-tail.ts, which have no hits today.
+- Convert the prose in src/status/status-budget.ts, status-polls.ts and status-roles.ts and add the header. "pi default" stays, because it names pi's own default model.
+
+**Files touched.**
+- src: src/ui/status-render.ts, src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/tone.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts, src/status/status-budget.ts, src/status/status-polls.ts, src/status/status-roles.ts, src/text/datetime.ts.
+- Tests:
+  - test/status-render.test.ts, test/status-render-cells.test.ts, test/status-header.test.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/progress.test.ts.
+  - test/tui-frame.test.ts (the table rows), test/status-payload.test.ts (the preformatted badges), test/role-view.test.ts (the `sleeping` next run), test/gui-client.test.ts (the stall regex).
+
+**Acceptance criteria.**
+- The `tumwater status` header row reads `role state runs commits output peak ctx cost today last run last merged last result next run`.
+- A `feature-2` row starts `feature #2`, a `no_change` result reads `no change`, and the next run of a role sleeping after a failure reads `sleeping 12m`.
+- A build behind main shows `update available (3 commits behind) — restarts when idle` in both the header and the alert (the suffix only while a restart is pending). A non-empty merge queue shows `merge queue: 2`, and permits show `running 5 of 8`.
+- A silent run's state reads `no agent output for 9m` and still raises the "looks stuck" alert.
+- `npm run test` passes.
 
 ### Plain terms text, part 15/19: Merge pipeline and review and check messages (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/landing/ + src/review/ + src/verdict/ + src/build/ + tests; done 2026-10-16)
 

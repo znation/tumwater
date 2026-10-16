@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { LoopState } from "../loop/loop-state.js";
 import { readLiveProgress, type LiveProgress, type ProgressRunKind } from "./progress-data.js";
 import { compactTokens } from "../text/format.js";
@@ -56,13 +57,13 @@ function progressOfTick(s: LoopState, p: LiveProgress | null | undefined): LiveP
 }
 
 /** The stall phrases a phase label can carry — inFlightDetail appends "tool call stalled:
- * <tool>" and "no pi output for <duration>" to the head — as a regex SOURCE string plus the
+ * <tool>" and "no agent output for <duration>" to the head — as a regex SOURCE string plus the
  * compiled matcher, single-homed beside the code that renders those phrases. Every consumer
  * that must recognize a stall inside a rendered phase label goes through these two, so the
  * server-side alert (fleet-alerts.ts) and the dashboard's browser twin (gui-client-model.ts,
  * interpolating the source into its String.raw script) cannot drift from the wording the cell
  * actually renders. */
-export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no pi output for [^·]*`;
+export const STALL_SOURCE = String.raw`tool call stalled[^·]*|no agent output for [^·]*`;
 
 /** STALL_SOURCE compiled — the server-side matcher (fleet-alerts.ts's stuck alert). */
 export const STALL_RE = new RegExp(STALL_SOURCE);
@@ -82,7 +83,7 @@ export function inFlightDetail(head: string, p: LiveProgress | null): string {
   else if (p.lastTool) parts.push(p.lastTool);
   // Silence under five minutes is normal (slow local-model prefills, long tool calls);
   // only flag a stall once at least five minutes have passed without any pi output.
-  if (p.quietMs >= 300_000) parts.push(`no pi output for ${duration(p.quietMs)}`);
+  if (p.quietMs >= 300_000) parts.push(`no agent output for ${duration(p.quietMs)}`);
   return parts.join(" · ");
 }
 

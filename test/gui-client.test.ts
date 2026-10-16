@@ -5,6 +5,8 @@ import { loopPhase, loopRank, sortLoopsByState } from "../src/ui/status-model.js
 import { clientScope, iconStub } from "./helpers/gui-client-scope.js";
 import { GUI_CLIENT_JS } from "../src/ui/gui/gui-client.js";
 import { shortSha as tsShortSha, usd as tsUsd, usdCap as tsUsdCap } from "../src/text/format.js";
+import { inFlightDetail } from "../src/ui/tick-progress-model.js";
+import type { LiveProgress } from "../src/ui/progress-data.js";
 import { eventKind as tsEventKind } from "../src/ui/tone.js";
 import { parseBudgetInput } from "../src/ui/tui/tui-input.js";
 
@@ -27,9 +29,10 @@ interface Model {
   splitTitle(t: string): { title: string; meta: string };
   queuedPrompts(d: object): Array<{ role: string; preview: string; file: string; queuedAtMs: number | null }>;
   LOOP_GROUPS: Array<Array<string | number>>;
+  STALL: RegExp;
 }
 const model = clientScope<Model>(["format", "view-model"],
-  ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS"]);
+  ["phaseInfo", "resultInfo", "resultWhy", "loopRank", "sortLoops", "pageAlerts", "needsYou", "eventKind", "splitTitle", "queuedPrompts", "LOOP_GROUPS", "STALL"]);
 
 test("every phase label loopPhase renders maps to a known status on the page", () => {
   const now = Date.now();
@@ -183,7 +186,7 @@ test("tick results read as words with the tone of their outcome", () => {
 });
 
 test("the page shows the payload's alerts, led by its own offline notice", () => {
-  const alerts = [{ key: "failing", tone: "red", title: "qa is failing tick after tick", detail: "", actions: [] }];
+  const alerts = [{ key: "failing", tone: "red", title: "qa is failing run after run", detail: "", actions: [] }];
   assert.deepEqual(model.pageAlerts({ alerts }, false), alerts, "the server's alerts, as sent");
   assert.deepEqual(model.pageAlerts({ alerts }, true).map((a) => a.key), ["offline", "failing"], "a lost server comes first");
   assert.deepEqual(model.pageAlerts(null, true).map((a) => a.key), ["offline"], "even before any payload");
@@ -647,4 +650,11 @@ test("the page's workSplit names the work/maintenance commit split", () => {
 
   assert.equal(workSplit({ workCommits: 2, maintenanceCommits: 3 }), "2 work / 3 maintenance");
   assert.equal(workSplit({}), "0 work / 0 maintenance", "a missing split reads zero, not undefined");
+});
+
+test("the browser stall check matches the silent-run text inFlightDetail renders", () => {
+  const silent = { turns: 1, contextTokens: 0, quietMs: 9 * 60_000, lastTool: null, stalledTool: null } as unknown as LiveProgress;
+  const detail = inFlightDetail("working 12m", silent);
+  assert.match(detail, /no agent output for 9m/);
+  assert.ok(model.STALL.test(detail), `the page flags "${detail}" as stalled`);
 });

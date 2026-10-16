@@ -61,15 +61,15 @@ test("totals row shows zeros without breaking alignment", () => {
 // name plus one footnote line under the table — and a fleet without any of them renders the
 // exact same table as before the marker existed.
 
-test("status table marks user-defined loops with an asterisk and a footnote", () => {
+test("status table marks custom roles with an asterisk and a footnote", () => {
   const snap = snapshotWith([{ role: "clean" }, { role: "nightly", custom: true }]);
   const text = renderStatus(tmpdir(), snap);
   assert.match(text, /nightly\*/);
   assert.doesNotMatch(text, /clean\*/, "built-ins stay unmarked");
   // The footnote is the line under the table — one per fleet, not per loop.
   const lines = text.split("\n");
-  assert.equal(lines[lines.length - 1], "* user-defined loop");
-  assert.equal(text.match(/user-defined loop/g)?.length, 1);
+  assert.equal(lines[lines.length - 1], "* custom role");
+  assert.equal(text.match(/custom role/g)?.length, 1);
 
   // No customs: no asterisk anywhere and the table still ends at its totals row.
   const plain = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }, { role: "dry" }]));
@@ -86,10 +86,10 @@ test("status table tags the loops running on a model-fallback episode", () => {
     { role: "clean" },
   ]);
   const text = renderStatus(tmpdir(), snap);
-  assert.match(text, /feature \(on fallback\)/);
-  assert.doesNotMatch(text, /clean \(on fallback\)/);
+  assert.match(text, /feature \(over-cap model\)/);
+  assert.doesNotMatch(text, /clean \(over-cap model\)/);
   // No episode: the suffix is absent everywhere, so the table is unchanged.
-  assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /\(on fallback\)/);
+  assert.doesNotMatch(renderStatus(tmpdir(), snapshotWith([{ role: "feature" }])), /\(over-cap model\)/);
 });
 
 // Parallel work instances, part 6/7: an idle instance's state cell leads with the entry it
@@ -276,7 +276,7 @@ test("renderStatus shows the main-red blockage in a blocked loop's state cell an
   ]);
   const out = renderStatus(tmpdir(), { ...snap, running: true });
   assert.match(out, /feature\s+main's check is failing/);
-  assert.match(out, /main_red — code merges blocked until main is green/);
+  assert.match(out, /main's check is failing — code merges blocked until main is green/);
   assert.match(out, /bugfix\s+due/);
 });
 
@@ -372,7 +372,7 @@ test("renderStatus shows paused in idle role loops' state cells ahead of waiting
   );
   assert.match(paused, /feature\s+paused/);
   assert.doesNotMatch(paused, /waiting: budget spent/);
-  assert.doesNotMatch(paused, /main's check is failing/);
+  assert.doesNotMatch(paused, /feature\s+main's check is failing/);
   assert.match(paused, /director\s+ready for messages/);
 });
 
@@ -387,7 +387,7 @@ test("renderStatus keeps role loops working under the fallback and pauses them w
   });
   assert.doesNotMatch(degraded, /waiting: budget spent/, "a fallback fleet is not a stopped fleet");
   assert.match(degraded, /feature\s+due/);
-  assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · fallback: local-free \(cost n\/a\)$/);
+  assert.match(headerOf(degraded), /· budget: \$50\.00\/\$50 today · over-cap model: local-free \(cost n\/a\)$/);
 
   // The same spend with no usable fallback pauses the role loops, exactly as before — per
   // role now (part 5c/8): the snapshot's budgetPausedRoles set, not a fleet-wide verdict.
@@ -690,7 +690,7 @@ test("status renders the fleet-attention banners for a spent budget and an open 
   // The banner block sits between the header's blank line and the table: one line per alert,
   // its mark and title in the alert's tone, then the detail — the exact wording the
   // dashboard and TUI draw from the same fleetAlerts source.
-  assert.match(lines[2] ?? "", /^! Today's budget is spent, so the role loops are paused — Spent \$60\.00 of the \$50 cap\. They resume at midnight, or as soon as you raise the cap\.$/);
+  assert.match(lines[2] ?? "", /^! Today's budget is spent, so the roles are paused — Spent \$60\.00 of the \$50 cap\. They resume at midnight, or as soon as you raise the cap\.$/);
   assert.match(lines[3] ?? "", /^\? 1 question needs your answer — Should we ship it\?$/);
 });
 
@@ -700,5 +700,5 @@ test("status renders no banner block on an alert-free fleet", () => {
   // Header at 0, its blank line at 1, then the table's header/separator at 2+ — a healthy
   // fleet keeps the banner block empty, so the output is byte-identical to a pre-banner status.
   assert.equal(lines[1], "");
-  assert.match(lines[2] ?? "", /^loop\b/, "the line after the header blank is the table, not a banner");
+  assert.match(lines[2] ?? "", /^role\b/, "the line after the header blank is the table, not a banner");
 });

@@ -85,7 +85,7 @@ test("workingDetail flags a stalled run only after at least five minutes of sile
   assert.doesNotMatch(workingDetail(root, freshLoopState("clean")), /no pi output/);
   // Six minutes of silence crosses it.
   backdate(file, 6 * 60_000);
-  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 6m/);
+  assert.match(workingDetail(root, freshLoopState("clean")), /no agent output for 6m/);
 });
 
 test("a tick's baseline check shows no previous run's detail and no false quiet alarm", () => {
@@ -230,7 +230,7 @@ test("loopPhase flags a stalled reviewer run after five minutes of silence", () 
   const s = freshLoopState("feature");
   s.running = true;
   s.phase = "review";
-  assert.match(loopPhase(s, true, root), /no pi output for 6m/);
+  assert.match(loopPhase(s, true, root), /no agent output for 6m/);
 });
 
 // duration()'s hours bucket (>= 1h): every elapsed fixture above stays under an hour, so the
@@ -265,7 +265,7 @@ test("workingDetail's stall flag uses the hours bucket for long silences", () =>
   const file = writePiLog(root, "clean", [SESSION, assistantLine("hanging", { tokens: 100 })]);
   // Ninety minutes without pi output: the stall part must read 1h30m, not 90m.
   backdate(file, 5400_000);
-  assert.match(workingDetail(root, freshLoopState("clean")), /no pi output for 1h30m/);
+  assert.match(workingDetail(root, freshLoopState("clean")), /no agent output for 1h30m/);
 });
 
 test("loopPhase names a consecutive no-change streak on the resting state cell", () => {

@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { isLandingChange, readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
@@ -114,9 +115,9 @@ function scanMainCheck(root: string): MainCheckScan {
     // every landed event. The landings are re-read against the check's ts below — a pass
     // over the landings alone, not a second pass over every event in the window.
     for (const e of events) {
-      if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) {
+      if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) { // vocabulary-ok: persisted event scope value
         check = e;
-      } else if (e.type === "landed" && typeof e.ts === "number") {
+      } else if (e.type === "landed" && typeof e.ts === "number") { // vocabulary-ok: event type code
         landed.push(e);
       }
     }

@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { LoopState } from "../loop/loop-state.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { dailyCost } from "../budget/budget.js";
@@ -9,6 +10,8 @@ import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
+import { eventTypeLabel } from "../events/event-labels.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -279,7 +282,7 @@ export function renderStatusSpans(
   // on it.
   // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
   // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
-  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last landed", "last result", "next run"];
+  const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
   // its own, up to three stats + reads per loop per second. The phase is computed once per
@@ -326,8 +329,8 @@ export function renderStatusSpans(
         : "";
     // Model failure fallback, part 2/2: while the loop runs off-model its name cell says so,
     // so the operator can see which loops the fallback pair is carrying without reading logs.
-    const fallbackSuffix = s.fallback ? " (on fallback)" : "";
-    const name = (s.custom ? `${s.role}*` : s.role) + modelSuffix + fallbackSuffix;
+    const fallbackSuffix = s.fallback ? " (over-cap model)" : "";
+    const name = (s.custom ? `${roleLabel(s.role)}*` : roleLabel(s.role)) + modelSuffix + fallbackSuffix;
     const state = stateCell(root, s, phase, live);
     const tone = phaseTone(phase);
     // The whole state cell carries the phase's tone: a work item leads the cell (so it
@@ -350,9 +353,9 @@ export function renderStatusSpans(
       cell(lastTickCell(s.lastTickEndedAt)),
       cell(lastLandedCell(s.lastLandedAt)),
       s.lastResult
-        ? [{ text: s.lastResult, ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
+        ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
         : cell("-"),
-      cell(next, next.startsWith("backoff") ? "yellow" : undefined),
+      cell(next, next.startsWith("sleeping") ? "yellow" : undefined),
     ];
   });
   const totalsRow: StatusSpan[][] = [
@@ -442,7 +445,7 @@ export function renderStatusSpans(
   lines.push(fmt(totalsRow, "bold"));
   // One footnote under the table when any custom loop exists — explains the asterisk without
   // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
-  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
+  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* custom role", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
   return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops };

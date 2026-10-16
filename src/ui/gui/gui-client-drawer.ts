@@ -146,7 +146,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // a suffixed "now" passes through as-is — it is due now, not a future time.
     const nextNote = next === "-" ? "—"
       : next === "now" || next.startsWith("now ") ? next
-      : next.startsWith("backoff ") ? "in " + next.slice(8) + " (backoff)"
+      : next.startsWith("sleeping ") ? "in " + next.slice(9) + " (backoff)"
       : "in " + next;
     const tickWord = info.live ? "this tick" : "last tick";
     const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Ticks", String(l.ticks)) +

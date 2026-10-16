@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Local date/time formatting and calendar-day arithmetic — the zero-padded clock and
  * calendar parts, local-midnight day math, and the report-window header every display and
  * report surface (transcript run separators, the status table's last-tick cell, daily-budget
@@ -146,7 +147,7 @@ export function nextRunPhrase(
   if (remainSeconds <= 0) return dueWord;
   const label = humanSeconds(remainSeconds);
   const base = withIn ? `in ${label}` : label;
-  return backoff ? `backoff ${base}` : base;
+  return backoff ? `sleeping ${base}` : base;
 }
 
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window

@@ -27,7 +27,7 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
   const fallback = { provider: "omlx", model: "local-free" };
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback }),
-    " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: local-free (cost n/a)",
     "at the cap with a usable fallback: the badge says what the fleet is running on now",
   );
   assert.equal(
@@ -43,7 +43,7 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
   // A fallback naming only a provider still identifies itself.
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx" } }),
-    " · budget: $50.00/$50 today · fallback: omlx (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: omlx (cost n/a)",
   );
 });
 
@@ -53,7 +53,7 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
 test("budgetBadge agent-qualifies a claude fallback", () => {
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "claude", model: "claude-sonnet-5-5" }, tiers: null }),
-    " · budget: $50.00/$50 today · fallback: claude/claude-sonnet-5-5 (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: claude/claude-sonnet-5-5 (cost n/a)",
   );
 });
 
@@ -63,20 +63,20 @@ test("budgetBadge lists the tiers when the fallback resolves to two or more dist
   const tiers = { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" };
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers }),
-    " · budget: $50.00/$50 today · fallback: small: free/qwen-free (from default), default: free/qwen-free, strong: free/llama-free (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: small: free/qwen-free (from default), default: free/qwen-free, strong: free/llama-free (cost n/a)",
     "a strong-tier borrow must be visible at a glance",
   );
   // A one-entry map (a torn snapshot — never emitted by status-data, which requires two
   // distinct pairs) falls back to the single-pair text, exactly like an absent map.
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "free", model: "qwen-free" }, tiers: { default: "free/qwen-free" } }),
-    " · budget: $50.00/$50 today · fallback: qwen-free (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: qwen-free (cost n/a)",
   );
   // Without the map — the single-fallback state the pre-tier badge saw — the single-pair
   // text stands byte-identical.
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "omlx", model: "local-free" }, tiers: null }),
-    " · budget: $50.00/$50 today · fallback: local-free (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: local-free (cost n/a)",
   );
 });
 
@@ -119,8 +119,8 @@ test("landingBadge shows the land queue depth and stays empty when idle", () => 
   // is queued or landing (in-flight landings always count toward depth — their entry stays
   // in the queue until its outcome).
   assert.equal(landingBadge({ depth: 0 }), "", "idle queue adds nothing to the header");
-  assert.equal(landingBadge({ depth: 1 }), " · land queue: 1");
-  assert.equal(landingBadge({ depth: 3 }), " · land queue: 3");
+  assert.equal(landingBadge({ depth: 1 }), " · merge queue: 1");
+  assert.equal(landingBadge({ depth: 3 }), " · merge queue: 3");
 });
 
 // The timed-pause countdown: the badge stands only while a
@@ -193,7 +193,7 @@ test("permitsBadge shows the fleet line slots and stays byte-identical without a
       claude: { inUse: 2, limit: 6, waiting: 0 },
       huggingface: { inUse: 1, waiting: 0 },
     } }),
-    " · slots 5/8 · claude 2/6 · omlx 3/3",
+    " · running 5 of 8 · claude 2/6 · omlx 3/3",
   );
 });
 
@@ -249,7 +249,7 @@ test("budgetBadge renders the subscription window in place of or beside the dail
       primary: { type: "five_hour", status: "rejected", resetsAt: at(15, 0), utilization: 1, observedAt: 0 },
       heldUntil: at(15, 0),
     })),
-    " · Claude 5h · 100% · claude seams held until 15:00",
+    " · Claude 5h · 100% · claude model jobs wait until 15:00",
     "rejected: the held wording replaces resets",
   );
   assert.equal(
@@ -303,11 +303,11 @@ test("budgetBadge's backend-default fallback label follows the fleet agent", () 
   // claude fleet says so, a pi fleet stays byte-identical to before.
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {}, agent: "claude" }),
-    " · budget: $50.00/$50 today · fallback: claude default (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: claude default (cost n/a)",
   );
   assert.equal(
     budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {} }),
-    " · budget: $50.00/$50 today · fallback: pi default (cost n/a)",
+    " · budget: $50.00/$50 today · over-cap model: pi default (cost n/a)",
   );
 });
 

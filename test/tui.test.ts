@@ -122,7 +122,7 @@ test("runTui shows the land queue badge in the header while a landing is queued"
     enqueuedAt: Date.now(),
   });
   await withTui(repo, async (tui) => {
-    assert.match(tui.lastFrame(), /· land queue: 1/);
+    assert.match(tui.lastFrame(), /· merge queue: 1/);
   });
 });
 

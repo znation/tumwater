@@ -725,7 +725,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     want: string;
   }> = [
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "3m" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", fleet: true, want: "backoff 3m" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240 }, phase: "queued", fleet: true, want: "sleeping 3m" },
     { state: { nextRunAt: now - 5_000, backoffSeconds: 0 }, phase: "queued", fleet: true, want: "now" },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0, running: true }, phase: "working 3m", fleet: true, want: "-" },
     { state: { nextRunAt: now + 180_000, backoffSeconds: 0 }, phase: "merging 1m · checking", fleet: true, want: "-" },
@@ -746,7 +746,7 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
     // Yield-scaled clocks: the payload's yieldMultiplier rides the cell as ×N, the same
     // rule nextRunCell applies — a quiet role's effective gap is longer than the countdown.
     { state: { nextRunAt: now - 5_000, backoffSeconds: 0, recentOutcomes: "n".repeat(16) }, phase: "queued", fleet: true, want: "now ×4" },
-    { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", fleet: true, want: "backoff 3m ×8" },
+    { state: { nextRunAt: now + 180_000, backoffSeconds: 240, recentOutcomes: "n".repeat(20) }, phase: "queued", fleet: true, want: "sleeping 3m ×8" },
   ];
   for (const c of cases) {
     const s = { ...freshLoopState("clean"), ...c.state } as LoopState;

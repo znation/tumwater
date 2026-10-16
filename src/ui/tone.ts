@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { loopRank } from "./status-model.js";
 
 /** The shared COLOR/EVENT-CLASSIFICATION vocabulary of the observer surfaces, split out of
@@ -62,7 +63,7 @@ export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_co
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"];
+export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
@@ -86,7 +87,7 @@ const ROUTINE_BUILD_RESULT_SET = new Set(ROUTINE_BUILD_RESULTS);
  * passed or was skipped — then the named event sets, with anything unrecognized reading as
  * info (an event this file predates is news until it is classified). */
 export function eventKind(type: string, result?: string): EventKind {
-  if (type === "merged") return "landing";
+  if (type === "merged") return "landing"; // vocabulary-ok: EventKind value renamed by the code series
   if (type === "question_posted") return "attention";
   if (type === "entry_refused") return "attention";
   if (type === "tick_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";

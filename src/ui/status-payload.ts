@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
 import { backlogMarks } from "../backlog/backlog-eligibility.js";
 import { readEvents } from "../events/event-read.js";

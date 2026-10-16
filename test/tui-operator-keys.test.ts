@@ -248,12 +248,12 @@ test("Ctrl+F toggles the fleet pause marker through pauseFleet/resumeFleet and f
     assert.equal(isFleetPaused(repo), true);
     assert.match(tui.lastFrame(), /team paused — roles start no new runs/);
     // The next frame's fleet alert reads the marker, so the resume action is visible too.
-    assert.match(tui.lastFrame(), /The fleet is paused/);
+    assert.match(tui.lastFrame(), /The team is paused/);
 
     tui.key(undefined, "f", { ctrl: true });
     assert.equal(isFleetPaused(repo), false);
     assert.match(tui.lastFrame(), /team resumed — roles run again/);
-    assert.doesNotMatch(tui.lastFrame(), /The fleet is paused/);
+    assert.doesNotMatch(tui.lastFrame(), /The team is paused/);
   });
 });
 
