@@ -5,22 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### After a Claude subscription window that ran into paid overage resets, Claude model jobs stay on the over-cap model until local midnight: the account file keeps the reset window's `isUsingOverage` (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md)
-
-- **Symptom:** not seen live, because no window has run out yet. In every `rate_limit_event` in the Claude native logs on disk, this account reports `overageStatus: "allowed"`. So when a window runs out, claude keeps running on paid extra usage, and each such run's cost counts toward `maxDailyCostUsd`. Once spend reaches the cap, `budget_fallback` moves Claude model jobs to the over-cap model, which is correct while the account is in overage. When that window's `resetsAt` passes, the subscription is free again. But the budget gate still treats Claude as priced and keeps those jobs on the over-cap model until local midnight, which can be hours of Claude capacity the team does not use.
-- **Reproduce:** against the built code on 2026-10-16, in a scratch root:
-  1. Write `.tumwater/state/claude-account.json` with `billing: "subscription"` and one `five_hour` window: `isUsingOverage: true`, `resetsAt` one minute in the past.
-  2. `readClaudeAccount(root, now)` returns that window as `{"status":"reset", …, "isUsingOverage":true}`.
-  3. `seamFree(null, { agent: "claude" }, account)` returns **false**. The same file without `isUsingOverage` returns true.
-- **Cause:**
-  - `readWindow` (src/agent/claude/claude-account.ts) changes a past-`resetsAt` window's status to `reset` but keeps its `isUsingOverage`.
-  - `accountUsesOverage` (src/pi/pi-models.ts:186) checks every window's `isUsingOverage`, including reset windows. So `seamFree` and `piPairFree` call subscription Claude not free.
-  - Only a Claude run rewrites the file (src/tick/tick-finalize.ts:151, src/landing/landing-slot.ts:439). At the cap no Claude role run starts, so nothing clears the flag until midnight reopens the gate.
-  - The same flag can also keep the `overage` marker on the window badge after the reset (src/ui/badges.ts:142).
-- **Expected / fix sketch:** a window whose status reads `reset` is not in overage. When `readWindow` changes the status to `reset`, it should drop `isUsingOverage` and `overageStatus` too, so every reader agrees: `accountUsesOverage`, the badge, doctor, and the hold, which already skips reset windows.
-  - Tests: the reading above makes `seamFree` true for a subscription Claude model job; a window still open and in overage keeps it false; and `checkClaudeWindow` and the badge show no `overage` for a reset window.
-  - plans/fallback-chain.md part 5/7 relies on this rule.
-
 ### A director prompt sent while the Claude subscription window is rejected runs again on every poll, and after 10 failures the repeated-failure pause stops the director until you resume it by hand (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md)
 
 - **Symptom:** read from the code, not seen live; no window has been rejected yet. The setup: `agent: "claude"` on a subscription without extra usage, a window `rejected`, and a prompt sent to the director.
@@ -85,6 +69,24 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Expected / fix sketch:** add a "Merge failures" section. Count `land_failed` by result and role, and attach the nearest preceding warning for the same role: a red check, a structure or fix-claim block, or the new fast-forward reason once the entry above lands. List a block with no reason as its own cluster, since that is a signal in itself. Rename the time table's "error" column, or split rejected and blocked out of it, so it cannot sit beside "no run errors".
 
 ## Fixed
+
+### After a Claude subscription window that ran into paid overage resets, Claude model jobs stay on the over-cap model until local midnight: the account file keeps the reset window's `isUsingOverage` (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md) — fixed 2026-10-16
+
+- **Symptom:** not seen live, because no window has run out yet. In every `rate_limit_event` in the Claude native logs on disk, this account reports `overageStatus: "allowed"`. So when a window runs out, claude keeps running on paid extra usage, and each such run's cost counts toward `maxDailyCostUsd`. Once spend reaches the cap, `budget_fallback` moves Claude model jobs to the over-cap model, which is correct while the account is in overage. When that window's `resetsAt` passes, the subscription is free again. But the budget gate still treats Claude as priced and keeps those jobs on the over-cap model until local midnight, which can be hours of Claude capacity the team does not use.
+- **Reproduce:** against the built code on 2026-10-16, in a scratch root:
+  1. Write `.tumwater/state/claude-account.json` with `billing: "subscription"` and one `five_hour` window: `isUsingOverage: true`, `resetsAt` one minute in the past.
+  2. `readClaudeAccount(root, now)` returns that window as `{"status":"reset", …, "isUsingOverage":true}`.
+  3. `seamFree(null, { agent: "claude" }, account)` returns **false**. The same file without `isUsingOverage` returns true.
+- **Cause:**
+  - `readWindow` (src/agent/claude/claude-account.ts) changes a past-`resetsAt` window's status to `reset` but keeps its `isUsingOverage`.
+  - `accountUsesOverage` (src/pi/pi-models.ts:186) checks every window's `isUsingOverage`, including reset windows. So `seamFree` and `piPairFree` call subscription Claude not free.
+  - Only a Claude run rewrites the file (src/tick/tick-finalize.ts:151, src/landing/landing-slot.ts:439). At the cap no Claude role run starts, so nothing clears the flag until midnight reopens the gate.
+  - The same flag can also keep the `overage` marker on the window badge after the reset (src/ui/badges.ts:142).
+- **Expected / fix sketch:** a window whose status reads `reset` is not in overage. When `readWindow` changes the status to `reset`, it should drop `isUsingOverage` and `overageStatus` too, so every reader agrees: `accountUsesOverage`, the badge, doctor, and the hold, which already skips reset windows.
+  - Tests: the reading above makes `seamFree` true for a subscription Claude model job; a window still open and in overage keeps it false; and `checkClaudeWindow` and the badge show no `overage` for a reset window.
+  - plans/fallback-chain.md part 5/7 relies on this rule.
+- **Fixed:** `readWindow` drops `isUsingOverage` and `overageStatus` when it flips a window to `reset`; test in test/claude-account.test.ts.
+- **Validation gap:** none — the reproduction in the entry confirmed it and a unit test pins it.
 
 ### A restart hold that adopts the cooldown's pre-warmed compile logs no `restart_pending`, so the event log never says the team stopped starting runs: on 2026-10-16 a 10-minute hold ended in two aborted runs with nothing before them in the feed (found by operator session 2026-10-16 from feature-2's and feature-3's aborted runs) — fixed 2026-10-16
 

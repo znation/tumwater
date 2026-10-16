@@ -139,7 +139,7 @@ export function readClaudeAccount(root: string, now = Date.now()): ClaudeAccount
 
 /** One window entry from the file, healed: a non-object or a status-less entry is dropped, a
  * missing per-window `observedAt` falls back to the file's, and a past `resetsAt` flips the
- * status to `reset`. */
+ * status to `reset` and drops the overage flags. */
 function readWindow(value: unknown, fileObservedAt: number, now: number): ClaudeWindow | undefined {
   if (!isJsonObject(value) || typeof value.status !== "string") return undefined;
   const observedAt = finiteNumber(value.observedAt, fileObservedAt);
@@ -149,12 +149,14 @@ function readWindow(value: unknown, fileObservedAt: number, now: number): Claude
   // non-finite fraction would render as `Infinity%` in the badges and poison the
   // claudeWindowEntries comparator (Infinity - Infinity is NaN).
   const utilization = finiteNumber(value.utilization, undefined);
+  const reset = resets && resetsAt <= now;
   const window: ClaudeWindow = {
-    status: resets && resetsAt <= now ? "reset" : value.status,
+    status: reset ? "reset" : value.status,
     ...(resets ? { resetsAt } : {}),
     ...(utilization !== undefined ? { utilization } : {}),
-    ...(typeof value.overageStatus === "string" ? { overageStatus: value.overageStatus } : {}),
-    ...(value.isUsingOverage === true ? { isUsingOverage: true } : {}),
+    // a reset window is no longer in overage: dropping both keeps every reader in agreement
+    ...(!reset && typeof value.overageStatus === "string" ? { overageStatus: value.overageStatus } : {}),
+    ...(!reset && value.isUsingOverage === true ? { isUsingOverage: true } : {}),
     observedAt,
   };
   return window;

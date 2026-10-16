@@ -66,6 +66,23 @@ test("readClaudeAccount: a window past its resetsAt reads back as reset", () => 
   assert.equal(read?.windows.seven_day?.status, "allowed", "a future window keeps its status");
 });
 
+test("readClaudeAccount: a reset window drops its overage flags, an open one keeps them", () => {
+  const root = tmpdir();
+  const over = { isUsingOverage: true, overageStatus: "allowed", observedAt: 2_000 };
+  writeClaudeAccount(root, account({
+    observedAt: 2_000,
+    windows: {
+      five_hour: { status: "rejected", resetsAt: 1_500, ...over },
+      seven_day: { status: "rejected", resetsAt: 9_000, ...over },
+    },
+  }));
+
+  const read = readClaudeAccount(root, 5_000);
+  assert.deepEqual(read?.windows.five_hour, { status: "reset", resetsAt: 1_500, observedAt: 2_000 });
+  assert.equal(read?.windows.seven_day?.isUsingOverage, true);
+  assert.equal(read?.windows.seven_day?.overageStatus, "allowed");
+});
+
 test("readClaudeAccount drops a non-finite utilization instead of keeping Infinity", () => {
   // utilization is healed like the observedAt/resetsAt stamps: a hand-edited or torn file's
   // `1e999` parses to Infinity, which would render as `Infinity%` and make the
