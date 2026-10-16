@@ -209,8 +209,8 @@ test("the Rejections by loop chart stacks per role in the ticks order and stays 
     ["format", "report-chart"],
     ["reportRoleOrder", "chartTicksByRole", "chartRejectionsByRole"],
   );
-  const mkDay = (date: string, ticksByRole: Record<string, number>, rejectionsByRole?: Record<string, number>): ReportDay => ({
-    date, tokensOut: 0, ticksByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+  const mkDay = (date: string, runsByRole: Record<string, number>, rejectionsByRole?: Record<string, number>): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
     ...(rejectionsByRole ? { rejectionsByRole } : {}),
   });
   const data: ReportData = {
@@ -219,7 +219,7 @@ test("the Rejections by loop chart stacks per role in the ticks order and stays 
       mkDay("2026-09-01", { feature: 3 }, { feature: 2, bugfix: 1 }),
       mkDay("2026-09-02", { feature: 1 }, { qa: 1 }),
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const parseRects = (svg: string) =>

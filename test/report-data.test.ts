@@ -48,24 +48,24 @@ test("collectReport buckets run_end/merged events by local day and totals them",
 
   const d0 = data.series[0]; // at(4)
   assert.equal(d0?.tokensOut, 500);
-  assert.deepEqual(d0?.ticksByRole, { feature: 1, bugfix: 1 });
+  assert.deepEqual(d0?.runsByRole, { feature: 1, bugfix: 1 });
   assert.deepEqual(d0?.costByRole, { feature: 0.5 }, "cost splits by role from the same run_end event");
   assert.ok(Math.abs((d0?.costUsd ?? -1) - 0.5) < 1e-9);
   const d1 = data.series[1]; // at(3): a commit day with no ticks
   assert.equal(d1?.commits, 1);
   assert.equal(d1?.tokensOut, 0);
   const d2 = data.series[2]; // at(2): zero-filled gap
-  assert.deepEqual(d2, { date: dayKey(at(2)), tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
+  assert.deepEqual(d2, { date: dayKey(at(2)), tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 });
   const d3 = data.series[3]; // at(1)
   assert.equal(d3?.tokensOut, 1500);
   assert.deepEqual(d3?.costByRole, { feature: 1.25 });
   assert.ok(Math.abs((d3?.costUsd ?? -1) - 1.25) < 1e-9);
   const d4 = data.series[4]; // today
   assert.equal(d4?.commits, 1);
-  assert.deepEqual(d4?.ticksByRole, { feature: 1 });
+  assert.deepEqual(d4?.runsByRole, { feature: 1 });
 
   assert.equal(data.totals.tokensOut, 2010);
-  assert.equal(data.totals.ticks, 4);
+  assert.equal(data.totals.runs, 4);
   assert.equal(data.totals.commits, 2);
   assert.ok(Math.abs(data.totals.costUsd - 1.75) < 1e-9);
   // costByRole folds from the same run_end events as costUsd (never a second pass), so the
@@ -90,7 +90,7 @@ test("collectReport folds review_rejected events into per-day per-role rejection
   const data = collectReport(root, 4);
   const today = data.series[data.series.length - 1];
   assert.deepEqual(today?.rejectionsByRole, { feature: 2, qa: 1 });
-  assert.deepEqual(today?.ticksByRole, { feature: 1 }, "run_end still counts ticks alongside rejections");
+  assert.deepEqual(today?.runsByRole, { feature: 1 }, "run_end still counts ticks alongside rejections");
   // A day with no review_rejected has no rejectionsByRole key at all (zero means absent).
   for (const d of data.series) {
     if (d !== today) {
@@ -155,10 +155,10 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
   const data = collectReport(root, 5);
   // Only the in-window, well-timestamped event counts; the others vanish without a trace.
   assert.equal(data.totals.tokensOut, 500);
-  assert.equal(data.totals.ticks, 1);
-  assert.deepEqual(data.series[0]?.ticksByRole, { feature: 1 });
+  assert.equal(data.totals.runs, 1);
+  assert.deepEqual(data.series[0]?.runsByRole, { feature: 1 });
   for (const d of data.series) {
-    assert.deepEqual(Object.keys(d.ticksByRole), d.ticksByRole.feature ? ["feature"] : [], `${d.date} carries no phantom roles`);
+    assert.deepEqual(Object.keys(d.runsByRole), d.runsByRole.feature ? ["feature"] : [], `${d.date} carries no phantom roles`);
   }
 });
 
@@ -177,21 +177,21 @@ test("collectReport folds landed/land_failed usage into the day and totals, with
   // name the reviewer's part of it: both landing events' tokens/cost, 2 runs.
   assert.equal(today?.tokensOut, 45_600); // 100 tick tokens + 45,500 landing tokens
   assert.ok(Math.abs((today?.costUsd ?? -1) - 0.95) < 1e-9);
-  assert.equal(today?.landingRuns, 2);
-  assert.equal(today?.landingTokens, 45_500);
-  assert.ok(Math.abs((today?.landingCostUsd ?? -1) - 0.85) < 1e-9);
-  assert.equal(data.totals.landingRuns, 2);
-  assert.equal(data.totals.landingTokens, 45_500);
-  assert.ok(Math.abs(data.totals.landingCostUsd - 0.85) < 1e-9);
+  assert.equal(today?.mergeRuns, 2);
+  assert.equal(today?.mergeTokens, 45_500);
+  assert.ok(Math.abs((today?.mergeCostUsd ?? -1) - 0.85) < 1e-9);
+  assert.equal(data.totals.mergeRuns, 2);
+  assert.equal(data.totals.mergeTokens, 45_500);
+  assert.ok(Math.abs(data.totals.mergeCostUsd - 0.85) < 1e-9);
   assert.equal(data.totals.tokensOut, 45_600);
   assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
-  assert.equal(data.totals.ticks, 1);
+  assert.equal(data.totals.runs, 1);
   assert.equal(data.totals.commits, 1, "merged still counts only as a commit");
   // costByRole stays a ticks-only breakdown — the landing line is how the reviewer's share
   // is named, not a role entry.
   assert.ok(Math.abs(Object.values(today?.costByRole ?? {}).reduce((a, b) => a + b, 0) - 0.1) < 1e-9);
   // Landing fields are sparse: a day that folded no landing event carries none.
-  assert.ok(data.series.slice(0, 2).every((d) => !("landingCostUsd" in d)), "no landing keys on landing-free days");
+  assert.ok(data.series.slice(0, 2).every((d) => !("mergeCostUsd" in d)), "no landing keys on landing-free days");
 });
 
 test("collectReport reads a grown event log with bounded backwards I/O", () => {
@@ -208,10 +208,10 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
 
   const data = collectReport(root, 7);
   assert.equal(data.totals.tokensOut, 777); // the 2500 old ticks are out of window
-  assert.equal(data.totals.ticks, 1);
+  assert.equal(data.totals.runs, 1);
   assert.equal(data.totals.commits, 1);
   const today = data.series[data.series.length - 1];
-  assert.deepEqual(today?.ticksByRole, { feature: 1 });
+  assert.deepEqual(today?.runsByRole, { feature: 1 });
 });
 
 test("collectReport does not double-count an event appended between the cache's stat and its read", () => {
@@ -476,13 +476,13 @@ test("collectReport degrades to zeros when every source is missing", () => {
   assert.equal(data.from, dayKey(at(2)));
   assert.equal(data.to, dayKey(at(0)));
   for (const d of data.series) {
-    assert.deepEqual(d.ticksByRole, {});
+    assert.deepEqual(d.runsByRole, {});
     assert.deepEqual(d.costByRole, {});
     assert.equal(d.tokensOut + d.commits + d.costUsd + d.featuresDone + d.bugsFixed, 0);
   }
   assert.deepEqual(data.totals, {
     tokensOut: 0,
-    ticks: 0,
+    runs: 0,
     commits: 0,
     commitsByRole: {},
     workCommits: 0,
@@ -490,9 +490,9 @@ test("collectReport degrades to zeros when every source is missing", () => {
     costUsd: 0,
     featuresDone: 0,
     bugsFixed: 0,
-    landingRuns: 0,
-    landingTokens: 0,
-    landingCostUsd: 0,
+    mergeRuns: 0,
+    mergeTokens: 0,
+    mergeCostUsd: 0,
   });
 });
 
@@ -523,11 +523,11 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
     Math.abs(Date.parse(data.fromIso) - Date.parse(cutoffIso)) < 60_000,
     `fromIso ${data.fromIso} is the window's cutoff instant (±1min for test elapsed time)`,
   );
-  assert.equal(data.totals.ticks, 2);
+  assert.equal(data.totals.runs, 2);
   assert.equal(data.totals.tokensOut, 100);
   assert.equal(data.totals.commits, 1);
   assert.ok(Math.abs(data.totals.costUsd - 0.1) < 1e-9);
-  assert.deepEqual(data.ticksByRole, { feature: 1, bugfix: 1 });
+  assert.deepEqual(data.runsByRole, { feature: 1, bugfix: 1 });
   assert.deepEqual(data.costByRole, { feature: 0.1 }, "zero-cost ticks leave no cost key");
   assert.equal(data.coversFullWindow, true, "the log's oldest event predates the cutoff");
 });
@@ -542,14 +542,14 @@ test("collectReportSince folds landed/land_failed usage into the window totals",
     JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "landed", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }),
   ]);
   const data = collectReportSince(root, 6 * HOUR);
-  assert.equal(data.totals.landingRuns, 2);
-  assert.equal(data.totals.landingTokens, 45_500);
-  assert.ok(Math.abs(data.totals.landingCostUsd - 0.85) < 1e-9);
+  assert.equal(data.totals.mergeRuns, 2);
+  assert.equal(data.totals.mergeTokens, 45_500);
+  assert.ok(Math.abs(data.totals.mergeCostUsd - 0.85) < 1e-9);
   // The surfaced totals include the landing share — the same events the daily budget
   // charges — so the report and the budget header agree.
   assert.equal(data.totals.tokensOut, 45_600);
   assert.ok(Math.abs(data.totals.costUsd - 0.95) < 1e-9);
-  assert.equal(data.totals.ticks, 1);
+  assert.equal(data.totals.runs, 1);
 });
 
 test("collectReportSince aggregation matches a same-seed collectReport slice", () => {
@@ -560,7 +560,7 @@ test("collectReportSince aggregation matches a same-seed collectReport slice", (
     JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
   ]);
   const since = collectReportSince(root, HOUR);
-  assert.equal(since.totals.ticks, 2);
+  assert.equal(since.totals.runs, 2);
   assert.equal(since.totals.tokensOut, 332);
   assert.equal(since.totals.commits, 1);
   assert.ok(Math.abs(since.totals.costUsd - 0.2) < 1e-9);
@@ -571,7 +571,7 @@ test("collectReportSince aggregation matches a same-seed collectReport slice", (
   // carry the check on their own.)
   if (dayKey(ago(10 * 60_000)) === dayKey(Date.now())) {
     const day = collectReport(root, 2);
-    assert.equal(day.totals.ticks, since.totals.ticks);
+    assert.equal(day.totals.runs, since.totals.runs);
     assert.equal(day.totals.tokensOut, since.totals.tokensOut);
     assert.equal(day.totals.commits, since.totals.commits);
     assert.ok(Math.abs(day.totals.costUsd - since.totals.costUsd) < 1e-9);
@@ -622,7 +622,7 @@ test("collectReportSince rejects an out-of-range window and accepts the exact ca
   // so zero totals fall out of the same call).
   const data = collectReportSince(root, REPORT_SINCE_MAX_MS);
   assert.equal(data.sinceMs, REPORT_SINCE_MAX_MS);
-  assert.equal(data.totals.ticks, 0);
+  assert.equal(data.totals.runs, 0);
 });
 
 test("collectReportSince treats an empty or missing event log as fully covered, not truncated", () => {
@@ -630,14 +630,14 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
   const data = collectReportSince(empty, 6 * HOUR);
   assert.deepEqual(data.totals, {
     tokensOut: 0,
-    ticks: 0,
+    runs: 0,
     commits: 0,
     costUsd: 0,
-    landingRuns: 0,
-    landingTokens: 0,
-    landingCostUsd: 0,
+    mergeRuns: 0,
+    mergeTokens: 0,
+    mergeCostUsd: 0,
   });
-  assert.deepEqual(data.ticksByRole, {});
+  assert.deepEqual(data.runsByRole, {});
   assert.deepEqual(data.costByRole, {});
   assert.equal(data.coversFullWindow, true, "nothing was ever logged, so nothing rotated away");
   const out = renderSinceReportMarkdown(data);
@@ -661,34 +661,34 @@ test("collectReport scopes the day series and totals to one role, leaving fleet 
   const today = scoped.series[scoped.series.length - 1];
   assert.equal(scoped.role, "feature");
   assert.equal(today?.tokensOut, 500, "only feature's tick tokens; not bugfix's or the landing share");
-  assert.deepEqual(today?.ticksByRole, { feature: 1 });
+  assert.deepEqual(today?.runsByRole, { feature: 1 });
   assert.deepEqual(today?.costByRole, { feature: 0.5 });
   assert.equal(today?.commits, 1);
   assert.deepEqual(today?.commitsByRole, { feature: 1 });
   assert.equal(today?.workCommits, 1);
   assert.equal(today?.maintenanceCommits, 0);
   assert.ok(Math.abs((today?.costUsd ?? -1) - 0.5) < 1e-9);
-  assert.equal(today?.landingRuns, undefined, "landing fields stay off the scoped series");
+  assert.equal(today?.mergeRuns, undefined, "landing fields stay off the scoped series");
   assert.equal(today?.featuresDone, 0);
   assert.equal(today?.bugsFixed, 0);
   assert.equal(scoped.totals.tokensOut, 500);
-  assert.equal(scoped.totals.ticks, 1);
+  assert.equal(scoped.totals.runs, 1);
   assert.equal(scoped.totals.commits, 1);
   assert.ok(Math.abs(scoped.totals.costUsd - 0.5) < 1e-9);
   assert.equal(scoped.totals.featuresDone, 0);
   assert.equal(scoped.totals.bugsFixed, 0);
-  assert.equal(scoped.totals.landingRuns, 0);
+  assert.equal(scoped.totals.mergeRuns, 0);
 
   // The same fixture without a role totals every role and reads the day-granular backlog tallies.
   const fleet = collectReport(root, 5);
   assert.equal(fleet.role, undefined);
   assert.equal(fleet.totals.tokensOut, 640); // 500 + 100 + the 40 landing tokens
-  assert.equal(fleet.totals.ticks, 2);
+  assert.equal(fleet.totals.runs, 2);
   assert.equal(fleet.totals.commits, 2);
   assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
   assert.equal(fleet.totals.featuresDone, 1);
   assert.equal(fleet.totals.bugsFixed, 1);
-  assert.equal(fleet.totals.landingRuns, 1);
+  assert.equal(fleet.totals.mergeRuns, 1);
 });
 
 test("collectReport scopes an instance id to its base role, aggregating its siblings' usage", () => {
@@ -711,22 +711,22 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
   assert.equal(scoped.role, "feature");
   const today = scoped.series[scoped.series.length - 1];
   assert.equal(today?.tokensOut, 400);
-  assert.deepEqual(today?.ticksByRole, { feature: 2 });
+  assert.deepEqual(today?.runsByRole, { feature: 2 });
   assert.ok(Math.abs((today?.costByRole.feature ?? -1) - 0.4) < 1e-9);
   assert.equal(today?.commits, 1);
   assert.deepEqual(today?.commitsByRole, { feature: 1 });
   assert.equal(scoped.totals.tokensOut, 400);
-  assert.equal(scoped.totals.ticks, 2);
+  assert.equal(scoped.totals.runs, 2);
   assert.equal(scoped.totals.commits, 1);
   assert.ok(Math.abs(scoped.totals.costUsd - 0.4) < 1e-9);
 
   const since = collectReportSince(root, HOUR, "feature-2");
   assert.equal(since.role, "feature");
   assert.equal(since.totals.tokensOut, 400);
-  assert.equal(since.totals.ticks, 2);
+  assert.equal(since.totals.runs, 2);
   assert.equal(since.totals.commits, 1);
   assert.ok(Math.abs(since.totals.costUsd - 0.4) < 1e-9);
-  assert.deepEqual(since.ticksByRole, { feature: 2 });
+  assert.deepEqual(since.runsByRole, { feature: 2 });
   assert.ok(Math.abs((since.costByRole.feature ?? -1) - 0.4) < 1e-9);
 });
 
@@ -744,20 +744,20 @@ test("collectReportSince scopes a trailing window to one role, excluding the lan
   assert.equal(scoped.role, "feature");
   assert.deepEqual(scoped.totals, {
     tokensOut: 500,
-    ticks: 1,
+    runs: 1,
     commits: 1,
     costUsd: 0.5,
-    landingRuns: 0,
-    landingTokens: 0,
-    landingCostUsd: 0,
+    mergeRuns: 0,
+    mergeTokens: 0,
+    mergeCostUsd: 0,
   });
-  assert.deepEqual(scoped.ticksByRole, { feature: 1 });
+  assert.deepEqual(scoped.runsByRole, { feature: 1 });
   assert.deepEqual(scoped.costByRole, { feature: 0.5 });
 
   const fleet = collectReportSince(root, HOUR);
   assert.equal(fleet.role, undefined);
   assert.equal(fleet.totals.tokensOut, 640);
-  assert.equal(fleet.totals.ticks, 2);
+  assert.equal(fleet.totals.runs, 2);
   assert.equal(fleet.totals.commits, 2);
   assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
 });
@@ -812,7 +812,7 @@ test("a subscription landing's spend is notional, never in the cost totals", () 
 
   const data = collectReport(root, 1);
   assert.equal(data.totals.costUsd, 0.5, "only the real share is budgeted");
-  assert.equal(data.totals.landingCostUsd, 0.5);
+  assert.equal(data.totals.mergeCostUsd, 0.5);
   assert.equal(data.totals.notionalCostUsd, 2);
   assert.equal(data.series[data.series.length - 1]?.costUsd, 0.5);
   assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 2);

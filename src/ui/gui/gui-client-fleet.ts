@@ -242,7 +242,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         value: t ? String(t.commits) + " <small>" + agree(t.commits, "commit", "commits") + "</small>" : "—",
         sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed · " + workSplit(t)) : "counting…" },
       { label: "Runs today", icon: "refresh", act: "view", arg: "usage", hint: "See usage per day and per role",
-        value: t ? String(t.ticks) + " <small>" + agree(t.ticks, "run", "runs") + "</small>" : "—",
+        value: t ? String(t.runs) + " <small>" + agree(t.runs, "run", "runs") + "</small>" : "—",
         sub: t ? esc(fmtTokens(t.tokensOut) + " output tokens" + (t.costUsd > 0 ? " · " + fmtUsd(t.costUsd) : "")) : "counting…" },
       { label: "Backlog", icon: "inbox", act: "backlog", hint: "Jump to the backlog", value: String(plans + bugs) + " <small>open</small>",
         sub: esc(plural(plans, "plan") + " · " + plural(bugs, "bug") + (qs ? " · " + plural(qs, "question") : "")) },

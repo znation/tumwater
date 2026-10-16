@@ -175,8 +175,8 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
 
   // 14 days — tokens rising to a max on the last day, two roles with distinct window totals
   // (feature > bugfix), one zero day in the middle.
-  const mkDay = (date: string, tokensOut: number, ticksByRole: Record<string, number>, commits: number, costByRole: Record<string, number> = {}): ReportDay => ({
-    date, tokensOut, ticksByRole, costByRole, commits, costUsd: 0.5, featuresDone: 0, bugsFixed: 0,
+  const mkDay = (date: string, tokensOut: number, runsByRole: Record<string, number>, commits: number, costByRole: Record<string, number> = {}): ReportDay => ({
+    date, tokensOut, runsByRole, costByRole, commits, costUsd: 0.5, featuresDone: 0, bugsFixed: 0,
   });
   const series: ReportDay[] = [];
   for (let i = 0; i < 14; i++) {
@@ -186,7 +186,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   }
   const data: ReportData = {
     days: 14, from: series[0]!.date, to: series[13]!.date, series,
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const parseRects = (svg: string) =>
@@ -262,9 +262,9 @@ test("the Usage charts count a loop named after an Object.prototype key", () => 
     ["reportRoleOrder", "chartTicksByRole"],
   );
   // "constructor" is admitted by the custom-loop charset and collides with an
-  // Object.prototype key; day 2 gives it spend but no ticks, so its ticksByRole read is absent.
-  const mkDay = (date: string, ticksByRole: Record<string, number>, costByRole: Record<string, number>): ReportDay => ({
-    date, tokensOut: 0, ticksByRole, costByRole, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+  // Object.prototype key; day 2 gives it spend but no ticks, so its runsByRole read is absent.
+  const mkDay = (date: string, runsByRole: Record<string, number>, costByRole: Record<string, number>): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
   });
   const data: ReportData = {
     days: 2, from: "2026-09-01", to: "2026-09-02",
@@ -272,7 +272,7 @@ test("the Usage charts count a loop named after an Object.prototype key", () => 
       mkDay("2026-09-01", { constructor: 5 }, { constructor: 0.1 }),
       mkDay("2026-09-02", {}, { constructor: 0.2 }),
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
 
@@ -361,12 +361,12 @@ test("the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim", 
     els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
   }
   const day = {
-    date: "2026-10-07", tokensOut: 100, ticksByRole: { feature: 1 }, costByRole: { feature: 0.01 },
+    date: "2026-10-07", tokensOut: 100, runsByRole: { feature: 1 }, costByRole: { feature: 0.01 },
     commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0,
   };
   const report = {
     days: 7, from: "2026-10-01", to: "2026-10-07", series: [day],
-    totals: { tokensOut: 100, ticks: 1, commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 100, runs: 1, commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: false,
   };
   // reportSummary sits outside the marked regions, so the whole report blob runs here (the
@@ -404,10 +404,10 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
   // line names the role and the omission. Both the whole report blob (the sparse-window test's
   // seam) and the scoped/unscoped payloads run here so the fleet-wide render is checked too.
   const day = {
-    date: "2026-10-07", tokensOut: 100, ticksByRole: { feature: 1 }, costByRole: { feature: 0.01 },
+    date: "2026-10-07", tokensOut: 100, runsByRole: { feature: 1 }, costByRole: { feature: 0.01 },
     commits: 1, costUsd: 0.01, featuresDone: 0, bugsFixed: 0,
   };
-  const totals = { tokensOut: 100, ticks: 1, commits: 1, costUsd: 0.01, featuresDone: 2, bugsFixed: 3, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 };
+  const totals = { tokensOut: 100, runs: 1, commits: 1, costUsd: 0.01, featuresDone: 2, bugsFixed: 3, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
   const window = { days: 7, from: "2026-10-01", to: "2026-10-07", series: [day], totals, coversFullWindow: true };
 
   const runWith = async (payload: unknown): Promise<string> => {
@@ -615,9 +615,9 @@ test("the Usage notional chart and Spent-tile figure render only when notional s
     ["reportRoleOrder", "chartTicksByRole", "chartCostByRole", "chartNotionalByRole"],
   );
   const mkDay = (date: string, extra: Partial<ReportDay>): ReportDay => ({
-    date, tokensOut: 0, ticksByRole: { feature: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+    date, tokensOut: 0, runsByRole: { feature: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
-  const totals = { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 };
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
   const data: ReportData = {
     days: 2, from: "2026-09-01", to: "2026-09-02",
     series: [

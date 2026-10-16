@@ -19,11 +19,11 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
     from,
     to,
     series: [
-      { date: "2026-09-08", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: "2026-09-09", tokensOut: 600_000, ticksByRole: { feature: 3, bugfix: 1 }, costByRole: {}, commits: 2, costUsd: 0.86, featuresDone: 1, bugsFixed: 0 },
-      { date: "2026-09-10", tokensOut: 1_234_567, ticksByRole: { feature: 2 }, costByRole: {}, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
+      { date: "2026-09-08", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-09", tokensOut: 600_000, runsByRole: { feature: 3, bugfix: 1 }, costByRole: {}, commits: 2, costUsd: 0.86, featuresDone: 1, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 1_234_567, runsByRole: { feature: 2 }, costByRole: {}, commits: 1, costUsd: 1.48, featuresDone: 0, bugsFixed: 1 },
     ],
-    totals: { tokensOut: 1_834_567, ticks: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 1_834_567, runs: 6, commits: 3, costUsd: 2.34, featuresDone: 1, bugsFixed: 1, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const lines = renderReportMarkdown(data).split("\n");
@@ -60,10 +60,10 @@ test("renderReportMarkdown prints a Rejections by role line ranked by count, onl
     from: "2026-09-09",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-09", tokensOut: 0, ticksByRole: {}, costByRole: {}, rejectionsByRole: { feature: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, rejectionsByRole: { feature: 2, qa: 1 }, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   });
   assert.match(md, /\*\*Rejections by role:\*\* feature — 3 · qa — 1/, "window rejections rank by count desc then name asc");
@@ -129,7 +129,7 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   const root = makeRepo();
   // Two failed ticks today on distinct roles (one hard error, one merge_conflict), a clean
   // tick yesterday, and one revision. The day report must fold the failing run_ends into
-  // their own line, --json must carry failedTicksByRole only on the day that has failures
+  // their own line, --json must carry failedRunsByRole only on the day that has failures
   // (zero-means-absent), and the failed tally must never subtract from Runs by role.
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 10 }),
@@ -147,8 +147,8 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   const today = json.series[1];
   const yesterday = json.series[0];
-  assert.deepEqual(today.failedTicksByRole, { feature: 1, clean: 1 }, "--json carries failedTicksByRole on the day that has them");
-  assert.ok(!("failedTicksByRole" in yesterday), "a day with no failure carries no failedTicksByRole key (zero means absent)");
+  assert.deepEqual(today.failedRunsByRole, { feature: 1, clean: 1 }, "--json carries failedRunsByRole on the day that has them");
+  assert.ok(!("failedRunsByRole" in yesterday), "a day with no failure carries no failedRunsByRole key (zero means absent)");
 });
 
 test("report --since folds failed ticks by role and narrows to the scoped base role", async () => {
@@ -166,7 +166,7 @@ test("report --since folds failed ticks by role and narrows to the scoped base r
   assert.equal(scoped.code, 0);
   assert.match(scoped.out, /\*\*Failed runs by role:\*\* feature — 1/, "scoping --since narrows failed ticks to the base role");
   const scopedJson = JSON.parse((await runCli(root, "report", "--role", "feature", "--json", "--since", "6h")).out);
-  assert.deepEqual(scopedJson.failedTicksByRole, { feature: 1 }, "the scoped since JSON narrows failedTicksByRole");
+  assert.deepEqual(scopedJson.failedRunsByRole, { feature: 1 }, "the scoped since JSON narrows failedRunsByRole");
 
   const cleanNone = await runCli(root, "report", "--role", "clean", "--since", "6h");
   assert.equal(cleanNone.code, 0);
@@ -179,9 +179,9 @@ test("renderReportMarkdown prints commits by role and the work/maintenance split
     from: "2026-09-10",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1 },
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 5, commitsByRole: { clean: 3, feature: 2 }, workCommits: 2, maintenanceCommits: 3, costUsd: 0, featuresDone: 1, bugsFixed: 1, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const md = renderReportMarkdown(data);
@@ -196,7 +196,7 @@ test("renderReportMarkdown shows the landing line under Totals only when landing
   assert.ok(!renderReportMarkdown(base).includes("landing runs"));
   const data: ReportData = {
     ...base,
-    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingTokens: 45_200, landingCostUsd: 0.84 },
+    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, mergeRuns: 12, mergeTokens: 45_200, mergeCostUsd: 0.84 },
   };
   assert.match(
     renderReportMarkdown(data),
@@ -210,7 +210,7 @@ test("renderReportMarkdown shows (N failed) on the landing line only when some l
     ...base,
     totals: {
       ...base.totals,
-      tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingFailed: 3, landingTokens: 45_200, landingCostUsd: 0.84,
+      tokensOut: 45_500, costUsd: 0.95, mergeRuns: 12, mergeFailed: 3, mergeTokens: 45_200, mergeCostUsd: 0.84,
     },
   };
   assert.match(
@@ -220,7 +220,7 @@ test("renderReportMarkdown shows (N failed) on the landing line only when some l
   // Zero failures: the annotation stays off — a landing-ful but failure-free line is untouched.
   const clean: ReportData = {
     ...base,
-    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, landingRuns: 12, landingTokens: 45_200, landingCostUsd: 0.84 },
+    totals: { ...base.totals, tokensOut: 45_500, costUsd: 0.95, mergeRuns: 12, mergeTokens: 45_200, mergeCostUsd: 0.84 },
   };
   assert.match(
     renderReportMarkdown(clean),
@@ -235,9 +235,9 @@ test("renderReportMarkdown renders token counts through the shared compactTokens
     from: "2026-09-10",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-10", tokensOut: 1_500, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 1_500, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 1_500, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 1_500, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const md = renderReportMarkdown(data);
@@ -253,9 +253,9 @@ test("renderReportMarkdown shows a one-day window as one whole day, matching the
     from: "2026-09-10",
     to: "2026-09-10",
     series: [
-      { date: "2026-09-10", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   assert.match(renderReportMarkdown(data), /^Window: 2026-09-10 → 2026-09-10 \(1 day\) · source: events\.jsonl \(rotated at 16 MB\)$/m);
@@ -289,10 +289,10 @@ test("renderReportMarkdown orders the role line by count desc then name asc", ()
   const data: ReportData = {
     ...base,
     series: [
-      { date: base.from, tokensOut: 0, ticksByRole: { zeta: 5, alpha: 5 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: base.to, tokensOut: 0, ticksByRole: { beta: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.from, tokensOut: 0, runsByRole: { zeta: 5, alpha: 5 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, runsByRole: { beta: 2 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { ...base.totals, ticks: 12 },
+    totals: { ...base.totals, runs: 12 },
   };
   assert.match(renderReportMarkdown(data), /\*\*Runs by role:\*\* alpha — 5 · zeta — 5 · beta — 2/);
 });
@@ -302,10 +302,10 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
   const data: ReportData = {
     ...base,
     series: [
-      { date: base.from, tokensOut: 0, ticksByRole: { feature: 3, zeta: 1 }, costByRole: { feature: 0.3 }, commits: 0, costUsd: 0.3, featuresDone: 0, bugsFixed: 0 },
-      { date: base.to, tokensOut: 0, ticksByRole: { bugfix: 1 }, costByRole: { alpha: 0.9, bugfix: 0.9, feature: 0 }, commits: 0, costUsd: 1.8, featuresDone: 0, bugsFixed: 0 },
+      { date: base.from, tokensOut: 0, runsByRole: { feature: 3, zeta: 1 }, costByRole: { feature: 0.3 }, commits: 0, costUsd: 0.3, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, runsByRole: { bugfix: 1 }, costByRole: { alpha: 0.9, bugfix: 0.9, feature: 0 }, commits: 0, costUsd: 1.8, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { ...base.totals, ticks: 5, costUsd: 2.1 },
+    totals: { ...base.totals, runs: 5, costUsd: 2.1 },
   };
   const md = renderReportMarkdown(data);
   // Ranked by spend (the two $0.90 roles first), not by tick count — feature leads the ticks
@@ -382,10 +382,10 @@ test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, i
     series: [
       // alpha carries 4000 tokens but spends $0 — it must lead the tokens line while the
       // cost line omits it, proving the tokens line renders its own data.
-      { date: base.from, tokensOut: 0, ticksByRole: { feature: 5, alpha: 1 }, tokensByRole: { alpha: 4000, feature: 5000 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: base.to, tokensOut: 0, ticksByRole: { bugfix: 1 }, tokensByRole: { feature: 7000, beta: 800 }, costByRole: { beta: 0.5 }, commits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
+      { date: base.from, tokensOut: 0, runsByRole: { feature: 5, alpha: 1 }, tokensByRole: { alpha: 4000, feature: 5000 }, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: base.to, tokensOut: 0, runsByRole: { bugfix: 1 }, tokensByRole: { feature: 7000, beta: 800 }, costByRole: { beta: 0.5 }, commits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { ...base.totals, ticks: 7, costUsd: 0.5 },
+    totals: { ...base.totals, runs: 7, costUsd: 0.5 },
   };
   const md = renderReportMarkdown(data);
   // feature 5000+7000 = 12.0k, alpha 4000, beta 800 — ranked tokens desc then name asc.
@@ -432,16 +432,16 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
-    ticksByRole: {},
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -457,19 +457,19 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   const data = renderSinceReportMarkdown({
     sinceMs: 90 * 60_000,
     fromIso: new Date(ago(90 * 60_000)).toISOString(),
-    totals: { tokensOut: 1500, ticks: 5, commits: 1, costUsd: 0.75, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 1500, runs: 5, commits: 1, costUsd: 0.75, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     // Equal totals rank by name asc; a zero-cost role is omitted from the cost line.
-    ticksByRole: { bugfix: 2, feature: 2, clean: 1 },
+    runsByRole: { bugfix: 2, feature: 2, clean: 1 },
     costByRole: { feature: 0.75, bugfix: 0 },
     rejectionsByRole: { feature: 1, clean: 1 },
     revisionsByRole: { feature: 1 },
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     // clean carries the most tokens but $0 spend — it must appear on the tokens line (its
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -488,16 +488,16 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
-    ticksByRole: {},
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -507,16 +507,16 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 1000, ticks: 2, commits: 0, costUsd: 0.5, landingRuns: 1, landingTokens: 900, landingCostUsd: 0.4 },
-    ticksByRole: { feature: 2 },
+    totals: { tokensOut: 1000, runs: 2, commits: 0, costUsd: 0.5, mergeRuns: 1, mergeTokens: 900, mergeCostUsd: 0.4 },
+    runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -528,16 +528,16 @@ test("renderSinceReportMarkdown shows (N failed) on the landing line when a land
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 1000, ticks: 2, commits: 0, costUsd: 0.5, landingRuns: 2, landingFailed: 1, landingTokens: 1200, landingCostUsd: 0.5 },
-    ticksByRole: { feature: 2 },
+    totals: { tokensOut: 1000, runs: 2, commits: 0, costUsd: 0.5, mergeRuns: 2, mergeFailed: 1, mergeTokens: 1200, mergeCostUsd: 0.5 },
+    runsByRole: { feature: 2 },
     costByRole: { feature: 0.1 },
     rejectionsByRole: {},
     revisionsByRole: {},
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -549,18 +549,18 @@ test("renderSinceReportMarkdown prints Commits by role and Estimated by role mat
   const data = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 1500, ticks: 5, commits: 4, costUsd: 0.75, notionalCostUsd: 0.9, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
-    ticksByRole: { feature: 5 },
+    totals: { tokensOut: 1500, runs: 5, commits: 4, costUsd: 0.75, notionalCostUsd: 0.9, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: { feature: 5 },
     costByRole: { feature: 0.75 },
     rejectionsByRole: {},
     revisionsByRole: { feature: 3 },
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: { feature: 1500 },
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Estimated by role lines — window and day speak one shape.
     commitsByRole: { feature: 3, clean: 1 },
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
@@ -574,16 +574,16 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
   const zero = renderSinceReportMarkdown({
     sinceMs: HOUR,
     fromIso: new Date(ago(HOUR)).toISOString(),
-    totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
-    ticksByRole: {},
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    runsByRole: {},
     costByRole: {},
     rejectionsByRole: {},
     revisionsByRole: {},
-    failedTicksByRole: {},
+    failedRunsByRole: {},
     tokensByRole: {},
     commitsByRole: {},
-    landedByRole: {},
-    landingFailedByRole: {},
+    mergedByRole: {},
+    mergeFailedByRole: {},
     costByProvider: {},
     notionalByProvider: {},
     coversFullWindow: true,
@@ -764,11 +764,13 @@ test("report --json --since prints the window totals with the coverage proof", a
   assert.equal(parsed.sinceMs, 6 * HOUR);
   assert.notEqual(Date.parse(parsed.fromIso), NaN, "fromIso is an ISO instant");
   assert.deepEqual(parsed.totals, direct.totals);
-  assert.deepEqual(parsed.ticksByRole, direct.ticksByRole);
+  assert.deepEqual(parsed.runsByRole, direct.runsByRole);
   assert.deepEqual(parsed.costByRole, direct.costByRole);
-  assert.equal(parsed.totals.ticks, 1);
+  assert.equal(parsed.totals.runs, 1);
+  const oldNames = /"(ticks|ticksByRole|failedTicksByRole|landing\w+|landedByRole)"/;
+  assert.doesNotMatch(JSON.stringify(parsed), oldNames, "no retired key at any depth");
   assert.equal(parsed.totals.tokensOut, 777);
-  assert.deepEqual(parsed.ticksByRole, { feature: 1 });
+  assert.deepEqual(parsed.runsByRole, { feature: 1 });
   assert.deepEqual(parsed.commitsByRole, {}, "the since payload carries commitsByRole always");
   assert.ok(!("notionalByRole" in parsed), "notionalByRole is absent when the window has none");
   assert.equal(parsed.coversFullWindow, true, "the log reaches back before the cutoff");
@@ -784,15 +786,15 @@ test("report --json carries the landing fields in totals and the day series", as
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
   const parsed = JSON.parse(json.out);
-  assert.equal(parsed.totals.landingRuns, 1);
-  assert.equal(parsed.totals.landingTokens, 45_200);
-  assert.ok(Math.abs(parsed.totals.landingCostUsd - 0.84) < 1e-9);
+  assert.equal(parsed.totals.mergeRuns, 1);
+  assert.equal(parsed.totals.mergeTokens, 45_200);
+  assert.ok(Math.abs(parsed.totals.mergeCostUsd - 0.84) < 1e-9);
   const today = parsed.series[parsed.series.length - 1];
-  assert.equal(today.landingCostUsd, 0.84, "the day series carries landingCostUsd");
+  assert.equal(today.mergeCostUsd, 0.84, "the day series carries mergeCostUsd");
   assert.ok(Math.abs(today.tokensOut - 45_300) < 1e-9, "the day's tokensOut includes the landing share");
 });
 
-test("report --json --days carries landingFailed on the day and totals when a landing fails; lands 2 runs with 1 failed", async () => {
+test("report --json --days carries mergeFailed on the day and totals when a landing fails; lands 2 runs with 1 failed", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -802,37 +804,37 @@ test("report --json --days carries landingFailed on the day and totals when a la
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
   const parsed = JSON.parse(json.out);
-  // landingRuns still counts both landed and land_failed together; landingFailed names the flops.
-  assert.equal(parsed.totals.landingRuns, 2, "totals.landingRuns unchanged — counts both outcomes");
-  assert.equal(parsed.totals.landingFailed, 1);
+  // mergeRuns still counts both landed and land_failed together; mergeFailed names the flops.
+  assert.equal(parsed.totals.mergeRuns, 2, "totals.mergeRuns unchanged — counts both outcomes");
+  assert.equal(parsed.totals.mergeFailed, 1);
   const today = parsed.series[parsed.series.length - 1];
-  assert.equal(today.landingRuns, 2);
-  assert.equal(today.landingFailed, 1, "the day series carries landingFailed when that day has one");
+  assert.equal(today.mergeRuns, 2);
+  assert.equal(today.mergeFailed, 1, "the day series carries mergeFailed when that day has one");
 
   // The landing share's token/cost totals fold both outcomes, untouched by the new counter.
-  assert.equal(parsed.totals.landingTokens, 55_200);
-  assert.ok(Math.abs(parsed.totals.landingCostUsd - 1.34) < 1e-9);
+  assert.equal(parsed.totals.mergeTokens, 55_200);
+  assert.ok(Math.abs(parsed.totals.mergeCostUsd - 1.34) < 1e-9);
 
   // The Markdown render names the flop on the same line.
   const md = await runCli(root, "report", "--days", "2");
   assert.match(md.out, /of which merge runs: 2 runs \(1 failed\) · 55\.2k tokens · \$1\.34 \(reviewer \+ conflict resolution\)/);
 });
 
-test("report --json leaves landingFailed absent on a failure-free window", async () => {
+test("report --json leaves mergeFailed absent on a failure-free window", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
-  assert.equal(parsed.totals.landingRuns, 1);
-  assert.ok(!("landingFailed" in parsed.totals), "a failure-free window omits totals.landingFailed");
-  assert.ok(!("landingFailed" in parsed.series[parsed.series.length - 1]), "a failure-free day omits day.landingFailed");
+  assert.equal(parsed.totals.mergeRuns, 1);
+  assert.ok(!("mergeFailed" in parsed.totals), "a failure-free window omits totals.mergeFailed");
+  assert.ok(!("mergeFailed" in parsed.series[parsed.series.length - 1]), "a failure-free day omits day.mergeFailed");
   const md = await runCli(root, "report", "--days", "2");
   assert.match(md.out, /of which merge runs: 1 runs · 45\.2k tokens · \$0\.84 \(reviewer \+ conflict resolution\)/);
   assert.ok(!md.out.includes("0 failed"), "a failure-free window never prints (0 failed)");
 });
 
-test("report --json --since carries landingFailed when a landing fails and omits it otherwise", async () => {
+test("report --json --since carries mergeFailed when a landing fails and omits it otherwise", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
@@ -840,16 +842,16 @@ test("report --json --since carries landingFailed when a landing fails and omits
     JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
-  assert.equal(parsed.totals.landingRuns, 2);
-  assert.equal(parsed.totals.landingFailed, 1);
+  assert.equal(parsed.totals.mergeRuns, 2);
+  assert.equal(parsed.totals.mergeFailed, 1);
 
   const clean = makeRepo();
   writeEvents(clean, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--since", "6h")).out);
-  assert.equal(cleanParsed.totals.landingRuns, 1);
-  assert.ok(!("landingFailed" in cleanParsed.totals), "a failure-free --since window omits landingFailed");
+  assert.equal(cleanParsed.totals.mergeRuns, 1);
+  assert.ok(!("mergeFailed" in cleanParsed.totals), "a failure-free --since window omits mergeFailed");
 });
 
 test("fleet day report breaks landing outcomes down by role, folding instances into their base", async () => {
@@ -870,10 +872,10 @@ test("fleet day report breaks landing outcomes down by role, folding instances i
   // The collector's day series and window totals carry the per-role maps too (zero-means-absent).
   const direct = collectReport(root, 2);
   const today = direct.series[direct.series.length - 1]!;
-  assert.deepEqual(today.landedByRole, { feature: 1 });
-  assert.deepEqual(today.landingFailedByRole, { bugfix: 1 });
-  assert.equal(direct.totals.landingRuns, 2);
-  assert.equal(direct.totals.landingFailed, 1);
+  assert.deepEqual(today.mergedByRole, { feature: 1 });
+  assert.deepEqual(today.mergeFailedByRole, { bugfix: 1 });
+  assert.equal(direct.totals.mergeRuns, 2);
+  assert.equal(direct.totals.mergeFailed, 1);
 });
 
 test("fleet day report omits Merge failures by role when none fail; a landing-free window omits both", async () => {
@@ -911,8 +913,8 @@ test("fleet report --since breaks landing outcomes by role and the scoped --sinc
   assert.match(md.out, /\*\*Merge failures by role:\*\* bugfix — 1/);
 
   const json = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
-  assert.deepEqual(json.landedByRole, { feature: 1 });
-  assert.deepEqual(json.landingFailedByRole, { bugfix: 1 });
+  assert.deepEqual(json.mergedByRole, { feature: 1 });
+  assert.deepEqual(json.mergeFailedByRole, { bugfix: 1 });
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
   assert.equal(scoped.code, 0);
@@ -920,26 +922,26 @@ test("fleet report --since breaks landing outcomes by role and the scoped --sinc
   assert.ok(!scoped.out.includes("**Merge failures by role:"), "a scoped --since omits the failures line");
 });
 
-test("report --json omits landedByRole/landingFailedByRole when no role has either; carries them when one does", async () => {
+test("report --json omits mergedByRole/mergeFailedByRole when no role has either; carries them when one does", async () => {
   const clean = makeRepo();
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--days", "2")).out);
-  assert.ok(!("landedByRole" in cleanParsed.series[cleanParsed.series.length - 1]), "a landing-free day omits landedByRole");
+  assert.ok(!("mergedByRole" in cleanParsed.series[cleanParsed.series.length - 1]), "a landing-free day omits mergedByRole");
 
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
-  assert.deepEqual(parsed.series[parsed.series.length - 1].landedByRole, { feature: 1 });
+  assert.deepEqual(parsed.series[parsed.series.length - 1].mergedByRole, { feature: 1 });
   // The --since payload always carries both maps, like commitsByRole: a within-window landing
-  // fills landedByRole, and a failure-free window's landingFailedByRole stays empty.
+  // fills mergedByRole, and a failure-free window's mergeFailedByRole stays empty.
   const sinceRoot = makeRepo();
   writeEvents(sinceRoot, [
     JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const since = JSON.parse((await runCli(sinceRoot, "report", "--json", "--since", "6h")).out);
-  assert.deepEqual(since.landedByRole, { feature: 1 });
-  assert.deepEqual(since.landingFailedByRole, {});
+  assert.deepEqual(since.mergedByRole, { feature: 1 });
+  assert.deepEqual(since.mergeFailedByRole, {});
 });
 
 test("report --failures --json prints the digest's collected data; --since --json stays legal", async () => {
@@ -966,10 +968,10 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
     to: "2026-09-10",
     role: "feature",
     series: [
-      { date: "2026-09-09", tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
-      { date: "2026-09-10", tokensOut: 500, ticksByRole: { feature: 1 }, costByRole: { feature: 0.5 }, commits: 1, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 500, runsByRole: { feature: 1 }, costByRole: { feature: 0.5 }, commits: 1, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, costUsd: 0.5, featuresDone: 0, bugsFixed: 0 },
     ],
-    totals: { tokensOut: 500, ticks: 1, commits: 1, costUsd: 0.5, featuresDone: 0, bugsFixed: 0, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+    totals: { tokensOut: 500, runs: 1, commits: 1, costUsd: 0.5, featuresDone: 0, bugsFixed: 0, commitsByRole: { feature: 1 }, workCommits: 1, maintenanceCommits: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
     coversFullWindow: true,
   };
   const out = renderReportMarkdown(data);
@@ -1040,12 +1042,12 @@ test("tumwater report --role scopes the report, scopes --since/--json, and valid
 
 test("renderReportMarkdown prints each role's cost per landed commit, folding instances and days", () => {
   const day = (date: string, costByRole: Record<string, number>, commitsByRole: Record<string, number>) => ({
-    date, tokensOut: 0, ticksByRole: {}, costByRole, commits: 0, commitsByRole, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+    date, tokensOut: 0, runsByRole: {}, costByRole, commits: 0, commitsByRole, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
   });
   const render = (series: ReportData["series"]) =>
     renderReportMarkdown({
       days: series.length, from: "2026-09-10", to: "2026-09-11", series,
-      totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0 },
+      totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
       coversFullWindow: true,
     });
   const want = "**Cost per commit:** clean — $0.30 (3) · feature — $0.15 (2) · plan — $0.90, no commits";
@@ -1062,12 +1064,12 @@ test("renderReportMarkdown prints each role's cost per landed commit, folding in
 
 test("renderReportMarkdown prints notional spend by role and per commit only when the window has any", () => {
   const day = (date: string, extra: object) => ({
-    date, tokensOut: 0, ticksByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, commitsByRole: {}, workCommits: 0, maintenanceCommits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
   });
   const render = (series: ReportData["series"], notionalCostUsd?: number) =>
     renderReportMarkdown({
       days: series.length, from: "2026-09-10", to: "2026-09-11", series,
-      totals: { tokensOut: 0, ticks: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, landingRuns: 0, landingTokens: 0, landingCostUsd: 0, ...(notionalCostUsd ? { notionalCostUsd } : {}) },
+      totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0, ...(notionalCostUsd ? { notionalCostUsd } : {}) },
       coversFullWindow: true,
     });
   const out = render([

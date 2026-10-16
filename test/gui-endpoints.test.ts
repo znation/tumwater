@@ -61,7 +61,7 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
   ]);
 
   const { captured, data } = await serveReport(root, "?days=5");
-  const report = data as { days: number; series: { date: string; tokensOut: number; commits: number; featuresDone: number; costByRole: Record<string, number> }[]; totals: { tokensOut: number; ticks: number; commits: number; featuresDone: number; costUsd: number } };
+  const report = data as { days: number; series: { date: string; tokensOut: number; commits: number; featuresDone: number; costByRole: Record<string, number> }[]; totals: { tokensOut: number; runs: number; commits: number; featuresDone: number; costUsd: number } };
 
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
@@ -69,7 +69,7 @@ test("handleReport serves seeded usage as JSON: status, content-type, and real t
   assert.equal(report.series.length, 5);
   assert.equal(report.series[report.series.length - 1]?.date, dayKey(at(0)));
   assert.equal(report.totals.tokensOut, 500); // the out-of-window 999 is excluded
-  assert.equal(report.totals.ticks, 1);
+  assert.equal(report.totals.runs, 1);
   assert.equal(report.totals.commits, 2);
   assert.equal(report.totals.featuresDone, 1);
   assert.deepEqual(report.series[0]?.costByRole, { feature: 0.5 });

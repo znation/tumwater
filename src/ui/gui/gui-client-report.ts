@@ -32,7 +32,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function reportRoleOrder(data) {
     const byRole = {};
     for (const d of data.series) {
-      for (const [role, n] of Object.entries(d.ticksByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
+      for (const [role, n] of Object.entries(d.runsByRole)) byRole[role] = (Object.hasOwn(byRole, role) ? byRole[role] : 0) + n;
       for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.notionalByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.rejectionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
@@ -134,7 +134,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   function chartTicksByRole(data) {
-    return roleStackChart(data, "ticksByRole", (n) => plural(n, "run"), countAxis, true);
+    return roleStackChart(data, "runsByRole", (n) => plural(n, "run"), countAxis, true);
   }
 
   function chartCostByRole(data) {
@@ -214,7 +214,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         tile("Features done", "plan", String(t.featuresDone), perDay(t.featuresDone, (v) => v.toFixed(1))),
         tile("Bugs fixed", "bug", String(t.bugsFixed), perDay(t.bugsFixed, (v) => v.toFixed(1))),
       ]),
-      tile("Runs", "refresh", String(t.ticks), perDay(t.ticks, Math.round)),
+      tile("Runs", "refresh", String(t.runs), perDay(t.runs, Math.round)),
       tile("Output tokens", "bars", fmtTokens(t.tokensOut), perDay(t.tokensOut, (v) => fmtTokens(Math.round(v)))),
       tile("Spent", "dollar", fmtUsd(t.costUsd), perDay(t.costUsd, fmtUsd),
         t.notionalCostUsd > 0 ? " · " + fmtUsd(t.notionalCostUsd) + " estimated" : undefined),

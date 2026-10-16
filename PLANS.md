@@ -40,45 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms scripting, part 2/5: Rename the report --json keys and add the script-keys guard (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "Script interfaces"; touches src/report and the dashboard Usage and Team views and test/script-keys.test.ts)
-
-**Goal.** Mechanical: `report --json`, `report --since <d> --json` and `/api/report` count runs and merges. A new test, test/script-keys.test.ts, fails if the dashboard script still reads a retired payload key.
-
-**Approach.**
-- Rename these fields in src/report/report-data.ts, in every type that carries them: `UsageFold`, `DayFold`, `ReportDay`, `ReportTotals` (and so `ReportData.totals`) and `SinceReport`. That way the module uses one set of names:
-  - `ticks` → `runs`
-  - `ticksByRole` → `runsByRole`
-  - `failedTicksByRole` → `failedRunsByRole`
-  - `landingRuns` → `mergeRuns`
-  - `landingTokens` → `mergeTokens`
-  - `landingCostUsd` → `mergeCostUsd`
-  - `landingFailed` → `mergeFailed`
-  - `landedByRole` → `mergedByRole`
-  - `landingFailedByRole` → `mergeFailedByRole`
-  
-  Let `tsc` find the readers in `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts).
-- The dashboard script reads these keys untyped, so find its readers by grep:
-  - src/ui/gui/gui-client-report.ts: `d.ticksByRole`, the string key in `roleStackChart(data, "ticksByRole", …)`, and the totals tiles' `t.ticks`
-  - src/ui/gui/gui-client-fleet.ts: `renderStats`'s `today.totals.ticks`
-- Leave alone:
-  - event-type comparisons (`ev.type === "landed"`, `"land_failed"`), which Plain terms event log renames
-  - `commitsByRole`, `notionalCostUsd` and `notionalByRole`, which contain no retired word ("estimated" is a display word only)
-- New test/script-keys.test.ts, the dashboard half of "Script interfaces" (each producer's own test is the server half):
-  - It holds a `RETIRED_CLIENT_READS` list of old payload key names.
-  - One test asserts that `GUI_CLIENT_JS` (src/ui/gui/gui-client.ts) contains, for no listed key, a property read `.<key>` (followed by a non-identifier character) or a quoted string key `"<key>"`/`'<key>'`. On failure it names each key and the line it was found on.
-  - A self-test runs the same matcher on a synthetic string, so the guard itself is proven to catch a hit.
-  - Seed the list with this part's names: `ticksByRole`, `failedTicksByRole`, `landingRuns`, `landingTokens`, `landingCostUsd`, `landingFailed`, `landedByRole`, `landingFailedByRole`. Parts 3/5–5/5 append theirs. Generic names (`tick`, `loop`) never go in the list, because the DOM attribute `data-tick` and drawer kinds legitimately keep them.
-- Tests: test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts, test/gui-client-report.test.ts, test/report-fold-cache.test.ts, test/event-window.test.ts, and test/gui-client-fleet.test.ts (its `today.totals` fixtures).
-
-**Files touched.** Source: src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client-fleet.ts. New: test/script-keys.test.ts. Tests: those listed above.
-
-**Acceptance criteria.**
-- The JSON from `tumwater report --json` and from `report --since 1h --json` carries the new keys. None of the nine old names appears at any depth (the test walks the parsed document).
-- `GET /api/report` serves the same keys (test/gui-report.test.ts).
-- The dashboard's Usage charts and the Team view's "today" tiles render from fixtures that use the new keys.
-- test/script-keys.test.ts passes, and its self-test proves the matcher flags a `.ticksByRole` read.
-- `npm run test` passes.
-
 ### Plain terms scripting, part 3/5: Rename the history and run-trail JSON keys and move GET /api/tick to /api/run (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Script interfaces"; touches src/history and src/tick/tick-detail-data.ts and src/gui and the dashboard History view)
 
 **Goal.** These script-facing names change:
@@ -2442,6 +2403,45 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms scripting, part 2/5: Rename the report --json keys and add the script-keys guard (done 2026-10-16, planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "Script interfaces"; touches src/report and the dashboard Usage and Team views and test/script-keys.test.ts)
+
+**Goal.** Mechanical: `report --json`, `report --since <d> --json` and `/api/report` count runs and merges. A new test, test/script-keys.test.ts, fails if the dashboard script still reads a retired payload key.
+
+**Approach.**
+- Rename these fields in src/report/report-data.ts, in every type that carries them: `UsageFold`, `DayFold`, `ReportDay`, `ReportTotals` (and so `ReportData.totals`) and `SinceReport`. That way the module uses one set of names:
+  - `ticks` → `runs`
+  - `ticksByRole` → `runsByRole`
+  - `failedTicksByRole` → `failedRunsByRole`
+  - `landingRuns` → `mergeRuns`
+  - `landingTokens` → `mergeTokens`
+  - `landingCostUsd` → `mergeCostUsd`
+  - `landingFailed` → `mergeFailed`
+  - `landedByRole` → `mergedByRole`
+  - `landingFailedByRole` → `mergeFailedByRole`
+  
+  Let `tsc` find the readers in `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts).
+- The dashboard script reads these keys untyped, so find its readers by grep:
+  - src/ui/gui/gui-client-report.ts: `d.ticksByRole`, the string key in `roleStackChart(data, "ticksByRole", …)`, and the totals tiles' `t.ticks`
+  - src/ui/gui/gui-client-fleet.ts: `renderStats`'s `today.totals.ticks`
+- Leave alone:
+  - event-type comparisons (`ev.type === "landed"`, `"land_failed"`), which Plain terms event log renames
+  - `commitsByRole`, `notionalCostUsd` and `notionalByRole`, which contain no retired word ("estimated" is a display word only)
+- New test/script-keys.test.ts, the dashboard half of "Script interfaces" (each producer's own test is the server half):
+  - It holds a `RETIRED_CLIENT_READS` list of old payload key names.
+  - One test asserts that `GUI_CLIENT_JS` (src/ui/gui/gui-client.ts) contains, for no listed key, a property read `.<key>` (followed by a non-identifier character) or a quoted string key `"<key>"`/`'<key>'`. On failure it names each key and the line it was found on.
+  - A self-test runs the same matcher on a synthetic string, so the guard itself is proven to catch a hit.
+  - Seed the list with this part's names: `ticksByRole`, `failedTicksByRole`, `landingRuns`, `landingTokens`, `landingCostUsd`, `landingFailed`, `landedByRole`, `landingFailedByRole`. Parts 3/5–5/5 append theirs. Generic names (`tick`, `loop`) never go in the list, because the DOM attribute `data-tick` and drawer kinds legitimately keep them.
+- Tests: test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts, test/gui-client-report.test.ts, test/report-fold-cache.test.ts, test/event-window.test.ts, and test/gui-client-fleet.test.ts (its `today.totals` fixtures).
+
+**Files touched.** Source: src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client-fleet.ts. New: test/script-keys.test.ts. Tests: those listed above.
+
+**Acceptance criteria.**
+- The JSON from `tumwater report --json` and from `report --since 1h --json` carries the new keys. None of the nine old names appears at any depth (the test walks the parsed document).
+- `GET /api/report` serves the same keys (test/gui-report.test.ts).
+- The dashboard's Usage charts and the Team view's "today" tiles render from fixtures that use the new keys.
+- test/script-keys.test.ts passes, and its self-test proves the matcher flags a `.ticksByRole` read.
+- `npm run test` passes.
 
 ### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (done 2026-10-16; planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)
 

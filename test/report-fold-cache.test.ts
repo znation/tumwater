@@ -40,8 +40,8 @@ test("warm collectReport equals the cold read before and after appends", () => {
   );
   const fresh = collectReport(root, 5);
   assert.deepEqual(warmed(root, 5), fresh);
-  assert.equal(fresh.series[4]!.ticksByRole.bugfix, 1);
-  assert.equal(fresh.totals.landingTokens, 42);
+  assert.equal(fresh.series[4]!.runsByRole.bugfix, 1);
+  assert.equal(fresh.totals.mergeTokens, 42);
 });
 
 test("a merge appended after a warm fold counts once, including in the role split", () => {
@@ -66,7 +66,7 @@ test("a torn trailing write is ignored until its newline lands", () => {
   assert.deepEqual(collectReport(root, 2), torn); // No partial fold, no drift between calls.
   fs.appendFileSync(eventsLogPath(root), "\n"); // The writer completes the line.
   const complete = collectReport(root, 2);
-  assert.equal(complete.series[1]!.ticksByRole.a, 1);
+  assert.equal(complete.series[1]!.runsByRole.a, 1);
   assert.deepEqual(collectReport(root, 2), complete);
 });
 
@@ -96,7 +96,7 @@ test("a rotated log replaced by a fresh larger one refolds instead of folding th
   // folds the archived five 100-token ticks plus the fresh ten 10-token ticks.
   const report = warmed(root, 2);
   assert.equal(report.totals.tokensOut, 600);
-  assert.equal(report.totals.ticks, 15);
+  assert.equal(report.totals.runs, 15);
 });
 
 test("a shrunken log (rotation) refolds instead of misaligning the byte offset", () => {
