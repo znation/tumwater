@@ -405,6 +405,53 @@ test("rekey gives the old key back first, and a parked re-key beats a parked adm
   void admission;
 });
 
+test("releasing a lease while its re-key to a full key is parked cancels the grant and never steals the target", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 1, b: 1 });
+  const aHold = await sem.acquireLease(0, "a"); // a 1/1
+  const bHold = await sem.acquireLease(0, "b"); // b 1/1
+  let rekeySettled: string | null = null;
+  const rekeyTask = aHold.rekey("b").then(() => (rekeySettled = "rekey")).catch(() => (rekeySettled = "error"));
+  await flushImmediate(); // the re-key parks: b is full, a was returned
+  assert.equal(sem.snapshot().byKey["a"]?.inUse ?? 0, 0, "the old key is returned before the re-key parks");
+  assert.equal(sem.snapshot().byKey["b"]?.inUse ?? 0, 1, "b still belongs to bHold while the re-key parks");
+
+  // A waiter on b parks behind the re-key (b is full).
+  let admitted = false;
+  void sem.acquireLease(0, "b").then(() => (admitted = true));
+  await flushImmediate();
+  assert.equal(admitted, false, "b is full, so the admission waiter parks");
+
+  // Release the lease while its re-key is still parked: the grant must be cancelled, not
+  // handed to a dead lease, and b's slot must stay bHold's own.
+  aHold.release();
+  await rekeyTask;
+  assert.equal(rekeySettled, "rekey", "the re-key call resolves (cancelled) rather than hanging");
+  const after = sem.snapshot();
+  assert.equal(after.byKey["b"]?.inUse ?? 0, 1, "a cancelled re-key does not steal b from bHold");
+  assert.equal(after.inUse, 1, "only bHold's fleet permit remains");
+  assert.equal(admitted, false, "the admission waiter is still held by bHold's slot");
+
+  // A SECOND release of the already-released dead lease must be a no-op. Without the fix the
+  // released aHold is not idempotent: its phantom b slot (never really owned) is "freed" by
+  // the second release, which drains b below its cap and admits the parked waiter even though
+  // bHold still holds b. That early admission of the parked waiter is the bug's observable
+  // harm, so it must NOT happen.
+  aHold.release();
+  await flushImmediate();
+  assert.equal(admitted, false, "a second release of the dead lease must not free b while bHold still holds it");
+  const twice = sem.snapshot();
+  assert.equal(twice.byKey["b"]?.inUse ?? 0, 1, "b still belongs to bHold after the dead lease's second release");
+  assert.equal(twice.inUse, 1, "the dead lease's second release is a no-op on the fleet total");
+
+  // Only when the REAL holder releases does b free up for the parked waiter.
+  bHold.release();
+  await flushImmediate();
+  assert.equal(admitted, true, "releasing bHold hands b to the parked admission waiter");
+  assert.equal(sem.snapshot().inUse, 1, "the admitted waiter holds the single fleet permit");
+  void rekeyTask;
+});
+
 test("a forced lease overshoots a full key by one holder, blocking grants until it drains under the cap", async () => {
   const sem = new Semaphore(4);
   sem.setKeyCaps({ a: 1 });

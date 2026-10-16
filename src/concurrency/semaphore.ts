@@ -28,8 +28,10 @@ export class Semaphore {
   private readonly waiters: Array<{ tier: number; key?: string; resolve: () => void }> = [];
   /** A parked re-key waiter: it already holds a fleet permit, so it waits only for its key's
    * headroom, ahead of every admission waiter (which would otherwise queue a fleet permit
-   * uselessly behind another provider's runs). */
-  private readonly rekeyWaiters: Array<{ key: string; resolve: () => void }> = [];
+   * uselessly behind another provider's runs). `granted` flips when drive() hands the waiter
+   * the target key's slot, so the lease's release can tell a landed grant (give it back) from
+   * a still-parked one (cancel it) when the two interleave. */
+  private readonly rekeyWaiters: Array<{ key: string; resolve: () => void; granted: boolean }> = [];
   /** Permits currently held, tracked separately from capacity (rather than as an "available"
    * count): setCapacity can shrink below the current in-use, and a free-permit count cannot
    * represent that state — it would over-admit new work after a shrink. */
@@ -96,15 +98,40 @@ export class Semaphore {
    * a key, and a full key never delays a waiter on another. */
   async acquireLease(tier: number, key?: string): Promise<SemaphoreLease> {
     let currentKey = key;
+    // True once release() has run: a released lease owns no slot and must not undo one again —
+    // a second release (or a parked rekey's late grant) must be a no-op, never a negative
+    // count. The orchestrator releases each lease exactly once, but the rekey cancel path
+    // relies on this guard so a cancelled lease never re-decrements its target key.
+    let closed = false;
+    // The lease's parked re-key, while it waits on a full target key. At that point the lease
+    // holds NO key slot (the old one was returned at the rekey's start), so release() must
+    // CANCEL the pending grant rather than undo a slot this lease never took. Null when no
+    // rekey is parked.
+    let parkedRekey: { key: string; resolve: () => void; granted: boolean } | null = null;
     const release = (): void => {
-      if (currentKey !== undefined) {
+      if (closed) return;
+      closed = true;
+      if (parkedRekey !== null) {
+        // A re-key is parked waiting on its new key. Cancel it: pull it off the queue (so
+        // drive can't grant it) and, if the grant already landed this microtask, give the
+        // new key's slot back. The lease holds no slot either way, so the fleet permit is the
+        // only thing to free.
+        const w = parkedRekey;
+        const idx = this.rekeyWaiters.indexOf(w);
+        if (idx >= 0) this.rekeyWaiters.splice(idx, 1);
+        if (w.granted) {
+          this.keyInUse.set(w.key, (this.keyInUse.get(w.key) ?? 0) - 1);
+        }
+        w.resolve();
+        parkedRekey = null;
+      } else if (currentKey !== undefined) {
         this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
       }
       this.inUse -= 1;
       this.drive();
     };
     const rekey = async (to?: string): Promise<void> => {
-      if (to === currentKey) return;
+      if (to === currentKey || closed) return;
       // Give the old key back first, waking that key's waiters.
       if (currentKey !== undefined) {
         this.keyInUse.set(currentKey, (this.keyInUse.get(currentKey) ?? 0) - 1);
@@ -114,10 +141,14 @@ export class Semaphore {
       this.drive();
       if (to !== undefined && this.keyAtCap(to)) {
         // The new key is full: wait only for its headroom, ahead of every admission waiter.
+        const w = { key: to, resolve: (): void => {}, granted: false };
+        parkedRekey = w;
+        this.rekeyWaiters.push(w);
         await new Promise<void>((resolve) => {
-          this.rekeyWaiters.push({ key: to, resolve });
+          w.resolve = resolve;
         });
-        this.drive();
+        parkedRekey = null;
+        if (w.granted) this.drive();
         return;
       }
       if (to !== undefined) this.keyInUse.set(to, (this.keyInUse.get(to) ?? 0) + 1);
@@ -187,6 +218,7 @@ export class Semaphore {
       for (let i = 0; i < this.rekeyWaiters.length; i++) {
         const w = this.rekeyWaiters[i]!;
         if (this.keyAtCap(w.key)) continue;
+        w.granted = true;
         this.rekeyWaiters.splice(i, 1);
         this.keyInUse.set(w.key, (this.keyInUse.get(w.key) ?? 0) + 1);
         w.resolve();
