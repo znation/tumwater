@@ -4,7 +4,7 @@ import { dailyCost } from "../budget/budget.js";
 import type { LiveProgress } from "./progress-data.js";
 import { clipToWidth, displayWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
-import { elapsedSeconds, formatTime, humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
+import { elapsedSeconds, formatTime, humanSeconds, nextRunPhrase, pad2, secondsUntil } from "../text/datetime.js";
 import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
@@ -66,9 +66,7 @@ export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunni
   // role waiting out its stretched gap, not a broken clock.
   const mult = yieldMultiplierFor(s);
   const suffix = mult > 1 ? ` ×${mult}` : "";
-  if (remain <= 0) return `now${suffix}`;
-  const label = humanSeconds(remain);
-  return (s.backoffSeconds > 0 ? `backoff ${label}` : label) + suffix;
+  return nextRunPhrase(remain, s.backoffSeconds > 0, "now", false) + suffix;
 }
 
 /** The table's state cell: a loop's phase label (loopPhase, computed once per row by

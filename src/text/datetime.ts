@@ -129,6 +129,26 @@ export function humanSeconds(s: number): string {
   return `${Math.round(s / 86400)}d`;
 }
 
+/** The shared "when may this loop next act" phrase — the `next run` cell (status-render.ts's
+ * nextRunCell) and the `Next tick` line (role-render.ts's scheduleLine) render their schedule
+ * through it, so the two surfaces cannot drift on the backoff prefix or the humanSeconds
+ * bucketing. `remainSeconds` is the seconds until the next run (non-positive = due); `backoff`
+ * adds the `backoff ` prefix the wake action clears; `dueWord` names the due case and `withIn`
+ * selects the prose `in <duration>` form (the role view) over the cell's bare `<duration>`.
+ * Callers keep their own surrounding logic on either side — the status cell's in-flight `-`
+ * and its yield-scaled `×N` suffix, the role view's `not scheduled yet`. */
+export function nextRunPhrase(
+  remainSeconds: number,
+  backoff: boolean,
+  dueWord: string,
+  withIn: boolean,
+): string {
+  if (remainSeconds <= 0) return dueWord;
+  const label = humanSeconds(remainSeconds);
+  const base = withIn ? `in ${label}` : label;
+  return backoff ? `backoff ${base}` : base;
+}
+
 /** `N days`, singular at 1 — the window label both report headers render, so a one-day window
  * reads the same on either surface. Rendered through text/phrases.ts's plural, like every other
  * count-plus-noun phrase in the harness. */

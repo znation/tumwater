@@ -1,5 +1,5 @@
 import { agree, shortSpanPhrase } from "../text/phrases.js";
-import { formatTimestamp, humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
@@ -127,10 +127,12 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
  * nextRunCell), so the role view and the status table cannot drift on when a loop acts next:
  * a never-scheduled loop (nextRunAt 0) reads `not scheduled yet`; a due loop reads `due now`;
  * a future one reads `in <Ns>` through humanSeconds, prefixed `backoff ` while backoffSeconds
- * > 0 (the wake row-action clears exactly that). `Last tick` reuses formatTimestamp and the
- * same `humanSeconds … ago` phrasing the status `last tick` cell ages with, or `never` for a
- * loop that has not ticked. `now` is injected (default Date.now()) so the renderer stays a
- * pure function of the payload and the test can pin a fixed clock. */
+ * > 0 (the wake row-action clears exactly that) — the shared nextRunPhrase, so the role view
+ * and the status `next run` cell cannot drift on the backoff prefix or the humanSeconds
+ * bucketing. `Last tick` reuses formatTimestamp and the same `humanSeconds … ago` phrasing the
+ * status `last tick` cell ages with, or `never` for a loop that has not ticked. `now` is
+ * injected (default Date.now()) so the renderer stays a pure function of the payload and the
+ * test can pin a fixed clock. */
 function scheduleLine(p: RoleViewPayload, now: number): string[] {
   // The yield multiplier rides the line as `×N` exactly like nextRunCell/fmtNextRun: a quiet
   // yield-scaled loop's effective gap is longer than nextRunAt's countdown shows (isEligible
@@ -142,12 +144,7 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
     next = "not scheduled yet";
   } else {
     const remain = secondsUntil(p.nextRunAt, now);
-    if (remain <= 0) {
-      next = `due now${suffix}`;
-    } else {
-      next = `in ${humanSeconds(remain)}${suffix}`;
-      if (p.backoffSeconds > 0) next = `backoff ${next}`;
-    }
+    next = nextRunPhrase(remain, p.backoffSeconds > 0, "due now", true) + suffix;
   }
   const last =
     p.lastTickEndedAt !== undefined
