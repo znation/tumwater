@@ -245,6 +245,31 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const busyFlash = (subject: string): string =>
     `finish or cancel the ${subject} first (Esc cancels)`;
 
+  /** Which editor currently holds the shared prompt line as the busy-guard flash label, or
+   * null when none does. The editors are mutually exclusive — at most one owns the line — so
+   * priority order here is cosmetic. `entering` names the editor about to take the line and is
+   * excluded: pressing its own key while it already holds the line must toggle/exit it (e.g.
+   * Ctrl+B while budget-edit holds the line), not flash the way out. Single-homes the
+   * mode-to-wording mapping across the entry guards so the two sites cannot drift. */
+  const heldEditorFlash = (entering: "budget" | "defer"): string | null =>
+    searchMode
+      ? busyFlash("search")
+      : pauseEditMode
+        ? busyFlash("pause")
+        : queuedEditFor
+          ? busyFlash("queued edit")
+          : answerFor
+            ? busyFlash("answer")
+            : entryEditFor
+              ? busyFlash("entry edit")
+              : rolePromptFor
+                ? busyFlash(`prompt for ${rolePromptFor}`)
+                : entering === "defer" && budgetMode
+                  ? busyFlash("budget edit")
+                  : entering === "budget" && deferMode
+                    ? busyFlash("defer edit")
+                    : null;
+
   /** Hand the recall line's current draft back into a caller's editor save slot and reset
    * the recall state — the shared preamble of every mutually-exclusive editor that takes the
    * prompt line. Mid-recall the line holds a history entry while the real draft sits in the
@@ -336,26 +361,12 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       // Ctrl+B toggles budget-edit mode on the prompt line (mnemonic for *b*udget): entering
       // pre-fills the current cap (empty when disabled — empty means "no cap" on save) and
       // saves the prompt text; leaving restores it. Esc cancels the same way.
-      if (rolePromptFor || searchMode || deferMode || pauseEditMode || queuedEditFor || answerFor || entryEditFor) {
-        // Mutually exclusive with the role-prompt, History-search, defer, and Queued-edit
-        // editors: all five share one prompt line, so a mode may not enter while another
-        // holds it. Flash the way out instead of silently dropping the held mode's saved
-        // draft (or parsing its text as a cap on Enter).
-        deps.flashMessage(
-          searchMode
-            ? busyFlash("search")
-            : pauseEditMode
-              ? busyFlash("pause")
-              : deferMode
-                ? busyFlash("defer edit")
-                : queuedEditFor
-                  ? busyFlash("queued edit")
-                  : answerFor
-                    ? busyFlash("answer")
-                    : entryEditFor
-                      ? busyFlash("entry edit")
-                      : busyFlash(`prompt for ${rolePromptFor}`),
-        );
+      const held = heldEditorFlash("budget");
+      if (held) {
+        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
+        // not enter while another holds it. Flash the way out instead of silently dropping the
+        // held mode's saved draft (or parsing its text as a cap on Enter).
+        deps.flashMessage(held);
         return true;
       }
       if (budgetMode) {
@@ -383,25 +394,12 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       // marker `tumwater prompt --at` and the dashboard composer write. Entering pre-fills the
       // pending delay (empty when none) and saves the prompt text; leaving restores it. Empty
       // means "deliver now", so Esc cancels the edit without clearing an already-saved delay.
-      if (budgetMode || rolePromptFor || searchMode || pauseEditMode || queuedEditFor || answerFor || entryEditFor) {
-        // Mutually exclusive with the budget, role-prompt, History-search, pause, and Queued-edit
-        // editors: all five share one prompt line, so a mode may not enter while another
-        // holds it. Flash the way out instead of silently dropping the held mode's saved draft.
-        deps.flashMessage(
-          budgetMode
-            ? busyFlash("budget edit")
-            : pauseEditMode
-              ? busyFlash("pause")
-              : searchMode
-                ? busyFlash("search")
-                : queuedEditFor
-                  ? busyFlash("queued edit")
-                  : answerFor
-                    ? busyFlash("answer")
-                    : entryEditFor
-                      ? busyFlash("entry edit")
-                      : busyFlash(`prompt for ${rolePromptFor}`),
-        );
+      const held = heldEditorFlash("defer");
+      if (held) {
+        // Mutually exclusive with the other editors: all share one prompt line, so a mode may
+        // not enter while another holds it. Flash the way out instead of silently dropping
+        // the held mode's saved draft.
+        deps.flashMessage(held);
         return true;
       }
       if (deferMode) {
