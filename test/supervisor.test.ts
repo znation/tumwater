@@ -533,7 +533,11 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     // watch armed, so retry within the bounded guard. A dropped watch never writes `gone`.
     let signals = 0;
     let brokeOnEsrch = false;
-    for (let i = 0; i < 200 && !fs.existsSync(gone); i++) {
+    // The bound is wall-clock, not a signal count: a starved grandchild coalesces pending
+    // SIGUSR2s and may not be scheduled for many seconds, so a count spent while it was
+    // starved would end the loop before it ever ran a poll.
+    const deadline = Date.now() + 60_000;
+    while (Date.now() < deadline && !fs.existsSync(gone)) {
       try {
         process.kill(grandchildPid, "SIGUSR2");
         signals += 1;
@@ -550,7 +554,7 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     assert.ok(
       verdict,
       `the orphaned grandchild's watch fired and ran its stop path; ` +
-        `${signals} SIGUSR2 sent, ${brokeOnEsrch ? "loop broke on ESRCH (grandchild exited without writing gone)" : "loop ran out of signals"}, ` +
+        `${signals} SIGUSR2 sent, ${brokeOnEsrch ? "loop broke on ESRCH (grandchild exited without writing gone)" : "loop ran out of time"}, ` +
         `expected ppid ${supervisor.pid}, ppids the grandchild saw per poll: ${seenPpids}`,
     );
   } finally {
