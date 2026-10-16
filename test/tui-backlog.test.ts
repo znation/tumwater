@@ -7,6 +7,7 @@ import {
   moveEntrySelection,
   stepEntryScroll,
 } from "../src/ui/tui/tui-backlog.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { backlogMarks } from "../src/backlog/backlog-eligibility.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
@@ -166,6 +167,35 @@ test("backlogMarks carries each plan's and bug's hold parallel to its entry, emp
     plans: ["", " [blocked: requires Base 1/2]", " [refused]"],
     bugs: [""],
   });
+});
+
+test("backlogMarks and labeledBacklogEntries append the working-on-it mark after the hold", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Volume slider (planned 2026-10-01)\n\nBody.\n\n### Refused one (planned 2026-10-03)\n\n**Refused 2026-10-04 by feature: not worth it**",
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### Live bug (reported 2026-10-01)\n\nRepro." },
+    { heading: "## Fixed" },
+  ]);
+  const claim = (file: "PLANS.md" | "BUGS.md", key: string, title: string) =>
+    ({ file, key, title, at: 1, source: "assigned" }) as const;
+  saveLoopState(dir, { ...loadLoopState(dir, "feature-2"), claim: claim("PLANS.md", "volume slider", "Volume slider") });
+  saveLoopState(dir, { ...loadLoopState(dir, "feature"), claim: claim("PLANS.md", "refused one", "Refused one") });
+  saveLoopState(dir, { ...loadLoopState(dir, "bugfix"), claim: claim("BUGS.md", "live bug", "Live bug") });
+  const expected = {
+    plans: [" [working on it: feature #2]", " [refused] [working on it: feature]"],
+    bugs: [" [working on it: bugfix]"],
+  };
+  assert.deepEqual(backlogMarks(dir), expected);
+  assert.deepEqual(
+    labeledBacklogEntries(dir).filter((e) => e.label !== "question").map((e) => e.mark),
+    [...expected.plans, ...expected.bugs],
+  );
 });
 
 test("labeledBacklogEntries labels every row with its section and its eligibility mark", () => {

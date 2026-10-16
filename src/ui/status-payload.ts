@@ -275,9 +275,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // derives the header badge count from this list's length.
     plans: plannedPlans(root),
     bugs: openBugs(root),
-    // The holds beside those titles, index-for-index parallel (backlogMarks and plannedPlans/
-    // openBugs walk the same sectionEntries file order): holdMark renders an eligible entry as
-    // the empty string, so a client can append the mark without a separate eligibility check.
+    // The holds and working-on-it marks beside those titles, index-for-index parallel
+    // (backlogMarks and plannedPlans/openBugs walk the same sectionEntries file order): an
+    // eligible entry nobody is working on is the empty string, so a client can append the
+    // mark without a separate eligibility check.
     planHolds: marks.plans,
     bugHolds: marks.bugs,
     questions,

@@ -3687,7 +3687,9 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboard's Plans/Bugs tabs and the TUI's backlog pane show the `[working on it: …]` mark (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It touches only `src/backlog/backlog-eligibility.ts`, `docs/cli.md`, and two tests, none of which the in-flight commands 4/6 or stale-bugs plans edit)
+## Done
+
+### The dashboard's Plans/Bugs tabs and the TUI's backlog pane show the `[working on it: …]` mark (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It touches only `src/backlog/backlog-eligibility.ts`, `docs/cli.md`, and two tests, none of which the in-flight commands 4/6 or stale-bugs plans edit; done 2026-10-16)
 
 **Goal.** `tumwater backlog` and `plan`/`bug --list` now mark an entry a role is working on with `[working on it: feature #2]` (`backlogInProgress` and `inProgressMark` in `src/backlog/backlog-eligibility.ts`). The two live views of the same backlog do not show it yet. The dashboard's Plans and Bugs tabs render `planHolds`/`bugHolds` from `statusPayload` (`src/ui/status-payload.ts`) as a `li-meta` span beside each title (`renderBacklog` in `src/ui/gui/gui-client-fleet.ts`). The TUI's backlog pane appends `labeledBacklogEntries`' `mark` (`src/ui/tui/tui-backlog.ts`, rendered in `src/ui/tui/tui-pane.ts`). Both read `backlogMarks(root)`, which today projects only the holds. So an operator watching three feature instances on the dashboard cannot tell which plans are taken.
 
@@ -3702,8 +3704,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `test/tui-backlog.test.ts`: the existing `backlogMarks` test stays as is, because no claims are saved. A new test writes PLANS.md with an eligible plan and a refused plan, and BUGS.md with one open bug. It saves a `feature-2` state whose claim key matches the eligible plan, a `feature` state whose claim matches the refused plan, and a `bugfix` claim on the bug, using the `saveLoopState(dir, { ...loadLoopState(dir, id), claim: … })` pattern from `test/backlog-eligibility.test.ts`. `backlogMarks` must then return `{ plans: [" [working on it: feature #2]", " [refused] [working on it: feature]"], bugs: [" [working on it: bugfix]"] }`. `labeledBacklogEntries` carries the same strings as `mark`.
 - `test/status-payload.test.ts`: a claimed eligible plan's `planHolds` element reads `" [working on it: feature #2]"`, and the existing holds test's expectations are unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` names an open bug that has gone unfixed for days: a "stale bugs" check (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It adds one check beside the in-flight plan-dependencies check in `src/doctor/doctor-backlog.ts`, so whichever lands second extends the same `doctor.ts` list and `test/doctor.test.ts` name list) (done 2026-10-16)
 

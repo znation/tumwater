@@ -338,15 +338,22 @@ export function backlogHolds(root: string): BacklogHolds {
   return cloneHolds(value);
 }
 
-/** The eligibility mark (holdMark) for each planned plan and open bug, two arrays parallel
- * to the entries the observer surfaces list (backlogPayload's `plans`/`bugs`, the TUI's list
- * and entry modes): backlogHolds' verdicts projected through holdMark, so a surface derives
- * its marks from the one hold decision rather than re-walking the entries. holdMark renders
- * an eligible entry as the empty string, so a client can append the mark without a separate
- * eligibility check. Questions carry no holds. */
+/** The mark for each planned plan and open bug, two arrays parallel to the entries the
+ * observer surfaces list (backlogPayload's `plans`/`bugs`, the TUI's list and entry modes):
+ * the eligibility hold (holdMark) then the working-on-it mark (inProgressMark), the order
+ * `tumwater backlog` prints. A surface derives its marks from the one hold decision and the
+ * one claim lookup rather than re-walking the entries. An eligible entry nobody is working on
+ * renders as the empty string, so a client can append the mark without a separate check.
+ * Questions carry no holds. backlogHolds alone still drives the allocator. */
 export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
   const holds = backlogHolds(root);
-  return { plans: holds.plans.map(holdMark), bugs: holds.bugs.map(holdMark) };
+  const working = backlogInProgress(root);
+  const mark = (hold: EntryHold, runner: string | null | undefined): string =>
+    holdMark(hold) + inProgressMark(runner ?? null);
+  return {
+    plans: holds.plans.map((h, i) => mark(h, working.plans[i])),
+    bugs: holds.bugs.map((h, i) => mark(h, working.bugs[i])),
+  };
 }
 
 /** The runner id holding a live claim on each planned plan and open bug, two arrays parallel

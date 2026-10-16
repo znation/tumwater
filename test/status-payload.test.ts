@@ -17,7 +17,7 @@ import { renderStatus } from "../src/ui/status-render.js";
 import { snapshot } from "../src/status/status-data.js";
 import { orchestratorStatePath, pausedPath, piLogPath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { slotWorktreePath } from "../src/paths.js";
 import { todayStamp } from "../src/budget/budget.js";
@@ -281,6 +281,20 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.deepEqual(payload.bugs, ["Live bug (reported 2026-10-01)", "Dead bug (reported 2026-10-01)"]);
   assert.equal(payload.bugHolds.length, payload.bugs.length, "one hold per bug");
   assert.deepEqual(payload.bugHolds, ["", " [refused]"]);
+});
+
+test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {
+  const repo = makeRepo();
+  writeBacklogFile(repo, "PLANS.md", [
+    { heading: "## Planned", body: "### Volume slider (planned 2026-10-01)\n\nBody." },
+    { heading: "## Done" },
+  ]);
+  saveLoopState(repo, {
+    ...loadLoopState(repo, "feature-2"),
+    claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" },
+  });
+  const payload = statusPayload(repo) as { planHolds: string[] };
+  assert.deepEqual(payload.planHolds, [" [working on it: feature #2]"]);
 });
 
 // Open questions (QUESTIONS.md) drive the dashboard's `questions: N` header badge and its
