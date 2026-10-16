@@ -318,3 +318,148 @@ test("the landing and merge tiers ignore the reserve", async () => {
   await flushImmediate();
   assert.equal(vetGranted, true, "a negative-tier (vet/merge) acquirer is never held by the reserve");
 });
+
+// --- Keyed permits (plans/provider-concurrency.md §3; 2026-10-15) ---
+
+test("two keys fill independently: a full key never delays a free key, FIFO within a key", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 1, b: 1 });
+  const aHold = await sem.acquireLease(0, "a"); // key a is now full (1/1)
+  const order: string[] = [];
+  const snap = () => [...order]; // node:assert/strict deepEqual narrows its operand; see siblings
+  const a2 = sem.acquireLease(0, "a").then((l) => {
+    order.push("a2");
+    return l;
+  }); // parks: a is full
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "a second acquirer on the full key a parks");
+
+  // A later waiter on the free key b gains at once, not held back by the parked a waiter.
+  const bHold = await sem.acquireLease(0, "b");
+  assert.equal(bHold.key, "b");
+  order.push("b-granted");
+  assert.deepEqual(snap(), ["b-granted"], "the free key's waiter is granted while a's is still parked");
+
+  // FIFO within a key: a third waiter on a parks behind a2, and releases wake them in order.
+  const a3 = sem.acquireLease(0, "a").then((l) => {
+    order.push("a3");
+    return l;
+  });
+  await flushImmediate();
+  bHold.release(); // freeing b wakes nothing on a
+  aHold.release(); // frees a's only permit -> the first a waiter
+  await flushImmediate();
+  assert.deepEqual(snap(), ["b-granted", "a2"], "releasing a's only permit wakes the first a waiter");
+  (await a2).release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["b-granted", "a2", "a3"], "waiters on one key drain FIFO");
+  void a3;
+});
+
+test("shrinking a key below its in-use preempts nothing and grants nothing until releases drain", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 2 });
+  const a1 = await sem.acquireLease(0, "a");
+  const a2 = await sem.acquireLease(0, "a"); // a at 2/2
+  let late = false;
+  void sem.acquireLease(0, "a").then(() => (late = true));
+  await flushImmediate();
+  sem.setKeyCaps({ a: 1 }); // shrink below the two in-use holders
+  assert.equal(late, false, "a pure shrink wakes nothing");
+  a1.release(); // a now 1/1 — still AT the cap, so no new grant
+  await flushImmediate();
+  assert.equal(late, false, "no new grant while a sits at its shrunken cap");
+  a2.release(); // a now 0/1 < 1 — the waiter is admitted
+  await flushImmediate();
+  assert.equal(late, true, "a release draining under the shrunken cap admits the waiter");
+});
+
+test("rekey gives the old key back first, and a parked re-key beats a parked admission for the key", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 1, b: 1 });
+  const aHold = await sem.acquireLease(0, "a"); // a 1/1
+  const bHold = await sem.acquireLease(0, "b"); // b 1/1
+  const order: string[] = [];
+  const snap = () => [...order]; // see the sibling test for why not a bare `order`
+  const rekeyTask = aHold.rekey("b").then(() => order.push("rekey")); // parks: b is full
+  await flushImmediate();
+  const admission = sem.acquireLease(0, "b").then(() => order.push("admission")); // parks: b full
+  await flushImmediate();
+  assert.deepEqual(snap(), [], "both re-key and admission wait");
+
+  // The old key a was given back before the re-key parked, so a is grantable again.
+  const poolSnap = sem.snapshot();
+  assert.equal(poolSnap.byKey["a"]?.inUse ?? 0, 0, "the old key is returned before the re-key parks");
+  const aLate = await sem.acquireLease(0, "a"); // a is free -> granted at once
+  aLate.release();
+
+  bHold.release(); // frees b's slot: the parked re-key wins it, not the admission
+  await flushImmediate();
+  assert.deepEqual(snap(), ["rekey"], "the parked re-key is granted ahead of the parked admission");
+  assert.equal(aHold.key, "b", "the re-key'd lease now holds b");
+  // The re-key'd lease (aHold) now holds b; releasing it frees b for the admission waiter.
+  aHold.release();
+  await flushImmediate();
+  assert.deepEqual(snap(), ["rekey", "admission"], "the admission waiter gets the key once the re-key releases");
+  void rekeyTask;
+  void admission;
+});
+
+test("a forced lease overshoots a full key by one holder, blocking grants until it drains under the cap", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 1 });
+  const aHold = await sem.acquireLease(0, "a"); // a 1/1
+  let waiterGranted = false;
+  void sem.acquireLease(0, "a").then(() => (waiterGranted = true));
+  await flushImmediate();
+  const dir = sem.forceLease("a"); // overshoots to 2/1, never waits, no fleet permit
+  assert.equal(sem.snapshot().byKey["a"]?.inUse, 2, "the forced lease holds a key slot");
+  assert.equal(waiterGranted, false, "the forced overshoot still admits nobody");
+  aHold.release(); // drains to 1/1 — still AT the cap, so no new grant yet
+  await flushImmediate();
+  assert.equal(waiterGranted, false, "no grant while the key sits at (or over) its cap");
+  dir.release(); // drains to 0/1 < 1 — now the waiter is admitted
+  await flushImmediate();
+  assert.equal(waiterGranted, true, "draining under the cap admits the waiter");
+});
+
+test("re-key waiters hold a fleet permit only, so the key always drains (no deadlock)", async () => {
+  const sem = new Semaphore(2);
+  sem.setKeyCaps({ k: 1 });
+  const l1 = await sem.acquireLease(0, "x"); // uncapped key grants immediately, fleet 1/2
+  const l2 = await sem.acquireLease(0, "x"); // fleet 2/2
+  // Both re-key onto k: one takes k, the other parks as a re-key waiter.
+
+  const r1 = l1.rekey("k");
+  await flushImmediate();
+  const r2 = l2.rekey("k");
+  await flushImmediate();
+  const snap = sem.snapshot();
+  assert.equal(snap.byKey["k"]?.inUse, 1, "exactly one holds k");
+  assert.equal(sem.waiting, 1, "one re-key waiter is parked");
+  assert.equal(snap.inUse, 2, "the parked re-key waiter still holds its fleet permit");
+  // No circular wait: releasing k's only holder grants the parked re-key on that single release.
+  l1.release();
+  await Promise.all([r1, r2]);
+  await flushImmediate();
+  const after = sem.snapshot();
+  assert.equal(after.byKey["k"]?.inUse, 1, "the re-key waiter takes k on the one release");
+  assert.equal(after.inUse, 1, "and releases the fleet permit it no longer needs");
+  l2.release();
+});
+
+test("snapshot reports fleet and per-key in-use, caps and waiters", async () => {
+  const sem = new Semaphore(4);
+  sem.setKeyCaps({ a: 1, b: 3 });
+  await sem.acquireLease(0, "a"); // a 1/1 (full)
+  const bHold = await sem.acquireLease(0, "b"); // b 1/3
+  void sem.acquireLease(0, "a"); // parks on a
+  await flushImmediate();
+  const snap = sem.snapshot();
+  assert.equal(snap.inUse, 2);
+  assert.equal(snap.limit, 4);
+  assert.equal(snap.reserve, 0);
+  assert.deepEqual(snap.byKey["a"], { inUse: 1, limit: 1, waiting: 1 });
+  assert.deepEqual(snap.byKey["b"], { inUse: 1, limit: 3, waiting: 0 });
+  bHold.release();
+});

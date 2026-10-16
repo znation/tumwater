@@ -305,6 +305,24 @@ export function seamHoldKey(
   return cfg.agent !== undefined && cfg.agent !== "pi" ? cfg.agent : cfg.provider;
 }
 
+/** The key a resolved seam's run counts against the per-provider cap
+ * (plans/provider-concurrency.md §2): its hold key, else — for a pi seam that names no model
+ * at all and so runs pi's saved default — the default provider from pi's settings
+ * (`piDefault`, the caller's cached readPiDefaultModel result, so this view stays free of
+ * I/O). A bare id with no provider, or a seam whose pi settings cannot name a default, yields
+ * undefined: only the fleet total bounds it. HF sub-provider pins (`huggingface/…:deepinfra`)
+ * share the base provider, and billing does not split claude, because this reuses the hold key
+ * — "omlx is held" and "omlx is full" name the same thing on every surface. */
+export function seamConcurrencyKey(
+  cfg: Pick<ResolvedModelConfig, "agent" | "provider" | "model">,
+  piDefault?: ModelSelector | null,
+): string | undefined {
+  const hold = seamHoldKey(cfg);
+  if (hold !== undefined) return hold;
+  if (cfg.model === undefined) return piDefault?.provider;
+  return undefined;
+}
+
 /** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`
  * event: null when no tier resolves to a model (pi's own default), the single selector when
  * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`

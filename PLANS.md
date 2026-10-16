@@ -375,61 +375,6 @@ test/doctor-model-checks.test.ts.
   A config-views test pins this.
 - `npm test` passes.
 
-### Per-provider concurrency caps, part 1/5: a keyed permit pool in `Semaphore`, and the seam's provider key (planned 2026-10-15 from an operator request; independent of the "Mixed claude + pi fleets" series; parts 2/5–5/5 follow it in order)
-
-Design: plans/provider-concurrency.md §2 "The provider key" and §3 "A keyed permit pool". This
-part adds the pure mechanism only. No caller passes a key yet, so the fleet behaves exactly as
-today.
-
-**Goal.** `Semaphore` can admit by the fleet total and an optional provider key at once. A
-provider at its cap then never blocks a waiter on another provider. Later parts wire it to the
-orchestrator.
-
-**Approach.**
-- In src/concurrency/semaphore.ts, add `acquireLease(tier, key?)`, which returns
-  `{ key, release(), rekey(to) }`, and `forceLease(key)`. Keep the keyless
-  `acquire`/`tryAcquire`/`release` unchanged, because check-permit.ts and the current orchestrator
-  callers use them.
-- Waiters stay in one tier-ordered FIFO queue. `grantNextWaiter` becomes a scan:
-  - grant every waiter whose key is under its cap while the fleet is under
-    `capacity − reserveFor(tier)`;
-  - skip a waiter whose key is full, leaving its place unchanged;
-  - stop at the first tier ≥ 1 waiter the reserve withholds from, as today.
-- `rekey(to)` gives the old key back first, which wakes that key's waiters. It then waits only for
-  the new key's headroom, ahead of every admission waiter, keeping its fleet permit. A forced
-  lease re-keys without waiting.
-- Add `setKeyCaps(caps)`, which grows and wakes waiters and shrinks without preempting, the same
-  contract as `setCapacity`.
-- Add `snapshot()`, returning `{ inUse, limit, reserve, byKey }`.
-- Add `seamConcurrencyKey(cfg, piDefault)` to src/config/config-views.ts beside `seamHoldKey`:
-  - `seamHoldKey(cfg)`;
-  - else, for a pi seam with no model at all, `piDefault?.provider`;
-  - else undefined.
-
-**Files touched.** src/concurrency/semaphore.ts, src/config/config-views.ts, test/semaphore.test.ts,
-test/config-views.test.ts.
-
-**Acceptance criteria (this part).**
-- Under one total, two keys with caps fill independently. A waiter on a full key never delays a
-  later waiter on a free key, and FIFO holds within a key.
-- With no keys, `acquire`/`release` grant in exactly today's order. Every existing
-  test/semaphore.test.ts and test/check-permit.test.ts case passes unchanged.
-- The reserve still withholds only from tier ≥ 1 waiters.
-- `setKeyCaps` shrinking a key below its in-use preempts nothing and grants nothing on that key
-  until releases drain it under the new cap.
-- A rekey releases the old key before it waits, and a parked rekey is granted ahead of a parked
-  admission for the same key.
-- A forced lease overshoots its key by at most one holder and blocks further grants on that key
-  until the key is back under its cap.
-- The §5 no-deadlock property is pinned. With every fleet permit held by rekey waiters on key K,
-  K has headroom, so one of them is granted.
-- `seamConcurrencyKey` returns:
-  - `claude` for a claude seam;
-  - the pi provider for `omlx/…` and `huggingface/…:deepinfra`;
-  - pi's default provider for a no-model pi seam;
-  - undefined for a bare id with no provider.
-- `npm test` passes.
-
 ### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow)
 
 Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
@@ -647,6 +592,62 @@ README.md, and their tests.
 - The fleet row's `loopPhase` landing arm renders the same per-stage elapsed from a `LandingCell` carrying `stageSince`, and omits it when absent; the `reviewing`/`resolving` `inFlightDetail` raw-log tail is unchanged and still appended after the stage elapsed.
 - `setLandingStage` stamps `stageSince` only on an actual stage transition (its existing unchanged-stage no-op leaves it alone), and `addLandingChange` stamps it with the initial `rebasing`; a marker that never transitions keeps one `stageSince` equal to the change's start.
 - The new field is a pure additive back-compat change: `isLandingChange` still accepts a marker without it, an older-generation single-change marker (no `changes` array) reads `stageSince` from its top-level when present and renders nothing when absent, and `npm run test` passes.
+
+### Per-provider concurrency caps, part 1/5: a keyed permit pool in `Semaphore`, and the seam's provider key (planned 2026-10-15 from an operator request; independent of the "Mixed claude + pi fleets" series; parts 2/5–5/5 follow it in order) — done 2026-10-15
+
+Design: plans/provider-concurrency.md §2 "The provider key" and §3 "A keyed permit pool". This
+part adds the pure mechanism only. No caller passes a key yet, so the fleet behaves exactly as
+today.
+
+**Goal.** `Semaphore` can admit by the fleet total and an optional provider key at once. A
+provider at its cap then never blocks a waiter on another provider. Later parts wire it to the
+orchestrator.
+
+**Approach.**
+- In src/concurrency/semaphore.ts, add `acquireLease(tier, key?)`, which returns
+  `{ key, release(), rekey(to) }`, and `forceLease(key)`. Keep the keyless
+  `acquire`/`tryAcquire`/`release` unchanged, because check-permit.ts and the current orchestrator
+  callers use them.
+- Waiters stay in one tier-ordered FIFO queue. `grantNextWaiter` becomes a scan:
+  - grant every waiter whose key is under its cap while the fleet is under
+    `capacity − reserveFor(tier)`;
+  - skip a waiter whose key is full, leaving its place unchanged;
+  - stop at the first tier ≥ 1 waiter the reserve withholds from, as today.
+- `rekey(to)` gives the old key back first, which wakes that key's waiters. It then waits only for
+  the new key's headroom, ahead of every admission waiter, keeping its fleet permit. A forced
+  lease re-keys without waiting.
+- Add `setKeyCaps(caps)`, which grows and wakes waiters and shrinks without preempting, the same
+  contract as `setCapacity`.
+- Add `snapshot()`, returning `{ inUse, limit, reserve, byKey }`.
+- Add `seamConcurrencyKey(cfg, piDefault)` to src/config/config-views.ts beside `seamHoldKey`:
+  - `seamHoldKey(cfg)`;
+  - else, for a pi seam with no model at all, `piDefault?.provider`;
+  - else undefined.
+
+**Files touched.** src/concurrency/semaphore.ts, src/config/config-views.ts, test/semaphore.test.ts,
+test/config-views.test.ts.
+
+**Acceptance criteria (this part).**
+- Under one total, two keys with caps fill independently. A waiter on a full key never delays a
+  later waiter on a free key, and FIFO holds within a key.
+- With no keys, `acquire`/`release` grant in exactly today's order. Every existing
+  test/semaphore.test.ts and test/check-permit.test.ts case passes unchanged.
+- The reserve still withholds only from tier ≥ 1 waiters.
+- `setKeyCaps` shrinking a key below its in-use preempts nothing and grants nothing on that key
+  until releases drain it under the new cap.
+- A rekey releases the old key before it waits, and a parked rekey is granted ahead of a parked
+  admission for the same key.
+- A forced lease overshoots its key by at most one holder and blocks further grants on that key
+  until the key is back under its cap.
+- The §5 no-deadlock property is pinned. With every fleet permit held by rekey waiters on key K,
+  K has headroom, so one of them is granted.
+- `seamConcurrencyKey` returns:
+  - `claude` for a claude seam;
+  - the pi provider for `omlx/…` and `huggingface/…:deepinfra`;
+  - pi's default provider for a no-model pi seam;
+  - undefined for a bare id with no provider.
+- `npm test` passes.
+
 ### The day/`--since` report names how many ticks failed per role: a "Failed ticks by role" line in the day and `--since` renders (planned 2026-10-14 by plan; shares `src/report/report-data.ts` and `src/report/report-render.ts` with the waiting landing-failed sibling, but touches a different fold branch and a different render line — this folds `tick_end`'s `result` where that sibling folds the `landed`/`land_failed` branch, and renders its own line where that sibling annotates `landingShareLine` — so the two land in either order on separate feature runs and are never picked in the same run) — done 2026-10-14
 
 **Goal.** The report already breaks the fleet down by role along several dimensions — `Ticks by role`, `Tokens by role`, `Cost by role`, `Rejections by role`, `Revisions by role` (the last four landed as the report's established per-role series) — but it tells an operator nothing about how many of a role's ticks FAILED: a tick that burned agent time and landed nothing without going through review (`error`, `quiet_killed`, `merge_conflict`, `main_red`, `aborted`, …) leaves no `review_rejected`/`revision` event and no token spike the existing lines would flag, so a role thrashing on errors reads as healthy in the quick day report. The failure digest names these richly (`## Outcome by role`, `Deltas … error rate`, `Top loss causes by time`), but the day report — the operator's daily usage summary — has no per-role failure count. This adds one: a `Failed ticks by role` line in both renders, folded from `tick_end` events already collected, using the same canonical bucketing the digest already uses (`OUTCOME_CLASS` in `src/failure/time-spend.ts`, exported so the report shares it rather than re-deriving a parallel set that could drift).
