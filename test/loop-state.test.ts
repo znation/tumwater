@@ -229,7 +229,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
       revision: { sha: "abc", round: "2", at: null },
       mergeConflicts: { sha: "abc", count: "many" },
       conflictDiscard: { sha: "abc", summary: "s", attempts: -3, at: {} },
-      conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false },
+      conflictHandback: { sha: "abc", at: "later", round: -4, reason: "landing", applied: false }, // vocabulary-ok: legacy state value read from old files
       landingCheckFailures: { patchId: "p", count: [1] },
       modelFallback: { failures: "3", since: -1, probeAt: null, cooldownMs: "500", reason: "r" },
     }),
@@ -244,6 +244,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
   assert.equal(s.conflictDiscard?.at, 0);
   assert.equal(s.conflictHandback?.at, 0);
   assert.equal(s.conflictHandback?.round, 0);
+  assert.equal(s.conflictHandback?.reason, "merge", "an old build's landing reason loads as merge");
   assert.equal(s.landingCheckFailures?.count, 0);
   assert.equal(s.modelFallback?.failures, 0);
   assert.equal(s.modelFallback?.since, 0);

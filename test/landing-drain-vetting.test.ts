@@ -61,7 +61,7 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
       checks.map((e) => [e.loop, e.scope]),
       [
         ["alpha", "batch"],
-        ["gamma", "landing"],
+        ["gamma", "merge"],
       ],
       "one shared check for the stack of two, then gamma's own in-lock re-check on the main they moved",
     );

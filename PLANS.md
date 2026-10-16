@@ -307,42 +307,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms event log, part 5/9: Rename the landing and drain payload values (planned 2026-10-16 by user; requires part 4/9 landed; design in plans/terminology.md "Event log"; touches src/build/build-check-events.ts src/landing/landing-merge.ts src/loop/ src/prompt/gate-prompts.ts src/redeploy/redeployer.ts src/events/ src/status/status-polls.ts src/failure/time-spend.ts test/)
-
-**Goal.** The remaining old words inside event payloads change, and old lines read with the new values:
-- `build_check.scope` `"landing"` → `"merge"`;
-- `conflict_handback.reason` `"landing"` → `"merge"`;
-- the `restart` fields `drainedMs`, `abortedTicks` and `drainWindowMs` → `finishedMs`, `abortedRuns` and `finishWindowMs`.
-
-**Approach.**
-- Scope:
-  - `BuildCheckScope` becomes `"gate" | "merge" | "batch"`, along with the `SCOPE_WORDS` key and `MERGE_SCOPES` (src/build/build-check-events.ts).
-  - The writer is `verifyLanding` (src/landing/landing-merge.ts), which passes the scope.
-  - Readers: `scanMainCheck` (status-polls.ts) and `timeAndSpend` (time-spend.ts).
-  - The normalizer rewrites a `build_check` line's `scope: "landing"`.
-- Reason:
-  - The event value and the persisted `LoopState.conflictHandback.reason` share one type, so both change here: `"merge" | "revision"` in src/loop/loop-state.ts.
-  - Writers: the hand-back paths in `tickWithWorktreePhase` (src/loop/loop-tick.ts).
-  - `buildConflictHandbackNote` (src/prompt/gate-prompts.ts) takes `"merge"`.
-  - `loadLoopState` maps a persisted `"landing"` reason to `"merge"` inside its `conflictHandback` heal. A hand-back saved by the old build must keep its merge wording.
-  - The normalizer rewrites a `conflict_handback` line's reason.
-- Restart:
-  - `Redeployer.poll` (src/redeploy/redeployer.ts) writes the three new keys.
-  - The class's own `drainWindowMs`/`drainSince` stay: "drain" is kept in code.
-  - The `restart` case in event-format.ts reads the new keys.
-  - The normalizer renames the three fields on a `restart` line.
-- If the vocabulary guard flags an old value or key literal, end its line with `// vocabulary-ok: legacy event value read from old logs`.
-- Tests: update what typecheck and the suite flag (build-check-events, check-permit, landing-pipeline, gate-prompts, loop-leftover-recovery, event-format, redeployer, orchestrator-redeploy.e2e). Add normalizer cases for all three, and a `loadLoopState` case for the old reason.
-- **Self-hosting:** safe in one part. The new build maps the old build's event values on read and the persisted hand-back reason on load, and the old build reads no new value.
-
-**Files touched.** src/build/build-check-events.ts, src/landing/landing-merge.ts, src/status/status-polls.ts, src/failure/time-spend.ts, src/loop/loop-state.ts, src/loop/loop-tick.ts, src/prompt/gate-prompts.ts, src/redeploy/redeployer.ts, src/events/event-format.ts, src/events/event-legacy.ts; test/build-check-events.test.ts, test/check-permit.test.ts, test/landing-pipeline.test.ts, test/gate-prompts.test.ts, test/loop-leftover-recovery.test.ts, test/loop-state.test.ts, test/event-format.test.ts, test/event-legacy.test.ts, test/redeployer.test.ts, test/orchestrator-redeploy.e2e.test.ts.
-
-**Acceptance criteria.**
-- The in-lock re-check logs `build_check` with `scope: "merge"`. An old `scope: "landing"` line still counts as main's newest merge-scope check in `scanMainCheck`.
-- A state file holding `conflictHandback.reason: "landing"` loads as `"merge"`, and the hand-back note keeps its merge wording.
-- A restart event carries `finishedMs`, `abortedRuns` and `finishWindowMs`, and an old `restart` line formats the same way.
-- `npm run test` passes.
-
 ### Plain terms event log, part 6/9: Write the source field and read it everywhere (planned 2026-10-16 by user; requires part 5/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/history/history-data.ts src/failure/time-spend.ts src/tick/ src/config/config-validation.ts test/)
 
 **Goal.** Stage 1 of "Widely used fields":
@@ -2482,6 +2446,42 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 5/9: Rename the landing and drain payload values (planned 2026-10-16 by user; requires part 4/9 landed; design in plans/terminology.md "Event log"; touches src/build/build-check-events.ts src/landing/landing-merge.ts src/loop/ src/prompt/gate-prompts.ts src/redeploy/redeployer.ts src/events/ src/status/status-polls.ts src/failure/time-spend.ts test/) — done 2026-10-16
+
+**Goal.** The remaining old words inside event payloads change, and old lines read with the new values:
+- `build_check.scope` `"landing"` → `"merge"`;
+- `conflict_handback.reason` `"landing"` → `"merge"`;
+- the `restart` fields `drainedMs`, `abortedTicks` and `drainWindowMs` → `finishedMs`, `abortedRuns` and `finishWindowMs`.
+
+**Approach.**
+- Scope:
+  - `BuildCheckScope` becomes `"gate" | "merge" | "batch"`, along with the `SCOPE_WORDS` key and `MERGE_SCOPES` (src/build/build-check-events.ts).
+  - The writer is `verifyLanding` (src/landing/landing-merge.ts), which passes the scope.
+  - Readers: `scanMainCheck` (status-polls.ts) and `timeAndSpend` (time-spend.ts).
+  - The normalizer rewrites a `build_check` line's `scope: "landing"`.
+- Reason:
+  - The event value and the persisted `LoopState.conflictHandback.reason` share one type, so both change here: `"merge" | "revision"` in src/loop/loop-state.ts.
+  - Writers: the hand-back paths in `tickWithWorktreePhase` (src/loop/loop-tick.ts).
+  - `buildConflictHandbackNote` (src/prompt/gate-prompts.ts) takes `"merge"`.
+  - `loadLoopState` maps a persisted `"landing"` reason to `"merge"` inside its `conflictHandback` heal. A hand-back saved by the old build must keep its merge wording.
+  - The normalizer rewrites a `conflict_handback` line's reason.
+- Restart:
+  - `Redeployer.poll` (src/redeploy/redeployer.ts) writes the three new keys.
+  - The class's own `drainWindowMs`/`drainSince` stay: "drain" is kept in code.
+  - The `restart` case in event-format.ts reads the new keys.
+  - The normalizer renames the three fields on a `restart` line.
+- If the vocabulary guard flags an old value or key literal, end its line with `// vocabulary-ok: legacy event value read from old logs`.
+- Tests: update what typecheck and the suite flag (build-check-events, check-permit, landing-pipeline, gate-prompts, loop-leftover-recovery, event-format, redeployer, orchestrator-redeploy.e2e). Add normalizer cases for all three, and a `loadLoopState` case for the old reason.
+- **Self-hosting:** safe in one part. The new build maps the old build's event values on read and the persisted hand-back reason on load, and the old build reads no new value.
+
+**Files touched.** src/build/build-check-events.ts, src/landing/landing-merge.ts, src/status/status-polls.ts, src/failure/time-spend.ts, src/loop/loop-state.ts, src/loop/loop-tick.ts, src/prompt/gate-prompts.ts, src/redeploy/redeployer.ts, src/events/event-format.ts, src/events/event-legacy.ts; test/build-check-events.test.ts, test/check-permit.test.ts, test/landing-pipeline.test.ts, test/gate-prompts.test.ts, test/loop-leftover-recovery.test.ts, test/loop-state.test.ts, test/event-format.test.ts, test/event-legacy.test.ts, test/redeployer.test.ts, test/orchestrator-redeploy.e2e.test.ts.
+
+**Acceptance criteria.**
+- The in-lock re-check logs `build_check` with `scope: "merge"`. An old `scope: "landing"` line still counts as main's newest merge-scope check in `scanMainCheck`.
+- A state file holding `conflictHandback.reason: "landing"` loads as `"merge"`, and the hand-back note keeps its merge wording.
+- A restart event carries `finishedMs`, `abortedRuns` and `finishWindowMs`, and an old `restart` line formats the same way.
+- `npm run test` passes.
 
 ### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/) (done 2026-10-16)
 

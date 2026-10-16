@@ -448,8 +448,8 @@ export function eventMessage(e: HarnessEvent): string {
     case "restart_pending":
       return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
     case "restart": {
-      const aborted = finiteNumber(e.abortedTicks, 0);
-      return `restarting onto update ${shortSha(e.to)} (finished current work in ${minutes(e.drainedMs)}m${
+      const aborted = finiteNumber(e.abortedRuns, 0);
+      return `restarting onto update ${shortSha(e.to)} (finished current work in ${minutes(e.finishedMs)}m${
           aborted > 0 ? `, ${aborted} run(s) resume after the restart` : ""
         })`;
     }

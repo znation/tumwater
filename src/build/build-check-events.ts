@@ -16,7 +16,7 @@ import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-
  * baseline names its own ("baseline") from main-red.ts, because the one-run-per-SHA cache and
  * in-flight dedup live in checkMainBaseline — the event there is logged by the paying role via
  * the onRun hook. */
-export type BuildCheckScope = "gate" | "landing" | "batch";
+export type BuildCheckScope = "gate" | "merge" | "batch";
 
 /** How late a check's deadline timer may fire before the timeout's wording stops naming the
  * configured bound alone. Normal timer lag is milliseconds; past this the warning and the
@@ -52,7 +52,7 @@ export function owesCleanRetry(first: BuildCheckOutcome): boolean {
  * line byte-for-byte what it is today. */
 export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: string }> = {
   gate: { label: "check", proceeding: "proceeding to model review" },
-  landing: { label: "merge check", proceeding: "proceeding to merge" },
+  merge: { label: "merge check", proceeding: "proceeding to merge" },
   // The batch's next step after the check is the fast-forward — the same phrase the landing
   // scope uses (gate says "proceeding to model review" because its next step is the reviewer).
   batch: { label: "batch check", proceeding: "proceeding to merge" },
@@ -63,7 +63,7 @@ export const SCOPE_WORDS: Record<BuildCheckScope, { label: string; proceeding: s
  * and these are the last checks before main. The gate scope's pre-check stays fail-open
  * because the model reviewer and the landing path's own check still stand behind it
  * (BUGS.md: a landing build check that times out must not merge unverified). */
-export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["landing", "batch"]); // vocabulary-ok: persisted state value or event scope, renamed by a later series
+export const MERGE_SCOPES: ReadonlySet<BuildCheckScope> = new Set(["merge", "batch"]);
 
 /** The proceeding reason a merge-scope check that made no verdict about the tree carries: the
  * run was killed, timed out, or spanned a host sleep, so nothing it saw is the change's

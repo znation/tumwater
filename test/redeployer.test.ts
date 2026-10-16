@@ -79,7 +79,7 @@ test("the happy path: hold through the green check and compile, then restart whe
   assert.equal(restart.type, "restart");
   assert.equal(restart.from, BUILD.sha);
   assert.equal(restart.to, HEAD_B);
-  assert.equal(restart.abortedTicks, 0);
+  assert.equal(restart.abortedRuns, 0);
 });
 
 test("the drain cap aborts in-flight ticks: restart anyway, counting them", async () => {
@@ -94,9 +94,9 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 500)), "hold", "inside the drain window");
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 600)), "restart", "past it: the caller aborts them");
-  assert.equal(events.at(-1)!.abortedTicks, 3);
-  assert.equal(events.at(-1)!.drainedMs, 1110);
-  assert.equal(events.at(-1)!.drainWindowMs, 1000, "no observed samples: the cold-start constant bounds the drain");
+  assert.equal(events.at(-1)!.abortedRuns, 3);
+  assert.equal(events.at(-1)!.finishedMs, 1110);
+  assert.equal(events.at(-1)!.finishWindowMs, 1000, "no observed samples: the cold-start constant bounds the drain");
 });
 
 test("the drain window tracks the observed p75 tick duration, not the cold-start constant", async () => {
@@ -113,8 +113,8 @@ test("the drain window tracks the observed p75 tick duration, not the cold-start
   await settle();
   assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 1200)), "hold", "past the cold-start constant but inside the observed p75");
   assert.equal(await r.poll(HEAD_B, inFlight, true, (now += 4000)), "restart", "past the observed p75: the caller aborts them");
-  assert.equal(events.at(-1)!.drainWindowMs, 5000);
-  assert.equal(events.at(-1)!.abortedTicks, 3);
+  assert.equal(events.at(-1)!.finishWindowMs, 5000);
+  assert.equal(events.at(-1)!.abortedRuns, 3);
 });
 
 test("a director tick in flight holds past the drain window without a cap; the swap lands once it clears", async () => {
@@ -144,8 +144,8 @@ test("a director tick in flight holds past the drain window without a cap; the s
     "only then does the restart land",
   );
   const ev = events.at(-1)!;
-  assert.equal(ev.abortedTicks, 1, "the remaining role tick is counted; the finished director is not");
-  assert.ok(Number(ev.drainedMs) > 5000, `a director-extended hold reports its true length (${String(ev.drainedMs)}ms)`);
+  assert.equal(ev.abortedRuns, 1, "the remaining role tick is counted; the finished director is not");
+  assert.ok(Number(ev.finishedMs) > 5000, `a director-extended hold reports its true length (${String(ev.finishedMs)}ms)`);
 });
 
 test("a main move during the drain does not restart the clock: the same ticks get one window", async () => {
@@ -172,7 +172,7 @@ test("a main move during the drain does not restart the clock: the same ticks ge
   await settle();
   assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 200)), "restart", "past the original deadline, not a fresh one");
   assert.deepEqual(f.calls.swap, [HEAD_C], "and it is the new head's build that goes in");
-  assert.equal(events.at(-1)!.drainedMs, 1100, "reported from the first hold, not the last head");
+  assert.equal(events.at(-1)!.finishedMs, 1100, "reported from the first hold, not the last head");
 });
 
 test("a blocked restart ends the drain: the next one gets its clock back", async () => {

@@ -115,7 +115,7 @@ function scanMainCheck(root: string): MainCheckScan {
     // every landed event. The landings are re-read against the check's ts below — a pass
     // over the landings alone, not a second pass over every event in the window.
     for (const e of events) {
-      if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) { // vocabulary-ok: persisted event scope value
+      if (e.type === "build_check" && (e.scope === "merge" || e.scope === "batch" || e.scope === "baseline")) {
         check = e;
       } else if (e.type === "merge_done" && typeof e.ts === "number") { 
         landed.push(e);

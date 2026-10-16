@@ -302,7 +302,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
     );
     const resumed = makeLoopRunner(repo, "improve");
     resumed.state.resumePending = true;
-    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: false };
+    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
     assert.equal((await resumed.tick()).result, "queued");
     assert.equal(
       resumed.state.conflictHandback?.applied,
@@ -355,7 +355,7 @@ test("a cross-agent handoff re-sends an already-applied merge hand-back note", a
     );
     const resumed = makeLoopRunner(repo, "improve");
     resumed.state.resumePending = true;
-    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: true };
+    resumed.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: true };
     assert.equal((await resumed.tick()).result, "queued");
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the hand-back");

@@ -138,11 +138,11 @@ test("a failed install skips the gate check but rejects the landing as unverifie
   const gate = await runScopedBuildCheck(root, "feature", "gate", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
   assert.equal(gate!.outcome.status, "skipped");
   assert.equal(gate!.outcome.skipReason, "install");
-  const landing = await runScopedBuildCheck(root, "feature", "landing", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
+  const landing = await runScopedBuildCheck(root, "feature", "merge", wt, undefined, 30_000, undefined, fakeInstaller("fail"));
   assert.equal(landing!.outcome.status, "failed");
   assert.equal(landing!.outcome.unverified, true);
   assert.match(landing!.outcome.outputTail?.[0] ?? "", /dependency install \(ink\) failed: .*ENOTFOUND.*the tree is unverified/);
-  const priced = eventsOfType(root, "build_check").find((e) => e.scope === "landing");
+  const priced = eventsOfType(root, "build_check").find((e) => e.scope === "merge");
   assert.deepEqual(priced?.installed, ["ink"], "the feed names what the check tried to install");
 });
 

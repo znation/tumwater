@@ -469,10 +469,10 @@ async function tickWithWorktreePhase(
       s.conflictHandback = {
         sha: recovered.sha,
         at: Date.now(),
-        reason: "landing", // vocabulary-ok: "landing" is a persisted state value until the state rename
+        reason: "merge",
         applied: false,
       };
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" }); // vocabulary-ok: "landing" is a persisted state value until the state rename
+      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "merge" });
     } else if (recovered?.kind === "discarded") {
       // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
       // tick authors on a fresh main like any other — told what was dropped and why.

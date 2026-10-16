@@ -406,7 +406,7 @@ test("a revision-round rejection leaves the error streak unchanged; only a final
 // pending revision, and a resumable session.
 test("a hand-back record is cleared when the tick abandons its edits", () => {
   const cfg = testConfig();
-  const hb = { sha: PINNED, at: 1, reason: "landing" as const, applied: true };
+  const hb = { sha: PINNED, at: 1, reason: "merge" as const, applied: true };
 
   const abandoned = freshLoopState("feature");
   abandoned.conflictHandback = { ...hb };

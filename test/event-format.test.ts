@@ -544,11 +544,11 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(pending, /restart pending — main bbbbbbbb is green; finishing current runs/);
 
   const restart = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: 5 * 60_000, abortedTicks: 2,
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 5 * 60_000, abortedRuns: 2,
   } as never);
   assert.match(restart, /restarting onto update bbbbbbbb \(finished current work in 5m, 2 run\(s\) resume after the restart\)/);
   const clean = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: 0, abortedTicks: 0,
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 0, abortedRuns: 0,
   } as never);
   assert.match(clean, /\(finished current work in 0m\)$/, "nothing aborted: no resume clause");
 
@@ -561,7 +561,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(staleTorn, /\(0 commits behind\)/, `corrupt aheadCommits must read zero: ${staleTorn}`);
   assert.doesNotMatch(staleTorn, /NaN/);
   const restartTorn = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), drainedMs: "x", abortedTicks: "2",
+    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: "x", abortedRuns: "2",
   } as never);
   assert.match(restartTorn, /\(finished current work in 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
   assert.doesNotMatch(restartTorn, /NaN|true tick/);
@@ -603,8 +603,8 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
   assert.match(baseline, /check \(baseline\): test failed \(in 2m\)/);
   // script carries the FULL command for a configured-command check (an npm prefix would
   // misrender it), so the line shows the bare name for both kinds.
-  const command = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "landing", status: "passed", script: "cargo test", durationMs: 90_000 } as never);
-  assert.match(command, /check \(landing\): cargo test passed \(in 90s\)/);
+  const command = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "merge", status: "passed", script: "cargo test", durationMs: 90_000 } as never);
+  assert.match(command, /check \(merge\): cargo test passed \(in 90s\)/);
   const approved = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok", durationMs: 5 * 60_000 } as never);
   assert.match(approved, /review approved aaaaaaaa — ok \(in 5m\)$/);
   // Events from builds that predate durationMs render exactly as before.
@@ -706,7 +706,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
     /waiting: provider limit — several roles rate-limited by the provider/, `a non-array roles payload must read "several roles": ${holdBare}`,
   );
 
-  // restart without drainedMs/abortedTicks (the old event shape, or a torn line): zero
+  // restart without finishedMs/abortedRuns (the old event shape, or a torn line): zero
   // defaults, and no resume clause.
   const restartBare = formatEvent({ ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40) } as never);
   assert.match(restartBare, /\(finished current work in 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);

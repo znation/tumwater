@@ -59,7 +59,7 @@ test("a rebase that rewrote the commits re-runs the declared check on the rebase
   const result = await mergeToMain(ctx, wt, "branch work");
 
   assert.equal(result, "changed");
-  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "landing");
+  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
   assert.equal(landingChecks.length, 1, "the rebased tree was re-verified inside the merge lock");
   assert.equal(landingChecks[0]!.status, "passed");
   assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes landed on main");
@@ -80,7 +80,7 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
   assert.equal(result, "merge_blocked");
   assert.equal(mainSha(root), mainBefore, "nothing lands on a red tree");
   assert.ok(
-    readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "failed"),
+    readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge" && e.status === "failed"),
     "the failed re-check is priced in the feed",
   );
   assert.equal(eventsOfType(root, "merged").length, 0);
@@ -113,7 +113,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
   assert.equal(result, "changed", "a skip is environmental — the landing proceeds (fail-open)");
   const events = readEvents(root);
   assert.ok(
-    events.some((e) => e.type === "build_check" && e.scope === "landing" && e.status === "skipped"),
+    events.some((e) => e.type === "build_check" && e.scope === "merge" && e.status === "skipped"),
     "the skipped re-check is priced in the feed",
   );
   const warnings = warningMessagesOf(events);
@@ -167,7 +167,7 @@ test("a no-op rebase with no verified head still runs the landing check and fail
   assert.equal(mainSha(root), mainBefore, "nothing lands on the unverified tree");
   assert.deepEqual(
     eventsOfType(root, "build_check").map((e) => [e.scope, e.status]),
-    [["landing", "failed"]],
+    [["merge", "failed"]],
     "the landing-scope check ran and rejected the tree",
   );
   assert.equal(eventsOfType(root, "merged").length, 0);
@@ -194,7 +194,7 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   const checks = eventsOfType(root, "build_check");
   assert.deepEqual(
     checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
-    [["landing", "failed", "exit 1"]],
+    [["merge", "failed", "exit 1"]],
     "one landing-scope run of check.command, never the gate command",
   );
 });
@@ -253,7 +253,7 @@ test("a code commit under the verified head still re-runs the check", async () =
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
   assert.equal(result, "merge_blocked");
-  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["landing", "failed"]]);
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"]]);
 });
 
 test("with check.gateCommand set, doc-only drift still runs the full check", async () => {
@@ -265,7 +265,7 @@ test("with check.gateCommand set, doc-only drift still runs the full check", asy
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
   assert.equal(result, "merge_blocked", "the gate ran only the gate command, so its green proves nothing here");
-  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["landing", "failed"]]);
+  assert.deepEqual(eventsOfType(root, "build_check").map((e) => [e.scope, e.status]), [["merge", "failed"]]);
 });
 
 test("a doc-only delta skips the re-check even when main moved under it", async () => {
@@ -306,7 +306,7 @@ test("a conflict resolution is re-verified inside the lock before landing", asyn
   const result = await mergeToMain(ctx, wt, "branch edit");
 
   assert.equal(result, "changed");
-  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "landing");
+  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
   // The second rebase is a no-op, but its bytes (pi's resolution) were never checked — the
   // pre-merge head captured before the FIRST rebase is what makes this run.
   assert.equal(landingChecks.length, 1, "the post-resolution tree was re-verified");
@@ -406,7 +406,7 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
     `the warning is the structure reason, not a check failure; got: ${JSON.stringify(warnings)}`,
   );
   assert.ok(
-    !readEvents(root).some((e) => e.type === "build_check" && e.scope === "landing"),
+    !readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge"),
     "no landing build check ran — the structure block fires first",
   );
   assertWorktreeSettled(wt);

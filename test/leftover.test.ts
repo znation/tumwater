@@ -110,7 +110,7 @@ test("a pin at the cap whose lineage was already handed back is discarded, namin
   const atCap = {
     ...makeCtx(root, wt),
     mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT },
-    conflictHandback: { sha, at: Date.now(), reason: "landing" as const, applied: true },
+    conflictHandback: { sha, at: Date.now(), reason: "merge" as const, applied: true },
   };
   const recovered = await recoverLeftover(atCap);
 
@@ -325,7 +325,7 @@ test("a discarded leftover is still deleted when the events feed is unwritable",
   const atCap = {
     ...makeCtx(root, wt),
     mergeConflicts: { sha, count: MERGE_CONFLICT_LIMIT },
-    conflictHandback: { sha, at: Date.now(), reason: "landing" as const, applied: true },
+    conflictHandback: { sha, at: Date.now(), reason: "merge" as const, applied: true },
   };
   unwritableEvents(root);
 

@@ -186,7 +186,7 @@ test("a check that fails or times out still releases its permit", { timeout: 30_
   const one = { maxConcurrentChecks: 1 };
   const failed = await runScopedBuildCheck(root, ROLE, "gate", wt, { ...one, check: { command: "exit 1" } }, 30_000);
   assert.equal(failed!.outcome.status, "failed");
-  for (const scope of ["gate", "landing"] as const) {
+  for (const scope of ["gate", "merge"] as const) {
     const timedOut = await runScopedBuildCheck(
       root,
       ROLE,

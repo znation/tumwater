@@ -27,7 +27,7 @@ import { oneLine } from "./helpers/oracles.js";
 // with the harness's continueRebase.
 
 test("buildConflictHandbackNote names the files, the reason and what main changed", () => {
-  const note = buildConflictHandbackNote("landing", ["notes.md"], {
+  const note = buildConflictHandbackNote("merge", ["notes.md"], {
     change: "tumwater(improve): do the thing\n\nWHY: because",
     main: [{ sha: "abc1234", subject: "main rewrote a.ts", body: "the reason" }],
   });

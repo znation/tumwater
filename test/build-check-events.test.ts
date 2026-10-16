@@ -118,7 +118,7 @@ test("buildCheckEvent carries loop, scope, status, script, and duration, and run
 
 test("buildCheckEvent records the armed bound and lateness only when the deadline fired late", () => {
   const run: BuildCheckRun = { spawnedAt: 0, settledAt: 712_000, timeoutMs: 300_000, deadlineLateMs: 412_000 };
-  const event = buildCheckEvent("lander", "landing", { status: "skipped", script: "npm test", run }, 712_000);
+  const event = buildCheckEvent("lander", "merge", { status: "skipped", script: "npm test", run }, 712_000);
   assert.equal(event.timeoutMs, 300_000);
   assert.equal(event.deadlineLateMs, 412_000);
 });
@@ -126,11 +126,11 @@ test("buildCheckEvent records the armed bound and lateness only when the deadlin
 // --- SCOPE_WORDS / MERGE_SCOPES: the scope vocabulary the three callers share ---
 
 test("every scope has wording, and exactly the merge-gating scopes are listed", () => {
-  assert.deepEqual(Object.keys(SCOPE_WORDS).sort(), ["batch", "gate", "landing"]);
-  for (const scope of ["gate", "landing", "batch"] as const) {
+  assert.deepEqual(Object.keys(SCOPE_WORDS).sort(), ["batch", "gate", "merge"]);
+  for (const scope of ["gate", "merge", "batch"] as const) {
     assert.ok(SCOPE_WORDS[scope].label.length > 0);
     assert.ok(SCOPE_WORDS[scope].proceeding.length > 0);
   }
-  assert.deepEqual([...MERGE_SCOPES].sort(), ["batch", "landing"]);
+  assert.deepEqual([...MERGE_SCOPES].sort(), ["batch", "merge"]);
   assert.ok(!MERGE_SCOPES.has("gate"), "the gate stays fail-open; model review stands behind it");
 });

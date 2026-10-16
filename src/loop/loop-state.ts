@@ -209,7 +209,7 @@ export interface LoopState {
   conflictHandback?: {
     sha: string;
     at: number;
-    reason: "landing" | "revision";
+    reason: "merge" | "revision";
     round?: number;
     applied: boolean;
   };
@@ -455,6 +455,7 @@ export function loadLoopState(root: string, role: string): LoopState {
     s.conflictHandback = healRecord(s.conflictHandback, (v) => {
       v.at = healNumber(v.at, 0);
       healOptionalNumber(v, "round");
+      if ((v.reason as string) === "landing") v.reason = "merge"; // vocabulary-ok: legacy state value read from old files
     });
   if (s.landingCheckFailures !== undefined)
     s.landingCheckFailures = healRecord(s.landingCheckFailures, (v) => {

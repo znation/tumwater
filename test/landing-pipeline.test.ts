@@ -160,7 +160,7 @@ test("changes vetted while the merge slot is busy merge as one stack: one shared
     assert.equal(readLandingMarker(root), null, "the marker was cleared");
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.filter((e) => e.scope === "batch").length, 1, "ONE shared check over the stacked tree");
-    assert.equal(checks.filter((e) => e.scope === "landing").length, 0, "and no per-change in-lock re-check");
+    assert.equal(checks.filter((e) => e.scope === "merge").length, 0, "and no per-change in-lock re-check");
     assert.deepEqual(
       eventsOfType(root, "merged").map((e) => e.loop),
       ["alpha", "beta"],
@@ -378,7 +378,7 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
         ["batch", "failed"],
         ["batch", "passed"],
         ["batch", "failed"],
-        ["landing", "passed"],
+        ["merge", "passed"],
       ],
       "the whole stack, alpha's prefix, beta alone on top of it, then gamma's in-lock re-check",
     );

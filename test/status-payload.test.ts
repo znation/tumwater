@@ -443,7 +443,7 @@ test("the status payload names the project and carries the recent events as data
   const { formatEvent } = await import("../src/events/event-format.js");
   logEvent(repo, { loop: "qa", type: "run_end", run: 3, result: "error", error: "429 Rate limit exceeded" });
   logEvent(repo, { loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" });
-  logEvent(repo, { loop: "bugfix", type: "build_check", scope: "landing", script: "test", status: "failed" });
+  logEvent(repo, { loop: "bugfix", type: "build_check", scope: "merge", script: "test", status: "failed" });
   const payload = statusPayload(repo) as {
     project: string;
     events: string[];

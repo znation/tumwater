@@ -450,12 +450,12 @@ export function buildConflictDiscardNote(summary: string, attempts: number): str
  * gives the resolver, so the author sees what main did without re-deriving it. A pure function
  * so its shape is pinned in tests. */
 export function buildConflictHandbackNote(
-  reason: "landing" | "revision",
+  reason: "merge" | "revision",
   conflicted: string[],
   intent: ConflictIntent,
 ): string {
   const why =
-    reason === "landing" // vocabulary-ok: persisted reason code
+    reason === "merge"
       ? "Your previously approved change could not be merged: conflict resolution could not reconcile it with main"
       : "Your rejected change was being revised, but its diff no longer applies cleanly to main";
   const files = conflicted.length > 0 ? conflicted.map((f) => `- ${f}`).join("\n") : "- (none recorded)";

@@ -493,15 +493,15 @@ export class Redeployer {
     // The director is guaranteed finished by here (poll only reaches the swap with
     // directorInFlight === 0), so what gets aborted — and counted — are role ticks only, and
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
-    // drainedMs past the window: correct and informative.
+    // finishedMs past the window: correct and informative.
     this.log({
       loop: "harness", // vocabulary-ok: event source
       type: "restart",
       from: this.build.sha,
       to: mainHead,
-      drainedMs: now - this.drainSince,
-      abortedTicks: inFlight.roleInFlight,
-      drainWindowMs: this.drainWindowMs,
+      finishedMs: now - this.drainSince,
+      abortedRuns: inFlight.roleInFlight,
+      finishWindowMs: this.drainWindowMs,
     });
     // The state stream left "compiling"; a later episode for this same head is a new transition.
     this.pendingLoggedHead = null;

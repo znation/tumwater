@@ -97,7 +97,7 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     assert.equal(ends[0]!.result, "aborted", "the drain cap aborted the tick like a shutdown would");
     assert.equal(loadLoopState(repo, "clean").resumePending, true, "…so it resumes on the new build");
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
-    assert.equal(restart.abortedTicks, 1);
+    assert.equal(restart.abortedRuns, 1);
   } finally {
     await stop();
     restore();
@@ -140,9 +140,9 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     );
     const ends = events.filter((e) => e.type === "run_end");
     assert.deepEqual(ends.map((e) => [e.loop, e.result]), [[holder, "aborted"]]);
-    // abortedTicks is what the restart cut off — the one permit holder — not the reservation
+    // abortedRuns is what the restart cut off — the one permit holder — not the reservation
     // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted run_ends).
-    assert.equal(events.find((e) => e.type === "restart")!.abortedTicks, 1);
+    assert.equal(events.find((e) => e.type === "restart")!.abortedRuns, 1);
     assert.deepEqual(started(), [holder], "the parked role's pi never ran");
     assert.equal(loadLoopState(repo, parked).ticks, 0, "no state write for a tick that never started");
   } finally {
@@ -219,8 +219,8 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
     assert.equal(ends.length, 1);
     assert.notEqual(ends[0]!.result, "aborted", "the director tick finished on its own — the hold waited it out");
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
-    assert.ok(Number(restart.drainedMs) > 500, `the hold ran past the drain window (${String(restart.drainedMs)}ms)`);
-    assert.equal(restart.abortedTicks, 0);
+    assert.ok(Number(restart.finishedMs) > 500, `the hold ran past the drain window (${String(restart.finishedMs)}ms)`);
+    assert.equal(restart.abortedRuns, 0);
   } finally {
     await stop();
     restore();

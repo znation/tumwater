@@ -136,7 +136,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
       assert.match(prompt, /Conflicted files:\n- seed\.txt/);
       assert.match(prompt, /main moved the same line/, "the prompt shows what main changed");
       assert.doesNotMatch(prompt, /was discarded without merging/);
-      assert.equal(runner.state.conflictHandback?.reason, "landing");
+      assert.equal(runner.state.conflictHandback?.reason, "merge");
       assert.equal(runner.state.conflictHandback?.applied, true, "the hand-back was applied this tick");
       assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the hand-back");
       const queued = eventsOfType(repo, "merge_queued").map((e) => e.commit);
@@ -172,7 +172,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       const runner = makeLoopRunner(repo, "improve");
       runner.state.mergeConflicts = { sha, count: MERGE_CONFLICT_LIMIT };
       // A hand-back is already on record for this lineage, so the cap means discard, not hand back.
-      runner.state.conflictHandback = { sha, at: Date.now(), reason: "landing", applied: false };
+      runner.state.conflictHandback = { sha, at: Date.now(), reason: "merge", applied: false };
       const outcome = await runner.tick();
 
       assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");
@@ -209,7 +209,7 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
     ].join("\n"),
     async () => {
       const runner = makeLoopRunner(repo, "improve");
-      runner.state.conflictHandback = { sha: missing, at: Date.now(), reason: "landing", applied: false };
+      runner.state.conflictHandback = { sha: missing, at: Date.now(), reason: "merge", applied: false };
       const outcome = await runner.tick();
 
       assert.equal(outcome.result, "queued", "the tick authored a fresh change and queued it");

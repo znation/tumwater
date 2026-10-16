@@ -82,3 +82,19 @@ test("normalizeLegacyEvent moves a tick field to run, and keeps an existing run"
   const both = { type: "run_end", tick: 1, run: 2 }; // vocabulary-ok: legacy field read from old logs
   assert.deepEqual(normalizeLegacyEvent(both), { type: "run_end", tick: 1, run: 2 }); // vocabulary-ok: legacy field read from old logs
 });
+
+test("normalizeLegacyEvent maps an old build_check scope and conflict_handback reason to merge", () => {
+  const check = { type: "build_check", scope: "landing" }; // vocabulary-ok: legacy event value read from old logs
+  assert.deepEqual(normalizeLegacyEvent(check), { type: "build_check", scope: "merge" });
+  const handback = { type: "conflict_handback", reason: "landing" }; // vocabulary-ok: legacy event value read from old logs
+  assert.deepEqual(normalizeLegacyEvent(handback), { type: "conflict_handback", reason: "merge" });
+  const revision = { type: "conflict_handback", reason: "revision" };
+  assert.deepEqual(normalizeLegacyEvent(revision), { type: "conflict_handback", reason: "revision" });
+});
+
+test("normalizeLegacyEvent renames the restart drain fields and keeps new ones", () => {
+  const old = { type: "restart", drainedMs: 5, abortedTicks: 2, drainWindowMs: 9 }; // vocabulary-ok: legacy field names read from old logs
+  assert.deepEqual(normalizeLegacyEvent(old), { type: "restart", finishedMs: 5, abortedRuns: 2, finishWindowMs: 9 });
+  const current = { type: "restart", finishedMs: 1, abortedRuns: 0, finishWindowMs: 3 };
+  assert.deepEqual(normalizeLegacyEvent({ ...current }), current);
+});

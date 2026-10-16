@@ -179,7 +179,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       (e) =>
         e.type === "build_check" &&
         e.status === "failed" &&
-        (e.scope === "landing" || e.scope === "batch") && // vocabulary-ok: merge-scope code
+        (e.scope === "merge" || e.scope === "batch") &&
         typeof e.timeoutMs === "number",
     ),
     (e) => e.loop,

@@ -104,7 +104,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
       ts: base + 1000,
       loop: "lander",
       type: "build_check",
-      scope: "landing",
+      scope: "merge",
       status: "passed",
       counts: { tests: 10, pass: 9, fail: 0, skipped: 1 },
     },
@@ -128,7 +128,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // A newer baseline check with no landed event after it: the check ran ON main's tip, so the
   // sha is main's current head. A gate-scope check never displaces a merge-scope one.
   writeEvents(repo, [
-    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
     { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
     { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" },
   ]);
@@ -145,7 +145,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // inside it — every event after the check is newer, so one window holds the whole derivation.
   const busy = makeRepo();
   writeEvents(busy, [
-    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
     { ts: base + 1000, loop: "lander", type: "merge_done", commit: "b".repeat(40) },
     ...Array.from({ length: 300 }, (_, i) => ({
       ts: base + 2000 + i,
@@ -163,7 +163,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // loss log rotation imposes) instead of scanning without end on every poll.
   const capped = makeRepo();
   writeEvents(capped, [
-    { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "passed" },
     { ts: base + 1000, loop: "lander", type: "merge_done", commit: "c".repeat(40) },
     ...Array.from({ length: 6_000 }, (_, i) => ({
       ts: base + 2000 + i,

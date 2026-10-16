@@ -42,6 +42,34 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
       }
     },
   },
+  {
+    // build_check.scope and conflict_handback.reason said "landing" for what is now "merge".
+    name: "landing-to-merge",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (e.type === "build_check" && e.scope === "landing") e.scope = "merge"; // vocabulary-ok: legacy event value read from old logs
+      if (e.type === "conflict_handback" && e.reason === "landing") e.reason = "merge"; // vocabulary-ok: legacy event value read from old logs
+    },
+  },
+  {
+    // The restart event's drain fields became finish fields.
+    name: "restart-drain-to-finish",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (e.type !== "restart") return;
+      const renames: [string, string][] = [
+        ["drainedMs", "finishedMs"], // vocabulary-ok: legacy field name read from old logs
+        ["abortedTicks", "abortedRuns"], // vocabulary-ok: legacy field name read from old logs
+        ["drainWindowMs", "finishWindowMs"], // vocabulary-ok: legacy field name read from old logs
+      ];
+      for (const [from, to] of renames) {
+        if (from in e && !(to in e)) {
+          e[to] = e[from];
+          delete e[from];
+        }
+      }
+    },
+  },
 ];
 
 /** Today's name for an old event type name; any other string comes back unchanged. */

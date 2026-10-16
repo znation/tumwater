@@ -299,7 +299,7 @@ async function verifyLanding(
   const check = await runScopedBuildCheck(
     ctx.root,
     ctx.role,
-    "landing", // vocabulary-ok: persisted state value or event scope, renamed by a later series
+    "merge",
     wt,
     ctx.config,
     undefined,
