@@ -12,7 +12,7 @@ import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEn
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, okGone, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
@@ -89,7 +89,7 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
   } else if (outcome.status === "fenced") {
     sendJson(res, 409, { ok: false, error: UNCLOSED_FENCE_MESSAGE });
   } else {
-    sendJson(res, 200, { ok: true, status: "gone" });
+    okGone(res);
   }
 }
 
@@ -156,7 +156,7 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
     sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed });
   } else {
-    sendJson(res, 200, { ok: true, status: "gone" });
+    okGone(res);
   }
 }
 
@@ -198,6 +198,6 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
     const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`));
     sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed });
   } else {
-    sendJson(res, 200, { ok: true, status: "gone" });
+    okGone(res);
   }
 }

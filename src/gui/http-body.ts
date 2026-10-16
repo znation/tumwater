@@ -25,6 +25,18 @@ export function badRequest(res: http.ServerResponse, message: string): void {
   sendJson(res, 400, { error: message });
 }
 
+/** Send 200 with the {"ok":true,"status":"gone"} body every file-addressed handler that answers
+ * for a vanished entry (the loop already dequeued it) replies with — data for the UI's flash
+ * line, not a server fault — so the status and the `{ ok, status }` wrapper live here instead
+ * of being open-coded at each call site. */
+export function okGone(res: http.ServerResponse): void {
+  sendJson(res, 200, OK_GONE);
+}
+
+/** The {"ok":true,"status":"gone"} body okGone sends, also exposed for the couple of handlers
+ * that wrap it as one branch of a larger 200 reply (prompt-cancel/prompt-edit). */
+export const OK_GONE = { ok: true, status: "gone" } as const;
+
 /** Max request body for the /api POST endpoints, in wire bytes. Sized for the prompt
  * endpoints' image attachments: 4 images × 5 MiB × 4/3 base64 expansion ≈ 27 MiB must fit one
  * POST, with headroom — the cap exists to bound memory on a local dashboard, not to be tight.

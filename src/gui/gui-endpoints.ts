@@ -35,7 +35,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { readBrief } from "../brief/brief.js";
-import { badRequest, sendJson } from "./http-body.js";
+import { badRequest, okGone, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
@@ -305,7 +305,7 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
   if (rejectBadQueueFileName(res, file)) return;
   const text = readQueuedPromptBody(root, role, file as string);
   if (text === null) {
-    sendJson(res, 200, { ok: true, status: "gone" });
+    okGone(res);
     return;
   }
   sendJson(res, 200, { ok: true, text });
