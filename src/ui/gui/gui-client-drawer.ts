@@ -29,7 +29,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     drawer = null;
     entryEditing = null;
     noteEditing = null;
-    confirmNoteClear = null;
+    disarmNoteClear();
     if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
     drawerTicks = null;
     drawerChange = null;
@@ -259,17 +259,30 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // refetch neither wipes the textarea nor changes the painted panel string. Clear waits for a
   // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
   let noteEditing = null; // { role, text }
-  let confirmNoteClear = null; // { role, until }
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
-  function startNoteEdit(role, text) { noteEditing = { role, text }; confirmNoteClear = null; repaintDrawerRole(); }
-  function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
-  const noteClearArmed = (role) => Boolean(confirmNoteClear && confirmNoteClear.role === role && confirmNoteClear.until > Date.now());
-  function disarmNoteClear() { confirmNoteClear = null; }
-  function armNoteClear(role) {
-    confirmNoteClear = { role, until: Date.now() + 5000 };
-    repaintDrawerRole();
-    setTimeout(() => { if (confirmNoteClear && confirmNoteClear.role === role && confirmNoteClear.until <= Date.now()) { confirmNoteClear = null; repaintDrawerRole(); } }, 5100);
+  // A two-click confirm, the confirmAbort shape: the first click stores a { id, title?, until }
+  // record and repaints; the caller's armed() fires a second click inside the 5 s window; and a
+  // 5100 ms auto-disarm drops an unconfirmed record past its expiry. The notebook clear and the
+  // backlog entry cancel (and boot's handlers over them) each build one slot, so the arm,
+  // guard, and disarm logic lives once here.
+  function confirmSlot(repaint) {
+    let confirm = null; // { id, title?, until }
+    return {
+      armed: (id, title) => Boolean(confirm && confirm.id === id && (title === undefined || confirm.title === title) && confirm.until > Date.now()),
+      disarm: () => { confirm = null; },
+      arm(id, title) {
+        confirm = { id, title, until: Date.now() + 5000 };
+        repaint();
+        setTimeout(() => { if (confirm && confirm.id === id && confirm.until <= Date.now()) { confirm = null; repaint(); } }, 5100);
+      },
+    };
   }
+  const noteClear = confirmSlot(repaintDrawerRole);
+  const noteClearArmed = (role) => noteClear.armed(role);
+  function armNoteClear(role) { noteClear.arm(role); }
+  function disarmNoteClear() { noteClear.disarm(); }
+  function startNoteEdit(role, text) { noteEditing = { role, text }; disarmNoteClear(); repaintDrawerRole(); }
+  function stopNoteEdit() { noteEditing = null; repaintDrawerRole(); }
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {
@@ -318,17 +331,13 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
 
   // A plan/bug cancel waits for its confirming click, the confirmAbort shape: the first click
-  // arms it for 5 s, a second inside the window fires, and a timeout disarms.
-  let confirmEntryCancel = null; // { key, until }
-  // The arm records the title too: a list that shifted between the clicks must re-arm, not
-  // cancel whatever entry now sits at that position.
-  const entryCancelArmed = (key, title) => Boolean(confirmEntryCancel && confirmEntryCancel.key === key && (title === undefined || confirmEntryCancel.title === title) && confirmEntryCancel.until > Date.now());
-  function disarmEntryCancel() { confirmEntryCancel = null; }
-  function armEntryCancel(key, title) {
-    confirmEntryCancel = { key, title, until: Date.now() + 5000 };
-    refreshEntry();
-    setTimeout(() => { if (confirmEntryCancel && confirmEntryCancel.key === key && confirmEntryCancel.until <= Date.now()) { confirmEntryCancel = null; refreshEntry(); } }, 5100);
-  }
+  // arms it for 5 s, a second inside the window fires, and a timeout disarms. The slot records
+  // the title too: a list that shifted between the clicks must re-arm, not cancel whatever
+  // entry now sits at that position.
+  const entryCancel = confirmSlot(refreshEntry);
+  const entryCancelArmed = (key, title) => entryCancel.armed(key, title);
+  function disarmEntryCancel() { entryCancel.disarm(); }
+  function armEntryCancel(key, title) { entryCancel.arm(key, title); }
   // An open edit form: painted once, so a poll never overwrites the operator's draft; the
   // server's title check catches an entry that changed underneath it at save time.
   let entryEditing = null; // { key, title, painted }
