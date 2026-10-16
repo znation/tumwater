@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { writeLandingMarker } from "../src/landing/landing-slot.js";
 import { landQueueDir } from "../src/paths.js";
@@ -335,6 +335,36 @@ test("checkStaleQuestions ignores undated and fresh headings, and a missing or s
   const closed = tmpdir("doctor-stale-questions-closed-");
   fs.writeFileSync(path.join(closed, "QUESTIONS.md"), `## Answered\n\n### Old (asked by director 2026-01-01)\n`);
   assert.deepEqual(checkStaleQuestions(closed), ok);
+});
+
+test("checkStaleBugs warns on an open bug stamped 3 or more days ago", () => {
+  const dir = tmpdir("doctor-stale-bugs-");
+  const stamp = daysAgoStamp(4);
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Broken thing (found by bugfix ${stamp})\n\nbody\n`);
+  const out = checkStaleBugs(dir);
+  assert.equal(out.level, "warn");
+  assert.ok(out.detail.startsWith('BUGS.md bug #1 "'), out.detail);
+  assert.ok(out.detail.includes(`has waited ${stampAge(stamp)} d for a fix`), out.detail);
+  assert.ok(out.detail.includes("tumwater bug --cancel 1"), out.detail);
+});
+
+test("checkStaleBugs warns once on several stale bugs, naming the first's position", () => {
+  const dir = tmpdir("doctor-stale-bugs-multi-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### Fresh (reported ${daysAgoStamp(0)})\n\n### Old one (found by bugfix ${daysAgoStamp(5)})\n\n### Old two (found by bugfix ${daysAgoStamp(6)})\n`);
+  const out = checkStaleBugs(dir);
+  assert.equal(out.level, "warn");
+  assert.ok(out.detail.startsWith('BUGS.md bug #2 "'), out.detail);
+  assert.ok(out.detail.includes('(and 1 more: #3 "'), out.detail);
+});
+
+test("checkStaleBugs ignores refused, undated, fresh and fixed bugs, and a missing BUGS.md", () => {
+  const ok = { level: "ok", detail: "no open bug has waited more than 3 days for a fix" };
+  assert.deepEqual(checkStaleBugs(tmpdir("doctor-stale-bugs-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
+  const dir = tmpdir("doctor-stale-bugs-ok-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### Refused (found by bugfix ${daysAgoStamp(9)})\n\n**Refused 2026-10-10 by bugfix: not a bug**\n\n### Undated heading\n\n### Fresh (found by bugfix ${daysAgoStamp(0)})\n\n## Fixed\n\n### Old (found by bugfix ${daysAgoStamp(20)})\n`);
+  assert.deepEqual(checkStaleBugs(dir), ok);
 });
 
 // checkStaleQueuedLandings — a change that has sat in the durable land queue too long without

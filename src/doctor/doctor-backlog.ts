@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
-import { ageInDays, donePlans, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { entryHold, planDependencyProblems, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
@@ -19,11 +19,12 @@ import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
  * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
  * environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated `## `
- * headings, refused entries, and uncommitted edits to the backlog files in the primary
- * checkout. They share this module's helpers (readDoc and its checked wrapper readDocChecked,
- * andMore) and the heading-trim constant, and all five warn instead of failing: damaged
- * documentation is operator signal, not a broken environment. doctor.ts composes them beside
- * the environment checks; the shared CheckOutcome shape is imported from outcome.ts. */
+ * headings, refused entries, stale open bugs, and uncommitted edits to the backlog files in
+ * the primary checkout. They share this module's helpers (readDoc and its checked wrapper
+ * readDocChecked, andMore) and the heading-trim constant, and all of them warn instead of
+ * failing: damaged documentation is operator signal, not a broken environment. doctor.ts
+ * composes them beside the environment checks; the shared CheckOutcome shape is imported from
+ * outcome.ts. */
 
 /** How many Fixed records the fix-claims check verifies: the newest, since the section is
  * newest-first by template convention. Older records drift as the code evolves — a symbol
@@ -42,6 +43,11 @@ const REFUSAL_NOTE_MAX = 120;
  * an opinionated default, matching the 7-day window the `--list` age is meant to surface.
  * A question awaiting a human answer is operator signal, so the value needs no knob. */
 const STALE_QUESTION_DAYS = 7;
+
+/** The whole days an open bug may wait before the stale-bugs check warns about it: an
+ * opinionated default with no knob, like STALE_QUESTION_DAYS. Three days is long enough that a
+ * bug filed late one evening and fixed the next day never warns. */
+const STALE_BUG_DAYS = 3;
 
 /** The `(and N more …)` suffix three one-line doctor details append after naming their first
  * suspect (fix claims, stranded plans, duplicated headings): the rest stay visible but
@@ -293,6 +299,27 @@ export function checkStaleQuestions(root: string): CheckOutcome {
   const more = andMore(rest, (q) => `"${truncate(q.title, FIX_CLAIM_HEADING_MAX)}"`);
   return warnOutcome(`QUESTIONS.md question "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for an answer${more} — ` +
       `a question that waits too long for a human answer is operator signal`);
+}
+
+/** Stale bugs — unrefused open BUGS.md bugs whose `(found by … YYYY-MM-DD)` or `(reported …)`
+ * stamp is at least 3 days old. The bugfix role fixes a bug within hours, so one that sits means
+ * no loop is fixing it. Positions are the 1-based `bug --list` numbers; a refused bug is skipped
+ * (checkRefusedEntries names it) and so is an undated heading. A warn, never a fail. */
+export function checkStaleBugs(root: string): CheckOutcome {
+  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
+  const stale = openBugEntries(root).flatMap((entry, index) => {
+    if (refusalNote(entry.body) !== null) return [];
+    const stamp = filingDate(entry.title);
+    if (stamp === null) return [];
+    const days = ageInDays(stamp);
+    return days >= STALE_BUG_DAYS ? [{ position: index + 1, title: entry.title, days }] : [];
+  });
+  const [first, ...rest] = stale;
+  if (!first) return okOutcome("no open bug has waited more than 3 days for a fix");
+  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
+  return warnOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for a fix${more} — ` +
+      `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears
