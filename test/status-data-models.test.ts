@@ -15,6 +15,8 @@ import { loadConfig, saveConfig } from "../src/config/config.js";
 import { MODELS_JSON, writeModelsFile } from "./fixtures/models-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { writeImageProbeCache } from "../src/doctor/image-probe.js";
+import { collectImageProbeFailures } from "../src/status/status-roles.js";
 
 test("snapshot loop rows carry the resolved selector always and the seam tier only under a tier map", async () => {
   const repo = makeRepo();
@@ -265,4 +267,26 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
     if (savedDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = savedDir;
   }
+});
+
+// The FIF probe-failure surface (plans/image-input.md "Surfaces", part 5/5) names the models a
+// failed doctor probe flagged. The probe cache is keyed agent/provider/model, but a pi model id
+// is itself fully qualified (parseModelSelector keeps the id whole: a "huggingface/deepseek-ai/
+// DeepSeek-V4.1-Flash:deepinfra" selector yields provider huggingface, model deepseek-ai/
+// DeepSeek-V4.1-Flash:deepinfra), so the label must keep the whole model id and not truncate at
+// the first embedded '/'.
+test("collectImageProbeFailures keeps a fully-qualified pi model id whole", () => {
+  const repo = tmpdir();
+  const now = Date.now();
+  writeImageProbeCache(repo, {
+    "pi/huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra": {
+      verdict: "fail",
+      detail: "refused",
+      at: now - 1000,
+      claim: true,
+    },
+  });
+  assert.deepEqual(collectImageProbeFailures(repo, now), [
+    "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
+  ]);
 });

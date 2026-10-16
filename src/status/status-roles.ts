@@ -126,8 +126,18 @@ export function collectImageProbeFailures(root: string, now: number = Date.now()
   const out: string[] = [];
   for (const [key, entry] of Object.entries(probes)) {
     if (entry.verdict !== "fail" || !imageProbeEntryFresh(entry, now)) continue;
-    const [agent, provider, model] = key.split("/");
-    out.push(seamImageLabel(agent || undefined, provider || undefined, model || undefined));
+    // The cache key is agent/provider/model, and a pi model id is itself fully qualified (the
+    // key's third segment can carry embedded '/' — parseModelSelector keeps the id whole), so
+    // split only the first two separators and keep the rest as the model. A naive split("/")
+    // destructured to three parts would truncate a qualified id to its org, mislabelling the
+    // model the doctor flagged.
+    const first = key.indexOf("/");
+    const second = key.indexOf("/", first + 1);
+    if (first === -1 || second === -1) continue;
+    const agent = key.slice(0, first) || undefined;
+    const provider = key.slice(first + 1, second) || undefined;
+    const model = key.slice(second + 1) || undefined;
+    out.push(seamImageLabel(agent, provider, model));
   }
   return out.sort();
 }
