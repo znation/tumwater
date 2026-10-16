@@ -16,14 +16,18 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   let histSinceKey = recall("hist-since") || "";
   let histNote = "";
   let histFilter = "all";
+  let histMode = recall("hist-mode") === "summary" ? "summary" : "table";
   let histRows = null;
+  let histSummary = null;
   let histFetchedAt = 0;
   const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["problems", "Problems"]];
+  const HIST_MODES = [["table", "Table"], ["summary", "Summary"]];
   function buildHistoryView() {
     if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed tick, newest first.</p></div>" +
       "<div class='toolbar'>" +
       "<label><span class='sr-only'>Loop</span><select class='field' id='histrole'><option value=''>All loops</option></select></label>" +
       "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
+      "<div class='seg' id='histsum'>" + HIST_MODES.map((m) => "<button type='button' data-histsum='" + m[0] + "'>" + m[1] + "</button>").join("") + "</div>" +
       "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search ticks…' autocomplete='off'></label>" +
       "<label><span class='sr-only'>Ticks to show</span><select class='field' id='histcount'>" +
       HIST_COUNTS.map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
@@ -58,6 +62,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       const b = ev.target.closest("button[data-hist]");
       if (!b) return;
       histFilter = b.dataset.hist;
+      renderHistory();
+    });
+    $("histsum").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-histsum]");
+      if (!b) return;
+      histMode = b.dataset.histsum;
+      store("hist-mode", histMode);
       renderHistory();
     });
     $("histrefresh").addEventListener("click", () => fetchHistory());
@@ -147,6 +158,10 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     try {
       const d = await getJson(historyQuery(histCount, histRole, histSinceKey, histGrep));
       histRows = d && Array.isArray(d.rows) ? d.rows : [];
+      // The summary rides the same fetch (the endpoint folds the exact rows it served into
+      // its additive summary), so toggling to Summary never refetches; a server too old to
+      // include it leaves histSummary null and the toggle falls back to the table.
+      histSummary = d && d.summary && Array.isArray(d.summary.loops) ? d.summary : null;
       // The trailing-window shape carries the server's coverage; the count shape has no note.
       histNote = d && typeof d.note === "string" ? d.note : "";
       // A refetch invalidates the drill-down cache: cached trails could disagree with the new
@@ -167,10 +182,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // names the window in the empty state.
   const HIST_WINDOWS = { "1h": [3_600_000, "the last hour"], "6h": [21_600_000, "the last 6 hours"], "1d": [86_400_000, "the last day"], "7d": [604_800_000, "the last 7 days"] };
   // The /api/history URL for the current toolbar: the trailing-window shape when a window key
-  // is set, the count shape otherwise, role and grep appended only when chosen. Pure.
+  // is set, the count shape otherwise, role and grep appended only when chosen. summary=1 rides
+  // every ask — the endpoint's additive summary folds the exact served rows, so the Summary
+  // mode renders from already-fetched data and the toggle swaps only the body.
   function historyQuery(count, role, sinceKey, grep) {
     const w = HIST_WINDOWS[sinceKey];
-    return (w ? "/api/history?sinceMs=" + w[0] : "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "");
+    return (w ? "/api/history?sinceMs=" + w[0] : "/api/history?n=" + count) + (role ? "&role=" + encodeURIComponent(role) : "") + (grep ? "&grep=" + encodeURIComponent(grep) : "") + "&summary=1";
   }
   // The window options, the phrase capitalized for the select ("The last day").
   function histWindowOptions() {
@@ -234,11 +251,45 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       }).join("") + "</tbody></table></div>";
   }
   // history-table:end
+  // history-summary:start
+  // The Summary table: one row per loop plus the total, in the same column set the CLI's
+  // history --summary prints (ticks, changes, none, problems, tokens, cost, last change), so
+  // the dashboard and the CLI cannot drift column for column. Every number comes from the
+  // server's summary (built on the shared summarizeTickRows) — nothing here re-derives a
+  // tally — and the cost/token cells reuse the page's report formatters. The last-change cell is
+  // the newest changes-class tick's age via fmtAgo, a dash when the loop had none. Pure — the
+  // view's render paints what this returns.
+  function histSummaryHtml(summary) {
+    const all = summary.loops.concat(summary.total ? [summary.total] : []);
+    const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
+    const rowsHtml = all.map((r) =>
+      "<tr" + (r.loop === "total" ? " class='hist-total'" : "") + ">" +
+      "<td class='mono'>" + esc(r.loop) + "</td>" +
+      cell(r, "ticks") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
+      cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
+      "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Loop</th><th class='num'>Ticks</th><th class='num'>Changes</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th>Last change</th></tr></thead><tbody>" +
+      rowsHtml + "</tbody></table></div>";
+  }
+  // history-summary:end
   function renderHistory() {
     const body = $("histbody");
     if (!body) return;
     markActive($("histfilter"), "hist", histFilter);
-    body.innerHTML = historyNoteHtml(histNote) +
-      historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)), histGrep, histSinceKey);
+    const sum = $("histsum");
+    if (sum) sum.style.display = "";
+    markActive(sum, "histsum", histMode);
+    // The outcome filter is meaningless in Summary mode (the summary already folds every class),
+    // so it is hidden there; only the body changes, keeping the same fetch path.
+    const filterEl = $("histfilter");
+    if (filterEl) filterEl.style.display = histMode === "summary" ? "none" : "";
+    // Summary mode shows the per-loop table when the fetch carried a summary over actual rows;
+    // otherwise (no rows, or a too-old server that answered without a summary) it falls back to
+    // the same empty state the table shows.
+    const showSummary = histMode === "summary" && histSummary && histRows && histRows.length > 0;
+    const bodyHtml = showSummary
+      ? histSummaryHtml(histSummary)
+      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)), histGrep, histSinceKey);
+    body.innerHTML = historyNoteHtml(histNote) + bodyHtml;
   }
 `;

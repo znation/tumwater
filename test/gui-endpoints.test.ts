@@ -7,7 +7,7 @@ import type http from "node:http";
 import { readEventsTailWithEnd } from "../src/events/event-read.js";
 import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
+import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
 import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -30,6 +30,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
 import { readJson } from "./helpers/json-read.js";
 import { rolePayload } from "../src/roles/role-view.js";
+import { summarizeTickRows } from "../src/history/history-data.js";
 import { bugWakeText, planWakeText } from "../src/backlog/backlog-write.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/agent/role-notes-write.js";
@@ -346,6 +347,10 @@ function serveLogs(root: string, query = "") {
   return captureJson((res) => handleLogs(new URLSearchParams(query), res, root));
 }
 
+function serveHistory(root: string, query = "") {
+  return captureJson((res) => handleHistory(new URLSearchParams(query), res, root));
+}
+
 test("handleLogs serves the matched tail oldest-first as feed items, composing grep and role", async () => {
   const root = tmpdir();
   writeEvents(root, [
@@ -440,6 +445,52 @@ test("the live server routes GET /api/doctor to the doctor report", async () => 
   } finally {
     server.close();
   }
+});
+
+test("handleHistory ?summary folds the served rows into an additive per-loop summary", async () => {
+  const root = tmpdir();
+  const now = Date.now();
+  // All timestamps sit inside the last hour, so both the count arm and a 1h trailing window
+  // hold every row. The two changes-class ticks are at 50m (feature) and 15m (clean) ago, so
+  // the newest change is clean's, at now - 900_000.
+  writeEvents(root, [
+    { ts: now - 3_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "a", tokens: 100, costUsd: 0.01 },
+    { ts: now - 1_800_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", summary: "b", tokens: 200, costUsd: 0.02 },
+    { ts: now - 900_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "c", tokens: 300, costUsd: 0.03 },
+    { ts: now - 300_000, loop: "clean", type: "tick_end", tick: 2, result: "error", summary: "d", tokens: 400, costUsd: 0.04 },
+  ]);
+  const { captured, data } = await serveHistory(root, "?n=50&summary=1");
+  assert.equal(captured.status, 200);
+  const { rows, summary } = data as {
+    rows: Parameters<typeof summarizeTickRows>[0];
+    summary: { loops: { loop: string; lastChangeTs: number | null }[]; total: { ticks: number; changes: number; none: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
+  };
+  assert.equal(rows.length, 4);
+  // The summary folds the exact served rows through the shared collector, so it can never
+  // disagree with the table it scrolls beside (`history --summary`'s own tally).
+  assert.deepEqual(summary, summarizeTickRows(rows));
+  assert.deepEqual(summary.loops.map((l) => l.loop), ["clean", "feature"]);
+  assert.equal(summary.total.ticks, 4);
+  assert.equal(summary.total.changes, 2);
+  assert.equal(summary.total.none, 1);
+  assert.equal(summary.total.problems, 1);
+  assert.equal(summary.total.tokens, 1000);
+  assert.equal(summary.total.lastChangeTs, now - 900_000, "the newest changes-class tick across every loop");
+  assert.equal(summary.loops[0]?.lastChangeTs, now - 900_000, "clean changed only at 15m ago");
+  assert.equal(summary.loops[1]?.lastChangeTs, now - 3_000_000, "feature changed only at 50m ago");
+  // The count shape without the flag is today's byte-for-byte: no summary key.
+  const bare = await serveHistory(root, "?n=50");
+  assert.ok(!("summary" in (bare.data as object)));
+  assert.deepEqual((bare.data as { rows: Parameters<typeof summarizeTickRows>[0] }).rows, rows);
+  // A bad summary value counts as the flag present (its mere presence triggers it).
+  const blank = await serveHistory(root, "?n=50&summary=");
+  assert.ok("summary" in (blank.data as object), "an empty value still counts as the flag present");
+  // The trailing-window arm folds the same way, riding { rows, covered, note }.
+  const win = await serveHistory(root, "?sinceMs=3600000&summary=1");
+  const wdata = win.data as { rows: Parameters<typeof summarizeTickRows>[0]; covered: boolean; note: string; summary: { total: { ticks: number } } };
+  assert.equal(wdata.rows.length, 4);
+  assert.equal(wdata.summary.total.ticks, 4);
+  assert.deepEqual(wdata.summary, summarizeTickRows(wdata.rows));
 });
 
 function serveTick(root: string, query: string) {

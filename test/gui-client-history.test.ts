@@ -103,10 +103,10 @@ function historyFetchScope(recallGrep: string | null, paths: string[]) {
 test("fetchHistory appends the encoded grep only when a pattern is set", async () => {
   const bare: string[] = [];
   await historyFetchScope(null, bare).fetchHistory(false);
-  assert.deepEqual(bare, ["/api/history?n=50"]);
+  assert.deepEqual(bare, ["/api/history?n=50&summary=1"]);
   const searched: string[] = [];
   await historyFetchScope("sorted imports", searched).fetchHistory(false);
-  assert.deepEqual(searched, ["/api/history?n=50&grep=sorted%20imports"]);
+  assert.deepEqual(searched, ["/api/history?n=50&grep=sorted%20imports&summary=1"]);
 });
 
 test("historyQuery picks the count or trailing-window shape and composes the role", () => {
@@ -115,11 +115,11 @@ test("historyQuery picks the count or trailing-window shape and composes the rol
     ["historyQuery"],
     { icon: iconStub },
   );
-  assert.equal(historyQuery(50, "", ""), "/api/history?n=50");
-  assert.equal(historyQuery(50, "clean", ""), "/api/history?n=50&role=clean");
-  assert.equal(historyQuery(50, "", "1d"), "/api/history?sinceMs=86400000", "a window replaces the count shape");
-  assert.equal(historyQuery(50, "clean", "7d"), "/api/history?sinceMs=604800000&role=clean", "role composes with the window");
-  assert.equal(historyQuery(50, "", "nonsense"), "/api/history?n=50", "an unknown window key falls back to the count");
+  assert.equal(historyQuery(50, "", ""), "/api/history?n=50&summary=1");
+  assert.equal(historyQuery(50, "clean", ""), "/api/history?n=50&role=clean&summary=1");
+  assert.equal(historyQuery(50, "", "1d"), "/api/history?sinceMs=86400000&summary=1", "a window replaces the count shape");
+  assert.equal(historyQuery(50, "clean", "7d"), "/api/history?sinceMs=604800000&role=clean&summary=1", "role composes with the window");
+  assert.equal(historyQuery(50, "", "nonsense"), "/api/history?n=50&summary=1", "an unknown window key falls back to the count");
 });
 
 test("the History toolbar carries the four trailing-window options in the #histcount select", () => {
@@ -168,7 +168,7 @@ test("fetchHistory normalizes a persisted tick count the toolbar does not offer"
       return { rows: [] };
     },
   ).fetchHistory(false);
-  assert.deepEqual(paths, ["/api/history?n=50"], "an off-menu persisted count falls back to the default the picker shows");
+  assert.deepEqual(paths, ["/api/history?n=50&summary=1"], "an off-menu persisted count falls back to the default the picker shows");
 });
 
 test("histDetailCardHtml branches on the entry's state: loading, error, then the fetched card", () => {
@@ -338,6 +338,76 @@ test("fetchHistory drops and re-persists a loop scope the fleet no longer lists"
     async (path: string) => { paths.push(path); return { rows: [] }; },
   ).fetchHistory(false);
   assert.equal(select.value, "", "the picker falls back to All loops");
-  assert.deepEqual(paths, ["/api/history?n=50"], "and the request drops the vanished role");
+  assert.deepEqual(paths, ["/api/history?n=50&summary=1"], "and the request drops the vanished role");
   assert.deepEqual(stored, [["hist-role", ""]], "the fallback persists so a reload does not resurrect it");
+});
+
+test("histSummaryHtml paints one row per loop plus the total, with the report formatters and a dash for a never-changed loop", () => {
+  const { histSummaryHtml } = clientScope<{ histSummaryHtml(summary: unknown): string }>(
+    ["format", "history-summary"],
+    ["histSummaryHtml"],
+    { icon: iconStub },
+  );
+  const now = Date.now();
+  const summary = {
+    loops: [
+      { loop: "clean", ticks: 2, changes: 2, none: 0, problems: 0, tokens: 500, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
+      { loop: "feature", ticks: 1, changes: 0, none: 1, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null },
+      { loop: "qa", ticks: 1, changes: 0, none: 0, problems: 1, tokens: 12_500, costUsd: 0, lastChangeTs: null },
+    ],
+    total: { loop: "total", ticks: 4, changes: 2, none: 1, problems: 1, tokens: 13_000, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
+  };
+  const html = histSummaryHtml(summary);
+  // The column set mirrors history --summary: loop, ticks, changes, none, problems, tokens,
+  // cost, last change, so the dashboard and the CLI cannot drift column for column.
+  for (const h of ["Loop", "Ticks", "Changes", "None", "Problems", "Tokens", "Cost", "Last change"]) {
+    assert.match(html, new RegExp("<th[^>]*>" + h + "</th>"), "the " + h + " header");
+  }
+  // One row per loop plus the total, the total row marked.
+  assert.equal((html.match(/<tr/g) ?? []).length, 5, "the header row, the three loops, and the total");
+  assert.match(html, /<tr class='hist-total'><td class='mono'>total<\/td>/);
+  // Every number comes from the server's summary — never re-derived — and the token/cost cells
+  // reuse the report charts' formatters (compact tokens, $).
+  assert.match(html, /<td class='num'>12\.5k<\/td>/, "tokens format like the report charts");
+  assert.match(html, /<td class='num'>13\.0k<\/td>/);
+  assert.match(html, /<td class='num'>\$0\.25<\/td>/);
+  // A changed loop's last change is the newest change's age; a never-changed loop's is a dash.
+  assert.match(html, /<td>5m ago<\/td>/);
+  assert.match(html, /<td>—<\/td>/);
+});
+
+test("the toolbar carries the Table/Summary toggle, recalled and persisted like the filter", () => {
+  const toolbar = GUI_CLIENT_HISTORY_JS.slice(
+    GUI_CLIENT_HISTORY_JS.indexOf("class='toolbar'"),
+    GUI_CLIENT_HISTORY_JS.indexOf("<div class='card' id='histbody'>"),
+  );
+  assert.match(toolbar, /id='histsum'/);
+  assert.match(toolbar, /data-histsum='" \+ m\[0\] \+ "'>" \+ m\[1\]/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /const HIST_MODES = \[\["table", "Table"\], \["summary", "Summary"\]\]/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /recall\("hist-mode"\)/);
+  assert.match(GUI_CLIENT_HISTORY_JS, /store\("hist-mode", histMode\)/);
+});
+
+test("fetchHistory rides the server summary and a persisted Summary mode survives a reload", async () => {
+  const keys = ["recall", "store", "buildOnce", "$", "icon", "lastStatus", "markActive", "errorPanel", "getJson"];
+  const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistSummary: () => histSummary, histMode };"].join("\n");
+  const run = new Function(...keys, code) as (...args: unknown[]) => {
+    fetchHistory(throttled?: boolean): Promise<void>;
+    getHistSummary(): { loops: unknown[] } | null;
+    histMode: string;
+  };
+  const scope = run(
+    (key: string) => (key === "hist-mode" ? "summary" : null),
+    () => {},
+    () => false,
+    () => undefined,
+    iconStub,
+    null,
+    () => {},
+    (title: string) => title,
+    async () => ({ rows: [{ loop: "clean" }], summary: { loops: [{ loop: "clean" }], total: { loop: "total" } } }),
+  );
+  assert.equal(scope.histMode, "summary", "the persisted mode restores on load");
+  await scope.fetchHistory(false);
+  assert.deepEqual(scope.getHistSummary()?.loops, [{ loop: "clean" }], "the fetched summary rides beside the rows, so toggling never refetches");
 });
