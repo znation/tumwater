@@ -74,15 +74,18 @@ export function planListLines(
  * an `open bugs (M):` subheader and one line per bug, then an `open questions (K):` subheader
  * and one line per question. `planCount` is the number of planned entries when `plans` holds
  * collapsed series lines. An empty section renders `(none)` under its subheader; when all
- * three are empty the whole view is a single self-explanatory line.
+ * three are empty and `answered` is too, the whole view is a single self-explanatory line.
+ * A non-empty `answered` (the newest answered questions, one preformatted line each) adds an
+ * `answered recently (K):` section last; an empty one adds nothing, not even `(none)`.
  * Pure, so it is unit-testable without touching disk. */
 export function backlogLines(
   plans: string[],
   bugs: string[],
   questions: string[],
   planCount: number = plans.length,
+  answered: string[] = [],
 ): string[] {
-  if (plans.length === 0 && bugs.length === 0 && questions.length === 0)
+  if (plans.length === 0 && bugs.length === 0 && questions.length === 0 && answered.length === 0)
     return ["(no planned features, open bugs, or open questions)"];
   const lines = [`plans (${planCount}):`];
   lines.push(...(plans.length ? plans : ["(none)"]));
@@ -90,6 +93,7 @@ export function backlogLines(
   lines.push(...(bugs.length ? bugs : ["(none)"]));
   lines.push(`open questions (${questions.length}):`);
   lines.push(...(questions.length ? questions : ["(none)"]));
+  if (answered.length) lines.push(`answered recently (${answered.length}):`, ...answered);
   return lines;
 }
 

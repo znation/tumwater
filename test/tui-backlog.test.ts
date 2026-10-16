@@ -314,3 +314,45 @@ test("paneBody's backlog list collapses a blocked series while entry mode still 
   const third = labeledBacklogEntries(dir)[2]!;
   assert.equal(text(2)[0], `plan: ${third.title}${third.mark}`);
 });
+
+test("backlogLines appends an answered recently section only when there are answered rows", () => {
+  assert.deepEqual(backlogLines(["plan A"], [], [], 1, ["Q — yes"]).slice(-2), ["answered recently (1):", "Q — yes"]);
+  assert.deepEqual(backlogLines([], [], [], 0, ["Q — yes"]), [
+    "plans (0):",
+    "(none)",
+    "open bugs (0):",
+    "(none)",
+    "open questions (0):",
+    "(none)",
+    "answered recently (1):",
+    "Q — yes",
+  ]);
+});
+
+test("paneBody's backlog list shows the newest answered questions, read-only", () => {
+  const dir = tmpdir();
+  const answered = [1, 2, 3, 4, 5, 6]
+    .map((n) => `### A${n}\n\nBody.\n\n**Answered 2026-10-0${n} by operator:** pick ${n}`)
+    .join("\n\n");
+  writeBacklogFile(dir, "QUESTIONS.md", [
+    { heading: "## Open", body: "### Open one\n\nWhich?" },
+    { heading: "## Answered", body: answered },
+  ]);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: dir, width: 300, eventBudget: 30, entryBudget: 5 };
+  const rows = paneBody({ kind: "backlog" }, { ...opts, state }).body;
+  const text = rows.map((l) => l.map((s) => s.text).join(""));
+  const at = text.indexOf("answered recently (5):");
+  assert.ok(at > text.indexOf("Open one"), "the section follows the open question");
+  assert.ok(text[at + 1]!.startsWith("A6") && text[at + 1]!.includes("pick 6"));
+  assert.ok(!text.some((l) => l.includes("A1")));
+  assert.ok(rows[at]!.every((s) => s.tone === "bold"), "the subheader is bold");
+  const sel = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 1 } }).body;
+  assert.equal(sel[0]!.map((s) => s.text).join(""), "question: Open one");
+  assert.ok(!sel.some((l) => l.some((s) => s.text.includes("A6"))));
+
+  const none = tmpdir();
+  writeBacklogFile(none, "QUESTIONS.md", [{ heading: "## Open", body: "### Q\n\nx" }, { heading: "## Answered" }]);
+  const t = paneBody({ kind: "backlog" }, { ...opts, root: none, state }).body.map((l) => l.map((s) => s.text).join(""));
+  assert.ok(!t.some((l) => l.includes("answered recently")));
+});

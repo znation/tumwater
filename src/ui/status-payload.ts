@@ -19,7 +19,7 @@ import { fleetAlerts } from "./fleet-alerts.js";
  * out the routine ones (tick starts, wakes, passing checks). */
 const RECENT_EVENTS = 80;
 /** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
-const DASHBOARD_ANSWERED_QUESTIONS = 5;
+export const DASHBOARD_ANSWERED_QUESTIONS = 5;
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a

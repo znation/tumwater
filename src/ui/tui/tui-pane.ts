@@ -13,6 +13,8 @@ import { eventRole, readEvents } from "../../events/event-read.js";
 import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
 import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries, planListLines } from "./tui-backlog.js";
+import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
+import { DASHBOARD_ANSWERED_QUESTIONS } from "../status-payload.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -135,10 +137,15 @@ export function paneBody(
       // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
       // below still walks the flat list, one entry per part.
       const plans = flat.filter((e) => e.label === "plan");
+      // The newest answered questions follow the open ones, read-only: they stay out of `flat`,
+      // so selection and the edit keys reach only open entries.
+      const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
+        q.decision ? `${q.title} — ${q.decision}` : q.title,
+      );
       return {
-        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length)
+        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered)
           .slice(0, eventBudget)
-          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",
       };
     }
