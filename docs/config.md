@@ -47,6 +47,64 @@ map or role entry, while bare keys replace the whole value. `roles` always merge
 catalog per entry at load, so a bare `config set roles` replaces the file's section but cannot
 disable a role by omission — disable one with `tumwater config set roles.<id>.enabled false`.
 
+## Every setting
+
+`tumwater config` prints the effective values, and `tumwater config get|set|unset <key>` reads or writes them. One row per top-level key of `tumwater.json`, in the order the schema lists them; `test/config-doc.test.ts` fails when a row is missing or stale. Defaults are what a file with no entry for the key gets.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `provider` | none | The pi provider name; unset leaves pi's own default. |
+| `model` | none | The model for runs: one selector `provider/id[:thinking]`, or a map of tiers `small`/`default`/`strong`; unset leaves pi's own default. |
+| `thinking` | none | The pi thinking level; unset leaves pi's own default. |
+| `backend` | `"pi"` | The agent backend for bare model ids and the no-model default: `"pi"` or `"claude"`; see [backends.md](backends.md). |
+| `baseBranch` | none | The branch the team merges into and bases every role's worktree on; unset targets whichever branch the primary checkout has checked out, and an explicit value must exist. |
+| `agentBin` | none | The agent binary to spawn (`TUMWATER_PI_BIN` overrides it for one invocation); unset means `pi`, and a value with a path separator is resolved to an absolute path. |
+| `backends` | `{}` | Per-backend overrides of the binary (`bin`) and extra arguments (`args`), keyed by `pi` or `claude`; see [backends.md](backends.md). |
+| `check` | none | The project's own verification command (`command`, optional cheaper `gateCommand`, `cwd`, `timeoutSeconds`); unset detects an npm script at the nearest installed root. |
+| `piArgs` | `[]` | Extra arguments passed straight to pi; a flag the team sets itself is rejected. |
+| `maxConcurrent` | `6` | The most model runs in flight at once across all roles, merges included; the director's own runs sit outside it. |
+| `maxConcurrentPerProvider` | none | Per-provider caps on concurrent runs, beside `maxConcurrent`; an absent provider is uncapped. |
+| `mergeBatchMax` | `3` | The most vetted changes stacked into one merge and one shared check; 1 merges every change on its own. |
+| `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team. |
+| `worktreeSlots` | none | How many shared workspaces role runs and merge checks lease; unset means `maxConcurrent` + 1. |
+| `minRunIntervalSeconds` | `20` | The minimum seconds between two runs of the same role, even when woken early. |
+| `runTimeoutSeconds` | `14400` | The hard cap on one run, in seconds (four hours). |
+| `quietTimeoutSeconds` | `1800` | Kill a run that emits no output for this many seconds; 0 disables. |
+| `toolCallStallSeconds` | `300` | Warn, without killing, when one tool call has been open this many seconds with no output; 0 disables. |
+| `logMaxBytes` | `16777216` | Rotate the event log and per-role logs when they exceed this many bytes (16 MiB). |
+| `sessionRetentionDays` | `7` | Delete pi session files older than this many days at start; 0 disables. |
+| `maxDailyCostUsd` | `50` | The daily spend cap in USD; once reached, roles start no new runs until local midnight or a live edit; 0 disables. |
+| `maxDailyCostUsdPerRole` | none | Per-role daily caps in USD, keyed by role id; 0 disables that role's cap and an absent role is uncapped. |
+| `maintenancePerWorkMerge` | `2` | Code-maintenance merges allowed per feature, bugfix or director merge in a rolling 24 h window, on top of a floor of 12. |
+| `quietHours` | none | A daily local-time window `"HH:MM-HH:MM"` in which roles start no new runs; empty or unset means off. |
+| `quietHoursPerRole` | none | Per-role quiet-hours windows, keyed by role id; a role is held when either its own window or `quietHours` covers now. |
+| `diskHoldGB` | `10` | The free-space floor in GB for the volume holding the worktrees; below it no new work starts; 0 disables. |
+| `diskReclaimGB` | `40` | Below this many GB free, idle worktrees drop their gitignored build outputs before the hold engages; 0 disables. |
+| `worktreeIdleReclaimHours` | `24` | Hours a worktree may sit unused before its gitignored build outputs are dropped; 0 disables. |
+| `notify` | none | A shell command run when the team needs a human; empty or unset disables. |
+| `fallback` | none | The budget fallback as one selector or a map by tier (values may be `"pause"`); see [backends.md](backends.md). |
+| `fallbackModel` | none | The free model roles switch to when `maxDailyCostUsd` is reached, as `provider`/`model`/`thinking`; mutually exclusive with `fallback`. |
+| `thrashTurns` | `40` | A run is flagged high-friction only when it used more than this many assistant turns and ran longer than `thrashMinutes`. |
+| `thrashMinutes` | `30` | The wall-clock minutes half of the high-friction test; see `thrashTurns`. |
+| `idleBackoff` | `{"initialSeconds":120,"factor":2,"maxSeconds":3600}` | How long a role sleeps after a run that changed nothing: the first sleep, the multiplier for each further idle run, and the ceiling. |
+| `autoRestart` | `true` | Rebuild and restart onto new code when main's build inputs move past the running build and main is green; off, the dashboards only flag the stale build. |
+| `bootstrap` | none | Set by `tumwater init` on a new project: `untilPlansDone` holds the maintenance roles until that many plans are Done; removing it ends bootstrap early. |
+| `review` | `{"enabled":true,"exemptPaths":["*.md","docs/**"]}` | The adversarial pre-merge review (`enabled`, `exemptPaths`, `provider`, `model`, `thinking`, `timeoutSeconds`). |
+| `customRoles` | `[]` | Your own roles; each is merged into `roles` as enabled at load. |
+| `roles` | the built-in catalog | Per-role entries merged over the built-in catalog; the fields are in the next table. |
+
+The fields of a `roles.<id>` entry:
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `enabled` | `true` (`false` for telemetry) | Whether the role runs. |
+| `instructions` | none | Extra instructions appended to this role's prompt. |
+| `provider` | none | A provider override for this role; unset uses the top-level value. |
+| `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; unset uses the role's catalog tier. |
+| `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
+| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and telemetry, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. |
+| `instances` | `1` | How many parallel instances the role may have, 1–8; accepted only for feature and bugfix. |
+
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in
 [backends.md](backends.md).
 

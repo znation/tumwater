@@ -2287,7 +2287,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### docs/config.md gains a settings table with one row per `tumwater.json` key, and a test keeps it in step with `TOP_LEVEL_KEYS` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/config.md and adds test/config-doc.test.ts, with no source change. Plain terms docs 5/5 edits one docs/config.md sentence about `TUMWATER_EVENT_LOOP` and Plain terms event log 4/9 edits the `notify` paragraph; this plan adds a new section below the existing prose and leaves those sentences alone)
+## Done
+
+### docs/config.md gains a settings table with one row per `tumwater.json` key, and a test keeps it in step with `TOP_LEVEL_KEYS` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/config.md and adds test/config-doc.test.ts, with no source change. Plain terms docs 5/5 edits one docs/config.md sentence about `TUMWATER_EVENT_LOOP` and Plain terms event log 4/9 edits the `notify` paragraph; this plan adds a new section below the existing prose and leaves those sentences alone; done 2026-10-16)
 
 **Goal.** docs/config.md is the settings reference that README.md and `tumwater help` point to. Its prose names about 20 of the top-level keys in `TOP_LEVEL_KEYS` (`src/config/config-schema.ts`). docs/backends.md names a few more. Keys such as `check`, `review`, `idleBackoff`, `autoRestart`, `bootstrap`, `thrashTurns`, `thrashMinutes`, `logMaxBytes`, `sessionRetentionDays`, `maxConcurrentChecks`, `baseBranch`, `piArgs` and `agentBin` appear in neither. An operator can see their values with `tumwater config`, but nothing says what they do. Nothing ties the doc to the schema either, so a key added later goes undocumented without anyone noticing. This plan adds a table with one row per top-level key and per `roles.<id>` field, plus a test that fails when a row is missing or stale.
 
@@ -2310,8 +2312,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/config-doc.test.ts` passes on the new doc. Deleting any one row, or adding a row for a key that is not in `TOP_LEVEL_KEYS`, makes it fail. Check this by hand once and report it in VERIFIED; the test itself is not required to mutate the doc.
 - The existing docs/config.md prose paragraphs are unchanged (`git diff docs/config.md` shows only added lines).
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's Plans and Bugs tabs list the newest done plans and fixed bugs below the open ones, so an operator sees what the team finished lately without the CLI (planned 2026-10-16 by plan, replanned 2026-10-16 by plan; independent of every other Planned entry. It adds `finishedTitle` to `src/backlog/backlog-structure.ts` and edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/backlog-structure.test.ts`, `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`, plus one clause in `docs/cli.md`. It adds two new payload keys and renames none. The in-flight Plain terms parts edit history/run-trail keys and tick events, and none of them touches these functions; done 2026-10-16)
 
