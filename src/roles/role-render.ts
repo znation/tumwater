@@ -1,6 +1,7 @@
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
+import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
@@ -137,8 +138,7 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
   // The yield multiplier rides the line as `×N` exactly like nextRunCell/fmtNextRun: a quiet
   // yield-scaled loop's effective gap is longer than nextRunAt's countdown shows (isEligible
   // gates on the multiplier too), so the Schedule must not understate when the loop acts next.
-  const mult = p.yieldMultiplier;
-  const suffix = mult > 1 ? ` ×${mult}` : "";
+  const suffix = yieldMultiplierSuffix(p.yieldMultiplier);
   let next: string;
   if (p.nextRunAt <= 0) {
     next = "not scheduled yet";

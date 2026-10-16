@@ -9,7 +9,7 @@ import { projectName } from "../project-name.js";
 import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, landingBadge, mainCheckBadge, mainCheckVerdict, pauseBadge, loopWakeMarker, permitsBadge, quietBadge, runWindowBadge, wakeBadge } from "./badges.js";
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
-import { yieldMultiplierFor } from "../scheduling/backoff.js";
+import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
@@ -64,8 +64,7 @@ export function nextRunCell(s: LoopState, phase: string, now: number, fleetRunni
   // countdown shows, and the suffix is what makes that visible. The multiplier gates the
   // scheduled gap and the main-moved wake in isEligible, so a `now`-due cell at ×4 is a
   // role waiting out its stretched gap, not a broken clock.
-  const mult = yieldMultiplierFor(s);
-  const suffix = mult > 1 ? ` ×${mult}` : "";
+  const suffix = yieldMultiplierSuffix(yieldMultiplierFor(s));
   return nextRunPhrase(remain, s.backoffSeconds > 0, "now", false) + suffix;
 }
 

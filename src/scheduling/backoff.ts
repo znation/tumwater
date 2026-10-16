@@ -99,6 +99,17 @@ export function yieldMultiplierFor(s: LoopState): number {
   return yieldScaledRole(s.role) ? yieldMultiplier((s.recentOutcomes ?? "").split("")) : 1;
 }
 
+/** The `×N` yield-multiplier suffix a next-run display rides: `×4` when the multiplier is
+ * above 1, else `""` — the quiet scalable loop's stretched effective gap made visible (the
+ * multiplier gates the scheduled gap in isEligible, so a `now`-due cell at ×4 is a role
+ * waiting out its gap, not a broken clock). Shared by the status table's `next run` cell
+ * (status-render.ts's nextRunCell) and the role view's Schedule line (role-render.ts) so the
+ * two node surfaces cannot drift on how an above-1 multiplier is worded; the GUI renders the
+ * same rule from its own separate-runtime copy (gui-client.ts's fmtNextRun). */
+export function yieldMultiplierSuffix(mult: number): string {
+  return mult > 1 ? ` ×${mult}` : "";
+}
+
 /** Next step of a backoff ladder: initial (capped) on the first step, then multiplied, capped. */
 export function nextBackoffSeconds(current: number, ladder: BackoffConfig): number {
   const { initialSeconds, factor, maxSeconds } = ladder;
