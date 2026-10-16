@@ -450,10 +450,18 @@ export async function commitMessage(cwd: string, sha: string): Promise<string | 
   return gitTry(cwd, "log", "-1", "--format=%B", sha);
 }
 
+/** The number of commits in a `A..B` range: `git rev-list --count <range>` parsed as an
+ * integer. The one home of the count idiom, so every surface that measures how far one ref
+ * is ahead of another (a branch over main, main over a build) reads identically instead of
+ * re-spelling the git call. Throws through `git` on failure; callers that must tolerate an
+ * unknown ref use `gitTry` directly (as build-info's buildStaleness does for its sentinel). */
+export async function countCommitsInRange(cwd: string, range: string): Promise<number> {
+  return Number.parseInt(await git(cwd, "rev-list", "--count", range), 10);
+}
+
 /** Commits ahead of main on the worktree's branch. */
 export async function aheadOfMain(wt: string, mainBranch: string): Promise<number> {
-  const out = await git(wt, "rev-list", "--count", `${mainBranch}..HEAD`);
-  return Number.parseInt(out, 10);
+  return countCommitsInRange(wt, `${mainBranch}..HEAD`);
 }
 
 /** The patch-id of the change `head` makes on top of `base`: `git diff` over `base...head` (from
@@ -493,7 +501,7 @@ export async function patchId(wt: string, base: string, head: string): Promise<s
  * agent amended or reset away from `base`; that still folds, and counts as 1. */
 export async function foldCommitsSince(wt: string, base: string): Promise<number> {
   if ((await headOf(wt, "HEAD")) === base) return 0;
-  const count = Number(await git(wt, "rev-list", "--count", `${base}..HEAD`));
+  const count = await countCommitsInRange(wt, `${base}..HEAD`);
   await git(wt, "reset", "--soft", base);
   return count > 0 ? count : 1;
 }

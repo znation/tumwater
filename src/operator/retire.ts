@@ -3,6 +3,7 @@ import { loadConfigSafe } from "../config/config.js";
 import { loopEnabled } from "../roles/loop-ids.js";
 import {
   branchExists,
+  countCommitsInRange,
   currentBranch,
   deleteRef,
   isDirty,
@@ -66,7 +67,7 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
   const branch = branchName(role);
   const branchThere = await branchExists(root, branch);
   const ahead = branchThere
-    ? Number.parseInt(await git(root, "rev-list", "--count", `${mainBranch}..${branch}`), 10)
+    ? await countCommitsInRange(root, `${mainBranch}..${branch}`)
     : 0;
   const dirty = usable && wt !== null ? await isDirty(wt) : false;
   const landing = await refSha(root, landingRefName(role));
