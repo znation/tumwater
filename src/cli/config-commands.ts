@@ -3,10 +3,8 @@ import { fail, say, sayJson, sayJsonLine } from "./cli-output.js";
 import {
   setConfigKey,
   unsetConfigKey,
-  parseConfigKey,
-  unknownConfigKeyError,
-  unknownRoleFieldError,
 } from "../config/config-write.js";
+import { parseConfigKey, unknownConfigKeyError, unknownRoleFieldError } from "../config/config-keys.js";
 import { modelTierMap } from "../config/config-schema.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 

@@ -4,7 +4,8 @@
  * config-set, config-unset, and budget — the post-handler layer onto the config-write domain
  * module. Each handler adapts HTTP and touches no socket beyond its own `res`.
  */
-import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
+import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
+import { checkDailyBudgetUsd } from "../config/config-keys.js";
 import { requireConfigKey } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { readPostBody } from "./gui-endpoint-common.js";

@@ -8,7 +8,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import { completionConfigKeys, completionScript, completionSpec } from "../src/cli/completion.js";
 import { HELP, helpStanzas } from "../src/cli/help.js";
 import { cli } from "./helpers/cli-harness.js";
-import { parseConfigKey } from "../src/config/config-write.js";
+import { parseConfigKey } from "../src/config/config-keys.js";
 import { templateIds } from "../src/init/init-templates.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 

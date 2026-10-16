@@ -3,7 +3,7 @@
  * completes the moment it gains a help stanza and can never drift from the listing. */
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
-import { DOTTED_MAP_KEYS } from "../config/config-write.js";
+import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
 import { HISTORY_RESULT_CLASSES } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";

@@ -13,7 +13,8 @@ import { readJson } from "./helpers/json-read.js";
 import { fileURLToPath } from "node:url";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { parseConfigKey, setConfigKey, unsetConfigKey, setDailyBudgetUsd } from "../src/config/config-write.js";
+import { setConfigKey, unsetConfigKey, setDailyBudgetUsd } from "../src/config/config-write.js";
+import { parseConfigKey } from "../src/config/config-keys.js";
 import { helpTopic } from "../src/cli/help.js";
 import { defaultConfig, loadConfig, saveConfig } from "../src/config/config.js";
 
