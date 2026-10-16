@@ -472,7 +472,7 @@ test("the rejection remainder cross-checks the Deltas column even for reasons-le
   assert.match(md, /_\+0 more clusters holding 1 rejection_/);
 });
 
-test("the digest renders under 6 KB however bad the window was", () => {
+test("the digest renders under 8 KB however bad the window was", () => {
   const root = tmpdir();
   const lines: unknown[] = [];
   const roles = Array.from({ length: 13 }, (_, i) => `role${i}`);
@@ -490,6 +490,9 @@ test("the digest renders under 6 KB however bad the window was", () => {
       lines.push({ ts: at(0), loop: role, type: "warning", message: `warning ${i} on ${role} at /Users/a/b/c${i}.ts` });
       lines.push({ ts: at(0), loop: role, type: "review_rejected", reasons: [`reason ${i} for ${role}`] });
     }
+    for (let i = 0; i < 3; i++) {
+      lines.push({ ts: at(0), loop: role, type: "merge_failed", result: i % 2 ? "merge_conflict" : "merge_blocked" });
+    }
     for (let i = 0; i < 5; i++) {
       lines.push({ ts: at(0), loop: role, type: "merged", commit: i.toString(16).padStart(40, "0"), summary: `land ${i} `.repeat(20) });
     }
@@ -505,10 +508,11 @@ test("the digest renders under 6 KB however bad the window was", () => {
   lines.push({ ts: at(0), loop: "h".repeat(40), type: "config_changed", keys: Array.from({ length: 200 }, (_, i) => `a.very.deeply.nested.configuration.key.number.${i}`) });
   writeEvents(root, lines);
   const md = renderFailureMarkdown(collectFailureReport(root, 14));
-  // 7 KB: the 6 KB the digest bounded at before, plus the time-and-spend section's worst
-  // case — one 3-cell row per configured role and the LOSS_TOP loss-cause lines, both fixed
-  // by config and the top-N cut, never by how bad the window was.
-  assert.ok(Buffer.byteLength(md) < 7 * 1024, `rendered ${Buffer.byteLength(md)} bytes`);
+  // 8 KB: the 6 KB the digest bounded at before, plus the time-and-spend section's worst
+  // case — one 3-cell row per configured role and the LOSS_TOP loss-cause lines — and the
+  // merge-failure section's MERGE_FAILURE_TOP clusters, all fixed by config and the top-N
+  // cuts, never by how bad the window was.
+  assert.ok(Buffer.byteLength(md) < 8 * 1024, `rendered ${Buffer.byteLength(md)} bytes`);
 });
 
 test("the digest replays harness decisions so a wrong response is visible", () => {
@@ -1035,7 +1039,7 @@ test("the digest's table headers and section titles use plain terms, not raw res
   assert.doesNotMatch(outcome, /no_change|\bchanged\b/);
   assert.match(outcome, /no change/);
   const spend = section("Time and spend by outcome");
-  assert.match(spend, /\| role \| merged \| no change \| error \|/);
+  assert.match(spend, /\| role \| merged \| no change \| error or blocked \|/);
   assert.doesNotMatch(spend, /landed|no_change|error-class/);
   const deltas = section("Deltas vs the preceding 1 day");
   assert.match(deltas, /\| role \| runs \| error rate \| stalls \| rejections \|/);
@@ -1057,4 +1061,38 @@ test("collectFailureReport keeps singleton merge-check and stall warnings past s
   const keys = collectFailureReport(root, 1).warnings.clusters.map((c) => c.example);
   assert.equal(keys.filter((e) => e.startsWith("merge check failed")).length, 2, "both tests' merge warnings survive, old wording pooled to the new");
   assert.ok(keys.some((e) => e.startsWith("tool call stalled")), "stall warning survives");
+});
+
+test("the digest lists merge failures by result and role, with the role's preceding warning as the reason", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0, 1), loop: "dry", type: "warning", message: "merge check failed (kept for one retry)" },
+    { ts: at(0, 2), loop: "dry", type: "merge_failed", result: "merge_blocked" },
+    { ts: at(0, 3), loop: "feature", type: "merge_failed", result: "merge_blocked" },
+    { ts: at(0, 4), loop: "plan", type: "merge_failed", result: "merge_conflict" },
+    // Rejections and review errors have their own sections and must not fill this one.
+    ...Array.from({ length: 8 }, (_, i) => ({
+      ts: at(0, 10 + i), loop: `role${i}`, type: "merge_failed", result: i % 2 ? "rejected" : "review_error",
+    })),
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.mergeFailures.total, 3);
+  assert.equal(data.mergeFailures.clusters.length, 3);
+  const md = renderFailureMarkdown(data);
+  assert.match(md, /## Merge failures\n- \*\*1×\*\* dry · .* — merge_blocked — merge check failed/);
+  assert.match(md, /feature · .* — merge_blocked — no reason recorded/);
+  assert.match(md, /plan · .* — merge_conflict — no reason recorded/);
+});
+
+test("the merge-failure section caps at 10 clusters and counts the rest as hidden", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      ts: at(0, 1 + i), loop: `role${i}`, type: "merge_failed", result: "merge_blocked",
+    })),
+  ]);
+  const data = collectFailureReport(root, 1);
+  assert.equal(data.mergeFailures.total, 12);
+  assert.equal(data.mergeFailures.clusters.length, 10);
+  assert.equal(data.mergeFailures.hiddenClusters, 2);
 });

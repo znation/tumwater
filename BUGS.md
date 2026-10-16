@@ -18,7 +18,9 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Progress 2026-10-16 (bugfix, third):** no repro. 30 concurrent runs of the test beside 8 CPU-spinning node processes all passed (the `timeout` wrapper on the spinners did not exist on this host, so the spinners ran unbounded until `pkill`; the load was real). `startParentDeathWatch` (src/process/supervisor.ts:79-104) reads correctly on the handed-down `expectedPpid` path. No code change; the entry stays open until a flake's failure message (signals sent, ESRCH or not, ppids seen) names the case.
 - **Progress 2026-10-16 (bugfix, fourth):** one more candidate closed, unconfirmed: the signal loop was bounded by a count (200 × 50 ms), so a grandchild starved for longer than that (the 145 s check suggests heavy load) could miss every poll and the verdict was read right after. The loop is now bounded by 60 s of wall clock. The entry stays open until a flake reads out.
 
-### The telemetry digest has no merge-failure section: a blocked or conflicted merge shows up only as a per-role loss cause with the placeholder "(no error text recorded)", and the top-5 loss cut hid all of 2026-10-16's (found by operator session 2026-10-16 while checking why telemetry filed nothing)
+## Fixed
+
+### The telemetry digest has no merge-failure section: a blocked or conflicted merge shows up only as a per-role loss cause with the placeholder "(no error text recorded)", and the top-5 loss cut hid all of 2026-10-16's (found by operator session 2026-10-16 while checking why telemetry filed nothing) — fixed 2026-10-16
 
 - **Symptom:** by 13:52 PDT, 10-16 had five `land_failed merge_blocked` events and one `merge_conflict`. The blocks were feature-3's silent one at 07:05 and four after red merge checks: dry at 00:24 and 01:58, improve at 07:29, feature at 11:24. The conflict was plan's at 07:23. The 13:52 digest named none of them:
   - "Outcome by role" counts each run as "waiting to merge" (its run_end result `queued`) and never shows how its merge went.
@@ -30,8 +32,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Reproduce:** render the digest over a window whose only failures are `land_failed merge_blocked` events. No section counts them, and they appear only as loss causes, if they rank in the top five.
 - **Cause:** `land_failed` carries no message, because `writeLandingOutcome` logs only result, commit, duration and usage. failure-data.ts builds its cluster sections from run_end errors, `warning`, `review_failed` and `review_rejected` only.
 - **Expected / fix sketch:** add a "Merge failures" section. Count `land_failed` by result and role, and attach the nearest preceding warning for the same role: a red check, a structure or fix-claim block, or the new fast-forward reason once the entry above lands. List a block with no reason as its own cluster, since that is a signal in itself. Rename the time table's "error" column, or split rejected and blocked out of it, so it cannot sit beside "no run errors".
-
-## Fixed
+- **Fixed:** `collectFailureReport` now builds a `mergeFailures` section (src/failure/failure-data.ts) that clusters every blocked or conflicted `merge_failed` (cut at the top 10 clusters, the rest counted as hidden so the digest stays bounded) on role, result and the role's nearest preceding warning (or "no reason recorded"), and the digest renders it as "Merge failures". The time table's "error" column is now "error or blocked". Regression test in test/failure-render.test.ts.
+- **Validation gap:** no-fake — no existing digest fixture held `merge_failed` events, so the regression tests add new ones; the section counts only `merge_blocked` and `merge_conflict`, since rejected and review_error landings have their own sections.
 
 ### The telemetry digest keeps only the 7 most frequent warning clusters, so recurring housekeeping lines push out the one-off warnings that name flaky tests: on 2026-10-16 all three flakes and the 11:24 red merge check were cut (found by operator session 2026-10-16 while checking why telemetry filed nothing) (fixed 2026-10-16)
 

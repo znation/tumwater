@@ -39,6 +39,15 @@ const URGENT_WARNING = /^(?:landing check red|merge check failed|tool call stall
 const OLD_MERGE_CHECK_WORDING = /^landing check red \(kept for one re-land\)/;
 const REVIEW_FAILURE_TOP = 5;
 const REJECTION_TOP = 5;
+/** Blocked merges are rare and each one is a signal, so the section gets its own cut, roomier
+ * than the other cluster sections'; the digest stays bounded and the render marks any clusters
+ * the cut hides. */
+const MERGE_FAILURE_TOP = 10;
+
+/** The cause text for a blocked or conflicted merge whose role logged no warning since its
+ * previous merge outcome — a block with no stated reason is a signal in itself, so it clusters
+ * on its own instead of hiding. */
+const NO_MERGE_REASON = "no reason recorded";
 const MERGED_TOP = 10;
 const SUMMARY_MAX = 100;
 
@@ -125,6 +134,7 @@ export interface FailureReportData {
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
   rejections: ClusterSection;
+  mergeFailures: ClusterSection; // blocked or conflicted merge_failed clusters (top MERGE_FAILURE_TOP), by result and role, with the role's nearest preceding warning as the reason
   merged: MergedCommit[];
   mergedTotal: number; // all merges in the window, before the newest-MERGED_TOP cut
   stateChanges: StateChange[];
@@ -181,6 +191,40 @@ function messageSection(
     ),
     selected.length,
   );
+}
+
+/** The merge-failure section: each blocked or conflicted `merge_failed` clusters on
+ * (role, result, reason).
+ * `merge_failed` carries no message, so the reason is the same role's nearest preceding
+ * `warning` (a red merge check, a structure or fix-claim block) logged after that role's
+ * previous merge outcome; with none, the placeholder. The total counts every blocked or
+ * conflicted `merge_failed` in the window. */
+function mergeFailureSection(events: HarnessEvent[]): ClusterSection {
+  const ordered = [...events].sort((a, b) => a.ts - b.ts);
+  const lastWarning = new Map<string, string>();
+  const messages: Array<{ message: string; role: string; ts: number; keyPrefix: string }> = [];
+  let total = 0;
+  for (const ev of ordered) {
+    const role = eventRole(ev);
+    if (ev.type === "warning" && typeof ev.message === "string" && ev.message !== "") {
+      lastWarning.set(role, ev.message.replace(OLD_MERGE_CHECK_WORDING, "merge check failed (kept for one retry)"));
+    } else if (ev.type === "merge_done") {
+      lastWarning.delete(role);
+    } else if (ev.type === "merge_failed") {
+      const result = typeof ev.result === "string" ? ev.result : "";
+      // Rejected and review_error landings have their own sections; only a block or a conflict
+      // is unaccounted for here.
+      if (result !== "merge_blocked" && result !== "merge_conflict") {
+        lastWarning.delete(role);
+        continue;
+      }
+      total++;
+      const reason = lastWarning.get(role) ?? NO_MERGE_REASON;
+      lastWarning.delete(role);
+      messages.push({ message: `${result} — ${reason}`, role, ts: ev.ts, keyPrefix: `${role}\u0000` });
+    }
+  }
+  return section(clusterMessages(messages, MERGE_FAILURE_TOP), total);
 }
 
 /** One role's window metrics, used for the delta row: runs/errors/quiet kills from
@@ -446,6 +490,8 @@ function assembleFailureReport(
     rejectedEvents.length,
   );
 
+  const mergeFailures = mergeFailureSection(current);
+
   // Landing review failures: a reviewer that could not return a parseable verdict (a dead
   // backend, a transport error) fails closed and keeps the commit, but its authoring tick ends
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
@@ -511,6 +557,7 @@ function assembleFailureReport(
     warnings,
     reviewFailures,
     rejections,
+    mergeFailures,
     merged,
     mergedTotal: allMerged.length,
     stateChanges,

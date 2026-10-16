@@ -119,7 +119,8 @@ function hoursPhrase(ms: number): string {
 /** Render the digest as bounded Markdown. Byte bound: for a given fleet the tables grow only with
  * the number of configured roles (fixed by config), the RESULT_ORDER vocabulary (fixed by
  * src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
- * the cut), and every free string is capped — cluster examples at 120 chars (plus a `… (+N
+ * the cut), the merge-failure section's MERGE_FAILURE_TOP clusters (src/failure/failure-data.ts),
+ * and every free string is capped — cluster examples at 120 chars (plus a `… (+N
  * chars)` cut marker when truncated, so a marked cut can never read as a complete message —
  * BUGS.md 2026-09-30), merged summaries at 100 under the same rule, a cluster's role list at 4
  * names plus a remainder count, and any loop id sliced to 32 chars (config validation already
@@ -204,7 +205,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   } else {
     lines.push(
       ...markdownTable(
-        ["role", "merged", "no change", "error"],
+        ["role", "merged", "no change", "error or blocked"],
         data.timeSpend.map((row) => [
           roleCell(row.role),
           spendCell(row.classes.merged),
@@ -284,6 +285,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   renderClusters(lines, "Top warning clusters", data.warnings, "warnings");
   renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
   renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");
+  renderClusters(lines, "Merge failures", data.mergeFailures, "merge failures");
 
   lines.push("");
   lines.push("## Merged in the window");
