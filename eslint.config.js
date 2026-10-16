@@ -127,6 +127,10 @@ export default tseslint.config(
       // and obscure what the fixture is for). src is spotless today (0 sites), so this is a
       // regression guard — an `any` cannot slip into shipped code unnoticed — not a migration.
       "@typescript-eslint/no-explicit-any": "error",
+      // The same guard for suppression directives: src carries no `@ts-ignore`, `@ts-expect-error`
+      // or `@ts-nocheck` (grep over src finds none), so a directive that silences tsc in shipped
+      // code now fails the lint instead of landing unnoticed.
+      "@typescript-eslint/ban-ts-comment": ["error", { "ts-expect-error": true }],
     },
   },
 );
