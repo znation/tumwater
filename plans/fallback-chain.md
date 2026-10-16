@@ -98,7 +98,7 @@ into a fallback instead of a hold.
 ```
 fallback := Chain | { small?: Chain | "pause", default?: Chain | "pause", strong?: Chain | "pause" }
 Chain    := Step | Step[]
-Step     := "<model id>" | { "model": "<model id>", "maxDailyCostUsd"?: number, "overage"?: true }
+Step     := "<model id>" | { "model": "<model id>", "maxDailyCostUsd"?: number }
 ```
 
 The chain you described, for an `agent: "claude"` team (tier primaries Haiku, Sonnet and Opus 5.5
@@ -107,7 +107,7 @@ on the subscription):
 ```json
 "fallback": {
   "default": [
-    { "model": "claude/claude-sonnet-5-5", "overage": true, "maxDailyCostUsd": 10 },
+    { "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 },
     { "model": "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731:deepinfra", "maxDailyCostUsd": 5 },
     "qwenrunner/qwen3.8-27b"
   ],
@@ -119,6 +119,11 @@ on the subscription):
 "maxDailyCostUsd": 15
 ```
 
+The default tier's primary is Sonnet on the subscription, so it is that chain's first Claude model.
+Listing Sonnet again as the first fallback step makes it the chain's extra-usage step. When the
+window runs out, the default tier spends up to $10 of extra usage, then up to $5 on HF, then runs
+locally.
+
 - A string or a one-element list is today's single fallback, so existing configs read
   unchanged. The legacy `fallbackModel` object is a one-step `default` chain.
 - `"pause"` stays a whole-tier value (no fallback for that tier). It is not a list element:
@@ -126,8 +131,14 @@ on the subscription):
 - `maxDailyCostUsd` on a step caps the real spend on that step's model for the local day,
   summed over every role. The team-wide `maxDailyCostUsd` stays the ceiling over everything
   priced.
-- `overage: true` is valid only on a `claude/…` step. It allows that step to run on paid extra
-  usage once the subscription window is used up (see Overage below).
+- **Claude models by position (decided 2026-10-16, D1).**
+  - The first Claude model in a chain runs on the subscription only. That includes the primary,
+    and a tier default from `agent: "claude"`.
+  - Any Claude model listed after it in the same chain may spend extra usage, within its own cap
+    and the team cap. So a chain can list the same model twice, and the second listing is its
+    extra-usage step.
+  - A step borrowed from another tier keeps the position it has in the chain that declares it.
+  - On API billing every Claude step is priced, and position does not matter.
 - A priced step is now allowed. It no longer has to be free, because the availability rules
   below never let a priced step run past a cap.
 
@@ -137,8 +148,8 @@ on the subscription):
 | --- | --- |
 | pi model priced at zero | its breaker is serving |
 | pi model with a price, or Claude on API billing | team spend < team cap; step spend < its own cap, if it has one; breaker serving |
-| Claude on the subscription | no window counts as **used up** (see below), ignoring windows whose `resetsAt` has passed; breaker serving |
-| Claude on the subscription, `overage: true` | the account allows overage (last `overageStatus` is not `rejected`); no window is `rejected`; team spend < team cap; step spend < step cap; breaker serving |
+| The chain's first Claude model, on the subscription | no window counts as **used up** (see below), ignoring windows whose `resetsAt` has passed; breaker serving |
+| A later Claude model in the same chain, on the subscription | the account allows overage (last `overageStatus` is not `rejected`); no window is `rejected`; team spend < team cap; step spend < step cap; breaker serving |
 
 A subscription window counts as used up when any one of these holds:
 
@@ -176,17 +187,21 @@ later step gets a fallback breaker, which today covers only the one fallback pai
 
 ### Overage
 
-Overage is real money, so it should run only when a step asks for it.
+Overage is real money, so only a Claude model listed after the chain's first one spends it.
 
-- A plain subscription step is unavailable once a reading shows `isUsingOverage`. The run that
+- The first Claude model is unavailable once a reading shows `isUsingOverage`. The run that
   crossed into overage finishes in overage, because tumwater cannot stop the CLI from crossing,
   and the next poll moves on. The cost of that is at most one run per role running at once. The
   reserve below avoids even that.
-- An `overage: true` step runs the same `claude` command, and its spend is the real spend on that
-  Claude model (subscription runs are only estimated spend). Its cap therefore caps overage
-  directly.
-- **Behavior change (decision D1):** an account that allows overage, with no overage step
-  declared, stops at the end of the window instead of spending extra usage up to the team cap.
+- A later Claude model runs the ordinary `claude` command. Its spend is the real spend on that
+  pair, because subscription runs count only as estimated spend. So its cap caps extra usage
+  directly. When it is the same model as the first one, the two share a pair name, and only the
+  later step ever has real spend.
+- **Behavior change:** an account that allows overage, with no later Claude model in its chain,
+  stops at the end of the window instead of spending extra usage up to the team cap.
+  - That matches the live team's config today: `agent: "claude"`, with `fallbackModel`
+    `qwenrunner/qwen3.8-27b`.
+  - Until part 5 merges, today's behavior holds.
 - Prerequisite: the BUGS.md 2026-10-16 entry. A window whose `resetsAt` has passed must not read
   as in overage.
 
@@ -212,6 +227,8 @@ Overage is real money, so it should run only when a step asks for it.
   it resets. The reserve also keeps runs from crossing into overage.
 - Utilization comes only from runs, at about two readings per run in the logs, so the team learns
   it crossed the line one run late.
+- A later Claude model would spend the reserved quota before it reaches extra usage. So past
+  the reserve it waits too, until a reading shows `isUsingOverage`.
 - The director is exempt: it runs your own prompts.
 
 ### Director
@@ -248,20 +265,24 @@ Overage is real money, so it should run only when a step asks for it.
 3. Fallback chains: the list form, the walk, a breaker for every step, and `seamsInUse`/doctor
    sweeping every step. Requires 1.
 4. Priced steps with their own daily caps (`dayCostByPair`). Requires 3.
-5. Claude overage as an explicit step; plain subscription steps stop at overage. Builds on the
-   BUGS.md stale-overage fix. Requires 4.
-6. `claudeWindowReserve`. Requires 1.
+5. Extra usage by position: a chain's first Claude model stops at the end of the window, and
+   later Claude models spend extra usage within their caps. Builds on the BUGS.md stale-overage
+   fix. Requires 4.
+6. `claudeWindowReserve`, including the rule that later Claude models wait past the reserve.
+   Requires 5.
 7. Surfaces: the doctor "fallback chain" check with the local probe, and the badge, TUI, GUI and
-   role-view chain lines. Requires 2, 5 and 6.
+   role-view chain lines. Requires 2 and 6.
 
 Part 1 alone answers the question that started this: a used-up window falls back instead of
-pausing. Parts 1–4 give the chain you described, minus explicit overage.
+pausing. Parts 1–5 give the chain you described.
 
 ## Decisions
 
-- **D1, overage when no step declares it:** stop at the end of the window, or keep today's
-  "spend extra usage up to the team cap"? Recommended: stop. Overage runs only on a declared,
-  capped step. Until part 5 merges, today's behavior holds.
+- **D1, extra usage (decided 2026-10-16):**
+  - A chain's first Claude model stops at the end of the window.
+  - A Claude model listed after it in the same chain spends extra usage, within its caps.
+  - Without a later Claude model, the team spends no extra usage.
+  - Until part 5 merges, today's behavior holds: extra usage up to the team cap.
 - **D2, reserve default:** recommended off by default, since tumwater runs on any account. For
   this tumwater.json, `{ "seven_day": 0.8 }`, so the team leaves a fifth of the week for you.
 - **D3, hand back in-flight runs when the window resets:** recommended yes, matching midnight's
