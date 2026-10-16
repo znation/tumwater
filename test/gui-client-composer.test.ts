@@ -78,7 +78,6 @@ function composerEls() {
     input: () => el("prompt"),
     form: () => el("promptform"),
     images: () => el("promptimages"),
-    defer: () => el("promptdefer"),
     fire,
   };
 }
@@ -87,7 +86,7 @@ function composerEls() {
  * it inherits from the concatenation, and the server. `failRead` makes the FileReader stand-in
  * error, to drive the unreadable-attachment path. */
 function composerScope(opts: { activeView?: string; innerWidth?: number; failRead?: boolean } = {}) {
-  const { el, input, form, images, defer, fire } = composerEls();
+  const { el, input, form, images, fire } = composerEls();
   const posts: Array<{ path: string; body: unknown }> = [];
   const flashes: string[] = [];
   let refreshes = 0;
@@ -142,7 +141,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
     for (let i = 0; i < 3; i++) await sleep(0);
   };
   return {
-    scope, el, input, form, images, defer, fire, posts, flashes, refreshes: () => refreshes, closeDrawerCalls, location,
+    scope, el, input, form, images, fire, posts, flashes, refreshes: () => refreshes, closeDrawerCalls, location,
     setFail: (v: boolean) => { fail = v; },
     holdNextPost: () => { gate = new Promise<void>((r) => { openGate = r; }); },
     releaseHold: () => { openGate?.(); openGate = null; },
@@ -154,12 +153,6 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
 const IMG = { name: "a.png", type: "image/png", size: 1048576 };
 const STATUS = { loops: [{ role: "qa" }, { role: "bugfix" }], inbox: 2, roleInbox: { qa: 1 } };
 const SUBMIT = { preventDefault: () => {} };
-
-test("the composer blob reads the defer field and sends it under the defer body key", () => {
-  assert.match(GUI_CLIENT_COMPOSER_JS, /\$\("promptdefer"\)\.value\.trim\(\)/);
-  assert.match(GUI_CLIENT_COMPOSER_JS, /body\.defer = defer/);
-  assert.match(GUI_CLIENT_COMPOSER_JS, /delivers in/);
-});
 
 test("the target picker rebuilds only when the fleet's roles change, and a vanished target falls back to the director", () => {
   const s = composerScope();
@@ -379,43 +372,6 @@ test("the composer's submit queues for the director or one loop through the CLI'
   await s.flush();
   assert.deepEqual(s.posts.at(-1), { path: "/api/prompt", body: { text: "too long" } });
   assert.equal(input.value, "");
-});
-
-test("the composer's defer field rides into both submit paths and survives a refusal", async () => {
-  const s = composerScope();
-  const input = s.input();
-  const defer = s.defer();
-  s.scope.renderComposer(STATUS);
-  s.scope.setTarget("qa");
-  input.value = "retest --watch";
-  defer.value = "90m";
-  await s.fire(s.form(), "submit", SUBMIT);
-  await s.flush();
-  assert.deepEqual(s.posts.at(-1), {
-    path: "/api/prompt-role",
-    body: { role: "qa", text: "retest --watch", defer: "90m" },
-  });
-  assert.match(String(s.flashes.at(-1)), /delivers in 90m/);
-  assert.equal(defer.value, "", "a queued defer clears with the text");
-  assert.equal(input.value, "", "the target fell back to the director");
-
-  // The director path carries the same key.
-  input.value = "later";
-  defer.value = "45s";
-  await s.fire(s.form(), "submit", SUBMIT);
-  await s.flush();
-  assert.deepEqual(s.posts.at(-1), { path: "/api/prompt", body: { text: "later", defer: "45s" } });
-  assert.match(String(s.flashes.at(-1)), /delivers in 45s/);
-
-  // A refused submit keeps the defer so it can be fixed and resent.
-  s.setFail(true);
-  input.value = "too long";
-  defer.value = "2d";
-  await s.fire(s.form(), "submit", SUBMIT);
-  await s.flush();
-  assert.match(String(s.flashes.at(-1)), /^error: \/api\/prompt failed/);
-  assert.equal(defer.value, "2d", "the defer survives a refusal");
-  assert.equal(input.value, "too long");
 });
 
 test("a submit while one is already in flight is ignored, and pending images ride along as base64", async () => {

@@ -69,8 +69,6 @@ export const GUI_PAGE = `<!doctype html>
       </div>
       <div id="promptimages" class="chips" hidden></div>
       <div class="composer-foot">
-        <label class="sr-only" for="promptdefer">Defer until</label>
-        <input class="field" id="promptdefer" type="text" placeholder="defer (45m)" autocomplete="off">
         <span id="prompthint"></span>
         <span class="composer-meta"><span id="promptcount"></span><a href="#" id="queuelink" hidden></a></span>
       </div>
