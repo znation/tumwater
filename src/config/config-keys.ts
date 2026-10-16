@@ -121,7 +121,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
   // must be a real tier: `config set model.turbo x` would otherwise write a dead map key
   // the runtime (and doctor's checkKnownKeys) would silently never resolve.
   if (parts.length === 2 && first === "model") {
-    if ((TIER_MAP_KEYS as readonly string[]).includes(second ?? ""))
+    if ((TIER_MAP_KEYS).includes(second ?? ""))
       return { kind: "tier", map: "model", tier: second as ModelTier };
     return {
       kind: "error",
@@ -147,7 +147,7 @@ export function parseConfigKey(key: string): ParsedConfigKey {
  * key, the typo reads the same. */
 export function unknownConfigKeyError(key: string): string | null {
   if ((TOP_LEVEL_KEYS as readonly string[]).includes(key)) return null;
-  return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${typoSuffix(key, TOP_LEVEL_KEYS as readonly string[])}`;
+  return `unknown config key "${key}" (valid top-level keys: ${TOP_LEVEL_KEYS.join(", ")})${typoSuffix(key, TOP_LEVEL_KEYS)}`;
 }
 
 /** The error for a dotted role key naming a field ROLE_ENTRY_KEYS does not hold — the one

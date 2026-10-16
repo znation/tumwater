@@ -106,6 +106,14 @@ export default tseslint.config(
     // on the code that ships without demanding a comparator on every fixture sort. The rule's
     // default ignoreStringArrays already exempts arrays whose elements are all strings.
     files: ["src/**/*.ts", "src/**/*.tsx"],
-    rules: { "@typescript-eslint/require-array-sort-compare": "error" },
+    rules: {
+      "@typescript-eslint/require-array-sort-compare": "error",
+      // Production code only: tests wield assertions deliberately (a fixture cast that pins a
+      // shape, an `as unknown as` that reaches a broader type, `expect(x as T)`), so the
+      // rule's signal — a cast that cannot change the type is a second place to edit when the
+      // shape changes — belongs on the code that ships, not on fixtures whose casts are the
+      // point.
+      "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    },
   },
 );

@@ -558,7 +558,7 @@ export async function reviewAheadOfMain(
         // Record the session this run used (the resumed directory, or this fresh run's own),
         // so the next attempt `--continue`s exactly it.
         state.reviewResume = {
-          patchId: reviewedPatchId!,
+          patchId: reviewedPatchId,
           sessionDir: reviewSessionDir,
           attempts: resumeAttempts,
           at: Date.now(),

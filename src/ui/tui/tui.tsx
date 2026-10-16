@@ -88,7 +88,7 @@ export interface TuiSeams {
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
  * typed prompts into the inbox. Works alongside (not instead of) `tumwater run`. */
 export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> {
-  const stdin = seams.stdin ?? (process.stdin as TuiStdin);
+  const stdin = seams.stdin ?? (process.stdin);
   const stdout = seams.stdout ?? process.stdout;
   if (!stdin.isTTY || !stdout.isTTY) {
     throw new Error(tuiTerminalError(Boolean(stdin.isTTY), Boolean(stdout.isTTY)));

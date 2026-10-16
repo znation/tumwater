@@ -39,7 +39,6 @@ import {
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { requireReadyRepo } from "./cli/cli-repo-gate.js";
-import type { MarkerCommand } from "./cli/cli-marker-commands.js";
 import { repoToplevel } from "./git/git.js";
 
 import { didYouMean } from "./text/suggest.js";
@@ -347,7 +346,7 @@ async function main(): Promise<void> {
     case "pause":
     case "resume":
     case "reclaim": {
-      await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(root, command as MarkerCommand, args);
+      await (await import("./cli/cli-marker-commands.js")).runMarkerCommand(root, command, args);
       break;
     }
     case "retire": {

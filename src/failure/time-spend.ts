@@ -251,7 +251,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // `land_queued` keeps the authored one — exact-sha equality names no reason for a rebased
       // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const rej = newestAttemptEvent(rejectedByLoop, role, resolvedOutcome!);
+      const rej = newestAttemptEvent(rejectedByLoop, role, resolvedOutcome);
       const reasons = stringList(rej?.reasons);
       example = reasons[0] !== undefined ? truncateExample(reasons[0]) : "";
     } else if (ev.result === "queued" && resolvedOutcome?.result === "review_error") {
@@ -266,7 +266,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // keeps the authored one — exact-sha equality missed every rebased vet (BUGS.md
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
-      const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome!);
+      const failed = newestAttemptEvent(reviewFailedByLoop, role, resolvedOutcome);
       const text = errorTextOrPlaceholder(failed?.message);
       key = poolTimeoutKey(normalizeClusterKey(text));
       example = truncateExample(text);

@@ -39,7 +39,7 @@ export function diskVolumePath(root: string): string {
  * the fleet keeps running rather than freezing on a measurement it cannot make. */
 export function sampleFreeBytes(
   root: string,
-  statfs: StatfsLike = (p) => fs.statfsSync(p) as fs.StatsFs,
+  statfs: StatfsLike = (p) => fs.statfsSync(p),
 ): number | null {
   try {
     const stats = statfs(diskVolumePath(root));

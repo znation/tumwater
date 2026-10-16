@@ -5,7 +5,7 @@
  * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the
  * orchestrator owns only the wiring (the demotion publish and the per-runner config assignment). */
 
-import { MODEL_TIERS, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
+import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import {
   budgetGate,
   budgetReached,
@@ -206,7 +206,7 @@ export function pollBudgetGate(
   const rejectedPair = fallbackPair(liveConfig);
   const pairNames: string[] = [];
   for (const tier of MODEL_TIERS) {
-    const p = priceResolved[tier as ModelTier].pair;
+    const p = priceResolved[tier].pair;
     if (p) {
       const n = modelPairName(p);
       if (!pairNames.includes(n)) pairNames.push(n);

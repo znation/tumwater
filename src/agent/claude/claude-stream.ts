@@ -100,7 +100,7 @@ function canonicalBlock(block: Json): Json | undefined {
       return {
         type: "toolCall",
         id: str(block.id) ?? "",
-        name: Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name] as string) : name.toLowerCase(),
+        name: Object.hasOwn(TOOL_NAMES, name) ? (TOOL_NAMES[name]) : name.toLowerCase(),
         arguments: args,
       };
     }

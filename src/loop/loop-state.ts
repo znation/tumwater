@@ -366,7 +366,7 @@ function healOptionalNumber<T extends object, K extends keyof T>(rec: T, key: K)
  * object keeps its shape with each numeric field repaired by `heal`. */
 function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void): T | undefined {
   if (value === undefined || !isJsonObject(value)) return undefined;
-  heal(value as T);
+  heal(value);
   return value;
 }
 

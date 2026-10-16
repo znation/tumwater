@@ -214,7 +214,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     })
     .slice(-8)
     .map((ev) => ({
-      ts: ev.ts as number,
+      ts: ev.ts,
       result: ev.result as string,
       ...(finiteNumber(ev.durationMs, null) !== null ? { durationMs: ev.durationMs as number } : {}),
       ...(typeof ev.summary === "string" && ev.summary !== "" ? { summary: ev.summary } : {}),

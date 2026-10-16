@@ -206,7 +206,7 @@ export function execGitBounded(
       else finish(new GitExecError(stderr, code ?? undefined));
     });
   });
-  return Object.assign(promise, { child }) as PromiseWithChild<{ stdout: string; stderr: string }>;
+  return Object.assign(promise, { child });
 }
 
 /** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which the

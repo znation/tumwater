@@ -49,7 +49,7 @@ function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunn
 function requestedRoles(markerFile: string): string[] | null {
   const marker = readJsonFile<{ roles?: unknown }>(markerFile);
   return marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
-    ? (marker.roles as string[])
+    ? (marker.roles)
     : null;
 }
 

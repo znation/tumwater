@@ -100,8 +100,8 @@ export function collectRoleRows(
       ...(modelFromPi
         ? {
             model: formatModelSelector({
-              ...piDefault!,
-              thinking: eff.thinking ?? piDefault!.thinking,
+              ...piDefault,
+              thinking: eff.thinking ?? piDefault.thinking,
             }),
             modelFromPi: true as const,
           }

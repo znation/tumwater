@@ -192,7 +192,7 @@ function answerQuestionLocked(root: string, n: number, rawDecision: string, expe
   if (scan === null || n < 1 || n > scan.blocks.length) {
     return { status: "missing", open: openCount };
   }
-  const scanned = scan as { openIdx: number; answeredIdx: number; openEnd: number; fenceOpen: boolean; blocks: OpenEntryBlock[] };
+  const scanned = scan;
   // A fence inside ## Open left unclosed runs to EOF (CommonMark), so the whole tail — the
   // real ## Answered section included — reads as quoted body of the still-open entry. Acting
   // on that degraded read moves Answered content inside the moved block's fence and grows a

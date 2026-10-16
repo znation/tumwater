@@ -267,7 +267,7 @@ export function checkStringArrayField(
       problems.push(`${prefix}${key} must be an array of strings (got ${show(v)})`);
       return;
     }
-    const arr = v as string[];
+    const arr = v;
     const blankAt = arr.findIndex((s) => s.trim() === "");
     if (blankAt >= 0)
       problems.push(`${prefix}${key}[${blankAt}] must not be blank (got ${show(arr[blankAt])})`);

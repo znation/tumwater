@@ -176,7 +176,7 @@ export function setConfigKey(
       if (parsed.kind === "map") {
         const existing = (record[parsed.map] as Record<string, unknown> | undefined) ?? {};
         oldValue = existing[parsed.role];
-        const next = { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } } as unknown as TumwaterConfig;
+        const next = { ...cfg, [parsed.map]: { ...existing, [parsed.role]: value } };
         return preservingFileRoles(root, next);
       }
       if (parsed.kind === "tier") {
@@ -255,7 +255,7 @@ export function setConfigKey(
   let oldValue: unknown;
   const result = writeConfigMutation(root, (cfg) => {
     oldValue = (cfg as unknown as Record<string, unknown>)[key];
-    const next = { ...cfg, [key]: value } as unknown as TumwaterConfig;
+    const next = { ...cfg, [key]: value };
     // `roles` merges per-entry at load (overlayDefaults seeds the catalog and lets the file
     // override one entry), so an unrelated whole-config write must not re-expand the file's
     // own roles section to the catalog — that would silently rewrite what the operator wrote.
@@ -279,7 +279,7 @@ export function setConfigKey(
       delete entry[key === "agentBin" ? "bin" : "args"];
       if (Object.keys(entry).length === 0) delete agents.pi;
       else agents.pi = entry;
-      return { ...next, agents } as unknown as TumwaterConfig;
+      return { ...next, agents };
     }
     return next;
   });
@@ -507,7 +507,7 @@ export function applyConfigRequest(
       // only from what the file actually holds.
       const rawRolesCandidate = rawConfigObject(root).roles;
       const roles = isJsonObject(rawRolesCandidate)
-        ? { ...(rawRolesCandidate as Record<string, unknown>) }
+        ? { ...(rawRolesCandidate) }
         : {};
       for (const c of current.customLoops) {
         if (!requestedNames.has(c.name)) delete roles[c.name];

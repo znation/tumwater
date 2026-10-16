@@ -119,7 +119,7 @@ export function readClaudeAccount(root: string, now = Date.now()): ClaudeAccount
   const doc = readJsonFile<Record<string, unknown>>(claudeAccountPath(root));
   if (doc === null) return null;
   const billing =
-    doc.billing === "subscription" || doc.billing === "api" ? (doc.billing as ClaudeBilling) : undefined;
+    doc.billing === "subscription" || doc.billing === "api" ? (doc.billing) : undefined;
   const observedAt = finiteNumber(doc.observedAt, Number.NaN);
   if (billing === undefined || !Number.isFinite(observedAt)) return null;
   const windows: Record<string, ClaudeWindow> = {};
