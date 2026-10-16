@@ -6,6 +6,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Remove the GUI composer's defer input box (planned 2026-10-16 by director from the user's request; the GUI defer field near the prompt input is opaque — its "defer (45m)" prefill reads as a default, not an optional delay — and the user sees no reason to defer, so drop the box. Keep the CLI `tumwater prompt --at <duration>` deferral and the `/api/prompt`/`/api/prompt-role` `defer` body key intact; only the dashboard composer's defer field goes. Independent of every other Planned entry — touches only the GUI composer, its page template, its tests, and one doc line; the only other Planned entry that visits `src/ui/gui/gui-client-composer.ts` (Image input 5/5) just adds an image-context notice under the chips, a separate code region from the defer-field removal)
+
+**Goal.** The dashboard composer stops offering a per-prompt defer input, so the user cannot send a `defer` with a prompt from the GUI. The director/role prompt box is just a prompt box. CLI-only deferral (`tumwater prompt --at`) still works.
+
+**Approach.** Delete the defer field and its GUI plumbing; stop the GUI submitting a `defer` body key. Where the GUI's `sendPrompt` previously read the field, it now sends only text and images. The CLI and both GUI endpoints (`/api/prompt`, `/api/prompt-role`) keep accepting `defer` for CLI use, so no server change.
+
+**Files touched.**
+- `src/ui/gui/gui-page.ts`: remove the `<label class="sr-only" for="promptdefer">Defer until</label>` and the `<input id="promptdefer" … placeholder="defer (45m)">` from `.composer-foot` (leaving the hint and composer-meta spans).
+- `src/ui/gui/gui-client-composer.ts` (the `composer-send` blob): drop the `defer` parameter from `sendPrompt` (and its `deferred`/`body.defer` code); in the `promptform` submit listener drop `const defer = $("promptdefer").value.trim();`, the pass-through to `sendPrompt`, and `$("promptdefer").value = "";`.
+- `test/gui-client-composer.test.ts`: remove the `defer: () => el("promptdefer")` stub from `composerEls` and the `defer` field from `composerScope`'s returned object; delete the `defer:` lines in the tests that set `defer.value`; drop the two defer-specific tests ("the composer blob reads the defer field…" at ~line 158 and "the composer's defer field rides into both submit paths and survives a refusal" at ~line 384). `test/gui-client.test.ts`'s `sendPrompt(target, text)` call sites already pass two args and stay valid.
+- `docs/how-it-works.md`: in the TUI `Ctrl+L` defer bullet (~line 403), drop "and the dashboard composer's defer field write" so it names only the `tumwater prompt --at` marker.
+
+**Acceptance criteria.**
+- `grep -rn "promptdefer" src/` finds nothing, and `grep -n "body.defer" src/ui/gui/gui-client-composer.ts` finds nothing.
+- A GUI submit posts `{ text }` (or `{ text, images }`) with no `defer` key to either endpoint; the refusal path keeps the text and images.
+- `npm test` passes, including the trimmed `gui-client-composer` suite (no test references `promptdefer`).
+- The composer HTML has no defer input; the `.composer-foot` still shows the hint and count/queue meta.
+
 ### Image input, part 5/5: the dashboard, the TUI, and prompt attachments say which loops cannot read images (planned 2026-10-15 by user; requires part 4/5 landed; design and decisions in plans/image-input.md "Surfaces" and "Attachments"; touches src/status/, src/ui/, src/roles/role-render.ts, src/inbox/, src/gui/gui-prompt-commands.ts, and the docs)
 
 **Goal.** An operator should know without running doctor that a loop's model cannot read images, and what happens when one of its ticks tries. An attachment no configured model can read should be refused when it is submitted, not discovered at tick time.
