@@ -338,6 +338,24 @@ test("checkStateDir accepts an absent dir and proves writability without leaving
   assert.deepEqual(fs.readdirSync(stateDir).sort(), ["keep.txt"], "the probe file is deleted again");
 });
 
+test("checkStateDir sweeps a stale probe a killed prior run left behind", () => {
+  const root = makeRepo();
+  const stateDir = path.join(root, ".tumwater");
+  fs.mkdirSync(stateDir);
+  fs.writeFileSync(path.join(stateDir, "keep.txt"), "x\n");
+  // A probe from a run killed between its write and delete: a pid no live process owns.
+  fs.writeFileSync(path.join(stateDir, ".doctor-probe-99999"), "");
+
+  const outcome = checkStateDir(root);
+
+  assert.equal(outcome.level, "ok");
+  assert.deepEqual(
+    fs.readdirSync(stateDir).sort(),
+    ["keep.txt"],
+    "the stale probe is swept along with the fresh one",
+  );
+});
+
 test("checkStateDir fails with the OS error when .tumwater is not writable", () => {
   // Skip under root, where chmod cannot stop the write and the probe would succeed.
   if (runningAsRoot()) return;

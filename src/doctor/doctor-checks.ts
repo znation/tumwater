@@ -306,17 +306,51 @@ export function checkClaudeTranscripts(
 }
 
 /** .tumwater writable — absent is fine (created on first run); present, prove it by writing
- * and deleting a temp file inside. The probe leaves the dir's listing unchanged after the run. */
+ * and deleting a temp file inside. The probe leaves the dir's listing unchanged after the run.
+ * The write is the property under test: only a write that fails is "not writable", so the
+ * cleanup below — deleting the probe, sweeping stales — never vetoes a dir the write just
+ * proved writable, and a probe left over is swept rather than accumulated. */
 export function checkStateDir(root: string): CheckOutcome {
   const dir = path.join(root, STATE_DIR);
   if (!fs.existsSync(dir)) return okOutcome("absent — created on first run");
   const probe = path.join(dir, `.doctor-probe-${process.pid}`);
   try {
     fs.writeFileSync(probe, "");
-    fs.rmSync(probe);
-    return okOutcome("writable");
   } catch (err) {
+    // A partial write may already have created the file — sweep it like any other leftover.
+    sweepStaleProbes(dir);
     return failOutcome(`not writable: ${errorMessage(err)}`);
+  }
+  // The write proved writability. Deleting the probe is cleanup, not measurement: a removal
+  // failure must not turn a succeeded write into a false alarm, and the stray is collected by
+  // the sweep below (or a later pass's sweep).
+  try {
+    fs.rmSync(probe);
+  } catch {
+    // Best-effort — the stray is swept in a moment.
+  }
+  sweepStaleProbes(dir);
+  return okOutcome("writable");
+}
+
+/** Best-effort removal of every `.doctor-probe-*` file in `dir` — the only artifact
+ * checkStateDir creates, so any present probe is a leftover: a prior run killed between its
+ * write and delete, a partial write above, or a removal that failed. Removed one at a time so
+ * a single unremovable probe cannot stop the sweep. */
+function sweepStaleProbes(dir: string): void {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return; // Unreadable dir — nothing to sweep.
+  }
+  for (const name of names) {
+    if (!name.startsWith(".doctor-probe-")) continue;
+    try {
+      fs.rmSync(path.join(dir, name));
+    } catch {
+      // Best-effort — leave it for the next pass.
+    }
   }
 }
 
