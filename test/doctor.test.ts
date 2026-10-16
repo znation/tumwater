@@ -361,6 +361,29 @@ test("doctor --json keeps the exit-code contract: fail checks exit 1 with no pro
   assert.match(report.verdict, /3 problems/);
 });
 
+test("doctor --reprobe is accepted and wired — full report, same exit contract", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor reprobe");
+
+  // --reprobe is the one flag the dispatch reads (probeImages "all" instead of "missing") and
+  // it must reach runDoctor like any other accepted flag — accepted rather than rejected, and
+  // rendering the same full report with the same exit-code contract as a plain run.
+  const r = await cli(repo, "doctor", "--reprobe");
+  assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
+  assert.match(r.stdout, /tumwater doctor — harness not running/);
+  assert.match(r.stdout, /ok\s+git binary/);
+  assert.match(r.stdout, /ready to run/);
+
+  // The flag composes with --json (the other accepted flag) instead of tripping the shared
+  // rejector: the stdout is one JSON.parse-able DoctorReport, same as --json alone.
+  const json = await cli(repo, "doctor", "--reprobe", "--json");
+  assert.equal(json.code, 0, `expected exit 0:\n${json.stdout}\n${json.stderr}`);
+  const report = JSON.parse(json.stdout);
+  assert.equal(typeof report.verdict, "string");
+  assert.ok(Array.isArray(report.checks) && report.checks.length > 0);
+  assert.match(report.header, /tumwater doctor/);
+});
+
 test("doctor rejects unknown arguments", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli doctor args");
