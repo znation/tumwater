@@ -10,6 +10,7 @@
  * so consumers compare it to `Date.now()` directly. */
 import { spawnSync } from "node:child_process";
 import type { TumwaterConfig } from "../../config/config-schema.js";
+
 import { readJsonFile, writeJsonAtomic } from "../../files/json-files.js";
 import { finiteNumber, isJsonObject, parseJsonObject } from "../../files/json-object.js";
 import { claudeAccountPath } from "../../paths.js";
@@ -82,6 +83,15 @@ export function claudeWindowLabel(type: string): string {
   const unit = m[2] === "hour" ? "h" : m[2] === "day" ? "d" : "w";
   const word = m[1] ?? "";
   return `${words[word] ?? word}${unit}`;
+}
+
+/** The fraction of a subscription usage window consumed (0–1) as a whole-number percent: a
+ * `0.64` utilization reads `64`. The one home of the fraction→percent conversion, shared by
+ * the status badge and the doctor's hold reason so the two render a window's fill
+ * identically (the browser dashboard's own window line is embedded client-side and keeps its
+ * inline copy). */
+export function claudeUtilizationPct(utilization: number): number {
+  return Math.round(utilization * 100);
 }
 
 /** The account's windows as a list, most constrained first: by status severity, then the

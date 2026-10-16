@@ -14,7 +14,7 @@ import { usd } from "../text/format.js";
 import { parseQuietHours, quietHoursStatus, quietWindowEnd, roleQuietHold } from "../scheduling/quiet-hours.js";
 import { humanSeconds, secondsUntil } from "../text/datetime.js";
 import { budgetPhrase, pauseReasonSuffix, plural } from "../text/phrases.js";
-import { claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeUtilizationPct, claudeWindowEntries, claudeWindowLabel, readClaudeAccount } from "../agent/claude/claude-account.js";
 import { claudeWindowObservation } from "../fleet/fleet-polls.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -162,7 +162,7 @@ export function checkClaudeWindow(root: string, now: number = Date.now()): Check
   }
   const top = claudeWindowEntries(account)[0];
   if (top === undefined) return okOutcome("subscription; no window reported yet");
-  const pct = typeof top.utilization === "number" ? ` (${Math.round(top.utilization * 100)}% used)` : "";
+  const pct = typeof top.utilization === "number" ? ` (${claudeUtilizationPct(top.utilization)}% used)` : "";
   const label = claudeWindowLabel(top.type);
   return okOutcome(
     top.status === "allowed_warning" ? `${label} window nearing its limit${pct}` : `${label} window ${top.status}${pct}`,

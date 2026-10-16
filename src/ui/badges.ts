@@ -1,5 +1,5 @@
 import type { TestCounts } from "../build/build-check-counts.js";
-import { claudeWindowLabel } from "../agent/claude/claude-account.js";
+import { claudeUtilizationPct, claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
@@ -137,7 +137,7 @@ function untilReset(resetsAt: number, now: number): string {
 function claudeWindowBadge(claudeWindow: NonNullable<StatusSnapshot["claudeWindow"]>, now: number): string {
   const w = claudeWindow.primary;
   const parts = [`Claude ${claudeWindowLabel(w.type)}`];
-  parts.push(typeof w.utilization === "number" ? `${Math.round(w.utilization * 100)}%` : claudeWindowStatusWord(w.status));
+  parts.push(typeof w.utilization === "number" ? `${claudeUtilizationPct(w.utilization)}%` : claudeWindowStatusWord(w.status));
   if (w.isUsingOverage === true) parts.push("overage");
   if (w.status === "rejected" && claudeWindow.heldUntil !== null) {
     parts.push(`claude seams held until ${clockHm(claudeWindow.heldUntil)}`);
