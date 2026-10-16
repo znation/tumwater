@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { loadConfigSafe } from "../config/config.js";
 import { envPath } from "../files/files.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../fleet/orchestrator-info.js";
@@ -75,8 +76,8 @@ export async function runDoctor(
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
-      ? `tumwater doctor — harness running (pid ${info.pid}${info.build ? `, build ${shortSha(info.build.sha)}${info.build.stale ? " — STALE" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
-      : "tumwater doctor — harness not running";
+      ? `tumwater doctor — running (pid ${info.pid}${info.build ? `, version ${shortSha(info.build.sha)}${info.build.stale ? " — update available" : ""}${info.build.restartBlocked ? " (restart blocked)" : ""}` : ""})`
+      : "tumwater doctor — not running";
   const checks: DoctorReport["checks"] = [
     { name: "node", ...checkNodeVersion() },
     { name: "git binary", ...checkGitBinary(pathEnv) },
@@ -91,48 +92,48 @@ export async function runDoctor(
     { name: "quiet hours", ...checkQuietHours(config) },
     { name: "budget", ...checkBudget(root, config, (orchestratorAlive(root, info) && info?.budget) || null) },
     { name: "claude window", ...checkClaudeWindow(root) },
-    { name: "provider hold", ...checkProviderHolds(root) },
-    { name: "maintenance quota", ...checkMaintenanceQuota(root, config, orchestratorAlive(root, info)) },
+    { name: "provider waits", ...checkProviderHolds(root) },
+    { name: "maintenance allowance", ...checkMaintenanceQuota(root, config, orchestratorAlive(root, info)) },
     { name: "provider concurrency", ...checkProviderConcurrency(config, root) },
-    { name: "error streaks", ...checkErrorStreaks(root, config) },
-    { name: "main red", ...checkMainRed(root, config) },
-    { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
-    { name: "tier models", ...(await checkTierModels(root)) },
+    { name: "repeated failures", ...checkErrorStreaks(root, config) },
+    { name: "main's check", ...checkMainRed(root, config) },
+    { name: "over-cap model", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
+    { name: "models for each tier", ...(await checkTierModels(root)) },
     { name: "image input", ...(await checkImageInput(root, undefined, undefined, undefined, probeImages, pathEnv)) },
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
     { name: "claude api key", ...(await checkAnthroApiKey(root, undefined, pathEnv)) },
     { name: "claude version", ...(await checkClaudeVersion(root, pathEnv)) },
-    { name: "agent binary", ...checkAgentBinary(root, pathEnv) },
+    { name: "backend binary", ...checkAgentBinary(root, pathEnv) },
     // The transcript total is informational and only read when a seam routes to claude.
     { name: "claude transcripts", ...checkClaudeTranscripts(config) },
     { name: "state dir", ...checkStateDir(root) },
     { name: "event log", ...checkEventLog(root) },
     { name: "notify", ...checkNotify(root, config) },
     { name: "merge lock", ...checkMergeLock(root) },
-    { name: "worktree pool", ...checkWorktreePool(root) },
-    { name: "work instances", ...checkWorkInstances(root, config) },
+    { name: "workspaces", ...checkWorktreePool(root) },
+    { name: "parallel instances", ...checkWorkInstances(root, config) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
-    { name: "project check", ...checkBuildCheck(root, config) },
+    { name: "check", ...checkBuildCheck(root, config) },
     // The review gate's flake memory, surfaced read-only: naming which checks the gate kept
     // excusing as flakes (ok/warn only, so a flaky suite never fails a scripted pre-flight).
     { name: "flaky checks", ...checkFlakyChecks(root) },
-    { name: "fix claims", ...checkFixClaims(root) },
-    { name: "stranded plans", ...checkStrandedPlans(root) },
+    { name: "claimed bugs", ...checkFixClaims(root) },
+    { name: "plans stuck in Planned", ...checkStrandedPlans(root) },
     { name: "backlog headings", ...checkBacklogHeadings(root) },
     { name: "refusals", ...checkRefusedEntries(root) },
     { name: "stalled plans", ...checkStalledPlans(root) },
     { name: "plan dependencies", ...checkPlanDependencies(root) },
     { name: "stale questions", ...checkStaleQuestions(root) },
     { name: "stale bugs", ...checkStaleBugs(root) },
-    { name: "stale queued landings", ...checkStaleQueuedLandings(root, Date.now()) },
+    { name: "stale merge-queue entries", ...checkStaleQueuedLandings(root, Date.now()) },
     { name: "uncommitted backlog", ...(await checkUncommittedBacklog(root, config)) },
     // The running fleet's own view of its build (staleness and what auto-restart made of it)
     // when there is one; without it the check still stands on its own git comparison.
-    { name: "build", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
+    { name: "update", ...(await checkBuild(root, undefined, undefined, (orchestratorAlive(root, info) && info?.build) || null)) },
     { name: "orphans", ...(await checkOrphans(root, probe)) },
-    { name: "mach ports", ...(await checkLaunchServicesPorts(probe)) },
+    { name: "macOS port leak", ...(await checkLaunchServicesPorts(probe)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
   return { header, checks, seams, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };

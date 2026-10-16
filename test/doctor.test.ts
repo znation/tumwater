@@ -37,10 +37,10 @@ test("runDoctor composes the full report — fixed check order, not-running head
   const before = fs.readdirSync(path.join(root, ".tumwater")).sort();
 
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
-  assert.equal(report.header, "tumwater doctor — harness not running");
+  assert.equal(report.header, "tumwater doctor — not running");
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["node", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider hold", "maintenance quota", "provider concurrency", "error streaks", "main red", "fallback", "tier models", "image input", "claude auth", "claude api key", "claude version", "agent binary", "claude transcripts", "state dir", "event log", "notify", "merge lock", "worktree pool", "work instances", "disk space", "project check", "flaky checks", "fix claims", "stranded plans", "backlog headings", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "stale queued landings", "uncommitted backlog", "build", "orphans", "mach ports"],
+    ["node", "git binary", "repo", "init", "config key names", "brief", "bootstrap", "pause", "quiet hours", "budget", "claude window", "provider waits", "maintenance allowance", "provider concurrency", "repeated failures", "main's check", "over-cap model", "models for each tier", "image input", "claude auth", "claude api key", "claude version", "backend binary", "claude transcripts", "state dir", "event log", "notify", "merge lock", "workspaces", "parallel instances", "disk space", "check", "flaky checks", "claimed bugs", "plans stuck in Planned", "backlog headings", "refusals", "stalled plans", "plan dependencies", "stale questions", "stale bugs", "stale merge-queue entries", "uncommitted backlog", "update", "orphans", "macOS port leak"],
   );
   // The node check reflects the runtime running the suite, which is at or above the declared
   // floor in practice; assert it is never a failure rather than pinning CI's Node version.
@@ -62,7 +62,7 @@ test("runDoctor counts failures in the verdict — plural and singular", async (
   assert.equal(report.verdict, "3 problems");
   assert.deepEqual(
     report.checks.filter((c) => c.level === "fail").map((c) => c.name),
-    ["git binary", "init", "agent binary"],
+    ["git binary", "init", "backend binary"],
   );
 
   // A ready repo whose PATH has git but no pi: exactly one problem (singular).
@@ -74,7 +74,7 @@ test("runDoctor's header names the live orchestrator pid when the harness is run
   const root = readyRepo();
   writeOrchestratorMarker(root, []);
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
-  assert.equal(report.header, `tumwater doctor — harness running (pid ${process.pid})`);
+  assert.equal(report.header, `tumwater doctor — running (pid ${process.pid})`);
 });
 
 test("runDoctor's header carries the running build's sha, staleness, and restart block", async () => {
@@ -89,8 +89,8 @@ test("runDoctor's header carries the running build's sha, staleness, and restart
 
   // Fresh, un-stale build: just the sha.
   const fresh = await runDoctor(writeInfo({ sha, builtAt: Date.now() }), fakeBins("git", "pi"), noProcesses);
-  assert.match(fresh.header, new RegExp(`harness running \\(pid ${process.pid}, build ${sha.slice(0, 8)}\\)`));
-  assert.doesNotMatch(fresh.header, /STALE|restart blocked/);
+  assert.match(fresh.header, new RegExp(`running \\(pid ${process.pid}, version ${sha.slice(0, 8)}\\)`));
+  assert.doesNotMatch(fresh.header, /update available|restart blocked/);
 
   // Stale build whose auto-restart is under way: STALE, no block note.
   const stale = await runDoctor(
@@ -98,7 +98,7 @@ test("runDoctor's header carries the running build's sha, staleness, and restart
     fakeBins("git", "pi"),
     noProcesses,
   );
-  assert.match(stale.header, new RegExp(`build ${sha.slice(0, 8)} — STALE\\)`));
+  assert.match(stale.header, new RegExp(`version ${sha.slice(0, 8)} — update available\\)`));
 
   // Stale build whose auto-restart was REFUSED: the block reason is the operator's answer.
   const blocked = await runDoctor(
@@ -106,7 +106,7 @@ test("runDoctor's header carries the running build's sha, staleness, and restart
     fakeBins("git", "pi"),
     noProcesses,
   );
-  assert.match(blocked.header, new RegExp(`build ${sha.slice(0, 8)} — STALE \\(restart blocked\\)`));
+  assert.match(blocked.header, new RegExp(`version ${sha.slice(0, 8)} — update available \\(restart blocked\\)`));
 });
 
 test("runDoctor survives a corrupt config and lets the init check report it", async () => {
@@ -115,7 +115,7 @@ test("runDoctor survives a corrupt config and lets the init check report it", as
   const root = makeRepo();
   writeMalformedJson(path.join(root, "tumwater.json"));
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
-  assert.match(report.header, /harness not running/);
+  assert.match(report.header, /not running/);
   const init = report.checks.find((c) => c.name === "init");
   assert.equal(init?.level, "fail");
   assert.ok(init && init.detail.length > 0, "the init check names the config problem");
@@ -123,7 +123,7 @@ test("runDoctor survives a corrupt config and lets the init check report it", as
 
 test("renderDoctor prints one padded line per check between the header and the verdict", () => {
   const rendered = renderDoctor({
-    header: "tumwater doctor — harness not running",
+    header: "tumwater doctor — not running",
     checks: [
       { name: "git binary", level: "ok", detail: "/usr/bin/git" },
       { name: "merge lock", level: "warn", detail: "stale — will be broken on next merge" },
@@ -135,7 +135,7 @@ test("renderDoctor prints one padded line per check between the header and the v
   assert.equal(
     rendered,
     [
-      "tumwater doctor — harness not running",
+      "tumwater doctor — not running",
       "ok    git binary   /usr/bin/git",
       "warn  merge lock   stale — will be broken on next merge",
       "fail  repo         not a git repository (run `git init` first)",
@@ -150,7 +150,7 @@ test("renderDoctor widens the name column to the longest check name so details a
     checks: [
       { name: "repo", level: "ok", detail: "D1" },
       { name: "backlog headings", level: "warn", detail: "D2" },
-      { name: "build", level: "ok", detail: "D3" },
+      { name: "update", level: "ok", detail: "D3" },
     ],
     seams: [],
     verdict: "v",
@@ -189,7 +189,7 @@ test("runDoctor includes the build check and never fails the exit on a stale bui
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "tumwater.json"), "{}");
   const report = await runDoctor(repo, fakeBins("git", "pi"), noProcesses);
-  const build = report.checks.find((c) => c.name === "build");
+  const build = report.checks.find((c) => c.name === "update");
   assert.ok(build, "the build check is part of the report");
   assert.notEqual(build.level, "fail");
 });
@@ -201,7 +201,7 @@ test("runDoctor reports a phantom fix record as a warn that never fails the verd
     "# Bugs\n\n## Open\n\n## Fixed\n\n### A phantom (found by qa 2026-09-22, fixed 2026-09-22)\n\n**Fix:** `runScriptGroup` signals the tree.\n",
   );
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
-  const claims = report.checks.find((c) => c.name === "fix claims");
+  const claims = report.checks.find((c) => c.name === "claimed bugs");
   assert.equal(claims?.level, "warn");
   assert.match(claims?.detail ?? "", /runScriptGroup/);
   assert.equal(report.verdict, "ready to run");
@@ -223,14 +223,14 @@ test("doctor runs outside a git repo — reports every problem instead of gating
   const r = await cliWithEnv(tmpdir(), { PATH: binDir }, ["doctor"]);
   assert.equal(r.code, 1, `expected exit 1 with failing checks:\n${r.stdout}\n${r.stderr}`);
   // The full report is printed — one line per check in fixed order, not the first error.
-  assert.match(r.stdout, /tumwater doctor — harness not running/);
+  assert.match(r.stdout, /tumwater doctor — not running/);
   assert.match(r.stdout, /ok\s+git binary/);
   assert.match(r.stdout, /fail\s+repo\s+not a git repository/);
   assert.match(r.stdout, /fail\s+init\s+not initialized/);
-  assert.match(r.stdout, /fail\s+agent binary\s+pi not found on PATH/);
+  assert.match(r.stdout, /fail\s+backend binary\s+pi not found on PATH/);
   assert.match(r.stdout, /ok\s+state dir/);
   assert.match(r.stdout, /ok\s+merge lock/);
-  assert.match(r.stdout, /warn\s+project check/);
+  assert.match(r.stdout, /warn\s+check/);
   // No ps on this PATH either: the orphan scan degrades to a warn instead of crashing doctor.
   assert.match(r.stdout, /warn\s+orphans\s+could not scan the process table/);
   // The verdict counts the fails (repo + init + pi) and nothing else.
@@ -257,15 +257,15 @@ test("doctor exits 0 on a ready repo; a stale merge lock warns without failing",
   try {
     const r = await cli(repo, "doctor");
     assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
-    assert.match(r.stdout, /tumwater doctor — harness not running/);
+    assert.match(r.stdout, /tumwater doctor — not running/);
     for (const line of [
       /ok\s+git binary/,
       /ok\s+repo\s+repo at \S+ — on branch main/,
       /ok\s+init/,
-      /ok\s+agent binary/,
+      /ok\s+backend binary/,
       /ok\s+state dir/,
       /warn\s+merge lock\s+stale — will be broken on next merge/,
-      /warn\s+project check/,
+      /warn\s+check/,
       // The real process-table scan: a fresh repo has no worktree, so no orphan either.
       /ok\s+orphans\s+none/,
     ]) {
@@ -370,7 +370,7 @@ test("doctor --reprobe is accepted and wired — full report, same exit contract
   // rendering the same full report with the same exit-code contract as a plain run.
   const r = await cli(repo, "doctor", "--reprobe");
   assert.equal(r.code, 0, `expected exit 0 on a ready repo:\n${r.stdout}\n${r.stderr}`);
-  assert.match(r.stdout, /tumwater doctor — harness not running/);
+  assert.match(r.stdout, /tumwater doctor — not running/);
   assert.match(r.stdout, /ok\s+git binary/);
   assert.match(r.stdout, /ready to run/);
 

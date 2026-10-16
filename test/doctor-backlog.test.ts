@@ -171,7 +171,7 @@ test("checkBacklogHeadings warns on a duplicated heading and stays silent on a c
   assert.match(warn.detail, /appears more than once/);
   // The claim about the gate stays accurate: only an adding landing is blocked, so the
   // message tells the operator to remove the duplicate deliberately.
-  assert.match(warn.detail, /blocks only a landing that adds another copy/);
+  assert.match(warn.detail, /blocks only a merge that adds another copy/);
   assert.doesNotMatch(warn.detail, /blocks the next edit/);
 
   // Clean across all three backlog files: ok, one line.

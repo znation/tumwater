@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { childEnv } from "../process/process.js";
 import { boundedProbe } from "./probe.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
@@ -49,7 +50,7 @@ function loadConfigForCheck(root: string): { config: TumwaterConfig } | { outcom
 
 /** Fallback model readiness — the daily-cost budget's third state (plans/fallback-model.md): with
  * `fallbackModel` set, pi's definitions must price that pair at zero or the gate refuses it and
- * role loops pause at the cap exactly as if no fallback existed. That refusal is the right runtime
+ * roles pause at the cap exactly as if no fallback existed. That refusal is the right runtime
  * behavior (spend must never climb past the cap), but a typo'd id would otherwise surface only
  * after the day's budget is already spent — so doctor checks it up front, before the operator
  * needs it. Read-only: it inspects pi's definitions file, never pi or the network. A price is not
@@ -69,7 +70,7 @@ export function checkFallbackModel(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const declared = fallbackPair(config);
-  if (!declared) return okOutcome("none configured — role loops pause at the cap");
+  if (!declared) return okOutcome("none configured — roles pause at the cap");
   // A pair missing either half would fall through to pi's own (unverified) default, so it can
   // never be free; naming that case beats rendering a bare "?/model". The free branch names
   // the price-resolved pair (a map with no `default` entry borrows another tier's), while the
@@ -80,10 +81,10 @@ export function checkFallbackModel(
   if (free) {
     const name = nameOf(free);
     if (demoted)
-      return warnOutcome(`${name} is priced at zero but not serving — the running fleet demoted it after ${demoted.failures} consecutive failed ticks, so role loops pause at the cap; one probe tick retries it from ${formatTime(new Date(demoted.probeAt))}`);
+      return warnOutcome(`${name} is priced at zero but not serving — the running team demoted it after ${demoted.failures} consecutive failed runs, so roles pause at the cap; one probe run retries it from ${formatTime(new Date(demoted.probeAt))}`);
     return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
   }
-  return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap role loops pause instead of switching`);
+  return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
 }
 
 /** The credential verdict one provider's `pi auth check --provider <p> --json` gives:
@@ -210,7 +211,7 @@ export async function checkClaudeAuth(
   const loaded = loadConfigForCheck(root);
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
-  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
+  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
   if (auth === null)
     return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
@@ -240,7 +241,7 @@ export async function checkAnthroApiKey(
   const loaded = loadConfigForCheck(root);
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
-  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
+  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const apiKey = env.ANTHROPIC_API_KEY;
   if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
   const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
@@ -249,7 +250,7 @@ export async function checkAnthroApiKey(
   if (!auth.loggedIn || !claudeAuthUsesSubscription(auth))
     return okOutcome("ANTHROPIC_API_KEY is set, but claude reports no claude.ai login");
   return warnOutcome(
-    "ANTHROPIC_API_KEY is set while claude reports a claude.ai login — claude seams will bill the API key, not the subscription; unset it or route every anthropic seam on pi explicitly",
+    "ANTHROPIC_API_KEY is set while claude reports a claude.ai login — model jobs on claude will bill the API key, not the subscription; unset it or route every anthropic model job on pi explicitly",
   );
 }
 
@@ -274,7 +275,7 @@ export async function checkClaudeVersion(
   if ("outcome" in loaded) return loaded.outcome;
   const { config } = loaded;
   const seams = seamPairs(config).filter((pair) => pair.agent === "claude" && pair.model !== undefined);
-  if (seams.length === 0) return okOutcome("no claude seams configured");
+  if (seams.length === 0) return okOutcome("no model jobs run on claude");
   // The floor each configured model needs; a model the adapter does not gate contributes none.
   const floors = new Map<string, string>();
   for (const seam of seams) {
@@ -359,7 +360,7 @@ export async function checkTierModels(
       ? ""
       : ` — ${ompVars.join(" and ")} ${agree(ompVars.length, "is", "are")} set: tumwater does not read ${agree(ompVars.length, "it", "them")} (oh-my-pi's variables; pi ignores them; with omp as agentBin they still reach omp through the inherited environment) — set model.small / model.strong instead`;
   if (pairs.size === 0 && claudeModels.size === 0)
-    return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every seam uses pi's own default${ompNote}`);
+    return (ompVars.length === 0 ? okOutcome : warnOutcome)(`no models declared — every model job uses pi's own default${ompNote}`);
   const providers = readPiProviders(modelsPath);
   const fails: string[] = [];
   const warns: string[] = [];
@@ -369,7 +370,7 @@ export async function checkTierModels(
     const reserved = [...providers.keys()].filter(isAgentId);
     if (reserved.length > 0)
       warns.push(
-        `pi's definitions (${modelsPath}) declare provider ${reserved.map((p) => `"${p}"`).join(", ")} — the name is reserved for an agent backend, so selectors under it never reach pi`,
+        `pi's definitions (${modelsPath}) declare provider ${reserved.map((p) => `"${p}"`).join(", ")} — the name is reserved for an agent backend, so model ids under it never reach pi`,
       );
   }
   if (pairs.size > 0 && !providers)
@@ -570,7 +571,7 @@ export async function checkImageInput(
   const declared =
     pairs.some((p) => p.model !== undefined) ||
     MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
-  if (!declared) return okOutcome("no models declared — every seam uses pi's own default");
+  if (!declared) return okOutcome("no models declared — every model job uses pi's own default");
   const readsLine =
     readsItems.length > 0 ? `reads images: ${[...readsItems].sort().join(", ")}` : "";
   const details = [readsLine, ...reroutes].filter(Boolean).join("; ");
@@ -582,11 +583,11 @@ export async function checkImageInput(
     return warnOutcome(`${couldNot.join("; ")}; ${details}`.replace(/;\s*$/, ""));
   if (noTarget.length > 0)
     return warnOutcome(
-      `${noTarget.join("; ")} — no configured model reads images, so a tick that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
+      `${noTarget.join("; ")} — no configured model reads images, so a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
     );
   if (readsItems.length === 0)
     return warnOutcome(
-      "no configured model reads images — a tick that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
+      "no configured model reads images — a run that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
     );
   return okOutcome(details);
 }

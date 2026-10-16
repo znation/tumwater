@@ -197,70 +197,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A silent run's state reads `no agent output for 9m` and still raises the "looks stuck" alert.
 - `npm run test` passes.
 
-### Plain terms text, part 4/19: `tumwater doctor` names its checks plainly (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/doctor/ + tests)
-
-**Goal.** Doctor's check titles, details, header and routing block use the glossary, so a newcomer can read the health report. For example, "claimed bugs" replaces "fix claims", "macOS port leak" replaces "mach ports", and a `job · model · backend` routing table replaces "seam selector backend".
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- Check names in `runDoctor` (src/doctor/doctor.ts):
-  - From the Wording rules table:
-
-    | Today | New |
-    | --- | --- |
-    | `fix claims` | `claimed bugs` |
-    | `stranded plans` | `plans stuck in Planned` |
-    | `mach ports` | `macOS port leak` |
-    | `tier models` | `models for each tier` |
-    | `work instances` | `parallel instances` |
-    | `worktree pool` | `workspaces` |
-    | `stale queued landings` | `stale merge-queue entries` |
-    | `merge lock` | unchanged |
-
-  - The same rules applied to the remaining names:
-
-    | Today | New |
-    | --- | --- |
-    | `main red` | `main's check` |
-    | `project check` | `check` |
-    | `build` | `update` |
-    | `error streaks` | `repeated failures` |
-    | `provider hold` | `provider waits` |
-    | `maintenance quota` | `maintenance allowance` |
-    | `fallback` | `over-cap model` |
-    | `agent binary` | `backend binary` |
-
-  - The other names stay.
-  - The names are also values in `doctor --json` and `/api/doctor`. The `seams` key belongs to the scripting series.
-- Header line:
-  - Running: "tumwater doctor — harness running (pid N, build abc — STALE)" → "tumwater doctor — running (pid N, version abc — update available)".
-  - Not running: "tumwater doctor — harness not running" → "tumwater doctor — not running".
-- `renderDoctor` (src/doctor/doctor-render.ts): `routing: seam  selector  backend` → `routing: job · model · backend`, with the label column's minimum width taken from "job".
-- Details in doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts:
-  - "no claude seams configured" → "no model jobs run on claude".
-  - "every seam uses pi's own default" → "every model job uses pi's own default".
-  - "selector" → "model id". "primary checkout" → "your checkout". "slot wait" → "wait to start". "claim(s) held" → "claimed bugs".
-  - "error-streak breaker" → "repeated-failure pause".
-  - "queued landing" → "merge-queue entry", and "the drain has stalled" → "the merge queue has stopped moving".
-  - fleet, loop, tick, landing, harness and operator follow the Glossary, and `tumwater run` becomes `tumwater start`.
-  - Text that is only about pi (pi's models.json) stays.
-- Add the header to every src/doctor module with user-visible text: doctor.ts, doctor-render.ts, doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts.
-
-**Files touched.**
-- src: src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/doctor/doctor-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor-orphans.ts.
-- Tests: test/doctor*.test.ts; the health rows in test/tui-keys.test.ts; test/gui-endpoints.test.ts and test/gui-client-settings.test.ts where they assert a check name.
-
-**Acceptance criteria.**
-- `tumwater doctor` lists `claimed bugs`, `plans stuck in Planned`, `macOS port leak`, `models for each tier`, `parallel instances`, `workspaces`, `merge lock` and `stale merge-queue entries`. Its routing block starts `routing: job · model · backend`.
-- The header reads `tumwater doctor — running (pid …)` or `tumwater doctor — not running`.
-- No check name or detail asserted in test/doctor*.test.ts contains a retired word, and the guard passes on the headed doctor modules.
-- `npm run test` passes.
-
 ### Plain terms text, part 5/19: Report and failure digest and history and the run drill-down say runs and merges (planned 2026-10-16 by user; requires part 1/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/report/ + src/failure/ + src/history/ + src/tick/tick-detail.ts + src/tick/tick-detail-data.ts + tests)
 
 **Goal.** These views read in runs, merges, roles and the team, and their outcome columns show labels:
@@ -3659,6 +3595,70 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 4/19: `tumwater doctor` names its checks plainly (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/doctor/ + tests, done 2026-10-16)
+
+**Goal.** Doctor's check titles, details, header and routing block use the glossary, so a newcomer can read the health report. For example, "claimed bugs" replaces "fix claims", "macOS port leak" replaces "mach ports", and a `job · model · backend` routing table replaces "seam selector backend".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- Check names in `runDoctor` (src/doctor/doctor.ts):
+  - From the Wording rules table:
+
+    | Today | New |
+    | --- | --- |
+    | `fix claims` | `claimed bugs` |
+    | `stranded plans` | `plans stuck in Planned` |
+    | `mach ports` | `macOS port leak` |
+    | `tier models` | `models for each tier` |
+    | `work instances` | `parallel instances` |
+    | `worktree pool` | `workspaces` |
+    | `stale queued landings` | `stale merge-queue entries` |
+    | `merge lock` | unchanged |
+
+  - The same rules applied to the remaining names:
+
+    | Today | New |
+    | --- | --- |
+    | `main red` | `main's check` |
+    | `project check` | `check` |
+    | `build` | `update` |
+    | `error streaks` | `repeated failures` |
+    | `provider hold` | `provider waits` |
+    | `maintenance quota` | `maintenance allowance` |
+    | `fallback` | `over-cap model` |
+    | `agent binary` | `backend binary` |
+
+  - The other names stay.
+  - The names are also values in `doctor --json` and `/api/doctor`. The `seams` key belongs to the scripting series.
+- Header line:
+  - Running: "tumwater doctor — harness running (pid N, build abc — STALE)" → "tumwater doctor — running (pid N, version abc — update available)".
+  - Not running: "tumwater doctor — harness not running" → "tumwater doctor — not running".
+- `renderDoctor` (src/doctor/doctor-render.ts): `routing: seam  selector  backend` → `routing: job · model · backend`, with the label column's minimum width taken from "job".
+- Details in doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts:
+  - "no claude seams configured" → "no model jobs run on claude".
+  - "every seam uses pi's own default" → "every model job uses pi's own default".
+  - "selector" → "model id". "primary checkout" → "your checkout". "slot wait" → "wait to start". "claim(s) held" → "claimed bugs".
+  - "error-streak breaker" → "repeated-failure pause".
+  - "queued landing" → "merge-queue entry", and "the drain has stalled" → "the merge queue has stopped moving".
+  - fleet, loop, tick, landing, harness and operator follow the Glossary, and `tumwater run` becomes `tumwater start`.
+  - Text that is only about pi (pi's models.json) stays.
+- Add the header to every src/doctor module with user-visible text: doctor.ts, doctor-render.ts, doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts.
+
+**Files touched.**
+- src: src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/doctor/doctor-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor-orphans.ts.
+- Tests: test/doctor*.test.ts; the health rows in test/tui-keys.test.ts; test/gui-endpoints.test.ts and test/gui-client-settings.test.ts where they assert a check name.
+
+**Acceptance criteria.**
+- `tumwater doctor` lists `claimed bugs`, `plans stuck in Planned`, `macOS port leak`, `models for each tier`, `parallel instances`, `workspaces`, `merge lock` and `stale merge-queue entries`. Its routing block starts `routing: job · model · backend`.
+- The header reads `tumwater doctor — running (pid …)` or `tumwater doctor — not running`.
+- No check name or detail asserted in test/doctor*.test.ts contains a retired word, and the guard passes on the headed doctor modules.
+- `npm run test` passes.
 
 ### The dashboard's Plans/Bugs tabs and the TUI's backlog pane show the `[working on it: …]` mark (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It touches only `src/backlog/backlog-eligibility.ts`, `docs/cli.md`, and two tests, none of which the in-flight commands 4/6 or stale-bugs plans edit; done 2026-10-16)
 

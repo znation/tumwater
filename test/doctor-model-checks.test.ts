@@ -55,7 +55,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   const none = readyRepo();
   assert.deepEqual(checkFallbackModel(none, path.join(tmpdir(), "absent.json")), {
     level: "ok",
-    detail: "none configured — role loops pause at the cap",
+    detail: "none configured — roles pause at the cap",
   });
 
   // A free local pair is the case the fallback exists for — but a price is not readiness: a
@@ -73,8 +73,8 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   const demoted = checkFallbackModel(free, models, { pair: "local/free-model", failures: 3, probeAt });
   assert.equal(demoted.level, "warn");
   assert.match(demoted.detail, /^local\/free-model is priced at zero but not serving/);
-  assert.match(demoted.detail, /demoted it after 3 consecutive failed ticks, so role loops pause at the cap/);
-  assert.match(demoted.detail, /one probe tick retries it from 23:10:56$/);
+  assert.match(demoted.detail, /demoted it after 3 consecutive failed runs, so roles pause at the cap/);
+  assert.match(demoted.detail, /one probe run retries it from 23:10:56$/);
 
   // A pair naming only one half falls through to pi's own default and can never be free —
   // the warning names the half-resolved pair instead of rendering a bare "?/model".
@@ -83,7 +83,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   const halfWarn = checkFallbackModel(half, models);
   assert.equal(halfWarn.level, "warn");
   assert.match(halfWarn.detail, /^a half-resolved pair is not priced at zero/);
-  assert.match(halfWarn.detail, /role loops pause instead of switching/);
+  assert.match(halfWarn.detail, /roles pause instead of switching/);
 
   // A priced or unknown id would be refused by the gate, so role loops would pause at the cap
   // instead of switching — warn before the day's budget is spent on discovering it.
@@ -92,7 +92,7 @@ test("checkFallbackModel reports the cap behavior and verifies a free fallback p
   const warned = checkFallbackModel(paid, models);
   assert.equal(warned.level, "warn");
   assert.match(warned.detail, /paid\/gpt-x is not priced at zero/);
-  assert.match(warned.detail, /role loops pause instead of switching/);
+  assert.match(warned.detail, /roles pause instead of switching/);
 
   // A subscription claude fallback is free by the account's billing answer, not by
   // models.json: the check reads the same account the budget gate does.
@@ -141,7 +141,7 @@ test("checkTierModels verifies declared tier models and probes each provider onc
   const none = readyRepo();
   assert.deepEqual(await checkTierModels(none, models, async () => "ready"), {
     level: "ok",
-    detail: "no models declared — every seam uses pi's own default",
+    detail: "no models declared — every model job uses pi's own default",
   });
 });
 
@@ -393,7 +393,7 @@ test("checkAnthroApiKey stays silent without a claude seam", async () => {
   const empty = tmpdir("doctor-claude-key-empty-");
   assert.deepEqual(await checkAnthroApiKey(root, { ANTHROPIC_API_KEY: "sk-ant-test" }, empty), {
     level: "ok",
-    detail: "no claude seams configured",
+    detail: "no model jobs run on claude",
   });
 });
 
@@ -429,8 +429,8 @@ test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", 
   const root = readyRepo();
   writeConfig(root, { model: "local/free-model" });
   const empty = tmpdir("doctor-claude-empty-");
-  assert.deepEqual(await checkClaudeAuth(root, empty), { level: "ok", detail: "no claude seams configured" });
-  assert.deepEqual(await checkClaudeVersion(root, empty), { level: "ok", detail: "no claude seams configured" });
+  assert.deepEqual(await checkClaudeAuth(root, empty), { level: "ok", detail: "no model jobs run on claude" });
+  assert.deepEqual(await checkClaudeVersion(root, empty), { level: "ok", detail: "no model jobs run on claude" });
 });
 
 // The version gate: a CLI below a configured model's floor fails and names the model, a newer
@@ -476,10 +476,10 @@ test("a claude-only fallback is reported by the doctor's binary/credential/versi
   writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
   const bin = tmpdir("doctor-claude-fallback-2-");
   writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
-  // Both surfaces see claude — the auth check runs (not "no claude seams configured") proving
+  // Both surfaces see claude — the auth check runs (not "no model jobs run on claude") proving
   // claudeSeamsInUse is true, which is exactly what the binary check's agentsInUse reports too.
   const auth = await checkClaudeAuth(root, bin);
-  assert.ok(!auth.detail.includes("no claude seams"), `a fallback claude is in use: ${auth.detail}`);
+  assert.ok(!auth.detail.includes("no model jobs run on claude"), `a fallback claude is in use: ${auth.detail}`);
 });
 
 test("checkClaudeVersion fails a CLI below a configured model's floor", async () => {

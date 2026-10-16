@@ -100,7 +100,7 @@ test("checkOrphans catches a marked leak outside the worktrees once its harness 
     level: "fail",
     detail:
       "1 orphaned process (PPID 1): " +
-      `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; harness ${dead} exited)` +
+      `pid 3100 (age 11:22:33, cpu 1:02.30) node /tmp/twprobe/server.js (run ${dead}-deadbeef; tumwater ${dead} exited)` +
       " — nothing reaps these; kill each with its descendants",
   });
 });

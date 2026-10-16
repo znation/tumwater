@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Terminal rendering of `tumwater doctor`'s report: a header line, one line per check (level,
  * name, detail), the routing table of every seam the config can spawn, and the verdict. Lives
  * in the CLI output layer beside the other terminal renderers (src/report/report-render.ts,
@@ -16,8 +17,8 @@ export function renderDoctor(report: DoctorReport): string {
   const lines = [report.header];
   for (const c of report.checks) lines.push(`${c.level.padEnd(5)} ${c.name.padEnd(nameWidth)} ${c.detail}`);
   if (report.seams.length > 0) {
-    const width = report.seams.reduce((w, s) => Math.max(w, s.label.length), "seam".length);
-    lines.push("routing: seam  selector  backend");
+    const width = report.seams.reduce((w, s) => Math.max(w, s.label.length), "job".length);
+    lines.push("routing: job · model · backend");
     for (const s of report.seams)
       lines.push(`  ${s.label.padEnd(width)}  ${s.selector}  (${s.backend})`);
   }

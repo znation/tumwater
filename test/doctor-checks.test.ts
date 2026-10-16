@@ -459,7 +459,7 @@ test("checkMergeLock classifies absent, live (with and without pid), and stale l
     fs.writeFileSync(path.join(lockDir, "pid"), String(process.pid));
     const live = checkMergeLock(root);
     assert.equal(live.level, "ok");
-    assert.match(live.detail, new RegExp(`held by running loop \\(pid ${process.pid}\\)`));
+    assert.match(live.detail, new RegExp(`held by running role \\(pid ${process.pid}\\)`));
 
     // A dead pid makes the lock stale — a warning, never a failure (it self-heals on next merge).
     fs.writeFileSync(path.join(lockDir, "pid"), "999999999");
@@ -522,10 +522,10 @@ test("checkBuild reports an unstamped dist, a foreign harness, a matching build,
   // A tumwater installed elsewhere and pointed at this project: its build is never stale here.
   const foreign = await checkBuild(repo, { ...here, root: "/somewhere/else" });
   assert.equal(foreign.level, "ok");
-  assert.match(foreign.detail, /not the harness itself/);
+  assert.match(foreign.detail, /not tumwater itself/);
   // The foreign stamp is the harness install's own build — it must not read as this project's
   // dist/, which a non-harness project does not even have.
-  assert.match(foreign.detail, /^harness build [0-9a-f]{8} /);
+  assert.match(foreign.detail, /^tumwater version [0-9a-f]{8} /);
   assert.doesNotMatch(foreign.detail, /dist\//);
 
   const fresh = await checkBuild(repo, here, head);
@@ -619,7 +619,7 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
 
 test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover legacy checkouts", () => {
   const root = readyRepo();
-  assert.deepEqual(checkWorktreePool(root), { level: "ok", detail: "0 slots, 0 leased, 0 pinned" });
+  assert.deepEqual(checkWorktreePool(root), { level: "ok", detail: "0 workspaces, 0 leased, 0 pinned" });
 
   const now = Date.now();
   // A stale pin — a paused role holding a checkout — is the doctor's stuck-pin warning.
@@ -673,7 +673,7 @@ test("checkWorktreePool reports the pool, warns on a 25 h pin and on leftover le
 // instances sharing a pool smaller than maxConcurrent.
 test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots", () => {
   const root = readyRepo();
-  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed bugs" });
 
   // A listed PLANS.md entry, held for 25 h: stale past CLAIM_IDLE_MAX_MS.
   writeConfig(root, { roles: { feature: { instances: 2 } } });
@@ -706,7 +706,7 @@ test("checkWorkInstances warns on a gone claim, a stale claim, and too few slots
 test("checkWorkInstances does not warn about a disabled instance role's pool", () => {
   const root = readyRepo();
   writeConfig(root, { roles: { feature: { enabled: false, instances: 2 } }, worktreeSlots: 1 });
-  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claims held" });
+  assert.deepEqual(checkWorkInstances(root, loadConfig(root)), { level: "ok", detail: "no claimed bugs" });
 });
 
 // Provider concurrency caps, part 5/5 (plans/provider-concurrency.md §8): the doctor check
@@ -740,7 +740,7 @@ test("checkProviderConcurrency warns on a cap key no seam resolves to", () => {
   };
   const out = checkProviderConcurrency(cfg, readyRepo());
   assert.equal(out.level, "warn");
-  assert.match(out.detail, /cap key \"omlx\" resolves to no seam/);
+  assert.match(out.detail, /cap key \"omlx\" resolves to no model job/);
 });
 
 test("checkProviderConcurrency warns on a cap at or above maxConcurrent", () => {
@@ -782,7 +782,7 @@ test("checkClaudeTranscripts totals the transcript dirs for a claude fleet", () 
   writeConfig(root, {});
   assert.deepEqual(checkClaudeTranscripts(loadConfig(root), home), {
     level: "ok",
-    detail: "no claude seams configured",
+    detail: "no model jobs run on claude",
   });
 
   // A missing transcript dir is informational, not a warning.
@@ -859,7 +859,7 @@ test("checkBootstrap reports an active bootstrap, and stands down without config
   const config = loadConfig(root);
   const active = checkBootstrap(root, config);
   assert.equal(active.level, "ok");
-  assert.match(active.detail, /^bootstrapping: \d+\/3 plans done — plan, feature and director tick$/);
+  assert.match(active.detail, /^bootstrapping: \d+\/3 plans done — plan, feature and director runs$/);
 
   fs.mkdirSync(path.dirname(bootstrapLatchPath(root)), { recursive: true });
   fs.writeFileSync(bootstrapLatchPath(root), "");
@@ -874,7 +874,7 @@ test("checkWorktreePool sums the last day of slot_wait events and warns at ten m
   wait("clean", "vet", 90_000);
   const quiet = checkWorktreePool(root);
   assert.equal(quiet.level, "ok");
-  assert.match(quiet.detail, /2 slot waits in the last 24h, 2m total, longest 90s \(clean vet\)/);
+  assert.match(quiet.detail, /2 waits to start in the last 24h, 2m total, longest 90s \(clean check\)/);
 
   wait("feature", "tick", 600_000);
   const busy = checkWorktreePool(root);
@@ -883,7 +883,7 @@ test("checkWorktreePool sums the last day of slot_wait events and warns at ten m
 
   const later = checkWorktreePool(root, Date.now() + 48 * 3_600_000);
   assert.equal(later.level, "ok");
-  assert.doesNotMatch(later.detail, /slot wait/);
+  assert.doesNotMatch(later.detail, /wait to start/);
 });
 
 test("checkFlakyChecks stays quiet for no flake and for a single one-off flake", () => {

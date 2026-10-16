@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -196,7 +197,7 @@ export function checkConfigKeyNames(root: string): CheckOutcome {
 export function checkBrief(root: string): CheckOutcome {
   // briefFile throws on a brief candidate that exists but cannot be read (a directory at
   // the README.md path, a permission-lost file) — report it as the check's failure instead
-  // of crashing doctor: the fleet would run without its brief every tick.
+  // of crashing doctor: the team would run without its brief every tick.
   let owner: string | null;
   try {
     owner = briefFile(root);
@@ -205,7 +206,7 @@ export function checkBrief(root: string): CheckOutcome {
   }
   if (owner) return okOutcome(`brief in ${owner}`);
   if (fs.existsSync(path.join(root, "README.md"))) {
-    return warnOutcome(`README.md carries no tumwater:prompt markers — the fleet would run without its project brief; add the block or re-run \`tumwater init\``);
+    return warnOutcome(`README.md carries no tumwater:prompt markers — the team would run without its project brief; add the block or re-run \`tumwater init\``);
   }
   return warnOutcome("no brief file — run `tumwater init <prompt>` to seed one");
 }
@@ -220,7 +221,7 @@ export function checkBootstrap(
 ): CheckOutcome {
   const status = config ? bootstrapStatus(root, config) : null;
   if (!status?.active) return okOutcome("not bootstrapping");
-  return okOutcome(`bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director tick`);
+  return okOutcome(`bootstrapping: ${status.plansDone}/${status.untilPlansDone} plans done — plan, feature and director runs`);
 }
 
 /** Resolve and test ONE agent's binary: the ok detail names the resolved path and its source
@@ -315,7 +316,7 @@ export function checkClaudeTranscripts(
   env: NodeJS.ProcessEnv = process.env,
 ): CheckOutcome {
   if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
-  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
+  if (!claudeSeamsInUse(config)) return okOutcome("no model jobs run on claude");
   const dir = path.join(claudeConfigDir(env, homeDir), "projects");
   let slugs: string[];
   try {
@@ -395,7 +396,7 @@ export function checkEventLog(root: string): CheckOutcome {
     return failOutcome(`could not read ${eventsLogPath(root)}: ${errorMessage(err)}`);
   }
   if (state === "unreadable")
-    return failOutcome(`unreadable: ${eventsLogPath(root)} — the fleet's event feed cannot be read`);
+    return failOutcome(`unreadable: ${eventsLogPath(root)} — the team's event feed cannot be read`);
   if (state === "empty") return okOutcome("no events yet");
   return okOutcome(`readable: ${eventsLogPath(root)}`);
 }
@@ -422,7 +423,7 @@ export function checkDiskSpace(
   const freeGB = free / BYTES_PER_GB;
   const freeText = `${formatGB(freeGB)} free at ${where}`;
   if (holdGB > 0 && freeGB < holdGB)
-    return failOutcome(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the fleet holds new work until space recovers`);
+    return failOutcome(`${freeText} — below the ${holdGB} GB diskHoldGB floor; the team waits to start new work until space recovers`);
   if (reclaimGB > 0 && freeGB < reclaimGB)
     return warnOutcome(`${freeText} — below the ${reclaimGB} GB diskReclaimGB threshold; a pressure reclaim pass deletes ignored build outputs from idle worktrees`);
   const floor = holdGB > 0 ? `above the ${holdGB} GB floor` : "diskHoldGB is 0 (hold disabled)";
@@ -438,7 +439,7 @@ export function checkMergeLock(root: string): CheckOutcome {
       return okOutcome("not held");
     case "live": {
       const pid = readLockPid(dir);
-      return okOutcome(pid !== null ? `held by running loop (pid ${pid})` : "held (pid not yet written)");
+      return okOutcome(pid !== null ? `held by running role (pid ${pid})` : "held (pid not yet written)");
     }
     case "stale":
       return warnOutcome("stale — will be broken on next merge");
@@ -477,7 +478,7 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
     (slot) => slot.pinnedAt != null && now - slot.pinnedAt > PIN_STALE_MS,
   );
   const leftover = leftoverWorktreeDirs(root);
-  const parts = [`${slots.length} slots, ${leased.length} leased, ${pins.length} pinned`];
+  const parts = [`${plural(slots.length, "workspace")}, ${leased.length} leased, ${pins.length} pinned`];
   if (leftover.length > 0) parts.push(`legacy worktrees still present: ${leftover.join(", ")}`);
   if (stale.length > 0) {
     parts.push(
@@ -505,15 +506,15 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
         if (waited > finiteNumber(longest.waitedMs, 0)) longest = ev;
       }
       contended = total >= SLOT_WAIT_WARN_TOTAL_MS;
-      const purpose = longest.purpose === "vet" ? "vet" : "tick";
+      const purpose = longest.purpose === "vet" ? "check" : "run";
       parts.push(
-        `${plural(waits.length, "slot wait")} in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
+        `${waits.length} ${waits.length === 1 ? "wait" : "waits"} to start in the last 24h, ${shortSpanPhrase(total)} total, longest ${shortSpanPhrase(
           finiteNumber(longest.waitedMs, 0),
         )} (${textOr(longest.role)} ${purpose})${contended ? ` — raise worktreeSlots above ${slots.length}` : ""}`,
       );
     }
   } catch (err) {
-    parts.push(`could not read the event log for slot waits: ${errorMessage(err)}`);
+    parts.push(`could not read the event log for waits to start: ${errorMessage(err)}`);
   }
   const warn = leftover.length > 0 || stale.length > 0 || contended;
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
@@ -550,12 +551,12 @@ export function checkWorkInstances(
   const slots = slotCount(config);
   const smallPool = multi.length > 0 && slots < config.maxConcurrent;
   if (gone.length === 0 && stale.length === 0 && !smallPool)
-    return okOutcome(claims.length > 0 ? `${claims.length} claims held` : "no claims held");
+    return okOutcome(claims.length > 0 ? `${claims.length} claimed bugs` : "no claimed bugs");
   const parts: string[] = [
-    ...gone.map((c) => `claim "${c.title}" (${c.id}) names an entry no longer listed`),
+    ...gone.map((c) => `claimed bug "${c.title}" (${c.id}) names an entry no longer listed`),
     ...stale.map(
       (c) =>
-        `claim "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
+        `claimed bug "${c.title}" (${c.id}) has been idle ${Math.round((now - c.at) / 3_600_000)}h`,
     ),
   ];
   if (smallPool)
@@ -595,7 +596,7 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
   const capKeys = capEntries.map(([k]) => k);
   const warnings: string[] = [];
   for (const key of capKeys) {
-    if (!keySet.has(key)) warnings.push(`cap key "${key}" resolves to no seam (a typo, or a provider not in use)`);
+    if (!keySet.has(key)) warnings.push(`cap key "${key}" resolves to no model job (a typo, or a provider not in use)`);
   }
   for (const [key, cap] of capEntries) {
     if (cap >= config.maxConcurrent) warnings.push(`cap "${key}" ${cap} is at or above maxConcurrent ${config.maxConcurrent} — it never binds`);
@@ -603,9 +604,9 @@ export function checkProviderConcurrency(config: TumwaterConfig | undefined, roo
   const capSet = new Set(capKeys);
   const keyless = seams.filter((s) => seamConcurrencyKey(s, piDefault) === undefined);
   if (capSet.size > 0 && keyless.length > 0) {
-    warnings.push(`${keyless.length} seam(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
+    warnings.push(`${keyless.length} model job(s) resolve to no provider key (pi's default provider is unreadable, so they cannot be capped): ${keyless.map((s) => s.label).join(", ")}`);
   }
-  if (warnings.length === 0) return okOutcome(`${capEntries.length} provider cap${capEntries.length === 1 ? "" : "s"} — all seams resolve`);
+  if (warnings.length === 0) return okOutcome(`${capEntries.length} provider cap${capEntries.length === 1 ? "" : "s"} — all model jobs resolve`);
   return warnOutcome(warnings.join("; "));
 }
 
@@ -675,7 +676,7 @@ export async function checkBuild(
   head: string | null | undefined = undefined,
   /** What the running orchestrator published about this build (orchestrator.json), when one is
    * up. A stale build whose restart was REFUSED must not be reported with the boilerplate
-   * "auto-restart does this for a running fleet": nothing will happen until main moves, and
+   * "auto-restart does this for a running team": nothing will happen until main moves, and
    * doctor is where an operator goes to find out why. */
   running: BuildStatus | null = null,
 ): Promise<CheckOutcome> {
@@ -684,7 +685,7 @@ export async function checkBuild(
   if (!(await isSelfHosted(root, info)))
     // Not "dist/ from …": in someone else's project that names a dist/ directory the project
     // does not have — the stamp read here is the running harness install's own, so say that.
-    return okOutcome(`harness build ${sha} (this project is not the harness itself)`);
+    return okOutcome(`tumwater version ${sha} (this project is not tumwater itself)`);
   const mainHead = head === undefined ? await currentHead(root) : head;
   if (!mainHead) return okOutcome(`dist/ from ${sha}`);
   const stale = await buildStaleness(root, info.sha, mainHead);
@@ -694,7 +695,7 @@ export async function checkBuild(
       ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
         ? "; auto-restart is under way"
-        : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running fleet)";
+        : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running team)";
     return warnOutcome(`dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}${next}`);
   }
   return okOutcome(`dist/ from ${sha}, matches main`);

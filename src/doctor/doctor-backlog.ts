@@ -1,3 +1,5 @@
+// vocabulary: plain
+import { roleLabel } from "../roles/role-labels.js";
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
@@ -142,7 +144,7 @@ export function checkStrandedPlans(root: string): CheckOutcome {
   if (!first) return okOutcome(clean);
   const more = andMore(rest, (e) => `"${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"`);
   return warnOutcome(`PLANS.md has a plan stranded under ## ${first.section}: "${first.title}"${more} — ` +
-      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean loop repairs these)`);
+      `move it under ## ${first.section === "Done" ? "Planned" : "Done"} (the clean role repairs these)`);
 }
 
 /** Duplicated `## ` headings already on main (the duplicate-heading half of the backlog-structure
@@ -172,7 +174,7 @@ export function checkBacklogHeadings(root: string): CheckOutcome {
   const [first, ...rest] = duplicates;
   const more = andMore(rest, (d) => d);
   return warnOutcome(`${first}${more} appears more than once — readers take the first section of a name, so ` +
-      `later entries are invisible; keep one heading per name (the gate blocks only a landing ` +
+      `later entries are invisible; keep one heading per name (the gate blocks only a merge ` +
       `that adds another copy — remove the duplicate in a deliberate edit)`);
 }
 
@@ -222,11 +224,11 @@ export function checkPlanDependencies(root: string): CheckOutcome {
     `PLANS.md plan ${quote(d.title)} requires ${d.ref}, which no PLANS.md heading carries — the hold is void, ` +
     "so the plan is claimable now; fix the series name or part number";
   const unparsedMsg = (t: string) =>
-    `PLANS.md plan ${quote(t)} has a \`requires … landed\` clause that names no part the allocator can read — ` +
+    `PLANS.md plan ${quote(t)} has a \`requires … landed\` clause that names no part the allocator can read — ` + // vocabulary-ok: PLANS.md heading syntax
     "it holds nothing; write each ref as `<Series> i/n` or give the heading a `<Series>, part i/n:` prefix";
   if (cycle !== null) {
     return warnOutcome(`plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
-      "edit one heading's `requires … landed` clause to break it" +
+      "edit one heading's `requires … landed` clause to break it" + // vocabulary-ok: PLANS.md heading syntax
       others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"]]));
   }
   if (firstDangling) {
@@ -269,10 +271,10 @@ export function checkStaleQueuedLandings(root: string, now: number): CheckOutcom
     .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
   const [first, ...rest] = stale;
   if (!first)
-    return okOutcome(`no queued landing has waited more than ${humanSeconds(LAND_QUEUE_STALE_MS / 1000)} to start`);
+    return okOutcome(`no merge-queue entry has waited more than ${humanSeconds(LAND_QUEUE_STALE_MS / 1000)} to start`);
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
-  return warnOutcome(`queued landing of role ${first.role} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
-      `${first.age} to start${more}; a queued change the pipeline neither vets nor flags reads as healthy, so the drain has stalled`);
+  return warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
+      `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`);
 }
 
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
@@ -298,7 +300,7 @@ export function checkStaleQuestions(root: string): CheckOutcome {
   if (!first) return okOutcome("no open question has waited more than 7 days for an answer");
   const more = andMore(rest, (q) => `"${truncate(q.title, FIX_CLAIM_HEADING_MAX)}"`);
   return warnOutcome(`QUESTIONS.md question "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for an answer${more} — ` +
-      `a question that waits too long for a human answer is operator signal`);
+      `a question that waits too long for a human answer is worth your attention`);
 }
 
 /** Stale bugs — unrefused open BUGS.md bugs whose `(found by … YYYY-MM-DD)` or `(reported …)`
@@ -352,7 +354,7 @@ export function checkRefusedEntries(root: string): CheckOutcome {
     ? `; its prerequisite(s) ${first.landed.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
     : "";
   return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
-      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no loop takes a refused entry until it is edited: ` +
+      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no role takes a refused entry until it is edited: ` +
       `answer the objection and release the entry with \`tumwater ${first.command} --release ${first.position}\`, ` +
       `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
 }
@@ -367,7 +369,7 @@ export async function checkUncommittedBacklog(root: string, config: TumwaterConf
   const primary = await currentBranch(root);
   const base = targetBranch(config?.baseBranch, primary);
   if (primary === null || primary !== base) {
-    return okOutcome(`primary checkout is not on ${base}; operator backlog writes are not committed from it`);
+    return okOutcome(`your checkout is not on ${base}; backlog writes from you are not committed from it`);
   }
   const brief = briefFile(root);
   const files = [...new Set([...BACKLOG_FILES, ...(brief ? [brief] : [])])];
@@ -382,7 +384,7 @@ export async function checkUncommittedBacklog(root: string, config: TumwaterConf
     return okOutcome(`${list} and ${files[files.length - 1]} are committed`);
   }
   const list = named.join(", ");
-  return warnOutcome(`${list} ${named.length > 1 ? "have" : "has"} uncommitted changes in the primary checkout — ` +
-    `loops branch from main and do not see them, and a landing that touches one cannot fast-forward the checkout ` +
+  return warnOutcome(`${list} ${named.length > 1 ? "have" : "has"} uncommitted changes in your checkout — ` +
+    `roles branch from main and do not see them, and a merge that touches one cannot fast-forward the checkout ` +
     `(merge_blocked); review them with \`git diff -- ${list}\` and commit them on ${base}`);
 }

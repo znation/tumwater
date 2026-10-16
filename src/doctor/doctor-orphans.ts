@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { worktreesDir } from "../paths.js";
@@ -197,7 +198,7 @@ export async function checkOrphans(
     // A mark-caught orphan says which run marked it: the operator killing it wants to know
     // nothing else will, and the dead harness's pid is the evidence argv and cwd lacked.
     const mark = (marks.get(r.pid) ?? []).find((m) => harnessGone(m) === true);
-    const marked = mark !== undefined ? ` (run ${mark}; harness ${mark.split("-")[0]} exited)` : "";
+    const marked = mark !== undefined ? ` (run ${mark}; tumwater ${mark.split("-")[0]} exited)` : "";
     return `pid ${r.pid} (age ${r.etime}, cpu ${r.time}${tree}) ${truncate(command, ORPHAN_COMMAND_MAX)}${marked}`;
   });
   const more = orphans.length - listed.length;

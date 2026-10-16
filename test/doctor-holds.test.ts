@@ -94,7 +94,7 @@ test("checkQuietHours: the director's window is never named", () => {
 test("checkQuietHours: fleet window plus a held role warns and names the role", () => {
   const r = checkQuietHours(qcfg({ quietHours: "09:00-17:00", quietHoursPerRole: { cleanup: "09:00-17:00" } }), at(12));
   assert.equal(r.level, "warn");
-  assert.match(r.detail, /; quiet loops: cleanup until 17:00/);
+  assert.match(r.detail, /; quiet roles: cleanup until 17:00/);
 });
 
 test("checkQuietHours: a malformed window reads as none configured", () => {
@@ -139,7 +139,7 @@ test("checkBudget: a reached cap warns and points at the fallback row", () => {
   const r = checkBudget(budgetRoot({ feature: 10 }), bcfg({ maxDailyCostUsd: 10 }), null, BNOW);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /daily cap reached/);
-  assert.match(r.detail, /fallback row/);
+  assert.match(r.detail, /over-cap model row/);
 });
 
 test("checkBudget: a published figure overrides the persisted sum both ways", () => {
@@ -157,13 +157,13 @@ test("checkBudget: a per-role cap reached is named and stays ok", () => {
   const cfg = bcfg({ maxDailyCostUsd: 100, maxDailyCostUsdPerRole: { feature: 1 } });
   const r = checkBudget(budgetRoot({ feature: 1.5 }), cfg, null, BNOW);
   assert.equal(r.level, "ok");
-  assert.match(r.detail, /capped loops: feature \(/);
+  assert.match(r.detail, /capped roles: feature \(/);
 });
 
 test("checkBudget: director spend is never named under a per-role cap", () => {
   const cfg = bcfg({ maxDailyCostUsd: 100, maxDailyCostUsdPerRole: { director: 1 } });
   const r = checkBudget(budgetRoot({ director: 5 }), cfg, null, BNOW);
-  assert.doesNotMatch(r.detail, /capped loops/);
+  assert.doesNotMatch(r.detail, /capped roles/);
 });
 
 const MNOW = new Date(2026, 9, 12, 12, 0).getTime();
@@ -178,7 +178,7 @@ function mergedRoot(role: string, n: number): string {
 test("checkMaintenanceQuota: under the allowance is ok and shows used/allowance", () => {
   const r = checkMaintenanceQuota(mergedRoot("clean", 3), mcfg(), true, MNOW);
   assert.equal(r.level, "ok");
-  assert.match(r.detail, /3\/12 maintenance landings/);
+  assert.match(r.detail, /3\/12 maintenance merges/);
 });
 
 test("checkMaintenanceQuota: a full window warns and names the held loops", () => {
@@ -197,10 +197,10 @@ test("checkMaintenanceQuota: a dead fleet's running flag is not in flight", () =
   assert.equal(checkMaintenanceQuota(live, mcfg(), true, MNOW).level, "warn");
 });
 
-test("checkMaintenanceQuota: no maintenance loop enabled is ok and says so", () => {
+test("checkMaintenanceQuota: no maintenance role enabled is ok and says so", () => {
   const r = checkMaintenanceQuota(mergedRoot("clean", 12), mcfg({ roles: { feature: { enabled: true } } }), true, MNOW);
   assert.equal(r.level, "ok");
-  assert.match(r.detail, /no maintenance loop enabled$/);
+  assert.match(r.detail, /no maintenance role enabled$/);
 });
 
 test("checkMaintenanceQuota: unreadable config is not checked", () => {
@@ -269,7 +269,7 @@ test("checkErrorStreaks: unreadable config is not checked", () => {
 });
 
 test("checkErrorStreaks: no streak, or one below the warn bar, is ok", () => {
-  assert.deepEqual(checkErrorStreaks(tmpdir("tw-streak-"), bcfg({})), { level: "ok", detail: "no loop failing consecutively" });
+  assert.deepEqual(checkErrorStreaks(tmpdir("tw-streak-"), bcfg({})), { level: "ok", detail: "no role failing repeatedly" });
   const r = checkErrorStreaks(streakRoot({ feature: ERROR_STREAK_WARN - 1 }), bcfg({}));
   assert.equal(r.level, "ok");
 });
@@ -277,7 +277,7 @@ test("checkErrorStreaks: no streak, or one below the warn bar, is ok", () => {
 test("checkErrorStreaks: an unpaused loop at the warn bar warns with count and squashed last error", () => {
   const r = checkErrorStreaks(streakRoot({ feature: ERROR_STREAK_WARN }, "line one\n   line two"), bcfg({}));
   assert.equal(r.level, "warn");
-  assert.match(r.detail, /failing tick after tick: feature: 3 failed ticks — last error: line one line two/);
+  assert.match(r.detail, /failing run after run: feature: 3 failed runs — last error: line one line two/);
   assert.doesNotMatch(r.detail, /paused/);
 });
 
@@ -286,7 +286,7 @@ test("checkErrorStreaks: a paused loop at the breaker bar names the resume comma
   pauseRole(root, "feature");
   const r = checkErrorStreaks(root, bcfg({}));
   assert.equal(r.level, "warn");
-  assert.match(r.detail, /paused at the error-streak breaker's bar/);
+  assert.match(r.detail, /paused at the repeated-failure pause's bar/);
   assert.match(r.detail, /tumwater resume --role feature/);
 });
 
@@ -294,7 +294,7 @@ test("checkErrorStreaks: a paused loop below the breaker is just paused", () => 
   const root = streakRoot({ feature: ERROR_STREAK_WARN });
   pauseRole(root, "feature");
   const r = checkErrorStreaks(root, bcfg({}));
-  assert.match(r.detail, /feature: 3 failed ticks, paused — last error/);
+  assert.match(r.detail, /feature: 3 failed runs, paused — last error/);
   assert.doesNotMatch(r.detail, /resume/);
 });
 
@@ -302,7 +302,7 @@ test("checkErrorStreaks: a second instance is reported under its own id", () => 
   const cfg = qcfg({ roles: { feature: { enabled: true, instances: 2 } } });
   const r = checkErrorStreaks(streakRoot({ "feature-2": 5 }), cfg);
   assert.equal(r.level, "warn");
-  assert.match(r.detail, /feature-2: 5 failed ticks/);
+  assert.match(r.detail, /feature #2: 5 failed runs/);
 });
 
 const RED = "main abc is red (npm test: 2 failing) — authoring skipped until main is green";
@@ -320,13 +320,13 @@ test("checkMainRed: unreadable config is not checked", () => {
 });
 
 test("checkMainRed: no loop at main_red is ok", () => {
-  assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no loop held by a red main" });
+  assert.deepEqual(checkMainRed(tmpdir("tw-mainred-"), bcfg({})), { level: "ok", detail: "no role waiting on main's check" });
 });
 
 test("checkMainRed: a held code loop warns naming it, the count, and the squashed error", () => {
   const r = checkMainRed(redRoot(), bcfg({}));
   assert.equal(r.level, "warn");
-  assert.match(r.detail, /red main holds 1 code loop: feature — main abc is red \(npm test: 2 failing\)/);
+  assert.match(r.detail, /main's check is failing; 1 code role waiting: feature — main abc is red \(npm test: 2 failing\)/);
 });
 
 test("checkMainRed: a loop with a queued summary is ok", () => {
@@ -341,9 +341,9 @@ test("checkMainRed: a passed landing check newer than the red tick retires the h
 
 test("checkMainRed: the detail names the bugfix loop as repairer only when one is enabled", () => {
   const without = checkMainRed(redRoot(), bcfg({}));
-  assert.match(without.detail, /no bugfix loop is enabled/);
+  assert.match(without.detail, /no bugfix role is enabled/);
   const withBugfix = checkMainRed(redRoot(), qcfg({ roles: { feature: { enabled: true }, bugfix: { enabled: true } } }));
-  assert.match(withBugfix.detail, /the bugfix loop is exempt and repairs it/);
+  assert.match(withBugfix.detail, /the bugfix role is exempt and repairs it/);
 });
 
 const PH_NOW = Date.now();

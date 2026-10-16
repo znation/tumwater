@@ -1,3 +1,5 @@
+// vocabulary: plain
+import { roleLabel } from "../roles/role-labels.js";
 import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
@@ -43,13 +45,13 @@ export function checkPause(root: string, now: number = Date.now()): CheckOutcome
   let rolesPhrase = "";
   if (roles.length > 0) {
     const until = pausedRolesUntil(root);
-    rolesPhrase = `paused loops: ${roles.join(", ")}${until !== undefined ? ` (auto-resume in ${humanSeconds(secondsUntil(until, now))})` : ""}`;
+    rolesPhrase = `paused roles: ${roles.join(", ")}${until !== undefined ? ` (auto-resume in ${humanSeconds(secondsUntil(until, now))})` : ""}`;
   }
   if (!fleet) return rolesPhrase ? okOutcome(rolesPhrase) : okOutcome("not paused");
   const head =
     fleet.until !== undefined
-      ? `fleet paused — auto-resumes in ${humanSeconds(secondsUntil(fleet.until, now))}`
-      : "fleet paused — no loop starts a tick until `tumwater resume`";
+      ? `team paused — auto-resumes in ${humanSeconds(secondsUntil(fleet.until, now))}`
+      : "team paused — no role starts a run until `tumwater resume`";
   return warnOutcome(`${head}${pauseReasonSuffix(fleet.reason)}${rolesPhrase ? `; ${rolesPhrase}` : ""}`);
 }
 
@@ -73,12 +75,12 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
   if (fleet.window !== null) {
     phrases.push(
       fleet.inWindow
-        ? `quiet now (${fleet.window}) — no role loop starts a tick until ${quietWindowEnd(fleet.window)}; the director is exempt`
+        ? `quiet now (${fleet.window}) — no role starts a run until ${quietWindowEnd(fleet.window)}; the director is exempt`
         : `${fleet.window} (not in the window now)`,
     );
   }
   if (held.length > 0) {
-    phrases.push(`quiet loops: ${held.map((k) => `${k} until ${quietWindowEnd(String(perRole?.[k]))}`).join(", ")}`);
+    phrases.push(`quiet roles: ${held.map((k) => `${k} until ${quietWindowEnd(String(perRole?.[k]))}`).join(", ")}`);
   } else if (anyRoleWindow) {
     phrases.push("per-role windows set, none holding now");
   }
@@ -108,14 +110,14 @@ export function checkBudget(
     .filter(([, v]) => v.over)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([base, v]) => `${base} (${budgetPhrase(v.spentUsd, caps?.[base])})`);
-  const cappedPhrase = capped.length > 0 ? `; capped loops: ${capped.join(", ")}` : "";
+  const cappedPhrase = capped.length > 0 ? `; capped roles: ${capped.join(", ")}` : "";
   const cap = config.maxDailyCostUsd;
   if (!(cap > 0)) return okOutcome(`no daily cap; ${usd(spent)} spent today${cappedPhrase}`);
   const view = { spentUsd: spent, capUsd: cap };
   const phrase = budgetPhrase(spent, cap);
   if (budgetReached(view)) {
     return warnOutcome(
-      `daily cap reached — ${phrase} today; role loops run on their tier fallback or hold until local midnight (see the fallback row)${cappedPhrase}`,
+      `daily cap reached — ${phrase} today; roles run on their over-cap model or hold until local midnight (see the over-cap model row)${cappedPhrase}`,
     );
   }
   if (budgetWarning(view)) return okOutcome(`${phrase} today — past 80% of the cap${cappedPhrase}`);
@@ -140,12 +142,12 @@ export function checkMaintenanceQuota(
   const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, loops, queued, now);
   if (held.length > 0) {
     return warnOutcome(
-      `allowance reached — ${used}/${allowance} maintenance landings in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,
+      `allowance reached — ${used}/${allowance} maintenance merges in the last 24h; held until the window rolls under: ${[...held].sort().join(", ")}`,
     );
   }
-  const base = `${used}/${allowance} maintenance landings in the last 24h (${config.maintenancePerWorkMerge} per work landing + ${MAINTENANCE_DAILY_FLOOR} floor)`;
+  const base = `${used}/${allowance} maintenance merges in the last 24h (${config.maintenancePerWorkMerge} per work merge + ${MAINTENANCE_DAILY_FLOOR} floor)`;
   const anyMaintenance = loops.some((l) => commitTier(l.role) === "maintenance");
-  return okOutcome(anyMaintenance ? base : `${base}; no maintenance loop enabled`);
+  return okOutcome(anyMaintenance ? base : `${base}; no maintenance role enabled`);
 }
 
 /** The `claude window` check: whether a rejected subscription window holds the subscription claude
@@ -160,7 +162,7 @@ export function checkClaudeWindow(root: string, now: number = Date.now()): Check
   const held = claudeWindowObservation(account, now);
   if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
     return warnOutcome(
-      `${claudeWindowLabel(held.windowType)} window rejected — subscription claude seams hold until it resets in ${humanSeconds(secondsUntil(held.resetsAt, now))}`,
+      `${claudeWindowLabel(held.windowType)} window rejected — subscription claude model jobs wait until it resets in ${humanSeconds(secondsUntil(held.resetsAt, now))}`,
     );
   }
   const top = claudeWindowEntries(account)[0];
@@ -226,21 +228,21 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const failing = loadLoopStates(root, config)
     .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN);
-  if (failing.length === 0) return okOutcome("no loop failing consecutively");
+  if (failing.length === 0) return okOutcome("no role failing repeatedly");
   const paused = new Set(pausedRoles(root));
   const phrases = failing.map((s) => {
     const n = s.consecutiveErrors ?? 0;
-    let phrase = `${s.role}: ${n} failed ticks`;
+    let phrase = `${roleLabel(s.role)}: ${n} failed runs`;
     if (paused.has(s.role)) {
       phrase +=
         n >= ERROR_STREAK_BREAKER
-          ? `, paused at the error-streak breaker's bar — \`tumwater resume --role ${s.role}\` once the cause is fixed`
+          ? `, paused at the repeated-failure pause's bar — \`tumwater resume --role ${s.role}\` once the cause is fixed`
           : ", paused";
     }
     if (s.lastError) phrase += ` — last error: ${squash(s.lastError, 120)}`;
     return phrase;
   });
-  return warnOutcome(`failing tick after tick: ${phrases.join("; ")}`);
+  return warnOutcome(`failing run after run: ${phrases.join("; ")}`);
 }
 
 /** The `main red` check: names the code loops the red-main gate (mainRedGate) holds, ending
@@ -253,11 +255,11 @@ export function checkMainRed(root: string, config: TumwaterConfig | undefined): 
   const ids = loopIds(config);
   const held = loadLoopStates(root, config)
     .filter((s) => heldByMainRed(s, mainCheck));
-  if (held.length === 0) return okOutcome("no loop held by a red main");
+  if (held.length === 0) return okOutcome("no role waiting on main's check");
   const err = held.find((s) => s.lastError)?.lastError;
   const cause = err ? ` — ${squash(err, 160)}` : "";
   const healer = ids.some((id) => baseRoleOf(id) === "bugfix")
-    ? "; the bugfix loop is exempt and repairs it"
-    : "; no bugfix loop is enabled to repair it — fix main by hand or enable bugfix";
-  return warnOutcome(`red main holds ${plural(held.length, "code loop")}: ${held.map((s) => s.role).join(", ")}${cause}${healer}`);
+    ? "; the bugfix role is exempt and repairs it"
+    : "; no bugfix role is enabled to repair it — fix main by hand or enable bugfix";
+  return warnOutcome(`main's check is failing; ${plural(held.length, "code role")} waiting: ${held.map((s) => roleLabel(s.role)).join(", ")}${cause}${healer}`);
 }
