@@ -38,6 +38,14 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
   }
   sendJson(res, 200, { ok: true, maxDailyCostUsd: value as number });
 }
+
+/** The shared 400 for a failed config mutation — the set and unset write paths both nest the
+ * write's error under the key it names, so the Settings view can tell which field failed and a
+ * retried request gets the same wording from either surface. Its void return keeps the guard
+ * a one-liner: `if (!result.ok) return configKeyError(res, key, result);` */
+function configKeyError(res: http.ServerResponse, key: string, result: { error: string }): void {
+  sendJson(res, 400, { error: `${key}: ${result.error}` });
+}
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
  * (unknown-key refusal, the per-key validators' messages, whole-candidate validateConfig,
@@ -60,10 +68,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
   // exact (JSON.parse(JSON.stringify(v)) === v), so the shared write path applies unchanged.
   const result = setConfigKey(root, key, JSON.stringify(body.value));
-  if (!result.ok) {
-    sendJson(res, 400, { error: `${key}: ${result.error}` });
-    return;
-  }
+  if (!result.ok) return configKeyError(res, key, result);
   sendJson(res, 200, { ok: true, key, value: result.value, oldValue: result.oldValue });
 }
 
@@ -82,9 +87,6 @@ export async function handleConfigUnset(req: http.IncomingMessage, res: http.Ser
   const key = requireConfigKey(res, body);
   if (key === null) return;
   const result = unsetConfigKey(root, key);
-  if (!result.ok) {
-    sendJson(res, 400, { error: `${key}: ${result.error}` });
-    return;
-  }
+  if (!result.ok) return configKeyError(res, key, result);
   sendJson(res, 200, { ok: true, key, oldValue: result.oldValue });
 }
