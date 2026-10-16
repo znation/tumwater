@@ -370,6 +370,14 @@ covers any of them yet. Each fix lands with the test that shows the bug.
 default `agent: "pi"` runs on pi as `--model claude-opus-5-5` with no provider. That needs pi's
 `anthropic` provider and an API key, and the budget prices the pair as never free.
 
+pi cannot stand in for the claude CLI on a subscription either. pi 1.2.0's `/login` offers
+"Anthropic (Claude Pro/Max)", but since Anthropic's 2026-04-04 change a Claude plan's limits cover
+only first-party tools such as Claude Code. pi's own warning says "Third-party harness usage draws
+from extra usage and is billed per token, not your Claude plan limits." So a Claude model on pi is
+billed per token whichever way pi authenticates, and the claude CLI is the only route to the
+plan's included usage. The operator confirmed on 2026-10-15: keep both backends, claude for Claude
+models and pi for every other provider.
+
 The operator's expectation is the natural one: a Claude model runs on the Claude CLI, and every
 other provider runs on pi. So `routeModel` gets a new rule 3a, ahead of the top-level `agent`:
 
@@ -466,7 +474,8 @@ merges.
 
 ## Decisions
 
-Made in this plan; each is open to the operator's veto.
+Made in this plan; each is open to the operator's veto. Decision 3 was confirmed on 2026-10-15
+(§9, "Routing a bare Claude model id to claude").
 
 1. **The director counts toward its provider but never waits** (§4). The alternative, full
    exemption, would let a director session hold a local server at cap + 1 for its whole length.
@@ -474,7 +483,8 @@ Made in this plan; each is open to the operator's veto.
    `maxConcurrent` and protects unified memory. Run-scoped leases are the follow-up if a local
    cap starves.
 3. **A bare `claude-…` id routes to claude** (§9). A config that used pi's `anthropic` provider
-   through a bare id moves to the claude CLI. `anthropic/claude-…` keeps pi.
+   through a bare id moves to the claude CLI. `anthropic/claude-…` keeps pi. The claude CLI
+   backend stays, because pi's Claude usage is billed per token even under a subscription login.
 4. **Unknown provider names in the map are not validation errors**, only doctor warnings (§1).
    A provider may come into use only through a fallback, or through a pi `models.json` edit
    tumwater does not watch.

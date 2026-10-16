@@ -181,6 +181,10 @@ claude CLI for it and pi for the rest, with no `agent` key and no `claude/` pref
 - Doctor's routing table (part 1/4) makes the move visible. Doctor's "names no provider — pi
   resolves it with its own default" note (src/doctor/doctor-model-checks.ts) no longer fires for
   a `claude-` id.
+- Doctor notes a seam that routes a Claude model to pi (`anthropic/claude-…` or similar): it is
+  billed per token even when pi is logged in with a Claude subscription, since Anthropic's
+  2026-04-04 third-party-harness change. A bare `claude-…` id on the claude CLI uses the plan's
+  included usage instead.
 - Docs:
   - docs/config.md and plans/agent-backends.md §3 list rule 3a;
   - the README gets a short "Mixing providers" example (HF default tier, Claude strong tier,
@@ -191,6 +195,8 @@ plans/agent-backends.md, docs/config.md, README.md, test/config-views.test.ts,
 test/doctor-model-checks.test.ts.
 
 **Acceptance criteria (this part).**
+- Doctor notes the per-token billing for a seam on `anthropic/claude-opus-5-5`, and stays silent
+  for a bare `claude-opus-5-5`.
 - `routeModel` routes as follows:
 
   | Call | Result |
