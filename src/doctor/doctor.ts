@@ -28,6 +28,7 @@ import {
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkClaudeAuth, checkClaudeVersion, checkFallbackModel, checkTierModels } from "./doctor-model-checks.js";
+import { agentQualifiedSelector, seamsInUse } from "../config/config-views.js";
 import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
@@ -55,6 +56,17 @@ export async function runDoctor(
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
   // undefined — checkInit reports it verbatim — so doctor still runs every other check.
   const { config } = loadConfigSafe(root);
+  // The routing table: every seam the config can spawn, with the selector each one runs on and
+  // the backend it routes to — read from the same one list the checks sweep, so an operator
+  // sees (and the checks cover) a claude fallback exactly like a primary seam. A broken config
+  // keeps it empty (the init check reports that separately).
+  const seams: DoctorReport["seams"] = config
+    ? seamsInUse(config).map((s) => ({
+        label: s.label,
+        selector: s.model !== undefined ? agentQualifiedSelector({ ...s, model: s.model }) : "no model declared",
+        backend: s.agent ?? "pi",
+      }))
+    : [];
   const info = readOrchestratorInfo(root);
   const header =
     orchestratorAlive(root, info) && info
@@ -109,5 +121,5 @@ export async function runDoctor(
     { name: "mach ports", ...(await checkLaunchServicesPorts(probe)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
-  return { header, checks, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
+  return { header, checks, seams, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
 }

@@ -6,7 +6,7 @@ import { runDoctor } from "../src/doctor/doctor.js";
 import { renderDoctor } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
-import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { pathPrepend } from "./fakes/fake-commands.js";
 import { cli, cliWithEnv } from "./helpers/cli-harness.js";
@@ -129,6 +129,7 @@ test("renderDoctor prints one padded line per check between the header and the v
       { name: "merge lock", level: "warn", detail: "stale — will be broken on next merge" },
       { name: "repo", level: "fail", detail: "not a git repository (run `git init` first)" },
     ],
+    seams: [],
     verdict: "1 problem",
   });
   assert.equal(
@@ -151,6 +152,7 @@ test("renderDoctor widens the name column to the longest check name so details a
       { name: "backlog headings", level: "warn", detail: "D2" },
       { name: "build", level: "ok", detail: "D3" },
     ],
+    seams: [],
     verdict: "v",
   });
   const lines = rendered.split("\n");
@@ -158,6 +160,29 @@ test("renderDoctor widens the name column to the longest check name so details a
   assert.equal(lines[2]!.indexOf("D2"), detailCol);
   assert.equal(lines[3]!.indexOf("D3"), detailCol);
   assert.ok(lines[1]!.startsWith("ok    repo"), `expected the short row to keep its historical shape, got ${JSON.stringify(lines[1])}`);
+});
+
+test("renderDoctor prints the routing table and runDoctor lists a fallback seam", async () => {
+  // plans/provider-concurrency.md §9 part 1/4's routing table: runDoctor derives every seam
+  // (including a fallback-only claude) from the one seamsInUse list, and renderDoctor shows it.
+  const rendered = renderDoctor({
+    header: "h",
+    checks: [],
+    seams: [{ label: "fallback:default", selector: "claude/claude-sonnet-5-5", backend: "claude" }],
+    verdict: "v",
+  });
+  assert.match(rendered, /routing:/);
+  assert.match(rendered, /fallback:default/);
+  assert.match(rendered, /claude\/claude-sonnet-5-5/);
+  assert.match(rendered, /\(claude\)/);
+
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
+  assert.ok(
+    report.seams.some((s) => s.label === "fallback:default" && s.backend === "claude"),
+    `the routing table lists the fallback claude seam: ${JSON.stringify(report.seams)}`,
+  );
 });
 
 test("runDoctor includes the build check and never fails the exit on a stale build", async () => {

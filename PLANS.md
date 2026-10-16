@@ -185,59 +185,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Mixed claude + pi fleets, part 1/4: one `seamsInUse` list for the startup gate, doctor and the claude seed, and an end-to-end test with both fakes (planned 2026-10-15 from an operator request; independent of the "Per-provider concurrency caps" series; parts 2/4–4/4 follow it in order)
-
-Design: plans/provider-concurrency.md §9 "Mixed claude + pi fleets" (gap 1, "One list", and "The
-end-to-end test").
-
-**Goal.** Nobody has run a fleet whose seams span pi and claude. This part does two things:
-
-- it proves the basic path works: a pi author and a claude reviewer in one orchestrator run, each
-  spawning its own CLI;
-- it makes every startup and doctor check cover every seam the fleet can spawn, fallbacks
-  included.
-
-**Approach.**
-- Add `seamsInUse(config)` (src/config/config-views.ts, or beside `agentsInUse` in
-  src/gates/startup-gate.ts). It returns the resolved seams, each with its label: every enabled
-  role (`configForRole`), the review gate when enabled (`reviewRunConfig`), the resolver
-  (`resolverConfig`), the director, each tier's budget-fallback pair (`resolveTierFallbacks`),
-  and the model-failure fallback (`fallbackRoleConfig`).
-  - `agentsInUse` becomes its distinct agents.
-  - Doctor's `seamPairs` (src/doctor/doctor-model-checks.ts) becomes its distinct pairs.
-  - So `checkAgentBinary`, `checkClaudeAuth`, `checkClaudeVersion`, the per-provider
-    `pi auth check` and the startup gate's `seedClaudeAccount` all see a claude or pi seam that
-    exists only as a fallback.
-- config-live.ts: when a live edit routes a seam to an agent the previous config did not use, it
-  runs that backend's binary check (a `warning` event when the binary is missing; the fleet
-  keeps running) and the claude-account seed. `claudeSeedAttempted` keeps the seed to one attempt
-  per root.
-- Doctor prints a routing table: each seam's label, its agent-qualified selector, and its backend.
-- A new orchestrator e2e case, beside test/orchestrator-permits.e2e.test.ts, installs both
-  fake pi and fake claude (`withClaudeReplay`). Its config has one work role on `omlx/…` and
-  `review.model` `claude/claude-sonnet-5-5`. The tick authors on pi, the vet reviews on claude,
-  and the change lands.
-
-**Files touched.** src/config/config-views.ts, src/gates/startup-gate.ts, src/config/config-live.ts,
-src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, and tests:
-test/startup-gate.test.ts, test/doctor-model-checks.test.ts, test/budget-gates.test.ts, and the
-new e2e case.
-
-**Acceptance criteria (this part).**
-- With `fallback: "claude/claude-sonnet-5-5"` and a pi primary, startup checks the claude binary
-  and seeds `claude-account.json`, with no hand-written account file. The budget gate then treats
-  a subscription claude fallback as free at the cap.
-- `tumwater doctor` runs `checkClaudeAuth`/`checkClaudeVersion` when claude appears only as a
-  fallback, and runs `pi auth check` for a fallback's pi provider. `checkAgentBinary` and the
-  claude checks agree on whether claude is in use.
-- A live edit that adds a claude reviewer to a pi fleet logs the binary check's verdict and seeds
-  the account once.
-- The e2e case passes, asserting:
-  - the author run's argv is in fake pi's log and the reviewer's in fake claude's;
-  - each native log sits at its own `role.agent` path;
-  - `tick_start` and `review_start` name `omlx/…` and `claude/claude-sonnet-5-5`;
-  - the change is on main.
-- `npm test` and `npm run test:e2e` pass.
 
 ### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow)
 
@@ -647,6 +594,60 @@ test/config-views.test.ts.
   - pi's default provider for a no-model pi seam;
   - undefined for a bare id with no provider.
 - `npm test` passes.
+
+### Mixed claude + pi fleets, part 1/4: one `seamsInUse` list for the startup gate, doctor and the claude seed, and an end-to-end test with both fakes (planned 2026-10-15 from an operator request; independent of the "Per-provider concurrency caps" series; parts 2/4–4/4 follow it in order) — done 2026-10-15
+
+Design: plans/provider-concurrency.md §9 "Mixed claude + pi fleets" (gap 1, "One list", and "The
+end-to-end test").
+
+**Goal.** Nobody has run a fleet whose seams span pi and claude. This part does two things:
+
+- it proves the basic path works: a pi author and a claude reviewer in one orchestrator run, each
+  spawning its own CLI;
+- it makes every startup and doctor check cover every seam the fleet can spawn, fallbacks
+  included.
+
+**Approach.**
+- Add `seamsInUse(config)` (src/config/config-views.ts, or beside `agentsInUse` in
+  src/gates/startup-gate.ts). It returns the resolved seams, each with its label: every enabled
+  role (`configForRole`), the review gate when enabled (`reviewRunConfig`), the resolver
+  (`resolverConfig`), the director, each tier's budget-fallback pair (`resolveTierFallbacks`),
+  and the model-failure fallback (`fallbackRoleConfig`).
+  - `agentsInUse` becomes its distinct agents.
+  - Doctor's `seamPairs` (src/doctor/doctor-model-checks.ts) becomes its distinct pairs.
+  - So `checkAgentBinary`, `checkClaudeAuth`, `checkClaudeVersion`, the per-provider
+    `pi auth check` and the startup gate's `seedClaudeAccount` all see a claude or pi seam that
+    exists only as a fallback.
+- config-live.ts: when a live edit routes a seam to an agent the previous config did not use, it
+  runs that backend's binary check (a `warning` event when the binary is missing; the fleet
+  keeps running) and the claude-account seed. `claudeSeedAttempted` keeps the seed to one attempt
+  per root.
+- Doctor prints a routing table: each seam's label, its agent-qualified selector, and its backend.
+- A new orchestrator e2e case, beside test/orchestrator-permits.e2e.test.ts, installs both
+  fake pi and fake claude (`withClaudeReplay`). Its config has one work role on `omlx/…` and
+  `review.model` `claude/claude-sonnet-5-5`. The tick authors on pi, the vet reviews on claude,
+  and the change lands.
+
+**Files touched.** src/config/config-views.ts, src/gates/startup-gate.ts, src/config/config-live.ts,
+src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, and tests:
+test/startup-gate.test.ts, test/doctor-model-checks.test.ts, test/budget-gates.test.ts, and the
+new e2e case.
+
+**Acceptance criteria (this part).**
+- With `fallback: "claude/claude-sonnet-5-5"` and a pi primary, startup checks the claude binary
+  and seeds `claude-account.json`, with no hand-written account file. The budget gate then treats
+  a subscription claude fallback as free at the cap.
+- `tumwater doctor` runs `checkClaudeAuth`/`checkClaudeVersion` when claude appears only as a
+  fallback, and runs `pi auth check` for a fallback's pi provider. `checkAgentBinary` and the
+  claude checks agree on whether claude is in use.
+- A live edit that adds a claude reviewer to a pi fleet logs the binary check's verdict and seeds
+  the account once.
+- The e2e case passes, asserting:
+  - the author run's argv is in fake pi's log and the reviewer's in fake claude's;
+  - each native log sits at its own `role.agent` path;
+  - `tick_start` and `review_start` name `omlx/…` and `claude/claude-sonnet-5-5`;
+  - the change is on main.
+- `npm test` and `npm run test:e2e` pass.
 
 ### The day/`--since` report names how many ticks failed per role: a "Failed ticks by role" line in the day and `--since` renders (planned 2026-10-14 by plan; shares `src/report/report-data.ts` and `src/report/report-render.ts` with the waiting landing-failed sibling, but touches a different fold branch and a different render line — this folds `tick_end`'s `result` where that sibling folds the `landed`/`land_failed` branch, and renders its own line where that sibling annotates `landingShareLine` — so the two land in either order on separate feature runs and are never picked in the same run) — done 2026-10-14
 
@@ -6886,4 +6887,5 @@ so one command corrects the text and the images without moving the entry.
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
+
 

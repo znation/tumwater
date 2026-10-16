@@ -415,7 +415,7 @@ test("the live server routes GET /api/logs to the slice handler", async () => {
 });
 
 test("handleDoctor answers the run's DoctorReport and passes it the root", async () => {
-  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], verdict: "v" };
+  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], seams: [], verdict: "v" };
   let seen = "";
   const out = await captureJson((res) => handleDoctor(res, "/some/root", async (r) => ((seen = r), report)));
   assert.equal(out.captured.status, 200);

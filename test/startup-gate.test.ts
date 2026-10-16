@@ -14,7 +14,8 @@ import {
 import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
-import { pathReplace } from "./fakes/fake-commands.js";
+import { pathReplace, writeScript } from "./fakes/fake-commands.js";
+import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 // `tumwater run`'s startup gate (src/gates/startup-gate.ts) in-process: the one answer cmdRun fails
 // fast on, the self-redeploy refuses a swap on, and the supervisor names a dead generation with
@@ -127,6 +128,32 @@ test("the startup gate checks every enabled seam's agent and names that agent's 
       String(await runStartupProblem(repo, null)),
       /claude not found — resolved "\/no\/such\/claude" from agents\.claude\.bin in tumwater\.json/,
     );
+  });
+});
+
+test("a claude seam that exists only as a fallback is checked and its account seeded", async () => {
+  // plans/provider-concurrency.md §9 gap 1: before `seamsInUse`, a claude backend that appears
+  // only as a fallback got no binary check and never ran seedClaudeAccount, so the account file
+  // was absent and the budget gate judged the subscription claude fallback priced at the cap.
+  // Now the fallback is one of the seams the gate checks, so `claude auth status` runs once and
+  // the subscription answer is written — with no hand-written account file (the budget gate's
+  // earlier test wrote it by hand).
+  const repo = makeRepo();
+  await initProject(repo, "startup gate claude fallback");
+  const claudeBin = tmpdir("startup-claude-bin-");
+  writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
+  await withPi("exit 0", async () => {
+    const file = path.join(repo, "tumwater.json");
+    const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.agents = { claude: { bin: path.join(claudeBin, "claude") } };
+    cfg.fallback = "claude/claude-sonnet-5-5";
+    cfg.roles = { feature: { enabled: true } };
+    fs.writeFileSync(file, JSON.stringify(cfg));
+    const check = await runStartupCheck(repo, null);
+    assert.ok(!("problem" in check), JSON.stringify(check));
+    const account = readClaudeAccount(repo);
+    assert.ok(account !== null, "no hand-written account file: the gate wrote it");
+    assert.equal(account.billing, "subscription", "the gate seeded the fallback's subscription billing");
   });
 });
 

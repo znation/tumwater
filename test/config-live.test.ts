@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { newLiveConfigReload } from "../src/config/config-live.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -9,7 +10,9 @@ import { Semaphore } from "../src/concurrency/semaphore.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
+import { writeScript } from "./fakes/fake-commands.js";
+import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 function cloneConfig(c: TumwaterConfig): TumwaterConfig {
   return JSON.parse(JSON.stringify(c)) as TumwaterConfig;
@@ -299,4 +302,50 @@ test("raising an instance count appends the new loop's runner; lowering keeps it
   live.poll();
   assert.ok(runners.some((r) => r.role === "feature-2"), "a lowered count keeps the runner");
   assert.equal(warnMessages(root).filter((m) => m.includes("role feature-2 disabled")).length, 1);
+});
+
+test("a live edit adding a claude reviewer verifies the binary and seeds the account once", () => {
+  // plans/provider-concurrency.md §9 gap 1: before seeking, a live edit that added a claude
+  // seam to a pi fleet re-ran neither the backend's binary check nor the account seed — the
+  // fleet then ran the reviewer unverifiably and, with no account file, the budget priced it
+  // at the cap. Now the reload checks the newly-routed backend and seeds once per root, with a
+  // missing binary a warning event rather than a crash.
+  const start = cloneConfig(defaultConfig());
+  start.review = { ...(start.review ?? {}), enabled: true };
+  const { root, live } = liveReload(start);
+  live.poll(); // first poll of the unchanged pi config: nothing new
+  const claudeBin = tmpdir("live-claude-bin-");
+  writeScript(path.join(claudeBin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
+  const next = cloneConfig(start);
+  next.agents = { claude: { bin: path.join(claudeBin, "claude") } };
+  next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
+  writeConfig(root, next);
+  live.poll();
+  const binary = readEvents(root).filter((e) => e.type === "backend_binary");
+  assert.equal(binary.length, 1, "one backend_binary event for the newly routed claude");
+  assert.equal((binary[0] as unknown as { agent: string }).agent, "claude");
+  assert.equal((binary[0] as unknown as { found: boolean }).found, true);
+  const account = readClaudeAccount(root);
+  assert.ok(account !== null, "the reload seeded the claude account");
+  assert.equal(account.billing, "subscription");
+  // Repeated polls of the same config seed/check nothing further (once per root).
+  live.poll();
+  assert.equal(readEvents(root).filter((e) => e.type === "backend_binary").length, 1);
+});
+
+test("a live edit adding a missing claude binary warns but keeps the fleet running", () => {
+  const start = cloneConfig(defaultConfig());
+  start.review = { ...(start.review ?? {}), enabled: true };
+  const { root, live } = liveReload(start);
+  live.poll();
+  const next = cloneConfig(start);
+  next.agents = { claude: { bin: "/no/such/claude" } };
+  next.review = { ...next.review, model: "claude/claude-sonnet-5-5" };
+  writeConfig(root, next);
+  live.poll();
+  const warnings = warnMessages(root).filter((m) => m.includes("newly routed claude backend"));
+  assert.equal(warnings.length, 1, "a missing newly-routed binary warns, once");
+  assert.match(warnings[0] ?? "", /\/no\/such\/claude/);
+  // The fleet kept running: the poll returned the live config, no throw.
+  assert.equal(readEvents(root).some((e) => e.type === "backend_binary"), false);
 });

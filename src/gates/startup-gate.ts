@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfigSafe } from "../config/config.js";
-import { configForRole, reviewConfig } from "../config/config-views.js";
+import { seamsInUse } from "../config/config-views.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { findOnPath } from "../files/files.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";
@@ -14,7 +14,6 @@ import {
 } from "./readiness.js";
 import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 import { seedClaudeAccount } from "../agent/claude/claude-account.js";
-import { loopIds } from "../roles/loop-ids.js";
 
 /** The startup gate of `tumwater run` as one function: every precondition an orchestrator
  * generation checks before it starts. "Can a generation boot in this repo's current state?" has
@@ -99,15 +98,13 @@ export async function runStartupCheck(
  * status` on every poll when the probe fails. */
 const claudeSeedAttempted = new Set<string>();
 
-/** Every agent backend an enabled seam resolves to: the top-level `agent` plus each enabled
- * loop's configForRole view and, when the review gate is on, the reviewer's view
- * (reviewConfig). One list the startup gate and doctor's binary check share, so a claude route
- * the harness would spawn is checked exactly like pi on both surfaces. */
+/** Every agent backend an enabled seam resolves to — the distinct agents of the one
+ * seamsInUse list (startup-gate's consumer of it), so a claude or pi clause that exists only
+ * as a fallback, the resolver, or the director is checked exactly like a primary seam.
+ * One list the startup gate and doctor's binary check share, so a route the harness would
+ * spawn is checked on both surfaces. */
 export function agentsInUse(config: TumwaterConfig): string[] {
-  const agents = new Set<string>([config.agent ?? "pi"]);
-  for (const id of loopIds(config)) agents.add(configForRole(config, id).agent ?? "pi");
-  if (config.review.enabled) agents.add(reviewConfig(config).agent ?? "pi");
-  return [...agents];
+  return [...new Set(seamsInUse(config).map((s) => s.agent ?? "pi"))];
 }
 
 /** runStartupCheck reduced to its verdict: the message a generation would fail on right now, or

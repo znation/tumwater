@@ -358,6 +358,53 @@ test("checkClaudeAuth and checkClaudeVersion stand down without a claude seam", 
 
 // The version gate: a CLI below a configured model's floor fails and names the model, a newer
 // one passes and prints the version against the floor.
+// A config whose claude seam is only a fallback must still route the claude checks on (gap 1
+// of plans/provider-concurrency.md §9): before `seamsInUse`, seamPairs missed the fallback pair,
+// so these stood down and the fallback's binary/auth/version were never verified.
+test("claude checks run when claude appears only as a fallback", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  const bin = tmpdir("doctor-claude-fallback-");
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
+  const auth = await checkClaudeAuth(root, bin);
+  assert.equal(auth.level, "ok");
+  assert.match(auth.detail, /logged in — billing: subscription \(team\)/);
+  writeScript(path.join(bin, "claude"), 'echo "2.1.295 (Claude Code)"');
+  const version = await checkClaudeVersion(root, bin);
+  assert.equal(version.level, "ok");
+  assert.match(version.detail, /claude 2\.1\.295 \(>= 2\.1\.280 for claude-/);
+});
+
+// A fallback's pi provider is swept like any primary's: gap 1 makes seamPairs include the
+// fallback, so checkTierModels probes its provider and prices it.
+test("checkTierModels checks a pi fallback's provider", async () => {
+  const models = writeModels();
+  const probed: string[] = [];
+  const root = readyRepo();
+  writeConfig(root, { model: "paid/gpt-x", fallback: "local/free-model" });
+  const outcome = await checkTierModels(root, models, async (p) => {
+    probed.push(p);
+    return "ready";
+  });
+  assert.equal(outcome.level, "ok");
+  assert.ok(probed.includes("local"), `the fallback's pi provider is probed (${probed})`);
+  assert.ok(probed.includes("paid"), `the primary's provider is probed (${probed})`);
+});
+
+// The claude checks' stand-down (without a claude seam) and the binary check's agent list
+// (agentsInUse) both derive from the one seamsInUse list, so a fallback-only claude can never
+// disagree: covered above for the checks, and by the startup-gate fallback test for the seed.
+test("a claude-only fallback is reported by the doctor's binary/credential/version checks together", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
+  const bin = tmpdir("doctor-claude-fallback-2-");
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"subscriptionType":"team"}\'');
+  // Both surfaces see claude — the auth check runs (not "no claude seams configured") proving
+  // claudeSeamsInUse is true, which is exactly what the binary check's agentsInUse reports too.
+  const auth = await checkClaudeAuth(root, bin);
+  assert.ok(!auth.detail.includes("no claude seams"), `a fallback claude is in use: ${auth.detail}`);
+});
+
 test("checkClaudeVersion fails a CLI below a configured model's floor", async () => {
   const root = readyRepo();
   writeConfig(root, { agent: "claude" });

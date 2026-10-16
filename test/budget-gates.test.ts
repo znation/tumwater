@@ -262,6 +262,23 @@ test("a claude-routed fallback cannot engage even when models.json prices its na
   assert.equal(events[0]!.fallbackRejected, "claude/claude-sonnet-5-5");
 });
 
+test("an unseeded claude fallback cannot engage — the startup seed is what frees it", () => {
+  // gap 1 of plans/provider-concurrency.md §9: before startup seeded the account for a
+  // fallback-only claude, no claude-account.json existed, seamFree judged the claude pair
+  // priced, and the gate refused `fallback: claude/...` at the cap unless a test (or operator)
+  // wrote the file by hand. The startup gate now runs seedClaudeAccount for the fallback seam
+  // (test/startup-gate.test.ts), so a subscription claude fallback reads free — the sibling
+  // test below — without any hand-written file.
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.fallback = "claude/claude-sonnet-5-5";
+  const state = newBudgetGateState(cfg);
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
+  assert.equal(p.gate, "paused");
+  assert.equal(p.onFallback, false);
+});
+
 test("a subscription claude fallback engages at the cap", () => {
   const root = tmpdir("budget-gates-");
   const models = writeModelsFile(

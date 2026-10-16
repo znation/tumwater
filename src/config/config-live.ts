@@ -1,11 +1,13 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { loopIds } from "../roles/loop-ids.js";
-import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
+import { configForRole, fleetModelLabel, modelSelectorField, seamsInUse } from "./config-views.js";
 import { bestEffortEventLogger } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import { seedClaudeAccount } from "../agent/claude/claude-account.js";
+import { agentMissingMessage, findAgentBinary, resolveAgentBin } from "../pi/pi-bin.js";
 
 /** The orchestrator's live view of tumwater.json: the single reload point shared by all loops,
  * polled once per scheduler cycle (src/orchestrator/orchestrator.ts). A broken file keeps the
@@ -58,6 +60,11 @@ export function newLiveConfigReload(deps: {
   // The cap last applied to the semaphore (live-resized on each reload), so a change logs
   // exactly one event per distinct value — not once per poll.
   let lastMaxConcurrent = Math.max(1, deps.config.maxConcurrent);
+
+  // Roots this process has already attempted a live-edit claude-account seed for (see the
+  // reload block below), so repeated polls of a config that keeps a claude seam cannot respawn
+  // `claude auth status` on every cycle.
+  const liveClaudeSeedAttempted = new Set<string>();
 
   // Best-effort event logging: poll() runs inside the orchestrator's poll loop
   // (src/orchestrator/orchestrator.ts), which has no catch, so an unwritable feed (ENOSPC,
@@ -114,6 +121,25 @@ export function newLiveConfigReload(deps: {
               to: toModel,
               ...(roleDiffs.length > 0 ? { roles: roleDiffs } : {}),
             });
+        }
+        // A live edit that routes a seam to a backend the previous config did not use: the
+        // fleet keeps running, but that backend must be verified and (for claude) its account
+        // seeded, exactly as startup would — so a claude reviewer added to a pi fleet does not
+        // start uncheckable. A missing binary is a warning event, never a crash; a present one
+        // logs its verdict as a backend_binary event. The seed is attempted once per root.
+        const prevAgents = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));
+        for (const agent of new Set(seamsInUse(reloaded.config).map((s) => s.agent ?? "pi"))) {
+          if (prevAgents.has(agent)) continue;
+          const resolved = resolveAgentBin(reloaded.config, agent);
+          if (findAgentBinary(resolved)) {
+            emit({ loop: "harness", type: "backend_binary", agent, found: true });
+          } else {
+            warn(`newly routed ${agent} backend: ${agentMissingMessage(resolved, agent)}`);
+          }
+          if (agent === "claude" && !liveClaudeSeedAttempted.has(deps.root)) {
+            liveClaudeSeedAttempted.add(deps.root);
+            seedClaudeAccount(deps.root, reloaded.config);
+          }
         }
         prevLive = reloaded.config;
         for (const r of deps.runners) r.config = reloaded.config;

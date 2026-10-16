@@ -9,6 +9,7 @@ import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
+import { enabledRoleIds } from "./config.js";
 import { modelFallbackActive, type ModelFallbackState } from "../loop/model-fallback.js";
 
 /** A config whose model seam has been RESOLVED — the view functions' return type: `model`
@@ -466,6 +467,58 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
     }),
     minTickIntervalSeconds: rc?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
   };
+}
+
+/** One seam the fleet can spawn, with the human label that names it and the resolved routing
+ * a run gets — the single enumeration the startup gate, doctor, and the claude-account seed
+ * and live-edit reload sweep, so a seam that exists only as a fallback is checked exactly like
+ * a primary one. `agent` names the routed backend, `provider`/`model`/`thinking` the resolved
+ * selector (provider is pi's and undefined for a non-pi backend). */
+interface SeamInUse {
+  /** The label naming this seam in doctor's routing table and doctor/live-edit messages: a
+   * role id, "review", "resolver", "director", or a `fallback:<tier>` name. */
+  label: string;
+  agent?: string;
+  provider?: string;
+  model?: string;
+  thinking?: string;
+}
+
+/** Every seam the fleet can spawn, each with its label: every enabled role's resolved config
+ * (configForRole), the review gate when it is on (reviewRunConfig), the conflict resolver
+ * (resolverConfig), the director (a catalog role, named explicitly so it is never missed), and
+ * each tier's budget fallback (resolveTierFallbacks) — the model-failure fallback
+ * (fallbackRoleConfig) runs the same tier pair, so one enumeration covers it. Deduplicated by
+ * label + routed pair so a seam reached through several surfaces is listed once. Read by the
+ * startup gate's agent list, doctor's pair sweep (and so its binary/credential/version checks
+ * and routing table), and the live-edit reload's newly-routed-backend check — no surface can
+ * miss a seam that exists only as a fallback. */
+export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
+  const seams = new Map<string, SeamInUse>();
+  const add = (label: string, cfg: Pick<ResolvedModelConfig, "agent" | "provider" | "model" | "thinking">): void => {
+    const key = `${label}\0${cfg.agent ?? ""}\0${cfg.provider ?? ""}\0${cfg.model ?? ""}\0${cfg.thinking ?? ""}`;
+    seams.set(key, {
+      label,
+      agent: cfg.agent,
+      provider: cfg.provider,
+      model: cfg.model,
+      thinking: cfg.thinking,
+    });
+  };
+  for (const role of enabledRoleIds(config)) add(role, configForRole(config, role));
+  if (config.review.enabled) add("review", reviewRunConfig(config));
+  add("resolver", resolverConfig(config));
+  add("director", configForRole(config, DIRECTOR_ROLE));
+  const fallbacks = resolveTierFallbacks(config, () => true);
+  for (const tier of MODEL_TIERS) {
+    const pair = fallbacks[tier].pair;
+    if (pair === null) continue;
+    add(
+      `fallback:${tier}`,
+      withModelOverrides(config, tier, { provider: pair.provider, model: pair.model, thinking: pair.thinking }),
+    );
+  }
+  return [...seams.values()];
 }
 
 /** The active model-fallback episode (LoopState.modelFallback) resolved for display: the

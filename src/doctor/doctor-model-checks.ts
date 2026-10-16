@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
-import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole, fallbackPair, reviewConfig, tierModel } from "../config/config-views.js";
+import { defaultConfig, loadConfigSafe } from "../config/config.js";
+import { fallbackPair, seamsInUse } from "../config/config-views.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } from "../pi/pi-models.js";
-import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
-import { isAgentId, routeModel } from "../config/model-selector.js";
+import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
+import { isAgentId } from "../config/model-selector.js";
 import { claudeBackend } from "../agent/claude/claude-backend.js";
 import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
@@ -103,34 +103,21 @@ interface SeamPair {
   thinking: string | undefined;
 }
 
-/** Every model a seam can run, paired with its backend (plans/agent-backends.md "Config"):
- * the top-level tiers (routed so a `claude/<id>` selector names its backend), every enabled
- * role's resolved pair, and the reviewer's while review is on. Deduplicated by
+/** Every model a seam can run, paired with its backend (plans/agent-backends.md "Config"): the
+ * distinct pairs of the one seamsInUse list — every enabled role, the review gate, the
+ * resolver, the director, and each tier's budget/model-failure fallback — so a claude or pi
+ * pair that exists only as a fallback is checked exactly like a primary one. Deduplicated by
  * backend/provider/model, so a model reached through several surfaces is checked once. */
 function seamPairs(config: TumwaterConfig): SeamPair[] {
   const pairs = new Map<string, SeamPair>();
-  const add = (pair: SeamPair): void => {
-    if (pair.model === undefined) return;
-    pairs.set(`${pair.agent ?? ""}\0${pair.provider ?? ""}\0${pair.model}`, pair);
-  };
-  for (const tier of MODEL_TIERS) {
-    const sel = tierModel(config, tier);
-    if (!sel) continue;
-    const routed = routeModel(sel.provider, sel.model, config.agent ?? "pi", tier);
-    add({
-      agent: routed.agent,
-      provider: routed.agent === "pi" ? sel.provider : undefined,
-      model: routed.model,
-      thinking: sel.thinking,
+  for (const seam of seamsInUse(config)) {
+    if (seam.model === undefined) continue;
+    pairs.set(`${seam.agent ?? ""}\0${seam.provider ?? ""}\0${seam.model}`, {
+      agent: seam.agent,
+      provider: seam.provider,
+      model: seam.model,
+      thinking: seam.thinking,
     });
-  }
-  for (const role of enabledRoleIds(config)) {
-    const rc = configForRole(config, role);
-    add({ agent: rc.agent, provider: rc.provider, model: rc.model, thinking: rc.thinking });
-  }
-  if (config.review.enabled) {
-    const rv = reviewConfig(config);
-    add({ agent: rv.agent, provider: rv.provider, model: rv.model, thinking: rv.thinking });
   }
   return [...pairs.values()];
 }

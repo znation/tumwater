@@ -61,11 +61,20 @@ import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
  * Markdown/terminal renderers (doctor-render.ts). doctor.ts stays the composition layer only:
  * runDoctor calls each check in fixed order and folds the results into a DoctorReport. */
 
+/** One seam in doctor's routing table: the human label naming it, the selector it runs on
+ * (agent-qualified for a non-pi backend), and the backend it routes to. */
+interface SeamRow {
+  label: string;
+  selector: string;
+  backend: string;
+}
+
 /** The full pre-flight report: a header carrying harness state, one entry per check in fixed
- * order, and the verdict line. */
+ * order, the routing table of every seam the config can spawn, and the verdict line. */
 export interface DoctorReport {
   header: string;
   checks: Array<{ name: string } & CheckOutcome>;
+  seams: SeamRow[];
   verdict: string;
 }
 
