@@ -13,6 +13,7 @@ import {
   plannedPartKeys,
   prerequisitesLanded,
   refusalNote,
+  planDependencyProblems,
   requiredParts,
   seriesPart,
   type EligibleEntry,
@@ -377,4 +378,23 @@ test("withoutRefusalNotes drops Refused note lines and the blank line after one 
   assert.deepEqual(withoutRefusalNotes(["### t", note, "g"]), ["### t", "g"]);
   const kept = ["### t", "see **Refused 2026** here", "**Needs review 2026-10-12 by feature: big**"];
   assert.deepEqual(withoutRefusalNotes(kept), kept);
+});
+
+test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", () => {
+  const e = (title: string): BacklogEntry => ({ title, body: "" }) as BacklogEntry;
+  const done = ["S, part 1/3: a (done 2026-10-01)"];
+  const ok = planDependencyProblems([e("S, part 2/3: b (requires part 1/3 landed)")], done);
+  assert.deepEqual(ok, { cycle: null, dangling: [], unparsed: [] });
+  const dangling = planDependencyProblems([e("S, part 2/3: b (requires T 1/3 landed)")], done);
+  assert.deepEqual(dangling.dangling, [{ title: "S, part 2/3: b (requires T 1/3 landed)", ref: "T 1/3" }]);
+  const unparsed = planDependencyProblems([e("Plain plan (requires part 1/2 landed)")], []);
+  assert.deepEqual(unparsed.unparsed, ["Plain plan (requires part 1/2 landed)"]);
+  const cyc = planDependencyProblems([
+    e("S, part 1/2: a (requires part 2/2 landed)"),
+    e("S, part 2/2: b (requires part 1/2 landed)"),
+  ], []);
+  assert.deepEqual(cyc.cycle, ["S 1/2", "S 2/2", "S 1/2"]);
+  const self = planDependencyProblems([e("S, part 1/2: a (requires part 1/2 landed)")], []);
+  assert.deepEqual(self.cycle, ["S 1/2", "S 1/2"]);
+  assert.deepEqual(planDependencyProblems([e("Free plan")], []), { cycle: null, dangling: [], unparsed: [] });
 });

@@ -142,15 +142,85 @@ export function plannedPartKeys(planned: readonly BacklogEntry[]): Set<string> {
  * Returns [] when the heading has no such clause or the clause does not parse — an agent judges
  * an unparseable clause, exactly as it does today. Only the heading is read, never the body. */
 export function requiredParts(title: string): PartRef[] {
-  let meta = trailingParenthetical(title);
-  if (meta === "") meta = openParenthetical(title);
-  if (meta === "") return [];
-  const m = /requires\s+(.+?)\s+landed\b/i.exec(meta);
-  if (m === null) return [];
+  const clause = requiresClause(title);
+  if (clause === null) return [];
   const ownSeries = seriesPart(title)?.series ?? null;
   const refs: PartRef[] = [];
-  for (const chunk of m[1]!.split(/\s*,\s*|\s+and\s+/i)) refs.push(...parseRef(chunk, ownSeries));
+  for (const chunk of clause.split(/\s*,\s*|\s+and\s+/i)) refs.push(...parseRef(chunk, ownSeries));
   return refs;
+}
+
+/** The ref text a heading's `requires <refs> landed` clause captures — read from the trailing
+ * parenthetical, or the open one of a wrapped heading — or null when the heading has no such
+ * clause. requiredParts parses it; planDependencyProblems uses it to spot a clause that parses to
+ * nothing. */
+function requiresClause(title: string): string | null {
+  let meta = trailingParenthetical(title);
+  if (meta === "") meta = openParenthetical(title);
+  if (meta === "") return null;
+  const m = /requires\s+(.+?)\s+landed\b/i.exec(meta);
+  return m === null ? null : m[1]!;
+}
+
+/** The mistakes in the planned entries' `requires … landed` clauses that the claim allocator
+ * cannot see: `dangling` — a ref naming a part no planned or done heading carries (its hold is
+ * void), `unparsed` — titles whose clause yields no refs, and `cycle` — the first dependency cycle
+ * among planned `Series, part i/n:` entries as `Series i/n` names in walk order, first name
+ * repeated last (a self-reference is a one-hop cycle), or null. Refused and needs-review entries
+ * count like the rest, since their clauses still decide when they unblock. */
+export function planDependencyProblems(
+  planned: readonly BacklogEntry[],
+  doneTitles: readonly string[],
+): { cycle: string[] | null; dangling: Array<{ title: string; ref: string }>; unparsed: string[] } {
+  const known = plannedPartKeys(planned);
+  for (const t of doneTitles) {
+    const part = seriesPart(t);
+    if (part !== null) known.add(partKey(part.series, part.part));
+  }
+  const dangling: Array<{ title: string; ref: string }> = [];
+  const unparsed: string[] = [];
+  const nodes = new Map<string, { name: string; deps: string[] }>();
+  for (const entry of planned) {
+    const refs = requiredParts(entry.title);
+    if (refs.length === 0 && requiresClause(entry.title) !== null) unparsed.push(entry.title);
+    for (const ref of refs) {
+      if (!known.has(partKey(ref.series, ref.part)))
+        dangling.push({ title: entry.title, ref: `${ref.series} ${ref.part}/${ref.of}` });
+    }
+    const own = seriesPart(entry.title);
+    if (own === null) continue;
+    nodes.set(partKey(own.series, own.part), {
+      name: `${own.series} ${own.part}/${own.of}`,
+      deps: refs.map((ref) => partKey(ref.series, ref.part)),
+    });
+  }
+  const state = new Map<string, "open" | "done">();
+  const stack: string[] = [];
+  const visit = (key: string): string[] | null => {
+    state.set(key, "open");
+    stack.push(key);
+    for (const dep of nodes.get(key)!.deps) {
+      if (!nodes.has(dep)) continue;
+      const seen = state.get(dep);
+      if (seen === "open") {
+        return [...stack.slice(stack.indexOf(dep)), dep].map((k) => nodes.get(k)!.name);
+      }
+      if (seen === undefined) {
+        const found = visit(dep);
+        if (found !== null) return found;
+      }
+    }
+    stack.pop();
+    state.set(key, "done");
+    return null;
+  };
+  let cycle: string[] | null = null;
+  for (const key of nodes.keys()) {
+    if (state.has(key)) continue;
+    cycle = visit(key);
+    if (cycle !== null) break;
+  }
+  return { cycle, dangling, unparsed };
 }
 
 /** The prerequisite refs of `title`'s `requires … landed` clause when none of them is still in

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
 import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { writeLandingMarker } from "../src/landing/landing-slot.js";
 import { landQueueDir } from "../src/paths.js";
@@ -447,4 +447,39 @@ test("checkUncommittedBacklog counts the brief file", async () => {
   const r = await checkUncommittedBacklog(root, undefined);
   assert.equal(r.level, "warn");
   assert.match(r.detail, /README\.md has uncommitted/);
+});
+
+// checkPlanDependencies: cycles, dangling refs and unparsed requires clauses.
+
+function plansWith(planned: string, done = ""): string {
+  const dir = tmpdir("doctor-plandeps-");
+  fs.writeFileSync(path.join(dir, "PLANS.md"), `# Plans\n\n## Planned\n\n${planned}\n## Done\n\n${done}`);
+  return dir;
+}
+
+test("checkPlanDependencies is ok on a clean pair and when PLANS.md is absent", () => {
+  const dir = plansWith("### S, part 2/2: b (requires part 1/2 landed)\n\nbody\n", "### S, part 1/2: a (done 2026-10-01)\n");
+  assert.equal(checkPlanDependencies(dir).level, "ok");
+  assert.equal(checkPlanDependencies(tmpdir("doctor-plandeps-none-")).level, "ok");
+});
+
+test("checkPlanDependencies warns on a dangling ref", () => {
+  const out = checkPlanDependencies(plansWith("### S, part 2/2: b (requires T 1/2 landed)\n\nbody\n"));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /requires T 1\/2, which no PLANS\.md heading carries — the hold is void, so the plan is claimable now/);
+});
+
+test("checkPlanDependencies warns on an unparsed clause", () => {
+  const out = checkPlanDependencies(plansWith("### Plain plan (requires part 1/2 landed)\n\nbody\n"));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /clause that names no part the allocator can read/);
+});
+
+test("checkPlanDependencies names a cycle first and counts the other kinds", () => {
+  const out = checkPlanDependencies(plansWith(
+    "### S, part 1/2: a (requires part 2/2 landed)\n\nx\n\n### S, part 2/2: b (requires part 1/2, T 1/1 landed)\n\nx\n",
+  ));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /plan dependency cycle: S 1\/2 → S 2\/2 → S 1\/2 — every part on it stays blocked forever/);
+  assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\)\)/);
 });

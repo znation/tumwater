@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
-import { ageInDays, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { ageInDays, donePlans, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
-import { entryHold, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
+import { entryHold, planDependencyProblems, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -196,6 +196,42 @@ export function checkStalledPlans(root: string): CheckOutcome {
   ) ?? "").replace(/^\s*\*\*/, "").replace("**", "");
   return warnOutcome(`PLANS.md plan "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held by a ${hold === "needs-review" ? "Needs review" : "Needs replan"} note ` +
       `(${truncate(note, REFUSAL_NOTE_MAX)})${more} — the plan role resolves it by splitting or replanning`);
+}
+
+/** Plan dependencies — mistakes in the planned plans' `requires … landed` clauses that the claim
+ * allocator (entryHoldAgainst) cannot see: a ref naming no heading (the hold is void, so the
+ * dependent is claimable now), a clause that parses to no refs (it holds nothing), and a
+ * dependency cycle (every part on it stays blocked forever). Reads the tree at `root` through
+ * planDependencyProblems. A warn, never a fail, like checkStalledPlans: the plan role writes the
+ * clauses by hand and fixes them itself. The most serious kind is named — cycle, then dangling,
+ * then unparsed — with a count of the other kinds. */
+export function checkPlanDependencies(root: string): CheckOutcome {
+  const { cycle, dangling, unparsed } = planDependencyProblems(plannedPlanEntries(root), donePlans(root));
+  const [firstDangling, ...restDangling] = dangling;
+  const [firstUnparsed, ...restUnparsed] = unparsed;
+  const quote = (t: string) => `"${truncate(t, FIX_CLAIM_HEADING_MAX)}"`;
+  const others = (parts: Array<[number, string]>): string =>
+    parts.some(([n]) => n > 0) ? ` (also ${parts.map(([n, noun]) => `${n} ${noun}`).join(", ")})` : "";
+  const danglingMsg = (d: { title: string; ref: string }) =>
+    `PLANS.md plan ${quote(d.title)} requires ${d.ref}, which no PLANS.md heading carries — the hold is void, ` +
+    "so the plan is claimable now; fix the series name or part number";
+  const unparsedMsg = (t: string) =>
+    `PLANS.md plan ${quote(t)} has a \`requires … landed\` clause that names no part the allocator can read — ` +
+    "it holds nothing; write each ref as `<Series> i/n` or give the heading a `<Series>, part i/n:` prefix";
+  if (cycle !== null) {
+    return warnOutcome(`plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
+      "edit one heading's `requires … landed` clause to break it" +
+      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"]]));
+  }
+  if (firstDangling) {
+    return warnOutcome(danglingMsg(firstDangling) +
+      andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, "ref(s)") +
+      others([[unparsed.length, "unparsed clause(s)"]]));
+  }
+  if (firstUnparsed) {
+    return warnOutcome(unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)"));
+  }
+  return okOutcome("every planned plan's requires clause names a known part, with no cycle");
 }
 
 /** How long a queued landing may wait without its change starting before the stale-queued-landing

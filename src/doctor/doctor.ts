@@ -33,7 +33,7 @@ import {
 import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
 import { agentQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
-import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "./doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are
  * scattered across fail-fast checks that each command re-runs on its own (requireReadyRepo in
@@ -123,6 +123,7 @@ export async function runDoctor(
     { name: "backlog headings", ...checkBacklogHeadings(root) },
     { name: "refusals", ...checkRefusedEntries(root) },
     { name: "stalled plans", ...checkStalledPlans(root) },
+    { name: "plan dependencies", ...checkPlanDependencies(root) },
     { name: "stale questions", ...checkStaleQuestions(root) },
     { name: "stale queued landings", ...checkStaleQueuedLandings(root, Date.now()) },
     { name: "uncommitted backlog", ...(await checkUncommittedBacklog(root, config)) },
