@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Rendering half of `tumwater history`: format a `TickRow[]`/summary — collected by
  * history-data.ts — into the aligned table or `--summary` text `cmdHistory` (history.ts)
  * prints. The sibling observing view report does the same (src/report/report.ts prints
@@ -6,6 +7,7 @@
  * parsing and stdout, this module owns column widths and cell wording. The rows themselves
  * live in history-data.ts because the grep haystack shares the row line. */
 import { formatTimestamp } from "../text/datetime.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { displayWidth, padToWidth } from "../text/text-width.js";
 import { compactTokens, usd } from "../text/format.js";
 import { tickRowCells, tickRowLine, type HistorySummaryRow, type TickRow, type TickRowCells } from "./history-data.js";
@@ -59,15 +61,15 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
  * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
 export function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
   const all = [...summary.loops, summary.total];
-  const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
-  const cols = ["ticks", "changes", "none", "problems", "tokens", "cost"] as const;
+  const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.loop))].map(displayWidth));
+  const cols = ["runs", "changes", "none", "problems", "tokens", "cost"] as const;
   const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
-    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(r[c]);
+    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(c === "runs" ? r.ticks : r[c]);
   const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
   const line = (loop: string, cells: string[], lastChange: string): string =>
     [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
-    line("loop", [...cols], "last change"),
-    ...all.map((r) => line(r.loop, cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
+    line("role", [...cols], "last change"),
+    ...all.map((r) => line(roleLabel(r.loop), cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
   ].join("\n");
 }

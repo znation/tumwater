@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Collection half of `tumwater history`: read the event log and distill the last N completed
  * ticks into TickRow — one row per tick, newest first, with the paired duration and the raw
  * usage numbers. The Markdown/table rendering of this data lives in history.ts, a pure
@@ -11,6 +12,8 @@ import { eventRole, eventTick, eventUsage, readEvents, tickSpanMs, tickStartMap 
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSinceJoined } from "../events/event-window.js";
 import { formatTimestamp } from "../text/datetime.js";
+import { eventTypeLabel } from "../events/event-labels.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { squash, textOr } from "../text/text.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
@@ -161,9 +164,9 @@ export interface TickRowCells {
 
 export function tickRowCells(row: TickRow): TickRowCells {
   return {
-    loop: row.loop,
+    loop: roleLabel(row.loop),
     tick: String(row.tick),
-    result: row.result,
+    result: eventTypeLabel(row.result),
     duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
     usage: row.usage,
   };
@@ -181,8 +184,8 @@ export function tickRowLine(
   const c = tickRowCells(row);
   return [
     row.time,
-    pad("loop", c.loop),
-    `#${pad("tick", c.tick)}`,
+    pad("loop", c.loop), // vocabulary-ok: column key, not shown
+    `#${pad("tick", c.tick)}`, // vocabulary-ok: column key, not shown
     pad("result", c.result),
     pad("duration", c.duration),
     pad("usage", c.usage),
@@ -194,12 +197,14 @@ export function tickRowLine(
 
 /** The `--grep` haystack for one rendered history row: tickRowLine's canonical unpadded row
  * line prefixed with the raw event type so stable ids (`tick_end`) are greppable the way logs
- * --grep's haystack carries `e.type`. Built per row because the filter runs before the widths of
- * the rows actually shown are known, and shared by `tumwater history --grep` and the dashboard's
+ * --grep's haystack carries `e.type`, and followed by the raw role id and result code, which
+ * the row shows as `feature #2` and `no change`, so a script's grep on the code still
+ * matches. Built per row because the filter runs before the widths of the rows actually shown
+ * are known, and shared by `tumwater history --grep` and the dashboard's
  * /api/history?grep so the two cannot disagree on the rule. The row's cells and column order
  * come from tickRowCells and tickRowLine, the one home for each. */
 export function tickRowGrepHaystack(row: TickRow): string {
-  return `tick_end ${tickRowLine(row)}`;
+  return `tick_end ${tickRowLine(row)} ${row.loop} ${row.result}`;
 }
 
 /** The shared tick-grep rule: a case-insensitive substring match over tickRowGrepHaystack.
@@ -229,7 +234,7 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
     (e) => e.loop,
   );
   const outcomeByLoop = groupBy(
-    events.filter((e) => e.type === "landed" || e.type === "land_failed"),
+    events.filter((e) => e.type === "landed" || e.type === "land_failed"), // vocabulary-ok: event type code
     (e) => e.loop,
   );
   return { landQueuedByLoop, outcomeByLoop };
@@ -297,7 +302,7 @@ export function resolveQueuedResult(
     // on a recovery pin the walk reached: the previous attempt's non-terminal verdict is still
     // the last one visible, so return it rather than the raw label.
     if (!outcome) return resolved;
-    const result = textOr(outcome.result, outcome.type === "landed" ? "changed" : "");
+    const result = textOr(outcome.result, outcome.type === "landed" ? "changed" : ""); // vocabulary-ok: event type code
     if (!result) return resolved;
     const verdict = { result, sha: textOr(pin.commit, ""), pin, outcome };
     // A landing or a rejection ends the change (the pin is discarded, so no recovery pin can

@@ -12,7 +12,7 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 
 // The `history` command's core end-to-end views: CLI smoke runs over the shared fixed
 // multi-role log (fixtures/history-fixtures.ts) — the pattern test/cli-logs.test.ts uses: the
-// table's alignment, one row per completed tick, --role and its scan-window growth, -n
+// table's alignment, one row per completed run, --role and its scan-window growth, -n
 // validation, --json, and the unknown-flag/empty-log/help edges. The window-and-filter halves
 // (--since, --grep) live in cli-history-filtering.test.ts, split the way cli-logs.test.ts
 // keeps itself apart from cli-logs-filtering.test.ts so node --test runs the two in parallel.
@@ -67,19 +67,19 @@ test("history grows the scan window to pair a tick_start the first window's boun
   assert.equal(lines.length, 2);
   // Newest first: tick 2 pairs inside the first window (1s); tick 1's start only pairs once
   // the window grows — 4s, from its start at ts 1000 to its end at ts 5000.
-  assert.match(lines[0]!, /#2\s+changed\s+1s\s+work 2/);
-  assert.match(lines[1]!, /#1\s+changed\s+4s\s+100 tok · \$0\.01\s+work/);
+  assert.match(lines[0]!, /#2\s+merged\s+1s\s+work 2/);
+  assert.match(lines[1]!, /#1\s+merged\s+4s\s+100 tok · \$0\.01\s+work/);
 });
 
-test("history prints one row per completed tick, newest first", async () => {
+test("history prints one row per completed run, newest first", async () => {
   const repo = await seededHistoryRepo();
   const r = await cli(repo, "history");
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 3);
   assert.match(lines[0]!, /bugfix\s+#9\s+error\s+—\s+pi unreachable/);
-  assert.match(lines[1]!, /clean\s+#3\s+no_change/);
-  assert.match(lines[2]!, new RegExp(`${expectedTimestamp(1787222695956)}.*feature\\s+#7\\s+changed\\s+4s\\s+2400 tok · \\$0\\.02\\s+added a widget`));
+  assert.match(lines[1]!, /clean\s+#3\s+no change/);
+  assert.match(lines[2]!, new RegExp(`${expectedTimestamp(1787222695956)}.*feature\\s+#7\\s+merged\\s+4s\\s+2400 tok · \\$0\\.02\\s+added a widget`));
 });
 
 test("history --role restricts rows to that loop, including user-defined ids", async () => {
@@ -88,7 +88,7 @@ test("history --role restricts rows to that loop, including user-defined ids", a
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 1);
-  assert.match(lines[0]!, /feature\s+#7\s+changed/);
+  assert.match(lines[0]!, /feature\s+#7\s+merged/);
 
   const bogus = await cli(repo, "history", "--role", "bogus");
   assert.equal(bogus.code, 1);
@@ -99,7 +99,7 @@ test("history --role grows its scan window until it reaches the role's ticks", a
   // The dilution case: the first window (limit*2+50 events) fills with a busy sibling loop's
   // tick_ends, so the filtered rows fall short while older qa ticks sit just past it. The
   // command must re-read with a larger window instead of printing fewer rows (or, at the
-  // extreme, "no ticks yet" for a role that had ticks).
+  // extreme, "no runs yet" for a role that had ticks).
   const repo = makeRepo();
   await initProject(repo, "history dilution");
   const events: HarnessEvent[] = [];
@@ -110,7 +110,7 @@ test("history --role grows its scan window until it reaches the role's ticks", a
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 5);
-  assert.match(lines[0]!, /qa\s+#5\s+changed\s+—\s+qa fix 4/); // no tick_start seeded: — duration
+  assert.match(lines[0]!, /qa\s+#5\s+merged\s+—\s+qa fix 4/); // no tick_start seeded: — duration
 
   // The honest-shortfall case: the log holds fewer qa ticks than asked and the scan reached
   // its start — the growth loop must stop and print what exists, not spin.
@@ -189,9 +189,9 @@ test("history --json prints an empty document on an empty log, never the prose",
 
   const r = await cli(repo, "history", "--json");
   assert.equal(r.code, 0);
-  // A JSON document always, so a parsing caller never sees `no ticks yet` on stdout.
+  // A JSON document always, so a parsing caller never sees `no runs yet` on stdout.
   assert.deepEqual(JSON.parse(r.stdout), { rows: [] });
-  assert.ok(!r.stdout.includes("no ticks yet"));
+  assert.ok(!r.stdout.includes("no runs yet"));
 });
 
 test("history --json combines with --role and -n and still rejects unknown flags", async () => {
@@ -211,7 +211,7 @@ test("history --json combines with --role and -n and still rejects unknown flags
   assert.match(unknown.stderr, /unknown argument: --days/);
 });
 
-test("history rejects unknown flags, prints no ticks yet on an empty log, and has a help stanza", async () => {
+test("history rejects unknown flags, prints no runs yet on an empty log, and has a help stanza", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history edges");
 
@@ -221,7 +221,7 @@ test("history rejects unknown flags, prints no ticks yet on an empty log, and ha
 
   const empty = await cli(repo, "history");
   assert.equal(empty.code, 0);
-  assert.equal(empty.stdout, "no ticks yet\n");
+  assert.equal(empty.stdout, "no runs yet\n");
 
   const help = await cli(repo, "help", "history");
   assert.equal(help.code, 0);

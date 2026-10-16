@@ -786,7 +786,7 @@ test("subscription runs total as notional spend, never in the cost totals", () =
   assert.equal(data.totals.notionalCostUsd, 30, "ten $3 subscription ticks");
   assert.equal(data.totals.costUsd, 0, "against the cap");
   assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 30);
-  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 notional/);
+  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$30\.00 estimated/);
 });
 
 test("collectReport carries notionalByRole per loop id and narrows it for a role scope", () => {
@@ -816,7 +816,7 @@ test("a subscription landing's spend is notional, never in the cost totals", () 
   assert.equal(data.totals.notionalCostUsd, 2);
   assert.equal(data.series[data.series.length - 1]?.costUsd, 0.5);
   assert.equal(data.series[data.series.length - 1]?.notionalCostUsd, 2);
-  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$2\.00 notional/);
+  assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$2\.00 estimated/);
 });
 
 // Role scoping carries a role's OWN notional spend (its tick_end events), so `report --role`

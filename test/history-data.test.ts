@@ -49,12 +49,12 @@ test("tickRowGrepHaystack is the canonical unpadded row line, tick_end-prefixed"
   };
   assert.equal(
     tickRowGrepHaystack(row),
-    "tick_end 2026-10-10 12:00:00  feature  #7  changed  45s  1234 tok · $0.50  added a widget",
+    "tick_end 2026-10-10 12:00:00  feature  #7  merged  45s  1234 tok · $0.50  added a widget feature changed",
   );
   // A row whose tick_end lost its start keeps the em dash the renderer shows — not a
   // fabricated duration; the trailing empty cells trim away exactly as renderRow's trimEnd does.
   const unpaired: TickRow = { ...row, durationMs: null, usage: "", detail: "" };
-  assert.equal(tickRowGrepHaystack(unpaired), "tick_end 2026-10-10 12:00:00  feature  #7  changed  —");
+  assert.equal(tickRowGrepHaystack(unpaired), "tick_end 2026-10-10 12:00:00  feature  #7  merged  — feature changed");
 });
 
 test("a corrupt event's loop renders as ? like the reports", () => {

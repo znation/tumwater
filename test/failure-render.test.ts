@@ -73,7 +73,7 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
   );
 });
 
-test("a main_red tick's cause is clustered with the tick errors, not left a bare count", () => {
+test("a main_red tick's cause is clustered with the run errors, not left a bare count", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0), loop: "organize", type: "tick_end", result: "main_red",
@@ -154,7 +154,7 @@ test("review rejections cluster on (role, reasons[0]), not role alone", () => {
   assert.equal(data.rejections.clusters.length, 3);
 });
 
-test("tick errors cluster only on error-result ticks; landing review failures get their own section", () => {
+test("run errors cluster only on error-result ticks; landing review failures get their own section", () => {
   const root = tmpdir();
   writeEvents(root, [
     // A tick that did NOT end as an error but carries a stale `lastError` — the lander wrote the
@@ -519,13 +519,13 @@ test("the digest replays harness decisions so a wrong response is visible", () =
     { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" },
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  assert.match(md, /## Fleet state changes/);
+  assert.match(md, /## Team state changes/);
   // Past the 72-char cap the line is cut on a word boundary with a remainder marker
   // (BUGS.md 2026-10-01), so the cut model name can never read as complete.
-  assert.match(md, /budget fallback — \$10\.00 of \$10\.00 daily cost reached; on … \(\+26 chars\)/);
+  assert.match(md, /over-cap model — \$10\.00 of \$10\.00 daily cost reached; roles continue on … \(\+26 chars\)/);
   assert.match(md, /team paused/);
   assert.ok(
-    md.indexOf("## Fleet state changes") < md.indexOf("## Outcome by role"),
+    md.indexOf("## Team state changes") < md.indexOf("## Outcome by role"),
     "the causal frame precedes the counts",
   );
 });
@@ -542,8 +542,8 @@ test("the digest replays a failure-caused role pause and a model fallback", () =
     { ts: at(0, 14), loop: "feature", type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" },
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  const section = md.slice(md.indexOf("## Fleet state changes"), md.indexOf("## Outcome by role"));
-  assert.match(section, /role docs paused — 10 ticks failed in a row/);
+  const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
+  assert.match(section, /role docs paused — 10 runs failed in a row/);
   assert.match(section, /model fallback — groq\/llama-3-free engaged \(rate limit\)/);
   assert.ok(
     section.indexOf("role docs paused") < section.indexOf("model fallback —"),
@@ -555,7 +555,7 @@ test("the digest omits the state changes section when the window held none", () 
   const root = tmpdir();
   writeEvents(root, [{ ts: at(0), loop: "feature", type: "tick_end", result: "changed" }]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  assert.doesNotMatch(md, /## Fleet state changes/);
+  assert.doesNotMatch(md, /## Team state changes/);
 });
 
 test("a state changes section over the newest-6 cap names its remainder instead of truncating silently", () => {
@@ -569,7 +569,7 @@ test("a state changes section over the newest-6 cap names its remainder instead 
   }));
   writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" }, ...events]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  const section = md.slice(md.indexOf("## Fleet state changes"), md.indexOf("## Outcome by role"));
+  const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
   assert.match(section, /\+3 older transitions hidden/);
   assert.match(section, /13:00/, "newest transitions kept");
   assert.match(section, /18:00/, "newest transitions kept");
@@ -595,7 +595,7 @@ test("a landed list over the newest-10 cap names its remainder instead of readin
   }));
   writeEvents(root, merges);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
-  const section = md.slice(md.indexOf("## Landed in the window"));
+  const section = md.slice(md.indexOf("## Merged in the window"));
   assert.equal(section.split("\n").filter((l) => l.startsWith("- ")).length, 10, "the newest ten are itemized");
   assert.match(section, /change 11/, "the newest merge is kept");
   assert.doesNotMatch(section, /change 0\b|change 1\b/, "the two oldest are the ones cut");
@@ -621,12 +621,12 @@ test("each harness state transition renders its own bounded line", () => {
     ],
     [
       { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackDemoted: "omlx/qwen", failures: 3 },
-      "budget paused — 3 ticks failed on fallback omlx/qwen",
+      "budget paused — 3 runs failed on over-cap model omlx/qwen",
     ],
     [
       // The real incident's pair: the whole cause survives the digest's line cap.
       { type: "budget_paused", spentUsd: 10, capUsd: 10, fallbackDemoted: "omlx/Qwen3.8-27B-MLX-oQ4e-mtp", failures: 3 },
-      "budget paused — 3 ticks failed on fallback omlx/Qwen3.8-27B-MLX-oQ4",
+      "budget paused — 3 runs failed on over-cap model omlx/Qwen3.8-27B-MLX-oQ4",
     ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
     [{ type: "fleet_resumed" }, "team resumed — roles run again"],
@@ -645,7 +645,7 @@ test("each harness state transition renders its own bounded line", () => {
       { type: "rate_limit_hold", roles: ["dry", "feature"], holdMs: 240_000, escalation: 2 },
       "429 hold for 4m (relapse 2) — dry, feature",
     ],
-    [{ type: "rate_limit_resumed" }, "429 hold lifted — role loops tick again"],
+    [{ type: "rate_limit_resumed" }, "429 hold lifted — roles run again"],
     [{ type: "max_concurrent_changed", from: 3, to: 5 }, "maxConcurrent 3 → 5"],
     [{ type: "retention_changed", from: 7, to: 14 }, "sessionRetentionDays 7 → 14"],
     [{ type: "config_changed", keys: "not-an-array" }, "config changed"],
@@ -654,7 +654,7 @@ test("each harness state transition renders its own bounded line", () => {
       { type: "restart_pending", head: "a".repeat(40) },
       "restart pending — main aaaaaaaa green; compiling",
     ],
-    [{ type: "restart", to: "b".repeat(40) }, "restarting onto build bbbbbbbb"],
+    [{ type: "restart", to: "b".repeat(40) }, "restarting onto update bbbbbbbb"],
     [
       { type: "restart_refused", to: "b".repeat(40), reason: "not initialized" },
       "restart onto bbbbbbbb refused: not initialized",
@@ -663,13 +663,13 @@ test("each harness state transition renders its own bounded line", () => {
       { type: "restart_blocked", from: "a".repeat(40), to: "b".repeat(40), reason: "rebuild of bbbbbbbb failed" },
       "restart blocked — rebuild of bbbbbbbb fail; staying on build aaaaaa",
     ],
-    [{ type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" }, "fleet down — generation 2 exited 1: not initialized"],
-    [{ type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "fleet down — generation 1 killed by SIGKILL"],
+    [{ type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" }, "tumwater down — restart 2 exited 1: not initialized"],
+    [{ type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "tumwater down — restart 1 killed by SIGKILL"],
     [
       { type: "orchestrator_start", pid: 4321, build: "c".repeat(40) },
-      "orchestrator started (pid 4321, build cccccccc)",
+      "tumwater started (pid 4321, build cccccccc)",
     ],
-    [{ type: "orchestrator_start", pid: 4321 }, "orchestrator started (pid 4321)"],
+    [{ type: "orchestrator_start", pid: 4321 }, "tumwater started (pid 4321)"],
     [{ type: "orchestrator_stop" }, "tumwater stopped"],
   ];
   for (const [ev, expected] of cases) {
@@ -852,8 +852,8 @@ test("the digest reports per-role prompt-token medians and the pre-edit share", 
 
   const md = renderFailureMarkdown(data);
   assert.match(md, /^## Prompt tokens by role$/m);
-  assert.match(md, /feature: median 200 prompt tokens\/tick · 15% before first edit/);
-  assert.match(md, /bugfix: median 50 prompt tokens\/tick · 100% before first edit/);
+  assert.match(md, /feature: median 200 prompt tokens\/run · 15% before first edit/);
+  assert.match(md, /bugfix: median 50 prompt tokens\/run · 100% before first edit/);
 });
 
 test("a non-finite prompt-token reading contributes nothing, not Infinity", () => {
@@ -902,7 +902,7 @@ test("collectFailureReport scopes every section to one base role", () => {
   const fleet = collectFailureReport(root, 1);
   assert.equal(fleet.role, undefined);
   assert.deepEqual(fleet.outcomes.map((o) => o.role).sort(), ["feature", "qa"]);
-  assert.match(renderFailureMarkdown(fleet), /## Fleet state changes/);
+  assert.match(renderFailureMarkdown(fleet), /## Team state changes/);
 
   const scoped = collectFailureReport(root, 1, "qa");
   assert.equal(scoped.role, "qa");
@@ -914,13 +914,13 @@ test("collectFailureReport scopes every section to one base role", () => {
   assert.deepEqual(scoped.rejections.clusters.map((c) => c.roles), [["qa"]]);
   assert.deepEqual(scoped.landed.map((c) => c.commit), ["bbbbbbb"]);
   assert.deepEqual(scoped.stateChanges.map((s) => s.description), [
-    "role qa paused — 3 ticks failed in a row",
+    "role qa paused — 3 runs failed in a row",
   ]);
 
   const md = renderFailureMarkdown(scoped);
   assert.match(md, /^role: qa$/m);
   assert.match(md, /^## State changes$/m);
-  assert.ok(!md.includes("## Fleet state changes"), "the scoped heading does not claim fleet scope");
+  assert.ok(!md.includes("## Team state changes"), "the scoped heading does not claim fleet scope");
   assert.match(md, /qa boom/);
   assert.match(md, /qa warn/);
   assert.match(md, /role qa paused/);
@@ -986,9 +986,35 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
   const md = renderFailureMarkdown(data);
   assert.match(
     md,
-    /1\.0 h · \$0\.50 — 1 tick: refused on feature — blocks entry X: it violates a principle/,
+    /1\.0 h · \$0\.50 — 1 run: refused on feature — blocks entry X: it violates a principle/,
     `the refused cause names its summary: ${md}`,
   );
-  assert.match(md, /0\.5 h · \$0\.20 — 1 tick: refused on bugfix/, "a summary-less refusal renders the bare form");
+  assert.match(md, /0\.5 h · \$0\.20 — 1 run: refused on bugfix/, "a summary-less refusal renders the bare form");
   assert.ok(!md.includes("no_change on feature"), "the refused tick is not rendered as no_change");
+});
+
+test("the digest's table headers and section titles use plain terms, not raw result codes", () => {
+  const root = tmpdir();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "no_change" },
+    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+  ]);
+  const md = renderFailureMarkdown(collectFailureReport(root, 1));
+  const section = (title: string): string => {
+    const start = md.indexOf(`## ${title}`);
+    assert.notEqual(start, -1, `missing section ${title}`);
+    const rest = md.slice(start + 3);
+    const next = rest.indexOf("\n## ");
+    return next === -1 ? rest : rest.slice(0, next);
+  };
+  const outcome = section("Outcome by role");
+  assert.doesNotMatch(outcome, /no_change|\bchanged\b/);
+  assert.match(outcome, /no change/);
+  const spend = section("Time and spend by outcome");
+  assert.match(spend, /\| role \| merged \| no change \| error \|/);
+  assert.doesNotMatch(spend, /landed|no_change|error-class/);
+  const deltas = section("Deltas vs the preceding 1 day");
+  assert.match(deltas, /\| role \| runs \| error rate \| stalls \| rejections \|/);
+  assert.match(md, /## Merged in the window/);
 });

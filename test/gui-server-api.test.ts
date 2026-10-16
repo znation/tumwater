@@ -290,13 +290,13 @@ test("gui /api/tick serves one tick's detail over the live route, 404 when the s
     assert.equal(d.tick, 9);
     assert.equal(d.durationMs, 46_000);
     assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "tick_end"]);
-    assert.match(d.text, /^clean tick #9 — changed · 46s/);
+    assert.match(d.text, /^clean run #9 — merged · 46s/);
 
     // A tick the scan does not hold → 404 (never a crash); a bad role and a non-count tick →
     // the shared 400s.
     const missing = await fetch(base + "/api/tick?role=clean&tick=42");
     assert.equal(missing.status, 404);
-    assert.match(((await missing.json()) as { error: string }).error, /no tick #42 for clean/);
+    assert.match(((await missing.json()) as { error: string }).error, /no run #42 for clean/);
     assert.equal((await fetch(base + "/api/tick?role=nope&tick=9")).status, 400);
     assert.equal((await fetch(base + "/api/tick?role=clean&tick=0")).status, 400);
     assert.equal((await fetch(base + "/api/tick")).status, 400, "no role and no tick → 400");

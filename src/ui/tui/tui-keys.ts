@@ -165,9 +165,9 @@ function historyPaneCache(
     // empty read returns "" too (the CLI's empty-state wording does not name --role), so the
     // pane never grows a lone `role:` header.
     if (resultClass !== null && afterGrep > 0) {
-      return header + "\nno ticks with result \"" + resultLabel + "\"";
+      return header + "\nno runs with result \"" + resultLabel + "\"";
     }
-    if (grep !== null) return header + "\nno ticks matching \"" + grep + "\"";
+    if (grep !== null) return header + "\nno runs matching \"" + grep + "\"";
     return "";
   }
   return (header ? header + "\n" : "") + body + (sinceMs !== null && !covered ? "\n" + SPARSE_WINDOW_NOTE : "");
@@ -698,7 +698,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // historyRole, else the fleet's. A log holding none flashes and leaves the rows.
           const row = readTickRows(root, 1, historyRole)[0];
           if (row === undefined) {
-            flashMessage("no completed ticks to inspect");
+            flashMessage("no completed runs to inspect");
           } else {
             // readTickDetail reads the log and renderTickDetail renders it; a throw (an
             // injected seam or an unexpected failure) flashes the reason and leaves the rows

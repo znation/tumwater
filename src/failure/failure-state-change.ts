@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Wording half of the failure digest's Fleet state changes section: which transition event types
  * the digest replays and the bounded one-liner describing each. Split out of failure-data.ts (the
  * same seam build/build-check-events.ts split from build/build-check.ts) so the per-event-type
@@ -89,7 +90,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       // A breaker demotion (BUGS.md 2026-09-20) leads with its cause instead of the spend: the
       // spend line is the budget_fallback just before it, and the line cap would cut the pair.
       if (ev.fallbackDemoted) {
-        text = `budget paused — ${field(ev.failures ?? "?")} ticks failed on fallback ${field(ev.fallbackDemoted)}`;
+        text = `budget paused — ${field(ev.failures ?? "?")} runs failed on over-cap model ${field(ev.fallbackDemoted)}`;
         break;
       }
       const refused = ev.fallbackRejected
@@ -99,7 +100,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "budget_fallback":
-      text = `budget fallback — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached; on ${providerModel(ev)} (cost n/a)`;
+      text = `over-cap model — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached; roles continue on ${providerModel(ev)} (cost n/a)`;
       break;
     case "budget_resumed":
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
@@ -119,10 +120,10 @@ export function describeStateChange(ev: HarnessEvent): string {
     case "role_streak_paused":
       // The error-streak breaker auto-paused the role; the digest names the depth so the
       // operator can connect the pause to the failing ticks the clusters above show.
-      text = `role ${field(ev.role ?? "?")} paused — ${field(ev.streak ?? "?")} ticks failed in a row`;
+      text = `role ${field(ev.role ?? "?")} paused — ${field(ev.streak ?? "?")} runs failed in a row`;
       break;
     case "role_cap_paused":
-      // The role reached its own daily spend cap and stopped starting ticks.
+      // The role reached its own daily spend cap and stopped starting runs.
       text = `role ${field(ev.role ?? "?")} paused — ${budgetPhrase(ev.spentUsd, ev.capUsd)} of its daily cap spent`;
       break;
     case "role_cap_resumed":
@@ -153,8 +154,8 @@ export function describeStateChange(ev: HarnessEvent): string {
       // carries the ended hold's kind, so a backend hold's lift names itself.
       text =
         ev.kind && ev.kind !== "rate-limit"
-          ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — role loops tick again`
-          : "429 hold lifted — role loops tick again";
+          ? `backend hold lifted (${backendKindPhrase(ev.kind)}) — roles run again`
+          : "429 hold lifted — roles run again";
       break;
     case "max_concurrent_changed":
       text = `maxConcurrent ${field(ev.from)} → ${field(ev.to)}`;
@@ -182,13 +183,13 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "build_stale":
-      text = `build ${shortSha(ev.build)} stale — main ${shortSha(ev.head)} ${plural(finiteNumber(ev.aheadCommits, 0), "commit")} ahead`;
+      text = `update available (${plural(finiteNumber(ev.aheadCommits, 0), "commit")} behind) — restarts when idle`;
       break;
     case "restart_pending":
       text = `restart pending — main ${shortSha(ev.head)} green; compiling`;
       break;
     case "restart":
-      text = `restarting onto build ${shortSha(ev.to)}`;
+      text = `restarting onto update ${shortSha(ev.to)}`;
       break;
     case "restart_refused":
       text = `restart onto ${shortSha(ev.to)} refused: ${field(ev.reason)}`;
@@ -200,13 +201,13 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `deferred — ${deferredReasonText(ev)}`;
       break;
     case "orchestrator_start":
-      text = `orchestrator started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
+      text = `tumwater started (pid ${field(ev.pid)}${ev.build ? `, build ${shortSha(ev.build)}` : ""})`;
       break;
     case "orchestrator_stop":
       text = ORCHESTRATOR_STOPPED;
       break;
     case "supervisor_exit":
-      text = `fleet down — generation ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
+      text = `tumwater down — restart ${field(ev.generation)} ${ev.signal ? `killed by ${field(ev.signal)}` : `exited ${field(ev.code)}`}${ev.reason ? `: ${field(ev.reason)}` : ""}`;
       break;
     default:
       text = ev.type;

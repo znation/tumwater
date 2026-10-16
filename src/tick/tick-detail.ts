@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Rendering + command half of `tumwater tick <role> <n>`: one completed tick's full event
  * block printed as a short summary header followed by the tick's events through the shared
  * formatEvent. The payload itself is collected by tick-detail-data.ts (the collector-in-core
@@ -10,6 +11,8 @@ import { knownRoleIdsCached } from "../config/config.js";
 import { readTickRows } from "../history/history-data.js";
 import { readTickDetail, type TickDetail } from "./tick-detail-data.js";
 import { formatEvent } from "../events/event-format.js";
+import { eventTypeLabel } from "../events/event-labels.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { unknownRoleMessage } from "../roles/roles.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
@@ -34,7 +37,7 @@ function tickNotFoundPhrase(role: string, what: string): string {
  * can act on: the tick number, the loop, and that the scanned window (not the world) is what
  * came up empty. */
 export function tickNotFoundMessage(role: string, tick: number): string {
-  return tickNotFoundPhrase(role, `tick #${tick}`);
+  return tickNotFoundPhrase(role, `run #${tick}`);
 }
 
 /** The not-found wording for `tumwater tick <role> --last`, sibling of tickNotFoundMessage —
@@ -42,14 +45,14 @@ export function tickNotFoundMessage(role: string, tick: number): string {
  * completed tick, not a number the user supplied. Module-local: the GUI's /api/tick 404 only
  * ever serves the numbered form, so this wording has no second consumer. */
 function tickNotFoundLastMessage(role: string): string {
-  return tickNotFoundPhrase(role, "completed tick");
+  return tickNotFoundPhrase(role, "completed run");
 }
 
 /** The commit a tick pinned: the `commit` of the first `land_queued`/`landed` event in its
  * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
 function tickCommitSha(d: TickDetail): string | null {
   const queued = d.events.find(
-    (e) => (e.type === "land_queued" || e.type === "landed") && typeof e.commit === "string" && e.commit !== "",
+    (e) => (e.type === "land_queued" || e.type === "landed") && typeof e.commit === "string" && e.commit !== "", // vocabulary-ok: event type code
   );
   return queued === undefined ? null : (queued.commit as string);
 }
@@ -58,7 +61,7 @@ function tickCommitSha(d: TickDetail): string | null {
  * commit the tick pinned: a landing that rebased gives main a different sha with the same
  * changes, so this describes what the tick changed. */
 async function tickCommitStat(root: string, sha: string | null): Promise<string> {
-  if (sha === null) return "(no commit: this tick queued no landing)";
+  if (sha === null) return "(no commit: this run sent nothing to merge)";
   const out = await gitTry(root, "show", "--stat", "--format=", sha);
   if (out === null) return `(commit ${shortSha(sha)} is not in this repository)`;
   return out.trimEnd();
@@ -79,11 +82,11 @@ export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
 export function renderTickDetail(d: TickDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");
-  else summary.push(d.result || "?");
+  else summary.push(d.result ? eventTypeLabel(d.result) : "?");
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
   const sha = tickCommitSha(d);
-  let header = `${d.role} tick #${d.tick} — ${summary.join(" · ")}`;
+  let header = `${roleLabel(d.role)} run #${d.tick} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   const lines = [header, ...d.events.map(formatEvent)];
   if (d.landing !== null) lines.push(formatEvent(d.landing));

@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
 import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
@@ -31,7 +32,7 @@ export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
  * speak. `--grep` keeps rows whose rendered line matches, and `--result` narrows to one outcome
  * class (changes/none/problems, the dashboard History filter's buckets); both compose with
  * --role, -n, and --since. Read-only: stdout only, no state file created — a missing or empty
- * event log prints `no ticks yet` and exits 0. */
+ * event log prints `no runs yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
   // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
@@ -72,7 +73,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   if (grepPattern !== null) rows = tickRowsMatchingGrep(rows, grepPattern);
   // The set --grep admitted, saved so the empty-state wording blames the filter that actually
   // emptied it: if the result filter below removes rows grep matched, naming the pattern would
-  // be false (`no ticks matching "widget"` when feature #7 does match). The GUI draws the same
+  // be false (`no runs matching "widget"` when feature #7 does match). The GUI draws the same
   // line between a search and its outcome filter.
   const afterGrep = rows.length;
   // `--result <class>` narrows to one outcome bucket, reading the same canonical historyClass
@@ -92,7 +93,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and
   // report --json: the same rows the table prints, each with ts/tokens/costUsd kept raw. A
-  // JSON document even when the log is empty ({"rows":[]} — never the prose `no ticks yet`,
+  // JSON document even when the log is empty ({"rows":[]} — never the prose `no runs yet`,
   // the report --json precedent: the flag's output must be parseable in every exit-0 case).
   const summary = rest.includes("--summary") && rows.length > 0;
   if (rest.includes("--json")) {
@@ -100,8 +101,8 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     return;
   }
   if (rows.length === 0) {
-    // A grep that matched nothing must not borrow the empty-log prose: `no ticks yet` and
-    // `no ticks in 2h` are statements about the LOG and the WINDOW, and both are false when
+    // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
+    // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
     // rows were scanned and filtered out — the operator would read a quiet fleet where the
     // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
     // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
@@ -113,12 +114,12 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     // line. A grep that admitted nothing keeps its own wording regardless of --result.
     say(
       resultClass !== null && afterGrep > 0
-        ? `no ticks with result "${resultClass}"`
+        ? `no runs with result "${resultClass}"`
         : grepPattern !== null
-          ? `no ticks matching "${grepPattern}"`
+          ? `no runs matching "${grepPattern}"`
           : sinceMs === null
-            ? "no ticks yet"
-            : `no ticks in ${durationLabel(sinceMs)}`,
+            ? "no runs yet"
+            : `no runs in ${durationLabel(sinceMs)}`,
     );
     return;
   }

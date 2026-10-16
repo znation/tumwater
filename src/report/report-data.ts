@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Collection half of the usage report: read the harness's event log and backlog history over
  * a window of local calendar days and distill it into a `ReportData` — per-day tick/token/
  * commit/cost counts plus features-done and bugs-fixed tallies from PLANS.md and BUGS.md.
@@ -143,7 +144,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     const tier = commitTier(role);
     if (tier === "work") target.workCommits++;
     else if (tier === "maintenance") target.maintenanceCommits++;
-  } else if (ev.type === "landed" || ev.type === "land_failed") {
+  } else if (ev.type === "landed" || ev.type === "land_failed") { // vocabulary-ok: event type code
     target.landingRuns = (target.landingRuns ?? 0) + 1;
     if (ev.type === "land_failed") target.landingFailed = (target.landingFailed ?? 0) + 1;
     // Attribute the outcome to the authoring role (writeLandingOutcome logs loop: entry.role)
@@ -151,7 +152,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // aggregates into `feature`. A parallel tally beside the fleet run counts, never
     // subtracted from landingRuns/landingFailed.
     const role = baseRoleOf(eventRole(ev));
-    if (ev.type === "landed") addTo(target.landedByRole, role, 1);
+    if (ev.type === "landed") addTo(target.landedByRole, role, 1); // vocabulary-ok: event type code
     else addTo(target.landingFailedByRole, role, 1);
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.landingTokens = (target.landingTokens ?? 0) + tokens;

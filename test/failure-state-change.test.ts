@@ -64,12 +64,12 @@ test("budget_paused leads with the breaker demotion cause when a fallback was de
     describeStateChange(
       ev({ type: "budget_paused", fallbackDemoted: "groq/llama-3-free", failures: 3, spentUsd: 5, capUsd: 5 }),
     ),
-    "budget paused — 3 ticks failed on fallback groq/llama-3-free",
+    "budget paused — 3 runs failed on over-cap model groq/llama-3-free",
   );
   // A hand-edited or future event without the count still renders bounded, never crashes.
   assert.equal(
     describeStateChange(ev({ type: "budget_paused", fallbackDemoted: "groq/llama-3-free" })),
-    "budget paused — ? ticks failed on fallback groq/llama-3-free",
+    "budget paused — ? runs failed on over-cap model groq/llama-3-free",
   );
 });
 
@@ -98,12 +98,12 @@ test("budget_fallback and budget_resumed phrase the spend around the gate move",
     ),
     // Past the 72-char cap the cut falls on the last word boundary with a remainder marker,
     // not mid-token (BUGS.md 2026-10-01).
-    "budget fallback — $5.00 of $5.00 daily cost reached; on … (+29 chars)",
+    "over-cap model — $5.00 of $5.00 daily cost reached; roles continue on … (+29 chars)",
   );
   // Without a resolved pair the line still renders (pi default), bounded the same way.
   assert.equal(
     describeStateChange(ev({ type: "budget_fallback", spentUsd: 5, capUsd: 5 })),
-    "budget fallback — $5.00 of $5.00 daily cost reached; on pi default/pi … (+19 chars)",
+    "over-cap model — $5.00 of $5.00 daily cost reached; roles continue on … (+33 chars)",
   );
   assert.equal(
     describeStateChange(ev({ type: "budget_resumed", spentUsd: 12.5, capUsd: 20 })),
@@ -128,11 +128,11 @@ test("the error-streak, role-cap and model-fallback transitions render their rea
   // ticks; without a count the line still renders (?, like the feed's textOr fallback).
   assert.equal(
     describeStateChange(ev({ type: "role_streak_paused", role: "docs", streak: 10 })),
-    "role docs paused — 10 ticks failed in a row",
+    "role docs paused — 10 runs failed in a row",
   );
   assert.equal(
     describeStateChange(ev({ type: "role_streak_paused", role: "docs" })),
-    "role docs paused — ? ticks failed in a row",
+    "role docs paused — ? runs failed in a row",
   );
   // The role's own daily cap: spend and cap through the shared budgetPhrase.
   assert.equal(
@@ -187,11 +187,11 @@ test("rate_limit_hold renders the hold duration, relapse, and at most four roles
   // hold's lift names itself; a kindless line keeps the historical 429 wording.
   assert.equal(
     describeStateChange(ev({ type: "rate_limit_resumed", kind: "server" })),
-    "backend hold lifted (server error) — role loops tick again",
+    "backend hold lifted (server error) — roles run again",
   );
   assert.equal(
     describeStateChange(ev({ type: "rate_limit_resumed" })),
-    "429 hold lifted — role loops tick again",
+    "429 hold lifted — roles run again",
   );
 });
 
@@ -209,18 +209,18 @@ test("live-edit events name the knob and both values", () => {
 test("build_stale and the restart quartet render shas and the refusal reason", () => {
   assert.equal(
     describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: 3 })),
-    "build abcdef12 stale — main 12345678 3 commits ahead",
+    "update available (3 commits behind) — restarts when idle",
   );
   // A torn or hand-edited log can carry a non-numeric aheadCommits; the digest must not render
   // "NaN commits" (event-format.ts's build_stale line has the same guard).
   const corrupt = describeStateChange(ev({ type: "build_stale", build: "abcdef1234567890", head: "1234567890abcdef", aheadCommits: "twelve" }));
-  assert.equal(corrupt, "build abcdef12 stale — main 12345678 0 commits ahead");
+  assert.equal(corrupt, "update available (0 commits behind) — restarts when idle");
   assert.doesNotMatch(corrupt, /NaN/);
   assert.equal(
     describeStateChange(ev({ type: "restart_pending", head: "1234567890abcdef" })),
     "restart pending — main 12345678 green; compiling",
   );
-  assert.equal(describeStateChange(ev({ type: "restart", to: "abcdef1234567890" })), "restarting onto build abcdef12");
+  assert.equal(describeStateChange(ev({ type: "restart", to: "abcdef1234567890" })), "restarting onto update abcdef12");
   assert.equal(
     describeStateChange(ev({ type: "restart_refused", to: "abcdef1234567890", reason: "startup gate failed" })),
     "restart onto abcdef12 refused: startup gate failed",
@@ -242,23 +242,23 @@ test("tick_deferred, orchestrator lifecycle, and supervisor_exit render their pa
   );
   assert.equal(
     describeStateChange(ev({ type: "orchestrator_start", pid: 4242, build: "abcdef1234567890" })),
-    "orchestrator started (pid 4242, build abcdef12)",
+    "tumwater started (pid 4242, build abcdef12)",
   );
-  assert.equal(describeStateChange(ev({ type: "orchestrator_start", pid: 4242 })), "orchestrator started (pid 4242)");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_start", pid: 4242 })), "tumwater started (pid 4242)");
   assert.equal(describeStateChange(ev({ type: "orchestrator_stop" })), "tumwater stopped");
   assert.equal(
     describeStateChange(ev({ type: "supervisor_exit", generation: 7, code: 1 })),
-    "fleet down — generation 7 exited 1",
+    "tumwater down — restart 7 exited 1",
   );
   assert.equal(
     describeStateChange(ev({ type: "supervisor_exit", generation: 7, signal: "SIGKILL" })),
-    "fleet down — generation 7 killed by SIGKILL",
+    "tumwater down — restart 7 killed by SIGKILL",
   );
   assert.equal(
     describeStateChange(
       ev({ type: "supervisor_exit", generation: 7, code: 1, reason: "startup gate failed" }),
     ),
-    "fleet down — generation 7 exited 1: startup gate failed",
+    "tumwater down — restart 7 exited 1: startup gate failed",
   );
 });
 

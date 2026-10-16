@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The usage report's Markdown render: turn a collected `ReportData` (src/report/report-data.ts)
  * into the bounded Markdown the CLI prints and the TUI usage pane reuses (pure function of the
  * data — no I/O, no clock reads — so the bounds argued at collection hold here unchanged). The
@@ -47,7 +48,7 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
-/** Push the `Cost by provider` and `Notional by provider` lines of the per-provider spend
+/** Push the `Cost by provider` and `Estimated by provider` lines of the per-provider spend
  * breakdown (plans: per-provider spend), from the caller's already-ranked real- and notional-
  * spend pairs. Role scoping is the caller's `role === undefined` gate — this helper only
  * renders. Zero-means-absent: a provider with no spend prints no line, and both lanes format
@@ -61,7 +62,7 @@ function pushProviderCostLines(
   const providers = rankCost().filter(([, c]) => c > 0);
   if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
   const notionalProviders = rankNotional().filter(([, c]) => c > 0);
-  if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+  if (notionalProviders.length > 0) lines.push(rankedRoleLine("Estimated by provider", notionalProviders, usd));
 }
 
 /** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
@@ -69,7 +70,7 @@ function pushProviderCostLines(
  * cells only one shape has: the day report's features/bugs counts (a sub-day window cannot
  * subdivide their day-granular dates, so the --since render passes nothing). */
 function totalsLine(t: ReportTotals, tail = ""): string {
-  return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} ticks · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
+  return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.ticks} runs · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
 }
 
 /** The "of which landing runs …" line under a totals line — one home for the landing share's
@@ -79,7 +80,7 @@ function totalsLine(t: ReportTotals, tail = ""): string {
  * resolution work). */
 function landingShareLine(t: ReportTotals): string {
   const failed = (t.landingFailed ?? 0) > 0 ? ` (${t.landingFailed} failed)` : "";
-  return `of which landing runs: ${t.landingRuns} runs${failed} · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
+  return `of which merge runs: ${t.landingRuns} runs${failed} · ${compactTokens(t.landingTokens)} tokens · ${usd(t.landingCostUsd)} (reviewer + conflict resolution)`;
 }
 
 /** The notional-spend line (plans/agent-backends.md part 6a): the API-equivalent cost of
@@ -88,7 +89,7 @@ function landingShareLine(t: ReportTotals): string {
  * when a subscription run actually folded in (zero means absent, like the landing line), so
  * an API-only fleet's report is unchanged. */
 function notionalLine(t: ReportTotals): string {
-  return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} notional`;
+  return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} estimated`;
 }
 
 /** The scope note a `--role` report prints: landing runs belong to the landing slot and the
@@ -96,7 +97,7 @@ function notionalLine(t: ReportTotals): string {
  * be scoped to a role and both are omitted from the scoped totals. Shared by the day and
  * --since renders so the two say the same thing. */
 const ROLE_SCOPE_NOTE =
-  "role scope: landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted";
+  "role scope: merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted";
 
 /** The summary block both report shapes print, in the same order: the totals line (carrying
  * the caller's extra `tail` cells), the landing-share line and the notional line when each is
@@ -127,7 +128,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // line below states the omission instead of showing a day-rounded number.
   pushReportSummary(lines, t, "", data.role !== undefined);
   lines.push("");
-  lines.push(rankedRoleLine("Ticks by role", rankedRoleMap(data.ticksByRole), String));
+  lines.push(rankedRoleLine("Runs by role", rankedRoleMap(data.ticksByRole), String));
   // Same breakdown for token spend: ranked by tokens desc then name asc, zero-token roles
   // omitted — an all-zero window renders "-" like the other lines. Output tokens are the
   // resource the budget charges, so this is the line an operator reads to find which role's
@@ -150,7 +151,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // digest's OUTCOME_CLASS — the ticks that burned agent time and landed nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
-  lines.push(rankedRoleLine("Failed ticks by role", rankedRoleMap(data.failedTicksByRole).filter(([, n]) => n > 0), String));
+  lines.push(rankedRoleLine("Failed runs by role", rankedRoleMap(data.failedTicksByRole).filter(([, n]) => n > 0), String));
   // The landed-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
@@ -160,15 +161,15 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // attribution would contradict it. Zero-means-absent: the failures line prints only when
   // some role has one; a landing-free window renders `-` like the other lines.
   if (data.role === undefined) {
-    lines.push(rankedRoleLine("Landed by role", rankedRoleMap(data.landedByRole), String));
+    lines.push(rankedRoleLine("Merged by role", rankedRoleMap(data.landedByRole), String));
     const landingFailures = rankedRoleMap(data.landingFailedByRole).filter(([, n]) => n > 0);
     if (landingFailures.length > 0)
-      lines.push(rankedRoleLine("Landing failures by role", landingFailures, String));
+      lines.push(rankedRoleLine("Merge failures by role", landingFailures, String));
   }
   // Subscription spend is notional: its own line, only when the window has any — the same
-  // conditional/filtered `usd` form the day render's "Notional by role" uses.
+  // conditional/filtered `usd` form the day render's "Estimated by role" uses.
   if (data.notionalByRole !== undefined) {
-    lines.push(rankedRoleLine("Notional by role", rankedRoleMap(data.notionalByRole).filter(([, c]) => c > 0), usd));
+    lines.push(rankedRoleLine("Estimated by role", rankedRoleMap(data.notionalByRole).filter(([, c]) => c > 0), usd));
   }
   lines.push("");
   // Exactly one final line, chosen by the collector's coverage proof: either a hedged note
@@ -242,7 +243,7 @@ export function renderReportMarkdown(data: ReportData): string {
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);
   lines.push(
     ...markdownTable(
-      ["day", "tokens out", "ticks", "commits", "cost"],
+      ["day", "tokens out", "runs", "commits", "cost"],
       data.series.map((d) => {
         const ticks = Object.values(d.ticksByRole).reduce((a, b) => a + b, 0);
         const w = maxTokens > 0 ? barWidth(d.tokensOut, maxTokens) : 0;
@@ -253,7 +254,7 @@ export function renderReportMarkdown(data: ReportData): string {
     ),
   );
   lines.push("");
-  lines.push(rankedRoleLine("Ticks by role", rankedRoleTotals(data.series, (d) => d.ticksByRole), String));
+  lines.push(rankedRoleLine("Runs by role", rankedRoleTotals(data.series, (d) => d.ticksByRole), String));
   // The same breakdown for output tokens (the resource the budget charges): window totals per
   // role from tokensByRole, ranked like the ticks line. Zero-token roles are omitted; an
   // all-zero window renders "-" like the ticks line.
@@ -284,7 +285,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // digest's OUTCOME_CLASS — ticks that burned agent time and landed nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.
-  lines.push(rankedRoleLine("Failed ticks by role", rankedRoleTotals(data.series, (d) => d.failedTicksByRole ?? {}).filter(([, n]) => n > 0), String));
+  lines.push(rankedRoleLine("Failed runs by role", rankedRoleTotals(data.series, (d) => d.failedTicksByRole ?? {}).filter(([, n]) => n > 0), String));
   // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
@@ -293,21 +294,21 @@ export function renderReportMarkdown(data: ReportData): string {
   // land_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
   // shutdown abort). Gated to the fleet report — a role-scoped report omits landing runs
   // (they are the landing slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
-  // contradict that stance. Zero-means-absent: a window with landings renders Landed by role;
+  // contradict that stance. Zero-means-absent: a window with landings renders Merged by role;
   // the failures line prints only when some role actually has one.
   if (data.role === undefined) {
     const landed = rankedRoleTotals(data.series, (d) => d.landedByRole ?? {});
-    lines.push(rankedRoleLine("Landed by role", landed, String));
+    lines.push(rankedRoleLine("Merged by role", landed, String));
     const landingFailures = rankedRoleTotals(data.series, (d) => d.landingFailedByRole ?? {}).filter(([, n]) => n > 0);
     if (landingFailures.length > 0)
-      lines.push(rankedRoleLine("Landing failures by role", landingFailures, String));
+      lines.push(rankedRoleLine("Merge failures by role", landingFailures, String));
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
   if ((t.notionalCostUsd ?? 0) > 0) {
     const notionalOf = (d: ReportDay): Record<string, number> => d.notionalByRole ?? {};
-    lines.push(rankedRoleLine("Notional by role", rankedRoleTotals(data.series, notionalOf).filter(([, c]) => c > 0), usd));
-    lines.push(costPerCommitLine("Notional per commit", costPerCommitPairs(data.series, notionalOf)));
+    lines.push(rankedRoleLine("Estimated by role", rankedRoleTotals(data.series, notionalOf).filter(([, c]) => c > 0), usd));
+    lines.push(costPerCommitLine("Estimated per commit", costPerCommitPairs(data.series, notionalOf)));
   }
   // Commits per backlog item is day-granular backlog data (features done + bugs fixed), so it
   // belongs only to the day report; zero items means the denominator is absent, not NaN.

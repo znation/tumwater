@@ -21,63 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 5/19: Report and failure digest and history and the run drill-down say runs and merges (planned 2026-10-16 by user; requires part 1/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/report/ + src/failure/ + src/history/ + src/tick/tick-detail.ts + src/tick/tick-detail-data.ts + tests)
-
-**Goal.** These views read in runs, merges, roles and the team, and their outcome columns show labels:
-- `tumwater report` and `tumwater failures`.
-- `tumwater history` and its drill-down, `tumwater history <role> <n>`.
-- The TUI and dashboard views that reuse their markdown.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts):
-
-  | Today | New |
-  | --- | --- |
-  | "Ticks by role" | "Runs by role" |
-  | "Failed ticks by role" | "Failed runs by role" |
-  | "Landed by role" | "Merged by role" |
-  | "Landing failures by role" | "Merge failures by role" |
-  | "of which landing runs" | "of which merge runs" |
-  | "Notional by role", "by provider", "per commit" | "Estimated by role", "by provider", "per commit" |
-  | "N ticks" | "N runs" |
-  | "fleet-wide" | "team-wide" |
-
-- src/report/report-data.ts has only machine strings: its fold keys and the `re-landed|fixed|closed|resolved` regex that parses BUGS.md history. Mark them.
-- `renderFailureMarkdown` (src/failure/failure-render.ts):
-  - "## Fleet state changes" → "## Team state changes", and "## Landed in the window" → "## Merged in the window".
-  - "tick errors" → "run errors", "quiet kills" → "stalls", "per tick" → "per run", and "_no ticks in either window_" → "_no runs in either window_".
-- src/failure/time-spend.ts:
-  - The `OUTCOME_CLASS` values stay, because the code series owns that union. Render them as "merged", "no change" and "error" where the table is drawn.
-  - "the harness's own timeout" → "tumwater's own timeout".
-- `describeStateChange` (src/failure/failure-state-change.ts): reuse part 1/19's wording for the same events: "over-cap model", the waiting forms, "roles run again", "update available", "restarting onto update …" and "tumwater down — restart N". The `STATE_CHANGE_TYPES` codes stay.
-- History:
-  - `renderRow` and `renderSummary` (src/history/history-render.ts): headers `loop` → `role` and `ticks` → `runs`, with cells through `roleLabel` and `eventTypeLabel`.
-  - `cmdHistory`'s empty-result messages (src/history/history.ts): "no ticks …" → "no runs …".
-  - The column keys in history-data.ts (`pad("loop", …)`) stay, marked.
-- Drill-down, in `renderTickDetail` and `tickNotFoundMessage` (src/tick/tick-detail.ts):
-  - "tick #N" → "run #N", "completed tick" → "completed run" and "landed" → "merged".
-  - "(no commit: this tick queued no landing)" → "(no commit: this run sent nothing to merge)".
-  - Leave `TICK_USAGE` as the commands series left it, and convert the prose in tick-detail-data.ts.
-
-**Files touched.**
-- src: src/report/report-render.ts, src/report/report-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/failure/time-spend.ts, src/history/history-render.ts, src/history/history.ts, src/history/history-data.ts, src/tick/tick-detail.ts, src/tick/tick-detail-data.ts.
-- Tests:
-  - test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts.
-  - test/failure-render.test.ts, test/failure-state-change.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts.
-  - test/cli-history*.test.ts, test/history-data.test.ts, test/tick-detail*.test.ts, test/tui-history.test.ts, the drill-down cases in test/tui-keys.test.ts, and the run-detail cases in test/gui-endpoints.test.ts.
-
-**Acceptance criteria.**
-- `tumwater report` and `report --since` print `Runs by role`, `Failed runs by role`, `Merged by role`, `Merge failures by role` and `Estimated by role`.
-- The `tumwater failures` digest has `## Team state changes` and `## Merged in the window`. Its state-change line for a `budget_fallback` uses the same words as part 1/19's event line.
-- `tumwater history`'s header row names `role` and `run`, its rows show `feature #2` and `no change`, and `tumwater history feature 12` opens with `run #12`.
-- `npm run test` passes.
-
 ### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests)
 
 **Goal.** The output of `tumwater start`, `stop`, `pause`, `resume`, `wake`, `abort`, `retire`, `reclaim`, `reset-counters`, `brief` and `logs --role` speaks the glossary. Examples: "team paused — roles start no new runs", "tumwater is not running — start it with `tumwater start` first", "brief updated in README.md".
@@ -3403,6 +3346,63 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - A merge whose post-rebase check fails logs `merge check failed …` and `merge blocked: …`.
 - The protected-edit rejection names "the brief" and says "only you edit it".
 - The `build_check` warnings say "merge check" or "batch check", and the build-swap warnings say "update".
+- `npm run test` passes.
+
+### Plain terms text, part 5/19: Report and failure digest and history and the run drill-down say runs and merges (planned 2026-10-16 by user; requires part 1/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/report/ + src/failure/ + src/history/ + src/tick/tick-detail.ts + src/tick/tick-detail-data.ts + tests; done 2026-10-16)
+
+**Goal.** These views read in runs, merges, roles and the team, and their outcome columns show labels:
+- `tumwater report` and `tumwater failures`.
+- `tumwater history` and its drill-down, `tumwater history <role> <n>`.
+- The TUI and dashboard views that reuse their markdown.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "Ticks by role" | "Runs by role" |
+  | "Failed ticks by role" | "Failed runs by role" |
+  | "Landed by role" | "Merged by role" |
+  | "Landing failures by role" | "Merge failures by role" |
+  | "of which landing runs" | "of which merge runs" |
+  | "Notional by role", "by provider", "per commit" | "Estimated by role", "by provider", "per commit" |
+  | "N ticks" | "N runs" |
+  | "fleet-wide" | "team-wide" |
+
+- src/report/report-data.ts has only machine strings: its fold keys and the `re-landed|fixed|closed|resolved` regex that parses BUGS.md history. Mark them.
+- `renderFailureMarkdown` (src/failure/failure-render.ts):
+  - "## Fleet state changes" → "## Team state changes", and "## Landed in the window" → "## Merged in the window".
+  - "tick errors" → "run errors", "quiet kills" → "stalls", "per tick" → "per run", and "_no ticks in either window_" → "_no runs in either window_".
+- src/failure/time-spend.ts:
+  - The `OUTCOME_CLASS` values stay, because the code series owns that union. Render them as "merged", "no change" and "error" where the table is drawn.
+  - "the harness's own timeout" → "tumwater's own timeout".
+- `describeStateChange` (src/failure/failure-state-change.ts): reuse part 1/19's wording for the same events: "over-cap model", the waiting forms, "roles run again", "update available", "restarting onto update …" and "tumwater down — restart N". The `STATE_CHANGE_TYPES` codes stay.
+- History:
+  - `renderRow` and `renderSummary` (src/history/history-render.ts): headers `loop` → `role` and `ticks` → `runs`, with cells through `roleLabel` and `eventTypeLabel`.
+  - `cmdHistory`'s empty-result messages (src/history/history.ts): "no ticks …" → "no runs …".
+  - The column keys in history-data.ts (`pad("loop", …)`) stay, marked.
+- Drill-down, in `renderTickDetail` and `tickNotFoundMessage` (src/tick/tick-detail.ts):
+  - "tick #N" → "run #N", "completed tick" → "completed run" and "landed" → "merged".
+  - "(no commit: this tick queued no landing)" → "(no commit: this run sent nothing to merge)".
+  - Leave `TICK_USAGE` as the commands series left it, and convert the prose in tick-detail-data.ts.
+
+**Files touched.**
+- src: src/report/report-render.ts, src/report/report-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/failure/time-spend.ts, src/history/history-render.ts, src/history/history.ts, src/history/history-data.ts, src/tick/tick-detail.ts, src/tick/tick-detail-data.ts.
+- Tests:
+  - test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts.
+  - test/failure-render.test.ts, test/failure-state-change.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts.
+  - test/cli-history*.test.ts, test/history-data.test.ts, test/tick-detail*.test.ts, test/tui-history.test.ts, the drill-down cases in test/tui-keys.test.ts, and the run-detail cases in test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- `tumwater report` and `report --since` print `Runs by role`, `Failed runs by role`, `Merged by role`, `Merge failures by role` and `Estimated by role`.
+- The `tumwater failures` digest has `## Team state changes` and `## Merged in the window`. Its state-change line for a `budget_fallback` uses the same words as part 1/19's event line.
+- `tumwater history`'s header row names `role` and `run`, its rows show `feature #2` and `no change`, and `tumwater history feature 12` opens with `run #12`.
 - `npm run test` passes.
 
 ### Plain terms text, part 2/19: Role state labels say due and merging and approved and waiting (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/status-model.ts + LANDING_STAGE_LABELS in src/landing/landing-slot.ts + src/landing/landing-queue-render.ts + the phase matchers in src/ui/fleet-alerts.ts and src/ui/gui/gui-client.ts and src/ui/gui/gui-client-model.ts + tests; done 2026-10-16)

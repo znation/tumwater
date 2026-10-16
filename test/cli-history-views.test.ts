@@ -17,7 +17,7 @@ import { displayWidth } from "../src/text/text-width.js";
 
 const NOW = Date.now();
 
-/** A repo whose event log holds two completed ticks (role `dry`, then role `clean`,
+/** A repo whose event log holds two completed runs (role `dry`, then role `clean`,
  * newest last) plus a `docs` tick_end with no matching tick_start — the unpaired case a
  * rotation-cut log produces, which must render an em dash for its duration. */
 function repoWithTicks(): string {
@@ -62,10 +62,10 @@ test("history renders the last ticks newest-first with duration, usage, and deta
   const testsIdx = out.indexOf("dry");
   assert.ok(cleanIdx >= 0 && testsIdx >= 0, `both rows print: ${JSON.stringify(out)}`);
   assert.ok(cleanIdx < testsIdx, "newest first: clean's tick_end is the newest");
-  assert.match(out, /clean\s+#1\s+changed\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
+  assert.match(out, /clean\s+#1\s+merged\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
   assert.match(out, /dry\s+#1\s+error\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
   // The unpaired tick_end (its tick_start never logged) renders the em dash for duration.
-  assert.match(out, /docs\s+#2\s+changed\s+—\s+touch up the readme/);
+  assert.match(out, /docs\s+#2\s+merged\s+—\s+touch up the readme/);
 });
 
 test("history -n bounds the printed rows", async () => {
@@ -86,7 +86,7 @@ test("history --grep filters on the rendered row line (plus the tick_end type), 
   const repo = repoWithTicks();
   // Matches through the detail column — the row as it renders.
   const { stdout: rendered } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "FLAKE"]));
-  assert.match(rendered, /clean\s+#1\s+changed\s+30s/);
+  assert.match(rendered, /clean\s+#1\s+merged\s+30s/);
   assert.ok(!rendered.includes("dry"), `unmatched rows are filtered out: ${JSON.stringify(rendered)}`);
 
   // The raw event type id is greppable the way logs --grep's haystack carries it.
@@ -99,13 +99,13 @@ test("history --grep filters on the rendered row line (plus the tick_end type), 
 test("history --grep with no matches names the pattern, not the empty-log prose", async () => {
   const repo = repoWithTicks();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "no-such-thing"]));
-  assert.equal(stdout, 'no ticks matching "no-such-thing"\n');
+  assert.equal(stdout, 'no runs matching "no-such-thing"\n');
 });
 
 test("history on an empty log prints the empty-log prose; --json prints a bare document", async () => {
   const repo = makeRepo();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, []));
-  assert.equal(stdout, "no ticks yet\n");
+  assert.equal(stdout, "no runs yet\n");
   const { stdout: json } = await expectOkAsync(() => cmdHistory(repo, ["--json"]));
   assert.deepEqual(JSON.parse(json), { rows: [] });
 });
@@ -128,12 +128,12 @@ test("history --json serves the rows as raw data, newest first", async () => {
 test("history --since prints the windowed rows and the rotation caveat; an empty window says so", async () => {
   const repo = repoWithTicks();
   const { stdout: out } = await expectOkAsync(() => cmdHistory(repo, ["--since", "2h"]));
-  assert.match(out, /clean\s+#1\s+changed/, "rows within the window print");
+  assert.match(out, /clean\s+#1\s+merged/, "rows within the window print");
   // A fresh repo's log cannot prove it covers the window's start, so the caveat rides along.
   assert.match(out, /older events may have rotated out/);
   const empty = makeRepo();
   const { stdout: emptyOut } = await expectOkAsync(() => cmdHistory(empty, ["--since", "2h"]));
-  assert.match(emptyOut, /no ticks in 2h/);
+  assert.match(emptyOut, /no runs in 2h/);
   assert.ok(!emptyOut.includes("rotated out"), "no rows means no sparse-window note");
 });
 

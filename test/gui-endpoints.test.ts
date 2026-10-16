@@ -513,11 +513,11 @@ test("handleTick serves one tick's collector payload plus its pre-rendered text"
   assert.equal(captured.contentType, "application/json");
   // The payload is the collector's own — the same object `tumwater tick --json` prints — plus
   // `text`, the renderTickDetail rendering the browser shows instead of re-formatting events.
-  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this tick queued no landing)" });
+  assert.deepEqual(data, { ...detail, text: renderTickDetail(detail!), stat: "(no commit: this run sent nothing to merge)" });
   const d = data as TickDetail & { text: string };
   assert.equal(d.durationMs, 46_000, "duration pairs the tick's own tick_start");
   assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "review_verdict", "tick_end"]);
-  assert.match(d.text, /^clean tick #3 — changed · 46s/);
+  assert.match(d.text, /^clean run #3 — merged · 46s/);
   assert.match(d.text, /tidy up/);
 });
 
@@ -554,7 +554,7 @@ test("handleTick's error cases: role and tick 400s, a missed tick 404", async ()
   // status with the CLI's wording, not a crash.
   const missing = await serveTick(root, "?role=clean&tick=9");
   assert.equal(missing.captured.status, 404);
-  assert.match((missing.data as { error: string }).error, /no tick #9 for clean in the scanned window/);
+  assert.match((missing.data as { error: string }).error, /no run #9 for clean in the scanned window/);
   for (const r of [unknown, missing]) assert.equal("stat" in (r.data as object), false, "error bodies carry no stat");
 });
 

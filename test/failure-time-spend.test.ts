@@ -34,7 +34,7 @@ test("time and spend: one 30-minute timeout outranks ten 1-second errors", () =>
     lossBlock.indexOf("Request timed out") < lossBlock.indexOf("pi exited 1"),
     `the digest ranks the timeout first: ${lossBlock}`,
   );
-  assert.match(md, /0\.5 h · \$0\.50 — 1 tick: Request timed out \(bugfix\)/);
+  assert.match(md, /0\.5 h · \$0\.50 — 1 run: Request timed out \(bugfix\)/);
 });
 
 test("time and spend folds role × outcome class, pairing old events with tick_start", () => {
@@ -64,7 +64,7 @@ test("time and spend folds role × outcome class, pairing old events with tick_s
   const md = renderFailureMarkdown(data);
   assert.match(md, /\| feature \| 1\.0 h · \$0\.20 \| — \| — \|/);
   assert.match(md, /\| bugfix \| — \| 1\.0 h · \$0\.30 \| 0\.0 h · \$0\.00 \|/);
-  assert.match(md, /no_change on bugfix/);
+  assert.match(md, /no change on bugfix/);
 });
 
 test("a review-rejected change's authoring hours price into error-class, not landed", () => {

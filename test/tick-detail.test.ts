@@ -152,7 +152,7 @@ test("renderTickDetail prints the summary header, the commit sha, and formatEven
   const out = renderTickDetail(d);
   const lines = out.split("\n");
   assert.equal(lines.length, 4);
-  assert.match(lines[0]!, /^bugfix tick #3 — changed · 60s · /);
+  assert.match(lines[0]!, /^bugfix run #3 — merged · 60s · /);
   assert.match(lines[0]!, / tok · \$0\.03 · commit abc1234/);
   // The trail is the shared event rendering, one line per event, in ts order.
   assert.match(lines[1]!, /run #3 started/);
@@ -163,7 +163,7 @@ test("renderTickDetail renders a corrupt outcome as ?, never undefined", () => {
   const root = makeRepo();
   writeEvents(root, [start({ ts: 1000 }), end({ ts: 2000, result: 7 } as never)]);
   const d = readTickDetail(root, "bugfix", 3)!;
-  assert.match(renderTickDetail(d).split("\n")[0]!, /^bugfix tick #3 — \?( ·.*)?$/);
+  assert.match(renderTickDetail(d).split("\n")[0]!, /^bugfix run #3 — \?( ·.*)?$/);
 });
 
 test("renderTickDetail marks an in-flight tick in its header", () => {
@@ -173,7 +173,7 @@ test("renderTickDetail marks an in-flight tick in its header", () => {
     { ts: 2000, loop: "bugfix", type: "review_start", head: "def" } as HarnessEvent,
   ]);
   const d = readTickDetail(root, "bugfix", 3)!;
-  assert.match(renderTickDetail(d).split("\n")[0]!, /^bugfix tick #3 — in flight( ·.*)?$/);
+  assert.match(renderTickDetail(d).split("\n")[0]!, /^bugfix run #3 — in flight( ·.*)?$/);
 });
 
 test("cmdTick prints the human view, the --json payload, and the not-found line", async () => {
@@ -184,7 +184,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
     end({ ts: 31_000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
   ]);
   const { stdout } = await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false));
-  assert.match(stdout, /^bugfix tick #3 — changed · 30s · /);
+  assert.match(stdout, /^bugfix run #3 — merged · 30s · /);
   assert.match(stdout, /run #3 started/);
 
   const json = await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], true));
@@ -212,7 +212,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   // `null` document, never the prose line a jq pipe would choke on (the history --json
   // precedent: every exit-0 output is JSON).
   const none = await expectOkAsync(() => cmdTick(repo, ["bugfix", "42"], false));
-  assert.match(none.stdout, /no tick #42 for bugfix/);
+  assert.match(none.stdout, /no run #42 for bugfix/);
   const noneJson = await expectOkAsync(() => cmdTick(repo, ["bugfix", "42"], true));
   assert.equal(JSON.parse(noneJson.stdout), null);
 });
@@ -241,7 +241,7 @@ test("tumwater tick dispatches through the real binary, flags gated", async () =
   writeEvents(repo, [start({ ts: 1000 }), end({ ts: 2000, result: "no_change" })]);
   const ok = await cli(repo, "tick", "bugfix", "3");
   assert.equal(ok.code, 0);
-  assert.match(ok.stdout, /^bugfix tick #3 — no_change · 1s\n/);
+  assert.match(ok.stdout, /^bugfix run #3 — no change · 1s\n/);
   // Unknown flags fail with the unknown-argument error, before the ready-repo gate can mask it.
   const bad = await cli(repo, "tick", "bugfix", "3", "--rol");
   assert.equal(bad.code, 1);
@@ -294,7 +294,7 @@ test("cmdTick --last resolves the newest tick's trail, identical to naming that 
   const last = await expectOkAsync(() => cmdTick(repo, ["bugfix"], false, true));
   const numbered = await expectOkAsync(() => cmdTick(repo, ["bugfix", "7"], false));
   assert.equal(last.stdout, numbered.stdout);
-  assert.match(last.stdout, /^bugfix tick #7 — changed · 28s · /);
+  assert.match(last.stdout, /^bugfix run #7 — merged · 28s · /);
   // And the JSON payload matches too.
   const lastJson = JSON.parse(
     (await expectOkAsync(() => cmdTick(repo, ["bugfix"], true, true))).stdout,
@@ -309,7 +309,7 @@ test("cmdTick --last on an empty log: not-found line at exit 0, parseable null u
   const repo = makeRepo();
   await initProject(repo, "tick last empty");
   const none = await expectOkAsync(() => cmdTick(repo, ["bugfix"], false, true));
-  assert.match(none.stdout, /^no completed tick for bugfix in the scanned window/);
+  assert.match(none.stdout, /^no completed run for bugfix in the scanned window/);
   const noneJson = await expectOkAsync(() => cmdTick(repo, ["bugfix"], true, true));
   assert.equal(JSON.parse(noneJson.stdout), null);
 });
@@ -348,7 +348,7 @@ test("tick --stat names a missing or foreign commit instead of failing", async (
   const repo = makeRepo();
   await initProject(repo, "tick stat");
   writeEvents(repo, [start({ ts: 1000 }), end({ ts: 2000 })]);
-  assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(no commit: this tick queued no landing\)/);
+  assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(no commit: this run sent nothing to merge\)/);
   writeEvents(repo, [
     start({ ts: 1000 }),
     { ts: 1500, loop: "bugfix", type: "land_queued", commit: "0".repeat(40), summary: "x" } as HarnessEvent,
@@ -368,7 +368,7 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved landing"
     ev({ ts: 1300, type: "landed", commit: "sha1abcdef", result: "changed" }),
   ]);
   const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], false))).stdout;
-  assert.match(text, /tick #1 — changed/);
+  assert.match(text, /run #1 — merged/);
   const lines = text.trimEnd().split("\n");
   assert.match(lines[lines.length - 1]!, /merge of sha1abc\w* done/);
   const payload = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], true))).stdout) as TickDetail;

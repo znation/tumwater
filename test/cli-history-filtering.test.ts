@@ -40,8 +40,8 @@ test("history --since returns exactly the ticks of the window, newest first, wit
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 2, r.stdout);
   // Newest first; the 2-day-old tick is outside the window on both the day key and ts.
-  assert.match(lines[0]!, /feature\s+#3\s+changed\s+20m\s+1200 tok · \$0\.01\s+new work/);
-  assert.match(lines[1]!, /clean\s+#2\s+no_change\s+5m\s+tidied/);
+  assert.match(lines[0]!, /feature\s+#3\s+merged\s+20m\s+1200 tok · \$0\.01\s+new work/);
+  assert.match(lines[1]!, /clean\s+#2\s+no change\s+5m\s+tidied/);
   assert.ok(!r.stdout.includes("old work"), r.stdout);
   // The log's oldest retained event (2d) predates the cutoff, so the window is provably
   // covered: no rotation note.
@@ -128,11 +128,11 @@ test("history --since refuses the rival shape and validates through the shared d
   assert.equal(valueless.code, 1);
   assert.match(valueless.stderr, /history --since needs a value/);
 
-  // Table mode's empty-window prose: `no ticks in <duration>`, durationLabel's phrasing.
+  // Table mode's empty-window prose: `no runs in <duration>`, durationLabel's phrasing.
   seedWindowedHistory(repo);
   const empty = await cli(repo, "history", "--since", "1s");
   assert.equal(empty.code, 0);
-  assert.equal(empty.stdout, "no ticks in 1s\n");
+  assert.equal(empty.stdout, "no runs in 1s\n");
 });
 
 // --- --grep <text>: the row filter its sibling logs --grep already has
@@ -144,14 +144,14 @@ test("history --grep keeps only rows whose rendered line matches, case-insensiti
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 1);
-  assert.match(lines[0]!, /feature\s+#7\s+changed/);
+  assert.match(lines[0]!, /feature\s+#7\s+merged/);
   assert.match(lines[0]!, /added a widget/);
 
-  // An empty match names the pattern, never the empty-log prose: "no ticks yet" would be a
+  // An empty match names the pattern, never the empty-log prose: "no runs yet" would be a
   // false statement about a log this command just scanned (the logs --grep rule).
   const none = await cli(repo, "history", "--grep", "no such text");
   assert.equal(none.code, 0);
-  assert.equal(none.stdout, 'no ticks matching "no such text"\n');
+  assert.equal(none.stdout, 'no runs matching "no such text"\n');
 
   // The stable event id is greppable: the haystack prefixes the raw type.
   const type = await cli(repo, "history", "--grep", "tick_end");
@@ -177,7 +177,7 @@ test("history --grep composes with -n, which bounds the scanned window", async (
   // scanned-but-unmatched window says so, it does not claim the log was empty.
   const narrow = await cli(repo, "history", "-n", "2", "--grep", "widget");
   assert.equal(narrow.code, 0);
-  assert.equal(narrow.stdout, 'no ticks matching "widget"\n');
+  assert.equal(narrow.stdout, 'no runs matching "widget"\n');
 
   const wide = await cli(repo, "history", "-n", "3", "--grep", "widget");
   assert.equal(wide.code, 0);
@@ -193,7 +193,7 @@ test("history --grep composes with --role", async () => {
 
   const scoped = await cli(repo, "history", "--role", "feature", "--grep", "no_change");
   assert.equal(scoped.code, 0);
-  assert.equal(scoped.stdout, 'no ticks matching "no_change"\n');
+  assert.equal(scoped.stdout, 'no runs matching "no_change"\n');
 });
 
 test("history --since --grep filters the window's rows", async () => {
@@ -210,12 +210,12 @@ test("history --since --grep filters the window's rows", async () => {
   // empty-match wording names the pattern, not a window the log disproves.
   const outside = await cli(repo, "history", "--since", "1h", "--grep", "old work");
   assert.equal(outside.code, 0);
-  assert.equal(outside.stdout, 'no ticks matching "old work"\n');
+  assert.equal(outside.stdout, 'no runs matching "old work"\n');
 
   // Without --grep the empty window keeps its own prose — the pattern branch never leaks.
   const plain = await cli(repo, "history", "--since", "1s");
   assert.equal(plain.code, 0);
-  assert.equal(plain.stdout, "no ticks in 1s\n");
+  assert.equal(plain.stdout, "no runs in 1s\n");
 });
 
 test("history --grep --json filters the payload and stays a document when empty", async () => {
@@ -251,7 +251,7 @@ test("history --result narrows to one outcome class and composes with --json", a
   const changes = await cli(repo, "history", "--result", "changes");
   assert.equal(changes.code, 0);
   assert.equal(changes.stdout.trim().split("\n").length, 1);
-  assert.match(changes.stdout, /feature\s+#7\s+changed/);
+  assert.match(changes.stdout, /feature\s+#7\s+merged/);
 
   const merged = await cli(repo, "history", "--result", "merged");
   assert.equal(merged.stdout, changes.stdout, "--result merged filters like the hidden --result changes");
@@ -259,7 +259,7 @@ test("history --result narrows to one outcome class and composes with --json", a
   const none = await cli(repo, "history", "--result", "none");
   assert.equal(none.code, 0);
   assert.equal(none.stdout.trim().split("\n").length, 1);
-  assert.match(none.stdout, /clean\s+#3\s+no_change/);
+  assert.match(none.stdout, /clean\s+#3\s+no change/);
 
   const problems = await cli(repo, "history", "--result", "problems");
   assert.equal(problems.code, 0);
@@ -297,22 +297,22 @@ test("history --result empty state names the class, never the empty log", async 
   const repo = await seededHistoryRepo();
 
   // The last two scanned rows are bugfix #9 (error) and clean #3 (no_change): `changes` filters
-  // both out of a window that held rows, so the wording names the class, not `no ticks yet`.
+  // both out of a window that held rows, so the wording names the class, not `no runs yet`.
   const none = await cli(repo, "history", "-n", "2", "--result", "changes");
   assert.equal(none.code, 0);
-  assert.equal(none.stdout, 'no ticks with result "changes"\n');
+  assert.equal(none.stdout, 'no runs with result "changes"\n');
 
   // When grep admits rows but the result filter then removes them, the wording names the
-  // result filter that emptied the set: `no ticks matching "widget"` would be false, feature
+  // result filter that emptied the set: `no runs matching "widget"` would be false, feature
   // #7 does match. (The GUI says the same: rows existed, the outcome filter excluded them.)
   const both = await cli(repo, "history", "--grep", "widget", "--result", "problems");
   assert.equal(both.code, 0);
-  assert.equal(both.stdout, 'no ticks with result "problems"\n');
+  assert.equal(both.stdout, 'no runs with result "problems"\n');
 
   // With no grep match either, grep's own wording stays: the pattern is what emptied the set.
   const unmatched = await cli(repo, "history", "--grep", "no such text", "--result", "problems");
   assert.equal(unmatched.code, 0);
-  assert.equal(unmatched.stdout, 'no ticks matching "no such text"\n');
+  assert.equal(unmatched.stdout, 'no runs matching "no such text"\n');
 
   // A log holding no ticks at all: the result filter removed nothing, so naming the class
   // would blame it for the log's emptiness. The empty-log prose stays.
@@ -320,13 +320,13 @@ test("history --result empty state names the class, never the empty log", async 
   await initProject(blank, "cli history result empty log");
   const emptyLog = await cli(blank, "history", "--result", "changes");
   assert.equal(emptyLog.code, 0);
-  assert.equal(emptyLog.stdout, "no ticks yet\n");
+  assert.equal(emptyLog.stdout, "no runs yet\n");
 
   // A window that scanned no rows: same rule, the window is what the empty state names —
   // matching the dashboard's History view, which reports the window, not the outcome filter.
   const emptyWindow = await cli(repo, "history", "--since", "1s", "--result", "changes");
   assert.equal(emptyWindow.code, 0);
-  assert.equal(emptyWindow.stdout, "no ticks in 1s\n");
+  assert.equal(emptyWindow.stdout, "no runs in 1s\n");
 });
 
 test("history --result fails with its own wording for a missing or unknown class", async () => {
@@ -352,11 +352,11 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
   const text = await cli(repo, "history", "--summary");
   assert.equal(text.code, 0);
   assert.deepEqual(text.stdout.split("\n").map((l) => l.trimEnd()), [
-    "loop     ticks  changes  none  problems  tokens   cost  last change",
-    "bugfix       1        0     0         1       0  $0.00  —",
-    "clean        1        0     1         0       0  $0.00  —",
-    `feature      1        1     0         0    2400  $0.02  ${when}`,
-    `total        3        1     1         1    2400  $0.02  ${when}`,
+    "role     runs  changes  none  problems  tokens   cost  last change",
+    "bugfix      1        0     0         1       0  $0.00  —",
+    "clean       1        0     1         0       0  $0.00  —",
+    `feature     1        1     0         0    2400  $0.02  ${when}`,
+    `total       3        1     1         1    2400  $0.02  ${when}`,
     "",
   ]);
 
@@ -377,6 +377,6 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
 test("history --summary keeps the empty-state output on an empty log", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli history summary empty");
-  assert.equal((await cli(repo, "history", "--summary")).stdout, "no ticks yet\n");
+  assert.equal((await cli(repo, "history", "--summary")).stdout, "no runs yet\n");
   assert.deepEqual(JSON.parse((await cli(repo, "history", "--summary", "--json")).stdout), { rows: [] });
 });

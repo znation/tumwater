@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each one into
  * the per-role × outcome-class table (ticks, summed wall-clock ms, cost) plus the loss-cause
  * ranking that weighs causes by agent-hours rather than tick counts. Split from
@@ -19,8 +20,8 @@ import { getOrCreate, groupBy, rankByCount } from "../collections.js";
  * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
 export const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
-  changed: "landed",
-  queued: "landed",
+  changed: "landed", // vocabulary-ok: OUTCOME_CLASS union value, renamed by the code series
+  queued: "landed", // vocabulary-ok: OUTCOME_CLASS union value, renamed by the code series
   no_change: "no_change",
   refused: "no_change",
   skipped: "no_change",
@@ -178,7 +179,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       (e) =>
         e.type === "build_check" &&
         e.status === "failed" &&
-        (e.scope === "landing" || e.scope === "batch") &&
+        (e.scope === "landing" || e.scope === "batch") && // vocabulary-ok: merge-scope code
         typeof e.timeoutMs === "number",
     ),
     (e) => e.loop,
@@ -288,7 +289,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       const killed = newestAttemptEvent(deadlineKilledByLoop, role, resolvedOutcome);
       if (kind === "merge-blocked" && killed) {
         key = `merge_blocked_deadline\u0000${role}`;
-        example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (the harness's own timeout, not a test failure)`;
+        example = `${String(killed.scope)} build check killed at its ${Number(killed.timeoutMs) / 1000}s deadline (tumwater's own timeout, not a test failure)`;
       }
     }
     if (key === null) continue;

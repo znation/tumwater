@@ -37,7 +37,7 @@ test("a corrupted events-log path renders the unreadable alarm and never breaks 
   assert.ok(digest, "an unreadable log still yields a digest, never a throw");
   assert.match(digest, /^log unreadable — evidence missing$/m);
   assert.doesNotMatch(digest, /no events retained/);
-  assert.match(digest, /no tick_end events in the window/);
+  assert.match(digest, /no finished runs in the window/);
 });
 
 test("a log of malformed lines renders the unreadable alarm: the feed is named, not silently empty", () => {
@@ -49,7 +49,7 @@ test("a log of malformed lines renders the unreadable alarm: the feed is named, 
   assert.ok(digest, "malformed lines never take the degrade-to-undefined path");
   assert.match(digest, /^log unreadable — evidence missing$/m);
   assert.doesNotMatch(digest, /no events retained/);
-  assert.match(digest, /no tick_end events in the window/);
+  assert.match(digest, /no finished runs in the window/);
 });
 
 test("a missing log reads as idle while a present-but-corrupt feed is named unreadable", () => {

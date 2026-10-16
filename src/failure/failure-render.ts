@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Rendering half of the failure digest: turn a collected `FailureReportData` (failure-data.ts)
  * into the bounded Markdown the CLI's `--failures` report, the GUI/TUI failures tabs, and the
  * telemetry role's tick evidence all print. Pure function of the data — no I/O, no clock
@@ -11,6 +12,7 @@ import { shortSha, usd } from "../text/format.js";
 import { dayKey, dayLabel, formatTime, monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { eventsRotationLabel } from "../events/events.js";
+import { eventTypeLabel } from "../events/event-labels.js";
 import { markdownTable, type ColumnAlign } from "../text/markdown.js";
 
 /** A cluster's role list shows at most this many names before a "+N more" remainder. */
@@ -138,8 +140,8 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // day-window line. The empty branch follows the same split so neither claims the other's unit.
   lines.push(
     data.sinceMs !== undefined
-      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.ticks} ticks`
-      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} ticks`,
+      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.ticks} runs`
+      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} runs`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   if (data.logState === "unreadable") lines.push("log unreadable — evidence missing");
@@ -152,15 +154,15 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     );
   } else if (data.partial) lines.push(`partial: retained log starts ${data.oldestEventDate ?? "?"}`);
 
-  // The causal frame before the counts: what the fleet DID in the window, so the reader can ask
+  // The causal frame before the counts: what the team DID in the window, so the reader can ask
   // whether the harness's response was right. Omitted entirely when the window held none. When
   // the newest-N cap cut the window's transitions, the remainder is named — a quiet window (no
   // line) and a truncated one must not look the same.
   if (data.stateChanges.length > 0) {
     lines.push("");
     // A scoped digest retitles the section: its transitions are the named role's, so the
-    // fleet-wide "Fleet" claim would overreach.
-    lines.push(data.role !== undefined ? "## State changes" : "## Fleet state changes");
+    // team-wide "Team" claim would overreach.
+    lines.push(data.role !== undefined ? "## State changes" : "## Team state changes");
     for (const s of data.stateChanges) {
       lines.push(`- ${stateChangeStamp(s.ts)} ${roleCell(s.role)} — ${s.description}`);
     }
@@ -172,14 +174,14 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   lines.push("");
   lines.push("## Outcome by role");
   if (data.outcomes.length === 0) {
-    lines.push("_no tick_end events in the window_");
+    lines.push("_no finished runs in the window_");
   } else {
     // markdownTable derives the separator from the header, so the two rows cannot disagree on
     // their cell count (the BUGS.md 2026-09-21 plain-text collapse). `---:` right-aligns the
     // counts.
     lines.push(
       ...markdownTable(
-        ["role", ...cols],
+        ["role", ...cols.map(eventTypeLabel)],
         data.outcomes.map((row) => [
           roleCell(row.role),
           ...cols.map((c) => String(row.counts[c] ?? 0)),
@@ -198,11 +200,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   lines.push("");
   lines.push("## Time and spend by outcome");
   if (data.timeSpend.length === 0) {
-    lines.push("_no tick_end events in the window_");
+    lines.push("_no finished runs in the window_");
   } else {
     lines.push(
       ...markdownTable(
-        ["role", "landed", "no_change", "error-class"],
+        ["role", "merged", "no change", "error"],
         data.timeSpend.map((row) => [
           roleCell(row.role),
           spendCell(row.classes.landed),
@@ -219,7 +221,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
       for (const c of data.lossCauses) {
         const cause =
           c.kind === "no_change"
-            ? `no_change on ${roleCell(c.roles[0] ?? "?")}`
+            ? `no change on ${roleCell(c.roles[0] ?? "?")}`
             : c.kind === "review-rejected"
               ? `review-rejected authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
               : c.kind === "refused"
@@ -227,7 +229,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
                 : c.kind === "merge-conflict" || c.kind === "merge-blocked"
                   ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
                   : `${c.example} (${roleList(c.roles)})`;
-        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "tick")}: ${cause}`);
+        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "run")}: ${cause}`);
       }
       // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
       // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
@@ -248,7 +250,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     for (const row of data.promptStats) {
       const share = percent(row.preEditShare, 1);
       lines.push(
-        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/tick · ${share} before first edit`,
+        `- ${roleCell(row.role)}: median ${row.medianPromptTokens} prompt tokens/run · ${share} before first edit`,
       );
     }
   }
@@ -258,11 +260,11 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     `## Deltas vs the preceding ${data.sinceMs !== undefined ? durationLabel(data.sinceMs) : dayLabel(data.days)}`,
   );
   if (data.deltas.length === 0) {
-    lines.push("_no ticks in either window_");
+    lines.push("_no runs in either window_");
   } else {
     lines.push(
       ...markdownTable(
-        ["role", "ticks", "error rate", "quiet kills", "rejections"],
+        ["role", "runs", "error rate", "stalls", "rejections"],
         data.deltas.map((d) => [
           roleCell(d.role),
           deltaCell(d.prevTicks, d.prevTicks, d.ticks, d.ticks),
@@ -278,13 +280,13 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // column AND its main_red cells (the baseline gate's own cause rides the tick, BUGS.md
   // 2026-09-28), so an operator cross-checking counts against the tables above is not misled
   // by a title that reads as the error column alone.
-  renderClusters(lines, "Top error clusters (red-main causes included)", data.errors, "tick errors");
+  renderClusters(lines, "Top error clusters (red-main causes included)", data.errors, "run errors");
   renderClusters(lines, "Top warning clusters", data.warnings, "warnings");
   renderClusters(lines, "Top review failure clusters", data.reviewFailures, "review failures");
   renderClusters(lines, "Top rejection clusters", data.rejections, "rejections");
 
   lines.push("");
-  lines.push("## Landed in the window");
+  lines.push("## Merged in the window");
   if (data.landed.length === 0) {
     lines.push("_nothing merged in the window_");
   } else {

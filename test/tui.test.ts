@@ -822,13 +822,13 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     let frame = tui.lastFrame();
     assert.match(frame, /usage report/);
     assert.match(frame, /# tumwater usage report/); // head window shows the title
-    assert.doesNotMatch(frame, /\*\*Ticks by role:\*\*/); // …and not the tail
+    assert.doesNotMatch(frame, /\*\*Runs by role:\*\*/); // …and not the tail
 
     // Repeated PgDn advances pages and clamps at the tail: the tail line is visible and
     // the title has scrolled out of the window.
     for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
     frame = tui.lastFrame();
-    assert.match(frame, /\*\*Ticks by role:\*\*/);
+    assert.match(frame, /\*\*Runs by role:\*\*/);
     assert.doesNotMatch(frame, /# tumwater usage report/);
     const tailFrame = frame;
     tui.key(undefined, "pagedown");
@@ -838,7 +838,7 @@ test("the usage-report pane pages with PgDn/PgUp, clamped at both ends", async (
     for (let i = 0; i < 8; i++) tui.key(undefined, "pageup");
     frame = tui.lastFrame();
     assert.match(frame, /# tumwater usage report/);
-    assert.doesNotMatch(frame, /\*\*Ticks by role:\*\*/);
+    assert.doesNotMatch(frame, /\*\*Runs by role:\*\*/);
     const headFrame = frame;
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), headFrame, "PgUp past the head is a no-op");
@@ -860,13 +860,13 @@ test("the failures pane pages with PgDn/PgUp, clamped at both ends", async () =>
     let frame = tui.lastFrame();
     assert.match(frame, /\[Failures\][\s\S]*PgUp\/PgDn scroll/);
     assert.match(frame, /# tumwater failure digest/); // head window shows the title
-    assert.doesNotMatch(frame, /## Landed in the window/); // …and not the tail
+    assert.doesNotMatch(frame, /## Merged in the window/); // …and not the tail
 
     // Repeated PgDn advances pages and clamps at the tail: the tail line is visible and
     // the title has scrolled out of the window.
     for (let i = 0; i < 8; i++) tui.key(undefined, "pagedown");
     frame = tui.lastFrame();
-    assert.match(frame, /## Landed in the window/);
+    assert.match(frame, /## Merged in the window/);
     assert.doesNotMatch(frame, /# tumwater failure digest/);
     const tailFrame = frame;
     tui.key(undefined, "pagedown");

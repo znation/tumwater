@@ -88,7 +88,7 @@ test("tick's dispatcher admits --last for tick alone, and still rejects it elsew
   // The one-positional --last form reaches cmdTick through the dispatcher's gate.
   const ok = await cli(repo, "tick", "bugfix", "--last");
   assert.equal(ok.code, 0);
-  assert.match(ok.stdout, /^no completed tick for bugfix in the scanned window/);
+  assert.match(ok.stdout, /^no completed run for bugfix in the scanned window/);
   // The same flag is not part of another command's vocabulary — the unknown-argument gate.
   const other = await cli(repo, "logs", "--last");
   assert.equal(other.code, 1);

@@ -472,7 +472,7 @@ test("the Activity and History `/` searches are independent, and `/` elsewhere t
 
 test("Ctrl+T cycles on through Usage and Failures to History, which caches and pages the tick rows", () => {
   const root = makeRoot();
-  // Twelve completed ticks so the history pane's rows overflow the pane budget and page.
+  // Twelve completed runs so the history pane's rows overflow the pane budget and page.
   writeEvents(
     root,
     Array.from({ length: 12 }, (_, i) => ({
@@ -507,7 +507,7 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
   assert.equal(keys.state().paneCache, null, "leaving History, Pending, and Queued drops the cache");
 });
 
-test("Ctrl+N on the History pane swaps the rows for the newest completed tick's trail", () => {
+test("Ctrl+N on the History pane swaps the rows for the newest completed run's trail", () => {
   const root = makeRoot();
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "clean", type: "tick_start", tick: 1 },
@@ -602,7 +602,7 @@ test("Ctrl+N on an empty History flashes and leaves the rows shown", () => {
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → history
   keys.handleKey(undefined, { ctrl: true, name: "n" });
   assert.equal(keys.state().trailMode, false);
-  assert.match(keys.state().flash!, /no completed ticks to inspect/);
+  assert.match(keys.state().flash!, /no completed runs to inspect/);
 });
 
 test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () => {
@@ -724,7 +724,7 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
 
 test("Ctrl+G on the History view cycles the raw roster ids and recomputes the scoped cache", () => {
   const root = makeRoot();
-  // One completed tick per loop, so each exact-loop scope has its own row set: feature-2 is
+  // One completed run per loop, so each exact-loop scope has its own row set: feature-2 is
   // a distinct scope, unlike the report panes' base-role aggregation.
   writeEvents(root, [
     { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
@@ -922,7 +922,7 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   assert.equal(keys.state().view, 2, "Usage is roleIds.length + 2");
   assert.equal(keys.state().reportSince, null, "the report pane opens on the default day window");
   assert.match(keys.state().paneCache ?? "", /1\.0M/, "the default day report aggregates both ticks");
-  assert.match(keys.state().paneCache ?? "", /2 ticks/);
+  assert.match(keys.state().paneCache ?? "", /2 runs/);
 
   keys.handleKey(undefined, { name: "pagedown" });
   assert.equal(keys.state().paneScroll, 1, "the usage body overflows the one-line budget");
@@ -950,13 +950,13 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   keys.handleKey(undefined, { ctrl: true, name: "t" }); // → failures
   assert.equal(keys.state().view, 3, "Failures is roleIds.length + 3");
   assert.equal(keys.state().reportSince, null, "the digest opens on the default day window");
-  assert.match(keys.state().paneCache ?? "", /· 2 ticks/, "the default digest aggregates both error ticks");
+  assert.match(keys.state().paneCache ?? "", /· 2 runs/, "the default digest aggregates both error ticks");
   keys.handleKey(undefined, { name: "pagedown" });
   assert.equal(keys.state().paneScroll, 1, "the digest body overflows the one-line budget");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, "1h");
   assert.match(keys.state().paneCache ?? "", /window: last 1h/);
-  assert.match(keys.state().paneCache ?? "", /· 1 ticks/, "the 1h digest drops the three-day-old error tick");
+  assert.match(keys.state().paneCache ?? "", /· 1 runs/, "the 1h digest drops the three-day-old error tick");
   assert.equal(keys.state().paneScroll, 0, "a window change re-enters the digest at its head");
 });
 
@@ -1053,7 +1053,7 @@ test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () =>
   const cache = keys.state().paneCache ?? "";
   assert.match(cache, /window: last 1h/);
   assert.match(cache, /result: merged/);
-  assert.match(cache, /no ticks with result "merged"/);
+  assert.match(cache, /no runs with result "merged"/);
   assert.doesNotMatch(cache, /feature #/);
 });
 
