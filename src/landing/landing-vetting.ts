@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";
+import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
@@ -138,6 +139,14 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
   const { root, mainBranch, signal, semaphore } = ctx;
   const { role } = entry;
   const author = resolveAuthor(ctx, role);
+  // The vet's provider key: the review seam's key for the author's role, so its reviewer run
+  // counts toward the same provider cap as the roles that share it (plans/provider-concurrency.md
+  // §4). The gate off runs no model, so then there is no key — the vet is bounded by the fleet
+  // total alone.
+  const reviewKey =
+    ctx.liveConfig.review.enabled
+      ? seamConcurrencyKey(reviewRunConfig(author.config), ctx.piDefault)
+      : undefined;
   const vet: InFlightLanding = {
     promise: Promise.resolve(), // Replaced below; the placeholder satisfies the type.
     controller: new AbortController(),
@@ -149,7 +158,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
   p.vetting.set(role, vet);
   const task = (async () => {
     try {
-      const release = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal);
+      const release = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal, reviewKey);
       vet.parked = false;
       if (release === null) return; // a shutdown while parked
       if (vet.controller.signal.aborted || ctx.startHeld()) {

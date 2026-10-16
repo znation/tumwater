@@ -174,6 +174,15 @@ export class Semaphore {
     return lease;
   }
 
+  /** Synchronously report whether acquireLease(tier, key) would return at once — both the
+   * fleet total and the key (when set) have headroom right now, and the tier's reserve is
+   * satisfied. Mirrors the exact fast-path condition acquireLease's first branch uses, so a
+   * caller can decide whether to show a "waiting for a slot" state before awaiting a lease
+   * that would actually park (landing-drain.ts's resolver wrapper). */
+  canLeaseAtOnce(tier: number, key?: string): boolean {
+    return this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key));
+  }
+
   /** The director's bypass: take a key's slot at once, never waiting, and never counting toward
    * the fleet cap. It DOES count toward the key's in-use, so a forced lease can overshoot a
    * full key by one holder; no grant on that key happens until a release drains it back under

@@ -209,6 +209,23 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
   assert.equal(workReserveCount(repo, [idle], { ...opts, enabled: new Set() }), 0);
 });
 
+test("workReserveCount drops an idle work loop whose provider is full (per-provider headroom)", () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
+  const idle = runner("feature", state());
+  const opts = {
+    maxConcurrent: 6,
+    enabled: new Set(["feature"]),
+    queuedLandingRoles: new Set<string>(),
+  };
+  // No predicate (or one that says the provider has headroom): the idle work loop reserves.
+  assert.equal(workReserveCount(repo, [idle], opts), 1);
+  assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => true }), 1);
+  // A full (or capped-and-full) provider cannot use the reserved permit, so the loop withholds
+  // nothing — a maintenance tick on another provider may take the slot instead.
+  assert.equal(workReserveCount(repo, [idle], { ...opts, providerHasHeadroom: () => false }), 0);
+});
+
 test("workReserveCount caps at a third of maxConcurrent and counts claim holders", () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);

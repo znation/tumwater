@@ -151,6 +151,10 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // cap is real for role ticks from part 2/5 on. The director never queues, so its lease is
     // never created here.
     let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
+    // The director's forced provider lease (plans/provider-concurrency.md §4): never queues and
+    // never counts toward maxConcurrent, but DOES count toward its provider key while its tick
+    // runs — so a full provider admits no further grants until the director releases.
+    let directorLease: Awaited<ReturnType<Semaphore["forceLease"]>> | null = null;
     const task = (async () => {
       durationMs = await runTimedRoleTick(
         signal,
@@ -166,13 +170,22 @@ export function launchDueTicks(ctx: LaunchContext): void {
               runner.state.parkedSince = undefined;
               rolePermitHolders.add(runner);
             }
-          : async () => {},
+          : async () => {
+              // The director wraps its tick in a forced lease on its run's provider key, never
+              // queuing behind role loops: a user prompt starts at once even on a full provider,
+              // and the key's in-use rises by one — overshooting by one — so no further grant on
+              // that key happens until its release drains it back under the cap.
+              const cfg = runner.runConfig(Date.now());
+              directorLease = semaphore.forceLease(cfg ? seamConcurrencyKey(cfg, piDefault) : undefined);
+            },
         usesSlot
           ? () => {
               rolePermitHolders.delete(runner);
               lease!.release();
             }
-          : () => {},
+          : () => {
+              directorLease!.release();
+            },
         async () => {
           started = true;
           // A role tick that starts while the budget holds runs on the fallback pair its tier

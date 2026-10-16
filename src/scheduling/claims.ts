@@ -169,6 +169,13 @@ export function workReserveCount(
     enabled: ReadonlySet<string>;
     /** The loop ids with a queued or in-flight landing. */
     queuedLandingRoles: ReadonlySet<string>;
+    /** Whether an idle work loop's provider still has headroom to use a reserved permit
+     * (plans/provider-concurrency.md §6). With per-provider caps, withholding a fleet permit
+     * for a loop whose provider is full only idles a slot another provider's maintenance tick
+     * could use, so such a loop adds nothing to the reserve. The caller supplies it from the
+     * pool's snapshot() — this policy stays free of the seams. Defaults to counting every idle
+     * work loop, the pre-caps behavior. */
+    providerHasHeadroom?: (runner: ClaimRunner) => boolean;
   },
 ): number {
   // Eligible keys per claim-taking base, read once.
@@ -199,6 +206,9 @@ export function workReserveCount(
     if (!INSTANCE_ROLES.has(base)) continue;
     if (!opts.enabled.has(r.role)) continue;
     if (r.state.running || opts.queuedLandingRoles.has(r.role)) continue;
+    // A work loop whose provider is full (capped and at its cap) cannot use a reserved permit
+    // anyway, so it must not withhold one from another provider's maintenance tick (§6).
+    if (opts.providerHasHeadroom !== undefined && !opts.providerHasHeadroom(r)) continue;
     const eligible = eligibleFor(base);
     const holdsClaim = r.state.claim !== undefined && eligible.has(r.state.claim.key);
     const hasFreeEntry = [...eligible].some((k) => !(heldByBase.get(base)?.has(k) ?? false));

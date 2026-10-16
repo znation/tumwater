@@ -137,45 +137,6 @@ test/doctor-model-checks.test.ts.
   A config-views test pins this.
 - `npm test` passes.
 
-### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow)
-
-Design: plans/provider-concurrency.md §4 "Who holds a lease" and §6 "Priority headroom and the
-vet limit".
-
-**Goal.** Every model stream the fleet starts counts against its provider. That includes landing
-vets, the merge's conflict resolver and the director, besides role ticks. A work loop's priority
-headroom is withheld only where the loop could use it.
-
-**Approach.**
-- Vets: `acquireUnlessAborted` (src/landing/landing-pipeline.ts), as `startVet` calls it
-  (src/landing/landing-vetting.ts), takes a key:
-  - the review seam's key for the author's role, through `reviewRunConfig`;
-  - none when the review gate is off.
-- The resolver: landing-drain.ts's `runPi` wrapper acquires at `MERGE_TIER` with
-  `resolverConfig`'s key (the `cfg` it is handed).
-- The director: its runs take `forceLease(key)`. They never wait and never count toward
-  `maxConcurrent`, but while they run, the key's in-use is one higher.
-  - The director runs through LoopPi like every loop. Wrap its tick in the lease exactly where
-    the launch pass skips the semaphore today (`usesSlot` false).
-- `workReserveCount` (src/scheduling/claims.ts) takes a predicate. An idle work loop counts toward
-  the reserve only when its provider key has headroom or is uncapped, read from the pool's
-  `snapshot()`.
-
-**Files touched.** src/landing/landing-pipeline.ts, src/landing/landing-vetting.ts,
-src/landing/landing-drain.ts, src/orchestrator/orchestrator-launch.ts,
-src/orchestrator/orchestrator.ts, src/scheduling/claims.ts, and tests:
-test/orchestrator-permits.e2e.test.ts and the claims and landing suites that cover
-`workReserveCount` and `startVet`.
-
-**Acceptance criteria (this part).**
-- With the reviewer on `omlx` capped at 1, a vet and a role tick on omlx never run at the same
-  time, while a huggingface role tick runs beside either.
-- A director prompt on a full omlx key starts at once. No further omlx grant happens until
-  in-use is back under the cap.
-- A work loop whose provider is full adds nothing to the reserve: a maintenance tick on another
-  provider is granted the permit.
-- `npm test` passes.
-
 ### Per-provider concurrency caps, part 4/5: a tick's lease follows its runs across providers (planned 2026-10-15 from an operator request; requires part 3/5 landed; part 5/5 follows)
 
 Design: plans/provider-concurrency.md §5 "Leases follow the tick's runs".
@@ -282,6 +243,45 @@ README.md, and their tests.
 
 
 ## Done
+### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow) — done 2026-10-16
+
+Design: plans/provider-concurrency.md §4 "Who holds a lease" and §6 "Priority headroom and the
+vet limit".
+
+**Goal.** Every model stream the fleet starts counts against its provider. That includes landing
+vets, the merge's conflict resolver and the director, besides role ticks. A work loop's priority
+headroom is withheld only where the loop could use it.
+
+**Approach.**
+- Vets: `acquireUnlessAborted` (src/landing/landing-pipeline.ts), as `startVet` calls it
+  (src/landing/landing-vetting.ts), takes a key:
+  - the review seam's key for the author's role, through `reviewRunConfig`;
+  - none when the review gate is off.
+- The resolver: landing-drain.ts's `runPi` wrapper acquires at `MERGE_TIER` with
+  `resolverConfig`'s key (the `cfg` it is handed).
+- The director: its runs take `forceLease(key)`. They never wait and never count toward
+  `maxConcurrent`, but while they run, the key's in-use is one higher.
+  - The director runs through LoopPi like every loop. Wrap its tick in the lease exactly where
+    the launch pass skips the semaphore today (`usesSlot` false).
+- `workReserveCount` (src/scheduling/claims.ts) takes a predicate. An idle work loop counts toward
+  the reserve only when its provider key has headroom or is uncapped, read from the pool's
+  `snapshot()`.
+
+**Files touched.** src/landing/landing-pipeline.ts, src/landing/landing-vetting.ts,
+src/landing/landing-drain.ts, src/orchestrator/orchestrator-launch.ts,
+src/orchestrator/orchestrator.ts, src/scheduling/claims.ts, and tests:
+test/orchestrator-permits.e2e.test.ts and the claims and landing suites that cover
+`workReserveCount` and `startVet`.
+
+**Acceptance criteria (this part).**
+- With the reviewer on `omlx` capped at 1, a vet and a role tick on omlx never run at the same
+  time, while a huggingface role tick runs beside either.
+- A director prompt on a full omlx key starts at once. No further omlx grant happens until
+  in-use is back under the cap.
+- A work loop whose provider is full adds nothing to the reserve: a maintenance tick on another
+  provider is granted the permit.
+- `npm test` passes.
+
 ### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows) — done 2026-10-16
 
 Design: plans/provider-concurrency.md §9, gaps 5–7.

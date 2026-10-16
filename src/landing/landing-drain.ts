@@ -1,5 +1,6 @@
 import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./landing-slot.js";
+import { seamConcurrencyKey } from "../config/config-views.js";
 import { dropLanding, queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort } from "../events/events.js";
@@ -117,18 +118,21 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
         runPi: async (w, prompt, s, cfg) => {
           // A parked resolver names its wait (resolve-wait, then resolving once granted) the way
           // a parked check does (withCheckPermit): on 2026-10-12 one waited 2.5 min for a permit
-          // with the merge queue behind it, reading as "merging". tryAcquire is acquire's own
-          // fast path for this tier (MERGE_TIER ignores the maintenance reserve).
-          if (!semaphore.tryAcquire()) {
-            const hooks = resolveWaitStage(root, v.entry.role);
-            hooks.waiting();
-            await semaphore.acquire(MERGE_TIER);
-            hooks.granted();
-          }
+          // with the merge queue behind it, reading as "merging". The lease is keyed on the
+          // resolver config's provider (the `cfg` it is handed), so the conflict resolution
+          // counts against the strong tier's provider cap like any other strong-tier run
+          // (plans/provider-concurrency.md §4). canLeaseAtOnce is acquireLease's own fast path
+          // decided synchronously, so a free permit shows no wait; MERGE_TIER ignores the
+          // maintenance reserve.
+          const key = cfg ? seamConcurrencyKey(cfg, ctx.piDefault) : undefined;
+          const hooks = resolveWaitStage(root, v.entry.role);
+          if (!semaphore.canLeaseAtOnce(MERGE_TIER, key)) hooks.waiting();
+          const lease = await semaphore.acquireLease(MERGE_TIER, key);
+          hooks.granted();
           try {
             return await v.author.runLandingPi(w, prompt, s, cfg);
           } finally {
-            semaphore.release();
+            lease.release();
           }
         },
       },

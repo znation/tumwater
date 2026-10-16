@@ -4,6 +4,7 @@ import { runOnAbort } from "../process/process.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
+import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./landing-slot.js";
 import { landingRefName, rejectedRefName } from "../paths.js";
@@ -75,6 +76,10 @@ export interface LandingPipelineContext {
   liveConfig: TumwaterConfig;
   /** The derived config non-director roles run under (the fallback view). */
   roleConfig: TumwaterConfig;
+  /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
+   * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2),
+   * read by a landing's review and resolver runs just as a role tick reads it. */
+  piDefault?: ModelSelector | null;
   /** The scheduler's start gate for new work (a pending restart, a fleet hold), re-checked the
    * moment a parked vet is granted its permit — the one moment it actually starts, exactly as a
    * parked role tick re-checks it (tick-timing.ts's runTimedRoleTick): a vet queued before the
@@ -143,19 +148,25 @@ export function guardLandingTask(root: string, role: string, promise: Promise<vo
   });
 }
 
-/** Take a permit at `tier` unless `signal` fires first: resolves to its release, or to null
- * when the signal won — a grant that arrives after that is handed straight back (a hop, never
- * a leak), so a parked vet that a shutdown settles holds nothing. */
+/** Take a permit at `tier` (on `key` when given) unless `signal` fires first: resolves to its
+ * release, or to null when the signal won — a grant that arrives after that is handed straight
+ * back (a hop, never a leak), so a parked vet that a shutdown settles holds nothing. When `key`
+ * is set the permit is a keyed lease, so the vet also counts against its provider's cap
+ * (plans/provider-concurrency.md §4). */
 export async function acquireUnlessAborted(
   semaphore: Semaphore,
   tier: number,
   signal: AbortSignal,
+  key?: string,
 ): Promise<(() => void) | null> {
   if (signal.aborted) return null;
-  const granted = semaphore.acquire(tier).then(() => true as const);
+  const granted = semaphore.acquireLease(tier, key);
   const stopped = new Promise<false>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
-  if (await Promise.race([granted, stopped])) return () => semaphore.release();
-  void granted.then(() => semaphore.release());
+  if (await Promise.race([granted, stopped])) {
+    const lease = await granted;
+    return () => lease.release();
+  }
+  void granted.then((lease) => lease.release());
   return null;
 }
 

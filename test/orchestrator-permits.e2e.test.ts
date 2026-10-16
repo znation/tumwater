@@ -273,3 +273,135 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   }
 });
 
+test("a vet's reviewer and a role tick on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
+  // plans/provider-concurrency.md §4: the landing vet acquires a keyed lease on the author's
+  // review seam, so a review on omlx shares the omlx provider cap with role ticks — not just
+  // the fleet total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx tick and
+  // the omlx review vetting feature's (or clean's) change never run at once, while the
+  // huggingface bugfix tick runs beside them. Review is on, pinned to omlx.
+  const repo = makeRepo();
+  await initProject(repo, "per-provider caps reach the vet");
+  const cfg = fastConfig(["feature", "bugfix", "clean"]);
+  cfg.maxConcurrent = 4;
+  cfg.maxConcurrentPerProvider = { omlx: 1 };
+  cfg.review!.enabled = true;
+  cfg.review!.provider = "omlx";
+  cfg.review!.model = "m";
+  cfg.roles.feature!.provider = "omlx";
+  cfg.roles.feature!.model = "m";
+  cfg.roles.clean!.provider = "omlx";
+  cfg.roles.clean!.model = "m";
+  cfg.roles.bugfix!.provider = "huggingface";
+  cfg.roles.bugfix!.model = "hf";
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `prov=""; prev=""; for a in "$@"; do if [ "$prev" = "--provider" ]; then prov="$a"; fi; prev="$a"; done`,
+      `[ -n "$prov" ] || prov=unknown`,
+      `f=$(mktemp "$d/run.\${prov}.XXXXXX")`,
+      `n=0; for x in "$d"/run.\${prov}.*; do n=$((n+1)); done`,
+      `t=0; for x in "$d"/run.*; do t=$((t+1)); done`,
+      `printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
+      leasedRoleShell(),
+      `vet=0`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) vet=1; break;; esac; done`,
+      `if [ "$vet" = 1 ]; then`,
+      `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
+      `else`,
+      `  echo change >> change.txt`,
+      `  sleep 1.5`,
+      `  printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
+      `fi`,
+      `rm -f "$f"`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "landed"),
+      "several role and vet runs across both providers, and a landing",
+      150_000,
+    );
+    const samples = readProviderSamples(runDir);
+    const omlxCounts = samples.filter((s) => s.provider === "omlx").map((s) => s.providerInFlight);
+    const totals = samples.map((s) => s.totalInFlight);
+    assert.ok(
+      omlxCounts.every((n) => n <= 1),
+      `a vet review and a role tick on omlx never overlap (samples: ${JSON.stringify(samples)})`,
+    );
+    assert.ok(
+      totals.every((n) => n <= 4),
+      `nothing exceeds the fleet total (samples: ${JSON.stringify(samples)})`,
+    );
+    assert.ok(
+      samples.some((s) => s.provider === "huggingface" && s.totalInFlight >= 2),
+      `a huggingface role ran beside an omlx run (samples: ${JSON.stringify(samples)})`,
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+
+test("a director prompt on a full provider starts at once and holds the provider's only free slot (part 3/5)", async () => {
+  // plans/provider-concurrency.md §4: the director keeps its bypass — it never queues and never
+  // counts toward maxConcurrent — but its tick does raise its provider's in-use by one. With
+  // { omlx: 1 } and clean holding the omlx slot for ~5s, a director prompt on omlx starts at
+  // once (order.log: it runs while clean is in flight) and its own run reads omlx in-flight 2 —
+  // the overshoot — and no third omlx run appears until that in-use drains.
+  const repo = makeRepo();
+  await initProject(repo, "director counts against a full provider");
+  const cfg = fastConfig(["clean", "director"]);
+  cfg.maxConcurrent = 4;
+  cfg.maxConcurrentPerProvider = { omlx: 1 };
+  cfg.review!.enabled = false; // keep every pi run a role/director tick: no vet, no resolver
+  cfg.roles.clean!.provider = "omlx";
+  cfg.roles.clean!.model = "m";
+  cfg.roles.director!.provider = "omlx";
+  cfg.roles.director!.model = "m";
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `prov=""; prev=""; for a in "$@"; do if [ "$prev" = "--provider" ]; then prov="$a"; fi; prev="$a"; done`,
+      `[ -n "$prov" ] || prov=unknown`,
+      `f=$(mktemp "$d/run.\${prov}.XXXXXX")`,
+      `n=0; for x in "$d"/run.\${prov}.*; do n=$((n+1)); done`,
+      `printf '%s %s\\n' "$prov" "$n" >> "${runDir}/samples.log"`,
+      leasedRoleShell(),
+      `printf '%s\\n' "\${role:-director}" >> "${runDir}/order.log"`,
+      `case "\${role:-director}" in`,
+      `director) ;;`,
+      `*) sleep 5 ;;`,
+      `esac`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+      `rm -f "$f"`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(() => readProviderSamples(runDir)[0]?.providerInFlight === 1, "clean's startup omlx tick holding the cap");
+    enqueuePrompt(repo, "steer me while omlx is full");
+    await awaitSettledTick(repo, "director", 1, "the director's tick to finish");
+    const order = readOrder(runDir);
+    const samples = readProviderSamples(runDir);
+    assert.equal(order[1], "director", `the director started before clean's second tick (${order})`);
+    const directorIdx = order.indexOf("director");
+    const directorSample = samples[directorIdx];
+    assert.ok(directorSample, "the director's run was counted against omlx");
+    assert.equal(
+      directorSample.providerInFlight,
+      2,
+      `the director overshot the full omlx key by one, a grant the cap would have withheld (${JSON.stringify(samples)})`,
+    );
+    assert.ok(
+      samples.filter((s) => s.provider === "omlx").every((s) => s.providerInFlight <= 2),
+      `no third omlx run starts while the cap and the director's overshoot both hold (${JSON.stringify(samples)})`,
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+

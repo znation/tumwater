@@ -9,7 +9,7 @@ import {
 } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { modelPairName } from "../budget/budget.js";
-import { roleSeamTier, reviewRunConfig, seamHoldKey } from "../config/config-views.js";
+import { roleSeamTier, reviewRunConfig, seamConcurrencyKey, seamHoldKey } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
 import { pollRunnerReasons } from "./orchestrator-scheduling.js";
 import { openBugs } from "../backlog/backlog.js";
@@ -465,6 +465,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             runners,
             liveConfig,
             roleConfig,
+            piDefault,
             startHeld: () => tickStartHeld() || reviewHeldNow(),
           },
           landings,
@@ -562,10 +563,27 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // from maintenance while a work loop has work to take, so a due work tick never waits out
       // a whole maintenance tick. Sized after the launch pass, so a runner launched this poll
       // already reads as running and reserves nothing for itself.
+      const poolSnapshot = semaphore.snapshot();
+      // The provider-headroom predicate receives the structural ClaimRunner; the config that
+      // names the provider lives on the real LoopRunners, so look the runner up by role.
+      const runnerByRole = new Map(runners.map((r) => [r.role, r]));
       const reserve = workReserveCount(root, runners, {
         maxConcurrent: liveConfig.maxConcurrent,
         enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
         queuedLandingRoles: queuedLandingRoles(root),
+        // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
+        // permit only when its own provider could use it — capped and full, it would only idle
+        // the slot another provider's maintenance tick could take. Read from the pool's live
+        // snapshot; an uncapped key (or the fleet-total-only case) always has headroom.
+        providerHasHeadroom: (r) => {
+          const runner = runnerByRole.get(r.role);
+          const cfg = runner && runner.role !== DIRECTOR_ROLE ? runner.runConfig(now) : null;
+          const key = cfg ? seamConcurrencyKey(cfg, piDefault) : undefined;
+          if (key === undefined) return true;
+          const k = poolSnapshot.byKey[key];
+          if (k?.limit === undefined) return true;
+          return k.inUse < k.limit;
+        },
       });
       semaphore.setReserve(reserve);
       if ((lastReserve === 0) !== (reserve === 0)) {
