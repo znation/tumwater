@@ -49,7 +49,7 @@ import {
 } from "../tick/tick-timing.js";
 import { newFleetGateStates, pollFleetGates, type FleetGateStates } from "../gates/gate-polls.js";
 import { ReclaimController } from "../fleet/reclaim.js";
-import { heldProviders } from "../fleet/fleet-hold.js";
+import { heldProviders, windowHeldProviders } from "../fleet/fleet-hold.js";
 import { planBacklogFull, workReserveCount } from "../scheduling/claims.js";
 
 const POLL_MS = 2000;
@@ -534,6 +534,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart,
         diskHeld,
         heldProviders: fleetHeldProviders,
+        windowHeldProviders: windowHeldProviders(gateStates.fleetHold),
         reviewHeld,
         roleProviders,
         openBugsNow,
@@ -563,8 +564,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         roleTickDurationsMs,
         startHeld: (role) =>
           tickStartHeld() ||
-          (role !== DIRECTOR_ROLE &&
-            (reviewHeldNow() || fleetHeldNow().has(roleProviders.get(role)))),
+          (role !== DIRECTOR_ROLE
+            ? reviewHeldNow() || fleetHeldNow().has(roleProviders.get(role))
+            : windowHeldProviders(gateStates.fleetHold).has(roleProviders.get(role))),
       });
 
       // Priority headroom (plans/parallel-work-instances.md part 7/7): withhold a few permits

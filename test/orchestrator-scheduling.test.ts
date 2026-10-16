@@ -7,7 +7,7 @@ import { pollRunnerReasons } from "../src/orchestrator/orchestrator-scheduling.j
 import { newMaintenanceQuotaGateState, pollMaintenanceQuotaGate } from "../src/gates/maintenance-quota.js";
 import { OnceRound } from "../src/scheduling/once-round.js";
 import { pollFleetHold } from "../src/fleet/fleet-polls.js";
-import { heldProviders } from "../src/fleet/fleet-hold.js";
+import { FLEET_OPEN, heldProviders, windowHeldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
@@ -66,6 +66,7 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     reviewStrongPaused: false,
     roleQuietHeld: new Set<string>(),
     heldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
+    windowHeldProviders: new Set<string | undefined>() as ReadonlySet<string | undefined>,
     reviewHeld: false,
     roleProviders,
     openBugsNow: false,
@@ -126,6 +127,26 @@ test("a storm at provider P holds only P's roles through scheduling, and the lif
   assert.equal(reasonsLifted.has(runners[1]!), true);
   assert.equal(reasonsLifted.has(runners[2]!), true);
   assert.equal(reasonsLifted.get(runners[0]!), "startup");
+});
+
+test("a subscription-window hold stops the director too, while a 429-storm hold still exempts it", async () => {
+  const root = tmpdir("tumwater-scheduling-window-director-");
+  const config = defaultConfig();
+  const runners = [fakeRunner("director", config)];
+  enqueueRolePrompt(root, "director", "hi");
+  const roleProviders = new Map<string, string | undefined>([["director", "claude"]]);
+  const hold = (kind: "subscription-window" | "rate-limit"): ReadonlyMap<string | undefined, FleetHold> =>
+    new Map([["claude", { ...FLEET_OPEN, provider: "claude", until: T0 + HOUR, kind }]]);
+
+  const window = schedulingCtx(root, runners, roleProviders);
+  window.heldProviders = heldProviders(hold("subscription-window"));
+  window.windowHeldProviders = windowHeldProviders(hold("subscription-window"));
+  assert.equal((await pollRunnerReasons(window)).has(runners[0]!), false, "window hold: director waits");
+
+  const storm = schedulingCtx(root, runners, roleProviders);
+  storm.heldProviders = heldProviders(hold("rate-limit"));
+  storm.windowHeldProviders = windowHeldProviders(hold("rate-limit"));
+  assert.equal((await pollRunnerReasons(storm)).has(runners[0]!), true, "429 hold: director keeps running");
 });
 
 /** A config whose feature role runs two instances, set through the schema field part 5a/7

@@ -70,6 +70,9 @@ interface SchedulingPassCtx {
    * `until` non-null; key presence is relapse memory, not a hold). A role starts no new
    * tick while ITS provider is held (the director exempt). */
   heldProviders: ReadonlySet<string | undefined>;
+  /** The subset of `heldProviders` held by a subscription window (fleet-hold.ts
+   * windowHeldProviders): the one hold the director is NOT exempt from. */
+  windowHeldProviders: ReadonlySet<string | undefined>;
   /** The reviewer's provider is held while the review gate is on: nothing could land, so
    * EVERY role is blocked, not just roles ticking on that provider. */
   reviewHeld: boolean;
@@ -124,6 +127,7 @@ export async function pollRunnerReasons(
     reviewStrongPaused,
     roleQuietHeld,
     heldProviders,
+    windowHeldProviders,
     reviewHeld,
     roleProviders,
     openBugsNow,
@@ -298,6 +302,11 @@ export async function pollRunnerReasons(
     if (bootstrapHeldNow(runner)) continue;
     if (operatorPauseBlocks(runner.role))
       continue; // no new role ticks while either gate holds
+    // The director honors only the subscription-window hold: the per-run 429 retry that backs
+    // its other exemptions does not answer a window rejection, so its prompt would fail and
+    // re-queue every poll until the repeated-failure pause stops it.
+    if (runner.role === DIRECTOR_ROLE && windowHeldProviders.has(roleProviders.get(runner.role)))
+      continue;
     if (
       runner.role !== DIRECTOR_ROLE &&
       (reviewHeld || heldProviders.has(roleProviders.get(runner.role)))

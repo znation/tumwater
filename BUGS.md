@@ -5,21 +5,6 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
-### A director prompt sent while the Claude subscription window is rejected runs again on every poll, and after 10 failures the repeated-failure pause stops the director until you resume it by hand (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md)
-
-- **Symptom:** read from the code, not seen live; no window has been rejected yet. The setup: `agent: "claude"` on a subscription without extra usage, a window `rejected`, and a prompt sent to the director.
-  - The run fails at once. Its prompt goes back to the inbox, and the director runs it again on the next poll, about 2 s later.
-  - The 10th failure in a row trips the repeated-failure pause (`ERROR_STREAK_BREAKER = 10`, src/tick/tick-apply.ts:59), which also applies to the director.
-  - The director then stays paused after the window resets, until `tumwater resume --role director`. Every other subscription Claude role just waits for the reset.
-- **Reproduce:** not run. In a loop test, use a fake claude that emits a `rate_limit_event` with `status: "rejected"` and a future `resetsAt`, then an error `result`. Queue a director prompt and drive the polls. The director runs about once per poll and is streak-paused after 10 runs, while a non-director role on the same seam is held after its first run.
-- **Cause:** the director skips each guard that stops other roles:
-  - Eligibility has no backoff for it: "a queued prompt runs as soon as the previous one finishes" (src/scheduling/scheduling.ts:58–61).
-  - The scheduler exempts it from every provider hold, including the `claude` subscription-window hold (src/orchestrator/orchestrator-scheduling.ts:301–305). The exemption's comment in src/gates/gate-polls.ts says the director keeps the per-run 429 retry, but that retry is skipped for a window rejection (`subscriptionWindowRejected`, src/loop/loop-pi.ts:282).
-  - The tick-verdict arm that turns a window rejection into a kept-worktree wait excludes the director (src/tick/tick-verdict.ts:137). Its run falls through to the plain error path, which puts the prompt back in the inbox.
-- **Expected / fix sketch:** while a subscription-window hold stands on the director's own provider (`seamHoldKey` of its resolved config is `claude`), the scheduler should not start the director, and the prompt stays in the inbox until the reset. Holds of the 429-storm and backend kinds keep the exemption, since the per-run retry still answers those.
-  - Test: the scenario above runs one director run, then no more until `resetsAt`. After the reset the director runs the prompt and is not streak-paused.
-  - plans/fallback-chain.md part 2/7 builds on this: when the director's tier has an available fallback, it moves there instead of waiting.
-
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.
@@ -87,6 +72,23 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
   - plans/fallback-chain.md part 5/7 relies on this rule.
 - **Fixed:** `readWindow` drops `isUsingOverage` and `overageStatus` when it flips a window to `reset`; test in test/claude-account.test.ts.
 - **Validation gap:** none — the reproduction in the entry confirmed it and a unit test pins it.
+
+### A director prompt sent while the Claude subscription window is rejected runs again on every poll, and after 10 failures the repeated-failure pause stops the director until you resume it by hand (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md, fixed 2026-10-16)
+
+- **Symptom:** read from the code, not seen live; no window has been rejected yet. The setup: `agent: "claude"` on a subscription without extra usage, a window `rejected`, and a prompt sent to the director.
+  - The run fails at once. Its prompt goes back to the inbox, and the director runs it again on the next poll, about 2 s later.
+  - The 10th failure in a row trips the repeated-failure pause (`ERROR_STREAK_BREAKER = 10`, src/tick/tick-apply.ts:59), which also applies to the director.
+  - The director then stays paused after the window resets, until `tumwater resume --role director`. Every other subscription Claude role just waits for the reset.
+- **Reproduce:** not run. In a loop test, use a fake claude that emits a `rate_limit_event` with `status: "rejected"` and a future `resetsAt`, then an error `result`. Queue a director prompt and drive the polls. The director runs about once per poll and is streak-paused after 10 runs, while a non-director role on the same seam is held after its first run.
+- **Cause:** the director skips each guard that stops other roles:
+  - Eligibility has no backoff for it: "a queued prompt runs as soon as the previous one finishes" (src/scheduling/scheduling.ts:58–61).
+  - The scheduler exempts it from every provider hold, including the `claude` subscription-window hold (src/orchestrator/orchestrator-scheduling.ts:301–305). The exemption's comment in src/gates/gate-polls.ts says the director keeps the per-run 429 retry, but that retry is skipped for a window rejection (`subscriptionWindowRejected`, src/loop/loop-pi.ts:282).
+  - The tick-verdict arm that turns a window rejection into a kept-worktree wait excludes the director (src/tick/tick-verdict.ts:137). Its run falls through to the plain error path, which puts the prompt back in the inbox.
+- **Expected / fix sketch:** while a subscription-window hold stands on the director's own provider (`seamHoldKey` of its resolved config is `claude`), the scheduler should not start the director, and the prompt stays in the inbox until the reset. Holds of the 429-storm and backend kinds keep the exemption, since the per-run retry still answers those.
+  - Test: the scenario above runs one director run, then no more until `resetsAt`. After the reset the director runs the prompt and is not streak-paused.
+  - plans/fallback-chain.md part 2/7 builds on this: when the director's tier has an available fallback, it moves there instead of waiting.
+- **Fixed:** the scheduler now skips the director while a `subscription-window` hold stands on its provider (`windowHeldProviders` in src/fleet/fleet-hold.ts, checked in src/orchestrator/orchestrator-scheduling.ts and the permit-time `startHeld` in src/orchestrator/orchestrator.ts); 429-storm and backend holds keep the exemption. Test: "a subscription-window hold stops the director too" in test/orchestrator-scheduling.test.ts.
+- **Validation gap:** none — a scheduling-pass test with a queued director prompt and a held provider reproduced it directly.
 
 ### A restart hold that adopts the cooldown's pre-warmed compile logs no `restart_pending`, so the event log never says the team stopped starting runs: on 2026-10-16 a 10-minute hold ended in two aborted runs with nothing before them in the feed (found by operator session 2026-10-16 from feature-2's and feature-3's aborted runs) — fixed 2026-10-16
 

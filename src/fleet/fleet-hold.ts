@@ -236,3 +236,16 @@ export function fleetHold(
   const holdMs = Math.min(HOLD_CAP_MS, Math.max(HOLD_BASE_MS * 2 ** escalation, retryAfterMs));
   return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }
+
+/** The providers whose standing hold is the account's subscription window (kind
+ * "subscription-window"): the one hold the director honors, because the per-run 429 retry
+ * never answers a window rejection (src/loop/loop-pi.ts subscriptionWindowRejected), so a
+ * director prompt started under it would only fail and re-queue every poll. */
+export function windowHeldProviders(
+  holds: ReadonlyMap<string | undefined, FleetHold>,
+): ReadonlySet<string | undefined> {
+  const held = new Set<string | undefined>();
+  for (const [provider, hold] of holds)
+    if (hold.until !== null && hold.kind === "subscription-window") held.add(provider);
+  return held;
+}
