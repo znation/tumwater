@@ -356,3 +356,34 @@ test("paneBody's backlog list shows the newest answered questions, read-only", (
   const t = paneBody({ kind: "backlog" }, { ...opts, root: none, state }).body.map((l) => l.map((s) => s.text).join(""));
   assert.ok(!t.some((l) => l.includes("answered recently")));
 });
+
+test("backlogLines adds done and fixed sections after the answered one", () => {
+  const lines = backlogLines(["p"], [], [], 1, [], { done: ["P — done 2026-10-15"], fixed: ["B — fixed 2026-10-14"] });
+  assert.deepEqual(lines.slice(-4), ["done recently (1):", "P — done 2026-10-15", "fixed recently (1):", "B — fixed 2026-10-14"]);
+  const onlyFixed = backlogLines(["p"], [], [], 1, [], { fixed: ["B"] });
+  assert.ok(!onlyFixed.some((l) => l.startsWith("done recently")));
+  assert.deepEqual(onlyFixed.slice(-2), ["fixed recently (1):", "B"]);
+  const onlyDone = backlogLines([], [], [], 0, [], { done: ["P"] });
+  assert.deepEqual(onlyDone, ["plans (0):", "(none)", "open bugs (0):", "(none)", "open questions (0):", "(none)", "done recently (1):", "P"]);
+});
+
+test("paneBody's backlog list shows the newest done plans and fixed bugs, read-only", () => {
+  const dir = tmpdir();
+  const done = [1, 2, 3, 4, 5, 6].map((n) => `### D${n} (planned 2026-09-01, done 2026-10-0${n})\n\nBody.`).reverse().join("\n\n");
+  writeBacklogFile(dir, "PLANS.md", [{ heading: "## Planned", body: "### Open plan\n\nGoal." }, { heading: "## Done", body: done }]);
+  writeBacklogFile(dir, "BUGS.md", [{ heading: "## Open" }, { heading: "## Fixed", body: "### Old bug (fixed 2026-10-02)\n\nx" }]);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: dir, width: 300, eventBudget: 30, entryBudget: 5 };
+  const rows = paneBody({ kind: "backlog" }, { ...opts, state }).body;
+  const text = rows.map((l) => l.map((s) => s.text).join(""));
+  const at = text.indexOf("done recently (5):");
+  assert.ok(at >= 0);
+  assert.ok(text[at + 1]!.startsWith("D6") && text[at + 1]!.endsWith("done 2026-10-06"));
+  assert.ok(!text.some((l) => l.startsWith("D1")));
+  const fx = text.indexOf("fixed recently (1):");
+  assert.ok(fx > at && text[fx + 1]!.startsWith("Old bug") && text[fx + 1]!.endsWith("fixed 2026-10-02"));
+  assert.ok(rows[at]!.every((s) => s.tone === "bold") && rows[fx]!.every((s) => s.tone === "bold"));
+  const sel = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 0 } }).body;
+  assert.equal(sel[0]!.map((s) => s.text).join(""), "plan: Open plan");
+  assert.ok(!sel.some((l) => l.some((s) => s.text.includes("D6") || s.text.includes("Old bug"))));
+});

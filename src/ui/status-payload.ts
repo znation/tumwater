@@ -25,7 +25,7 @@ export const DASHBOARD_ANSWERED_QUESTIONS = 5;
 const DASHBOARD_RECENT_FINISHED = 5;
 
 /** The newest finished entries (sections are newest first), titles cleaned of their stamp. */
-function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
+export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
   return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
 }
 

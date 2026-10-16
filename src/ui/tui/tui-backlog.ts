@@ -76,7 +76,9 @@ export function planListLines(
  * collapsed series lines. An empty section renders `(none)` under its subheader; when all
  * three are empty and `answered` is too, the whole view is a single self-explanatory line.
  * A non-empty `answered` (the newest answered questions, one preformatted line each) adds an
- * `answered recently (K):` section last; an empty one adds nothing, not even `(none)`.
+ * `answered recently (K):` section; non-empty `finished.done` and `finished.fixed` (preformatted
+ * lines too) then add `done recently (N):` and `fixed recently (N):`. An empty list adds nothing,
+ * not even `(none)`, and the single-line view needs all of them empty.
  * Pure, so it is unit-testable without touching disk. */
 export function backlogLines(
   plans: string[],
@@ -84,8 +86,11 @@ export function backlogLines(
   questions: string[],
   planCount: number = plans.length,
   answered: string[] = [],
+  finished: { done?: string[]; fixed?: string[] } = {},
 ): string[] {
-  if (plans.length === 0 && bugs.length === 0 && questions.length === 0 && answered.length === 0)
+  const done = finished.done ?? [];
+  const fixed = finished.fixed ?? [];
+  if (plans.length + bugs.length + questions.length + answered.length + done.length + fixed.length === 0)
     return ["(no planned features, open bugs, or open questions)"];
   const lines = [`plans (${planCount}):`];
   lines.push(...(plans.length ? plans : ["(none)"]));
@@ -94,6 +99,8 @@ export function backlogLines(
   lines.push(`open questions (${questions.length}):`);
   lines.push(...(questions.length ? questions : ["(none)"]));
   if (answered.length) lines.push(`answered recently (${answered.length}):`, ...answered);
+  if (done.length) lines.push(`done recently (${done.length}):`, ...done);
+  if (fixed.length) lines.push(`fixed recently (${fixed.length}):`, ...fixed);
   return lines;
 }
 

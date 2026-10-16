@@ -14,7 +14,8 @@ import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
 import type { HarnessEvent } from "../../events/events.js";
 import { backlogLines, entryBodyWindow, labeledBacklogEntries, planListLines } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
-import { DASHBOARD_ANSWERED_QUESTIONS } from "../status-payload.js";
+import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
+import { donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -142,10 +143,17 @@ export function paneBody(
       const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
         q.decision ? `${q.title} — ${q.decision}` : q.title,
       );
+      // Done plans and fixed bugs follow, read-only for the same reason.
+      const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
+        rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
+      const finished = {
+        done: finishedRows(recentFinished(donePlanEntries(root), DONE_DATE_RE), "done"),
+        fixed: finishedRows(recentFinished(fixedBugEntries(root), FIXED_DATE_RE), "fixed"),
+      };
       return {
-        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered)
+        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length, answered, finished)
           .slice(0, eventBudget)
-          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
+          .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions|answered recently|done recently|fixed recently) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",
       };
     }
