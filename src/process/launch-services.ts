@@ -12,7 +12,7 @@
  * (src/doctor/doctor-launch-services.ts) reads too. Dependency direction: doctor and
  * orchestrator → process/launch-services → process-table (the probe). */
 
-import { warnEvent } from "../events/events.js";
+import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { type ProcessProbe, systemProcessProbe } from "./process-table.js";
 import { compactTokens } from "../text/format.js";
 
@@ -80,7 +80,7 @@ export class LaunchServicesWatch {
       if (ports === null) return;
       const next = nextLaunchServicesWarning(this.lastWarned, ports);
       this.lastWarned = next.lastWarned;
-      if (next.warn) warnEvent(this.root, "harness", launchServicesWarning(ports)); // vocabulary-ok: event source
+      if (next.warn) warnEvent(this.root, TUMWATER_SOURCE, launchServicesWarning(ports));
     } catch {
       // The probe never rejects; an events log that cannot be written leaves nothing to do.
     } finally {

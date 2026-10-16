@@ -1,4 +1,5 @@
 import { sleep } from "./helpers/wait.js";
+import { TUMWATER_SOURCE } from "../src/events/events.js";
 import { spawn } from "node:child_process";
 import { readJson } from "./helpers/json-read.js";
 import test from "node:test";
@@ -217,9 +218,9 @@ test("an onFleetDown that throws leaves the exit code the child's", async () => 
 
 test("fleetDownEvent carries generation, code or signal, and a reason only when one is known", () => {
   const diagnosed = fleetDownEvent({ generation: 2, exit: { code: 1, signal: null }, crashLoop: false }, "not initialized");
-  assert.deepEqual(diagnosed, { loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" });
+  assert.deepEqual(diagnosed, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" });
   const bare = fleetDownEvent({ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }, null);
-  assert.deepEqual(bare, { loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "no guess");
+  assert.deepEqual(bare, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "no guess");
   const loop = fleetDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
   assert.match(String(loop.reason), new RegExp(`restarted itself more than ${MAX_RAPID_RESPAWNS} times within 60s`));
 });

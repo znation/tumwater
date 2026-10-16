@@ -55,8 +55,8 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   assert.deepEqual(
     baseline.map((e) => [e.status, e.source, e.script]),
     [
-      ["passed", "harness", "test"],
-      ["failed", "harness", "test"],
+      ["passed", "tumwater", "test"],
+      ["failed", "tumwater", "test"],
     ],
   );
   // The mirror worktree the closure created is real and repointed at each asked head.

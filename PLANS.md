@@ -246,30 +246,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 
-### Plain terms event log, part 8/9: Switch the remaining event call sites to source (planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
-
-**Goal.** Mechanical. Stage 2 of "Widely used fields", second directory group. After this part, no src module passes `loop` or `"harness"` as an event source.
-
-**Approach.**
-- Make the same substitution as part 7/9 (`loop:` → `source:`, and `"harness"` → `TUMWATER_SOURCE`) in src/gates/, src/orchestrator/, src/fleet/, src/redeploy/, src/operator/, src/config/, src/scheduling/, src/process/, src/gui/ and src/cli/. Examples:
-  - src/process/supervisor.ts's `fleetDownEvent`;
-  - redeployer.ts's `restart` and escalation events;
-  - redeploy.ts's `baselineCheckEventLogger("harness", …)`;
-  - the gate family's emits;
-  - config-live.ts's reload events;
-  - gui-server.ts's server-error warning.
-- Use the same temporary-required-`source` trick to list the objects, and grep `"harness"` for the positional ones.
-- Tests that capture these modules' events through an injected `emit`/`log` seam and read `.loop` read `.source` (test/redeploy-wiring.test.ts, test/config-live.test.ts, …).
-- **Self-hosting:** safe, for the same reason as part 7/9. The supervisor process keeps writing `loop: "harness"` until it is restarted, and the normalizer covers it.
-
-**Files touched.** About 60 one-line sites (gates/ ~15, orchestrator/ ~10, fleet/ ~9, redeploy/ ~9, operator/ ~8, config/ ~5, process/ ~2, scheduling/ ~1, gui/ ~1, cli/ ~1), plus the seam-capturing tests the suite flags.
-
-**Acceptance criteria.**
-- `grep -rnE '\bloop: ' src` finds no event-object key.
-- `grep -rn '"harness"' src` finds only the normalizer's legacy mapping and non-event text.
-- `tumwater run --once`, through the e2e tests, writes only `source` fields.
-- `npm run test` passes.
-
 ### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)
 
 **Goal.** Stage 3 of "Widely used fields". `HarnessEventInput` requires `source`, and `loop` is gone from every TypeScript type, so a new call site cannot reintroduce it. Old lines still read through the normalizer.
@@ -2316,6 +2292,30 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 8/9: Switch the remaining event call sites to source (done 2026-10-16; planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
+
+**Goal.** Mechanical. Stage 2 of "Widely used fields", second directory group. After this part, no src module passes `loop` or `"harness"` as an event source.
+
+**Approach.**
+- Make the same substitution as part 7/9 (`loop:` → `source:`, and `"harness"` → `TUMWATER_SOURCE`) in src/gates/, src/orchestrator/, src/fleet/, src/redeploy/, src/operator/, src/config/, src/scheduling/, src/process/, src/gui/ and src/cli/. Examples:
+  - src/process/supervisor.ts's `fleetDownEvent`;
+  - redeployer.ts's `restart` and escalation events;
+  - redeploy.ts's `baselineCheckEventLogger("harness", …)`;
+  - the gate family's emits;
+  - config-live.ts's reload events;
+  - gui-server.ts's server-error warning.
+- Use the same temporary-required-`source` trick to list the objects, and grep `"harness"` for the positional ones.
+- Tests that capture these modules' events through an injected `emit`/`log` seam and read `.loop` read `.source` (test/redeploy-wiring.test.ts, test/config-live.test.ts, …).
+- **Self-hosting:** safe, for the same reason as part 7/9. The supervisor process keeps writing `loop: "harness"` until it is restarted, and the normalizer covers it.
+
+**Files touched.** About 60 one-line sites (gates/ ~15, orchestrator/ ~10, fleet/ ~9, redeploy/ ~9, operator/ ~8, config/ ~5, process/ ~2, scheduling/ ~1, gui/ ~1, cli/ ~1), plus the seam-capturing tests the suite flags.
+
+**Acceptance criteria.**
+- `grep -rnE '\bloop: ' src` finds no event-object key.
+- `grep -rn '"harness"' src` finds only the normalizer's legacy mapping and non-event text.
+- `tumwater run --once`, through the e2e tests, writes only `source` fields.
+- `npm run test` passes.
 
 ### Fallback chain, part 2/7: The director follows a used-up Claude window to its tier's fallback (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Director"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/landing/landing-vetting.ts src/orchestrator/orchestrator-scheduling.ts docs/backends.md and their tests, done 2026-10-16)
 

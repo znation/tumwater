@@ -27,7 +27,7 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { donePlans, openBugs } from "../backlog/backlog.js";
 import { bootstrapLatchPath } from "../paths.js";
 import { writeJsonAtomic } from "../files/json-files.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -105,7 +105,7 @@ export function pollBootstrapGate(
         );
       }
       logEventBestEffort(root, {
-        loop: "harness", // vocabulary-ok: event source
+        source: TUMWATER_SOURCE,
         type: "bootstrap_complete",
         plansDone: status.plansDone,
         untilPlansDone: status.untilPlansDone,

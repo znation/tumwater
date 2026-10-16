@@ -12,7 +12,7 @@
 
 import fs from "node:fs";
 import { worktreesDir } from "../paths.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
 /** GB means 10^9 bytes everywhere — in config and in display (plans/disk-floor.md). Exported
  * so doctor's detail renders the same unit the gate holds on. */
@@ -85,7 +85,7 @@ export function pollDiskGate(
       state.warnedUnmeasurable = true;
       warnEventBestEffort(
         root,
-        "harness",
+        TUMWATER_SOURCE,
         "cannot measure free disk space (statfs failed) — the disk hold is off for this process",
       );
     }
@@ -106,8 +106,8 @@ export function pollDiskGate(
     logEventBestEffort(
       root,
       held
-        ? { loop: "harness", type: "disk_low", freeGB, holdGB }
-        : { loop: "harness", type: "disk_ok", freeGB },
+        ? { source: TUMWATER_SOURCE, type: "disk_low", freeGB, holdGB }
+        : { source: TUMWATER_SOURCE, type: "disk_ok", freeGB },
     );
   }
   return held;

@@ -4,7 +4,7 @@ import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
 import { seamsInUse } from "./config-fallbacks.js";
-import { bestEffortEventLogger } from "../events/events.js";
+import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
@@ -105,7 +105,7 @@ export function newLiveConfigReload(deps: {
         // changed (maxConcurrent and sessionRetentionDays have their own events elsewhere).
         const changedKeys = changedConfigKeys(prevLive, reloaded.config);
         if (changedKeys.length > 0) {
-          emit({ loop: "harness", type: "config_changed", keys: changedKeys }); // vocabulary-ok: event source stays "harness" until the event log rename
+          emit({ source: TUMWATER_SOURCE, type: "config_changed", keys: changedKeys });
           // A real model-wiring change gets its own event naming the new selector(s), which the
           // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
           const fromModel = fleetModelLabel(prevLive);
@@ -121,7 +121,7 @@ export function newLiveConfigReload(deps: {
             .filter((d) => d.from !== d.to);
           if (fromModel !== toModel || roleDiffs.length > 0)
             emit({
-              loop: "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+              source: TUMWATER_SOURCE,
               type: "model_changed",
               from: fromModel,
               to: toModel,
@@ -138,7 +138,7 @@ export function newLiveConfigReload(deps: {
           if (prevAgents.has(agent)) continue;
           const resolved = resolveAgentBin(reloaded.config, agent);
           if (findAgentBinary(resolved)) {
-            emit({ loop: "harness", type: "backend_binary", agent, found: true }); // vocabulary-ok: event source stays "harness" until the event log rename
+            emit({ source: TUMWATER_SOURCE, type: "backend_binary", agent, found: true });
           } else {
             warn(`newly routed ${agent} backend: ${agentMissingMessage(resolved, agent)}`);
           }
@@ -155,7 +155,7 @@ export function newLiveConfigReload(deps: {
         const newMaxConcurrent = Math.max(1, reloaded.config.maxConcurrent);
         if (newMaxConcurrent !== lastMaxConcurrent) {
           deps.semaphore.setCapacity(newMaxConcurrent);
-          emit({ loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent }); // vocabulary-ok: event source stays "harness" until the event log rename
+          emit({ source: TUMWATER_SOURCE, type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
           lastMaxConcurrent = newMaxConcurrent;
         }
         // Live-resize the per-provider caps (plans/provider-concurrency.md §7): an edit
@@ -169,7 +169,7 @@ export function newLiveConfigReload(deps: {
           const to = nextKeyCaps[provider];
           if (from !== to) {
             emit({
-              loop: "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+              source: TUMWATER_SOURCE,
               type: "provider_concurrency_changed",
               provider,
               from: from ?? 0,

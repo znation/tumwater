@@ -28,7 +28,7 @@ import {
   type TierFallbackMap,
 } from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { enabledRoleIds } from "../config/config.js";
 import { formatModelSelector, isAgentId } from "../config/model-selector.js";
 import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
@@ -287,14 +287,14 @@ export function pollBudgetGate(
   // doubles the page on the poll the cap itself is reached.
   const warn = gate === "open" && budgetWarning({ spentUsd, capUsd });
   if (warn && !state.warned) {
-    logEventBestEffort(root, { loop: "harness", type: "budget_warning", spentUsd, capUsd });
+    logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "budget_warning", spentUsd, capUsd });
     state.warned = true;
   } else if (!warn) {
     state.warned = false;
   }
   if (gate !== state.prevGate) {
     logEventBestEffort(root, {
-      loop: "harness",
+      source: TUMWATER_SOURCE,
       type: gate === "open" ? "budget_resumed" : gate === "fallback" ? "budget_fallback" : "budget_paused",
       spentUsd,
       capUsd,

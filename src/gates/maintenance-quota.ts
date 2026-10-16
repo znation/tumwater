@@ -26,7 +26,7 @@ import { finiteNumber } from "../files/json-object.js";
 import { dayKey } from "../text/datetime.js";
 import { commitTier } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEvent } from "../events/events.js";
 
 /** The fixed test-independent part of the allowance: a project whose backlog is empty still gets
@@ -184,7 +184,7 @@ export function pollMaintenanceQuotaGate(
   if (verdict.held !== state.prevHeld) {
     if (verdict.held) {
       logEventBestEffort(root, {
-        loop: "harness",
+        source: TUMWATER_SOURCE,
         type: "maintenance_quota_hold",
         work,
         maint,
@@ -192,7 +192,7 @@ export function pollMaintenanceQuotaGate(
       });
     } else {
       logEventBestEffort(root, {
-        loop: "harness",
+        source: TUMWATER_SOURCE,
         type: "maintenance_quota_resumed",
         work,
         maint,

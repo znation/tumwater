@@ -4,7 +4,7 @@ import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { pidAlive } from "../process/process.js";
 import { orchestratorStatePath } from "../paths.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 
 /** The running orchestrator's info file (.tumwater/state/orchestrator.json): who is driving the
@@ -273,7 +273,7 @@ function writeOrchestratorInfoBestEffort(root: string, info: OrchestratorInfo): 
   try {
     writeOrchestratorInfo(root, info);
   } catch (err) {
-    warnEventBestEffort(root, "harness", `could not publish orchestrator info: ${errorMessage(err)}`);
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not publish orchestrator info: ${errorMessage(err)}`);
   }
 }
 

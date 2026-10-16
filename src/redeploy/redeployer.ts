@@ -1,5 +1,6 @@
 // vocabulary: plain
 import type { BuildInfo, BuildStaleness, BuildStatus } from "../build/build-info.js";
+import { TUMWATER_SOURCE } from "../events/events.js";
 import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
@@ -227,7 +228,7 @@ export class Redeployer {
    * why an episode started mid-cooldown. */
   forceRestart(): void {
     this.forcedRestart = true;
-    this.log({ loop: "harness", type: "restart_forced", build: this.build.sha }); // vocabulary-ok: event source
+    this.log({ source: TUMWATER_SOURCE, type: "restart_forced", build: this.build.sha });
   }
 
   /** Read and clear the forced flag — one-shot: the poll that consumes it acts on it. */
@@ -286,7 +287,7 @@ export class Redeployer {
       const stale = this.staleness?.stale ?? false;
       if (stale && !wasStale) {
         this.log({
-          loop: "harness", // vocabulary-ok: event source
+          source: TUMWATER_SOURCE,
           type: "build_stale",
           build: this.build.sha,
           head: mainHead,
@@ -495,7 +496,7 @@ export class Redeployer {
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
     // finishedMs past the window: correct and informative.
     this.log({
-      loop: "harness", // vocabulary-ok: event source
+      source: TUMWATER_SOURCE,
       type: "restart",
       from: this.build.sha,
       to: mainHead,
@@ -523,7 +524,7 @@ export class Redeployer {
     if (this.pendingLoggedHead === mainHead) return;
     this.pendingLoggedHead = mainHead;
     this.log({
-      loop: "harness", // vocabulary-ok: event source
+      source: TUMWATER_SOURCE,
       type: "restart_pending",
       build: this.build.sha,
       head: mainHead,
@@ -547,7 +548,7 @@ export class Redeployer {
     this.noteFailure(now);
     if (reason !== this.refusedReason) {
       this.refusedReason = reason;
-      this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason }); // vocabulary-ok: event source
+      this.log({ source: TUMWATER_SOURCE, type: "restart_refused", from: this.build.sha, to: head, reason });
     }
     // The state stream left "compiling" via the refusal event; a later episode for the same
     // head — the gate re-asked after the environment was repaired — is a new transition.
@@ -572,7 +573,7 @@ export class Redeployer {
     // — its two other endings (restart, restart_refused) each have an event, so the third does
     // too (BUGS.md 2026-09-28). Logged before the warning, so the warning is never the state
     // stream's only trace of the episode's end.
-    this.log({ loop: "harness", type: "restart_blocked", from: this.build.sha, to: head, reason }); // vocabulary-ok: event source
+    this.log({ source: TUMWATER_SOURCE, type: "restart_blocked", from: this.build.sha, to: head, reason });
     this.warn(message);
   }
 
@@ -604,6 +605,6 @@ export class Redeployer {
 
   /** Log one warning event for the harness loop — the shape the class's warn sites share. */
   private warn(message: string): void {
-    this.log({ loop: "harness", type: "warning", message }); // vocabulary-ok: event source
+    this.log({ source: TUMWATER_SOURCE, type: "warning", message });
   }
 }

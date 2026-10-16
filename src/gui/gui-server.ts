@@ -15,7 +15,7 @@ import {
   type SupervisorWatchSeams,
   watchReloadSupervisor,
 } from "../redeploy/self-reload.js";
-import { warnEvent } from "../events/events.js";
+import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import {
   handleBacklog,
@@ -151,7 +151,7 @@ export function loopbackHostAllowed(hostHeader: string): boolean {
  * handler's purpose. The warning is best-effort, the same policy the cleanup warn sites apply. */
 function recordServerError(root: string, err: unknown): void {
   try {
-    warnEvent(root, "harness", `dashboard server error: ${errorMessage(err)}`);
+    warnEvent(root, TUMWATER_SOURCE, `dashboard server error: ${errorMessage(err)}`);
   } catch {
     // The log is another process's to fix; the dashboard stays up either way.
   }

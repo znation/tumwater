@@ -9,7 +9,7 @@
  * operator pause. In-flight ticks finish; the gate sits before eligibility, so a tick due
  * inside the window simply starts at window end. */
 
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { gotSuffix, isNonBlankString } from "../text/text.js";
 
 /** A parsed window: minutes since local midnight for each end. `startMin > endMin` is a
@@ -104,7 +104,7 @@ export function newQuietHoursGateState(): QuietHoursGateState {
 /** Poll the quiet-hours gate for one orchestrator cycle — the pause gate's scheduled sibling
  * (src/gates/pause-gates.ts pollPauseGates): parse the config value fresh (a live edit applies on
  * the next poll), decide membership for `now`, and log exactly one `quiet_hours_started` /
- * `quiet_hours_ended` event (`loop: "harness"`, with the effective window string) per
+ * `quiet_hours_ended` event (`source: TUMWATER_SOURCE`, with the effective window string) per
  * crossing. An unset/off window is simply "outside", so nothing is ever logged for it.
  * Returns whether the fleet is inside the window right now. */
 export function pollQuietHoursGate(
@@ -118,7 +118,7 @@ export function pollQuietHoursGate(
   if (inNow !== state.prevIn) {
     state.prevIn = inNow;
     logEventBestEffort(root, {
-      loop: "harness", // vocabulary-ok: event source
+      source: TUMWATER_SOURCE,
       type: inNow ? "quiet_hours_started" : "quiet_hours_ended",
       window: typeof quietHours === "string" ? quietHours : undefined,
     });

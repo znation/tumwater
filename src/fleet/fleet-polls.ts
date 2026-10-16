@@ -1,5 +1,5 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
 import { claudeWindowUsedUp, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
@@ -89,7 +89,7 @@ export function pollFleetHold(
         // The subscription window's own crossing event, once per rejected window rather than
         // once per failure storm. It names the window type and the deadline the hold lifts at.
         logEventBestEffort(root, {
-          loop: "harness",
+          source: TUMWATER_SOURCE,
           type: "claude_window_limited",
           ...providerFields,
           windowType: window?.windowType,
@@ -100,7 +100,7 @@ export function pollFleetHold(
         });
       } else {
         logEventBestEffort(root, {
-          loop: "harness",
+          source: TUMWATER_SOURCE,
           type: "rate_limit_hold",
           ...providerFields,
           kind: pNext.kind,
@@ -111,14 +111,14 @@ export function pollFleetHold(
       }
     } else if (pPrev.until !== null && pNext.until === null) {
       if (pNext.kind === "subscription-window") {
-        logEventBestEffort(root, { loop: "harness", type: "claude_window_reset", ...providerFields });
+        logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "claude_window_reset", ...providerFields });
       } else {
         // The ended hold's kind rides the resumed event: the hold's own event names its kind, so
         // the lift must be able to name what actually ended too — "429 hold lifted" after a
         // connection-error hold is the same lie the hold line's kind split removed
         // (BUGS.md 2026-09-29).
         logEventBestEffort(root, {
-          loop: "harness",
+          source: TUMWATER_SOURCE,
           type: "rate_limit_resumed",
           ...providerFields,
           kind: pNext.kind,
@@ -169,7 +169,7 @@ export function pollClaudeWindowWarning(
     const key = `${type}:${w.resetsAt ?? ""}`;
     if (key === prevWarnedKey) return prevWarnedKey;
     logEventBestEffort(root, {
-      loop: "harness",
+      source: TUMWATER_SOURCE,
       type: "claude_window_warning",
       windowType: type,
       ...(typeof w.resetsAt === "number" ? { resetsAt: w.resetsAt } : {}),
@@ -203,7 +203,7 @@ export function pollErrorStorm(
   if (next.key !== null && next.key !== prev.key) {
     const knob = errorStormKnob(next.key);
     logEventBestEffort(root, {
-      loop: "harness",
+      source: TUMWATER_SOURCE,
       type: "warning",
       message:
         `error storm — ${next.roles.length} roles failing consecutively on one shared cause ` +
@@ -238,7 +238,7 @@ export function pollFailureSpread(
     const episode = next.recent.filter((o) => o.kind === next.kind);
     const roles = sortedRoles(new Set(episode.map((o) => o.role)));
     logEventBestEffort(root, {
-      loop: "harness",
+      source: TUMWATER_SOURCE,
       type: "warning",
       message:
         `failure spread — ${episode.length} provider failures of one kind (${next.kind}) within ` +

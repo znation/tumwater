@@ -49,7 +49,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { roleSeamTier } from "../config/config-views.js";
 import type { TierFallbackMap } from "../config/config-fallbacks.js";
@@ -284,7 +284,7 @@ export function pollFleetGates(
       );
       if (matching.length > 0) {
         logEventBestEffort(root, {
-          loop: "harness",
+          source: TUMWATER_SOURCE,
           type: "budget_handback",
           roles: matching.map((r) => r.role),
           provider: leftPair.provider,

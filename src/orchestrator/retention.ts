@@ -6,7 +6,7 @@
  * orchestrator → retention; this module owns the whole "which files age out, and when" concern
  * and the orchestrator only hands it the (possibly live-reloaded) window. */
 
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { pruneOldFiles } from "../files/files.js";
 import { pruneSessionLedgers } from "../agent/session-ledger.js";
 import { sessionsRootDir, toolOutputDir } from "../paths.js";
@@ -49,7 +49,7 @@ export class RetentionPruner {
       // only for a positive window.
       if (retentionDays !== this.lastRetention) {
         logEventBestEffort(root, {
-          loop: "harness", // vocabulary-ok: event source
+          source: TUMWATER_SOURCE,
           type: "retention_changed",
           from: this.lastRetention,
           to: retentionDays,
@@ -71,9 +71,9 @@ export class RetentionPruner {
     // bounds it, and each warning must name the unit it pruned.
     const pruned = pruneOldFiles(sessions, days) + pruneOldFiles(toolOutputDir(root), days);
     if (pruned > 0)
-      warnEventBestEffort(root, "harness", `pruned ${pruned} old agent session/tool-output file(s)`); // vocabulary-ok: event source
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${pruned} old agent session/tool-output file(s)`);
     const prunedLines = pruneSessionLedgers(sessions, days);
     if (prunedLines > 0)
-      warnEventBestEffort(root, "harness", `pruned ${prunedLines} stale session ledger line(s)`); // vocabulary-ok: event source
+      warnEventBestEffort(root, TUMWATER_SOURCE, `pruned ${prunedLines} stale session ledger line(s)`);
   }
 }

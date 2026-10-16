@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { LoopRunner } from "../loop/loop.js";
-import { logEvent, warnEvent, warnEventBestEffort } from "../events/events.js";
+import { logEvent, warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -81,7 +81,7 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
     logEvent(root, event);
   } catch (err) {
     try {
-      warnEvent(root, "harness", `could not record ${event.type} request: ${errorMessage(err)}`); // vocabulary-ok: event source/reason code stays
+      warnEvent(root, TUMWATER_SOURCE, `could not record ${event.type} request: ${errorMessage(err)}`);
     } catch {
       // The event feed is the failure; there is nothing left to report on.
     }
@@ -97,7 +97,7 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
 function warnStatePersistFailed(root: string, role: string, err: unknown): void {
   warnEventBestEffort(
     root,
-    "harness", // vocabulary-ok: event source/reason code stays
+    TUMWATER_SOURCE,
     `could not persist ${role}'s state for your request: ${errorMessage(err)}`,
   );
 }
@@ -135,8 +135,8 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
   if (applied.length > 0) {
     const [only] = applied;
     // One role → filed under that loop; several → one harness-level event listing them.
-    if (applied.length === 1 && only) logRequestEvent(root, { loop: only, type: "counters_reset" });
-    else logRequestEvent(root, { loop: "harness", type: "counters_reset", roles: applied }); // vocabulary-ok: event source/reason code stays
+    if (applied.length === 1 && only) logRequestEvent(root, { source: only, type: "counters_reset" });
+    else logRequestEvent(root, { source: TUMWATER_SOURCE, type: "counters_reset", roles: applied });
   }
   removeQuiet(markerFile);
 }
@@ -248,7 +248,7 @@ function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]
       warnStatePersistFailed(root, r.role, err);
       continue; // warn stands in for the wake event; nothing persisted to celebrate
     }
-    logRequestEvent(root, { loop: r.role, type: "wake", reason: "operator" }); // vocabulary-ok: event source/reason code stays
+    logRequestEvent(root, { source: r.role, type: "wake", reason: "operator" }); // vocabulary-ok: wake reason code
   }
   for (const role of runnerlessTargets(root, markerFile, runners)) {
     try {
@@ -257,7 +257,7 @@ function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]
       warnStatePersistFailed(root, role, err);
       continue;
     }
-    logRequestEvent(root, { loop: role, type: "wake", reason: "operator" }); // vocabulary-ok: event source/reason code stays
+    logRequestEvent(root, { source: role, type: "wake", reason: "operator" }); // vocabulary-ok: wake reason code
   }
   removeQuiet(markerFile);
 }
@@ -319,7 +319,7 @@ export function consumeAbortRequests(
   // unwritable event feed is what failed, and there is nothing left to report on then.
   const warnFailure = (role: string, err: unknown): void => {
     try {
-      warnEvent(root, "harness", `could not consume abort request for ${role}: ${errorMessage(err)}`); // vocabulary-ok: event source/reason code stays
+      warnEvent(root, TUMWATER_SOURCE, `could not consume abort request for ${role}: ${errorMessage(err)}`);
     } catch {
       // The feed is the failure; the remaining markers still get their turn below.
     }
@@ -349,7 +349,7 @@ export function consumeAbortRequests(
     removeQuiet(abortRequestPath(root, role));
     if (runner?.state.running) {
       try {
-        logEvent(root, { loop: role, type: "run_aborted" });
+        logEvent(root, { source: role, type: "run_aborted" });
       } catch (err) {
         warnFailure(role, err);
       }

@@ -1,5 +1,6 @@
 // vocabulary: plain
 import { spawn, type StdioOptions } from "node:child_process";
+import { TUMWATER_SOURCE } from "../events/events.js";
 import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
@@ -225,7 +226,7 @@ export function fleetDownEvent(down: FleetDown, diagnosis: string | null): Harne
     ? `restarted itself more than ${MAX_RAPID_RESPAWNS} times within ${RESPAWN_WINDOW_MS / 1000}s — giving up`
     : diagnosis;
   return {
-    loop: "harness", // vocabulary-ok: event source
+    source: TUMWATER_SOURCE,
     type: "supervisor_exit",
     generation: down.generation,
     code: down.exit.code,

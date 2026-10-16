@@ -198,7 +198,7 @@ export async function pollRunnerReasons(
       // claim would stay on disk for status/doctor to show and for a restart to release again.
       saveLoopState(root, r.state);
       const reason: ClaimReleaseReason = released;
-      logEventBestEffort(root, { loop: r.role, type: "claim", action: "released", title, reason });
+      logEventBestEffort(root, { source: r.role, type: "claim", action: "released", title, reason });
       if (reason === "stale") {
         warnEventBestEffort(
           root,
@@ -377,7 +377,7 @@ export async function pollRunnerReasons(
       const deferredNow = deferral !== null;
       if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
         if (deferral)
-          logEventBestEffort(root, { loop: runner.role, type: "run_deferred", reason: deferral });
+          logEventBestEffort(root, { source: runner.role, type: "run_deferred", reason: deferral });
         deferredDue.set(runner.role, deferredNow);
       }
       if (deferredNow) {
@@ -477,7 +477,7 @@ export async function pollRunnerReasons(
           };
           claimGroup.held.add(pick.key);
           logEventBestEffort(root, {
-            loop: runner.role,
+            source: runner.role,
             type: "claim",
             action: "assigned",
             key: pick.key,

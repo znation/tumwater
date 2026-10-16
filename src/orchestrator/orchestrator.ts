@@ -22,7 +22,7 @@ import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
 import { queuedLandingFiles, queuedLandingRoles } from "../landing/landing-queue.js";
 import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
-import { bestEffortEventLogger, logEventBestEffort } from "../events/events.js";
+import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
 import { newNotifier } from "../events/notify.js";
@@ -191,7 +191,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // into one that refuses to start; logEventBestEffort reports the write failure on stderr so
   // it stays visible, and startup proceeds to the poll loop, which is already best-effort.
   logEventBestEffort(root, {
-    loop: "harness", // vocabulary-ok: event source
+    source: TUMWATER_SOURCE,
     type: "orchestrator_start",
     pid: process.pid,
     roles: enabled,
@@ -601,7 +601,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       });
       semaphore.setReserve(reserve);
       if ((lastReserve === 0) !== (reserve === 0)) {
-        emit({ loop: "harness", type: "permit_reserve", reserve }); // vocabulary-ok: event source
+        emit({ source: TUMWATER_SOURCE, type: "permit_reserve", reserve });
       }
       lastReserve = reserve;
 
@@ -636,7 +636,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
       () => internalStop.abort(),
     );
-    emit({ loop: "harness", type: "orchestrator_stop" }); // vocabulary-ok: event source
+    emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop" });
     notifier.dispose();
     removeQuiet(infoFile);
   }

@@ -30,7 +30,7 @@
 import type { LoopState } from "../loop/loop-state.js";
 import { groupBy } from "../collections.js";
 import { budgetWarning, dailyCost, todayStamp } from "../budget/budget.js";
-import { logEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
@@ -129,14 +129,14 @@ export function pollRoleCapGate(
     const was = state.prev.has(base);
     if (verdict.over && !was) {
       logEventBestEffort(root, {
-        loop: "harness",
+        source: TUMWATER_SOURCE,
         type: "role_cap_paused",
         role: base,
         spentUsd: verdict.spentUsd,
         capUsd: caps?.[base],
       });
     } else if (!verdict.over && was) {
-      logEventBestEffort(root, { loop: "harness", type: "role_cap_resumed", role: base });
+      logEventBestEffort(root, { source: TUMWATER_SOURCE, type: "role_cap_resumed", role: base });
     }
     // The 80% early warning (PLANS.md 2026-10-09), the per-role twin of the fleet's
     // budget_warning and edge-triggered with the same reset-on-below: crossing the threshold
@@ -148,7 +148,7 @@ export function pollRoleCapGate(
       !verdict.over && cap !== undefined && budgetWarning({ spentUsd: verdict.spentUsd, capUsd: cap });
     if (warn && !state.warned.has(base)) {
       logEventBestEffort(root, {
-        loop: "harness",
+        source: TUMWATER_SOURCE,
         type: "role_cap_warning",
         role: base,
         spentUsd: verdict.spentUsd,

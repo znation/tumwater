@@ -128,7 +128,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     }
     const reason = reasons.get(runner);
     if (reason && reason !== "scheduled" && reason !== "startup") {
-      logEventBestEffort(root, { loop: runner.role, type: "wake", reason });
+      logEventBestEffort(root, { source: runner.role, type: "wake", reason });
     }
     runner.state.running = true; // Reserve before the semaphore wait so we don't double-schedule.
     // The director never queues behind role loops: a user prompt starts immediately,

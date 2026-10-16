@@ -1,4 +1,5 @@
 import test from "node:test";
+import { TUMWATER_SOURCE } from "../src/events/events.js";
 import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -251,7 +252,7 @@ test("a blocked restart leaves the state stream: a restart_blocked event beside 
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none");
   assert.ok(types().includes("restart_blocked"), "the block is a typed transition, not only a warning");
   assert.deepEqual(events.find((e) => e.type === "restart_blocked"), {
-    loop: "harness",
+    source: TUMWATER_SOURCE,
     type: "restart_blocked",
     from: BUILD.sha,
     to: HEAD_B,

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { TUMWATER_SOURCE } from "../src/events/events.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -22,7 +23,7 @@ test("a successor that could not boot is refused before any hold, once per reaso
   for (let i = 0; i < 3; i++)
     assert.equal(await r.poll(HEAD_B, IDLE, true, (t += 10)), "none", "refused: the running generation keeps scheduling");
   assert.deepEqual(types(), ["build_stale", "restart_refused"], "one event per refusal, not one per poll");
-  assert.deepEqual(events[1], { loop: "harness", type: "restart_refused", from: BUILD.sha, to: HEAD_B, reason: NOT_INITIALIZED_MESSAGE });
+  assert.deepEqual(events[1], { source: TUMWATER_SOURCE, type: "restart_refused", from: BUILD.sha, to: HEAD_B, reason: NOT_INITIALIZED_MESSAGE });
   assert.deepEqual(f.calls.green, [], "nothing past the gate ran: no green check, no compile, no drain");
   assert.equal(r.status(t).restartPending, undefined);
   assert.equal(r.status(t).restartBlocked, `the update could not start: ${NOT_INITIALIZED_MESSAGE}`);
