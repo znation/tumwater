@@ -74,6 +74,14 @@ export class TickUsage {
    * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
    * restart forgetting it costs nothing. Undefined until the first such run. */
   lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
+  /** Per-provider spend folded into THIS tick (non-persisted, reset at tick start): each
+   * run's real/notional cost keyed by the provider it ran on, so the tick_end event can say
+   * which seam of a mixed fleet spent what (plans: per-provider spend in the day report). A
+   * run whose provider was never resolved attributes nothing — the `provider !== undefined`
+   * guard below skips the bump — so an old single-provider tick keeps today's byte-identical
+   * behavior. Parallel to costUsd/notionalCostUsd, never subtracted from them. */
+  private providerCost = new Map<string, { costUsd: number; notionalCostUsd: number }>();
+
   /** This loop's most recent pi run that ended on a provider-wide failure that was NOT rate
    * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
    * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
@@ -95,6 +103,7 @@ export class TickUsage {
     this.cacheReadTokens = 0;
     this.preEditPromptTokens = 0;
     this.editSeen = false;
+    this.providerCost = new Map();
   }
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns) and
@@ -114,8 +123,18 @@ export class TickUsage {
       // a tick folds here exactly once, so the fleet's spend for the local day is complete at
       // each tick end.
       recordDailyCost(s, run.costUsd);
+      if (provider !== undefined) {
+        const e = this.providerCost.get(provider) ?? { costUsd: 0, notionalCostUsd: 0 };
+        e.costUsd += run.costUsd;
+        this.providerCost.set(provider, e);
+      }
     } else {
       this.notionalCostUsd += run.costUsd;
+      if (provider !== undefined) {
+        const e = this.providerCost.get(provider) ?? { costUsd: 0, notionalCostUsd: 0 };
+        e.notionalCostUsd += run.costUsd;
+        this.providerCost.set(provider, e);
+      }
     }
     if (run.billing !== undefined) this.billing = run.billing;
     if (run.rateWindows !== undefined) this.rateWindows = run.rateWindows;
@@ -141,5 +160,15 @@ export class TickUsage {
     // the text at parse time). A 429 never lands here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
       this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider };
+  }
+
+  /** Serialize the per-provider split for the tick_end payload: a `Record<provider,
+   * {costUsd, notionalCostUsd}>`, or `{}` when no run carried a provider — the
+   * omit-when-empty idiom tick-finalize.ts applies, so a tick whose runs never resolved a
+   * provider renders no providerCost field at all. */
+  serializeProviderCost(): Record<string, { costUsd: number; notionalCostUsd: number }> {
+    const out: Record<string, { costUsd: number; notionalCostUsd: number }> = {};
+    for (const [provider, e] of this.providerCost) out[provider] = e;
+    return out;
   }
 }

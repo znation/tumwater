@@ -356,6 +356,11 @@ export function writeLandingOutcome(
     result,
     durationMs,
     ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
+    // The landing's per-provider spend, keyed to its reviewer seam (the same reviewProvider
+    // key the author-side foldLandingUsage charges), so the report's `Cost by provider` line
+    // sees a landing's spend under its reviewer's provider. Omitted when empty (a landing
+    // whose runs carried no provider), the same omit-when-empty idiom the usage fields use.
+    ...(Object.keys(usage.providerCost).length > 0 ? { providerCost: usage.providerCost } : {}),
   });
   dropLanding(file);
 }
@@ -366,7 +371,15 @@ export function writeLandingOutcome(
  * landed event's own notional field (plans/agent-backends.md part 6a). The single home of the
  * shape: writeLandingOutcome and landingUsage build it here, and landing-pipeline.ts's
  * VettedLanding and settleLandingOutcome carry the same object. */
-export interface LandingUsage { tokens: number; cost: number; notionalCost?: number }
+export interface LandingUsage {
+  tokens: number;
+  cost: number;
+  notionalCost?: number;
+  /** Per-run spend keyed by provider (the landing's reviewer seam — see landingUsage), so the
+   * reporting fold can attribute a landing's costs to the provider that ran them. The same
+   * seam key the author-side foldLandingUsage charges. */
+  providerCost: Record<string, { costUsd: number; notionalCostUsd: number }>;
+}
 
 /** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
@@ -384,7 +397,7 @@ export function landingUsage(author: LoopRunner, root: string): {
   usage: LandingUsage;
   foldUsage: (run: PiRunResult) => void;
 } {
-  const usage: LandingUsage = { tokens: 0, cost: 0 };
+  const usage: LandingUsage = { tokens: 0, cost: 0, providerCost: {} };
   const reviewProvider = seamHoldKey(reviewRunConfig(author.config));
   return {
     usage,
@@ -403,8 +416,23 @@ export function landingUsage(author: LoopRunner, root: string): {
         }
       }
       usage.tokens += run.outputTokens;
-      if (runCostIsReal(run)) usage.cost += run.costUsd;
-      else usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;
+      if (runCostIsReal(run)) {
+        usage.cost += run.costUsd;
+        // Only a resolved reviewer seam bears a provider: a pi reviewer whose provider was
+        // never pinned (reviewProvider undefined) attributes nothing, like the author side.
+        if (reviewProvider !== undefined) {
+          const e = usage.providerCost[reviewProvider] ?? { costUsd: 0, notionalCostUsd: 0 };
+          e.costUsd += run.costUsd;
+          usage.providerCost[reviewProvider] = e;
+        }
+      } else {
+        usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;
+        if (reviewProvider !== undefined) {
+          const e = usage.providerCost[reviewProvider] ?? { costUsd: 0, notionalCostUsd: 0 };
+          e.notionalCostUsd += run.costUsd;
+          usage.providerCost[reviewProvider] = e;
+        }
+      }
     },
   };
 }

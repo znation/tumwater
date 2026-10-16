@@ -606,7 +606,7 @@ test("a landed revision deletes the rejected ref", async () => {
     enqueuedAt: Date.now(),
   };
 
-  await settleLandingOutcome(root, revision, state, "changed", 1, { tokens: 0, cost: 0 }, path.join(root, "no-such-queue-file.json"));
+  await settleLandingOutcome(root, revision, state, "changed", 1, { tokens: 0, cost: 0, providerCost: {} }, path.join(root, "no-such-queue-file.json"));
 
   assert.equal(await refSha(root, rejectedRefName(role)), null, "the rejected ref is gone");
 });
@@ -619,7 +619,7 @@ test("a fresh landing leaves a pending revision's rejected ref alone", async () 
   const state = freshLoopState(role);
   const fresh = { role, sha: "b".repeat(40), tick: 3, summary: "fresh work", enqueuedAt: Date.now() };
 
-  await settleLandingOutcome(root, fresh, state, "changed", 1, { tokens: 0, cost: 0 }, path.join(root, "no-such-queue-file.json"));
+  await settleLandingOutcome(root, fresh, state, "changed", 1, { tokens: 0, cost: 0, providerCost: {} }, path.join(root, "no-such-queue-file.json"));
 
   assert.equal(await refSha(root, rejectedRefName(role)), rejected, "the pending revision's ref survives");
 });

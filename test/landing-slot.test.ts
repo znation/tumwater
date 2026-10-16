@@ -134,7 +134,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
   state.phase = "review"; // an in-flight landing marker from the tick lifecycle
   state.ticks = entry.tick;
 
-  writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42 }, file);
+  writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
 
   const landed = readEvents(root, 10).find((e) => e.type === "landed");
   assert.ok(landed, "the landing logged a landed event");
@@ -156,7 +156,7 @@ test("a review-exempt landing (zero usage) omits the usage fields instead of log
   const { entry, file } = queued(root, "organize");
   const state = freshLoopState("organize");
 
-  writeLandingOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0 }, file);
+  writeLandingOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0, providerCost: {} }, file);
 
   const landed = readEvents(root, 10).find((e) => e.type === "landed");
   assert.ok(landed, "the landing logged a landed event");
@@ -173,7 +173,7 @@ test("an unwritable events feed still drops the settled entry — the queue neve
   // otherwise the settled entry stays queued and the next drain re-vets and re-merges it.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
 
-  writeLandingOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1 }, file);
+  writeLandingOutcome(root, entry, state, "changed", 1000, { tokens: 10, cost: 0.1, providerCost: {} }, file);
 
   assert.equal(queueDepth(root), 0, "the outcome drops the entry even when its event cannot be logged");
   assert.equal(loadLoopState(root, "improve").commits, 1, "the state write still persisted before the event");
@@ -222,7 +222,7 @@ test("the write-back pairs the landing's result with the queued tick's summary, 
   const pending = loadLoopState(root, "improve");
   assert.equal(pending.lastResult, "no_change", "fixture sanity: the prior pair is what persisted");
 
-  writeLandingOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0 }, file);
+  writeLandingOutcome(root, entry, pending, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
 
   const saved = loadLoopState(root, "improve");
   assert.equal(saved.lastResult, "rejected");
@@ -244,7 +244,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   // Below the bar: the fast first retries stay silent.
   const low = freshLoopState("improve");
   const first = queued(root);
-  writeLandingOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0 }, first.file);
+  writeLandingOutcome(root, first.entry, low, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, first.file);
   assert.equal(low.consecutiveErrors, 1, "the rejection counts even below the bar");
   assert.equal(warnings().length, 0, "a below-bar rejection warns nothing");
 
@@ -255,7 +255,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   applyTickOutcome(crossing, cfg, "improve", { result: "error" });
   applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: "c" });
   const second = queued(root);
-  writeLandingOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0 }, second.file);
+  writeLandingOutcome(root, second.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, second.file);
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the landing did the crossing");
   const crossed = warnings();
   assert.equal(crossed.length, 1, "the landing-side crossing warns exactly once");
@@ -266,7 +266,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   // warned at (preserved across the queued tick at the bar) must not warn again.
   const third = queued(root);
   applyTickOutcome(crossing, cfg, "improve", { result: "queued", commit: third.entry.sha });
-  writeLandingOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0 }, third.file);
+  writeLandingOutcome(root, third.entry, crossing, "rejected", 5, { tokens: 0, cost: 0, providerCost: {} }, third.file);
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN + 1);
   assert.equal(warnings().length, 1, "one warning per episode across both warn sites");
 });
@@ -276,7 +276,7 @@ test("a failed landing logs land_failed with its usage and counts no commit", ()
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
 
-  writeLandingOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01 }, file);
+  writeLandingOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01, providerCost: {} }, file);
 
   const failed = readEvents(root, 10).find((e) => e.type === "land_failed");
   assert.ok(failed, "a non-changed outcome logs land_failed, not landed");

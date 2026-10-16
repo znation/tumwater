@@ -317,6 +317,64 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
   assert.match(md, /\*\*Totals:\*\* 0 output tokens · 5 ticks · 0 commits · \$2\.10 ·/);
 });
 
+test("renderReportMarkdown folds providerCost into Cost by provider and Notional by provider, fleet-only", () => {
+  const root = makeRepo();
+  // A multi-provider day: the default provider's real spend and a claude subscription seam's
+  // notional spend ride two tick_ends' providerCost, and a landing's reviewer spend keys to
+  // the reviewer's provider.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "tick_end", tick: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
+  ]);
+  const md = renderReportMarkdown(collectReport(root, 2));
+  // The parallel provider line: real spend per provider, the landing's reviewer spend folding
+  // under claude, ranked by spend desc then name asc.
+  assert.match(md, /\*\*Cost by provider:\*\* deepinfra — \$1\.50 · claude — \$0\.40/);
+  // A subscription seam's API-equivalent spend lands on its own notional provider line.
+  assert.match(md, /\*\*Notional by provider:\*\* claude — \$2\.00/);
+  // The provider maps are a parallel tally, never subtracted: the per-role lines keep their
+  // exact current values (Cost by role from tick_end costByRole alone — clean's notional tick
+  // adds no real costByRole entry), and the totals still sum the landing share.
+  assert.match(md, /\*\*Cost by role:\*\* feature — \$1\.50/);
+  assert.match(md, /\*\*Totals:\*\* 35 output tokens · 2 ticks · 0 commits · \$1\.90 ·/);
+  // A role-scoped report prints no provider line — a provider is not a role, so the attribution
+  // is fleet-only (ROLE_SCOPE_NOTE stays unchanged).
+  const scoped = renderReportMarkdown(collectReport(root, 2, "feature"));
+  assert.ok(!scoped.includes("Cost by provider"), "a role-scoped report omits the provider line");
+});
+
+test("report omits Cost by provider and the provider JSON maps when no event carries providerCost", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
+  ]);
+  const md = renderReportMarkdown(collectReport(root, 2));
+  assert.ok(!md.includes("Cost by provider"), "no providerCost renders no provider line");
+  assert.ok(!md.includes("Notional by provider"), "nor a notional provider line");
+  const json = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  const day = json.series.find((d: { date: string }) => d.date === dayKey(at(0)));
+  assert.ok(!("costByProvider" in day), "report --json omits costByProvider when no provider spent");
+  assert.ok(!("notionalByProvider" in day), "and notionalByProvider");
+});
+
+test("--since sums per-provider spend across the window into Cost by provider", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(5 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 10, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 8, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: ago(HOUR), loop: "plan", type: "tick_end", tick: 3, result: "changed", tokens: 5, notionalCostUsd: 1, providerCost: { claude: { costUsd: 0, notionalCostUsd: 1 } } }),
+  ]);
+  const json = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
+  // Summed across the window like costByRole: both deepinfra runs fold into one provider cell.
+  assert.deepEqual(json.costByProvider, { deepinfra: 1 });
+  assert.deepEqual(json.notionalByProvider, { claude: 1 });
+  const md = await runCli(root, "report", "--since", "6h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Cost by provider:\*\* deepinfra — \$1\.00/);
+  assert.match(md.out, /\*\*Notional by provider:\*\* claude — \$1\.00/);
+});
+
 test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, its own data", () => {
   const base = collectReport(tmpdir(), 2);
   const data: ReportData = {
@@ -384,6 +442,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -410,6 +470,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -436,6 +498,8 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
@@ -453,6 +517,8 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
@@ -472,6 +538,8 @@ test("renderSinceReportMarkdown shows (N failed) on the landing line when a land
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
@@ -493,6 +561,8 @@ test("renderSinceReportMarkdown prints Commits by role and Notional by role matc
     commitsByRole: { feature: 3, clean: 1 },
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
     coversFullWindow: true,
   });
@@ -514,6 +584,8 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     commitsByRole: {},
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
     coversFullWindow: true,
   });
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend

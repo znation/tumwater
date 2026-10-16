@@ -235,3 +235,32 @@ test("fold carries the newest rate windows and reset clears them", () => {
   assert.equal(u.rateWindows, undefined);
   assert.equal(u.notionalCostUsd, 0);
 });
+
+// The per-provider spend split (plans: per-provider spend in the day report): fold keys each
+// run's real/notional cost by the provider it ran on, so the tick_end event can say which seam
+// of a mixed fleet spent what. A run whose provider was never resolved attributes nothing.
+test("fold splits per-provider spend into providerCost, keyed by provider, guarded on undefined", () => {
+  const s: LoopState = freshLoopState("coverage");
+  const u = new TickUsage();
+
+  // Real spend on the default provider, notional on a claude subscription seam.
+  u.fold(s, run({ costUsd: 0.25, billing: "api" }), true, "deepinfra");
+  u.fold(s, run({ costUsd: 0.5, billing: "api" }), true, "deepinfra");
+  u.fold(s, run({ costUsd: 2, billing: "subscription" }), true, "claude");
+
+  assert.deepEqual(u.serializeProviderCost(), {
+    deepinfra: { costUsd: 0.75, notionalCostUsd: 0 },
+    claude: { costUsd: 0, notionalCostUsd: 2 },
+  });
+
+  // A run whose provider was never resolved attributes nothing, so the split is unchanged.
+  u.fold(s, run({ costUsd: 0.1, billing: "api" }));
+  assert.deepEqual(u.serializeProviderCost(), {
+    deepinfra: { costUsd: 0.75, notionalCostUsd: 0 },
+    claude: { costUsd: 0, notionalCostUsd: 2 },
+  });
+
+  // reset clears the per-tick split alongside costUsd/notionalCostUsd.
+  u.reset();
+  assert.deepEqual(u.serializeProviderCost(), {});
+});

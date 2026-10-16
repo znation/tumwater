@@ -16,6 +16,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo } from "../collections.js";
+import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -71,6 +72,30 @@ interface UsageFold {
    * the landing gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
    * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
   landingFailedByRole: Record<string, number>;
+  /** Per-provider spend folded from the events' `providerCost` maps (tick_end's own runs and
+   * landed/land_failed's reviewer seam): real cost per provider, a parallel tally to
+   * costByRole that is never subtracted from it or from costUsd. A provider with no real
+   * spend leaves no key. */
+  costByProvider: Record<string, number>;
+  /** The notional share per provider (a subscription seam's API-equivalent spend), the same
+   * parallel age as costByProvider but on the notional line. */
+  notionalByProvider: Record<string, number>;
+}
+
+/** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
+ * shape tick-finalize.ts's tick_end and landing-slot.ts's landed/land_failed emit) into the
+ * per-provider tallies, one addTo per provider per nonzero figure so zero stays absent. A
+ * missing, foreign, or empty map folds nothing, so old logs render byte-identically. */
+function foldProviderCost(target: UsageFold, providerCost: unknown): void {
+  if (typeof providerCost !== "object" || providerCost === null) return;
+  for (const [provider, c] of Object.entries(providerCost as Record<string, unknown>)) {
+    if (typeof c !== "object" || c === null) continue;
+    const entry = c as Record<string, unknown>;
+    const costUsd = finiteNumber(entry.costUsd, 0);
+    const notionalCostUsd = finiteNumber(entry.notionalCostUsd, 0);
+    if (costUsd !== 0) addTo(target.costByProvider, provider, costUsd);
+    if (notionalCostUsd !== 0) addTo(target.notionalByProvider, provider, notionalCostUsd);
+  }
 }
 
 /** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
@@ -97,6 +122,10 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
+    // The tick's own runs' per-provider spend (tick-finalize.ts emits providerCost on tick_end)
+    // — folded per provider beside the per-role maps, so a mixed fleet's `Cost by provider`
+    // line names the expensive seam.
+    foldProviderCost(target, ev.providerCost);
   } else if (ev.type === "review_rejected") {
     // One rejection per event, on the day it happened, per loop. Zero-means-absent: a role
     // that never rejected stays absent, like costByRole.
@@ -130,6 +159,10 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // A subscription landing's API-equivalent spend joins the notional line, never the
     // budgeted cost totals (plans/agent-backends.md part 6a).
     target.notionalCostUsd += notionalCostUsd;
+    // The landing's per-provider spend (landing-slot.ts keys it to its reviewer seam), so a
+    // landing's costs appear under the provider that ran the reviewer, matching the author
+    // side's foldLandingUsage charge.
+    foldProviderCost(target, ev.providerCost);
   }
 }
 
@@ -158,6 +191,8 @@ interface DayFold {
   landingFailed?: number; // of those runs, the land_failed events (absent when none)
   landedByRole: Record<string, number>;
   landingFailedByRole: Record<string, number>;
+  costByProvider: Record<string, number>;
+  notionalByProvider: Record<string, number>;
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
@@ -256,6 +291,8 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       ...zeroLandingCounts(),
       landedByRole: {},
       landingFailedByRole: {},
+      costByProvider: {},
+      notionalByProvider: {},
     };
     entry.days.set(dayKey, fold);
   }
@@ -394,6 +431,12 @@ export interface ReportDay {
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
   /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
   notionalByRole?: Record<string, number>;
+  /** Per-provider real spend, parallel to costByRole but keyed by provider; absent when the
+   * day had no provider spend (zero means absent, so a provider-free day keeps its exact
+   * pre-feature shape). */
+  costByProvider?: Record<string, number>;
+  /** Per-provider notional spend, parallel to notionalByRole; absent when the day had none. */
+  notionalByProvider?: Record<string, number>;
 }
 
 /** The window totals both reports surface — output tokens (the landing share included), the
@@ -474,6 +517,12 @@ export interface SinceReport {
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */
   notionalByRole?: Record<string, number>;
+  /** Per-provider real spend from the window's providerCost maps; always present (empty map
+   * when none, like failedTicksByRole and the other always-present maps), so the --since
+   * render can gate its `Cost by provider` line on the window's own events. */
+  costByProvider: Record<string, number>;
+  /** Per-provider notional spend; always present (empty map when none). */
+  notionalByProvider: Record<string, number>;
   /** True when the report provably reflects every event the window could have contained:
    * the day-keyed read proved the log reaches back before the cutoff's day, the log's oldest
    * retained event predates the cutoff instant (the same-day case a day key cannot decide),
@@ -516,6 +565,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     ...zeroLandingCounts(),
     landedByRole: {},
     landingFailedByRole: {},
+    costByProvider: {},
+    notionalByProvider: {},
   };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
@@ -577,6 +628,11 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     landedByRole: base === undefined ? acc.landedByRole : narrowToRole(acc.landedByRole, base),
     landingFailedByRole: base === undefined ? acc.landingFailedByRole : narrowToRole(acc.landingFailedByRole, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
+    // Provider spend is a fleet attribution (a provider is not a role), so a role-scoped
+    // window carries empty maps — providers never baseRoleOf to the role — and the render
+    // gates the provider lines to the fleet report anyway. Always present, empty when none.
+    costByProvider: base === undefined ? acc.costByProvider : narrowToRole(acc.costByProvider, base),
+    notionalByProvider: base === undefined ? acc.notionalByProvider : narrowToRole(acc.notionalByProvider, base),
     coversFullWindow,
   };
 }
@@ -629,6 +685,11 @@ export function collectReport(root: string, days: number, role?: string): Report
       // Only set when nonzero, so zero-notional days keep their exact pre-feature shape.
       if (fold.notionalCostUsd > 0) day.notionalCostUsd = fold.notionalCostUsd;
       if (Object.keys(fold.notionalByRole).length > 0) day.notionalByRole = fold.notionalByRole;
+      // Only set when a provider actually spent (zero means absent), so a provider-free day
+      // keeps its exact pre-feature shape and `report --json` omits the maps when empty.
+      if (Object.keys(fold.costByProvider).length > 0) day.costByProvider = fold.costByProvider;
+      if (Object.keys(fold.notionalByProvider).length > 0)
+        day.notionalByProvider = fold.notionalByProvider;
       day.landingRuns = fold.landingRuns;
       day.landingTokens = fold.landingTokens;
       day.landingCostUsd = fold.landingCostUsd;

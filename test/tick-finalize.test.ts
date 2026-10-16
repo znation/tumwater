@@ -15,6 +15,7 @@ import {
 import type { LoopState } from "../src/loop/loop-state.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
+import { piRunResult } from "./fakes/fake-pi.js";
 
 /** Run finalizeTick with the standard shape: an initialized repo, a fresh-ish loop state
  * reserved for a tick that started 50ms ago, and the project's default config. Tests override
@@ -107,6 +108,30 @@ test("finalizeTick rides per-tick prompt-token telemetry on tick_end", async () 
   assert.equal(end.promptTokens, 1000);
   assert.equal(end.cacheReadTokens, 800);
   assert.equal(end.preEditPromptTokens, 250);
+});
+
+test("finalizeTick rides the per-provider spend split on tick_end", async () => {
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  const usage = new TickUsage();
+  usage.fold(s, piRunResult({ costUsd: 0.25, billing: "api" }), true, "deepinfra");
+  usage.fold(s, piRunResult({ costUsd: 2, billing: "subscription" }), true, "claude");
+  await run(root, "organize", s, { result: "no_change" }, { usage });
+  const end = eventsOfType(root, "tick_end")[0]!;
+  assert.deepEqual(end.providerCost, {
+    deepinfra: { costUsd: 0.25, notionalCostUsd: 0 },
+    claude: { costUsd: 0, notionalCostUsd: 2 },
+  });
+});
+
+test("finalizeTick omits providerCost when the tick's runs carried no provider", async () => {
+  const root = await initializedRepo();
+  const s = freshLoopState("organize");
+  const usage = new TickUsage();
+  usage.fold(s, piRunResult({ costUsd: 0.25, billing: "api" })); // no provider
+  await run(root, "organize", s, { result: "no_change" }, { usage });
+  const end = eventsOfType(root, "tick_end")[0]!;
+  assert.equal(end.providerCost, undefined, "an empty provider split renders no field");
 });
 
 test("finalizeTick warns once at the error-streak crossing and re-arms after a healthy tick", async () => {

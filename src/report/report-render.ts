@@ -119,6 +119,15 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
   // an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleMap(data.costByRole).filter(([, c]) => c > 0), usd));
+  // The same breakdown per PROVIDER (plans: per-provider spend), gated to the fleet report
+  // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
+  // the zero-means-absent gate prints no line for a window with no provider spend.
+  if (data.role === undefined) {
+    const providers = rankedRoleMap(data.costByProvider).filter(([, c]) => c > 0);
+    if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
+    const notionalProviders = rankedRoleMap(data.notionalByProvider).filter(([, c]) => c > 0);
+    if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+  }
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines.
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
@@ -240,6 +249,18 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
+  // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed fleet
+  // spent what, straight from the events' providerCost maps (tick_end's own runs and the
+  // landing's reviewer seam). Gated to the fleet report — a provider is not a role, so a
+  // role-scoped report omits it (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a
+  // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
+  // role.
+  if (data.role === undefined) {
+    const providers = rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}).filter(([, c]) => c > 0);
+    if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
+    const notionalProviders = rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}).filter(([, c]) => c > 0);
+    if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+  }
   // The same breakdown for review friction: window rejections per role from review_rejected
   // events, ranked like the ticks line; a window with none renders "-".
   lines.push(rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String));

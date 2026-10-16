@@ -152,6 +152,11 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
       // The next reporting run rewrites it; nothing this tick depends on is lost.
     }
   }
+  // The per-provider split of this tick's usage (plans: per-provider spend in the day
+  // report): a Record<provider, {costUsd, notionalCostUsd}> for the report's `Cost by
+  // provider` line. Omitted when empty like the prompt-token fields, so a tick whose runs
+  // carried no provider renders byte-identically to today.
+  const providerCost = usage.serializeProviderCost();
   logEventBestEffort(root, {
     loop: role,
     type: "tick_end",
@@ -161,6 +166,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     error: s.lastError,
     durationMs: tickDurationMs,
     ...usageFragment(s.generatedTokens, usage.costUsd, usage.notionalCostUsd),
+    ...(Object.keys(providerCost).length > 0 ? { providerCost } : {}),
     // The billing answer the tick's runs reported, so the report can tell notional spend from
     // real spend without re-deriving it from the file (plans/agent-backends.md part 6a).
     ...(usage.billing !== undefined ? { billing: usage.billing } : {}),
