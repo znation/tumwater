@@ -5,59 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 1/7: A used-up Claude subscription window moves Claude model jobs to their tier's fallback instead of holding them (planned 2026-10-16 by user; design in plans/fallback-chain.md "What happens when a window is used up"; touches src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/events/ docs/backends.md and their tests)
-
-**Goal.** Today a `rejected` claude.ai usage window (5-hour or weekly, with no extra usage) places a `claude` hold until `resetsAt`.
-
-- Every subscription Claude model job waits for the reset. For the weekly window that can be days.
-- With review on and a Claude reviewer, `reviewHeld` stops every role, including roles on pi.
-- A configured `fallback` is used only at the daily cap or after three provider failures in a row, so it never helps here.
-
-This part makes a used-up window a reason to move. While a window is rejected, each tier whose model job runs on subscription Claude runs on its tier's resolved free fallback (today's single fallback, `resolveTierFallbacks`), and returns when the window resets. With no fallback configured, nothing changes.
-
-**Approach.**
-- Add `claudeWindowUsedUp(account, now): { type: string; resetsAt: number } | null` to src/agent/claude/claude-account.ts.
-  - It returns the subscription account's window with status `rejected`, no `isUsingOverage`, and a `resetsAt` still in the future. Among several, it returns the one with the latest `resetsAt`.
-  - That is exactly the rule `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on today. Make `claudeWindowObservation` call it, so the hold and the move cannot disagree.
-- `pollBudgetGate` (src/gates/budget-gates.ts) already reads the account each poll. Compute `windowOut = claudeWindowUsedUp(account, now)`, then:
-  - **Fallback choice.** While `windowOut` is set, a subscription Claude pair is not a usable fallback: `pairFreeAt` refuses it. The resolution then falls through to the next tier's pair or pauses, exactly as it does for an unpriced pair.
-  - **When to derive the view.** Derive the role view when `reached || windowOut`; today it is derived only when `reached`.
-  - **Which jobs move.** The keep predicate passed to `applyFallbackModel` becomes "this model job's own model is available". While `windowOut` is set, no subscription Claude job is available. When `reached` is true, a job must also be free (`seamFree`, today's predicate). So below the cap a priced pi job keeps its primary, and only subscription Claude jobs move.
-  - **Cache.** Re-derive the cached view (`state.from`) when `windowOut` changes, as well as when the live config changes.
-  - **Return value.** Return `windowOut`, and the tiers it moved (`tierFallbackLabels` over the moved tiers), beside `gate`. `gate` keeps meaning the cap.
-- src/gates/gate-polls.ts: the per-runner assignment already installs `roleConfig`. Keep `r.budgetFallbackActive` as the cap's flag: a window move below the cap does not restrict image reroute targets.
-- src/orchestrator/orchestrator.ts: `reviewHeld` and `reviewHeldNow` read `seamHoldKey(reviewRunConfig(liveConfig))`. Read the reviewer's provider from the config merges actually review under, which is the derived `roleConfig` the poll returned. Otherwise a reviewer that has moved off Claude still holds the whole team on the `claude` hold.
-- Leave the `claude` hold as it is. It still stops whatever still routes to subscription Claude: a tier with no usable fallback, and the director.
-- **Return on reset.** On the poll where `windowOut` goes from set to null, hand back the in-flight non-director runs on the fallback pairs the window move used.
-  - Do it the way gate-polls.ts's `gateResumed` branch does for the cap: one `budget_handback` event per pair, with a new optional `reason: "window"` field, then `r.handBackTick()`.
-  - A window that resets while the team is over the cap hands back nothing, because the cap still holds.
-- **Events.** `claude_window_limited` (src/fleet/fleet-polls.ts) gains an optional `tiers` field naming where each moved tier's work went, passed in from the budget poll. src/events/event-format.ts renders it the way it renders `budget_fallback`'s `tiers`, and renders `budget_handback`'s `reason`.
-- The rejected run keeps its worktree as today (src/tick/tick-verdict.ts window arm). Its next run is on another backend, and src/tick/tick-resume.ts already turns that into a `handoff` resume. Nothing changes there; pin it with a test.
-- docs/backends.md: the paragraph on rejected windows says the work moves to the tier's fallback and returns at the reset, and with no fallback it waits.
-
-**Files touched.**
-- Source: src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts, src/events/events.ts, src/events/event-format.ts.
-- Docs: docs/backends.md.
-- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/event-format-fleet.test.ts, and test/orchestrator-fallback.test.ts (or a sibling orchestrator test).
-
-**Acceptance criteria.**
-- `claudeWindowUsedUp`:
-  - A rejected window with a future `resetsAt` is returned.
-  - Overage, API billing, a past `resetsAt`, and an `allowed_warning` window all return null.
-  - Of two rejected windows, the later reset is returned.
-  - `claudeWindowObservation`'s existing tests pass unchanged.
-- `pollBudgetGate`, with `agent: "claude"`, a `fallback` naming a zero-priced pi pair, and spend under the cap:
-  - With a rejected `five_hour` window, `roleConfig` resolves every role, the reviewer and the resolver to the fallback pair, and `gate` is `open`.
-  - Without the rejected window, `roleConfig` is the live config object.
-  - A priced pi role beside the Claude roles keeps its primary below the cap.
-  - With no fallback configured, `roleConfig` is the live config, so today's hold applies.
-- Orchestrator test, with a fake claude and a fake pi:
-  - After a rejected run, the roles' next runs start on the fallback, with the fallback pair's `--provider`, and `claude_window_limited` is logged once with `tiers`.
-  - With review on and the reviewer on Claude, merges review on the fallback and `reviewHeld` blocks no role.
-  - After `resetsAt` passes, an in-flight fallback run is handed back (`budget_handback` with `reason: "window"`), and the next run starts on Claude.
-- The rejected run's next run is a `handoff` over the kept worktree.
-- Every existing budget, hold and window test passes, and `npm test` passes.
-
 ### Fallback chain, part 2/7: The director follows a used-up Claude window to its tier's fallback (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Director"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/landing/landing-vetting.ts src/orchestrator/orchestrator-scheduling.ts docs/backends.md and their tests)
 
 **Goal.** The director keeps the live config whatever the gates say (`gateRoleConfig`), because your own prompt outranks the daily cap. That reasoning is about spend, not availability. While a subscription window is rejected, a director on subscription Claude cannot run at all.
@@ -2425,6 +2372,61 @@ This part makes every surface say which step each tier is on, why, and when it r
 - When a line is temporarily removed from the generated flag list (for example, by skipping `--json` in `fishScript`), the spec-coverage test fails. Revert that change before landing.
 - test/cli-doc.test.ts still passes. The doc and help guards see no new or removed command or long flag.
 - `npm run test` passes.
+
+### Fallback chain, part 1/7: A used-up Claude subscription window moves Claude model jobs to their tier's fallback instead of holding them (planned 2026-10-16 by user; design in plans/fallback-chain.md "What happens when a window is used up"; touches src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/events/ docs/backends.md and their tests) (done 2026-10-16)
+
+**Goal.** Today a `rejected` claude.ai usage window (5-hour or weekly, with no extra usage) places a `claude` hold until `resetsAt`.
+
+- Every subscription Claude model job waits for the reset. For the weekly window that can be days.
+- With review on and a Claude reviewer, `reviewHeld` stops every role, including roles on pi.
+- A configured `fallback` is used only at the daily cap or after three provider failures in a row, so it never helps here.
+
+This part makes a used-up window a reason to move. While a window is rejected, each tier whose model job runs on subscription Claude runs on its tier's resolved free fallback (today's single fallback, `resolveTierFallbacks`), and returns when the window resets. With no fallback configured, nothing changes.
+
+**Approach.**
+- Add `claudeWindowUsedUp(account, now): { type: string; resetsAt: number } | null` to src/agent/claude/claude-account.ts.
+  - It returns the subscription account's window with status `rejected`, no `isUsingOverage`, and a `resetsAt` still in the future. Among several, it returns the one with the latest `resetsAt`.
+  - That is exactly the rule `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on today. Make `claudeWindowObservation` call it, so the hold and the move cannot disagree.
+- `pollBudgetGate` (src/gates/budget-gates.ts) already reads the account each poll. Compute `windowOut = claudeWindowUsedUp(account, now)`, then:
+  - **Fallback choice.** While `windowOut` is set, a subscription Claude pair is not a usable fallback: `pairFreeAt` refuses it. The resolution then falls through to the next tier's pair or pauses, exactly as it does for an unpriced pair.
+  - **When to derive the view.** Derive the role view when `reached || windowOut`; today it is derived only when `reached`.
+  - **Which jobs move.** The keep predicate passed to `applyFallbackModel` becomes "this model job's own model is available". While `windowOut` is set, no subscription Claude job is available. When `reached` is true, a job must also be free (`seamFree`, today's predicate). So below the cap a priced pi job keeps its primary, and only subscription Claude jobs move.
+  - **Cache.** Re-derive the cached view (`state.from`) when `windowOut` changes, as well as when the live config changes.
+  - **Return value.** Return `windowOut`, and the tiers it moved (`tierFallbackLabels` over the moved tiers), beside `gate`. `gate` keeps meaning the cap.
+- src/gates/gate-polls.ts: the per-runner assignment already installs `roleConfig`. Keep `r.budgetFallbackActive` as the cap's flag: a window move below the cap does not restrict image reroute targets.
+- src/orchestrator/orchestrator.ts: `reviewHeld` and `reviewHeldNow` read `seamHoldKey(reviewRunConfig(liveConfig))`. Read the reviewer's provider from the config merges actually review under, which is the derived `roleConfig` the poll returned. Otherwise a reviewer that has moved off Claude still holds the whole team on the `claude` hold.
+- Leave the `claude` hold as it is. It still stops whatever still routes to subscription Claude: a tier with no usable fallback, and the director.
+- **Return on reset.** On the poll where `windowOut` goes from set to null, hand back the in-flight non-director runs on the fallback pairs the window move used.
+  - Do it the way gate-polls.ts's `gateResumed` branch does for the cap: one `budget_handback` event per pair, with a new optional `reason: "window"` field, then `r.handBackTick()`.
+  - A window that resets while the team is over the cap hands back nothing, because the cap still holds.
+- **Events.** `claude_window_limited` (src/fleet/fleet-polls.ts) gains an optional `tiers` field naming where each moved tier's work went, passed in from the budget poll. src/events/event-format.ts renders it the way it renders `budget_fallback`'s `tiers`, and renders `budget_handback`'s `reason`.
+- The rejected run keeps its worktree as today (src/tick/tick-verdict.ts window arm). Its next run is on another backend, and src/tick/tick-resume.ts already turns that into a `handoff` resume. Nothing changes there; pin it with a test.
+- docs/backends.md: the paragraph on rejected windows says the work moves to the tier's fallback and returns at the reset, and with no fallback it waits.
+
+**Files touched.**
+- Source: src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts, src/events/events.ts, src/events/event-format.ts.
+- Docs: docs/backends.md.
+- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/event-format-fleet.test.ts, and test/gate-polls.test.ts.
+
+**Acceptance criteria.**
+- `claudeWindowUsedUp`:
+  - A rejected window with a future `resetsAt` is returned.
+  - Overage, API billing, a past `resetsAt`, and an `allowed_warning` window all return null.
+  - Of two rejected windows, the later reset is returned.
+  - `claudeWindowObservation`'s existing tests pass unchanged.
+- `pollBudgetGate`, with `agent: "claude"`, a `fallback` naming a zero-priced pi pair, and spend under the cap:
+  - With a rejected `five_hour` window, `roleConfig` resolves every role, the reviewer and the resolver to the fallback pair, and `gate` is `open`.
+  - Without the rejected window, `roleConfig` is the live config object.
+  - A priced pi role beside the Claude roles keeps its primary below the cap.
+  - With no fallback configured, `roleConfig` is the live config, so today's hold applies.
+- Wiring test (landed as test/gate-polls.test.ts's `pollFleetGates` seam over a fake runner, not a fake-claude/fake-pi orchestrator run; the `reviewHeld` key is the extracted `reviewHoldKey(roleConfig)` in src/orchestrator/orchestrator-scheduling.ts, tested in test/budget-gates.test.ts against a poll's roleConfig; a cap reopen while the window is still used up hands nothing back, tested in test/gate-polls.test.ts):
+  - After a rejected run, the roles' next runs start on the fallback, with the fallback pair's `--provider`, and `claude_window_limited` is logged once with `tiers`.
+  - With review on and the reviewer on Claude, merges review on the fallback and `reviewHeld` blocks no role.
+  - After `resetsAt` passes, an in-flight fallback run is handed back (`budget_handback` with `reason: "window"`), and the next run starts on Claude.
+- The rejected run's next run is a `handoff` over the kept worktree.
+- Every existing budget, hold and window test passes, and `npm test` passes.
+
+**Landed notes.** A role pinned to subscription claude under a tier whose own model is not claude keeps its pin during a window (src/gates/budget-gates.ts), because dropping the pin would land it on the tier's priced primary; the `claude` hold still stops it. A reviewer pinned to subscription claude under such a tier goes to that tier's fallback pair instead, so the review does not hold the team. `claude_window_limited.tiers` names only tiers whose own model is claude.
 
 ### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it) — done 2026-10-16
 

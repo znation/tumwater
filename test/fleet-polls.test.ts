@@ -400,3 +400,11 @@ test("pollClaudeWindowWarning logs the first allowed_warning once per window", (
   assert.equal(pollClaudeWindowWarning(api, null, account({ billing: "api" }), T0), null);
   assert.equal(windowEvents(api).length, 0);
 });
+
+test("pollFleetHold stamps the window move's tiers on claude_window_limited", () => {
+  const root = tmpdir("fleet-polls-");
+  pollFleetHold(root, new Map(), [], T0, account(), { default: "free/qwen-free" });
+  const limited = windowEvents(root).filter((e) => e.type === "claude_window_limited");
+  assert.equal(limited.length, 1);
+  assert.deepEqual(limited[0]!.tiers, { default: "free/qwen-free" });
+});

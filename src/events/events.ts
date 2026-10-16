@@ -65,7 +65,7 @@ export interface HarnessEvent {
     | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
     | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
-    | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model)
+    | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
     | "team_paused" // operator pause via `tumwater pause`; role loops stop starting new ticks, director exempt
     | "team_resumed" // the pause was lifted (`tumwater resume`); role loops tick again
     | "role_paused" // operator pause via `tumwater pause --role <id>`; that one role stops starting new ticks (carries role)
@@ -89,7 +89,7 @@ export interface HarnessEvent {
     | "rate_limit_hold" // several roles' runs ended on the same provider failure kind within a short window — 429s, or a connection/timeout/5xx/model-load backend failure (src/fleet/fleet-hold.ts); role loops on that provider — every role when the reviewer's is hit — start nothing new until it re-opens; carries kind, roles, holdMs, escalation, and provider when one is configured
     | "rate_limit_resumed" // one provider's hold (429 or backend-failure kind) reached its deadline; roles on that provider tick again; carries the ended hold's kind, and provider when one is configured
     | "claude_window_warning" // the claude.ai subscription usage window first reported allowed_warning; carries the window type and its resetsAt when reported; once per window, observational (it gates nothing)
-    | "claude_window_limited" // a rejected claude.ai subscription window placed the provider-wide hold; claude seams start nothing new until resetsAt; carries the window type and resetsAt; once per window
+    | "claude_window_limited" // a rejected claude.ai subscription window placed the provider-wide hold; claude seams start nothing new until resetsAt; carries the window type and resetsAt, and `tiers` (tier → fallback pair) when the window moved model jobs to a fallback; once per window
     | "claude_window_reset" // the subscription window hold reached resetsAt and lifted; claude seams tick again; once per window
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
     | "provider_concurrency_changed" // a live tumwater.json edit changed one provider's concurrency cap (provider, from → to)

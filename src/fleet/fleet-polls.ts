@@ -1,10 +1,11 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
-import type { ClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowUsedUp, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
+import type { ModelTier } from "../config/config-schema.js";
 import type { BackendFailureKind } from "../pi/pi.js";
 import { groupBy } from "../collections.js";
 
@@ -60,14 +61,16 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * heldProviders() (until non-null), never bare key presence: a lifted hold must never
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).
- * Returns the new map for the caller to keep. Exported as a unit-test seam, like its
- * sibling polls below. */
+ * `windowTiers` is the budget poll's window move (tier → the pair its work went to), stamped on
+ * the subscription window's limited event. Returns the new map for the caller to keep. Exported
+ * as a unit-test seam, like its sibling polls below. */
 export function pollFleetHold(
   root: string,
   prev: ReadonlyMap<string | undefined, FleetHold>,
   runners: readonly HoldInputs[],
   now: number,
   account: ClaudeAccount | null = null,
+  windowTiers: Partial<Record<ModelTier, string>> = {},
 ): Map<string | undefined, FleetHold> {
   const window = claudeWindowObservation(account, now);
   const observations = window === null ? holdObservations(runners) : [...holdObservations(runners), window];
@@ -91,6 +94,9 @@ export function pollFleetHold(
           ...providerFields,
           windowType: window?.windowType,
           resetsAt: pNext.until,
+          // Where each moved tier's work went (the budget poll's window move); absent when
+          // nothing moved, so a no-fallback fleet's event is today's.
+          ...(Object.keys(windowTiers).length > 0 ? { tiers: windowTiers } : {}),
         });
       } else {
         logEventBestEffort(root, {
@@ -134,13 +140,7 @@ export function claudeWindowObservation(
   account: ClaudeAccount | null,
   now: number,
 ): HoldObservation | null {
-  if (account?.billing !== "subscription") return null;
-  let furthest: { type: string; resetsAt: number } | null = null;
-  for (const [type, w] of Object.entries(account.windows)) {
-    if (w.status !== "rejected" || w.isUsingOverage === true) continue;
-    if (typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
-    if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
-  }
+  const furthest = claudeWindowUsedUp(account, now);
   if (furthest === null) return null;
   return {
     role: "claude",

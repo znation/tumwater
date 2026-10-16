@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   claudeWindowEntries,
+  claudeWindowUsedUp,
   observeClaudeAccount,
   readClaudeAccount,
   seedClaudeAccount,
@@ -325,4 +326,21 @@ test("claudeWindowEntries: empty account lists empty, prototype-key window liste
   });
   const entries = claudeWindowEntries(proto);
   assert.deepEqual(entries.map((e) => e.type), ["__proto__"], "a prototype-key window is an own entry");
+});
+
+test("claudeWindowUsedUp returns the rejected window that resets last; overage, API, past and warning read null", () => {
+  const w = (status: string, resetsAt: number, extra = {}) => ({ status, resetsAt, observedAt: 1, ...extra });
+  assert.equal(claudeWindowUsedUp(null, 100), null);
+  assert.deepEqual(
+    claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500) } }), 100),
+    { type: "five_hour", resetsAt: 500 },
+  );
+  assert.deepEqual(
+    claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500), seven_day: w("rejected", 900) } }), 100),
+    { type: "seven_day", resetsAt: 900 },
+  );
+  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500, { isUsingOverage: true }) } }), 100), null);
+  assert.equal(claudeWindowUsedUp(account({ billing: "api", windows: { five_hour: w("rejected", 500) } }), 100), null);
+  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 50) } }), 100), null);
+  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed_warning", 500) } }), 100), null);
 });

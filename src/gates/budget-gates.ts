@@ -5,7 +5,7 @@
  * other fleet gates (src/gates/pause-gates.ts, src/fleet/fleet-hold.ts's fleet hold) — the
  * orchestrator owns only the wiring (the demotion publish and the per-runner config assignment). */
 
-import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
+import { MODEL_TIERS, type ModelTier, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import {
   budgetGate,
   budgetReached,
@@ -29,8 +29,11 @@ import {
 } from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort } from "../events/events.js";
+import { enabledRoleIds } from "../config/config.js";
+import { formatModelSelector, isAgentId } from "../config/model-selector.js";
+import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
-import { readClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowUsedUp, readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
@@ -57,6 +60,13 @@ export interface BudgetGateState {
    * breaker-demoted pause): the free pair installed top-level and every per-role/reviewer
    * model override dropped, so no seam can reach a priced model. */
   fallbackConfig: TumwaterConfig;
+  /** The used-up subscription window and the cap flag the cached `fallbackConfig` was derived
+   * under (`"<window?><cap?>"`): the view differs between a window move below the cap and a
+   * cap episode, so a change in either re-derives it beside a changed live config. */
+  fromKey: string;
+  /** Whether the previous poll had the window move active (a used-up window with a fallback
+   * to move to), for the one return-on-reset poll. */
+  prevWindowMoved: boolean;
   /** Whether this episode's 80%-of-cap warning has fired (budgetWarning): edge-triggered like
    * the transitions — set when the warning logs, reset whenever spend falls back below the
    * threshold (midnight rollover, a cap raise), so the next crossing warns again. */
@@ -71,6 +81,8 @@ export function newBudgetGateState(config: TumwaterConfig): BudgetGateState {
     breakers: {},
     engaged: null,
     from: null,
+    fromKey: "",
+    prevWindowMoved: false,
     fallbackConfig: config,
     warned: false,
   };
@@ -112,6 +124,24 @@ interface BudgetGatePoll {
   /** Whether the cap is reached this poll — the budget hold only ever holds while it is;
    * the per-role sets are empty when it is not. */
   budgetActive: boolean;
+  /** The subscription window that is used up this poll (claudeWindowUsedUp), or null. */
+  windowOut: { type: string; resetsAt: number } | null;
+  /** The tiers the window move put on a fallback pair, tier → label (tierFallbackLabels over
+   * the moved tiers); empty when nothing moved. */
+  windowTiers: Partial<Record<ModelTier, string>>;
+  /** True on exactly the poll the window move ends (the window reset): the orchestrator hands
+   * back the in-flight ticks still on the fallback pairs, unless the cap still holds. */
+  windowResumed: boolean;
+}
+
+/** Is this fallback pair a claude one (the agent namespace in the pair's provider)? */
+function pairIsClaude(p: FallbackModelConfig): boolean {
+  return p.provider === "claude";
+}
+
+/** Does this model seam route to the claude backend? */
+function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
+  return (seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi")) === "claude";
 }
 
 /** Does an in-flight tick's captured model pair (LoopRunner.tickModel()) match the fallback
@@ -183,7 +213,11 @@ export function pollBudgetGate(
   // verdict. The resolution below deliberately prices alone (the map's keys are the pairs
   // that would run absent a demotion, so a demotion cannot churn them); part 5c/8 wires the
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
-  const pairFreeAt = (p: FallbackModelConfig) => piPairFree(providers, p.provider, p.model, account);
+  // A used-up subscription window (claudeWindowUsedUp, the rule the fleet hold reads too): while
+  // it stands a subscription claude pair is no fallback — it would meet the same window.
+  const windowOut = claudeWindowUsedUp(account, now);
+  const pairFreeAt = (p: FallbackModelConfig) =>
+    piPairFree(providers, p.provider, p.model, account) && !(windowOut !== null && pairIsClaude(p));
   // The breaker map is keyed by every pair the tiers would run on absent a demotion
   // (resolveTierFallbacks over the price check alone), re-keyed per pair each poll: a pair's
   // judgment survives while its subject (pair + cap) is unchanged, and a changed cap, a pair
@@ -294,16 +328,67 @@ export function pollBudgetGate(
   // the landings must still run on the free pair — a demotion must never promote them to
   // the priced model the cap already spent.
   const onFallback = reached && pairNames.length > 0;
-  if (onFallback && state.from !== liveConfig) {
+  // A used-up window moves the subscription claude jobs to their tier's fallback below the cap
+  // too; with no fallback to move to, nothing changes and the claude hold applies.
+  const windowMove = windowOut !== null && pairNames.length > 0;
+  const fromKey = `${windowMove ? "w" : ""}${reached ? "c" : ""}`;
+  if ((onFallback || windowMove) && (state.from !== liveConfig || state.fromKey !== fromKey)) {
     state.from = liveConfig;
-    state.fallbackConfig = applyFallbackModel(liveConfig, priceResolved, (seam) =>
-      seamFree(providers, seam, account),
-    );
+    state.fromKey = fromKey;
+    // A job keeps its own model while that model is available: below the cap every seam but a
+    // subscription claude one during a used-up window; at the cap it must also be free.
+    const available = (seam: { agent?: string; provider?: string; model?: string }) =>
+      !(windowOut !== null && seamIsClaude(seam)) && (!reached || seamFree(providers, seam, account));
+    const view = applyFallbackModel(liveConfig, priceResolved, available);
+    // A role pinned to subscription claude under a tier that is not claude has no tier pair to
+    // fall onto — dropping its override would land it on the tier's priced primary — so it keeps
+    // its pin and the claude hold stops it, as before the window move.
+    if (windowOut !== null) {
+      for (const role of enabledRoleIds(liveConfig)) {
+        const tier = roleSeamTier(liveConfig, role);
+        const pin = liveConfig.roles[role];
+        if (pin && seamIsClaude(configForRole(liveConfig, role)) && !seamIsClaude(withModelOverrides(liveConfig, tier, {})))
+          view.roles[role] = pin;
+      }
+      // A reviewer pinned to subscription claude under such a tier would likewise land on the
+      // tier's priced primary; it goes to the tier's fallback pair instead (a held reviewer
+      // would stop the whole team).
+      const rm = liveConfig.review.model;
+      const reviewTier: ModelTier = isTierName(rm) ? rm : "strong";
+      const reviewPair = priceResolved[reviewTier].pair;
+      if (
+        reviewPair &&
+        seamIsClaude(reviewConfig(liveConfig)) &&
+        !seamIsClaude(withModelOverrides(liveConfig, reviewTier, {}))
+      )
+        view.review = {
+          ...view.review,
+          provider: undefined,
+          model: formatModelSelector({
+            provider: reviewPair.provider,
+            model: reviewPair.model ?? "",
+            thinking: reviewPair.thinking,
+          }),
+          thinking: undefined,
+        };
+    }
+    state.fallbackConfig = view;
   }
+  // The tiers the window move put on a fallback pair: those whose own seam is subscription claude.
+  const windowTiers: Partial<Record<ModelTier, string>> = {};
+  if (windowMove) {
+    const moved = new Set<ModelTier>();
+    for (const tier of MODEL_TIERS)
+      if (seamIsClaude(withModelOverrides(liveConfig, tier, {}))) moved.add(tier);
+    const labels = tierFallbackLabels(priceResolved);
+    for (const tier of MODEL_TIERS) if (moved.has(tier) && labels[tier] !== undefined) windowTiers[tier] = labels[tier];
+  }
+  const windowResumed = state.prevWindowMoved && !windowMove;
+  state.prevWindowMoved = windowMove;
   return {
     gate,
     onFallback,
-    roleConfig: onFallback ? state.fallbackConfig : liveConfig,
+    roleConfig: onFallback || windowMove ? state.fallbackConfig : liveConfig,
     spentUsd,
     capUsd,
     resumed,
@@ -311,6 +396,9 @@ export function pollBudgetGate(
     priceResolved,
     servingResolved,
     budgetActive: reached,
+    windowOut,
+    windowTiers,
+    windowResumed,
   };
 }
 

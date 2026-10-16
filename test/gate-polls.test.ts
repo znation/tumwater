@@ -17,6 +17,7 @@ import { newFleetGateStates, pollFleetGates } from "../src/gates/gate-polls.js";
 import { BYTES_PER_GB } from "../src/gates/disk-gate.js";
 import { heldProviders } from "../src/fleet/fleet-hold.js";
 import type { ModelFallbackState } from "../src/loop/model-fallback.js";
+import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentLoopState } from "./fixtures/loop-fixtures.js";
@@ -153,6 +154,89 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   assert.deepEqual(handoff[0]!.roles, ["feature"]);
   assert.equal(handoff[0]!.provider, "free");
   assert.equal(handoff[0]!.model, "qwen-free");
+});
+
+test("pollFleetGates: a used-up claude window moves claude roles to the fallback and hands them back at the reset", () => {
+  const root = tmpdir("gate-polls-window-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  const handbacks: string[] = [];
+  const featureState = spentLoopState("feature", 1);
+  featureState.running = true;
+  const directorState = freshLoopState(DIRECTOR_ROLE);
+  const runners = [
+    fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude"),
+    fakeRunner(DIRECTOR_ROLE, directorState, null, handbacks, "claude"),
+  ];
+  const config = paidFallbackConfig(10);
+  config.provider = undefined;
+  config.model = "claude/claude-sonnet-5-5";
+  const states = newFleetGateStates(config);
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature", DIRECTOR_ROLE] },
+  };
+
+  const out = pollFleetGates(states, ctx);
+  assert.equal(out.gate, "open");
+  const cfgOf = (i: number) => (runners[i] as unknown as { config: { model?: unknown } }).config;
+  assert.deepEqual(cfgOf(0).model, { small: "free/qwen-free", default: "free/qwen-free", strong: "free/qwen-free" });
+  assert.equal(cfgOf(1), config, "the director keeps the live config");
+  assert.equal((runners[0] as unknown as { budgetFallbackActive?: boolean }).budgetFallbackActive, false, "the cap flag stays off");
+  const limited = readEvents(root, 100).filter((e) => e.type === "claude_window_limited");
+  assert.equal(limited.length, 1);
+  assert.ok(limited[0]!.tiers, "the limited event names where the moved tiers went");
+  assert.deepEqual(handbacks, []);
+
+  // The window resets: the in-flight fallback run is handed back, with reason window.
+  writeClaudeAccount(root, { billing: "subscription", observedAt: now, windows: {} });
+  pollFleetGates(states, ctx);
+  assert.deepEqual(handbacks, ["feature"]);
+  const back = readEvents(root, 100).filter((e) => e.type === "budget_handback");
+  assert.equal(back.length, 1);
+  assert.equal(back[0]!.reason, "window");
+  assert.equal(cfgOf(0), config, "the live config is back");
+});
+
+test("pollFleetGates: a cap reopen while the claude window is still used up hands nothing back", () => {
+  const root = tmpdir("gate-polls-window-cap-");
+  const modelsPath = writeModelsFile(root, MODELS_JSON);
+  const now = Date.now();
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: now,
+    windows: { five_hour: { status: "rejected", resetsAt: now + 3_600_000, observedAt: now } },
+  });
+  const handbacks: string[] = [];
+  const featureState = spentLoopState("feature", 10);
+  featureState.running = true;
+  const runners = [fakeRunner("feature", featureState, { provider: "free", model: "qwen-free" }, handbacks, "claude")];
+  const config = paidFallbackConfig(10);
+  config.provider = undefined;
+  config.model = "claude/claude-sonnet-5-5";
+  const states = newFleetGateStates(config);
+  const ctx = {
+    root,
+    runners,
+    liveConfig: config,
+    modelsPath,
+    now,
+    info: { pid: process.pid, startedAt: 0, roles: ["feature"] },
+  };
+  assert.equal(pollFleetGates(states, ctx).gate, "fallback");
+  const reopened = pollFleetGates(states, { ...ctx, liveConfig: { ...config, maxDailyCostUsd: 100 } });
+  assert.equal(reopened.gate, "open");
+  assert.deepEqual(handbacks, [], "the run is already on the pair the window still assigns");
+  assert.equal(readEvents(root, 100).filter((e) => e.type === "budget_handback").length, 0);
 });
 
 // The per-provider failure hold keys on the provider each role's NEXT tick will run on

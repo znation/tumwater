@@ -399,3 +399,14 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
   const torn = formatEvent({ ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour" } as never);
   assert.ok(!torn.includes("resets"), `torn limited line: ${torn}`);
 });
+
+test("claude_window_limited with tiers says the work moves; budget_handback reason window names the window", () => {
+  const moved = formatEvent({
+    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour",
+    tiers: { default: "free/qwen-free", strong: "free/qwen-free" },
+  } as never);
+  assert.match(moved, /claude model jobs move to /);
+  assert.match(moved, /free\/qwen-free/);
+  const back = formatEvent({ ts: 0, loop: "harness", type: "budget_handback", roles: ["feature"], reason: "window" } as never);
+  assert.match(back, /claude subscription window reset/);
+});

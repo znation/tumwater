@@ -7,6 +7,8 @@
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
  * landing drain) and the launch call itself. */
 import { increment } from "../collections.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
@@ -494,4 +496,11 @@ export async function pollRunnerReasons(
     reasons.set(runner, reason);
   }
   return reasons;
+}
+
+/** The fleet-hold key of the reviewer's seam, read from the config merges actually review under
+ * (the poll's roleConfig, which a used-up claude window or the cap has moved to a fallback), so
+ * a reviewer that left claude no longer holds the whole team on the claude hold. */
+export function reviewHoldKey(roleConfig: TumwaterConfig): string | undefined {
+  return seamHoldKey(reviewRunConfig(roleConfig));
 }

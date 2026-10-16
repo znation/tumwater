@@ -124,9 +124,10 @@ API key — or one that saw `isUsingOverage` at any point — feeds the daily ca
 pi model; at a team of today's size it can amount to tens of dollars a day, so pair it with a
 free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
 API-equivalent cost is tracked as estimated spend, printed on its own line in `tumwater report`,
-and never counted in the spend totals. A rejected subscription usage window holds subscription
-Claude model jobs until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command), so the team does not
-burn a failed run per role per poll; pi model jobs and API-key Claude model jobs keep running. A
+and never counted in the spend totals. A rejected subscription usage window moves subscription
+Claude model jobs to their tier's `fallback` until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command); with no usable fallback they wait for the reset instead, so the team does not
+burn a failed run per role per poll. Pi model jobs and API-key Claude model jobs keep running, and a run
+cut off by the window keeps its worktree and continues on the fallback as a handoff. When the window resets, in-flight fallback runs are handed back to Claude (`budget_handback` with reason `window`). A
 subscription Claude job with no overage is free to the budget gate too: at the cap it stays
 put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
 budget `fallback` for a priced pi primary; an account spending into overage counts like API

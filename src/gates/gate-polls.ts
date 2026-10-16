@@ -212,6 +212,8 @@ export function pollFleetGates(
     priceResolved,
     servingResolved,
     budgetActive,
+    windowTiers,
+    windowResumed,
   } = pollBudgetGate(states.budget, {
     root,
     states: runners.map((r) => r.state),
@@ -262,8 +264,18 @@ export function pollFleetGates(
   // running, the director is exempt, and the landings (the slot's own runs) are untouched.
   // One event per pair names who was handed back, so the resulting aborted ticks read as
   // the budget reopening, not as unexplained failures.
-  if (gateResumed && fallbackPairs.length > 0) {
+  // The subscription window reset (below the cap): the same hand-back for the pairs the window
+  // move used. A window that resets while the cap still holds hands back nothing.
+  const handBack = gateResumed || (windowResumed && !budgetActive);
+  if (handBack && fallbackPairs.length > 0) {
+    // A cap reopen while the window is still used up leaves the window's tiers on their
+    // fallback pairs: handing those runs back would abort them to restart on the same pair.
+    const stillMoved = (Object.keys(windowTiers) as (keyof typeof windowTiers)[]).flatMap((t) => {
+      const p = priceResolved[t].pair;
+      return p ? [p] : [];
+    });
     for (const leftPair of fallbackPairs) {
+      if (stillMoved.some((p) => p.provider === leftPair.provider && p.model === leftPair.model)) continue;
       const matching = runners.filter(
         (r) => r.role !== DIRECTOR_ROLE && tickOnPair(r.tickModel(), leftPair),
       );
@@ -274,6 +286,7 @@ export function pollFleetGates(
           roles: matching.map((r) => r.role),
           provider: leftPair.provider,
           model: leftPair.model,
+          ...(gateResumed ? {} : { reason: "window" }),
         });
         for (const r of matching) r.handBackTick();
       }
@@ -454,7 +467,14 @@ export function pollFleetGates(
   // and the permit-time closures read the LATEST poll's map there, so a waiter granted its
   // permit after a later poll sees that poll's world.
   const claudeAccount = readClaudeAccount(root, now);
-  states.fleetHold = pollFleetHold(root, states.fleetHold, holdInputs(runners), now, claudeAccount);
+  states.fleetHold = pollFleetHold(
+    root,
+    states.fleetHold,
+    holdInputs(runners),
+    now,
+    claudeAccount,
+    windowTiers,
+  );
   // The subscription usage window's warning is observational (the hold above is the gate): the
   // first allowed_warning logs once per window, and the memory lives beside the holds map.
   states.claudeWindowWarned = pollClaudeWindowWarning(

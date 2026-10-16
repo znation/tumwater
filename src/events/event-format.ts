@@ -306,6 +306,7 @@ export function eventMessage(e: HarnessEvent): string {
       // reopened. Their ticks end `aborted` and resume promptly on the primary, so an operator
       // reading the feed can connect the aborted ticks to this one line.
       const roles = rolesPhrase(e.roles, "?");
+      if (e.reason === "window") return `claude subscription window reset: handed ${roles} back to claude`;
       return `budget reopened: handed ${roles} back to the primary`;
     }
     case "team_paused":
@@ -389,6 +390,14 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
       // harness handling the account's own throttle. Names the window, the reset, and which
       // seams stop, so the operator knows why claude held and what keeps running.
+      // With a fallback the work moves rather than waits: `tiers` names where each moved tier's
+      // work went (the budget poll's window move), the director and any tier with no fallback
+      // still wait.
+      {
+        const moved = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
+        if (moved.length > 0)
+          return `claude subscription window ${textOr(e.windowType)} rejected — claude model jobs move to ${moved.join(", ")}${windowResetPhrase(e)} (director keeps waiting)`;
+      }
       return `waiting: claude subscription window ${textOr(e.windowType)} rejected — claude model jobs wait${windowResetPhrase(e)} (director keeps running)`;
     case "claude_window_reset":
       return `claude subscription window reset — claude model jobs run again`;

@@ -65,6 +65,25 @@ export function subscriptionWindowRejected(
   );
 }
 
+/** The subscription account's used-up usage window, or null: a window reading `rejected` with no
+ * overage and a `resetsAt` still ahead of `now`; among several, the one that resets last. The one
+ * rule the fleet hold (claudeWindowObservation) and the budget gate's window move
+ * (pollBudgetGate) both read, so the hold and the move cannot disagree. Only subscription billing
+ * produces one; a missing account reads null. */
+export function claudeWindowUsedUp(
+  account: ClaudeAccount | null,
+  now: number,
+): { type: string; resetsAt: number } | null {
+  if (account?.billing !== "subscription") return null;
+  let furthest: { type: string; resetsAt: number } | null = null;
+  for (const [type, w] of Object.entries(account.windows)) {
+    if (w.status !== "rejected" || w.isUsingOverage === true) continue;
+    if (typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
+    if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
+  }
+  return furthest;
+}
+
 /** One window entry with its `rateLimitType` attached (the record key), as every display of the
  * subscription window needs it. */
 export type ClaudeWindowEntry = ClaudeWindow & { type: string };

@@ -10,9 +10,9 @@ import {
 } from "../budget/fallback-breaker.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { modelPairName } from "../budget/budget.js";
-import { roleSeamTier, reviewRunConfig, seamConcurrencyKey, seamHoldKey } from "../config/config-views.js";
+import { roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { launchDueTicks } from "./orchestrator-launch.js";
-import { pollRunnerReasons } from "./orchestrator-scheduling.js";
+import { pollRunnerReasons, reviewHoldKey } from "./orchestrator-scheduling.js";
 import { openBugs } from "../backlog/backlog.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { LoopRunner } from "../loop/loop.js";
@@ -411,10 +411,12 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // Fresh reads for the permit-time closures: they run after later polls have advanced
       // gateStates.fleetHold, so they re-derive from the LATEST poll's map, not this snapshot.
       const fleetHeldNow = () => heldProviders(gateStates.fleetHold);
-      const reviewHeldNow = () =>
-        liveConfig.review.enabled && fleetHeldNow().has(seamHoldKey(reviewRunConfig(liveConfig)));
-      const reviewHeld =
-        liveConfig.review.enabled && fleetHeldProviders.has(seamHoldKey(reviewRunConfig(liveConfig)));
+      // The reviewer's seam is read from the config merges actually review under — the poll's
+      // roleConfig, which a used-up claude window or the cap has already moved to a fallback —
+      // so a reviewer that left claude no longer holds the whole team on the claude hold.
+      const reviewSeamKey = reviewHoldKey(roleConfig);
+      const reviewHeldNow = () => liveConfig.review.enabled && fleetHeldNow().has(reviewSeamKey);
+      const reviewHeld = liveConfig.review.enabled && fleetHeldProviders.has(reviewSeamKey);
       const roleProviders = new Map(runners.map((r) => [r.role, r.runProvider(now)]));
 
       // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
