@@ -21,28 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms docs, part 2/5: Rewrite docs/how-it-works.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches docs/how-it-works.md)
-
-**Goal.** docs/how-it-works.md explains tumwater in the glossary's words: a team of roles, each run finds one thing to do, and its commit goes through the merge (rebase, check, review, fast-forward). It names the renamed commands and config keys.
-
-**Approach.**
-- Apply the "Glossary" and "Wording rules" tables to every prose line and list item (same substitutions as part 1/5: fleet → team, loop → role, tick → run, landing → merge, land queue → merge queue, vetted → approved, operator → you, harness → tumwater, notebook → notes, initial prompt → brief, queues of prompts → inbox, seam → the job by name, selector → model id, backoff → sleeping, drain → finish current work, quiet kill → stall, error-streak circuit breaker → repeated-failure pause, "main red" → "main's check is failing", slots → running at once/workspaces, self-redeploy/stale/generation → update/restart, primary checkout → your checkout, claim/sibling → "another feature instance is working on it").
-- Rename the headings: "A loop tick" → "A run", "The landing gate" → "The merge pipeline", "Self-redeploy" → "Updates", "Operator notes" → "More controls". No file links to these anchors (checked with `git grep "how-it-works.md#"`).
-- Commands and config keys under their new names: `tumwater start` (with `--once`, `--for`), `tumwater history <role> --last` and `history <role> <n> --stat` for the old `tumwater tick --last`/`--stat`, `--result merged`, `landBatchMax` → `mergeBatchMax`, `tickTimeoutSeconds` → `runTimeoutSeconds`, `customLoops` → `customRoles` (and "add a loop named X" → "add a role named X"), `agents.<id>.bin` → `backends.<id>.bin`. "Agent binary" becomes "Backend binary".
-- Result codes in backticks (`error`, `review_error`, `merge_conflict`, `merge_blocked`, `main_red`, `no_change`, `changed`, `queued`) stay: codes stay in `--json` and `logs --type`. Prose around them uses the display words.
-- Every UI string this file quotes must be what the code renders now. Grep src/ui/, src/ui/tui/, src/ui/badges.ts and src/landing/landing-queue-render.ts for each before writing it: `STALE: main +N`, `restart BLOCKED: <reason>`, the TUI tab names (Activity, Queued, Health, Brief, Notebook, Tick, Change), hint-line text (`scope: fleet`, `no ticks with result "<class>"`, `(loading pending change…)`), queue labels (`[landing 2m · reviewing]`, `[vetted, awaiting merge]`), the `Ctrl+O` classes, and dashboard names (Fleet, the Loops card, the Queued tab, the Health check card, the Loop picker). Keep the old string where the code still renders it.
-- TUI keys: `Ctrl+L` is "send later", `Ctrl+N` on a role's transcript cycles to its notes, and `Ctrl+X` twice clears the notes.
-- Leave for part 5/5 or the code series: event types (`slot_wait`, `budget_handback`, `config_changed`, …), `/api/logs`, the `#loop/<name>` hash, `.tumwater/` paths (`_slot-<n>`, `_merge`, `_gate-main`, `state/notes/<role>.md`), and identifiers (`readTickDetail`, `renderTickDetail`, `eventRole`, `eventMatchesGrep`, `tickRowGrepHaystack`, `historyClass`, `readLandingQueue`, `cancelRolePrompt`, `collectRoleChange`, `role_notes`, `pauseRole`).
-- Re-wrap only the paragraphs you change, at ~100 columns.
-
-**Files touched.** docs/how-it-works.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/cli/help.ts, src/ui/, src/ui/tui/.
-
-**Acceptance criteria.**
-- A case-insensitive whole-word grep of docs/how-it-works.md for the vocabulary guard's retired words (`fleet`, `loop`, `loops`, `tick`, `ticks`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `seams`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `drain`) finds only names in the leave-alone list above and UI strings the code still renders.
-- `tumwater run`, `tumwater tick`, `landBatchMax`, `tickTimeoutSeconds`, `customLoops` and `agents.` appear nowhere in the file.
-- Each backticked UI string in the file appears verbatim in src/.
-- `npm run test` passes.
-
 ### Plain terms docs, part 3/5: Rewrite the backends guide and DEVELOPMENT.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches docs/backends.md and DEVELOPMENT.md)
 
 **Goal.** docs/backends.md and DEVELOPMENT.md use the glossary's words and the renamed config keys (`backend`, `backends.<id>.bin`/`.args`, `runTimeoutSeconds`). Seams are named as the jobs they are.
@@ -2621,6 +2599,29 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Unit (`test/question-commands.test.ts`): with three answered entries in file order A, B, C, `answeredQuestionSummaries(root, 2)` deep-equals `[{ title: "C…", decision: <C's answer line> }, { title: "B…", … }]`. An entry with no `**Answered` line gets `decision: ""`. A file with an empty `## Answered` returns `[]`.
 - Unit (`test/status-payload.test.ts`): a temp project whose QUESTIONS.md has one open and six answered questions yields `answeredQuestions` with length 5, newest first. `questions` still lists only the open one.
 - Unit (`test/gui-client-fleet.test.ts`): `renderBacklog` on the Questions tab with `questions: []` and two `answeredQuestions` paints the "No open questions" empty state, then an "Answered recently" divider, then both titles and their decisions. The answered rows contain no `backloglink` and no Answer button. With `answeredQuestions` absent or empty, the Questions tab's html has no "Answered recently" text, so payloads from older builds render as before. The Plans tab never shows answered rows.
+- `npm run test` passes.
+
+||||||| parent of 3b62fdc99 (tumwater(feature): Rewrite docs/how-it-works.md in plain terms)
+### Plain terms docs, part 2/5: Rewrite docs/how-it-works.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches docs/how-it-works.md) (done 2026-10-16)
+
+**Goal.** docs/how-it-works.md explains tumwater in the glossary's words: a team of roles, each run finds one thing to do, and its commit goes through the merge (rebase, check, review, fast-forward). It names the renamed commands and config keys.
+
+**Approach.**
+- Apply the "Glossary" and "Wording rules" tables to every prose line and list item (same substitutions as part 1/5: fleet → team, loop → role, tick → run, landing → merge, land queue → merge queue, vetted → approved, operator → you, harness → tumwater, notebook → notes, initial prompt → brief, queues of prompts → inbox, seam → the job by name, selector → model id, backoff → sleeping, drain → finish current work, quiet kill → stall, error-streak circuit breaker → repeated-failure pause, "main red" → "main's check is failing", slots → running at once/workspaces, self-redeploy/stale/generation → update/restart, primary checkout → your checkout, claim/sibling → "another feature instance is working on it").
+- Rename the headings: "A loop tick" → "A run", "The landing gate" → "The merge pipeline", "Self-redeploy" → "Updates", "Operator notes" → "More controls". No file links to these anchors (checked with `git grep "how-it-works.md#"`).
+- Commands and config keys under their new names: `tumwater start` (with `--once`, `--for`), `tumwater history <role> --last` and `history <role> <n> --stat` for the old `tumwater tick --last`/`--stat`, `--result merged`, `landBatchMax` → `mergeBatchMax`, `tickTimeoutSeconds` → `runTimeoutSeconds`, `customLoops` → `customRoles` (and "add a loop named X" → "add a role named X"), `agents.<id>.bin` → `backends.<id>.bin`. "Agent binary" becomes "Backend binary".
+- Result codes in backticks (`error`, `review_error`, `merge_conflict`, `merge_blocked`, `main_red`, `no_change`, `changed`, `queued`) stay: codes stay in `--json` and `logs --type`. Prose around them uses the display words.
+- Every UI string this file quotes must be what the code renders now. Grep src/ui/, src/ui/tui/, src/ui/badges.ts and src/landing/landing-queue-render.ts for each before writing it: `STALE: main +N`, `restart BLOCKED: <reason>`, the TUI tab names (Activity, Queued, Health, Brief, Notebook, Tick, Change), hint-line text (`scope: fleet`, `no ticks with result "<class>"`, `(loading pending change…)`), queue labels (`[landing 2m · reviewing]`, `[vetted, awaiting merge]`), the `Ctrl+O` classes, and dashboard names (Fleet, the Loops card, the Queued tab, the Health check card, the Loop picker). Keep the old string where the code still renders it.
+- TUI keys: `Ctrl+L` is "send later", `Ctrl+N` on a role's transcript cycles to its notes, and `Ctrl+X` twice clears the notes.
+- Leave for part 5/5 or the code series: event types (`slot_wait`, `budget_handback`, `config_changed`, …), `/api/logs`, the `#loop/<name>` hash, `.tumwater/` paths (`_slot-<n>`, `_merge`, `_gate-main`, `state/notes/<role>.md`), and identifiers (`readTickDetail`, `renderTickDetail`, `eventRole`, `eventMatchesGrep`, `tickRowGrepHaystack`, `historyClass`, `readLandingQueue`, `cancelRolePrompt`, `collectRoleChange`, `role_notes`, `pauseRole`).
+- Re-wrap only the paragraphs you change, at ~100 columns.
+
+**Files touched.** docs/how-it-works.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/cli/help.ts, src/ui/, src/ui/tui/.
+
+**Acceptance criteria.**
+- A case-insensitive whole-word grep of docs/how-it-works.md for the vocabulary guard's retired words (`fleet`, `loop`, `loops`, `tick`, `ticks`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `seams`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `drain`) finds only names in the leave-alone list above and UI strings the code still renders.
+- `tumwater run`, `tumwater tick`, `landBatchMax`, `tickTimeoutSeconds`, `customLoops` and `agents.` appear nowhere in the file.
+- Each backticked UI string in the file appears verbatim in src/.
 - `npm run test` passes.
 
 ### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests; done 2026-10-16)
