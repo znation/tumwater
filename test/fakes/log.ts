@@ -13,12 +13,12 @@ import { writeEvents } from "../fixtures/log-fixtures.js";
 /** A `run_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
  * `changed`. Overrides pass through (`tickEnd({ result: "error", error: "pi unreachable" })`). */
 export function tickEnd(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_end", tick: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
 }
 
 /** A `run_start` event, the pairing half tickRows reads durations from. */
 export function tickStart(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_start", tick: 1, ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }
 
 /** An approved `review_verdict` event over `head` (40 hex chars expected), with the

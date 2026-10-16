@@ -44,7 +44,7 @@ test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP cap
     "restart",
     "restart_refused",
     "restart_blocked",
-    "tick_deferred",
+    "run_deferred",
     "orchestrator_start",
     "orchestrator_stop",
     "supervisor_exit",
@@ -234,10 +234,10 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
   );
 });
 
-test("tick_deferred, orchestrator lifecycle, and supervisor_exit render their payloads", () => {
-  assert.equal(describeStateChange(ev({ type: "tick_deferred" })), "deferred — nothing merged since the last run");
+test("run_deferred, orchestrator lifecycle, and supervisor_exit render their payloads", () => {
+  assert.equal(describeStateChange(ev({ type: "run_deferred" })), "deferred — nothing merged since the last run");
   assert.equal(
-    describeStateChange(ev({ type: "tick_deferred", reason: "backlog" })),
+    describeStateChange(ev({ type: "run_deferred", reason: "backlog" })),
     "deferred — feature/bugfix backlog open",
   );
   assert.equal(

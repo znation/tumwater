@@ -200,7 +200,7 @@ test("a tick that dequeues a role prompt logs one prompt_taken naming the tick",
     assert.equal(taken[0]!.loop, "perf");
     assert.match(String(taken[0]!.preview), /flubbernator/);
     const start = eventsOfType(repo, "run_start");
-    assert.equal(taken[0]!.tick, start[start.length - 1]!.tick);
+    assert.equal(taken[0]!.run, start[start.length - 1]!.run);
     await runner.tick();
     assert.equal(eventsOfType(repo, "prompt_taken").length, 1, "an empty queue logs nothing");
   });

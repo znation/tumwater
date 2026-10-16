@@ -268,7 +268,7 @@ test("consumeAbortRequests tolerates a missing .tumwater directory", () => {
   assert.equal(a.aborts, 0);
 });
 
-test("consumeAbortRequests aborts a running role's tick and logs tick_aborted", () => {
+test("consumeAbortRequests aborts a running role's tick and logs run_aborted", () => {
   const root = tmpdir();
   const a = fakeRunner("coverage", true);
   const marker = abortRequestPath(root, "coverage");
@@ -276,7 +276,7 @@ test("consumeAbortRequests aborts a running role's tick and logs tick_aborted", 
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 1);
   assert.equal(fs.existsSync(marker), false);
-  const events = eventsOfType(root, "tick_aborted");
+  const events = eventsOfType(root, "run_aborted");
   assert.equal(events.length, 1);
   assert.equal(events[0]?.loop, "coverage");
 });
@@ -289,7 +289,7 @@ test("consumeAbortRequests silently clears a marker for an idle role", () => {
   consumeAbortRequests(root, asRunners(a), []);
   assert.equal(a.aborts, 0);
   assert.equal(fs.existsSync(marker), false);
-  assert.equal(eventsOfType(root, "tick_aborted").length, 0);
+  assert.equal(eventsOfType(root, "run_aborted").length, 0);
 });
 
 test("consumeAbortRequests clears a marker for a role with no runner at all", () => {
@@ -347,7 +347,7 @@ test("consumeAbortRequests ignores non-abort files in the state directory", () =
 test("consumeAbortRequests consumes every marker when one tick abort cannot be logged", () => {
   const root = tmpdir();
   // events.jsonl as a directory makes logEvent throw (EISDIR) at the first marker's
-  // tick_aborted append. The pre-fix broad catch swallowed that throw and skipped every
+  // run_aborted append. The pre-fix broad catch swallowed that throw and skipped every
   // abort request that sorted after it, so the second marker never got its turn.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
   const a = fakeRunner("coverage", true);

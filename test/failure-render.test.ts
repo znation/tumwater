@@ -498,7 +498,7 @@ test("the digest renders under 6 KB however bad the window was", () => {
   // that broke the section when it capped only line count: a 40-char loop id and a
   // config_changed whose keys array and key strings are effectively unbounded.
   for (let i = 0; i < 20; i++) {
-    lines.push({ ts: at(0), loop: `role${i}`, type: "tick_deferred" });
+    lines.push({ ts: at(0), loop: `role${i}`, type: "run_deferred" });
   }
   lines.push({ ts: at(0), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3.8-27B-MLX-oQ4e-mtp" });
   lines.push({ ts: at(0), loop: "harness", type: "build_stale", build: "b".repeat(40), head: "c".repeat(40), aheadCommits: 12 });
@@ -565,7 +565,7 @@ test("a state changes section over the newest-6 cap names its remainder instead 
   const events = Array.from({ length: 9 }, (_, i) => ({
     ts: at(0, 10 + i),
     loop: "harness",
-    type: "tick_deferred",
+    type: "run_deferred",
   }));
   writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, ...events]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
@@ -608,7 +608,7 @@ test("a landed list over the newest-10 cap names its remainder instead of readin
 
 test("each harness state transition renders its own bounded line", () => {
   // describeStateChange owns the whole transition vocabulary, but the digest tests above reach
-  // only budget_fallback, team_paused, build_stale, config_changed and tick_deferred. Each
+  // only budget_fallback, team_paused, build_stale, config_changed and run_deferred. Each
   // case gets its own log so the section's newest-STATE_CHANGE_TOP cap never hides one.
   const cases: Array<[Record<string, unknown>, string]> = [
     [
@@ -707,7 +707,7 @@ test("tumwater report --failures prints the digest and shares the --days bound",
 test("report --failures --json prints the digest's collected data", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
   ]);
   const ok = await runCli(root, "report", "--failures", "--json");
   assert.equal(ok.code, 0);
@@ -720,7 +720,7 @@ test("report --failures --json prints the digest's collected data", async () => 
 test("the digest's JSON carries no retired key at any depth", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as unknown;
   const keys = new Set<string>();

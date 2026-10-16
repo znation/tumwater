@@ -409,7 +409,7 @@ export async function reviewAheadOfMain(
       logEventBestEffort(root, {
         loop: role,
         type: "image_blind",
-        tick: ctx.tick,
+        run: ctx.tick,
         path,
         model: reviewCfg.model,
         action,

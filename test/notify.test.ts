@@ -166,7 +166,7 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "feature", type: "run_end", tick: 1, result: "no_change" });
+    logEvent(root, { loop: "feature", type: "run_end", run: 1, result: "no_change" });
     logEvent(root, { loop: "harness", type: "warning", message: "not page-worthy" });
     logEvent(root, { loop: "feature", type: "landed" });
     logEvent(root, { loop: "harness", type: "claude_window_reset", windowType: "five_hour" });

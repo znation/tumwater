@@ -173,7 +173,7 @@ export class LoopPi {
         logEventBestEffort(this.host.root, {
           loop: this.host.role,
           type: "image_blind",
-          tick: this.host.tickNumber(),
+          run: this.host.tickNumber(),
           path,
           model: resolved.model,
           action,

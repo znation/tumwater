@@ -161,7 +161,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   logEventBestEffort(root, {
     loop: role,
     type: "run_end",
-    tick,
+    run: tick,
     result: outcome.result,
     summary: outcome.summary,
     error: s.lastError,

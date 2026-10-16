@@ -81,7 +81,7 @@ test("finalizeTick logs the tick number it was handed, not a re-read of state.ti
   // tick number run_start announced (deps.tick), never the zeroed counter.
   Object.assign(s, zeroCounters(s));
   await run(root, "organize", s, { result: "no_change" }, { tick: 7 });
-  assert.equal(eventsOfType(root, "run_end")[0]!.tick, 7);
+  assert.equal(eventsOfType(root, "run_end")[0]!.run, 7);
 });
 
 test("finalizeTick rides nonzero per-tick usage on run_end", async () => {

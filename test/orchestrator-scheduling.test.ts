@@ -436,7 +436,7 @@ test("a stale-claim warning survives an unwritable events feed", async () => {
   assert.notEqual(feature2.state.claim?.at, T0 - CLAIM_IDLE_MAX_MS - 1);
 });
 
-test("a tick_deferred event survives an unwritable events feed", async () => {
+test("a run_deferred event survives an unwritable events feed", async () => {
   const root = tmpdir("tumwater-scheduling-best-effort-deferred-");
   const runner = fakeRunner("clean", defaultConfig());
   runner.state.lastResult = "no_change";

@@ -41,11 +41,11 @@ test("outcome classes fold per role: landed, no_change, error; unknown results c
 test("duration source chain: own durationMs, else the run_start pairing, else 0", () => {
   const { timeSpend } = timeAndSpend(
     [
-      ev({ ts: 2000, tick: 1, result: "changed" }), // paired: span 2000−1000
-      ev({ ts: 3000, tick: 2, result: "no_change", durationMs: 500 }), // own wins
-      ev({ ts: 4000, tick: 99, result: "error" }), // unpaired start (rotation cut it): 0
+      ev({ ts: 2000, run: 1, result: "changed" }), // paired: span 2000−1000
+      ev({ ts: 3000, run: 2, result: "no_change", durationMs: 500 }), // own wins
+      ev({ ts: 4000, run: 99, result: "error" }), // unpaired start (rotation cut it): 0
     ],
-    [ev({ ts: 1000, type: "run_start", tick: 1 })],
+    [ev({ ts: 1000, type: "run_start", run: 1 })],
   );
   assert.deepEqual(timeSpend[0]!.classes, {
     merged: { runs: 1, ms: 1000, costUsd: 0 },
@@ -74,7 +74,7 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
   const tickEnd = ev({
     loop: "coverage",
     ts: 100,
-    tick: 7,
+    run: 7,
     result: "queued",
     durationMs: 5000,
     costUsd: 0.25,
@@ -133,8 +133,8 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   // spans into the error-class cell but gave them no loss cause, so those hours were owned by
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
   // taking the shared no-text placeholder because land_failed carries no message.
-  const conflict = ev({ ts: 100, tick: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
-  const blocked = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const conflict = ev({ ts: 100, run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const blocked = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(
     [conflict, blocked],
     [
@@ -158,7 +158,7 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
 });
 
 test("a merge_blocked landing whose merge-scope check was killed at its own deadline names that cause", () => {
-  const blocked = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const blocked = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { lossCauses } = timeAndSpend(
     [blocked],
     [
@@ -178,7 +178,7 @@ test("a queued tick that failed retriably, was rebased, and recovered into a lan
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
   // The authoring tick's span must price under `landed`, with no loss cause, rather than
   // latch the retriable failure and burn agent-hours into the error cell.
-  const queued = ev({ ts: 100, loop: "feature", tick: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const queued = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
   const { timeSpend, lossCauses } = timeAndSpend(
     [queued],
     [

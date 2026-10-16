@@ -347,7 +347,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     // Exactly one deferral episode so far: one event on the transition in, none while merely
     // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
     // episode only after its 1s backoff — outside this assertion window.)
-    const deferred = eventsOfType(repo, "tick_deferred");
+    const deferred = eventsOfType(repo, "run_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
     await stopOrchestrator(orch, restore);
@@ -355,11 +355,11 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
 });
 
 test("a queued prompt ends a deferral episode, so the next deferral is announced again", async () => {
-  // The episode bookkeeping behind tick_deferred is edge-triggered: the event fires on the
+  // The episode bookkeeping behind run_deferred is edge-triggered: the event fires on the
   // transition into a deferral episode, not on every deferred poll. An inbox run (a queued
   // per-role prompt) must end the episode as it takes over — otherwise the flag survives the
   // prompt's tick and the NEXT deferral transition is swallowed: the operator sees one
-  // tick_deferred forever, even though the role keeps deferring between its prompt-driven
+  // run_deferred forever, even though the role keeps deferring between its prompt-driven
   // runs. With the default idle backoff the not-due window after each tick already ends the
   // episode, so this test zeroes it: after a no_change tick the role is due again on the very
   // next poll, and the inbox run's own episode reset is the only boundary left between two
@@ -376,7 +376,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
 
     // Episode 1: due again immediately after the startup tick, the no_change role defers —
     // announced once.
-    await waitFor(() => eventsOfType(repo, "tick_deferred").length === 1, "the first deferral event");
+    await waitFor(() => eventsOfType(repo, "run_deferred").length === 1, "the first deferral event");
 
     // The queued prompt pulls the role in on its own due-ness (reason inbox, outside the
     // deferral block) and the tick runs to completion.
@@ -386,8 +386,8 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     // Episode 2: due again on the next poll, still no_change, still no work landed — and
     // deferring a second time is announced again because the inbox run ended the first
     // episode.
-    await waitFor(() => eventsOfType(repo, "tick_deferred").length === 2, "the second deferral event");
-    const deferred = eventsOfType(repo, "tick_deferred").filter((d) => d.loop === "organize");
+    await waitFor(() => eventsOfType(repo, "run_deferred").length === 2, "the second deferral event");
+    const deferred = eventsOfType(repo, "run_deferred").filter((d) => d.loop === "organize");
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
     // And the second episode still defers: no third tick while it holds.
     await sleep(500);
@@ -433,7 +433,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
 
     // One deferral episode: one event on the transition in, none while merely not-due and
     // none on exit.
-    const deferred = eventsOfType(repo, "tick_deferred");
+    const deferred = eventsOfType(repo, "run_deferred");
     assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
   } finally {
     await stopOrchestrator(orch, restore);

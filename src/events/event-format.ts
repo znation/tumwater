@@ -102,7 +102,7 @@ export function outcomeText(e: HarnessEvent): string {
   return eventResult(e) ?? "?";
 }
 
-/** Why a `tick_deferred` event fired, as the clause that can follow "deferred — ": scheduling's
+/** Why a `run_deferred` event fired, as the clause that can follow "deferred — ": scheduling's
  * reason ("backlog", "no-work" or "plans-full"). Shared by the event feed (eventMessage) and
  * the failure digest (describeStateChange) so the two cannot disagree on the deferral's cause.
  * A missing or
@@ -192,7 +192,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `entry refused: ${textOr(e.reason)} (${Array.isArray(e.files) ? e.files.join(", ") : ""})`;
     case "wake":
       return `woke (${textOr(e.reason)})`;
-    case "tick_deferred":
+    case "run_deferred":
       // Routine state change (need-based prioritization), like counters_reset — no warning
       // prefix. One per deferral episode; the tick's own events cover the episode's end.
       return `deferred — ${deferredReasonText(e)}`;
@@ -218,7 +218,7 @@ export function eventMessage(e: HarnessEvent): string {
       const scope = roles ? ` for ${roles}` : "";
       return `counters reset${scope} (runs, merges, tokens, cost)`;
     }
-    case "tick_aborted":
+    case "run_aborted":
       // Routine state change (the user stopped one loop's tick), like counters_reset — no
       // warning prefix. The resulting run_end line carries the user_aborted outcome.
       return `run stopped by you`;

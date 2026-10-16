@@ -16,11 +16,11 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_start", tick: 1, ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }
 
 function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_end", tick: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
 }
 
 /** A tick-less in-tick event — the review gate's and build check's output, filed under the
@@ -39,15 +39,15 @@ test("a missing or empty log reads as no such tick", () => {
 test("a paired tick's block is its start, its in-tick events, and its end — nothing else's", () => {
   const root = tmpdir();
   writeEvents(root, [
-    startEvent({ ts: 1000, tick: 1 }),
-    inTickEvent({ ts: 1400, tick: 1 }),
+    startEvent({ ts: 1000, run: 1 }),
+    inTickEvent({ ts: 1400, run: 1 }),
     // An event stamped exactly at the end's ts is inside the block: the bound is exclusive
     // only past it, so a same-ms build_check is not dropped.
-    inTickEvent({ ts: 2000, tick: 1 }),
-    endEvent({ ts: 2000, tick: 1, result: "changed", tokens: 1234, costUsd: 0.5 }),
+    inTickEvent({ ts: 2000, run: 1 }),
+    endEvent({ ts: 2000, run: 1, result: "changed", tokens: 1234, costUsd: 0.5 }),
     // The next tick, and another loop's tick entirely — both outside tick 1's block.
-    startEvent({ ts: 3000, tick: 2, loop: "helper" }),
-    endEvent({ ts: 4000, tick: 2, loop: "helper" }),
+    startEvent({ ts: 3000, run: 2, loop: "helper" }),
+    endEvent({ ts: 4000, run: 2, loop: "helper" }),
   ]);
   const detail = readTickDetail(root, "feature", 1);
   assert.ok(detail);
@@ -85,8 +85,8 @@ test("a torn run_end outcome reads as ?, never undefined", () => {
 test("an in-flight tick reads open: no end, no fabricated duration, zero usage", () => {
   const root = tmpdir();
   writeEvents(root, [
-    startEvent({ ts: 5000, tick: 3 }),
-    inTickEvent({ ts: 5500, tick: 3 }),
+    startEvent({ ts: 5000, run: 3 }),
+    inTickEvent({ ts: 5500, run: 3 }),
     // Nothing after: no run_end and no next run_start, so everything since the start is
     // the open tick's block.
   ]);
@@ -104,10 +104,10 @@ test("a next tick's start closes an end-less block exclusive: the following tick
   const root = tmpdir();
   writeEvents(root, [
     // Tick 4's end was lost to rotation; tick 5's start is the surviving boundary.
-    startEvent({ ts: 6000, tick: 4 }),
-    inTickEvent({ ts: 6500, tick: 4 }),
-    startEvent({ ts: 7000, tick: 5 }),
-    endEvent({ ts: 8000, tick: 5 }),
+    startEvent({ ts: 6000, run: 4 }),
+    inTickEvent({ ts: 6500, run: 4 }),
+    startEvent({ ts: 7000, run: 5 }),
+    endEvent({ ts: 8000, run: 5 }),
   ]);
   const detail = readTickDetail(root, "feature", 4);
   assert.ok(detail);
@@ -121,12 +121,12 @@ test("a next tick's start closes an end-less block exclusive: the following tick
 test("a counter reset's repeated tick number answers with the newest block", () => {
   const root = tmpdir();
   writeEvents(root, [
-    startEvent({ ts: 1000, tick: 1 }),
-    endEvent({ ts: 2000, tick: 1, result: "changed" }),
+    startEvent({ ts: 1000, run: 1 }),
+    endEvent({ ts: 2000, run: 1, result: "changed" }),
     // The state reset to zero and tick 1 ran again: the operator asking for tick 1 means
     // the recent one, not the ancient block with the same number.
-    startEvent({ ts: 9000, tick: 1 }),
-    endEvent({ ts: 9500, tick: 1, result: "no_change" }),
+    startEvent({ ts: 9000, run: 1 }),
+    endEvent({ ts: 9500, run: 1, result: "no_change" }),
   ]);
   const detail = readTickDetail(root, "feature", 1);
   assert.ok(detail);
@@ -139,7 +139,7 @@ test("a rotation-cut start answers unpaired from a surviving end: no start, no d
   const root = tmpdir();
   writeEvents(root, [
     // Everything before the end event rotated away — only the run_end survives.
-    endEvent({ ts: 11000, tick: 6, result: "changed", tokens: 0, costUsd: 0 }),
+    endEvent({ ts: 11000, run: 6, result: "changed", tokens: 0, costUsd: 0 }),
   ]);
   const detail = readTickDetail(root, "feature", 6);
   assert.ok(detail);
@@ -154,7 +154,7 @@ test("a rotation-cut start answers unpaired from a surviving end: no start, no d
 
 test("a tick the scan never saw reads as not found, start or end", () => {
   const root = tmpdir();
-  writeEvents(root, [startEvent({ ts: 1000, tick: 1 }), endEvent({ ts: 2000, tick: 1 })]);
+  writeEvents(root, [startEvent({ ts: 1000, run: 1 }), endEvent({ ts: 2000, run: 1 })]);
   assert.equal(readTickDetail(root, "feature", 9), null);
   // Another loop's tick 1 does not answer for feature's.
   assert.equal(readTickDetail(root, "helper", 1), null);
@@ -164,19 +164,19 @@ test("a queued tick resolves to its landing's verdict and outcome event; a pendi
   const root = tmpdir();
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
   writeEvents(root, [
-    startEvent({ ts: 1000, tick: 1 }),
+    startEvent({ ts: 1000, run: 1 }),
     ev({ ts: 1100, type: "land_queued", commit: "sha1" }),
-    endEvent({ ts: 1200, tick: 1, result: "queued" }),
+    endEvent({ ts: 1200, run: 1, result: "queued" }),
     ev({ ts: 1300, type: "landed", commit: "sha1", result: "changed" }),
-    startEvent({ ts: 2000, tick: 2 }),
+    startEvent({ ts: 2000, run: 2 }),
     ev({ ts: 2100, type: "land_queued", commit: "sha2" }),
-    endEvent({ ts: 2200, tick: 2, result: "queued" }),
+    endEvent({ ts: 2200, run: 2, result: "queued" }),
     ev({ ts: 2300, type: "land_failed", commit: "sha2", result: "rejected" }),
-    startEvent({ ts: 3000, tick: 3 }),
+    startEvent({ ts: 3000, run: 3 }),
     ev({ ts: 3100, type: "land_queued", commit: "sha3" }),
-    endEvent({ ts: 3200, tick: 3, result: "queued" }),
-    startEvent({ ts: 4000, tick: 4 }),
-    endEvent({ ts: 4100, tick: 4, result: "changed" }),
+    endEvent({ ts: 3200, run: 3, result: "queued" }),
+    startEvent({ ts: 4000, run: 4 }),
+    endEvent({ ts: 4100, run: 4, result: "changed" }),
   ]);
   const one = readTickDetail(root, "feature", 1)!;
   assert.equal(one.result, "changed");

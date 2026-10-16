@@ -33,7 +33,7 @@ export interface HarnessEvent {
   ts: number;
   loop: string;
   type:
-    | "run_start" // carries tick; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
+    | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "run_end"
     | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
     | "landed" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
@@ -42,15 +42,15 @@ export interface HarnessEvent {
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "entry_refused" // a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason and files — the entry stays held until a human or the director lifts it
     | "wake"
-    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change tick), or "plans-full" (the plan loop's PLANS.md already holds its eligible-plan target); one per deferral episode
+    | "run_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change tick), or "plans-full" (the plan loop's PLANS.md already holds its eligible-plan target); one per deferral episode
     | "orchestrator_start"
     | "orchestrator_stop"
     | "prompt_enqueued"
     | "prompt_cancelled" // a queued prompt was removed before the director ran it (tumwater prompt --cancel)
     | "prompt_edited" // a queued prompt's text was rewritten in place (tumwater prompt --edit)
-    | "prompt_taken" // a tick dequeued a queued user prompt to run it (carries `tick` and `preview`)
+    | "prompt_taken" // a tick dequeued a queued user prompt to run it (carries `run` and `preview`)
     | "counters_reset"
-    | "tick_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
+    | "run_aborted" // a user-initiated abort killed one loop's in-flight tick (tumwater abort)
     | "resume" // the interrupted tick's session is picked back up; carries cause (restart|cut-off|hung-tool|timeout|budget-resumed|handoff)
     | "review_start" // carries head; model when one is configured — the reviewer's selector string; revision (round) when the landing is a revision (plans/revise-rejected.md part 2/2); resumed true when the run continues a timed-out reviewer's session (PLANS.md, review-retry part 3/3)
     | "review_verdict" // approved; carries durationMs of the reviewer run
@@ -98,8 +98,8 @@ export interface HarnessEvent {
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would
     | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
     | "model_fallback_ended" // a probe tick on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
-    | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the tick fails — carried as loop, tick, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
-    | "image_reroute" // a tick stopped for a blind image read moves its work to a tier that CAN read images (plans/image-input.md part 4/5): the next tick starts directly on the target — carried as loop, tick, from, to, tier, and preflight true when the hop happened at model choice (an attachment preflight) before any run, false when it followed a blind-read failure
+    | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the tick fails — carried as loop, run, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
+    | "image_reroute" // a tick stopped for a blind image read moves its work to a tier that CAN read images (plans/image-input.md part 4/5): the next tick starts directly on the target — carried as loop, run, from, to, tier, and preflight true when the hop happened at model choice (an attachment preflight) before any run, false when it followed a blind-read failure
     | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it

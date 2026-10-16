@@ -177,43 +177,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/script-keys.test.ts passes with this part's keys listed.
 - `npm run test` passes.
 
-### Plain terms event log, part 3/9: Rename the other tick events and the tick payload field to run (planned 2026-10-16 by user; requires part 2/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/orchestrator/orchestrator-scheduling.ts src/operator/operator-requests.ts src/loop/ src/tick/ src/review/ src/history/history-data.ts src/ui/tone.ts test/)
-
-**Goal.** `tick_deferred` and `tick_aborted` become `run_deferred` and `run_aborted`. The `tick` number on every event becomes `run`, and old lines read back renamed.
-
-**Approach.**
-- Types:
-  - Add `tick_deferred → run_deferred` and `tick_aborted → run_aborted` to `LEGACY_EVENT_TYPES`, and rename both union members.
-  - Writers: the deferral in the scheduling poll (src/orchestrator/orchestrator-scheduling.ts) and the abort handling in src/operator/operator-requests.ts.
-  - Readers: event-format.ts, failure-state-change.ts, tone.ts `ROUTINE_EVENTS`, and the label map in its server and browser forms.
-- Payload field `tick` → `run`, on every event that carries it. Today those are `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute`.
-  - Normalizer: append a rewrite that moves `tick` to `run` when a line has `tick` and no `run`. No event carries a `run` field today; confirm with a grep before relying on that.
-  - Writers:
-    - `tickPhase`'s `run_start` and its `image_reroute` (src/loop/loop-tick.ts);
-    - `finalizeTick` (tick-finalize.ts);
-    - `prompt_taken` in `LoopRunner` (src/loop/loop.ts);
-    - the `onBlindRead` `image_blind` loggers in src/loop/loop-pi.ts, src/review/review.ts and src/review/review-followup.ts;
-    - `image_reroute` in src/tick/tick-verdict.ts.
-  - Readers. tsc cannot see these, because `HarnessEvent`'s index signature types the field `unknown`, so grep for `.tick` on events:
-    - `eventTick`, `tickStartMap` and `tickSpanMs` (event-read.ts) build and read the `#run` key;
-    - `readTickDetail`'s `e.tick === tick` (tick-detail-data.ts);
-    - `resolveQueuedResult`'s `end.tick` (history-data.ts);
-    - the "carries tick" notes in the `HarnessEvent` union comments.
-- Not in scope:
-  - the merge-queue entry's `tick` (`LandingEntry`, Plain terms state);
-  - `LandRequest.tick`, `ctx.tick` and other identifiers (Plain terms code run);
-  - `--json` row keys, already renamed by Plain terms scripting.
-- Tests: fix what typecheck and the suite flag, including assertions that read `.tick` on read-back events and `"tick":` in `logs --json` expectations.
-- **Self-hosting:** safe in one part. Every reader reads `run`, and old lines and the old build's lines are rewritten on read.
-
-**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-requests.ts, src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-pi.ts, src/review/review.ts, src/review/review-followup.ts, src/tick/tick-finalize.ts, src/tick/tick-verdict.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-state-change.ts, src/ui/tone.ts, the label-map module(s); test/event-legacy.test.ts, test/event-read.test.ts, test/event-window.test.ts, test/orchestrator-defer.test.ts, test/operator-requests.test.ts, test/orchestrator*.e2e.test.ts, test/loop-2.test.ts and the other files the suite flags.
-
-**Acceptance criteria.**
-- A deferred maintenance role logs `run_deferred`, and `tumwater abort` logs `run_aborted`.
-- `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute` lines carry `run`, not `tick`.
-- An old pair of `tick_start` and `tick_end` lines carrying `tick: 4` still pairs into one `history` row for run 4 with its duration. `history <role> 4` still finds that trail.
-- `npm run test` passes.
-
 ### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/)
 
 **Goal.** `land_queued`, `landed` and `land_failed` become `merge_queued`, `merge_done` and `merge_failed`. The existing `merged` (the fast-forward onto main) is unchanged. The notify hook pages on `merge_failed` and receives `TUMWATER_EVENT_SOURCE` instead of `TUMWATER_EVENT_LOOP`.
@@ -2461,6 +2424,43 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `GET /api/report` serves the same keys (test/gui-report.test.ts).
 - The dashboard's Usage charts and the Team view's "today" tiles render from fixtures that use the new keys.
 - test/script-keys.test.ts passes, and its self-test proves the matcher flags a `.ticksByRole` read.
+- `npm run test` passes.
+
+### Plain terms event log, part 3/9: Rename the other tick events and the tick payload field to run (done 2026-10-16; planned 2026-10-16 by user; requires part 2/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/orchestrator/orchestrator-scheduling.ts src/operator/operator-requests.ts src/loop/ src/tick/ src/review/ src/history/history-data.ts src/ui/tone.ts test/)
+
+**Goal.** `tick_deferred` and `tick_aborted` become `run_deferred` and `run_aborted`. The `tick` number on every event becomes `run`, and old lines read back renamed.
+
+**Approach.**
+- Types:
+  - Add `tick_deferred → run_deferred` and `tick_aborted → run_aborted` to `LEGACY_EVENT_TYPES`, and rename both union members.
+  - Writers: the deferral in the scheduling poll (src/orchestrator/orchestrator-scheduling.ts) and the abort handling in src/operator/operator-requests.ts.
+  - Readers: event-format.ts, failure-state-change.ts, tone.ts `ROUTINE_EVENTS`, and the label map in its server and browser forms.
+- Payload field `tick` → `run`, on every event that carries it. Today those are `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute`.
+  - Normalizer: append a rewrite that moves `tick` to `run` when a line has `tick` and no `run`. No event carries a `run` field today; confirm with a grep before relying on that.
+  - Writers:
+    - `tickPhase`'s `run_start` and its `image_reroute` (src/loop/loop-tick.ts);
+    - `finalizeTick` (tick-finalize.ts);
+    - `prompt_taken` in `LoopRunner` (src/loop/loop.ts);
+    - the `onBlindRead` `image_blind` loggers in src/loop/loop-pi.ts, src/review/review.ts and src/review/review-followup.ts;
+    - `image_reroute` in src/tick/tick-verdict.ts.
+  - Readers. tsc cannot see these, because `HarnessEvent`'s index signature types the field `unknown`, so grep for `.tick` on events:
+    - `eventTick`, `tickStartMap` and `tickSpanMs` (event-read.ts) build and read the `#run` key;
+    - `readTickDetail`'s `e.tick === tick` (tick-detail-data.ts);
+    - `resolveQueuedResult`'s `end.tick` (history-data.ts);
+    - the "carries tick" notes in the `HarnessEvent` union comments.
+- Not in scope:
+  - the merge-queue entry's `tick` (`LandingEntry`, Plain terms state);
+  - `LandRequest.tick`, `ctx.tick` and other identifiers (Plain terms code run);
+  - `--json` row keys, already renamed by Plain terms scripting.
+- Tests: fix what typecheck and the suite flag, including assertions that read `.tick` on read-back events and `"tick":` in `logs --json` expectations.
+- **Self-hosting:** safe in one part. Every reader reads `run`, and old lines and the old build's lines are rewritten on read.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-requests.ts, src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-pi.ts, src/review/review.ts, src/review/review-followup.ts, src/tick/tick-finalize.ts, src/tick/tick-verdict.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-state-change.ts, src/ui/tone.ts, the label-map module(s); test/event-legacy.test.ts, test/event-read.test.ts, test/event-window.test.ts, test/orchestrator-defer.test.ts, test/operator-requests.test.ts, test/orchestrator*.e2e.test.ts, test/loop-2.test.ts and the other files the suite flags.
+
+**Acceptance criteria.**
+- A deferred maintenance role logs `run_deferred`, and `tumwater abort` logs `run_aborted`.
+- `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute` lines carry `run`, not `tick`.
+- An old pair of `tick_start` and `tick_end` lines carrying `tick: 4` still pairs into one `history` row for run 4 with its duration. `history <role> 4` still finds that trail.
 - `npm run test` passes.
 
 ### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (done 2026-10-16; planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)

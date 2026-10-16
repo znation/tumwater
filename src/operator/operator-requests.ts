@@ -344,12 +344,12 @@ export function consumeAbortRequests(
       warnFailure(role, err);
       continue;
     }
-    // The side effects applied: acknowledge the request. The tick_aborted event is
+    // The side effects applied: acknowledge the request. The run_aborted event is
     // observability, so a log failure must not un-acknowledge an abort that already happened.
     removeQuiet(abortRequestPath(root, role));
     if (runner?.state.running) {
       try {
-        logEvent(root, { loop: role, type: "tick_aborted" });
+        logEvent(root, { loop: role, type: "run_aborted" });
       } catch (err) {
         warnFailure(role, err);
       }

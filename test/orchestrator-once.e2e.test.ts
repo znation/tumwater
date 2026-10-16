@@ -142,7 +142,7 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
     assert.equal(exit.restart, false);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the deferred role ran no tick");
     assert.ok(
-      readEvents(repo).some((e) => e.type === "tick_deferred" && e.loop === "clean"),
+      readEvents(repo).some((e) => e.type === "run_deferred" && e.loop === "clean"),
       "the deferral is logged, not silent",
     );
   });

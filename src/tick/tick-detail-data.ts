@@ -62,7 +62,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
   let startIdx = -1;
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]!;
-    if (e.type === "run_start" && e.tick === tick) {
+    if (e.type === "run_start" && e.run === tick) {
       startIdx = i;
       break;
     }
@@ -72,7 +72,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
     // number still answers — unpaired, undated at the front — else there is no such tick here.
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]!;
-      if (e.type === "run_end" && e.tick === tick) return detailFrom(role, tick, events, [e], e, null);
+      if (e.type === "run_end" && e.run === tick) return detailFrom(role, tick, events, [e], e, null);
     }
     return null;
   }
@@ -85,7 +85,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
   let nextStart: HarnessEvent | null = null;
   for (let i = startIdx + 1; i < events.length; i++) {
     const e = events[i]!;
-    if (e.type === "run_end" && e.tick === tick) {
+    if (e.type === "run_end" && e.run === tick) {
       end = e;
       break;
     }

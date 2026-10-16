@@ -63,7 +63,7 @@ export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_co
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["run_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
+export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */

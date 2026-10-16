@@ -17,11 +17,11 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // gets one smoke run through the real binary, as cli-history.test.ts does).
 
 function start(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "run_start", tick: 3, ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_start", run: 3, ...over } as HarnessEvent;
 }
 
 function end(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "run_end", tick: 3, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_end", run: 3, result: "changed", ...over } as HarnessEvent;
 }
 
 test("readTickDetail returns exactly one loop's tick block, bracketed by its start and end", () => {
@@ -31,14 +31,14 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
     start({ ts: 1000, loop: "feature" }),
     { ts: 2000, loop: "feature", type: "review_verdict", head: "abc" } as HarnessEvent,
     end({ ts: 3000, loop: "feature", result: "no_change" }),
-    // The asked tick: start, a tick-less in-tick event, the queued pin, the end.
+    // The asked run: start, a tick-less in-tick event, the queued pin, the end.
     start({ ts: 4000 }),
     { ts: 5000, loop: "bugfix", type: "review_verdict", head: "def", durationMs: 9000 } as HarnessEvent,
     { ts: 6000, loop: "bugfix", type: "land_queued", commit: "abc1234def", summary: "the fix" } as HarnessEvent,
     end({ ts: 7000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
     // After the block: another loop, and the asked loop's NEXT tick — both excluded.
-    { ts: 8000, loop: "clean", type: "run_start", tick: 1 } as HarnessEvent,
-    start({ ts: 9000, tick: 4 }),
+    { ts: 8000, loop: "clean", type: "run_start", run: 1 } as HarnessEvent,
+    start({ ts: 9000, run: 4 }),
   ]);
   const d = readTickDetail(root, "bugfix", 3);
   assert.ok(d !== null);
@@ -80,7 +80,7 @@ test("readTickDetail picks the newest occurrence of a recurring tick number", ()
   );
 });
 
-test("readTickDetail marks an in-flight tick: events so far, no end, no duration", () => {
+test("readTickDetail marks an in-flight run: events so far, no end, no duration", () => {
   const root = makeRepo();
   writeEvents(root, [
     start({ ts: 1000 }),
@@ -107,8 +107,8 @@ test("readTickDetail bounds a rotation-cut block at the loop's next run_start", 
   writeEvents(root, [
     start({ ts: 1000 }),
     { ts: 2000, loop: "bugfix", type: "review_verdict", head: "def" } as HarnessEvent,
-    start({ ts: 3000, tick: 4 }),
-    end({ ts: 4000, tick: 4 }),
+    start({ ts: 3000, run: 4 }),
+    end({ ts: 4000, run: 4 }),
   ]);
   const d = readTickDetail(root, "bugfix", 3);
   assert.ok(d !== null);
@@ -136,7 +136,7 @@ test("readTickDetail returns null for a tick the scan does not hold", () => {
   const missing = makeRepo();
   assert.equal(readTickDetail(missing, "bugfix", 3), null);
   const root = makeRepo();
-  writeEvents(root, [start({ ts: 1000, tick: 2 }), end({ ts: 2000, tick: 2 })]);
+  writeEvents(root, [start({ ts: 1000, run: 2 }), end({ ts: 2000, run: 2 })]);
   assert.equal(readTickDetail(root, "bugfix", 3), null);
   assert.equal(readTickDetail(root, "clean", 2), null);
 });
@@ -201,7 +201,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   assert.equal(payload.events.length, 2);
 
   // An unpaired tick keeps durationMs null in the payload.
-  writeEvents(repo, [end({ ts: 5000, tick: 9, result: "skipped" })]);
+  writeEvents(repo, [end({ ts: 5000, run: 9, result: "skipped" })]);
   const unpaired = JSON.parse(
     (await expectOkAsync(() => cmdTick(repo, ["bugfix", "9"], true))).stdout,
   ) as TickDetail;
@@ -285,10 +285,10 @@ test("cmdTick --last resolves the newest tick's trail, identical to naming that 
   const repo = makeRepo();
   await initProject(repo, "tick last test");
   writeEvents(repo, [
-    start({ ts: 1000, tick: 2 }),
-    end({ ts: 2000, tick: 2, result: "no_change", summary: "older" }),
-    start({ ts: 3000, tick: 7 }),
-    end({ ts: 31_000, tick: 7, result: "changed", summary: "the newest", tokens: 900, costUsd: 0.01 }),
+    start({ ts: 1000, run: 2 }),
+    end({ ts: 2000, run: 2, result: "no_change", summary: "older" }),
+    start({ ts: 3000, run: 7 }),
+    end({ ts: 31_000, run: 7, result: "changed", summary: "the newest", tokens: 900, costUsd: 0.01 }),
   ]);
   // --last prints exactly what the numbered form prints for the newest tick number.
   const last = await expectOkAsync(() => cmdTick(repo, ["bugfix"], false, true));
@@ -362,9 +362,9 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved landing"
   await initProject(repo, "tick detail landing test");
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
   writeEvents(repo, [
-    start({ ts: 1000, tick: 1 }),
+    start({ ts: 1000, run: 1 }),
     ev({ ts: 1100, type: "land_queued", commit: "sha1abcdef" }),
-    end({ ts: 1200, tick: 1, result: "queued" }),
+    end({ ts: 1200, run: 1, result: "queued" }),
     ev({ ts: 1300, type: "landed", commit: "sha1abcdef", result: "changed" }),
   ]);
   const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], false))).stdout;

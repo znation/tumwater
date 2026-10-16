@@ -16,7 +16,7 @@ import { writeLogLines } from "./fixtures/log-fixtures.js";
 // by its tick number in the rendered line.
 function seedEvents(repo: string, agesMs: number[], now = Date.now()): void {
   const file = eventsLogPath(repo);
-  writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "run_start", tick: i + 1 })));
+  writeLogLines(file, agesMs.map((age, i) => ({ ts: now - age, loop: "clean", type: "run_start", run: i + 1 })));
 }
 
 test("logs --since prints only the events of the window, oldest-first", async () => {
@@ -157,10 +157,10 @@ function seedMixedLog(repo: string): void {
   const file = eventsLogPath(repo);
   const events = [
     { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
-    { ts: now - 5000, loop: "feature", type: "run_start", tick: 1 },
+    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
     { ts: now - 4000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 1200 },
-    { ts: now - 3000, loop: "bugfix", type: "run_start", tick: 2 },
-    { ts: now - 2000, loop: "bugfix", type: "run_end", tick: 2, result: "refused", summary: "nothing to do" },
+    { ts: now - 3000, loop: "bugfix", type: "run_start", run: 2 },
+    { ts: now - 2000, loop: "bugfix", type: "run_end", run: 2, result: "refused", summary: "nothing to do" },
     { ts: now - 1000, loop: "bugfix", type: "land_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 },
   ];
   writeLogLines(file, events);
@@ -289,7 +289,7 @@ test("logs --grep -f applies the filter to the seeded window and every followed 
     // A new event appended while following: the matching one appears, the non-matching one
     // does not (the filter holds across rotation, on every event the callback sees).
     const file = eventsLogPath(repo);
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", tick: 7 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
@@ -352,7 +352,7 @@ test("logs --since --json prints the window as oldest-first NDJSON", async () =>
   const r = await cli(repo, "logs", "--since", "1h", "--json");
   assert.equal(r.code, 0);
   const lines = r.stdout.split("\n").filter(Boolean);
-  assert.deepEqual(lines.map((l) => JSON.parse(l).tick), [3, 4], r.stdout);
+  assert.deepEqual(lines.map((l) => JSON.parse(l).run), [3, 4], r.stdout);
   // No rotation-note prose, and no rendered lines, in the JSON stream.
   assert.ok(!r.stdout.includes("note:"), r.stdout);
   assert.ok(!r.stdout.includes("run #"), r.stdout);
@@ -399,7 +399,7 @@ test("logs --type prints only events of exactly that type, where --grep substrin
   const file = eventsLogPath(repo);
   writeLogLines(file, [
     { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
-    { ts: now - 5000, loop: "feature", type: "run_start", tick: 1 },
+    { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
     // A wake event whose rendered line quotes the word "land_failed" as its reason text:
     // the exact-vs-substring case — --grep matches the quoted text, --type (an event id,
     // not free text) must not.
@@ -510,7 +510,7 @@ test("logs --type -f holds the filter across the seeded window and rotation", as
     await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
     const file = eventsLogPath(repo);
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", tick: 7 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 

@@ -106,10 +106,10 @@ test("abort drops a per-role marker for a live tumwater and reports it", async (
   assert.equal(r.code, 0);
   assert.ok(fs.existsSync(abortRequestPath(repo, "clean")), "other role's marker untouched");
 
-  // The CLI itself logs no event — the fleet logs tick_aborted when it applies the request.
+  // The CLI itself logs no event — the fleet logs run_aborted when it applies the request.
   const logs = await cli(repo, "logs", "-n", "10");
   assert.equal(logs.code, 0);
-  assert.ok(!logs.stdout.includes("tick_aborted"), `no abort event from the CLI:\n${logs.stdout}`);
+  assert.ok(!logs.stdout.includes("run_aborted"), `no abort event from the CLI:\n${logs.stdout}`);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });

@@ -19,6 +19,8 @@ test("canonicalEventType maps an old name and leaves anything else alone", () =>
   assert.equal(canonicalEventType("fleet_resumed"), "team_resumed"); // vocabulary-ok: legacy event name read from old logs
   assert.equal(canonicalEventType("tick_start"), "run_start"); // vocabulary-ok: legacy event name read from old logs
   assert.equal(canonicalEventType("tick_end"), "run_end"); // vocabulary-ok: legacy event name read from old logs
+  assert.equal(canonicalEventType("tick_deferred"), "run_deferred"); // vocabulary-ok: legacy event name read from old logs
+  assert.equal(canonicalEventType("tick_aborted"), "run_aborted"); // vocabulary-ok: legacy event name read from old logs
   assert.equal(canonicalEventType("team_paused"), "team_paused");
   assert.equal(canonicalEventType("toString"), "toString");
 });
@@ -72,4 +74,11 @@ test("logs --type matches an old line by either the old or the new name, and --j
     }
     assert.match(cap.out(), /"type":"team_paused"/);
   }
+});
+
+test("normalizeLegacyEvent moves a tick field to run, and keeps an existing run", () => {
+  const old = { type: "tick_end", tick: 4 }; // vocabulary-ok: legacy event name and field read from old logs
+  assert.deepEqual(normalizeLegacyEvent(old), { type: "run_end", run: 4 });
+  const both = { type: "run_end", tick: 1, run: 2 }; // vocabulary-ok: legacy field read from old logs
+  assert.deepEqual(normalizeLegacyEvent(both), { type: "run_end", tick: 1, run: 2 }); // vocabulary-ok: legacy field read from old logs
 });

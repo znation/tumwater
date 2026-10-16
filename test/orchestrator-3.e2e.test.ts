@@ -113,11 +113,11 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
     assert.ok(!landingRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
-    // The landing, not the tick, was aborted: one land_failed, no tick_aborted, no second tick.
+    // The landing, not the tick, was aborted: one land_failed, no run_aborted, no second tick.
     const failed = eventsOfType(repo, "land_failed");
     assert.equal(failed.length, 1, "the aborted landing logged its failure");
     assert.equal(failed[0]!.result, "aborted");
-    assert.equal(eventsOfType(repo, "tick_aborted").length, 0);
+    assert.equal(eventsOfType(repo, "run_aborted").length, 0);
     assert.equal(loadLoopState(repo, "clean").ticks, 1);
   } finally {
     await stopOrchestrator(orch, restore);
@@ -386,8 +386,8 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
     // The fleet consumes the request within a poll cycle: kills the run and removes the marker.
     await waitFor(() => !fs.existsSync(markerFile), "the abort marker to be consumed");
 
-    const aborted = () => eventsOfType(repo, "tick_aborted");
-    assert.equal(aborted().length, 1, "exactly one tick_aborted event");
+    const aborted = () => eventsOfType(repo, "run_aborted");
+    assert.equal(aborted().length, 1, "exactly one run_aborted event");
     assert.equal(aborted()[0]?.loop, "clean", "filed under the role's loop");
 
     // The killed run ends user_aborted: half-done work discarded (worktree reset to main),
@@ -531,7 +531,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's vet to land", 60_000);
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "dry.txt")), "the aborted change never did");
-    assert.equal(eventsOfType(repo, "tick_aborted").length, 0, "no tick was running");
+    assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no tick was running");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "the interlock held: no tick ever started");
     assert.equal(loadLoopState(repo, "dry").ticks, 0);
   } finally {

@@ -58,7 +58,7 @@ export function eventRole(ev: HarnessEvent): string {
  * a real tick, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
  * aheadCommits apply, kept finite so a JSON consumer never sees NaN's null stand-in. */
 export function eventTick(ev: HarnessEvent): number {
-  return finiteNumber(ev.tick, 0);
+  return finiteNumber(ev.run, 0);
 }
 
 /** The usage numbers an event records (`run_end`'s own run, `landed`'s landing slot):
@@ -91,7 +91,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
   for (const e of events) {
     const ts = finiteNumber(e.ts, null);
-    if (e.type === "run_start" && ts !== null) starts.set(`${e.loop}#${e.tick}`, ts);
+    if (e.type === "run_start" && ts !== null) starts.set(`${e.loop}#${e.run}`, ts);
   }
   return starts;
 }
@@ -107,7 +107,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
  * (`tickSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
  * `NaN ?? 0` is still NaN. */
 export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
-  const startTs = starts.get(`${ev.loop}#${ev.tick}`);
+  const startTs = starts.get(`${ev.loop}#${ev.run}`);
   const endTs = finiteNumber(ev.ts, null);
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }

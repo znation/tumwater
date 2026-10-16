@@ -65,7 +65,7 @@ async function runFollowupTurn(
       logEventBestEffort(ctx.root, {
         loop: ctx.role,
         type: "image_blind",
-        tick: ctx.tick,
+        run: ctx.tick,
         path,
         model: cfg.model,
         action,

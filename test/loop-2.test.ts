@@ -443,7 +443,7 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
     assert.equal(blinds[0]!.loop, "improve");
     assert.equal(blinds[0]!.path, "/x/shot.png");
     assert.equal(blinds[0]!.action, "fail", "an authoring run's blind read earns the fail action");
-    assert.ok(typeof blinds[0]!.tick === "number", "the event names the run");
+    assert.ok(typeof blinds[0]!.run === "number", "the event names the run");
   });
 });
 

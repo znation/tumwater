@@ -22,11 +22,11 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 function seedWindowedHistory(repo: string, now = Date.now()): void {
   const age = (ms: number) => now - ms;
   writeEvents(repo, [
-    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "old work" },
-    { ts: age(50 * 60_000), loop: "clean", type: "run_start", tick: 2 },
-    { ts: age(45 * 60_000), loop: "clean", type: "run_end", tick: 2, result: "no_change", summary: "tidied" },
-    { ts: age(30 * 60_000), loop: "feature", type: "run_start", tick: 3 },
-    { ts: age(10 * 60_000), loop: "feature", type: "run_end", tick: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
+    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", run: 1, result: "changed", summary: "old work" },
+    { ts: age(50 * 60_000), loop: "clean", type: "run_start", run: 2 },
+    { ts: age(45 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", summary: "tidied" },
+    { ts: age(30 * 60_000), loop: "feature", type: "run_start", run: 3 },
+    { ts: age(10 * 60_000), loop: "feature", type: "run_end", run: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
   ]);
 }
 
@@ -87,8 +87,8 @@ test("history --since prints the hedged rotation note after the table, table mod
   // window's coverage (rotation or idleness — the hedged phrasing stays true either way).
   const now = Date.now();
   writeEvents(repo, [
-    { ts: now - 10 * 60_000, loop: "clean", type: "run_start", tick: 1 },
-    { ts: now - 5 * 60_000, loop: "clean", type: "run_end", tick: 1, result: "no_change", summary: "tidied" },
+    { ts: now - 10 * 60_000, loop: "clean", type: "run_start", run: 1 },
+    { ts: now - 5 * 60_000, loop: "clean", type: "run_end", run: 1, result: "no_change", summary: "tidied" },
   ]);
 
   const r = await cli(repo, "history", "--since", "1h");
@@ -163,7 +163,7 @@ test("history --grep treats a flag-shaped pattern as text, not a flag", async ()
   const repo = makeRepo();
   await initProject(repo, "cli history grep impersonation");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "run_end", tick: 7, result: "changed", summary: "reverted --since handling" },
+    { ts: 1787222691956, loop: "feature", type: "run_end", run: 7, result: "changed", summary: "reverted --since handling" },
   ]);
   const r = await cli(repo, "history", "--grep", "--since");
   assert.equal(r.code, 0);

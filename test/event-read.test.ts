@@ -65,10 +65,10 @@ test("eventDayKey buckets by ts and answers null when ts is not a number", () =>
 
 test("tickStartMap pairs only run_start events by loop#tick", () => {
   const starts = tickStartMap([
-    ev({ type: "run_start", loop: "feature", tick: 7, ts: 100 }),
-    ev({ type: "run_end", loop: "feature", tick: 7, ts: 150 }), // not a start: ignored
-    ev({ type: "run_start", loop: "director", tick: 7, ts: 200 }), // same tick, other role
-    ev({ type: "run_start", loop: "feature", tick: 8, ts: 300 }),
+    ev({ type: "run_start", loop: "feature", run: 7, ts: 100 }),
+    ev({ type: "run_end", loop: "feature", run: 7, ts: 150 }), // not a start: ignored
+    ev({ type: "run_start", loop: "director", run: 7, ts: 200 }), // same tick, other role
+    ev({ type: "run_start", loop: "feature", run: 8, ts: 300 }),
   ]);
   assert.deepEqual(
     [...starts.entries()],
@@ -81,26 +81,26 @@ test("tickStartMap pairs only run_start events by loop#tick", () => {
 });
 
 test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpaired end as null", () => {
-  const starts = tickStartMap([ev({ type: "run_start", loop: "feature", tick: 1, ts: 500 })]);
-  assert.equal(tickSpanMs(ev({ tick: 1, ts: 1750 }), starts), 1250);
+  const starts = tickStartMap([ev({ type: "run_start", loop: "feature", run: 1, ts: 500 })]);
+  assert.equal(tickSpanMs(ev({ run: 1, ts: 1750 }), starts), 1250);
   // A clock skew (end stamped before its start) must not price a negative span.
-  assert.equal(tickSpanMs(ev({ tick: 1, ts: 400 }), starts), 0);
+  assert.equal(tickSpanMs(ev({ run: 1, ts: 400 }), starts), 0);
   // Rotation cut the start out of the window: no pairing, no invented cost.
-  assert.equal(tickSpanMs(ev({ tick: 2, ts: 900 }), starts), null);
-  assert.equal(tickSpanMs(ev({ tick: 1, ts: 600 }), tickStartMap([])), null);
+  assert.equal(tickSpanMs(ev({ run: 2, ts: 900 }), starts), null);
+  assert.equal(tickSpanMs(ev({ run: 1, ts: 600 }), tickStartMap([])), null);
 });
 
 test("tick timestamps that are not finite numbers never yield a NaN span", () => {
   // A run_start with no usable ts adds no entry — every value in the map is real epoch ms.
   const starts = tickStartMap([
-    ev({ type: "run_start", loop: "feature", tick: 1, ts: undefined }),
-    ev({ type: "run_start", loop: "feature", tick: 2, ts: Number.NaN }),
-    ev({ type: "run_start", loop: "feature", tick: 3, ts: 500 }),
+    ev({ type: "run_start", loop: "feature", run: 1, ts: undefined }),
+    ev({ type: "run_start", loop: "feature", run: 2, ts: Number.NaN }),
+    ev({ type: "run_start", loop: "feature", run: 3, ts: 500 }),
   ]);
   assert.deepEqual([...starts.entries()], [["feature#3", 500]]);
   // A corrupt end ts reads as an unpaired span, not `Math.max(0, undefined - start)` → NaN.
-  assert.equal(tickSpanMs(ev({ tick: 3, ts: undefined }), starts), null);
-  assert.equal(tickSpanMs(ev({ tick: 3, ts: Number.NaN }), starts), null);
+  assert.equal(tickSpanMs(ev({ run: 3, ts: undefined }), starts), null);
+  assert.equal(tickSpanMs(ev({ run: 3, ts: Number.NaN }), starts), null);
   // A finite end still measures against the good start: the guards do not over-reject.
-  assert.equal(tickSpanMs(ev({ tick: 3, ts: 900 }), starts), 400);
+  assert.equal(tickSpanMs(ev({ run: 3, ts: 900 }), starts), 400);
 });

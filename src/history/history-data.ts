@@ -273,7 +273,7 @@ export function resolveQueuedResult(
   floorTs: number | null,
 ): { result: string; sha: string; pin: HarnessEvent; outcome: HarnessEvent } | null {
   if (floorTs !== null) {
-    const startTs = joinStarts.get(`${end.loop}#${end.tick}`);
+    const startTs = joinStarts.get(`${end.loop}#${end.run}`);
     if (startTs !== undefined && startTs < floorTs) return null;
   }
   const queuedList = landQueuedByLoop.get(end.loop);

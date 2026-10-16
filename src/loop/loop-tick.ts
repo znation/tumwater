@@ -198,7 +198,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
           logEventBestEffort(ctx.root, {
             loop: ctx.role,
             type: "image_reroute",
-            tick: s.ticks + 1,
+            run: s.ticks + 1,
             from: primaryCfg.model,
             to: target.config.model,
             tier: target.tier,
@@ -246,7 +246,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   logEventBestEffort(ctx.root, {
     loop: ctx.role,
     type: "run_start",
-    tick,
+    run: tick,
     // A tick routed onto the image-capable target — a blind-read handoff or an attachment
     // preflight — is stamped so the feed shows the reroute and the model it landed on.
     ...(s.imageRerouteActive ? { reroute: "image" } : {}),

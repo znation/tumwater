@@ -14,6 +14,8 @@ import type { HarnessEvent } from "./events.js";
 const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
   tick_start: "run_start", // vocabulary-ok: legacy event name read from old logs
   tick_end: "run_end", // vocabulary-ok: legacy event name read from old logs
+  tick_deferred: "run_deferred", // vocabulary-ok: legacy event name read from old logs
+  tick_aborted: "run_aborted", // vocabulary-ok: legacy event name read from old logs
   fleet_paused: "team_paused", // vocabulary-ok: legacy event name read from old logs
   fleet_resumed: "team_resumed", // vocabulary-ok: legacy event name read from old logs
 };
@@ -25,7 +27,19 @@ interface LegacyEventRewrite {
 }
 
 /** The ordered field rewrites; later parts of the series append here, and they run in order. */
-const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [];
+const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
+  {
+    // The run number rode `tick` on run_start, run_end, prompt_taken, image_blind, image_reroute.
+    name: "tick-to-run",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if ("tick" in e && !("run" in e)) { // vocabulary-ok: legacy field name read from old logs
+        e.run = e.tick; // vocabulary-ok: legacy field name read from old logs
+        delete e.tick; // vocabulary-ok: legacy field name read from old logs
+      }
+    },
+  },
+];
 
 /** Today's name for an old event type name; any other string comes back unchanged. */
 export function canonicalEventType(name: string): string {

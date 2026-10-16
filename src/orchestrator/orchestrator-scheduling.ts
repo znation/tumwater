@@ -87,7 +87,7 @@ interface SchedulingPassCtx {
   workBacklogOpen: boolean;
   /** PLANS.md already holds the plan loop's eligible-plan target (planBacklogFull). */
   planBacklogFull: boolean;
-  /** Per-role deferred-due memory (one-shot tick_deferred events), advanced in place. */
+  /** Per-role deferred-due memory (one-shot run_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
   workLandedSince: WorkLandedCache;
 }
@@ -366,7 +366,7 @@ export async function pollRunnerReasons(
       const deferredNow = deferral !== null;
       if (deferredNow !== (deferredDue.get(runner.role) ?? false)) {
         if (deferral)
-          logEventBestEffort(root, { loop: runner.role, type: "tick_deferred", reason: deferral });
+          logEventBestEffort(root, { loop: runner.role, type: "run_deferred", reason: deferral });
         deferredDue.set(runner.role, deferredNow);
       }
       if (deferredNow) {

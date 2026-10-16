@@ -51,7 +51,7 @@ function seedTickEvents(repo: string, count: number): void {
     ts: now - (count - i) * 1000,
     loop: "clean",
     type: "run_start",
-    tick: i + 1,
+    run: i + 1,
   }));
   writeLogLines(file, events);
 }
@@ -76,7 +76,7 @@ test("logs -n --json prints exactly the raw stored events, in the text view's or
   }
   // Log order — the last 20 of 25 events, chronological — exactly the order the text view
   // prints (readEvents returns the tail in file order, not reversed).
-  const ticks = lines.map((l) => JSON.parse(l).tick);
+  const ticks = lines.map((l) => JSON.parse(l).run);
   assert.deepEqual(ticks, Array.from({ length: 20 }, (_, i) => 6 + i));
   // No rendered prose may leak into the JSON stream.
   assert.ok(!r.stdout.includes("tick #"), r.stdout);
@@ -89,7 +89,7 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
 
   const s = spawnCli(repo, ["logs", "-f", "--json"]);
   try {
-    await s.waitFor((out) => out.includes('"tick":2'), "the initial window");
+    await s.waitFor((out) => out.includes('"run":2'), "the initial window");
 
     // An event appended while following must stream as JSON, not rendered prose: the child's
     // own 500 ms followFile poll is the product under test, and this wait only has to observe
@@ -98,10 +98,10 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
     // the moment it streams instead of after a real poll interval. The fallback crosses that
     // frozen deadline only if the child never streams, so a regression fails the wait
     // deterministically rather than hanging it.
-    const live = { ts: Date.now(), loop: "clean", type: "run_start", tick: 99 };
+    const live = { ts: Date.now(), loop: "clean", type: "run_start", run: 99 };
     const clock = fakeClock();
     let injectedSleeps = 0;
-    const liveWait = s.waitFor((out) => out.includes('"tick":99'), "the live event as JSON", 30_000, {
+    const liveWait = s.waitFor((out) => out.includes('"run":99'), "the live event as JSON", 30_000, {
       now: clock.now,
       sleep: () =>
         new Promise<void>((resolve) => {
@@ -137,7 +137,7 @@ test("logs -f's wait expires on the injected clock, not a real deadline", async 
 
   const s = spawnCli(repo, ["logs", "-f", "--json"]);
   try {
-    await s.waitFor((out) => out.includes('"tick":2'), "the initial window");
+    await s.waitFor((out) => out.includes('"run":2'), "the initial window");
     // A clock this test drives by hand: `sleep` parks until the test releases it, so advancing
     // the clock is the only thing that can move the wait past its budget. A wait that ignored the
     // seam and slept on the real host clock would leave `parked` at 0 (the assertion below fails
@@ -145,7 +145,7 @@ test("logs -f's wait expires on the injected clock, not a real deadline", async 
     let nowMs = 0;
     let release: (() => void) | undefined;
     let parked = 0;
-    const wait = s.waitFor((out) => out.includes('"tick":99'), "the never-arriving event", 1_000, {
+    const wait = s.waitFor((out) => out.includes('"run":99'), "the never-arriving event", 1_000, {
       now: () => nowMs,
       sleep: () =>
         new Promise<void>((resolve) => {

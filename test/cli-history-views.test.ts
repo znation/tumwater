@@ -22,23 +22,23 @@ const NOW = Date.now();
  * rotation-cut log produces, which must render an em dash for its duration. */
 function repoWithTicks(): string {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 120_000, loop: "dry", type: "run_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 120_000, loop: "dry", type: "run_start", run: 1 });
   logEvent(repo, {
     ts: NOW - 60_000,
     loop: "dry",
     type: "run_end",
-    tick: 1,
+    run: 1,
     result: "error",
     error: "the suite went red",
     tokens: 400,
     costUsd: 0.01,
   });
-  logEvent(repo, { ts: NOW - 60_000, loop: "clean", type: "run_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 60_000, loop: "clean", type: "run_start", run: 1 });
   logEvent(repo, {
     ts: NOW - 30_000,
     loop: "clean",
     type: "run_end",
-    tick: 1,
+    run: 1,
     result: "changed",
     summary: "Fix the flake in the parser",
     tokens: 1200,
@@ -48,7 +48,7 @@ function repoWithTicks(): string {
     ts: NOW - 10_000,
     loop: "docs",
     type: "run_end",
-    tick: 2,
+    run: 2,
     result: "changed",
     summary: "touch up the readme",
   });
@@ -152,10 +152,10 @@ test("history rejects rival flag shapes and over-cap values with the shared word
 
 test("history pads text columns by display width, so a wide-character loop name aligns", async () => {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 60_000, loop: "a", type: "run_start", tick: 1 });
-  logEvent(repo, { ts: NOW - 50_000, loop: "a", type: "run_end", tick: 1, result: "changed", summary: "first" });
-  logEvent(repo, { ts: NOW - 40_000, loop: "日本", type: "run_start", tick: 1 });
-  logEvent(repo, { ts: NOW - 30_000, loop: "日本", type: "run_end", tick: 1, result: "changed", summary: "second" });
+  logEvent(repo, { ts: NOW - 60_000, loop: "a", type: "run_start", run: 1 });
+  logEvent(repo, { ts: NOW - 50_000, loop: "a", type: "run_end", run: 1, result: "changed", summary: "first" });
+  logEvent(repo, { ts: NOW - 40_000, loop: "日本", type: "run_start", run: 1 });
+  logEvent(repo, { ts: NOW - 30_000, loop: "日本", type: "run_end", run: 1, result: "changed", summary: "second" });
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, []));
   const lines = stdout.trimEnd().split("\n");
   // The "#" that starts the tick column sits at the same terminal display column on

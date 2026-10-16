@@ -6,7 +6,7 @@
  *
  * - Need over idleness: a due maintenance role whose last tick did nothing stays deferred
  *   while the backlog is open — in once mode the deferral is the role's round answer
- *   ("deferred"), the tick_deferred event logs the episode, and no tick runs.
+ *   ("deferred"), the run_deferred event logs the episode, and no tick runs.
  * - Held entries are not need: a backlog whose entries are all refused/needs-review/blocked
  *   holds nothing feature or bugfix can take, so it does not defer a maintenance role — the
  *   work-landed verdict decides instead.
@@ -72,7 +72,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
     assert.equal(exit.ticksRun?.get("clean"), 0, "the deferred role ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
-      eventsOfType(repo, "tick_deferred").map((e) => e.loop),
+      eventsOfType(repo, "run_deferred").map((e) => e.loop),
       ["clean"],
       "the deferral is logged once on the transition in, not silent",
     );
@@ -107,7 +107,7 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "the tick really ran");
-    assert.deepEqual(eventsOfType(repo, "tick_deferred"), [], "no deferral episode: the demand preempted it");
+    assert.deepEqual(eventsOfType(repo, "run_deferred"), [], "no deferral episode: the demand preempted it");
   });
 });
 
@@ -130,7 +130,7 @@ test("once: bugfix in search mode defers on the work-landed verdict alone, backl
     assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
     assert.equal(loadLoopState(repo, "bugfix").ticks, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
-      eventsOfType(repo, "tick_deferred").map((e) => e.loop),
+      eventsOfType(repo, "run_deferred").map((e) => e.loop),
       ["bugfix"],
       "the search-mode deferral logs its episode like any other",
     );
@@ -144,7 +144,7 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Episode one: the backlog defers the due maintenance tick and the event logs once.
-    await waitFor(() => eventsOfType(repo, "tick_deferred").length >= 1, "the first deferral episode");
+    await waitFor(() => eventsOfType(repo, "run_deferred").length >= 1, "the first deferral episode");
 
     // A queued prompt makes the role due via its inbox — the demand runs the tick the
     // backlog would have kept deferred, announced by a wake (reason inbox).
@@ -156,9 +156,9 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
     assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
 
     // The demand silently ended episode one. With the backlog still open, the role's next
-    // scheduled tick defers again — and that fresh episode logs its own tick_deferred: the
+    // scheduled tick defers again — and that fresh episode logs its own run_deferred: the
     // stale in-memory episode flag must not swallow it.
-    await waitFor(() => eventsOfType(repo, "tick_deferred").length >= 2, "the fresh deferral episode");
+    await waitFor(() => eventsOfType(repo, "run_deferred").length >= 2, "the fresh deferral episode");
     assert.equal(loadLoopState(repo, "clean").ticks, 2, "still deferred: the backlog holds");
   } finally {
     await stopOrchestrator(orch, restore);

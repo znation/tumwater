@@ -96,7 +96,7 @@ test("report folds revision events into Revisions by role, beside Rejections by 
 test("report renders 'Revisions by role: -' when the window has no revision events", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10 }),
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.equal(md.code, 0);
@@ -132,9 +132,9 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
   // their own line, --json must carry failedRunsByRole only on the day that has failures
   // (zero-means-absent), and the failed tally must never subtract from Runs by role.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 10 }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", tick: 2, result: "merge_conflict", tokens: 5 }),
-    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", tick: 3, result: "changed", tokens: 20 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "merge_conflict", tokens: 5 }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", run: 3, result: "changed", tokens: 20 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "revision", action: "applied", round: 1, sha: "abc" }),
   ]);
 
@@ -154,8 +154,8 @@ test("report folds error-class run_ends into Failed runs by role, beside Revisio
 test("report --since folds failed ticks by role and narrows to the scoped base role", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 10 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", tick: 2, result: "no_change", tokens: 5 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "error", tokens: 10 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 5 }),
   ]);
 
   const fleet = await runCli(root, "report", "--since", "6h");
@@ -323,8 +323,8 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   // notional spend ride two run_ends' providerCost, and a landing's reviewer spend keys to
   // the reviewer's provider.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", tick: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
@@ -347,7 +347,7 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
 test("report omits Cost by provider and the provider JSON maps when no event carries providerCost", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5 }),
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
   assert.ok(!md.includes("Cost by provider"), "no providerCost renders no provider line");
@@ -361,9 +361,9 @@ test("report omits Cost by provider and the provider JSON maps when no event car
 test("--since sums per-provider spend across the window into Cost by provider", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * HOUR), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 10, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: ago(2 * HOUR), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 8, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
-    JSON.stringify({ ts: ago(HOUR), loop: "plan", type: "run_end", tick: 3, result: "changed", tokens: 5, notionalCostUsd: 1, providerCost: { claude: { costUsd: 0, notionalCostUsd: 1 } } }),
+    JSON.stringify({ ts: ago(5 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 8, costUsd: 0.5, providerCost: { deepinfra: { costUsd: 0.5, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: ago(HOUR), loop: "plan", type: "run_end", run: 3, result: "changed", tokens: 5, notionalCostUsd: 1, providerCost: { claude: { costUsd: 0, notionalCostUsd: 1 } } }),
   ]);
   const json = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
   // Summed across the window like costByRole: both deepinfra runs fold into one provider cell.
@@ -401,8 +401,8 @@ test("renderReportMarkdown prints a Tokens by role line ranked by tokens desc, i
 test("tumwater report prints the Markdown report and validates --days", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", tick: 1, result: "no_change", tokens: 313 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 42 }),
+    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 313 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42 }),
   ]);
   writeBacklogFile(root, "PLANS.md", [
     { heading: "## Planned" },
@@ -599,8 +599,8 @@ test("tumwater report --since prints the window totals and validates its flags",
   // The event log is append-only and chronological: seed oldest first, like every log the
   // harness itself writes (a reverse-ordered log is malformed input, not a coverage case).
   writeEvents(root, [
-    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", tick: 2, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
   ]);
 
   const ok = await runCli(root, "report", "--since", "6h");
@@ -643,7 +643,7 @@ test("tumwater report --since prints Commits/Estimated by role and --json carrie
   writeEvents(root, [
     JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
     JSON.stringify({ ts: ago(9 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: ago(8 * 60_000), loop: "plan", type: "run_end", tick: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
+    JSON.stringify({ ts: ago(8 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
   ]);
 
   const md = await runCli(root, "report", "--since", "6h");
@@ -693,8 +693,8 @@ test("report --days above the shared bound fails fast with the offending value",
 test("report --json --days prints the collector's payload; the Markdown render is untouched", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tick: 2, result: "no_change", tokens: 42 }),
+    JSON.stringify({ ts: at(3), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "no_change", tokens: 42 }),
   ]);
   writeBacklogFile(root, "PLANS.md", [
     { heading: "## Planned" },
@@ -730,7 +730,7 @@ test("report --since --role omits Estimated by role when the scoped role spent n
   // The fleet window has notional spend (plan's tick), but feature spends none — scoping to
   // feature must drop the line/field, not render an empty "Estimated by role: -".
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", tick: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
     JSON.stringify({ ts: ago(9 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
   ]);
 
@@ -751,8 +751,8 @@ test("report --since --role omits Estimated by role when the scoped role spent n
 test("report --json --since prints the window totals with the coverage proof", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", tick: 2, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(8 * HOUR), loop: "feature", type: "run_end", run: 2, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 777, costUsd: 0.5 }),
   ]);
 
   const json = await runCli(root, "report", "--json", "--since", "6h");
@@ -780,7 +780,7 @@ test("report --json --since prints the window totals with the coverage proof", a
 test("report --json carries the landing fields in totals and the day series", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const json = await runCli(root, "report", "--json", "--days", "2");
@@ -797,7 +797,7 @@ test("report --json carries the landing fields in totals and the day series", as
 test("report --json --days carries mergeFailed on the day and totals when a landing fails; lands 2 runs with 1 failed", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
@@ -837,7 +837,7 @@ test("report --json leaves mergeFailed absent on a failure-free window", async (
 test("report --json --since carries mergeFailed when a landing fails and omits it otherwise", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
     JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
@@ -985,8 +985,8 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
 test("tumwater report --role scopes the report, scopes --since/--json, and validates the flag", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 313, costUsd: 0.31 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 42, costUsd: 0.04 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 313, costUsd: 0.31 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 42, costUsd: 0.04 }),
   ]);
 
   const scoped = await runCli(root, "report", "--role", "feature");
