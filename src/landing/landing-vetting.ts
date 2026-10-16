@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { gateRoleConfig } from "../gates/budget-gates.js";
 import { reviewRunConfig, seamConcurrencyKey } from "../config/config-views.js";
+import { providerWaitStage } from "./landing-slot.js";
+import { withProviderLease } from "../concurrency/provider-lease.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
@@ -158,11 +160,11 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
   p.vetting.set(role, vet);
   const task = (async () => {
     try {
-      const release = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal, reviewKey);
+      const lease = await acquireUnlessAborted(semaphore, LANDING_TIER, vet.controller.signal, reviewKey);
       vet.parked = false;
-      if (release === null) return; // a shutdown while parked
+      if (lease === null) return; // a shutdown while parked
       if (vet.controller.signal.aborted || ctx.startHeld()) {
-        release(); // stopping, or a restart / fleet hold closed the gate while it waited
+        lease.release(); // stopping, or a restart / fleet hold closed the gate while it waited
         return;
       }
       const { usage, foldUsage } = landingUsage(author, root);
@@ -170,25 +172,34 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       const startedAt = Date.now();
       try {
         addLandingChange(root, entry, liveRoles(p));
-        verdict = await vetRequest(
-          { root, mainBranch, config: author.config, signal: () => vet.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
-          {
-            role,
-            sha: entry.sha,
-            tick: entry.tick,
-            summary: entry.summary,
-            body: entry.body,
-            highFriction: entry.highFriction,
-            ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
-            ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
-          },
-          { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
+        // The vet's lease rides in the provider-lease store for the vet's body, so a review run
+        // that lands on a different provider than the vet's review seam re-keys it there, and a
+        // re-key park is shown by providerWaitStage; its slot wait drops the key (pool-slot rule).
+        verdict = await withProviderLease(
+          lease,
+          semaphore,
+          () =>
+            vetRequest(
+              { root, mainBranch, config: author.config, signal: () => vet.controller.signal, runGatePi: (opts) => author.runGatePi(opts) },
+              {
+                role,
+                sha: entry.sha,
+                tick: entry.tick,
+                summary: entry.summary,
+                body: entry.body,
+                highFriction: entry.highFriction,
+                ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
+                ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
+              },
+              { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
+            ),
+          { piDefault: ctx.piDefault, hooks: providerWaitStage(root, role) },
         );
       } catch (err) {
         verdict = { kind: "result", result: "error" };
         author.state.lastError = errorMessage(err);
       } finally {
-        release();
+        lease.release();
       }
       if (verdict.kind === "stack" && !vet.userAborted) {
         p.vetted.set(role, {

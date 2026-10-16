@@ -58,7 +58,7 @@ test("acquireUnlessAborted grants a free permit and its release hands it back", 
   void semaphore.acquire(1).then(() => (second = true));
   await settle();
   assert.equal(second, false, "the cap holds while the vet holds its permit");
-  release();
+  release.release();
   await settle();
   assert.equal(second, true, "the release hands the permit to the parked waiter");
 });
@@ -93,7 +93,7 @@ test("a permit granted before the abort keeps its normal release — the abort d
   const release = await acquireUnlessAborted(semaphore, 0, controller.signal);
   assert.ok(release);
   controller.abort(); // the stop lands after the grant: the vet is already running
-  release(); // the task's own finally still releases exactly once
+  release.release(); // the task's own finally still releases exactly once
   await settle();
   assert.ok(await within(semaphore.acquire(0)), "exactly one release: the permit is free again");
 });

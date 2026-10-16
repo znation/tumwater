@@ -21,6 +21,7 @@ import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { subdirectoryNames } from "../files/files.js";
+import { dropProviderLeaseKey } from "../concurrency/provider-lease.js";
 
 /** A live lease as callers see it: the slot directory, the one-shot release, and whether the
  * slot's existing checkout was kept as-is. */
@@ -256,6 +257,11 @@ async function acquire(
       logSlotWait(root, role, purpose, Date.now() - startedAt);
       return chosen;
     }
+    // The pool-slot wait rule (plans/provider-concurrency.md §5 "No deadlock"): a lease never
+    // holds a provider key while it waits for a pool slot. Drop the calling lease's key (which
+    // never waits) before parking here, so this tick or vet holds no provider slot whose in-use
+    // a re-key waiter is waiting to drain; the next run re-takes the key as an ordinary re-key.
+    await dropProviderLeaseKey();
     const waiter = registerWaiter(root);
     try {
       await raceAbort(waiter.promise, signal);

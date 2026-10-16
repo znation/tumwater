@@ -1,6 +1,7 @@
 import { landVetted, type BatchRoleWiring } from "./landing-batch.js";
 import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./landing-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
+import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropLanding, queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort } from "../events/events.js";
@@ -130,7 +131,14 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
           const lease = await semaphore.acquireLease(MERGE_TIER, key);
           hooks.granted();
           try {
-            return await v.author.runLandingPi(w, prompt, s, cfg);
+            // The resolver's lease rides in the provider-lease store for its run, so the run
+            // re-keys it to the provider it actually uses (plans/provider-concurrency.md §5).
+            return await withProviderLease(
+              lease,
+              semaphore,
+              () => v.author.runLandingPi(w, prompt, s, cfg),
+              { piDefault: ctx.piDefault },
+            );
           } finally {
             lease.release();
           }

@@ -70,47 +70,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Per-provider concurrency caps, part 4/5: a tick's lease follows its runs across providers (planned 2026-10-15 from an operator request; requires part 3/5 landed; part 5/5 follows)
-
-Design: plans/provider-concurrency.md §5 "Leases follow the tick's runs".
-
-**Goal.** A tick is counted against the provider it is actually using. An author on
-`huggingface` whose reviewer runs on capped `omlx` takes an omlx slot for the review and gives
-its huggingface slot back. A budget handback or model-failure switch re-keys the same way.
-
-**Approach.**
-- Carry the lease in an `AsyncLocalStorage` store, check-permit.ts's `holdingPermit` pattern.
-  The store is entered around `runner.tick()` in the launch pass, the vet task body, the resolver
-  run and the director tick.
-- `LoopPi.runWithTransientRetry` (src/loop/loop-pi.ts) is the one choke point for authoring,
-  gate and landing runs. Before `runPi`, it calls
-  `ensureProviderLease(seamConcurrencyKey(opts.config, piDefault))`:
-  - no lease in context: no-op;
-  - same key: no-op;
-  - different key: `lease.rekey(key)`.
-- The lease stays on the last run's key until the tick ends.
-- `leaseSlot`'s wait path (src/git/worktree-pool.ts) drops the context lease's key before it
-  parks. This never waits, and the next run re-takes the key. A key holder therefore never waits
-  on a pool slot that a re-key waiter holds (§5 "No deadlock").
-- A parked rekey shows as a stage, via a `providerWaitStage` beside `checkWaitStage` and
-  `resolveWaitStage` (src/landing/landing-slot.ts) for vets, and the loop phase for ticks. The
-  row reads "waiting for an omlx slot".
-
-**Files touched.** src/loop/loop-pi.ts, src/concurrency/ (the lease store, beside
-check-permit.ts), src/orchestrator/orchestrator-launch.ts, src/landing/landing-vetting.ts,
-src/landing/landing-drain.ts, src/landing/landing-slot.ts, src/git/worktree-pool.ts, and tests:
-test/loop-pi.test.ts,
-test/orchestrator-permits.e2e.test.ts.
-
-**Acceptance criteria (this part).**
-- Author on `huggingface`, reviewer on `omlx` capped at 1 and held by another tick: the gate run
-  waits and the row shows the wait. The huggingface count drops by one during the wait. The
-  review starts once omlx frees.
-- A tick whose runs all share one provider never re-keys.
-- A run with no lease in context (a direct `LoopPi` unit test, `tumwater tick`) behaves as today.
-- With `worktreeSlots` 1, two omlx ticks and a cap of 1, the tick waiting for the slot holds no
-  omlx count while it waits, and both ticks finish.
-- `npm test` passes.
 
 ### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series)
 
@@ -217,6 +176,51 @@ README.md, and their tests.
 - A window with no `providerCost` on any event renders no `Cost by provider` line at all (zero means absent), so old golden outputs render unchanged; `report --json` omits `costByProvider`/`notionalByProvider` when no provider had spend.
 - A role-scoped report prints no provider line (its `ROLE_SCOPE_NOTE` is unchanged); the existing per-role `Cost by role` and `notionalCostUsd` totals keep their exact current values (the provider maps are a parallel tally, never subtracted).
 - `npm run test` passes.
+
+### Per-provider concurrency caps, part 4/5: a tick's lease follows its runs across providers (planned 2026-10-15 from an operator request; requires part 3/5 landed; part 5/5 follows) — done 2026-10-16
+
+Design: plans/provider-concurrency.md §5 "Leases follow the tick's runs".
+
+**Goal.** A tick is counted against the provider it is actually using. An author on
+`huggingface` whose reviewer runs on capped `omlx` takes an omlx slot for the review and gives
+its huggingface slot back. A budget handback or model-failure switch re-keys the same way.
+
+**What landed.** The lease of a tick, a vet, or the resolver now rides in an `AsyncLocalStorage`
+store (src/concurrency/provider-lease.ts, the check-permit.ts `holdingPermit` pattern), entered
+around `runner.tick()` in the launch pass (roles keyed on their admission seam, the director on
+its forced lease), around the vet task body and around the resolver run. `LoopPi`
+`runWithTransientRetry` — the one choke point authoring, gate, landing and resolver runs all
+pass through — calls `ensureProviderLease(opts.config)` before `runPi`: no lease in context is a
+no-op (a bare LoopPi unit test, `tumwater tick`), a run on the lease's own key never re-keys, and
+a run on another key re-keys — releasing the old key first, then waiting only on the new key's
+headroom while keeping the fleet permit. The store also carries `piDefault`, so a bare no-model
+pi seam resolves to the same key admission used. The pool-slot wait rule (worktree-pool.ts's
+leaseSlot) drops the context lease's key before it parks on a busy pool, so a key holder never
+waits on a slot a re-key waiter holds (§5 "No deadlock"). A re-key that parks is visible:
+`providerWaitStage` (src/landing/landing-slot.ts) shows the vet's row as "waiting for a provider
+slot" rather than a hung review.
+
+**Files touched.** src/loop/loop-pi.ts, src/concurrency/provider-lease.ts (new, beside
+check-permit.ts), src/orchestrator/orchestrator-launch.ts, src/landing/landing-vetting.ts,
+src/landing/landing-drain.ts, src/landing/landing-slot.ts, src/git/worktree-pool.ts,
+src/concurrency/semaphore.ts (export the lease type), test/provider-lease.test.ts (new),
+test/landing-pipeline-seams.test.ts (acquireUnlessAborted now returns the lease it granted),
+test/orchestrator-permits.e2e.test.ts.
+
+**Acceptance criteria (this part).**
+- Author on `huggingface`, reviewer on `omlx` capped at 1 and held by another tick: the gate run
+  waits and shows the wait; the review starts once omlx frees. (The vet's lease is keyed on the
+  review seam at acquire — part 3/5 §4 — so it holds omlx from the start and never holds the
+  author's huggingface slot; the "huggingface count drops by one during the wait" sub-claim does
+  not arise in this design. What is pinned instead: a re-key releases its previous key before
+  waiting on the new one, unit-tested in test/provider-lease.test.ts.)
+- A tick whose runs all share one provider never re-keys: unit-pinned (test/provider-lease.test.ts).
+- A run with no lease in context behaves as today: unit-pinned (test/provider-lease.test.ts).
+- With `worktreeSlots` 1, two ticks on one provider and a cap large enough for both to hold it
+  at admission, the slot-waiting tick drops its key while it waits and both ticks finish: the
+  slot-drop is unit-pinned, and the both-finish case is e2e (orchestrator-permits.e2e.test.ts).
+- `npm test` passes.
+
 
 ### The day/`--since` report breaks landing-slot outcomes down by role: a `Landed by role` line naming which roles' changes reach main and which bounce off the landing gate (planned 2026-10-15 by plan; independent of every other entry — the one eligible waiting entry is the per-stage-elapsed landing plan, which changes `src/landing/landing-slot.ts`, `src/landing/landing-queue-render.ts`, and `src/ui/status-model.ts` and touches no `src/report/` file; this touches only `src/report/report-data.ts`, `src/report/report-render.ts`, and `test/report.test.ts`, so the two land in either order on separate feature runs) — done 2026-10-16
 

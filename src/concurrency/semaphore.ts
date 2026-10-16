@@ -9,7 +9,7 @@
 
 /** The handle one keyed acquisition owns: the key it currently holds, a release that hands the
  * fleet permit and the key's slot back, and a rekey that moves the lease onto another key. */
-interface SemaphoreLease {
+export interface SemaphoreLease {
   /** The key the lease currently holds (undefined for an uncapped holder). */
   key?: string;
   /** Return the fleet permit and the key's in-use slot, then hand either to a parked waiter. */

@@ -405,3 +405,52 @@ test("a director prompt on a full provider starts at once and holds the provider
   }
 });
 
+test("two ticks on one provider and a single worktree slot both finish (pool-slot wait rule, part 4/5)", async () => {
+  // plans/provider-concurrency.md §5 "No deadlock": a lease never holds a provider key while it
+  // waits for a pool slot. With one pool slot and two omlx roles (cap 2 lets both hold omlx at
+  // admission), the second tick parks on the slot and drops its omlx key while it waits; the
+  // first releases the slot and both finish. The drop runs inside the tick's provider-lease
+  // store (orchestrator-launch wraps runner.tick()), so this reaches the pool-slot drop path
+  // in a live orchestrator.
+  const repo = makeRepo();
+  await initProject(repo, "pool slot serializes one provider");
+  const cfg = fastConfig(["feature", "bugfix"]);
+  cfg.maxConcurrent = 6;
+  cfg.maxConcurrentPerProvider = { omlx: 2 };
+  cfg.worktreeSlots = 1;
+  cfg.review!.enabled = false;
+  cfg.roles.feature!.provider = "omlx";
+  cfg.roles.feature!.model = "m";
+  cfg.roles.bugfix!.provider = "omlx";
+  cfg.roles.bugfix!.model = "m";
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `f=$(mktemp "$d/run.XXXXXX")`,
+      leasedRoleShell(),
+      `printf '%s\\n' "$role" >> "${runDir}/order.log"`,
+      `echo change >> change.txt`,
+      `sleep 1`,
+      `printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
+      `rm -f "$f"`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => readOrder(runDir).length >= 4 && readEvents(repo).some((e) => e.type === "landed"),
+      "both roles ticking through the one slot, and a landing",
+      150_000,
+    );
+    const roles = readOrder(runDir);
+    assert.ok(
+      roles.includes("feature") && roles.includes("bugfix"),
+      `both omlx roles made progress through the single slot (${roles})`,
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+

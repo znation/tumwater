@@ -1,5 +1,6 @@
 import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
 import { warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -158,13 +159,12 @@ export async function acquireUnlessAborted(
   tier: number,
   signal: AbortSignal,
   key?: string,
-): Promise<(() => void) | null> {
+): Promise<SemaphoreLease | null> {
   if (signal.aborted) return null;
   const granted = semaphore.acquireLease(tier, key);
   const stopped = new Promise<false>((resolve) => signal.addEventListener("abort", () => resolve(false), { once: true }));
   if (await Promise.race([granted, stopped])) {
-    const lease = await granted;
-    return () => lease.release();
+    return granted;
   }
   void granted.then((lease) => lease.release());
   return null;

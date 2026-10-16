@@ -43,6 +43,7 @@ type LandingStage =
   | "reviewing"
   | "resolve-wait"
   | "resolving"
+  | "provider-wait"
   | "merging";
 
 /** How each landing stage names itself in the landing cell. */
@@ -53,6 +54,7 @@ export const LANDING_STAGE_LABELS: Record<LandingStage, string> = {
   reviewing: "reviewing",
   "resolve-wait": "waiting to resolve conflicts",
   resolving: "resolving conflicts",
+  "provider-wait": "waiting for a provider slot",
   merging: "merging",
 };
 
@@ -272,6 +274,18 @@ export function resolveWaitStage(root: string, role: string): PermitWaitHooks {
   return {
     waiting: () => setLandingStage(root, role, "resolve-wait"),
     granted: () => setLandingStage(root, role, "resolving"),
+  };
+}
+
+/** The vet's hooks around a re-key onto a full provider (plans/provider-concurrency.md §5,
+ * "A re-key wait is visible"): `provider-wait` while the vet's lease parks on the target
+ * provider's full cap, `reviewing` once the key frees and the review proceeds. resolveWaitStage's
+ * shape for the re-key path — a vet that normally shares its review seam never re-keys, so the
+ * stage fires only when a run actually moves to a different, full provider. */
+export function providerWaitStage(root: string, role: string): PermitWaitHooks {
+  return {
+    waiting: () => setLandingStage(root, role, "provider-wait"),
+    granted: () => setLandingStage(root, role, "reviewing"),
   };
 }
 

@@ -25,6 +25,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import { withProviderLease } from "../concurrency/provider-lease.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
@@ -206,7 +207,17 @@ export function launchDueTicks(ctx: LaunchContext): void {
               ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
-          const outcome = await runner.tick();
+          // The tick's lease rides in the provider-lease store for the length of the tick, so
+          // every run it makes re-keys it to the provider that run actually uses
+          // (plans/provider-concurrency.md §5) — a budget or model-failure switch that moves a
+          // mid-tick run to another provider moves the lease with it. The director's forced
+          // lease re-keys the same way, and its rekey never waits.
+          const outcome = await withProviderLease(
+            runner.role === DIRECTOR_ROLE ? directorLease! : lease!,
+            semaphore,
+            () => runner.tick(),
+            { piDefault },
+          );
           if (ranPair !== null && ranOn !== undefined) {
             const at = breakerNow();
             const evidence = outcome.recoveredLeftover ? "skipped" : outcome.result;

@@ -5,6 +5,7 @@ import { agentSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
 import { configForRole, seamHoldKey, type ResolvedModelConfig } from "../config/config-views.js";
+import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { dailyCost, fleetDailyCost } from "../budget/budget.js";
@@ -256,6 +257,12 @@ export class LoopPi {
     const provider = seamHoldKey(opts.config);
     const fold = (run: PiRunResult): void =>
       authoring ? this.host.foldUsage(run, provider) : this.host.foldLandingUsage(run, provider);
+    // The run re-keys the calling tick's provider lease to the provider THIS run uses, if it is
+    // not already there (plans/provider-concurrency.md §5): a budget handback or a model-failure
+    // switch that moved this run onto another seam moves the tick's lease with it, so a
+    // claude-authored tick whose gate run lands on omlx is counted there. No-op when the tick
+    // carries no lease (a bare LoopPi unit test, `tumwater tick`).
+    await ensureProviderLease(opts.config);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
     if (
