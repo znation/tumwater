@@ -2926,6 +2926,47 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The help test that checks each command's usage still passes with the new stanza, and `tumwater help questions` shows `--answered`.
 - `npm run test` passes.
 
+### `tumwater plan --list` shows each blocked series as one line, as the prompt's backlog index does, so an operator's list of 100+ planned entries fits on a screen and the eligible plans stand out (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `collapseBlockedSeries` and its helpers in `src/backlog/backlog-structure.ts`, the plans branch of `listAndAnnounce` in `src/backlog/backlog-cli.ts`, the `plan --list` stanza of `src/cli/help.ts`, and the `--list` clause of `docs/cli.md`'s "Steer the project" row. Plain terms text 7/19, in flight, rewords messages in these two backlog files; this plan adds a grouping helper and one list branch and rewords none of the existing messages. The `questions --answered` plan edits `cmdQuestions` and `question-answer.ts` instead)
+
+**Goal.** `tumwater plan --list` prints every `## Planned` entry on its own numbered line. Today that is well over 100 lines, and most are blocked parts of the Plain terms series. The prompt's `<backlog-index>` already groups those parts into one line per series (`collapseBlockedSeries`, from "Compact backlog index, part 1/1"). The operator's list should group them the same way. Numbering is unchanged: a grouped line names the positions it covers, so `--show <n>`, `--edit <n>` and `--cancel <n>` still reach every part.
+
+**Approach.**
+1. `src/backlog/backlog-structure.ts`: split the grouping out of `collapseBlockedSeries` into an exported pure function, `groupBlockedSeries<T extends SeriesRow>(rows: readonly T[]): SeriesGroup<T>[]`.
+   - Types: `SeriesRow = { title: string; hold: EntryHold; claimer: string | undefined }` and `SeriesGroup<T> = { kind: "row"; row: T } | { kind: "series"; series: string; rows: T[] }`.
+   - Same rules as today: a row is collapsible through `collapsibleSeriesPart`, a series groups only with two or more collapsible parts, and the group sits at its first part's place.
+   - Make `IndexRow` extend `SeriesRow`. Widen `collapsibleSeriesPart` and `partsLabel` to take `SeriesRow`, and export `partsLabel`.
+   - Rewrite `collapseBlockedSeries` as a map over `groupBlockedSeries`. Its output stays character-for-character the same; the existing `renderBacklogIndexBlock` collapse tests in `test/backlog-structure.test.ts` pin this.
+2. `src/backlog/backlog-cli.ts` `listAndAnnounce`: only the plan prose branch changes. That means not `bugSection`, not `--json`, and not `--done`.
+   - Build one row per entry: `{ position: i + 1, title, hold: entryHolds[i] ?? null, claimer: entryRunners[i] ?? undefined }`, then call `groupBlockedSeries`.
+   - A `row` group renders exactly as today: `${position}. ${title}${holdMark}${inProgressMark}${entryAgeSuffix}`.
+   - A `series` group renders as `${positions}. ${series}, ${k} blocked parts (${partsLabel(rows)}) [blocked: each waits on an earlier part]`. Here `positions` joins runs of consecutive positions with an en dash (`13–17`) and separates runs with commas (`13–15, 18`).
+   - Since lines are no longer numbered by index, build them directly instead of through `numberedList`. Keep the `plans in PLANS.md:` header.
+   - When at least one series grouped, append one footer line: `(each blocked series is one line; --show <n> prints a part, --json lists every entry)`.
+   - The `bug --list` prose, every `--json` payload, and `--done` stay unchanged.
+3. `src/cli/help.ts`: add one clause to the `plan --list` stanza: "a series' blocked parts show as one line naming their positions". `docs/cli.md`: add the same clause to the `--list` sentence of the "Steer the project" row.
+4. No new flag. `--json` and `--show <n>` already give every part. This follows the "opinionated defaults" principle.
+
+**Files touched.** `src/backlog/backlog-structure.ts`, `src/backlog/backlog-cli.ts`, `src/cli/help.ts`, `docs/cli.md`, `test/backlog-write-list.test.ts`, `test/backlog-structure.test.ts`.
+
+**Acceptance criteria.**
+- `test/backlog-structure.test.ts`: a new test calls `groupBlockedSeries` directly on a list with:
+  - an eligible part 1/4 and three blocked parts 2/4–4/4 of one series;
+  - a lone blocked part of another series;
+  - a claimed blocked part.
+
+  It yields a row, one series group of three, then rows for the lone part and the claimed part. The existing collapse tests pass unchanged.
+- `test/backlog-write-list.test.ts` adds "plan --list shows a blocked series as one line with its positions". Through the `cli` harness, it uses a PLANS.md with an unrelated plan, series S parts 1/3–3/3 (2/3 requires part 1/3 landed, 3/3 requires part 2/3 landed), and a final plan. `plan --list` prints:
+  - `1.` for the unrelated plan;
+  - `2.` for S part 1/3;
+  - `3–4. S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]`;
+  - `5.` for the final plan;
+  - the footer line.
+
+  Also: `plan --show 4` prints part 3/3, and `plan --list --json` still has five entries with positions 1–5.
+- The existing `plan --list` and `bug --list` tests in `test/backlog-write-list.test.ts` pass unchanged. None of their fixtures has two blocked parts of one series, so their output is the same as before.
+- The `help topics name the --list forms` test still passes, and `tumwater help plan` shows the new clause.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater plan --list --done` and `bug --list --done` show the newest finished plans and fixed bugs, so an operator sees what the team completed lately without opening PLANS.md or BUGS.md (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/backlog/backlog-cli.ts` `listAndAnnounce`, `src/backlog/backlog.ts`, `src/backlog/backlog-md.ts`, two lines of `src/report/report-data.ts`, `src/cli/help.ts`'s bug/plan `--list` stanzas, and `docs/cli.md`'s "Steer the project" row. The `backlog --ready` plan edits `cmdBacklog`, the `backlog` help stanza, and the "Check state" row instead. Plain terms text 5/19, which is in flight, rewords `src/report/` messages but not the completion-date scan this plan touches) (done 2026-10-16)
