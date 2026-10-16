@@ -47,6 +47,23 @@ function rankedRoleLine(label: string, pairs: [string, number][], fmt: (n: numbe
   return `**${label}:** ${pairs.length === 0 ? "-" : pairs.map(([r, n]) => `${r} — ${fmt(n)}`).join(" · ")}`;
 }
 
+/** Push the `Cost by provider` and `Notional by provider` lines of the per-provider spend
+ * breakdown (plans: per-provider spend), from the caller's already-ranked real- and notional-
+ * spend pairs. Role scoping is the caller's `role === undefined` gate — this helper only
+ * renders. Zero-means-absent: a provider with no spend prints no line, and both lanes format
+ * with usd so the day and --since windows cannot drift (the --since path ranks via rankedRoleMap,
+ * the day path via rankedRoleTotals). */
+function pushProviderCostLines(
+  lines: string[],
+  rankCost: () => [string, number][],
+  rankNotional: () => [string, number][],
+): void {
+  const providers = rankCost().filter(([, c]) => c > 0);
+  if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
+  const notionalProviders = rankNotional().filter(([, c]) => c > 0);
+  if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+}
+
 /** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
  * separators cannot drift between the day report and the --since window. `tail` carries the
  * cells only one shape has: the day report's features/bugs counts (a sub-day window cannot
@@ -123,10 +140,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
   // the zero-means-absent gate prints no line for a window with no provider spend.
   if (data.role === undefined) {
-    const providers = rankedRoleMap(data.costByProvider).filter(([, c]) => c > 0);
-    if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
-    const notionalProviders = rankedRoleMap(data.notionalByProvider).filter(([, c]) => c > 0);
-    if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+    pushProviderCostLines(lines, () => rankedRoleMap(data.costByProvider), () => rankedRoleMap(data.notionalByProvider));
   }
   // The same breakdown for review friction: rejections per role from review_rejected events;
   // a window with none renders "-" like the other lines.
@@ -256,10 +270,11 @@ export function renderReportMarkdown(data: ReportData): string {
   // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
   // role.
   if (data.role === undefined) {
-    const providers = rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}).filter(([, c]) => c > 0);
-    if (providers.length > 0) lines.push(rankedRoleLine("Cost by provider", providers, usd));
-    const notionalProviders = rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}).filter(([, c]) => c > 0);
-    if (notionalProviders.length > 0) lines.push(rankedRoleLine("Notional by provider", notionalProviders, usd));
+    pushProviderCostLines(
+      lines,
+      () => rankedRoleTotals(data.series, (d) => d.costByProvider ?? {}),
+      () => rankedRoleTotals(data.series, (d) => d.notionalByProvider ?? {}),
+    );
   }
   // The same breakdown for review friction: window rejections per role from review_rejected
   // events, ranked like the ticks line; a window with none renders "-".
