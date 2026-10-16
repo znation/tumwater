@@ -99,7 +99,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
   const location = { hash: "" };
   class Element {
     dataset: Record<string, string> = {};
-    closest(): Element { return this; }
+    closest(): this { return this; }
   }
   class FileReader {
     result: string | null = null;

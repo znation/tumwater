@@ -1,11 +1,10 @@
 // Type-aware lint, run by `npm test` ahead of the suite so the merge gate enforces it. It
-// carries twelve rules on purpose: four for promise misuse tsc cannot see, four for type
-// spellings whose meaning is not what the author read, one for a type-only import that
-// stays a runtime side effect under verbatimModuleSyntax, one for a private member that is
-// never reassigned but is not marked `readonly`, one for an inline-only-type import that the
-// rest of the tree spells `import type`, and one for a comparator-less `sort` on a
-// non-string array, which orders by the elements' string forms (`[10, 2].sort()` stays
-// `[10, 2]`).
+// carries a battery of rules on purpose, most for promise misuse tsc cannot see, for type
+// spellings whose meaning is not what the author read, for import hygiene under
+// verbatimModuleSyntax, and for one-off traps (a private member that is never reassigned but
+// is not marked `readonly`; an inline-only-type import the rest of the tree spells
+// `import type`; a comparator-less `sort` on a non-string array, which orders by the
+// elements' string forms (`[10, 2].sort()` stays `[10, 2]`)).
 //
 // Promise misuse: no-floating-promises flags an un-awaited async call, which typechecks fine
 // and silently races (33521347 dropped the await on 25 e2e waits and CI broke);
@@ -93,6 +92,11 @@ export default tseslint.config(
       "@typescript-eslint/prefer-regexp-exec": "error",
       "@typescript-eslint/no-unused-expressions": "error",  // flags dead no-op expressions (stray literals) left by missed edits
       "@typescript-eslint/consistent-type-definitions": "error",  // object shapes spell `interface Foo { … }`, not `type Foo = { … }`
+      "@typescript-eslint/prefer-return-this-type": "error",  // a fluent method spells its return as `this`, so a subclass keeps the chain typed as the subclass
+      "@typescript-eslint/no-unnecessary-type-arguments": "error",  // a type argument tsc infers anyway is a second place to edit when the call's shape changes
+      "@typescript-eslint/prefer-function-type": "error",  // a one-call-signature object type spells `() => T`, not `{ (): T }`
+      "@typescript-eslint/consistent-generic-constructors": "error",  // construct a generic class with `new Foo<T>()`, never the shadowed bare `Foo<T>()`
+      "@typescript-eslint/no-array-constructor": "error",  // `new Array(n)` shares one signature with `new Array(v)`; spell `[v]` or `Array.from`
     },
   },
   {
