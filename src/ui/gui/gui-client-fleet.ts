@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's fleet view, browser-side — the main screen between polls: the sidebar's
  * project name and fleet status (loops running, build state, main's check, quiet hours),
  * the alerts band for whatever needs a human (a failing loop, a red main, a spent budget,
@@ -14,7 +15,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // and alertParts()'s build alert, so styling and the global [data-act='restart'] handler
   // serve both icons from one place.
   function restartButton(glyph) {
-    return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'>" + glyph + "</button>";
+    return "<button type='button' class='alert-icon' data-act='restart' title='Restart onto the update now'>" + glyph + "</button>";
   }
   // The disk row's reclaim affordance: its icon IS the button when the row is held or in the
   // reclaim band; the global [data-act='reclaim'] handler posts /api/reclaim.
@@ -48,8 +49,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         // decoration.
         const lead = stale ? restartButton(icon("refresh")) : icon("refresh");
         rows += row(stale ? (d.build.restartBlocked ? "amber" : "blue") : "", lead,
-          "Build <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
-          localizeInstants(("Running build" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
+          "Version <span class='mono'>" + esc(shortSha(d.build.sha)) + "</span>" + (stale ? " · " + esc(d.build.aheadCommits || 0) + " behind" : ""),
+          localizeInstants(("Running version" + (d.buildBadge || "").replace(/^, build/, "")).trim()));
       }
       if (d.mainCheck) {
         // Main's newest merge-scope check (status-model's mainCheckBadge): green, red, or — a
@@ -77,7 +78,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         rows += row(held ? "amber" : "blue", held || low ? reclaimButton(icon("info")) : icon("info"),
           esc(badgeLabel(d.diskBadge)),
           held
-            ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the fleet starts no new work until it recovers. Build outputs are reclaimed first."
+            ? "Free space is below the " + esc(String(d.disk.holdGB)) + " GB floor, so the team starts no new work until it recovers. Build outputs are reclaimed first."
             : low
               ? "Free space is below the " + esc(String(d.disk.reclaimGB)) + " GB reclaim threshold; idle build outputs are being cleaned."
               : "");
@@ -89,14 +90,14 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       if (d.permitsBadge) {
         const tok = String(d.permitsBadge).replace(/^ · /, "");
         rows += row("blue", icon("gauge"), esc(tok),
-          "Concurrent pi slots in use out of the fleet total, then each capped provider's own in-use/cap; a provider at its cap queues its next waits on it.");
+          "Roles running at once out of the team limit, then each capped provider's own running/cap; a role waits to start when its provider is at its cap.");
       }
       // The run --for deadline: the payload's preformatted runWindowBadge, like the disk row.
       if (d.runWindowBadge) {
         rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),
           d.scheduledStopAt !== undefined && d.scheduledStopAt === d.runStopsAt
-            ? "A scheduled stop (tumwater stop --in) — the fleet drains in-flight work and exits then."
-            : "This run was started with start --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
+            ? "A scheduled stop (tumwater stop --in) — the team finishes current work, then stops."
+            : "tumwater was started with start --for; at the deadline it finishes current work, prints a per-role summary, and stops.");
       }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same
@@ -107,7 +108,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         const end = String(d.quietHours).split("-")[1] || "";
         rows += row(d.inQuietHours ? "amber" : "", icon("pause"),
           d.inQuietHours ? "Quiet until " + esc(end) : "Quiet " + esc(d.quietHours),
-          "Quiet hours — role loops start no new ticks during this local-time window; the director keeps running your prompts");
+          "Quiet hours — roles start no new runs during this local-time window; the director keeps running your messages");
       }
       // New-project bootstrap (plans/work-ratio.md, part 2/2): the payload's preformatted
       // bootstrapBadge, upcased for the row's label style — the same reading the TUI/status
@@ -115,7 +116,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       if (d.bootstrapBadge) {
         rows += row("blue", icon("info"),
           esc(badgeLabel(d.bootstrapBadge)),
-          "New-project bootstrap — the harness holds maintenance loops until enough plans are done; plan, feature and director keep ticking");
+          "New-project bootstrap — maintenance roles wait until enough plans are done; plan, feature and director keep running");
       }
     }
     paintPanel("statuschips", rows);
@@ -211,7 +212,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       todayAt = Date.now();
     } catch { /* keep the last numbers */ }
     todayLoading = false;
-    if (lastStatus && activeView === "fleet") renderStats(lastStatus);
+    if (lastStatus && activeView === "fleet") renderStats(lastStatus); // vocabulary-ok: view id
   }
   // stats:start
   function statTile(t) {
@@ -227,20 +228,21 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const live = loops.filter((l) => phaseInfo(l.phase).live);
     const kinds = {};
     for (const l of live) { const k = phaseInfo(l.phase).key; kinds[k] = (kinds[k] || 0) + 1; }
+    const KIND_WORDS = { working: "working", reviewing: "reviewing", landing: "merging" }; // vocabulary-ok: phase key, renamed with the status model
     const liveSub = live.length
-      ? ["working", "reviewing", "landing"].filter((k) => kinds[k]).map((k) => kinds[k] + " " + k).join(" · ")
-      : d.running ? "every loop is between ticks" : "the fleet is stopped";
+      ? Object.keys(KIND_WORDS).filter((k) => kinds[k]).map((k) => kinds[k] + " " + KIND_WORDS[k]).join(" · ")
+      : d.running ? "every role is between runs" : "the team is stopped";
     const t = today && today.totals;
     const plans = (d.plans || []).length;
     const bugs = (d.bugs || []).length;
     const qs = (d.questions || []).length;
     paintPanel("stats", [
-      { label: "In flight", icon: "bolt", value: live.length + " <small>of " + loops.length + " loops</small>", sub: esc(liveSub) },
-      { label: "Landed today", icon: "merge", act: "view", arg: "history", hint: "See every tick in History",
+      { label: "In flight", icon: "bolt", value: live.length + " <small>of " + loops.length + " roles</small>", sub: esc(liveSub) },
+      { label: "Merged today", icon: "merge", act: "view", arg: "history", hint: "See every run in History",
         value: t ? String(t.commits) + " <small>" + agree(t.commits, "commit", "commits") + "</small>" : "—",
         sub: t ? esc(plural(t.featuresDone, "feature") + " done · " + plural(t.bugsFixed, "bug") + " fixed · " + workSplit(t)) : "counting…" },
-      { label: "Ticks today", icon: "refresh", act: "view", arg: "usage", hint: "See usage per day and per loop",
-        value: t ? String(t.ticks) + " <small>" + agree(t.ticks, "tick", "ticks") + "</small>" : "—",
+      { label: "Runs today", icon: "refresh", act: "view", arg: "usage", hint: "See usage per day and per role",
+        value: t ? String(t.ticks) + " <small>" + agree(t.ticks, "run", "runs") + "</small>" : "—",
         sub: t ? esc(fmtTokens(t.tokensOut) + " output tokens" + (t.costUsd > 0 ? " · " + fmtUsd(t.costUsd) : "")) : "counting…" },
       { label: "Backlog", icon: "inbox", act: "backlog", hint: "Jump to the backlog", value: String(plans + bugs) + " <small>open</small>",
         sub: esc(plural(plans, "plan") + " · " + plural(bugs, "bug") + (qs ? " · " + plural(qs, "question") : "")) },
@@ -293,10 +295,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     renderBacklog(backlogStatus);
   }
   const BACKLOG = [
-    ["questions", "Questions", "question", "indigo", "No open questions", "Loops post here when they need a decision from you."],
-    ["plans", "Plans", "plan", "blue", "Nothing planned", "The plan loop files features in PLANS.md."],
+    ["questions", "Questions", "question", "indigo", "No open questions", "Roles post here when they need a decision from you."],
+    ["plans", "Plans", "plan", "blue", "Nothing planned", "The plan role files features in PLANS.md."],
     ["bugs", "Bugs", "bug", "red", "No open bugs", "Bugs filed in BUGS.md show up here."],
-    ["queued", "Queued", "chat", "gray", "No queued prompts", "Prompts you send wait here until their loop takes them."],
+    ["queued", "Inbox", "chat", "gray", "Inbox empty", "Messages you send wait here until their role's next run."], // vocabulary-ok: internal tab key
   ];
   function renderBacklog(d) {
     backlogStatus = d;
@@ -324,7 +326,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
         }
         return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
-          "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + q.role + " loop") +
+          "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + roleLabel(q.role) + " role") +
             (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
               : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
           "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' " + addr + ">Cancel</button>" +
@@ -385,7 +387,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       await postAction("/api/prompt-cancel", { role: cancel.dataset.role, file: cancel.dataset.file }, (d) =>
         d && d.status === "cancelled"
           ? "Cancelled: " + (d.preview || "")
-          : "No longer queued — " + (cancel.dataset.role || "the director") + " already took it");
+          : "No longer in the inbox — " + (cancel.dataset.role ? roleLabel(cancel.dataset.role) : "the director") + " already took it");
       return;
     }
     const edit = clickClosest(ev, "button.rowaction[data-action='promptedit']");
@@ -393,7 +395,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       try {
         const d = await getJson("/api/prompt-text?role=" + encodeURIComponent(edit.dataset.role) + "&file=" + encodeURIComponent(edit.dataset.file));
         if (d && d.status === "gone") {
-          showFlash("No longer queued — " + (edit.dataset.role || "the director") + " already took it");
+          showFlash("No longer in the inbox — " + (edit.dataset.role ? roleLabel(edit.dataset.role) : "the director") + " already took it");
           refresh();
         } else {
           beginQueuedEdit(edit.dataset.role, edit.dataset.file, (d && d.text) || "");
@@ -411,7 +413,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       await postAction("/api/prompt-edit", { role: save.dataset.role, file: save.dataset.file, text }, (d) =>
         d && d.status === "edited"
           ? "Edited: " + (d.newText || "")
-          : "No longer queued — " + (save.dataset.role || "the director") + " already took it");
+          : "No longer in the inbox — " + (save.dataset.role ? roleLabel(save.dataset.role) : "the director") + " already took it");
       endQueuedEdit();
       return;
     }
@@ -531,21 +533,22 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       ? tallyChips(shown) + shown.map((it) => {
         const kind = eventKind(it);
         const tone = it.type === "tick_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
-        const who = roles.has(it.loop)
-          ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.loop) + "'>" + esc(it.loop) + "</button>"
-          : "<span class='feed-loop'>" + esc(it.loop) + "</span>";
+        const whoLabel = it.loop === "harness" ? "tumwater" : roleLabel(it.loop); // vocabulary-ok: the harness event source
+        const who = roles.has(it.loop) // vocabulary-ok: event field name
+          ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.loop) + "'>" + esc(whoLabel) + "</button>" // vocabulary-ok: CSS class and event field
+          : "<span class='feed-loop'>" + esc(whoLabel) + "</span>"; // vocabulary-ok: CSS class
         return "<li class='feed-item k-" + kind + "'><span class='feed-icon t-" + tone + "'>" + icon(KINDS[kind][0]) + "</span>" +
           "<div class='feed-msg clamp2' title='" + esc(it.message) + "'>" + who + esc(it.message) + "</div>" +
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";
       }).join("")
       : feedResults !== null
-        ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Loop picker to look further back. ")
+        ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Role picker to look further back. ")
         : feedError
           ? emptyFeedRow("Search unavailable", esc(feedError) + " — the running server may predate the /api/logs endpoint. ")
           : notable.length
-            ? emptyFeedRow("No recent events match this filter", "Clear the Loop or Search box to see the recent feed again. ")
+            ? emptyFeedRow("No recent events match this filter", "Clear the Role or Search box to see the recent feed again. ")
             : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
-              (items.length ? "Landings, failures, and questions show up here. All events has every tick start and check." : "Events appear here as the loops work.") + "</li>");
+              (items.length ? "Merges, failures, and questions show up here. All events has every run start and check." : "Events appear here as the roles work.") + "</li>");
   }
   function clearFeedFilter() {
     feedRole = "";
@@ -587,7 +590,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
 
   function renderFleet(d) {
     const loops = d.loops || [];
-    const sub = plural(loops.length, "loop") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the fleet is stopped") +
+    const sub = plural(loops.length, "role") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the team is stopped") +
       (d.paused ? " · paused" : "");
     if ($("fleetsub").textContent !== sub) $("fleetsub").textContent = sub;
     renderStats(d);

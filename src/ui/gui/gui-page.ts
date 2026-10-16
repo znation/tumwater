@@ -28,9 +28,9 @@ export const GUI_PAGE = `<!doctype html>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="shell">
-<aside class="sidebar" aria-label="Fleet">
+<aside class="sidebar" aria-label="Team">
   <div class="side-top">
-    <a class="brand" href="#fleet" aria-label="tumwater fleet">${LOGO_SVG}<span>tumwater</span></a>
+    <a class="brand" href="#fleet" aria-label="tumwater team">${LOGO_SVG}<span>tumwater</span></a>
     <div class="side-top-actions">
       <span id="soundwrap"></span>
       <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
@@ -42,7 +42,7 @@ export const GUI_PAGE = `<!doctype html>
     <div class="side-status" id="statuschips" aria-live="polite"></div>
   </div>
   <nav class="side-nav" id="viewnav" aria-label="Views">
-    <a href="#fleet" id="tab-fleet" class="tab active" aria-current="page">${iconSvg("grid")}<span>Fleet</span><span class="badge t-red" id="navbadge" hidden></span></a>
+    <a href="#fleet" id="tab-fleet" class="tab active" aria-current="page">${iconSvg("grid")}<span>Team</span><span class="badge t-red" id="navbadge" hidden></span></a>
     <a href="#history" id="tab-history" class="tab">${iconSvg("list")}<span>History</span></a>
     <a href="#usage" id="tab-usage" class="tab">${iconSvg("bars")}<span>Usage</span></a>
     <a href="#failures" id="tab-failures" class="tab">${iconSvg("alert")}<span>Failures</span></a>
@@ -58,13 +58,13 @@ export const GUI_PAGE = `<!doctype html>
 <main id="main" class="main">
   <section id="fleet-view" class="view" aria-labelledby="fleet-title">
     <div class="view-head">
-      <div><h1 id="fleet-title">Fleet</h1><p id="fleetsub">&nbsp;</p></div>
+      <div><h1 id="fleet-title">Team</h1><p id="fleetsub">&nbsp;</p></div>
     </div>
     <div id="alerts" class="alerts" aria-live="polite"></div>
     <form id="promptform" class="composer" autocomplete="off">
       <div class="composer-row">
         <label class="composer-target"><span class="sr-only">Send to</span><select id="prompttarget" class="field"><option value="director">Director</option></select></label>
-        <textarea id="prompt" rows="1" placeholder="Tell the fleet what to do next…" aria-label="Prompt"></textarea>
+        <textarea id="prompt" rows="1" placeholder="Tell the team what to do next…" aria-label="Prompt"></textarea>
         <button type="submit" class="btn btn-primary" id="promptsend" title="Send (Enter)">${iconSvg("send")}<span>Send</span></button>
       </div>
       <div id="promptimages" class="chips" hidden></div>
@@ -77,15 +77,15 @@ export const GUI_PAGE = `<!doctype html>
     <div id="stats" class="stats"></div>
     <section class="card" aria-labelledby="loops-title">
       <header class="card-head">
-        <h2 id="loops-title">Loops</h2>
+        <h2 id="loops-title">Roles</h2>
         <div class="spacer"></div>
-        <button type="button" class="btn btn-sm" id="resetall" title="Zero every loop's ticks, commits, tokens, and cost — scheduling is untouched">${iconSvg("refresh")}<span>Reset counters</span></button>
-        <div class="menu-anchor" id="wakelaterwrap"><button type="button" class="btn btn-sm" id="wakelater" aria-haspopup="menu" title="Wake every loop later">${iconSvg("clock")}<span>Wake later</span></button></div>
-        <button type="button" class="btn btn-sm" id="wakeall" title="Wake every loop now, skipping any sleep or backoff">${iconSvg("bolt")}<span>Wake all</span></button>
+        <button type="button" class="btn btn-sm" id="resetall" title="Zero every role's runs, commits, tokens, and cost — scheduling is untouched">${iconSvg("refresh")}<span>Reset counters</span></button>
+        <div class="menu-anchor" id="wakelaterwrap"><button type="button" class="btn btn-sm" id="wakelater" aria-haspopup="menu" title="Wake every role later">${iconSvg("clock")}<span>Wake later</span></button></div>
+        <button type="button" class="btn btn-sm" id="wakeall" title="Wake every role now, skipping any sleep">${iconSvg("bolt")}<span>Wake all</span></button>
       </header>
       <div class="table-wrap">
         <table class="table loops" id="loopstable">
-          <thead><tr><th class="c-loop">Loop</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
+          <thead><tr><th class="c-loop">Role</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
           <tbody id="loops"></tbody>
         </table>
       </div>
@@ -106,7 +106,7 @@ export const GUI_PAGE = `<!doctype html>
           <div class="seg" id="feedfilter" role="tablist" aria-label="Activity filter">
             <button type="button" data-filter="notable" class="active">Notable</button><button type="button" data-filter="all">All events</button>
           </div>
-          <label><span class="sr-only">Loop</span><select class="field" id="feedrole"><option value="">All loops</option></select></label>
+          <label><span class="sr-only">Role</span><select class="field" id="feedrole"><option value="">All roles</option></select></label>
           <label><span class="sr-only">Search</span><input class="field" id="feedgrep" type="search" placeholder="Search activity…" autocomplete="off"></label>
         </header>
         <ol id="feed" class="feed"></ol>

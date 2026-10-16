@@ -306,65 +306,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
 - `npm run test` passes.
 
-### Plain terms text, part 10/19: Dashboard shell and the Team view (planned 2026-10-16 by user; requires part 1/19, part 3/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules" and "Guards"; touches src/ui/gui/gui-page.ts + gui-client.ts + gui-client-boot.ts + gui-client-fleet.ts + test/vocabulary.test.ts + tests)
-
-**Goal.** The dashboard's navigation and first view use the Wording rules' names. "Fleet" becomes "Team", the "Loops" card becomes "Roles", the "Queued" tab becomes "Inbox", and tiles count merges and runs. The vocabulary guard can also check the browser modules' visible strings.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- The guard already parses each `*_JS` `String.raw` template as browser JavaScript (Plain terms groundwork part 2/4), so a headed gui-client module is checked on its browser string literals only, and a browser line ending `// vocabulary-ok: …` is exempt.
-- `GUI_PAGE` (src/ui/gui/gui-page.ts), visible text only:
-  - The sidebar's `aria-label` "Fleet" → "Team", and the brand label "tumwater fleet" → "tumwater team".
-  - The nav tab and the view title "Fleet" → "Team".
-  - The composer placeholder → "Tell the team what to do next…".
-  - The card title "Loops" → "Roles", and the table header "Loop" → "Role".
-  - The feed picker "Loop" → "Role", and "All loops" → "All roles".
-  - Button titles → "Zero every role's runs, commits, tokens, and cost …" and "Wake every role now, skipping any sleep".
-  - Every id, class and href hash stays: `#fleet`, `tab-fleet`, `fleet-view`, `loops-title`, `loopstable`. Later series rename them, and old hashes keep routing.
-  - gui-page.ts gets no `// vocabulary: plain` header in this series. About nine of its ids, classes and hashes contain retired words (`fleet-view`, `tab-fleet`, `fleet-title`, `fleetsub`, `#fleet`, `loops-title`, `loopstable`, `loops`, `c-loop`), and the page is one template literal, so no line can carry `// vocabulary-ok`. These are identifiers, so this part does not rename them and the guard does not learn to skip HTML attributes.
-    - The code series rename them together with their CSS rules in gui-styles.ts and their client selectors: Plain terms code team takes the `fleet` names, and Plain terms code runner takes the `loop` names. The scripting series renames the `#fleet` hash.
-    - Plain terms code cleanup's guard flip then scans the file.
-    - gui-styles.ts holds no user-visible text and gets no header either.
-- src/ui/gui/gui-client.ts: in the next-run cell, "backoff " → "sleeping ". Mark `activeView = "fleet"` and the other view ids.
-- src/ui/gui/gui-client-boot.ts: "Restart requested — tumwater applies it within one poll", and "Notes updated". Mark the view ids, the hashes (`loop/`, `#loops`) and the data-act names.
-- src/ui/gui/gui-client-fleet.ts:
-  - `renderSidebar`:
-    - The version card: "Version <sha>" and "Running version". The restart icon's title: "Restart onto the update now".
-    - The disk tile follows the rules. The slots tile: "Roles running at once out of the team limit, then each capped provider's …".
-    - The scheduled stop: "the team finishes current work, then stops".
-    - The `--for` note: "tumwater was started with `start --for`; at the deadline it finishes current work, prints a per-role summary, and stops".
-    - Quiet hours follow the rules. Bootstrap: "maintenance roles wait until enough plans are done; plan, feature and director keep running".
-  - `renderStats`:
-    - "N of M roles", with the in-flight breakdown printed from `phaseInfo` labels, not keys.
-    - "every role is between runs", and "the team is stopped".
-    - "Merged today", "See every run in History", "Runs today", and "per role".
-  - `renderBacklog`:
-    - The tab "Queued" → "Inbox", "Inbox empty", and "Messages you send wait here until their role's next run."
-    - "Roles post here when they need a decision from you.", and "The plan role files features in PLANS.md."
-    - "No longer in the inbox — …".
-  - `renderFeed`:
-    - Source chips go through the `roleLabel` twin, and the `harness` source shows as "tumwater".
-    - The empty states: "Merges, failures, and questions show up here. All events has every run start and check.", "Events appear here as the roles work.", "Widen the Search or Role picker …", and "Clear the Role or Search box …".
-  - `renderAlerts`: the banner icons' titles follow the rules.
-  - Keep `backlogTab = "queued"` and the other internal keys, marked.
-- Add the header to gui-client.ts, gui-client-boot.ts and gui-client-fleet.ts.
-- After the four dashboard parts land, regenerate docs/gui.png by hand (plans/terminology.md "Manual steps").
-
-**Files touched.**
-- src: src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-fleet.ts.
-- Tests: test/gui.test.ts, test/gui-client.test.ts (the shell cases), test/gui-client-boot.test.ts, test/gui-client-fleet.test.ts, test/gui-client-sidebar.test.ts.
-
-**Acceptance criteria.**
-- The served page shows the nav tab "Team", a "Roles" card with a "Role" column, and the placeholder "Tell the team what to do next…". `#fleet` and `#loop/<id>` still open their views.
-- The Team view shows "Merged today", "Runs today", "N of M roles" and an "Inbox" tab, and its feed chips read "feature #2" and "tumwater".
-- The guard's browser-mode fixture test passes, and the three headed modules pass the guard.
-- `npm run test` passes.
-
 ### Plain terms text, part 11/19: Dashboard Roles card and view model and Merge queue card (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-loops.ts + gui-client-model.ts + gui-client-pending.ts + tests)
 
 **Goal.** The Roles card's rows, result pills and actions use the glossary and the shared labels. The "Land queue" card becomes the "Merge queue" card.
@@ -3250,6 +3191,65 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 10/19: Dashboard shell and the Team view (done 2026-10-16; planned 2026-10-16 by user; requires part 1/19, part 3/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules" and "Guards"; touches src/ui/gui/gui-page.ts + gui-client.ts + gui-client-boot.ts + gui-client-fleet.ts + test/vocabulary.test.ts + tests)
+
+**Goal.** The dashboard's navigation and first view use the Wording rules' names. "Fleet" becomes "Team", the "Loops" card becomes "Roles", the "Queued" tab becomes "Inbox", and tiles count merges and runs. The vocabulary guard can also check the browser modules' visible strings.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The guard already parses each `*_JS` `String.raw` template as browser JavaScript (Plain terms groundwork part 2/4), so a headed gui-client module is checked on its browser string literals only, and a browser line ending `// vocabulary-ok: …` is exempt.
+- `GUI_PAGE` (src/ui/gui/gui-page.ts), visible text only:
+  - The sidebar's `aria-label` "Fleet" → "Team", and the brand label "tumwater fleet" → "tumwater team".
+  - The nav tab and the view title "Fleet" → "Team".
+  - The composer placeholder → "Tell the team what to do next…".
+  - The card title "Loops" → "Roles", and the table header "Loop" → "Role".
+  - The feed picker "Loop" → "Role", and "All loops" → "All roles".
+  - Button titles → "Zero every role's runs, commits, tokens, and cost …" and "Wake every role now, skipping any sleep".
+  - Every id, class and href hash stays: `#fleet`, `tab-fleet`, `fleet-view`, `loops-title`, `loopstable`. Later series rename them, and old hashes keep routing.
+  - gui-page.ts gets no `// vocabulary: plain` header in this series. About nine of its ids, classes and hashes contain retired words (`fleet-view`, `tab-fleet`, `fleet-title`, `fleetsub`, `#fleet`, `loops-title`, `loopstable`, `loops`, `c-loop`), and the page is one template literal, so no line can carry `// vocabulary-ok`. These are identifiers, so this part does not rename them and the guard does not learn to skip HTML attributes.
+    - The code series rename them together with their CSS rules in gui-styles.ts and their client selectors: Plain terms code team takes the `fleet` names, and Plain terms code runner takes the `loop` names. The scripting series renames the `#fleet` hash.
+    - Plain terms code cleanup's guard flip then scans the file.
+    - gui-styles.ts holds no user-visible text and gets no header either.
+- src/ui/gui/gui-client.ts: in the next-run cell, "backoff " → "sleeping ". Mark `activeView = "fleet"` and the other view ids.
+- src/ui/gui/gui-client-boot.ts: "Restart requested — tumwater applies it within one poll", and "Notes updated". Mark the view ids, the hashes (`loop/`, `#loops`) and the data-act names.
+- src/ui/gui/gui-client-fleet.ts:
+  - `renderSidebar`:
+    - The version card: "Version <sha>" and "Running version". The restart icon's title: "Restart onto the update now".
+    - The disk tile follows the rules. The slots tile: "Roles running at once out of the team limit, then each capped provider's …".
+    - The scheduled stop: "the team finishes current work, then stops".
+    - The `--for` note: "tumwater was started with `start --for`; at the deadline it finishes current work, prints a per-role summary, and stops".
+    - Quiet hours follow the rules. Bootstrap: "maintenance roles wait until enough plans are done; plan, feature and director keep running".
+  - `renderStats`:
+    - "N of M roles", with the in-flight breakdown printed from `phaseInfo` labels, not keys.
+    - "every role is between runs", and "the team is stopped".
+    - "Merged today", "See every run in History", "Runs today", and "per role".
+  - `renderBacklog`:
+    - The tab "Queued" → "Inbox", "Inbox empty", and "Messages you send wait here until their role's next run."
+    - "Roles post here when they need a decision from you.", and "The plan role files features in PLANS.md."
+    - "No longer in the inbox — …".
+  - `renderFeed`:
+    - Source chips go through the `roleLabel` twin, and the `harness` source shows as "tumwater".
+    - The empty states: "Merges, failures, and questions show up here. All events has every run start and check.", "Events appear here as the roles work.", "Widen the Search or Role picker …", and "Clear the Role or Search box …".
+  - `renderAlerts`: the banner icons' titles follow the rules.
+  - Keep `backlogTab = "queued"` and the other internal keys, marked.
+- Add the header to gui-client.ts, gui-client-boot.ts and gui-client-fleet.ts.
+- After the four dashboard parts land, regenerate docs/gui.png by hand (plans/terminology.md "Manual steps").
+
+**Files touched.**
+- src: src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-fleet.ts.
+- Tests: test/gui.test.ts, test/gui-client.test.ts (the shell cases), test/gui-client-boot.test.ts, test/gui-client-fleet.test.ts, test/gui-client-sidebar.test.ts.
+
+**Acceptance criteria.**
+- The served page shows the nav tab "Team", a "Roles" card with a "Role" column, and the placeholder "Tell the team what to do next…". `#fleet` and `#loop/<id>` still open their views.
+- The Team view shows "Merged today", "Runs today", "N of M roles" and an "Inbox" tab, and its feed chips read "feature #2" and "tumwater".
+- The guard's browser-mode fixture test passes, and the three headed modules pass the guard.
+- `npm run test` passes.
 
 ### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests) (done 2026-10-16)
 

@@ -830,3 +830,13 @@ test("gui /api/prompt-role refuses images with no reroute target and names where
     server.close();
   }
 });
+
+test("the page shell uses the team, role and inbox words but keeps the old ids and hashes", async () => {
+  const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
+  assert.match(GUI_PAGE, /<span>Team<\/span>/);
+  assert.match(GUI_PAGE, /<h2 id="loops-title">Roles<\/h2>/);
+  assert.match(GUI_PAGE, /<th class="c-loop">Role<\/th>/);
+  assert.match(GUI_PAGE, /placeholder="Tell the team what to do next…"/);
+  assert.match(GUI_PAGE, /<option value="">All roles<\/option>/);
+  assert.match(GUI_PAGE, /href="#fleet" id="tab-fleet"/, "the hash and ids stay for later series");
+});

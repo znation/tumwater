@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's boot, browser-side: view routing over #fragment links (Back/Forward and
  * bookmarks work, re-clicking the open tab refetches), #loop/<role> opening that loop's
  * drawer with the address bar following it, the global action dispatcher behind the
@@ -16,9 +17,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   }
   // ---- views ----
   // view-routing:start
-  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" };
+  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
   function switchView(v) {
-    if (!VIEWS[v]) v = "fleet";
+    if (!VIEWS[v]) v = "fleet"; // vocabulary-ok: view id
     activeView = v;
     for (const k of Object.keys(VIEWS)) {
       $(VIEWS[k]).hidden = k !== v;
@@ -27,7 +28,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (k === v) tab.setAttribute("aria-current", "page");
       else tab.removeAttribute("aria-current");
     }
-    if (v === "fleet" && lastStatus) renderFleet(lastStatus);
+    if (v === "fleet" && lastStatus) renderFleet(lastStatus); // vocabulary-ok: view id
     if (v === "history") fetchHistory();
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
@@ -45,8 +46,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // script and the dashboard never polls again — a frozen page from a hand-edited URL.
     let h = location.hash.slice(1);
     try { h = decodeURIComponent(h); } catch { /* malformed escape: route on the raw fragment */ }
-    if (h.startsWith("loop/")) {
-      if (!routed) switchView("fleet");
+    if (h.startsWith("loop/")) { // vocabulary-ok: URL hash, old hashes keep routing
+      if (!routed) switchView("fleet"); // vocabulary-ok: view id
       if (openLoopRole() !== h.slice(5)) openLoop(h.slice(5));
     } else switchView(h);
     routed = true;
@@ -92,7 +93,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     return ((lastStatus && lastStatus[file]) || [])[Number(index)];
   }
   function runAct(act, arg) {
-    if (act === "loop") openLoop(arg);
+    if (act === "loop") openLoop(arg); // vocabulary-ok: data-act name
     else if (act === "close") closeDrawer();
     else if (act === "view") location.hash = arg;
     else if (act === "budget") openBudgetEditor();
@@ -102,12 +103,12 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/restart", {}, (d) =>
         d && typeof d.message === "string"
           ? d.message
-          : "Restart requested — the fleet applies it within one poll");
+          : "Restart requested — tumwater applies it within one poll");
     else if (act === "reclaim")
       postAction("/api/reclaim", {}, (d) =>
         d && typeof d.message === "string" ? d.message : "Reclaim requested");
     else if (act === "questions" || act === "queued" || act === "backlog") {
-      if (activeView !== "fleet") location.hash = "fleet";
+      if (activeView !== "fleet") location.hash = "fleet"; // vocabulary-ok: view id and URL hash
       if (act !== "backlog") setBacklogTab(act);
       $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (act === "answer") {
@@ -178,7 +179,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/role-notes", { role: arg, text }, (d) => {
         noteEditing = null;
         loadDrawerRole(arg);
-        return d && typeof d.message === "string" ? d.message : "Notebook updated";
+        return d && typeof d.message === "string" ? d.message : "Notes updated";
       });
     } else if (act === "mention") {
       const [file, index] = arg.split(":");
@@ -194,7 +195,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // A history row's drill-down button sits inside the row's data-open cell area but must not
     // open the drawer — expansion is the button's alone (gui-client-history's own delegated
     // handler toggles the card).
-    if (open && !t.closest("#loops") && !t.closest("[data-tickdetail]")) { ev.preventDefault(); toggleLoop(open.dataset.open); }
+    if (open && !t.closest("#loops") && !t.closest("[data-tickdetail]")) { // vocabulary-ok: element selectors
+      ev.preventDefault();
+      toggleLoop(open.dataset.open);
+    }
   });
   const typing = (el) => el instanceof Element && el.closest("input, textarea, select, [contenteditable]") !== null;
   document.addEventListener("keydown", (ev) => {
@@ -223,9 +227,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // ---- the poll ----
   function rerender() {
     if (!lastStatus) return;
-    if (activeView === "fleet") renderFleet(lastStatus);
+    if (activeView === "fleet") renderFleet(lastStatus); // vocabulary-ok: view id
     if (activeView === "pending") renderPendingQueue(lastStatus);
-    if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus);
+    if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus); // vocabulary-ok: drawer kind
   }
   let lastEventKey = null;
   // New events are what move the numbers the other panels show (today's landings, the History
@@ -264,7 +268,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       renderSidebar(d);
       renderAlerts(d);
       renderComposer(d);
-      if (activeView === "fleet") renderFleet(d);
+      if (activeView === "fleet") renderFleet(d); // vocabulary-ok: view id
       if (activeView === "pending") renderPendingQueue(d);
       if (activeView === "history") syncHistoryRoles(d);
       // Keep the Usage/Failures Loop pickers in step with the fleet while either is open.

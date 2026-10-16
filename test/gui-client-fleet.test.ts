@@ -17,7 +17,7 @@ function backlogScope(backlogTab = "queued", extra: Record<string, unknown> = {}
     endQueuedEdit(): void;
     setBacklogTab(tab: string): void;
     beginBacklogNew(kind: string): void;
-  }>(["format", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew"], {
+  }>(["format", "labels", "view-model", "backlog"], ["renderBacklog", "beginQueuedEdit", "endQueuedEdit", "setBacklogTab", "beginBacklogNew"], {
     backlogTab,
     paintPanel: (id: string, html: string) => { panels[id] = html; },
     icon: iconStub,
@@ -44,7 +44,7 @@ test("the Queued tab shows how long each prompt has waited, and unstamped ones a
   const html = panels["backlog"] ?? "";
   // A stamped prompt carries its age in the meta line (fmtAgo's relative phrasing).
   assert.match(html, />for the director · queued 5m ago</);
-  assert.match(html, />for the qa loop · queued 2h ago</);
+  assert.match(html, />for the qa role · queued 2h ago</);
   // A null stamp renders exactly today's meta text — the age is omitted, not an error.
   assert.match(html, />for the director<\/span>/, "the unstamped director prompt keeps the bare meta");
   // The cancel affordance is unchanged for both rows: the queue-file address and the role,
@@ -186,7 +186,7 @@ test("the In flight tile counts a running director even though it holds no permi
     ],
   });
   const html = panels["stats"] ?? "";
-  assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 loops<\/small>/, "the tile counts both live loops");
+  assert.match(html, /In flight<\/span><span class='stat-value'>2 <small>of 2 roles<\/small>/, "the tile counts both live loops");
   assert.match(html, />2 working</, "the subtitle names both as working");
 });
 

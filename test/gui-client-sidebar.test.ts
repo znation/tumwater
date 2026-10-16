@@ -74,7 +74,7 @@ test("a stale build renders the sidebar Build row's refresh icon as the restart 
   // The exact markup alertParts() emits for the build alert's restartable icon: the global
   // [data-act='restart'] handler in gui-client-boot.ts dispatches it with no new wiring.
   assert.match(panels.statuschips!,
-    /<button type='button' class='alert-icon' data-act='restart' title='Restart onto the new build now'><i:refresh><\/button>/,
+    /<button type='button' class='alert-icon' data-act='restart' title='Restart onto the update now'><i:refresh><\/button>/,
     "the stale build's icon is the same restart button the alert carries");
 });
 
@@ -96,14 +96,14 @@ test("the Build row's text and behind-count are unchanged in both cases", () => 
     pid: 123,
     build: { sha: "a".repeat(40), stale: true, aheadCommits: 3 },
   });
-  assert.match(panels.statuschips!, /Build <span class='mono'>aaaaaaaa<\/span> · 3 behind/,
+  assert.match(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span> · 3 behind/,
     "the stale row keeps its text and behind-count");
   renderSidebar({
     running: true,
     pid: 123,
     build: { sha: "a".repeat(40), stale: false, aheadCommits: 0 },
   });
-  assert.match(panels.statuschips!, /Build <span class='mono'>aaaaaaaa<\/span>(?! · \d+ behind)/,
+  assert.match(panels.statuschips!, /Version <span class='mono'>aaaaaaaa<\/span>(?! · \d+ behind)/,
     "the fresh row keeps its text and shows no behind-count");
 });
 
