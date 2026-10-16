@@ -108,6 +108,16 @@ export interface RoleViewPayload {
   /** The next tick's assembled prompt, verbatim, through the preview seam — or null when
    * the loop has nothing to run (a director with an empty inbox). */
   nextPrompt: string | null;
+  /** The loop's persisted schedule (loop-state.ts): the epoch-ms instant before which it
+   * must not run again and the backoff in seconds it is currently serving (0 when not
+   * backing off) — the same two fields the status `next run` cell reads. `nextRunAt` is 0
+   * for a loop that has never been scheduled; `backoffSeconds` is 0 unless a wake-clearing
+   * backoff is in force. */
+  nextRunAt: number;
+  backoffSeconds: number;
+  /** When the loop's last tick ended, epoch ms — absent for a never-ticked loop, so the
+   * JSON shape stays unchanged until the loop has acted. */
+  lastTickEndedAt?: number;
   /** The loop's recent tick outcomes — the newest up to 8 `tick_end` results read from the
    * event log, ordered newest-first, each with its time, result, duration, and summary.
    * Absent when the loop has no `tick_end` events, so the JSON shape is unchanged for a
@@ -251,6 +261,13 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
         state,
         preview: true,
       })?.prompt ?? null,
+    // The loop's schedule — surfaced read-only from the same persisted state rolePayload
+    // already loaded for the model-fallback episode and the next-tick preview, so no new
+    // read path exists and the collector stays one loadLoopState per role. `lastTickEndedAt`
+    // is omitted (JSON unchanged) until the loop has actually ticked.
+    nextRunAt: state.nextRunAt,
+    backoffSeconds: state.backoffSeconds,
+    ...(state.lastTickEndedAt !== undefined ? { lastTickEndedAt: state.lastTickEndedAt } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
   };
 }

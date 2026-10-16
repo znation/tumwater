@@ -1,5 +1,5 @@
 import { agree, shortSpanPhrase } from "../text/phrases.js";
-import { formatTimestamp } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
@@ -122,8 +122,38 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
   return line;
 }
 
-/** Render one loop's inspection payload as Markdown. */
-export function renderRoleMarkdown(p: RoleViewPayload): string {
+/** The loop's schedule as two Markdown bullet lines — `Next tick` and `Last tick` — in the
+ * same words and wording family as the fleet surface's `next run` cell (status-render.ts's
+ * nextRunCell), so the role view and the status table cannot drift on when a loop acts next:
+ * a never-scheduled loop (nextRunAt 0) reads `not scheduled yet`; a due loop reads `due now`;
+ * a future one reads `in <Ns>` through humanSeconds, prefixed `backoff ` while backoffSeconds
+ * > 0 (the wake row-action clears exactly that). `Last tick` reuses formatTimestamp and the
+ * same `humanSeconds … ago` phrasing the status `last tick` cell ages with, or `never` for a
+ * loop that has not ticked. `now` is injected (default Date.now()) so the renderer stays a
+ * pure function of the payload and the test can pin a fixed clock. */
+function scheduleLine(p: RoleViewPayload, now: number): string[] {
+  let next: string;
+  if (p.nextRunAt <= 0) {
+    next = "not scheduled yet";
+  } else {
+    const remain = secondsUntil(p.nextRunAt, now);
+    if (remain <= 0) {
+      next = "due now";
+    } else {
+      next = `in ${humanSeconds(remain)}`;
+      if (p.backoffSeconds > 0) next = `backoff ${next}`;
+    }
+  }
+  const last =
+    p.lastTickEndedAt !== undefined
+      ? `${formatTimestamp(p.lastTickEndedAt)} (${humanSeconds(secondsSince(p.lastTickEndedAt, now))} ago)`
+      : "never";
+  return [`- Next tick: ${next}`, `- Last tick: ${last}`];
+}
+
+/** Render one loop's inspection payload as Markdown. `now` is injected (default Date.now())
+ * so the schedule lines stay a pure function of the payload — the test pins a fixed clock. */
+export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
   lines.push(`- Loop: "${p.id}" (${p.title})${p.custom ? " — user-defined loop" : ""}`);
   const state = [p.enabled ? "enabled" : "disabled", p.paused ? "paused" : "not paused"].join(", ");
@@ -172,6 +202,11 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
   lines.push(`- Queued prompts: ${p.inboxCount}`);
+  // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastTickEndedAt, read from
+  // the same persisted state): when it may tick again, and when it last did — the one
+  // place the fleet's `next run`/`last tick` vocabulary was absent. Rendered from the
+  // injected `now`, so the lines stay a pure function of the payload.
+  lines.push(...scheduleLine(p, now));
   // The loop's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):
   // one line per outcome so `tumwater role <id>` shows what the loop has been DOING, not just
   // what it is. Absent (never ticked) renders nothing new, so old goldens are byte-identical.

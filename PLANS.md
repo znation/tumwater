@@ -62,7 +62,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 
-### Each loop's schedule in `tumwater role <id>`: the role view says when a loop last ticked and when it next runs (planned 2026-10-16 by plan; independent of every other Planned entry — the two eligible waiting entries touch the `run` CLI wiring (`--tui`) and the status payload/render + `gui-client-fleet` (last-landed), and this touches none of them: only `src/roles/role-view.ts`, `src/roles/role-render.ts`, and `test/role-view.test.ts`. The one file it reads, `src/loop/loop-state.ts`, is read-only here via the `loadLoopState` rolePayload already calls — no `src/loop`, `src/status`, `src/ui/status-*`, `src/cli`, or `src/tick` edit)
+## Done
+### Each loop's schedule in `tumwater role <id>`: the role view says when a loop last ticked and when it next runs (planned 2026-10-16 by plan; independent of every other Planned entry — the two eligible waiting entries touch the `run` CLI wiring (`--tui`) and the status payload/render + `gui-client-fleet` (last-landed), and this touches none of them: only `src/roles/role-view.ts`, `src/roles/role-render.ts`, and `test/role-view.test.ts`. The one file it reads, `src/loop/loop-state.ts`, is read-only here via the `loadLoopState` rolePayload already calls — no `src/loop`, `src/status`, `src/ui/status-*`, `src/cli`, or `src/tick` edit) — done 2026-10-16
 
 **Goal.** `tumwater role <id>` is the one-loop inspection surface: it names the loop's model, tier, images, fallbacks, billing, min interval, queued prompts, notebook, next prompt, and recent tick outcomes — but never says when the loop WILL act next or last did. The status table and TUI/GUI already carry a `next run` column (status-render.ts's `nextRunCell`, status-payload's `nextRunAt`/`backoffSeconds`, gui-client.ts's `fmtNextRun`) and the loop's `lastTickEndedAt`; the role view is the one place those scheduling facts are absent. So `tumwater role feature` cannot answer the operator's simplest question — "when will this loop check in again, and why is it backing off?" This adds a Schedule block answering it, in the same fields and wording family as the fleet surface so the two cannot drift.
 
@@ -82,7 +83,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The renderer stays pure: schedule text is a function of the payload plus an injected `now`, pinned by the role-view test; the collector's one state read is the `loadLoopState` rolePayload already performs, so no new read path.
 - `npm run test` passes.
 
-## Done
+
 ### Each loop's last-landed age: `tumwater status`, the TUI and the dashboard say when a loop last landed a change to main — done 2026-10-16
 
 **Goal.** The fleet row already names a loop's `commits` (a lifetime count) and its last-tick time (`lastTickEndedAt`), and the just-landed no-change streak counts consecutive empty ticks. None of them answer the wall-clock question an autonomous-fleet operator most wants: "when did this loop last actually land something on main?" A loop can tick `no_change` forever — the streak climbs but resets on any landing, and the commits count climbs without saying how long the dry spell has been. This adds the direct answer, the productivity complement to `lastError` and `lastTickEndedAt`.

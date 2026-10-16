@@ -610,3 +610,50 @@ test("role markdown renders the Recent tick outcomes section before the instruct
   assert.match(md, /- .* · no_change — nothing to do/);
   assert.ok(md.indexOf("## Recent tick outcomes") < md.indexOf("## Instructions override"));
 });
+
+// The loop's schedule (PLANS.md): the role view says when the loop next runs and when it
+// last ticked, derived from the persisted nextRunAt/backoffSeconds/lastTickEndedAt and in
+// the same words and wording family as the status `next run`/`last tick` cells. The clock is
+// injected so every line is pinned by a fixed now (the renderer stays a pure function).
+test("role payload and render surface the loop's schedule from persisted state", () => {
+  const dir = root();
+  const now = 1_700_000_000_000;
+  // A scheduled loop in backoff with a last tick: a future nextRunAt with backoffSeconds > 0.
+  const state = freshLoopState("feature");
+  state.nextRunAt = now + 300_000; // 5m away
+  state.backoffSeconds = 120;
+  state.lastTickEndedAt = now - 180_000; // 3m ago
+  saveLoopState(dir, state);
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.nextRunAt, now + 300_000);
+  assert.equal(p.backoffSeconds, 120);
+  assert.equal(p.lastTickEndedAt, now - 180_000);
+  const md = renderRoleMarkdown(p, now);
+  assert.match(md, /- Next tick: backoff in 5m/); // backoff prefix while backing off
+  // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
+  assert.match(md, /- Last tick: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(3m ago\)/);
+
+  // A due loop (nextRunAt at/past now) reads `due now`.
+  state.nextRunAt = now;
+  saveLoopState(dir, state);
+  assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now), /- Next tick: due now/);
+
+  // A scheduled loop out of backoff reads plain `in <Ns>` with no backoff prefix.
+  state.nextRunAt = now + 60_000;
+  state.backoffSeconds = 0;
+  saveLoopState(dir, state);
+  const plain = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS), now);
+  assert.match(plain, /- Next tick: in 1m/);
+  assert.doesNotMatch(plain, /backoff/);
+
+  // A never-ticked, never-scheduled default reads `not scheduled yet`/`never`, and the JSON
+  // payload omits lastTickEndedAt (and reads nextRunAt 0) until the loop has been scheduled.
+  const freshDir = root();
+  const fresh = rolePayload(freshDir, "feature", NO_MODELS);
+  assert.equal(fresh.nextRunAt, 0);
+  assert.equal(fresh.backoffSeconds, 0);
+  assert.equal(fresh.lastTickEndedAt, undefined);
+  const freshMd = renderRoleMarkdown(fresh, now);
+  assert.match(freshMd, /- Next tick: not scheduled yet/);
+  assert.match(freshMd, /- Last tick: never/);
+});
