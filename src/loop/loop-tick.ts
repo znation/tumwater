@@ -3,8 +3,7 @@ import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import type { LoopState } from "./loop-state.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf, foldCommitsSince } from "../git/git.js";
-import { plural } from "../text/phrases.js";
+import { branchExists, deleteRef, commitMessage, changeBaseRev, headOf } from "../git/git.js";
 import { git, gitTry } from "../git/git-run.js";
 import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.js";
 import { leaseSlot } from "../git/worktree-pool.js";
@@ -34,7 +33,7 @@ import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
-import { stageTickLanding } from "../tick/tick-stage.js";
+import { stageTickLanding, foldAgentCommitsSince } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
@@ -626,8 +625,7 @@ async function tickWithWorktreePhase(
   const tickBase = await headOf(wt, "HEAD");
   const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.ticks}`, resuming, cfg);
   // The harness owns every commit (INV-H1): fold any the agent made into the tick's one commit.
-  const folded = await foldCommitsSince(wt, tickBase);
-  if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
+  await foldAgentCommitsSince(ctx, wt, tickBase);
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
   // post-run handlers spend any more pi runs: only this run is evidence about the primary.
   ctx.foldModelFallback(fallbackCtx, pi);

@@ -76,10 +76,16 @@ interface TickStageContext {
   finishAbortedTick(): Promise<TickOutcome>;
 }
 
-/** Folds commits an agent follow-up turn made since `base` into the tick's tree, keeping the
- * harness commit the tick's only one (INV-H1); warns when any were folded. */
-async function foldFollowUpCommits(ctx: TickStageContext, base: string): Promise<void> {
-  const folded = await foldCommitsSince(ctx.wt, base);
+/** Fold commits an agent run made since `base` into the tick's tree, keeping the harness commit
+ * the tick's only one (INV-H1); warns when any were folded. The one home of the fold-and-warn
+ * policy and its wording, shared by the two fold sites — the authoring run (loop-tick.ts) and
+ * this module's follow-up turns — so they cannot drift. */
+export async function foldAgentCommitsSince(
+  ctx: { warn(msg: string): void },
+  wt: string,
+  base: string,
+): Promise<void> {
+  const folded = await foldCommitsSince(wt, base);
   if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
 }
 
@@ -120,7 +126,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   if (summary === null) {
     const base = await headOf(ctx.wt, "HEAD");
     const followUp = await ctx.requestSummary(ctx.wt);
-    await foldFollowUpCommits(ctx, base);
+    await foldAgentCommitsSince(ctx, ctx.wt, base);
     if (followUp?.aborted) return ctx.finishAbortedTick();
     if (followUp) {
       summary = extractSummary(followUp.finalText);
@@ -144,7 +150,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     if (over !== null) {
       const base = await headOf(ctx.wt, "HEAD");
       const followUp = await ctx.requestSummary(ctx.wt, over);
-      await foldFollowUpCommits(ctx, base);
+      await foldAgentCommitsSince(ctx, ctx.wt, base);
       if (followUp?.aborted) return ctx.finishAbortedTick();
       const short = followUp && summaryOverCap(followUp.finalText) === null ? extractSummary(followUp.finalText) : null;
       if (short !== null) {
@@ -205,7 +211,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     const before = findings.length;
     const fixBase = await headOf(ctx.wt, "HEAD");
     const fixUp = await ctx.requestStageFix(ctx.wt, findings);
-    await foldFollowUpCommits(ctx, fixBase);
+    await foldAgentCommitsSince(ctx, ctx.wt, fixBase);
     if (fixUp?.aborted) return ctx.finishAbortedTick();
     if (fixUp) {
       summary = extractSummary(fixUp.finalText) ?? summary;
