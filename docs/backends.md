@@ -1,23 +1,23 @@
 # Backends
 
-tumwater drives pi, and pi drives a model backend. Nothing in the harness is tied to a
+tumwater drives pi, and pi drives a model backend. Nothing in tumwater is tied to a
 particular one: any OpenAI-compatible endpoint pi can reach will do. A second backend, Claude
-Code, is selectable with `agent` (see [Claude Code](#claude-code-agent-claude) below).
+Code, is selectable with `backend` (see [Claude Code](#claude-code-backend-claude) below).
 
 ## What a backend must provide
 
 - **An OpenAI-compatible endpoint pi can reach** — a hosted provider's base URL, or a local
   server. Name it with `provider` and `model` in `tumwater.json` (and a per-role override under
-  `roles.<id>` when a single loop needs a different model).
-- **A context window large enough for a tick prompt.** Every tick starts a fresh pi session
-  (~8k-token prefill), but a dense tick grows to tens of thousands of tokens before it ends.
+  `roles.<id>` when a single role needs a different model).
+- **A context window large enough for a run's prompt.** Every run starts a fresh pi session
+  (~8k-token prefill), but a dense run grows to tens of thousands of tokens before it ends.
   Declare an honest `contextWindow` for the model in pi's `models.json` — it is what pi uses to
-  decide when to compact, and the number that keeps a tick off the backend's real ceiling.
+  decide when to compact, and the number that keeps a run off the backend's real ceiling.
 
 ## How the config points at it
 
-`model` in `tumwater.json` names the model every loop uses, as one `provider/id[:thinking]`
-selector; `thinking` sets the level for any selector without a `:level` suffix. Leave `model`
+`model` in `tumwater.json` names the model every role uses, as one `provider/id[:thinking]`
+model id; `thinking` sets the level for any model id without a `:level` suffix. Leave `model`
 out and pi's own default applies:
 
 ```json
@@ -25,18 +25,18 @@ out and pi's own default applies:
 "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
 ```
 
-The loop rows then name that default — read from pi's `settings.json` beside its models catalog —
+The role rows then name that default — read from pi's `settings.json` beside its models catalog —
 marked `pi default`, so `tumwater status`, the TUI and the dashboard still show which model each
-loop runs. That marking only appears when `tumwater.json` resolves no model at all, so the two
+role runs. That marking only appears when `tumwater.json` resolves no model at all, so the two
 never disagree about where a model name came from.
 
-`fallback` names the free model role loops switch to when the primary cannot carry the work:
+`fallback` names the free model roles switch to when the primary cannot carry the work:
 once `maxDailyCostUsd` is spent (the budget gate), and while a role's tier primary keeps
 failing with provider-class errors (model failure fallback, described in
 [how-it-works.md](how-it-works.md)). The budgeted model does the day's paid work; the free one
-keeps the fleet alive afterwards and covers a primary that is down.
+keeps the team alive afterwards and covers a primary that is down.
 
-When different seams want different models, `model` and `fallback` each take a map listing the
+When different model jobs want different models, `model` and `fallback` each take a map listing the
 tiers you have — a tier left out of `model` inherits `default`, and a tier left out of `fallback`
 borrows another tier's own fallback (small → default → strong; default → strong → small; strong →
 default and never small, because a weak reviewer or planner costs more than a paused one):
@@ -48,13 +48,13 @@ default and never small, because a weak reviewer or planner costs more than a pa
 ```
 
 The legacy `provider` key and `fallbackModel` object still parse for existing configs, but
-tumwater writes the selector forms above.
+tumwater writes the model id forms above.
 
 Only a provider/model pair pi's `models.json` prices at zero is accepted as a fallback, so the
 switch cannot spend past the cap: an unknown id, a priced model, or a missing definitions file is
-refused and the fleet pauses instead. `fleetModelsFree()` reads that same catalog to decide the
+refused and the team pauses instead. `fleetModelsFree()` reads that same catalog to decide the
 budget badge, which reads `· budget: $10.02/$10 today · fallback: <model> (cost n/a)` while the
-fallback is carrying the fleet.
+fallback is carrying the team.
 
 ### Notes for local fallbacks
 
@@ -68,86 +68,86 @@ fallback is carrying the fleet.
 
 ## Image input (claims, probe, reroute)
 
-A loop reads an image (an `--attach` on a queued prompt, or a file the tick itself points pi
-at) only when its model's seam can. Capability has one source of truth — `seamImageInput`
+A role reads an image (an `--attach` on a message in its inbox, or a file the run itself points pi
+at) only when its model job can. Capability has one source of truth — `seamImageInput`
 (`src/agent/image-input.ts`):
 
-- **Claude seams** can always read images (every Claude model does), so `agent: "claude"`
+- **Claude model jobs** can always read images (every Claude model does), so `backend: "claude"`
   answers `true` for any model, never probed.
-- **pi seams** read the model's `input` list in pi's `models.json` — `"image"` present means
+- **pi model jobs** read the model's `input` list in pi's `models.json` — `"image"` present means
   capable, and *absent* means text-only. A pair missing from `models.json` is *unknown* (the
-  `tier models` doctor check already flags it), not assumed capable.
+  `models for each tier` doctor check already flags it), not assumed capable.
 
-A claimed pi seam is only as good as the **live probe** confirms: `tumwater doctor` shows each
+A claimed pi model job is only as good as the **live probe** confirms: `tumwater doctor` shows each
 claimed model a real generated PNG and checks the answer, caching the verdict in
-`.tumwater/state/image-probes.json` for 7 days. A failed probe makes the seam read `false`
+`.tumwater/state/image-probes.json` for 7 days. A failed probe makes the job read `false`
 everywhere — a claim the doctor contradicted must not let a blind read through. The TUI Health
 tab and the dashboard never probe (a refresh must not spend a model call); `--reprobe` forces
 terminal runs to probe again.
 
-When a tick does read an image on a text-only seam, the run is stopped and the loop **reroutes**
-onto a peer tier that reads images (small → default → strong from the loop's own tier; a strong
-seam never drops to small). The surfaces say so without running doctor: `tumwater role <id>` and
-`status --json` show the loop's `imageInput` and its reroute target, and the images fleet alert
-is blue when every text-only loop has a target ("reruns on …") or amber when some loop has none
+When a run does read an image on a text-only model job, it is stopped and the role **reroutes**
+onto a peer tier that reads images (small → default → strong from the role's own tier; a strong
+job never drops to small). The surfaces say so without running doctor: `tumwater role <id>` and
+`status --json` show the role's `imageInput` and its reroute target, and the images team alert
+is blue when every text-only role has a target ("reruns on …") or amber when some role has none
 or a claimed model failed the probe.
 
 The same capability gates **submission**: `tumwater prompt --attach` and the dashboard refuse an
-image when the target loop reads none and no tier can, naming the fix before anything is queued;
-when the loop reroutes, the prompt is accepted and the command says where it will run.
+image when the target role reads none and no tier can, naming the fix before anything is queued;
+when the role reroutes, the prompt is accepted and the command says where it will run.
 
-## Claude Code (`agent: "claude"`)
+## Claude Code (`backend: "claude"`)
 
-`agent` in `tumwater.json` names the backend bare selectors and the no-model default run on;
+`backend` in `tumwater.json` names the backend bare model ids and the no-model default run on;
 `claude` runs on the Claude Code CLI instead of pi:
 
 ```json
-"agent": "claude",
-"agents": { "claude": { "bin": "/usr/local/bin/claude", "args": ["--debug"] } }
+"backend": "claude",
+"backends": { "claude": { "bin": "/usr/local/bin/claude", "args": ["--debug"] } }
 ```
 
-`agents.claude.bin` overrides the binary (`TUMWATER_CLAUDE_BIN` overrides it for one run), and
-`agents.claude.args` appends extra argv after the harness's own flags; a flag the harness sets
+`backends.claude.bin` overrides the binary (`TUMWATER_CLAUDE_BIN` overrides it for one run), and
+`backends.claude.args` appends extra argv after tumwater's own flags; a flag tumwater sets
 itself is a load error rather than a silent override. With `CLAUDE_CONFIG_DIR` set, claude's
 transcripts live under that dir (`<config>/projects/…`) and tumwater's resume check and doctor's
 "claude transcripts" row follow it; unset, they stay at `~/.claude`.
-A selector whose provider names a backend
-id always routes there regardless of the top-level `agent`: `claude/claude-opus-5-5` runs on
+A model id whose provider names a backend
+id always routes there regardless of the top-level `backend`: `claude/claude-opus-5-5` runs on
 claude, `huggingface/…` on pi. Each tier has a claude default — Opus 5.5 strong, Sonnet 5.5
-default, Haiku 5.5 small — so `agent: "claude"` with no `model` still resolves a concrete model
-per seam; the director runs at the strong tier. The observability surfaces name the backend in the selector (`claude/claude-sonnet-5-5`
-in `tumwater status`, the dashboards, and the event feed), and a seam with no model at all reads
+default, Haiku 5.5 small — so `backend: "claude"` with no `model` still resolves a concrete model
+per job; the director runs at the strong tier. The observability surfaces name the backend in the model id (`claude/claude-sonnet-5-5`
+in `tumwater status`, the dashboards, and the event feed), and a job with no model at all reads
 `claude default`.
 
 **Billing and spend.** Each claude run reports the CLI's own price for it. A run billed to an
 API key — or one that saw `isUsingOverage` at any point — feeds the daily cap like any priced
-pi model; at a fleet of today's size it can amount to tens of dollars a day, so pair it with a
+pi model; at a team of today's size it can amount to tens of dollars a day, so pair it with a
 free `fallback`. A run paid by a claude.ai subscription is exempt from the cap: its
-API-equivalent cost is tracked as notional spend, printed on its own line in `tumwater report`,
+API-equivalent cost is tracked as estimated spend, printed on its own line in `tumwater report`,
 and never counted in the spend totals. A rejected subscription usage window holds subscription
-claude seams until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command), so the fleet does not
-burn a failed run per loop per poll; pi seams and API-key claude seams keep ticking. A
-subscription claude seam with no overage is free to the budget gate too: at the cap it stays
-put while priced seams move to their fallback, and a subscription claude pair is accepted as a
+Claude model jobs until it resets (the first `allowed_warning` is logged too; both events page a configured `notify` command), so the team does not
+burn a failed run per role per poll; pi model jobs and API-key Claude model jobs keep running. A
+subscription Claude job with no overage is free to the budget gate too: at the cap it stays
+put while priced jobs move to their fallback, and a subscription claude pair is accepted as a
 budget `fallback` for a priced pi primary; an account spending into overage counts like API
-spend. The window is shown in place of the daily spend on a subscription-only fleet, and a run
+spend. The window is shown in place of the daily spend on a subscription-only team, and a run
 cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
-An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every claude seam
+An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every Claude model job
 prefer the key over a claude.ai login and bill the API, silently ending the subscription
-free ride. `tumwater doctor` warns when the key is set, a seam routes to claude, and `claude
+free ride. `tumwater doctor` warns when the key is set, a model job routes to claude, and `claude
 auth status` reports a claude.ai login. A claude reviewer's or resolver's window readings
-reach the account file when its run folds, not only at the author's next tick end, and the
-display surfaces (the budget badge, the fleet alert, `tumwater role`) name a claude
+reach the account file when its run folds, not only at the author's next run end, and the
+display surfaces (the budget badge, the team alert, `tumwater role`) name a claude
 fallback or reviewer by its backend (`claude/claude-sonnet-5-5`).
 
 **Per-run cap.** An API-billed claude authoring run carries `--max-budget-usd` set to what
-remains of the daily budget — the lower of the fleet cap (`maxDailyCostUsd` − fleet spend) and
+remains of the daily budget — the lower of the team cap (`maxDailyCostUsd` − team spend) and
 the role's own cap (`maxDailyCostUsdPerRole` − that role group's spend) when set — so one
 runaway run cannot overshoot it. Subscription-billed runs and the director get no per-run cap.
-A run the CLI stops at that cap keeps its session and worktree edits; the next tick resumes
+A run the CLI stops at that cap keeps its session and worktree edits; the next run resumes
 them as a `handoff` with a "budget-capped" cause rather than failing.
 
 **Stalled tool calls.** claude sends no content updates while a tool runs, so every open
@@ -165,7 +165,7 @@ rather than a recommendation. Replace every value with your own backend's.
 **A budgeted API primary with the local server as the cost n/a
 fallback.** tumwater.json names `huggingface` / `deepseek-ai/DeepSeek-V4.1-Flash` (HF Inference
 Providers' OpenAI-compatible router at `https://router.huggingface.co/v1`) with
-`maxDailyCostUsd` 10, and `fallbackModel` `omlx` / `Qwen3.8-27B-MLX-oQ4e-mtp` — so the fleet
+`maxDailyCostUsd` 10, and `fallbackModel` `omlx` / `Qwen3.8-27B-MLX-oQ4e-mtp` — so the team
 spends up to $10/day on the API model and then keeps working locally for free until local
 midnight. pi 0.84.2 ships a built-in `huggingface` provider whose catalog predates V4.1-Flash, so
 `~/.pi/agent/models.json` (tumwater reads pi's files from `$PI_CODING_AGENT_DIR` when it is set, as pi does) adds just that model (declared at $0.30/$1.20 per million tokens — the
@@ -173,7 +173,7 @@ highest rate among the providers the router auto-selects as of 2026-09-18, so th
 later than real spend) and inherits the provider's base URL and env-based key. **The key is the
 one thing not in any config file: export `HF_TOKEN` in the environment that runs `tumwater run`**
 (`pi auth check --provider huggingface --json` reports `ready` once it is set). The two models'
-context windows differ by an order of magnitude (1,048,576 vs 126,928); ticks start a fresh pi
+context windows differ by an order of magnitude (1,048,576 vs 126,928); runs start a fresh pi
 session with a small prefill, so a switch mid-day is safe, but a role prompt written for the API
 model's window would not be.
 
@@ -189,14 +189,14 @@ oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
 (`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
 `api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
 limit for pi's output reserve), and must send the API key. `tumwater.json`
-names `provider`/`model` explicitly so `fleetModelsFree()` sees a free fleet, with
-`maxConcurrent` **3** — the three role loops alone saturate all three slots (at 2, one slot
+names `provider`/`model` explicitly so `fleetModelsFree()` sees a free team, with
+`maxConcurrent` **3** — the three role instances alone saturate all three slots (at 2, one slot
 sat idle whenever the director was not running, which is most of the time), and the
-director's bypass makes a fourth client only while it is active (~10–15% of ticks); the
+director's bypass makes a fourth client only while it is active (~10–15% of runs); the
 fourth request queues rather than joins the batch (`max_num_seqs` stays 3), so MTP draft
 acceptance is untouched, and its measured 103–118 s TTFT sits well inside pi's 30-min idle
-timeout and the harness's quiet watchdog. Measured server-reported:
-**35.2 tok/s per stream at ~51k context** (fleet paused); a slot sweep at ~20k context put 3 slots
+timeout and tumwater's stall watchdog. Measured server-reported:
+**35.2 tok/s per stream at ~51k context** (team paused); a slot sweep at ~20k context put 3 slots
 ahead of 4 on every axis — 73.3 aggregate / 24.4 per stream / 74.2% draft acceptance / 28.3 GiB
 peak wired, versus 65.0 / 16.2 / 69.7% / 32.6 GiB — because MTP acceptance falls monotonically with
 concurrency (unaligned batches drop back to standard decode). Rate is strongly context-dependent,
@@ -208,10 +208,10 @@ moved nothing either time. At 3 slots the live footprint was pool ~57 GB / KV 10
 
 A third deliberate value: `max_context_window` is **131072, not the model's 262144 maximum**. At the
 full window oMLX aborted prefills outright — `Request aborted: process memory limit exceeded (usage
-111.0 GB, abort threshold (hard watermark) 92.1 GB, metal_cap ceiling 96.9 GB)` — killing 9 ticks,
+111.0 GB, abort threshold (hard watermark) 92.1 GB, metal_cap ceiling 96.9 GB)` — killing 9 runs,
 three at a time, because `_get_dynamic_ceiling` is recomputed every poll and collapses when the rest
 of the Mac is busy, taking the abort threshold down with it. Halving the window halves the
-worst-case prefill transient and KV. Live ticks peak around 64-80k, so 131072 still leaves ~1.6x
+worst-case prefill transient and KV. Live runs peak around 64-80k, so 131072 still leaves ~1.6x
 headroom. The companion fix is `memory_guard_tier: aggressive` (active-reclaim ratio 0.5 -> 0.8),
 which holds the ceiling at the Metal cap instead of letting it collapse, plus `hot_cache_max_size`
 4GB. **Slot count is not a lever here** — it was tried twice (6->4, 4->3) and moved nothing; the
@@ -219,7 +219,7 @@ pinned MLX pool is ~60% of the footprint and does not scale with concurrency.
 
 Two oMLX settings are deliberately left at non-obvious values:
 - `chunked_prefill` stays **false** (its default). Turning it on collapsed throughput ~20× here
-  (16.4 → 0.8 tok/s, TTFT 118 s): the fleet's large prefills interleave continuously and starve
+  (16.4 → 0.8 tok/s, TTFT 118 s): the team's large prefills interleave continuously and starve
   decode.
 - `prefill_memory_guard` is **on** (re-enabled 2026-09-14 with the 16 GB oQ4e model). It had been
   turned off under the earlier 8-bit model, where oMLX's pinned buffer pool
@@ -240,50 +240,50 @@ longer describe what runs.
   configured thinking level per turn; GGUF models that only expose an on/off reasoning toggle make
   LM Studio warn and fall back to `on`. Reasoning stays enabled; no tumwater or pi change needed.
   To silence it, set a thinking level the model supports (or none) in `tumwater.json` / pi settings.
-- **"terminated" tick errors after ~20 minutes**: pi's HTTP client (undici) applies an idle
+- **"terminated" run errors after ~20 minutes**: pi's HTTP client (undici) applies an idle
   timeout (`httpIdleTimeoutMs` in pi's settings.json, default 300000 = 5 min) to both response
   headers and gaps between body chunks. A local server prefilling a large context under
   concurrent load can take longer than that to stream its first byte, so the request is severed
-  ("terminated"), pi's retries die the same way, and the tick fails after ~4 × 5 min. Fix: set
+  ("terminated"), pi's retries die the same way, and the run fails after ~4 × 5 min. Fix: set
   a large-but-finite `"httpIdleTimeoutMs"` (e.g. `1800000` = 30 min) in
   pi's `settings.json` — `$PI_CODING_AGENT_DIR/settings.json` when that env var is set, else
   `~/.pi/agent/settings.json` —. Do not use `0` (fully disabled): a zombie socket then waits
-  forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min; kills a run when no
+  forever. tumwater's `quietTimeoutSeconds` stall watchdog (default 30 min; kills a run when no
   *progress* — message, turn, and tool boundary events — happens, so content-free keepalives
   cannot reset it) and `runTimeoutSeconds` remain the layered hang guards.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full
   window. A session that overruns the server's real limit fails with "Context size has been
-  exceeded"; since every tick runs a fresh session, the next tick is unaffected.
+  exceeded"; since every run starts a fresh session, the next run is unaffected.
 - **Truncated-at-the-ceiling turns look like normal stops**: as a session nears the declared
   `contextWindow`, pi clamps each request's `max_output_tokens` to the space remaining (down
   to a floor of 16). LM Studio's `/v1/responses` reports a generation stopped by that clamp
   as status `completed` rather than `incomplete`/`max_output_tokens`, so pi sees stopReason
   "stop" instead of "length" and its compact-and-retry overflow handling never fires — the
-  turn ends mid-thought with no text and no tool call, the agent loop finishes, and the tick
+  turn ends mid-thought with no text and no tool call, the agent finishes, and the run
   lands as `no_change` with a "finished without changes and without declaring nothing-to-do"
   warning (now annotated with "likely cut off at the context ceiling"). Prevention: tumwater
-  starts every tick in a fresh session, so ticks begin with only the prompt (~8k tokens) and
-  need ~75k of within-tick growth to reach the cliff — several hours of dense work. Note that
-  pi never compacts MID-run (only at end of run), so a single extremely long tick can still
-  hit the cliff; the tick then ends with the warning above, any files pi already edited are
-  still committed, and — when no changes landed — the loop does not idle-backoff: its next
-  tick resumes the session pi just compacted at end of run (short bridge prompt, same task),
-  effectively mid-task compaction at tick granularity. After 3 consecutive cut-offs on one
-  task it gives up and falls back to a fresh tick with normal backoff; a cut-off director
+  starts every run in a fresh session, so runs begin with only the prompt (~8k tokens) and
+  need ~75k of within-run growth to reach the cliff — several hours of dense work. Note that
+  pi never compacts MID-run (only at end of run), so a single extremely long run can still
+  hit the cliff; the run then ends with the warning above, any files pi already edited are
+  still committed, and — when no changes landed — the role does not back off: its next
+  run resumes the session pi just compacted at end of run (short bridge prompt, same task),
+  effectively mid-task compaction at run granularity. After 3 consecutive cut-offs on one
+  task it gives up and falls back to a fresh run with the usual wait; a cut-off director
   prompt is re-queued and reruns fresh.
 - **Match clients to slots, or prefix caches thrash**: each server slot keeps the KV prefix of
   the last request it served. Keep the number of concurrent tumwater clients — `maxConcurrent`
   plus one for the director's bypass — at or below the server's slot count. One client over, and
   slots keep evicting each other's session prefixes: with persistent multi-10k-token sessions,
   nearly every turn re-prefills from scratch (minutes each), requests queue behind those
-  prefills, and starved ticks die as "no pi progress" watchdog kills even though the server is
+  prefills, and starved runs die as "no pi progress" watchdog kills even though the server is
   healthy. Symptom to look for: small-context requests timing out while the server log shows
   continuous back-to-back prompt processing. With per-provider caps
   (`maxConcurrentPerProvider`, plans/provider-concurrency.md) the rule is: cap the local
   provider at its slots minus one for the director, then raise `maxConcurrent`
-  freely — the provider cap, not the fleet total, is what bounds that server.
+  freely — the provider cap, not the team total, is what bounds that server.
 - **A unified KV pool cannot exceed the model's training context; dedicated slots can grow per
   stream**: with unified KV on, llama.cpp treats the shared pool as the slot context and caps it at
   `n_ctx_train` — asking Qwen3.8-27B for 524288 logs "the slot context exceeds the training context

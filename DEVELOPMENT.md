@@ -2,7 +2,7 @@
 
 ```bash
 npm install && npm run build && npm link   # build from source and put `tumwater` on PATH
-npm test                                   # lint + build + the unit suite (what the landing gate runs)
+npm test                                   # lint + build + the unit suite (what the merge runs)
 npm run test:gate                          # lint + build + only the tests your change reaches
 npm run lint                               # just the lint: no-floating-promises (see eslint.config.js)
 npm test merge                             # only test files whose name contains "merge"
@@ -11,34 +11,34 @@ npm run test:e2e                           # live-orchestrator e2e tier, kept ou
 npm run test:coverage [filter]             # the unit suite with node's coverage table
 ```
 
-Tests fake pi with a shell shim on PATH, so they run offline. `test/test-runner.ts` keeps the
-harness's own variables out of the suite (`TUMWATER_PI_BIN`, which outranks PATH, and the
-supervisor's marker), so a suite a fleet starts sees the same fakes as one run by hand. Drop any
-new variable the harness honors there too. The e2e tier stays out of the gating suite because its
+Tests fake pi with a shell shim on PATH, so they run offline. `test/test-runner.ts` keeps
+tumwater's own variables out of the suite (`TUMWATER_PI_BIN`, which outranks PATH, and the
+supervisor's marker), so a suite a team starts sees the same fakes as one run by hand. Drop any
+new variable tumwater honors there too. The e2e tier stays out of the gating suite because its
 wall-clock waits are not load-proof. Coverage runs go through the runner too (`npm run
 test:coverage`), never raw `node --test` or a tree compiled elsewhere — the fakes resolve their
 shim relative to `dist/` inside the checkout. The root `vitest.config.mjs` is a tripwire, not a
 config: it makes `npx vitest` refuse to start here (BUGS.md 2026-10-05). Non-npm projects can
-replace the gate's check with `check.command` in tumwater.json (`command`, optional `cwd` and
+replace the merge's check with `check.command` in tumwater.json (`command`, optional `cwd` and
 `timeoutSeconds`).
 
 Comments wrap at 100 columns; code lines have no limit. `test/comment-width.test.ts` enforces it.
 
 Every suite script starts with `scripts/live-checkout-guard.mjs`, which refuses to run in a
-checkout a live fleet runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
-suite's first steps recompile and restamp the `dist/` that fleet executes and its dashboards
+checkout a live team runs from (its `.tumwater/state/orchestrator.json` names a live pid): the
+suite's first steps recompile and restamp the `dist/` that team executes and its dashboards
 watch. Run suites in a worktree. For the same reason a test never writes the running checkout's
 own `dist/` or `tumwater.json`. The gui reload test in `test/cli-gui.test.ts` serves a copy of
 `dist/src` from a fixture repo instead.
 
 ## The gate runs the affected tests
 
-The fleet's review gate runs `npm run test:gate` before each model review
+The team's review gate runs `npm run test:gate` before each model review
 (`check.gateCommand` in tumwater.json). It runs the same lint and build as `npm test`, then only
 the test files the change can reach (`test-runner.js --affected`, selection in
-`test/affected-tests.ts`). The full `npm test` still runs once per landing, on the rebased tree,
+`test/affected-tests.ts`). The full `npm test` still runs once per merge, on the rebased tree,
 and on main's baseline. A dependency the selection misses therefore costs a later rejection,
-never a red main. Over the fleet's recent commits the selection averaged about half the suite's
+never a red main. Over the team's recent commits the selection averaged about half the suite's
 time.
 
 The selection follows the compiled tree. It reads imports, `new URL("…", import.meta.url)` file
@@ -75,7 +75,7 @@ trusted publishing; no token involved), and attaches the tarball to a GitHub rel
 The tag always names the exact commit CI green-lit while package.json still said the
 released version, so the workflow's tag-vs-version check passes trivially. The bump is a
 separate `tumwater(release): <version>` commit made AFTER a release (it replays on a
-rejected push, since the fleet lands commits continuously), keeping main's version
+rejected push, since the team merges commits continuously), keeping main's version
 meaning what's next while npm's `latest` means what shipped.
 Prerequisites (once): `gh` authenticated locally, and the trusted publisher registered
 on npm (`npm trust github tumwater --file release.yml --repo znation/tumwater
@@ -84,7 +84,7 @@ commands prompt for an interactive 2FA challenge).
 
 ## Checking rendered output by hand
 
-Two scripts run the compiled build against a seeded fake fleet rather than through the
+Two scripts run the compiled build against a seeded fake team rather than through the
 suite, for a change whose point is that the dashboards should look identical:
 
 - `scripts/diff-check.mjs` renders one fixture through the baseline build and the working
@@ -127,8 +127,8 @@ and starts files longest-first by the durations it records in `dist/test/.durati
   `chmod`ing a new executable. macOS scans every newly created executable on its first exec
   (~150 ms, much more under load). `writeScript` symlinks the one committed
   `test/fixtures/script-shim` instead.
-- Put timing on logical time rather than real sleeps. `watchdogClock` drives runPi's quiet
-  watchdog, stall warning and (with `timeouts`) tick timeout; `waitForLogLines` waits until the
+- Put timing on logical time rather than real sleeps. `watchdogClock` drives runPi's stall
+  watchdog, stall warning and (with `timeouts`) run timeout; `waitForLogLines` waits until the
   run's raw log shows the output the test is about to act on.
 - Synchronize on events or files, never on a sleep. Don't assume that two concurrent runs overlap:
   make one wait for the other (bounded), because a fast fake can finish before its sibling starts.
@@ -140,22 +140,22 @@ and starts files longest-first by the durations it records in `dist/test/.durati
 On macOS, a Node process that sets `process.title` registers with LaunchServices, and
 launchservicesd keeps a Mach port for it after it exits. npm sets a title on every run and pi at
 startup. The kernel kills launchservicesd near 268K ports, and the GUI session wedges until a
-forced power-off (BUGS.md 2026-09-28). The harness starts pi and every build check with
+forced power-off (BUGS.md 2026-09-28). tumwater starts pi and every build check with
 `withoutLaunchServicesCheckIn` (src/process/process.ts), which covers every process below them.
 Give any new spawn site that starts npm, pi or other title-setting Node programs in bulk the same
 `env: withoutLaunchServicesCheckIn(process.env)`. `tumwater doctor` reports the count on its
-`mach ports` line, and a running fleet warns from 100K.
+`macOS port leak` line, and a running team warns from 100K.
 
 ## Layout
 
 - `src/loop/loop.ts`: the runner class and its lifecycle/public surface. `src/loop/loop-pi.ts`
-  holds its pi-run plumbing, `loop-tick.ts` the tick pipeline phases, `loop-recovery.ts` the
+  holds its pi-run plumbing, `loop-tick.ts` the run pipeline phases, `loop-recovery.ts` the
   abort/pin/recovery phases, and `loop-fallback.ts` the model-fallback fold.
 - `src/orchestrator/orchestrator.ts`: the scheduler; `src/orchestrator/orchestrator-launch.ts`
-  holds its launch pass (admitting due runners to their ticks).
+  holds its launch pass (admitting due roles to their runs).
 - `src/agent/`: the backend-neutral agent runner (`run-agent.ts` — the spawn, the
   `tumwater_run` marker, watchdogs, abort, group kill and marker sweep, stderr capture, and
-  result assembly), the `AgentBackend` seam with its id-keyed registry (`agent-backend.ts`),
+  result assembly), the `AgentBackend` interface with its id-keyed registry (`agent-backend.ts`),
   and the per-run session ledger the resume paths query (`session-ledger.ts`).
 - `src/pi/pi.ts`: the pi facade (`runPi` alias, `hasResumableSession`, the stderr-match
   constants) over the backend-neutral runner, beside its adapter (`pi-backend.ts`) and plumbing
@@ -175,10 +175,10 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   truncation, integer parsing) beside the single-format homes split from it: `format.ts`
   (number, money, and hash formats), `datetime.ts` (local date/time and day math), and
   `text-width.ts` (terminal-column geometry). Presentation only; imported by every layer.
-- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution landing flow,
+- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution merge flow,
   on top of the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection,
   fast-forward).
-- `src/tick/`: the per-tick pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
+- `src/tick/`: the per-run pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,
   `tick-detail.ts`, `tick-detail-data.ts`, `tick-outcome.ts`).
 - `src/pi-extension/`: the bundled bounded-output pi extension.
@@ -186,7 +186,7 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   (`gui-command.ts`), the server (`gui-server.ts`), its /api GET and POST handlers
   (`gui-endpoints.ts`, `gui-endpoint-commands.ts`), the shared request/response plumbing
   (`http-body.ts`), and the endpoint argument checks (`gui-args.ts`). The browser view it
-  serves lives in `src/ui/gui/`; this directory owns the socket and the operator endpoints,
+  serves lives in `src/ui/gui/`; this directory owns the socket and the control endpoints,
   not the page.
 - `src/ui/`: the shared status table, backlog report, and transcript rendering; `src/ui/gui/`
   holds the browser dashboard's page and client assets and `src/ui/tui/` the ink terminal
@@ -203,12 +203,12 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   `status-inbox.ts` and `status-budget.ts`) and its per-poll cached readers; rendering lives
   in `src/ui/status-render.ts`.
 - `src/gates/`: the scheduler's admission gates — daily budget, disk floor, quiet hours,
-  pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the fleet
+  pause, startup/readiness, per-role caps, the maintenance quota, error streaks, and the team
   failure hold (`gate-polls.ts` polls them).
-- `src/fleet/`: fleet-wide state (`fleet-state.ts` — the pause markers and their writers), the
-  provider/kind hold, the fleet polls, the failure spread and error-storm alarms, and the
+- `src/fleet/`: team-wide state (`fleet-state.ts` — the pause markers and their writers), the
+  provider/kind hold, the team polls, the failure spread and error-storm alarms, and the
   worktree reclaim pass (`reclaim.ts`).
-- `src/scheduling/`: scheduling primitives — per-role backoff, the quiet-hours parser,
+- `src/scheduling/`: scheduling primitives — per-role waits between runs, the quiet-hours parser,
   multi-instance claims, and the `--once` round.
 - `src/verdict/`: the agent reply contract — the NOTHING_TO_DO and REFUSED sentinels, the
   SUMMARY/WHY/RISK/VERIFIED block, the review VERDICT line, and the refusal and fix-claim
@@ -218,20 +218,20 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   exemptions, and known flakes.
 - `src/baseline/`: the pristine-main baseline check and the red-main detection that rejects
   every code diff while main itself is red.
-- `src/redeploy/`: the self-redeploy path — the staleness policy, the probes that decide a
+- `src/redeploy/`: the update path — the staleness policy, the probes that decide a
   safe restart, and the production redeployer.
 - `src/doctor/`: the `tumwater doctor` pre-flight checks and their shared report contract.
-- `src/inbox/`: the prompt queue — the director's and per-role inboxes, image attachments,
-  submit/edit/cancel, and the queue-backed `prompt` command body.
-- `src/operator/`: the operator-intent layer shared by the
+- `src/inbox/`: the inbox — the director's and per-role inboxes, image attachments,
+  submit/edit/cancel, and the inbox-backed `prompt` command body.
+- `src/operator/`: the layer for your commands, shared by the
   `pause`/`resume`/`wake`/`abort`/`stop`/`retire` CLI commands, the dashboard's POST routes,
   and the TUI's controls.
 - `src/backlog/`: the BUGS/PLANS/QUESTIONS markdown — the stat-cached readers, the text
   reader/writer, its structure, its renderer, and its eligibility marks; the QUESTIONS.md
   reader/writer core (`question-answer.ts`) sits here, shared by the CLI's `questions` command
   body, the TUI's answer box, and the dashboard's POST route.
-- `src/brief/`: the project brief — the managed prompt/status sections, reading the initial
-  prompt back out (`brief.ts`), and the shared writer that replaces it under the primary lock
+- `src/brief/`: the project brief — the managed prompt/status sections, reading the
+  brief back out (`brief.ts`), and the shared writer that replaces it under the primary lock
   (`brief-edit.ts`).
 - `src/budget/`: the daily cost budget's accounting and the fallback circuit breaker.
 - `src/change/`: the `tumwater diff` collector and renderer.
@@ -244,9 +244,9 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
 - `src/init/`: `tumwater init` and its bundled template catalog.
 - `src/process/`: process spawning and supervision — the supervisor, process groups, the
   process table, and the macOS LaunchServices guard.
-- `src/prompt/`: the prompt dialect, principles, and the landing gate's pi-run prompt text
-  (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`) a tick prefill is assembled from.
-- `src/roles/`: the role catalog, its loop ids, per-role guidance, and the per-role views the
+- `src/prompt/`: the prompt dialect, principles, and the merge's pi-run prompt text
+  (`prompt.ts`, `prompt-followup.ts`, `gate-prompts.ts`) a run's prefill is assembled from.
+- `src/roles/`: the role catalog, its role ids, per-role guidance, and the per-role views the
   CLI and dashboards read.
 - Top-level modules: `src/cli.ts` (the dispatcher), `src/paths.ts` (repo layout constants),
   `src/version.ts`, `src/project-name.ts`, `src/collections.ts`, `src/errno.ts`, and

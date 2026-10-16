@@ -21,28 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms docs, part 3/5: Rewrite the backends guide and DEVELOPMENT.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches docs/backends.md and DEVELOPMENT.md)
-
-**Goal.** docs/backends.md and DEVELOPMENT.md use the glossary's words and the renamed config keys (`backend`, `backends.<id>.bin`/`.args`, `runTimeoutSeconds`). Seams are named as the jobs they are.
-
-**Approach.**
-- Apply the "Glossary" and "Wording rules" tables to prose and list items, as in part 1/5. The wording rules that matter most here: seam → "role runs, the reviewer and the conflict resolver" or "model jobs" ("claude seams" → "Claude model jobs", "a seam's tier" → "a job's tier"); selector → model id; notional spend → estimated spend; harness → tumwater; "pi" in a message the claude backend also reaches → agent; quiet watchdog → stall watchdog (the `quietTimeoutSeconds` key keeps its name); fleet → team; loop rows → role rows; tick → run.
-- docs/backends.md config: `agent` → `backend`, `agents` → `backends` (with `backends.claude.bin` and `backends.claude.args`), `tickTimeoutSeconds` → `runTimeoutSeconds`. The heading "Claude Code (`agent: "claude"`)" becomes "Claude Code (`backend: "claude"`)", so update the intro's in-page link from `#claude-code-agent-claude` to `#claude-code-backend-claude`.
-- docs/backends.md's "Worked example: one machine's measurements, 2026-09" section keeps every number and date; only its words change.
-- Doctor check names quoted in backends.md (`tier models`, "claude transcripts") must match what src/doctor/ prints now; grep before writing.
-- DEVELOPMENT.md: prose terms (the landing gate → the merge, a fleet → the team, harness → tumwater). In "Layout", keep every path and identifier exactly as written (`src/loop/loop.ts`, `src/tick/`, `src/landing/landing-merge.ts`, `src/fleet/`, `LoopRunner`-style names): the Plain terms code series moves those files and updates this list in the same part. Only the prose around them changes ("the per-tick pipeline" → "the per-run pipeline", "admitting due runners to their ticks" → "admitting due roles to their runs"). The `npm test 'loop#resume'` example names a real test file and stays. The doctor line it cites (`mach ports`) uses the title src/doctor/ prints now.
-- Leave alone, for part 5/5 or the code series: event types, `--json` keys, state paths, source paths, identifiers (`fleetModelsFree()`, `seamImageInput`, `agentsInUse`, `withoutLaunchServicesCheckIn`) and test titles.
-- Re-wrap only the paragraphs you change, at ~100 columns.
-
-**Files touched.** docs/backends.md, DEVELOPMENT.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/doctor/, src/config/config-schema.ts.
-
-**Acceptance criteria.**
-- `agent:`, `agents.`, `tickTimeoutSeconds`, `#claude-code-agent-claude` and the words seam/seams, selector and harness no longer appear in docs/backends.md outside backticked identifiers.
-- The in-page link in docs/backends.md's intro resolves to the renamed heading's anchor.
-- Every `src/` path in DEVELOPMENT.md's Layout section still exists.
-- A case-insensitive whole-word grep of both files for the vocabulary guard's retired words finds only backticked paths, identifiers, test names and the names left for part 5/5.
-- `npm run test` passes.
-
 ### Plain terms docs, part 4/5: Rewrite the invariants register in plain terms and mark the dated design docs as pre-rename (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches docs/invariants.md and docs/feature-*.md and docs/implementation-*.md and docs/code-metrics.md and docs/commit-history-analysis.md)
 
 **Goal.** docs/invariants.md states its guarantees in the glossary's words. The dated design records and reports under docs/ stay as written, each with one line that says so and points to docs/glossary.md.
@@ -2555,6 +2533,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Done
 
+### Plain terms docs, part 3/5: Rewrite the backends guide and DEVELOPMENT.md in plain terms (done 2026-10-16; planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches docs/backends.md and DEVELOPMENT.md)
+
+**Goal.** docs/backends.md and DEVELOPMENT.md use the glossary's words and the renamed config keys (`backend`, `backends.<id>.bin`/`.args`, `runTimeoutSeconds`). Seams are named as the jobs they are.
+
+**Approach.**
+- Apply the "Glossary" and "Wording rules" tables to prose and list items, as in part 1/5. The wording rules that matter most here: seam → "role runs, the reviewer and the conflict resolver" or "model jobs" ("claude seams" → "Claude model jobs", "a seam's tier" → "a job's tier"); selector → model id; notional spend → estimated spend; harness → tumwater; "pi" in a message the claude backend also reaches → agent; quiet watchdog → stall watchdog (the `quietTimeoutSeconds` key keeps its name); fleet → team; loop rows → role rows; tick → run.
+- docs/backends.md config: `agent` → `backend`, `agents` → `backends` (with `backends.claude.bin` and `backends.claude.args`), `tickTimeoutSeconds` → `runTimeoutSeconds`. The heading "Claude Code (`agent: "claude"`)" becomes "Claude Code (`backend: "claude"`)", so update the intro's in-page link from `#claude-code-agent-claude` to `#claude-code-backend-claude`.
+- docs/backends.md's "Worked example: one machine's measurements, 2026-09" section keeps every number and date; only its words change.
+- Doctor check names quoted in backends.md (`tier models`, "claude transcripts") must match what src/doctor/ prints now; grep before writing.
+- DEVELOPMENT.md: prose terms (the landing gate → the merge, a fleet → the team, harness → tumwater). In "Layout", keep every path and identifier exactly as written (`src/loop/loop.ts`, `src/tick/`, `src/landing/landing-merge.ts`, `src/fleet/`, `LoopRunner`-style names): the Plain terms code series moves those files and updates this list in the same part. Only the prose around them changes ("the per-tick pipeline" → "the per-run pipeline", "admitting due runners to their ticks" → "admitting due roles to their runs"). The `npm test 'loop#resume'` example names a real test file and stays. The doctor line it cites (`mach ports`) uses the title src/doctor/ prints now.
+- Leave alone, for part 5/5 or the code series: event types, `--json` keys, state paths, source paths, identifiers (`fleetModelsFree()`, `seamImageInput`, `agentsInUse`, `withoutLaunchServicesCheckIn`) and test titles.
+- Re-wrap only the paragraphs you change, at ~100 columns.
+
+**Files touched.** docs/backends.md, DEVELOPMENT.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/doctor/, src/config/config-schema.ts.
+
+**Acceptance criteria.**
+- `agent:`, `agents.`, `tickTimeoutSeconds`, `#claude-code-agent-claude` and the words seam/seams, selector and harness no longer appear in docs/backends.md outside backticked identifiers.
+- The in-page link in docs/backends.md's intro resolves to the renamed heading's anchor.
+- Every `src/` path in DEVELOPMENT.md's Layout section still exists.
+- A case-insensitive whole-word grep of both files for the vocabulary guard's retired words finds only backticked paths, identifiers, test names and the names left for part 5/5.
+- `npm run test` passes.
+
 ### Plain terms docs, part 1/5: Rewrite the README and the command and settings references in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches README.md and docs/cli.md and docs/config.md) — done 2026-10-16
 
 **Goal.** README.md, docs/cli.md and docs/config.md use the glossary's words (team, role, run, merge, notes, brief, inbox, you) and document the commands and config keys under their new names (`tumwater start`, `tumwater history <role> <n>`, `--result merged`, `customRoles`, `backend`/`backends`, `minRunIntervalSeconds`, `runTimeoutSeconds`, `mergeBatchMax`, `maintenancePerWorkMerge`), matching what `tumwater help` prints now.
@@ -2601,7 +2601,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Unit (`test/gui-client-fleet.test.ts`): `renderBacklog` on the Questions tab with `questions: []` and two `answeredQuestions` paints the "No open questions" empty state, then an "Answered recently" divider, then both titles and their decisions. The answered rows contain no `backloglink` and no Answer button. With `answeredQuestions` absent or empty, the Questions tab's html has no "Answered recently" text, so payloads from older builds render as before. The Plans tab never shows answered rows.
 - `npm run test` passes.
 
-||||||| parent of 3b62fdc99 (tumwater(feature): Rewrite docs/how-it-works.md in plain terms)
 ### Plain terms docs, part 2/5: Rewrite docs/how-it-works.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches docs/how-it-works.md) (done 2026-10-16)
 
 **Goal.** docs/how-it-works.md explains tumwater in the glossary's words: a team of roles, each run finds one thing to do, and its commit goes through the merge (rebase, check, review, fast-forward). It names the renamed commands and config keys.
