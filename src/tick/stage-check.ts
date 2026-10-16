@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The landing gate's deterministic checks, run BEFORE a changed tick commits.
  *
  * The gate runs `backlogStructureReason` and `falseFixReason` at landing time, by which point
@@ -96,7 +97,7 @@ export function assignedMovedFinding(
   moved: readonly { key: string; title: string }[],
 ): string | undefined {
   if (moved.length === 0 || moved.some((m) => m.key === claimKey)) return undefined;
-  return `this tick is assigned one backlog entry but moved a different one: "${moved[0]!.title}"`;
+  return `this run is assigned one backlog entry but moved a different one: "${moved[0]!.title}"`;
 }
 
 /** The staging finding for an unassigned tick that moved a backlog entry a sibling instance
@@ -114,7 +115,7 @@ export function heldMovedFinding(
   const dup = moved.find((m) => heldKeys.has(m.key));
   if (dup === undefined) return undefined;
   return (
-    `this tick moved a backlog entry a sibling instance holds: "${dup.title}" — it is that ` +
+    `this run moved a backlog entry another instance of this role is working on: "${dup.title}" — it is that ` +
     `instance's task (see <held-entries>), so revert every edit made for it, including the ` +
     `entry's move, and leave nothing behind if that was the whole change`
   );

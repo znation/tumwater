@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
@@ -284,12 +285,12 @@ export class LoopPi {
         pi.transientPiCrash
           ? `pi crashed on malformed JSON (${pi.errorMessage ?? "no detail"}) — resuming the session once`
           : pi.transientRateLimit
-            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the pi run once`
+            ? `provider rate-limited the request (429${pi.retryAfterSeconds ? `, retry after ${pi.retryAfterSeconds}s` : `, no hint — waiting ${RATE_LIMIT_NO_HINT_RETRY_S}s`}) — retrying the agent run once`
             : pi.backendKind === "stream-severed"
-              ? "provider severed the in-flight stream (terminated) — retrying the pi run once"
+              ? "provider severed the in-flight stream (terminated) — retrying the agent run once"
               : pi.backendKind === "timeout"
-                ? "provider request timed out after accepting the connection — retrying the pi run once"
-                : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the pi run once",
+                ? "provider request timed out after accepting the connection — retrying the agent run once"
+                : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the agent run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
       // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
@@ -350,7 +351,7 @@ export class LoopPi {
       !this.retryCoversBackendKind(run)
     ) {
       this.host.warn(
-        `provider backend failure (${backendKindPhrase(run.backendKind)}) — the transient retry does not cover this kind; the fleet-wide hold watches for a storm`,
+        `provider backend failure (${backendKindPhrase(run.backendKind)}) — the transient retry does not cover this kind; the team-wide wait watches for a storm`,
       );
     }
   }

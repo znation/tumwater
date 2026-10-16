@@ -657,56 +657,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The `build_check` warnings say "merge check" or "batch check", and the build-swap warnings say "update".
 - `npm run test` passes.
 
-### Plain terms text, part 16/19: Run and runner and workspace and agent messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/tick/ + src/loop/ + src/git/ + src/agent/ + tests)
-
-**Goal.** Warnings and rejection reasons from a run's lifecycle say run, merge, workspace, agent and tumwater: stage checks, timeouts, resumes, retries, workspace leases and agent exits. Messages that both backends can produce no longer say "pi".
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/tick/, except tick-detail*.ts (part 5/19) and tick-prompt.ts and qa-coverage.ts (part 19/19):
-  - stage-check.ts: "this run is assigned one backlog entry but moved a different one …", and "… an entry another instance of this role is working on …".
-  - tick-stage.ts: "folded into tumwater's commit", "nothing to merge", "high-friction run:", and "failed to pin the merge ref; left for the next run's recovery".
-  - tick-timing.ts, the restart and shutdown hand-offs: "restart waiting on <role>'s merge in progress", and "… survive for the next restart".
-  - tick-resume.ts: "merge failed: …".
-  - tick-finalize.ts: "consecutive stalls (no progress)".
-  - tick-verdict.ts: "the agent failed", and "the agent finished without changes and without declaring nothing-to-do".
-  - tick-apply.ts and tick-outcome.ts hold only result codes; they take the header only.
-- src/loop/:
-  - loop-pi.ts, transient retries: "retrying the agent run once", and "the team-wide wait watches for a storm". Text about pi's own crash stays "pi".
-  - loop-recovery.ts: "by its merge ref — leaving the commit on the branch for the next run's recovery".
-  - loop-tick.ts: "an inbox message for <role> attaches an image, but no configured tier can read it".
-  - leftover.ts: "into its merge ref", and "merges ended in unresolved conflicts with main, even after sending it back to the role to resolve".
-  - loop-state.ts: its skip-reason codes and the `"landing"` phase value are state values; mark them.
-- src/git/:
-  - worktree-pool.ts: "could not remove idle workspace <name>", and "the workspace request was stopped before one was free". The `"tick" | "vet"` purposes stay for the state series, marked.
-  - slots-state.ts: its purposes are marked.
-  - commit-message.ts: the `Tick:` trailer and its parser stay for the state series, marked. Convert any prose.
-  - worktree-use.ts: its event source is marked.
-- src/agent/:
-  - run-agent.ts: "stopped by tumwater shutdown", "killed as hung: no agent progress for over …", and "the agent exited N".
-  - claude/claude-args.ts: "repeats a flag tumwater sets".
-  - The backend ids (`"pi"`) in agent-backend.ts and image-input.ts are values and stay.
-  - role-notes-write.ts and mcp/role-notes-server.ts are agent-facing; part 19/19 converts them.
-- Add the header to each module whose prose changed, and to modules that have no flagged literal at all. A module whose only hits are event sources or state values that later series rename stays unheaded.
-
-**Files touched.**
-- src: src/tick/stage-check.ts, tick-stage.ts, tick-timing.ts, tick-resume.ts, tick-finalize.ts, tick-verdict.ts, tick-apply.ts, tick-outcome.ts; src/loop/loop-pi.ts, loop-recovery.ts, loop-tick.ts, leftover.ts, loop-state.ts; src/git/worktree-pool.ts, slots-state.ts, commit-message.ts; src/agent/run-agent.ts, src/agent/claude/claude-args.ts.
-- Tests:
-  - test/stage-check.test.ts, test/tick-stage.test.ts, test/tick-timing.test.ts, test/tick-resume.test.ts, test/tick-finalize.test.ts, test/tick-verdict.test.ts.
-  - test/loop*.test.ts, test/worktree-pool.test.ts, test/commit-message.test.ts, test/claude-args.test.ts, test/claude-run.test.ts.
-  - The e2e suites that assert these warnings.
-
-**Acceptance criteria.**
-- run-agent's hang message reads "no agent progress", and tick-verdict's message for a run that changed nothing names no backend.
-- worktree-pool's warnings say "workspace". The restart hand-off warnings say "merge" and "restart".
-- The headed modules pass the guard.
-- `npm run test` passes.
-
 ### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests)
 
 **Goal.** stderr and warning text from the gates, the self-update redeployer, the orchestrator and the supervisor say tumwater, update, version, restart, your checkout and the team.
@@ -3551,6 +3501,57 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The red-main alert still fires, and a parked waiter still shows no next-run time.
 - `tumwater queue` prints `merge queue (N):` lines tagged `[merging 2m · reviewing]` or `[approved, waiting to merge]`.
 - `npm run test` passes.
+
+### Plain terms text, part 16/19: Run and runner and workspace and agent messages (done 2026-10-16; planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/tick/ + src/loop/ + src/git/ + src/agent/ + tests)
+
+**Goal.** Warnings and rejection reasons from a run's lifecycle say run, merge, workspace, agent and tumwater: stage checks, timeouts, resumes, retries, workspace leases and agent exits. Messages that both backends can produce no longer say "pi".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/tick/, except tick-detail*.ts (part 5/19) and tick-prompt.ts and qa-coverage.ts (part 19/19):
+  - stage-check.ts: "this run is assigned one backlog entry but moved a different one …", and "… an entry another instance of this role is working on …".
+  - tick-stage.ts: "folded into tumwater's commit", "nothing to merge", "high-friction run:", and "failed to pin the merge ref; left for the next run's recovery".
+  - tick-timing.ts, the restart and shutdown hand-offs: "restart waiting on <role>'s merge in progress", and "… survive for the next restart".
+  - tick-resume.ts: "merge failed: …".
+  - tick-finalize.ts: "consecutive stalls (no progress)".
+  - tick-verdict.ts: "the agent failed", and "the agent finished without changes and without declaring nothing-to-do".
+  - tick-apply.ts and tick-outcome.ts hold only result codes; they take the header only.
+- src/loop/:
+  - loop-pi.ts, transient retries: "retrying the agent run once", and "the team-wide wait watches for a storm". Text about pi's own crash stays "pi".
+  - loop-recovery.ts: "by its merge ref — leaving the commit on the branch for the next run's recovery".
+  - loop-tick.ts: "an inbox message for <role> attaches an image, but no configured tier can read it".
+  - leftover.ts: "into its merge ref", and "merges ended in unresolved conflicts with main, even after sending it back to the role to resolve".
+  - loop-state.ts: its skip-reason codes and the `"landing"` phase value are state values; mark them.
+- src/git/:
+  - worktree-pool.ts: "could not remove idle workspace <name>", and "the workspace request was stopped before one was free". The `"tick" | "vet"` purposes stay for the state series, marked.
+  - slots-state.ts: its purposes are marked.
+  - commit-message.ts: the `Tick:` trailer and its parser stay for the state series, marked. Convert any prose.
+  - worktree-use.ts: its event source is marked.
+- src/agent/:
+  - run-agent.ts: "stopped by tumwater shutdown", "killed as hung: no agent progress for over …", and "the agent exited N".
+  - claude/claude-args.ts: "repeats a flag tumwater sets".
+  - The backend ids (`"pi"`) in agent-backend.ts and image-input.ts are values and stay.
+  - role-notes-write.ts and mcp/role-notes-server.ts are agent-facing; part 19/19 converts them.
+- Add the header to each module whose prose changed, and to modules that have no flagged literal at all. A module whose only hits are event sources or state values that later series rename stays unheaded.
+
+**Files touched.**
+- src: src/tick/stage-check.ts, tick-stage.ts, tick-timing.ts, tick-resume.ts, tick-finalize.ts, tick-verdict.ts, tick-apply.ts, tick-outcome.ts; src/loop/loop-pi.ts, loop-recovery.ts, loop-tick.ts, leftover.ts, loop-state.ts; src/git/worktree-pool.ts, slots-state.ts, commit-message.ts; src/agent/run-agent.ts, src/agent/claude/claude-args.ts.
+- Tests:
+  - test/stage-check.test.ts, test/tick-stage.test.ts, test/tick-timing.test.ts, test/tick-resume.test.ts, test/tick-finalize.test.ts, test/tick-verdict.test.ts.
+  - test/loop*.test.ts, test/worktree-pool.test.ts, test/commit-message.test.ts, test/claude-args.test.ts, test/claude-run.test.ts.
+  - The e2e suites that assert these warnings.
+
+**Acceptance criteria.**
+- run-agent's hang message reads "no agent progress", and tick-verdict's message for a run that changed nothing names no backend.
+- worktree-pool's warnings say "workspace". The restart hand-off warnings say "merge" and "restart".
+- The headed modules pass the guard.
+- `npm run test` passes.
+
 
 ### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests) — done 2026-10-16
 

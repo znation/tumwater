@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The persisted slot layout of the worktree pool (plans/worktree-pool.md): which
  * `.tumwater/worktrees/_slot-<n>` checkouts exist, who leases each, and which role each is pinned
  * for. Kept in its own module, apart from the pool's lease machinery, so the readers that run in
@@ -75,7 +76,7 @@ function isSlotLease(value: unknown): value is SlotLease {
   return (
     isJsonObject(value) &&
     typeof value.role === "string" &&
-    (value.purpose === "tick" || value.purpose === "vet") &&
+    (value.purpose === "tick" || value.purpose === "vet") && // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
     nonNegativeNumber(value.since, null) !== null &&
     nonNegativeNumber(value.pid, null) !== null
   );
@@ -135,7 +136,7 @@ export function slotForDir(root: string, dir: string): SlotRecord | undefined {
  * ticks lease slots (part 4/5), because nothing writes those leases yet. */
 export async function roleWorktreeDir(root: string, role: string): Promise<string | null> {
   const slots = readSlotsState(root).slots;
-  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "tick");
+  const leased = slots.find((slot) => slot.lease?.role === role && slot.lease.purpose === "tick"); // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
   if (leased !== undefined) return leased.dir;
   const pinned = slots.find((slot) => slot.pinnedFor === role);
   if (pinned !== undefined) return pinned.dir;

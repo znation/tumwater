@@ -69,7 +69,7 @@ test("drainInFlightWork on an operator stop waits out ticks and landings, announ
   assert.equal(aborts, 0, "an operator stop never aborts: the signal already did");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "only the landing wait is announced");
-  assert.match(w[0]!, /^shutdown waiting on the in-flight landing of clean, dry$/);
+  assert.match(w[0]!, /^shutdown waiting on the merge in progress for clean, dry$/);
 });
 
 test("drainInFlightWork on a restart with a landing inside its window waits out the ticks too", async () => {
@@ -92,7 +92,7 @@ test("drainInFlightWork on a restart with a landing inside its window waits out 
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "the hand-off's own wait announcement, not the shutdown one");
-  assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of organize/);
+  assert.match(w[0]!, /^restart waiting on the merge in progress for organize/);
 });
 
 test("drainInFlightWork hands off without a wedged landing and without waiting on reserved ticks", { timeout: 5_000 }, async () => {
@@ -117,5 +117,5 @@ test("drainInFlightWork hands off without a wedged landing and without waiting o
   assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3, "wait, lapse, and abandon are each announced");
-  assert.match(w[2]!, /the aborted landing of clean was still running 0\.05s later — handing off without it/);
+  assert.match(w[2]!, /the aborted merge for clean was still running 0\.05s later — restarting without it/);
 });

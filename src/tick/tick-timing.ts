@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
@@ -169,22 +170,22 @@ export async function awaitLandingForHandoff(
   const deadline = `${windowMs / 1000}s`;
   warnEvent(
     root,
-    "harness",
-    `restart hand-off waiting on the in-flight landing of ${roles} (deadline ${deadline})`,
+    "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+    `restart waiting on the merge in progress for ${roles} (deadline ${deadline})`,
   );
   if (await settlesWithin(landing.promise, windowMs, after)) return "finished";
   abort();
   warnEvent(
     root,
-    "harness",
-    `restart hand-off: the landing of ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next generation`,
+    "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+    `restart: the merge for ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next restart`,
   );
   if (await settlesWithin(landing.promise, windowMs, after)) return "aborted";
   removeQuiet(landingStatePath(root));
   warnEvent(
     root,
-    "harness",
-    `restart hand-off: the aborted landing of ${roles} was still running ${deadline} later — handing off without it; its queue entries and pinned commits survive for the next generation`,
+    "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+    `restart: the aborted merge for ${roles} was still running ${deadline} later — restarting without it; its queue entries and pinned commits survive for the next restart`,
   );
   return "abandoned";
 }
@@ -237,7 +238,7 @@ export async function drainInFlightWork(
     // hand-off goes ahead without it too.
     if (outcome !== "abandoned") await ticks;
   } else {
-    if (landing) warnEvent(root, "harness", `shutdown waiting on the in-flight landing of ${landing.roles.join(", ")}`);
+    if (landing) warnEvent(root, "harness", `shutdown waiting on the merge in progress for ${landing.roles.join(", ")}`); // vocabulary-ok: event source stays "harness" until the event log rename
     await Promise.allSettled([ticks, landing?.promise]);
   }
 }

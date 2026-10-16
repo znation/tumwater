@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome, TickResult } from "../tick/tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -206,7 +207,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
         } else {
           preflightBlocked = true;
           s.lastError =
-            `queued prompt for ${ctx.role} attaches an image, but no configured tier can read it`;
+            `an inbox message for ${ctx.role} attaches an image, but no configured tier can read it`;
         }
       }
     }
@@ -375,7 +376,7 @@ async function runTickInLeasePhase(
 ): Promise<TickOutcome> {
   const lease = await leaseSlot(ctx.root, {
     role: ctx.role,
-    purpose: "tick",
+    purpose: "tick", // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
     ref: ctx.mainBranch,
     keep: plan.resuming || plan.handoff,
     signal: ctx.runSignal(),
@@ -468,10 +469,10 @@ async function tickWithWorktreePhase(
       s.conflictHandback = {
         sha: recovered.sha,
         at: Date.now(),
-        reason: "landing",
+        reason: "landing", // vocabulary-ok: "landing" is a persisted state value until the state rename
         applied: false,
       };
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" });
+      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "landing" }); // vocabulary-ok: "landing" is a persisted state value until the state rename
     } else if (recovered?.kind === "discarded") {
       // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
       // tick authors on a fresh main like any other — told what was dropped and why.

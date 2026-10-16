@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Building the claude command line for one tick (plans/agent-backends.md "The claude
  * invocation") — pure argv construction plus the prompt-on-stdin pairing, with no subprocess,
  * backend registration, or session ledger. Part 3c supplies the session decision (which
@@ -130,7 +131,7 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
     // Match the flag itself even when it carries its value as `--flag=value`.
     const flag = arg.split("=", 1)[0] as string;
     if (HARNESS_CLAUDE_FLAGS.has(flag)) {
-      throw new Error(`claudeArgs: passthrough arg ${JSON.stringify(arg)} repeats a harness flag`);
+      throw new Error(`claudeArgs: passthrough arg ${JSON.stringify(arg)} repeats a flag tumwater sets`);
     }
     args.push(arg);
   }

@@ -202,7 +202,7 @@ test("finalizeTick warns once at the quiet-kill streak crossing", async () => {
   await run(root, "organize", s, killed(QUIET_KILL_RESUME_LIMIT));
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!.message as string, /^3 consecutive quiet kills \(no progress\): /);
+  assert.match(warnings[0]!.message as string, /^3 consecutive stalls \(no progress\): /);
   // Past the crossing: no re-warning while the episode continues.
   await run(root, "organize", s, killed(QUIET_KILL_RESUME_LIMIT + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
@@ -310,7 +310,7 @@ test("the quiet-kill warning names the recorded error when the crossing tick car
   assert.equal(warnings.length, 1);
   assert.match(
     warnings[0]!.message as string,
-    /^3 consecutive quiet kills \(no progress\): watchdog killed the session$/,
+    /^3 consecutive stalls \(no progress\): watchdog killed the session$/,
   );
 });
 

@@ -48,7 +48,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
       clock.advance(15_000); // silence well past the 3 s window
       const outcome = await tick;
       assert.equal(outcome.result, "quiet_killed");
-      assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
+      assert.match(runner.state.lastError ?? "", /killed as hung: no agent progress/);
       assert.equal(mainSha(repo), before, "nothing landed on main");
       assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
       // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
@@ -195,7 +195,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
       controller.abort(); // a no-op once the watchdog has killed the run
       const outcome = await tick;
       assert.equal(outcome.result, "quiet_killed", "a zombie stream is a hung run, not an unfulfilled timeout");
-      assert.match(runner.state.lastError ?? "", /killed as hung: no pi progress/);
+      assert.match(runner.state.lastError ?? "", /killed as hung: no agent progress/);
     },
   );
 });

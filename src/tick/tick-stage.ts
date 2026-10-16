@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -86,7 +87,7 @@ export async function foldAgentCommitsSince(
   base: string,
 ): Promise<void> {
   const folded = await foldCommitsSince(wt, base);
-  if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the tick; folded into the harness commit`);
+  if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the run; folded into tumwater's commit`);
 }
 
 /** Stage a changed worktree for the land queue: derive the commit message from the reply's
@@ -251,7 +252,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     authoringTurns > ctx.config.thrashTurns && minutes > ctx.config.thrashMinutes;
   if (highFriction) {
     ctx.warn(
-      `high-friction tick: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
+      `high-friction run: ${authoringTurns} turns in ${Math.round(minutes)} min ` +
         `(thresholds: ${ctx.config.thrashTurns} turns / ${ctx.config.thrashMinutes} min)`,
     );
   }
@@ -279,7 +280,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff
   // reaches main unreviewed.
   if (!(await ctx.pinAndReset(ctx.wt, commit))) {
-    s.lastError = "failed to pin the landing ref; left for next-tick recovery";
+    s.lastError = "failed to pin the merge ref; left for the next run's recovery";
     return { result: "error", summary: s.lastError };
   }
 

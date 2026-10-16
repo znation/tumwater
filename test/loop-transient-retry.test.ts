@@ -30,7 +30,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
     assert.ok(!runner.state.lastError);
     const warnings = warningMessages(repo);
     assert.ok(
-      warnings.some((w) => w.includes('retrying the pi run once')),
+      warnings.some((w) => w.includes('retrying the agent run once')),
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
     );
     // A predict-stream timeout is a transient failure of the local backend, not the provider

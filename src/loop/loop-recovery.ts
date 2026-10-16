@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { LoopState } from "./loop-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -68,7 +69,7 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
   const pinned = await setRef(ctx.root, landingRefName(ctx.role), sha);
   if (!pinned) {
     ctx.warn(
-      `failed to pin ${shortSha(sha)} by its landing ref — leaving the commit on the branch for next-tick recovery`,
+      `failed to pin ${shortSha(sha)} by its merge ref — leaving the commit on the branch for the next run's recovery`,
     );
     return false;
   }
@@ -98,7 +99,7 @@ export async function finishRecoveryTickPhase(
   ctx.pending.clear();
   ctx.pending.requeueUnfulfilled(userPrompt);
   if (recovered.kind === "unpinned") {
-    ctx.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its landing ref; left for next-tick recovery`;
+    ctx.state.lastError = `failed to pin leftover ${shortSha(recovered.sha)} by its merge ref; left for the next run's recovery`;
     return { result: "error", summary: ctx.state.lastError, recoveredLeftover: true };
   }
   if (recovered.kind === "held") {

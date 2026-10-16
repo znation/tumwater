@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The worktree-use registry (plans/disk-floor.md, "Reclaiming build outputs", part 2/4):
  * which harness worktrees are in use right now, and when each was last used. The orchestrator
  * is the one process that runs ticks and landings, so a plain in-process map is enough for the
@@ -125,7 +126,7 @@ function updateWorktreeUseBestEffort(
   try {
     updateWorktreeUse(root, change);
   } catch (err) {
-    warnEventBestEffort(root, "harness", `could not update the worktree-use registry: ${errorMessage(err)}`);
+    warnEventBestEffort(root, "harness", `could not update the worktree-use registry: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
   }
 }
 

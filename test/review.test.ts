@@ -325,7 +325,7 @@ test("a follow-up turn that itself fails (backend dies) is strike-free, like the
   `, async () => {
       const { state, result } = await reviewGate(root, wt);
       assert.equal(result.decision, "failed");
-      assert.match(result.detail ?? "", /pi exited 1/); // the follow-up's own failure is named
+      assert.match(result.detail ?? "", /the agent exited 1/); // the follow-up's own failure is named
       assert.equal(state.unreviewFailures ?? 0, 0); // backend evidence, never a strike against the HEAD
       assert.equal(await aheadOfMain(wt, "main"), 1); // the commit survives for the next re-review
       assert.ok(result.followUpRun); // the failed follow-up's spend still folds into the totals

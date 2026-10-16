@@ -260,6 +260,6 @@ test("runLandingPi still honors the harness shutdown signal", async () => {
     const result = await pending;
     assert.equal(result.ok, false);
     assert.equal(result.aborted, true);
-    assert.match(result.errorMessage ?? "", /aborted by harness shutdown/);
+    assert.match(result.errorMessage ?? "", /stopped by tumwater shutdown/);
   });
 });

@@ -733,8 +733,8 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     const index = (pattern: RegExp) =>
       events.findIndex((e) => e.type === "warning" && pattern.test(String(e.message)));
     const restartAt = events.findIndex((e) => e.type === "restart");
-    const waitAt = index(/^restart hand-off waiting on the in-flight landing of clean, dry/);
-    const lapseAt = index(/the landing of clean, dry outlived its 0\.5s deadline — aborted/);
+    const waitAt = index(/^restart waiting on the merge in progress for clean, dry/);
+    const lapseAt = index(/the merge for clean, dry outlived its 0\.5s deadline — aborted/);
     const stopAt = events.findIndex((e) => e.type === "orchestrator_stop");
     assert.ok(restartAt >= 0 && waitAt > restartAt, "the wait is announced once the swap is done");
     assert.ok(lapseAt > waitAt && stopAt > lapseAt, "the lapse names what was awaited, before the stop");
@@ -798,10 +798,10 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const indexOf = (predicate: (e: (typeof events)[number]) => boolean) => events.findIndex(predicate);
     const restartAt = indexOf((e) => e.type === "restart");
     const waitAt = indexOf(
-      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('restart hand-off waiting on the in-flight landing of dry'),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('restart waiting on the merge in progress for dry'),
     );
     const lapseAt = indexOf(
-      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the landing of dry outlived its 0.5s deadline — aborted'),
+      (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dry outlived its 0.5s deadline — aborted'),
     );
     const cleanAbortedAt = indexOf((e) => e.type === "tick_end" && e.loop === "clean" && e.result === "aborted");
     const dryFailedAt = indexOf((e) => e.type === "land_failed" && e.loop === "dry");

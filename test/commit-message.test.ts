@@ -157,7 +157,7 @@ test("fallbackSummary names the changed paths, counts the rest, and keeps the ba
   assert.equal(fallbackSummary(["src/a.ts"], "dry", 7), "Update src/a.ts");
   assert.equal(fallbackSummary(["src/a.ts", "test/a.test.ts", "README.md"], "dry", 7), "Update src/a.ts, test/a.test.ts, README.md");
   assert.equal(fallbackSummary(["a", "b", "c", "d", "e"], "dry", 7), "Update a, b, c and 2 more");
-  assert.equal(fallbackSummary([], "dry", 7), "dry tick 7");
+  assert.equal(fallbackSummary([], "dry", 7), "dry run 7");
   const long = fallbackSummary(["x".repeat(80), "y".repeat(80), "z".repeat(80)], "dry", 7);
   assert.ok(long.length <= 100, "capped like a real summary");
   assert.ok(long.endsWith("…"));

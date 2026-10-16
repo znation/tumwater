@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { LandingEntry } from "../landing/landing-queue.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";

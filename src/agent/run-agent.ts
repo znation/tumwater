@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The backend-neutral agent runner (plans/agent-backends.md \"The seam\"): everything a run
  * needs regardless of which agent it drives — the spawn, the `tumwater_run` raw-log marker,
  * the watchdog wiring, abort, the group kill and marker sweep, stderr capture, and result
@@ -547,14 +548,14 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       const errorMessage = blindRead !== undefined
         ? `read ${blindRead}, but ${opts.config.model ?? "the model"} cannot read images`
         : aborted
-          ? "aborted by harness shutdown"
+          ? "stopped by tumwater shutdown"
           : wd.quietKilled
-            ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
+            ? `killed as hung: no agent progress for over ${opts.config.quietTimeoutSeconds}s`
             : wd.timedOut
               ? wd.timedOutProgressing
                 ? `timed out after ${wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
                 : `timed out after ${wd.timeoutBudgetMs / 1000}s`
-              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined));
+              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `the agent exited ${code}` : undefined));
       finish(
         resultFromParser({
           ok: !failed,

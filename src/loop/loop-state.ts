@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -510,7 +511,7 @@ export function stateSkipReason(
   s: Pick<LoopState, "resumePending" | "backoffSeconds">,
 ): string {
   if (s.resumePending) return "resume pending";
-  if (s.backoffSeconds > 0) return "backoff";
+  if (s.backoffSeconds > 0) return "backoff"; // vocabulary-ok: skip-reason code is a state value until the state rename
   return "idle";
 }
 

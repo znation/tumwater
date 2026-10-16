@@ -326,7 +326,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
 
   assert.equal(state.claim, undefined, "the sibling's entry is not claimed a second time");
   assert.equal(calls.stageFixRequests.length, 1, "the duplicate costs one fix-up turn");
-  assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /a sibling instance holds: "Alpha/);
+  assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /another instance of this role is working on: "Alpha/);
   // The fix-up turn left the change as it was: it still queues, and the gate has the final say.
   assert.equal(outcome.result, "queued");
 });
@@ -370,7 +370,7 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
   assert.equal(state.claim?.key, "beta", "the free entry is this tick's claim");
   assert.equal(state.claim?.source, "staged");
   const findings = calls.stageFixRequests[0]?.findings.join("\n") ?? "";
-  assert.match(findings, /a sibling instance holds: "Alpha/);
+  assert.match(findings, /another instance of this role is working on: "Alpha/);
   assert.doesNotMatch(findings, /moved a different one/, "the staged claim's own move is not a finding");
 });
 
@@ -598,7 +598,7 @@ test("a tick past both friction thresholds is flagged, warned, and marked in the
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.highFriction, true);
   assert.match(outcome.summary!, /\(high friction: 5 turns \/ \d+m\)/);
-  assert.match(calls.warnings[0]!, /high-friction tick: 5 turns in \d+ min/);
+  assert.match(calls.warnings[0]!, /high-friction run: 5 turns in \d+ min/);
   assert.match(sh(wt, "git", "log", "-1", "--format=%b"), /^Friction: high \(5 turns \/ \d+m\)$/m);
   assert.equal(queuedLandings(root)[0]!.highFriction, true);
 });
@@ -635,8 +635,8 @@ test("a failed pin reports an error, records lastError, and queues nothing", asy
   const outcome = await stageTickLanding(ctx);
 
   assert.equal(outcome.result, "error");
-  assert.equal(outcome.summary, "failed to pin the landing ref; left for next-tick recovery");
-  assert.equal(state.lastError, "failed to pin the landing ref; left for next-tick recovery");
+  assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
+  assert.equal(state.lastError, "failed to pin the merge ref; left for the next run's recovery");
   assert.equal(queueDepth(root), 0);
   assert.equal(calls.pins.length, 1, "the pin was attempted once");
   assert.match(sh(wt, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add the feature/,
@@ -856,6 +856,6 @@ for (const [label, finalText] of [
     assert.equal(outcome.result, "queued");
     assert.equal(sh(wt, "git", "rev-list", "--count", `${base}..${calls.pins[0]!.sha}`), "1");
     assert.match(sh(wt, "git", "log", "-1", "--format=%s", calls.pins[0]!.sha), /^tumwater\(improve\): /);
-    assert.ok(calls.warnings.some((w) => w.includes("folded into the harness commit")));
+    assert.ok(calls.warnings.some((w) => w.includes("folded into tumwater's commit")));
   });
 }

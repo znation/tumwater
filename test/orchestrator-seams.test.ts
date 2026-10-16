@@ -402,7 +402,7 @@ test("awaitLandingForHandoff announces the wait and lets a landing that finishes
   assert.equal(aborts, 0, "a landing inside its window is never aborted");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "only the wait itself is announced");
-  assert.match(w[0]!, /^restart hand-off waiting on the in-flight landing of clean, dry \(deadline 5s\)$/);
+  assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dry \(deadline 5s\)$/);
 });
 
 test("awaitLandingForHandoff aborts a landing past its window and waits for it to stop", async () => {
@@ -420,7 +420,7 @@ test("awaitLandingForHandoff aborts a landing past its window and waits for it t
   assert.ok(Date.now() - startedAt >= 200, "the landing had its whole window first");
   const w = warningMessages(root);
   assert.equal(w.length, 2);
-  assert.match(w[1]!, /the landing of organize outlived its 0\.2s deadline — aborted/, "the lapse names what was awaited");
+  assert.match(w[1]!, /the merge for organize outlived its 0\.2s deadline — aborted/, "the lapse names what was awaited");
 });
 
 test("awaitLandingForHandoff hands off without a landing still running after the abort, clearing its marker", async () => {
@@ -437,5 +437,5 @@ test("awaitLandingForHandoff hands off without a landing still running after the
   assert.equal(readLandingMarker(root), null, "the exiting process's marker is cleared for the next generation");
   const w = warningMessages(root);
   assert.equal(w.length, 3);
-  assert.match(w[2]!, /the aborted landing of clean was still running 0\.1s later — handing off without it/);
+  assert.match(w[2]!, /the aborted merge for clean was still running 0\.1s later — restarting without it/);
 });

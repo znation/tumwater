@@ -66,7 +66,7 @@ test("a changed tick past thrashTurns is flagged high-friction end to end", asyn
     assert.equal(warnings.length, 1, "exactly one high-friction warning event");
     assert.match(
       String(warnings[0]!.message),
-      /^high-friction tick: 2 turns in \d+ min \(thresholds: 1 turns \/ 0 min\)$/,
+      /^high-friction run: 2 turns in \d+ min \(thresholds: 1 turns \/ 0 min\)$/,
     );
 
     // The reviewer run's prompt carried the HIGH-FRICTION marker for extra scrutiny.
@@ -366,8 +366,8 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
-    assert.equal(outcome.summary, "failed to pin the landing ref; left for next-tick recovery");
-    assert.equal(runner.state.lastError, "failed to pin the landing ref; left for next-tick recovery");
+    assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
+    assert.equal(runner.state.lastError, "failed to pin the merge ref; left for the next run's recovery");
     assert.ok(runner.state.backoffSeconds > 0, "the error tick backs off on the error ladder");
 
     // The commit stays on the branch ahead of main — the worktree was NOT reset.
@@ -382,7 +382,7 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     const warnings = warningMessages(repo);
     assert.ok(
       warnings.some((w) =>
-        /failed to pin \S+ by its landing ref — leaving the commit on the branch for next-tick recovery/.test(w),
+        /failed to pin \S+ by its merge ref — leaving the commit on the branch for the next run's recovery/.test(w),
       ),
       JSON.stringify(warnings),
     );

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The UNFULFILLED-VERDICT half of a finished pi run's classification (see loop-tick.ts's
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
@@ -257,7 +258,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // would ship unfinished work under a diff-derived subject and drop the resumable session
   // (BUGS.md 2026-10-06). Keep the worktree and session for the next resume.
   if (!pi.ok && (!changed || !pi.producedAssistantContent)) {
-    s.lastError = pi.errorMessage ?? "pi failed";
+    s.lastError = pi.errorMessage ?? "the agent failed";
     // A dirty worktree on a run that added nothing of its own is a prior tick's work: arm the
     // resume so the next tick continues that session instead of resetting the edits. A role
     // loop re-queues through requeueForResume, so the resume reclaims exactly this prompt
@@ -302,7 +303,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     const diagnosis = diagnoseNoChange(pi);
     if (!pi.nothingToDo) {
       ctx.warn(
-        `pi finished without changes and without declaring nothing-to-do` +
+        `the agent finished without changes and without declaring nothing-to-do` +
           (diagnosis.notes.length ? ` (${diagnosis.notes.join(", ")})` : ""),
       );
     }

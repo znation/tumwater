@@ -434,7 +434,7 @@ test("a failing removal of a dropped slot is logged, not an unhandled rejection"
   assert.equal(warnings.length, 1);
   assert.match(
     String(warnings[0]?.message ?? ""),
-    /could not remove idle worktree slot \/slots\/a: EBUSY/,
+    /could not remove idle workspace \/slots\/a: EBUSY/,
   );
 });
 

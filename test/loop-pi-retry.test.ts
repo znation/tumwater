@@ -364,7 +364,7 @@ test("a retry that ends on an uncovered backend kind still issues its own floor 
     // The first attempt ends on a covered transient (the request-timeout kind), so it earns
     // the one retry; the retry itself then dies on the UNCOVERED connection kind. The floor
     // must judge the run that is actually returned, not only the first attempt (BUGS.md
-    // 2026-10-09), or the feed's last word is the first attempt's "retrying the pi run once".
+    // 2026-10-09), or the feed's last word is the first attempt's "retrying the agent run once".
     firstRun: `echo '${errorLine("Request timed out.")}'`,
     retryRun: `echo '${errorLine("Connection error.")}'`,
   });
@@ -401,7 +401,7 @@ test("a retry that ends on a covered backend kind emits no false floor warning",
     // The first attempt ends on the timeout kind, which the retry DOES cover; the retry then
     // ends on the stream-severed kind, which it also covers. The floor warning's "the transient
     // retry does not cover this kind" would be false here, so the floor must stay silent and
-    // leave the first attempt's "retrying the pi run once" as the run's last word (BUGS.md
+    // leave the first attempt's "retrying the agent run once" as the run's last word (BUGS.md
     // 2026-10-09 review).
     firstRun: `echo '${errorLine("Request timed out.")}'`,
     retryRun: `echo '${errorLine("terminated")}'`,

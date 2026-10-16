@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { LoopState } from "../loop/loop-state.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { latestSession } from "../agent/session-ledger.js";
@@ -71,7 +72,7 @@ export function planTickStart(opts: {
   // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
   const priorLandingFailure =
     s.lastResult !== undefined && RETRIABLE_LANDING_RESULTS.has(s.lastResult)
-      ? (s.lastError ?? `landing failed: ${s.lastResult}`)
+      ? (s.lastError ?? `merge failed: ${s.lastResult}`)
       : undefined;
   s.lastError = undefined;
 

@@ -466,7 +466,7 @@ test("a retriable landing failure feeds the error streak; other lastResults do n
   assert.equal(s.lastError, undefined, "lastError must be cleared once captured");
 
   const noDetail = state({ lastResult: "review_error" });
-  assert.equal(plan(dir, noDetail)?.priorLandingFailure, "landing failed: review_error");
+  assert.equal(plan(dir, noDetail)?.priorLandingFailure, "merge failed: review_error");
 
   const landed = state({ lastResult: "changed", lastError: "stale" });
   assert.equal(plan(dir, landed)?.priorLandingFailure, undefined);

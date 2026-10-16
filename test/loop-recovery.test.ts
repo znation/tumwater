@@ -55,7 +55,7 @@ test("pinAndResetPhase warns and leaves the commit when the landing-ref write fa
   const ok = await pinAndResetPhase(ctx, path.join(root, "no-worktree"), "deadbeef00");
   assert.equal(ok, false);
   assert.equal(warns.length, 1);
-  assert.match(warns[0]!, /failed to pin deadbeef by its landing ref — leaving the commit on the branch/);
+  assert.match(warns[0]!, /failed to pin deadbeef by its merge ref — leaving the commit on the branch/);
 });
 
 test("pinAndResetPhase pins the sha and resets the worktree to main on success", async () => {
@@ -119,7 +119,7 @@ test("finishRecoveryTickPhase fails an unpinned leftover without resetting the w
   );
   assert.equal(outcome.result, "error");
   assert.equal(outcome.recoveredLeftover, true);
-  assert.equal(state.lastError, `failed to pin leftover ${shortSha("abcdef1234")} by its landing ref; left for next-tick recovery`);
+  assert.equal(state.lastError, `failed to pin leftover ${shortSha("abcdef1234")} by its merge ref; left for the next run's recovery`);
   assert.equal(pending.get(), null);
   assert.equal(inboxSize(root, "improve"), 1, "the tick's request is requeued since nothing ran it");
 });

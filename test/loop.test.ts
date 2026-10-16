@@ -377,7 +377,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
     assert.equal(await quietKilledTick(1), "quiet_killed");
     assert.equal(runner.state.quietKillStreak, 3);
     assert.equal(warnings().length, 1, "one warning at the threshold");
-    assert.match(String(warnings()[0]?.message), /3 consecutive quiet kills \(no progress\)/);
+    assert.match(String(warnings()[0]?.message), /3 consecutive stalls \(no progress\)/);
     // Past the limit: no resume, and the loop climbs the idle ladder rather than retrying now.
     runner.state.quietKillStreak = 3;
     runner.state.resumePending = false;

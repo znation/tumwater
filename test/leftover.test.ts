@@ -120,11 +120,11 @@ test("a pin at the cap whose lineage was already handed back is discarded, namin
   const warned = warningMessages(root);
   assert.ok(
     warned.some((m) =>
-      m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} landings`),
+      m.includes(`discarding leftover ${shortSha(sha)} after ${MERGE_CONFLICT_LIMIT} merges`),
     ),
     "the discard is warned, naming the sha",
   );
-  assert.ok(warned.some((m) => m.includes("even after a hand-back")), "the warning names the hand-back");
+  assert.ok(warned.some((m) => m.includes("even after sending it back to the role to resolve")), "the warning names the hand-back");
 });
 
 test("a role whose landing is already queued is not enqueued twice", async () => {

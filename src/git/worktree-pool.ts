@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The worktree pool's lease machinery (plans/worktree-pool.md, "Leases"; part 2a/5): a fixed
  * set of `.tumwater/worktrees/_slot-<n>` checkouts that ticks and vets lease and switch commits
  * in place, instead of keeping one `_land-<role>` checkout per role. The persisted layout and
@@ -81,7 +82,7 @@ function rootKey(root: string): string {
 }
 
 function abortError(): Error {
-  const err = new Error("slot lease aborted before a slot was free");
+  const err = new Error("the workspace request was stopped before one was free");
   err.name = "AbortError";
   return err;
 }
@@ -345,7 +346,7 @@ export async function removeDroppedSlots(
     try {
       await remove(root, dir);
     } catch (err) {
-      warnEventBestEffort(root, "harness", `could not remove idle worktree slot ${dir}: ${errorMessage(err)}`);
+      warnEventBestEffort(root, "harness", `could not remove idle workspace ${dir}: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
     }
   }
 }
@@ -385,7 +386,7 @@ export async function retireLegacyRoleWorktrees(
         const owned = state.slots.find(
           (slot) =>
             slot.pinnedFor === role ||
-            (slot.lease?.role === role && slot.lease.purpose === "tick"),
+            (slot.lease?.role === role && slot.lease.purpose === "tick"), // vocabulary-ok: lease purpose "tick" is a persisted state value until the state rename
         );
         if (owned !== undefined) {
           // The resume happens in the owned slot: drop the legacy record and remove its dir.
@@ -435,8 +436,8 @@ export async function retireLegacyRoleWorktrees(
     } catch (err) {
       warnEventBestEffort(
         root,
-        "harness",
-        `could not remove legacy role worktree ${victim}: ${errorMessage(err)}`,
+        "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+        `could not remove legacy role workspace ${victim}: ${errorMessage(err)}`,
       );
     }
   }
@@ -462,7 +463,7 @@ export async function leaseSlot(
     } catch (err) {
       warnEventBestEffort(
         root,
-        "harness",
+        "harness", // vocabulary-ok: event source stays "harness" until the event log rename
         `could not record use release for ${path.basename(dir)}: ${errorMessage(err)}`,
       );
     }

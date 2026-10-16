@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
@@ -120,7 +121,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       warnEventBestEffort(
         ctx.root,
         ctx.role,
-        `failed to adopt unpinned leftover ${shortSha(sha)} into its landing ref`,
+        `failed to adopt unpinned leftover ${shortSha(sha)} into its merge ref`,
       );
       return { kind: "unpinned", sha };
     }
@@ -142,7 +143,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
       warnEventBestEffort(
         ctx.root,
         ctx.role,
-        `discarding leftover ${shortSha(sha)} after ${attempts} landings ended in unresolved merge conflicts with main, even after a hand-back`,
+        `discarding leftover ${shortSha(sha)} after ${attempts} merges ended in unresolved conflicts with main, even after sending it back to the role to resolve`,
       );
       return { kind: "discarded", sha, summary, attempts };
     }

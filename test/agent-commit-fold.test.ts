@@ -13,7 +13,7 @@ import { withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 
 const PI_COMMIT = `git add -A && git -c user.name=t -c user.email=t@t commit -q -m "pi commit"`;
-const FOLD_WARNING = "folded into the harness commit";
+const FOLD_WARNING = "folded into tumwater's commit";
 
 async function tickAndLand(script: string[]): Promise<{ repo: string; before: string }> {
   const repo = await initializedRepo();

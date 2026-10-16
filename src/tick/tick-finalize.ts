@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { hasOutstandingWork, saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { branchHead } from "../git/git.js";
@@ -124,7 +125,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // streak on each kill and resets it on any other result, so the crossing fires once;
   // the give-up (fresh session + backoff) follows on the next kill.
   if ((s.quietKillStreak ?? 0) === QUIET_KILL_RESUME_LIMIT) {
-    warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive quiet kills (no progress): ${s.lastError ?? "unknown hang"}`);
+    warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive stalls (no progress): ${s.lastError ?? "unknown hang"}`);
   }
   // Per-tick usage: the event feed is where operators see
   // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning

@@ -366,7 +366,7 @@ test("heldMovedFinding names a moved entry a sibling holds, and nothing otherwis
   const beta = { key: "beta", title: "Beta (planned 2026-01-01 by operator)" };
   assert.match(
     heldMovedFinding(held, [beta, alpha]) ?? "",
-    /moved a backlog entry a sibling instance holds: "Alpha \(planned 2026-01-01 by operator\)".*revert every edit made for it/,
+    /moved a backlog entry another instance of this role is working on: "Alpha \(planned 2026-01-01 by operator\)".*revert every edit made for it/,
   );
   assert.equal(heldMovedFinding(held, [beta]), undefined, "a free entry is this tick's to take");
   assert.equal(heldMovedFinding(held, []), undefined, "nothing moved");
