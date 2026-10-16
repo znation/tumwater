@@ -2,7 +2,12 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import type { ModelFallbackState } from "./model-fallback.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
-import { statePath } from "../paths.js";
+import path from "node:path";
+import { readdirSync } from "node:fs";
+import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
+import { statePath, STATE_DIR } from "../paths.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { allRoleIds } from "../roles/roles.js";
 
 /** The loop's persisted state file — one JSON object per role under .tumwater/ — and the
  * observation-window counter reset: fresh-state defaults, the tolerant load, the atomic
@@ -461,4 +466,60 @@ export function stateSkipReason(
  * idle test all read this one predicate instead of repeating the revision/resume conjunction. */
 export function hasOutstandingWork(s: Pick<LoopState, "revision" | "resumePending">): boolean {
   return s.revision !== undefined || s.resumePending === true;
+}
+
+/** Per-role cache of the persisted live claim, keyed by the state file's stat — one stat per
+ * role per call in steady state, a read only when the file changed (cachedByStat's contract),
+ * so a fleet poll's allLiveClaims does no read I/O once every claim is known. */
+const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: string }>>();
+
+/** Every loop id whose persisted claim must be considered — the built-in catalog roles
+ * (allRoleIds) plus the parallel-work instance ids (feature-2, bugfix-3, …) that have a state
+ * file. Instances are not in the built-in catalog, so they are enumerated from the state
+ * directory rather than the config: a claim lives in its role's state file, and reading the
+ * directory catches an instance's claim whether or not the config still lists its count (a
+ * lowered or disabled instance that still holds a claim must not open its plan to another
+ * base). Any state file whose id resolves away from itself under baseRoleOf is an instance
+ * id; the named non-role files in that directory (orchestrator.json, claude-account.json, …)
+ * resolve to themselves and so are skipped, as are the base roles allRoleIds already names. */
+function liveClaimLoopIds(root: string): string[] {
+  const ids = new Set(allRoleIds());
+  try {
+    for (const name of readdirSync(path.join(root, STATE_DIR, "state"))) {
+      const id = name.replace(/\.json$/, "");
+      if (baseRoleOf(id) !== id) ids.add(id);
+    }
+  } catch {
+    // no state directory yet — the catalog roles (fresh, claim-less) suffice
+  }
+  return [...ids];
+}
+
+/** The live backlog claim of every built-in role and running instance, keyed by claim
+ * entryKey — `Map<key, role>` — for the ones that hold one. The cross-role in-flight hold
+ * (BUGS.md 2026-10-09): a plan a `feature` instance claimed stays listed under PLANS.md
+ * `## Planned` until its landing merges to main, so an eligibility reader built for another
+ * role would otherwise see it as open and let that role implement it a second time — the
+ * duplicate then fails review as a claim mismatch. Same-base claims are deliberately NOT
+ * filtered here: callers (eligibleEntries) apply their own base rule, because the scheduling
+ * pass and staged claims already hold same-base entries and the owner's own claim must stay
+ * eligible for its release rules. A `feature-2` instance's claim is therefore read and keyed
+ * under `feature-2`; callers fold it to its base. */
+export function allLiveClaims(root: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of liveClaimLoopIds(root)) {
+    const file = statePath(root, id);
+    const claim = cachedByStat(
+      liveClaimCache,
+      file,
+      file,
+      () => {
+        const s = loadLoopState(root, id);
+        return s.claim ? { role: id, key: s.claim.key } : null;
+      },
+      (v) => ({ ...v }),
+    );
+    if (claim) out.set(claim.key, id);
+  }
+  return out;
 }

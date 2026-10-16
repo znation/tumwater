@@ -12,6 +12,7 @@ import {
   headingTitle,
 } from "./backlog-md.js";
 import { changeBaseRev, fileContentAt } from "../git/git.js";
+import { allLiveClaims } from "../loop/loop-state.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { entryHoldAgainst, holdMark, plannedPartKeys } from "./backlog-eligibility.js";
 import { plannedPlanEntries } from "./backlog.js";
@@ -417,6 +418,12 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
   // PLANS.md costs one stat per call.
   const planned = plannedPlanEntries(root);
   const plannedParts = plannedPartKeys(planned);
+  // The cross-role in-flight hold (BUGS.md 2026-10-09): every role's prompts share this one
+  // section-agnostic index, and the role it is assembled for is not available here, so an entry
+  // claimed by ANY role is marked in flight — the owner's own index marks it too, which is
+  // harmless (its assignment note is the instruction), and every other role reads it as taken
+  // instead of re-implementing a change someone's landing is already carrying to main.
+  const claimed = allLiveClaims(root);
   const listed: string[] = [];
   for (const { file, section } of INDEX_SECTIONS) {
     const full = path.join(root, file);
@@ -443,7 +450,9 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     listed.push(`${file} ## ${section}`);
     for (const e of entries) {
       const mark = holdMark(entryHoldAgainst({ title: e.title, body: e.body }, plannedParts));
-      listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}`);
+      const key = collapseWhitespace(stripEntryStamp(e.title)).toLowerCase();
+      const claimer = claimed.get(key);
+      listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}${claimer ? ` [in flight by ${claimer}]` : ""}`);
     }
   }
   if (listed.length === 0) return undefined;

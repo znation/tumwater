@@ -9,6 +9,7 @@
 
 import path from "node:path";
 import { statOrNull } from "../files/files.js";
+import { allLiveClaims } from "../loop/loop-state.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -291,10 +292,21 @@ export function eligibleEntries(root: string, role: string): EligibleEntry[] {
   const ranges = actionableEntryRangesFor(root, file, section);
   const planned = plannedPlanEntries(root);
   const parts = plannedPartKeys(planned);
+  // The cross-role in-flight hold (BUGS.md 2026-10-09): an entry another role's base has
+  // claimed is not eligible here. Same-base claims are excluded from the hold — the scheduling
+  // pass's claim groups and tick-stage's staged claims already hold those — so the queried
+  // role's own claim (and a sibling instance's) stays eligible and its release rules are
+  // unchanged; only a plan another base currently owns is taken off this base's hands.
+  const ownBase = baseRoleOf(role);
+  const claimedElsewhere = new Set<string>();
+  for (const [key, claimer] of allLiveClaims(root)) {
+    if (baseRoleOf(claimer) !== ownBase) claimedElsewhere.add(key);
+  }
   const out: EligibleEntry[] = [];
   for (let i = 0; i < entries.length && i < ranges.length; i++) {
     const entry = entries[i]!;
     if (entryHoldAgainst(entry, parts) !== null) continue;
+    if (claimedElsewhere.has(entryKey(entry.title))) continue;
     const range = ranges[i]!;
     out.push({
       key: entryKey(entry.title),

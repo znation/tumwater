@@ -21,6 +21,7 @@ import {
 } from "../src/backlog/backlog-eligibility.js";
 import { openBugEntries, plannedPlanEntries } from "../src/backlog/backlog.js";
 import { openParenthetical, type BacklogEntry } from "../src/backlog/backlog-md.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-eligibility.ts (plans, parallel-work-instances,
@@ -221,6 +222,47 @@ test("eligibleEntries reads BUGS.md's Open section for bugfix and drops a refuse
   assert.deepEqual(eligibleEntries(dir, "bugfix"), [
     { key: "real", title: "Real (reported 2026-10-02)", start: 3, end: 4 },
   ]);
+});
+
+test("eligibleEntries holds a plan another role's base has claimed, but keeps the owner's own claim", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nDrive it through the backend.\n## Done\n_None._\n",
+  );
+  // `feature` takes the plan the way a real tick does (a queued landing keeps its claim until
+  // the move tunes into main); a second plan-consuming role must not be handed the same entry.
+  const owner = {
+    ...loadLoopState(dir, "feature"),
+    claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
+  };
+  saveLoopState(dir, owner);
+  // The owner's own base keeps the plan eligible (its release rules run unchanged)…
+  assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["volume slider"]);
+  // …while another base reads it as taken, so `improve` cannot re-implement it.
+  assert.deepEqual(eligibleEntries(dir, "improve"), []);
+  // A same-base sibling is also unaffected: the scheduling pass's own heldKeys owns that hold.
+  assert.deepEqual(eligibleEntries(dir, "feature-2").map((e) => e.key), ["volume slider"]);
+});
+
+test("eligibleEntries holds a plan claimed by a parallel-work instance against every other base", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nDrive it through the backend.\n## Done\n_None._\n",
+  );
+  // The claim comes from the parallel-work instance `feature-2`, whose state file lives at
+  // .tumwater/state/feature-2.json — outside the built-in catalog allRoleIds enumerates. It
+  // must still hold the plan against every other base, or `improve` re-implements it.
+  const owner = {
+    ...loadLoopState(dir, "feature-2"),
+    claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
+  };
+  saveLoopState(dir, owner);
+  // Another base reads the instance's claim as in flight…
+  assert.deepEqual(eligibleEntries(dir, "improve"), []);
+  // …while the instance's own base keeps it eligible for its release rules.
+  assert.deepEqual(eligibleEntries(dir, "feature").map((e) => e.key), ["volume slider"]);
 });
 
 test("eligibleEntries caches an unchanged PLANS.md and re-reads a changed one", (t) => {

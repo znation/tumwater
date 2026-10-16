@@ -14,6 +14,7 @@ import {
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import { ensureWorktree } from "../src/git/worktree.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/backlog/backlog-structure.ts — the stranded-plan detector (plans, part
@@ -499,6 +500,43 @@ test("renderBacklogIndexBlock re-reads a backlog file whose stat changed", () =>
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /BUGS\.md ## Open\n- 3-4: Second/);
   assert.doesNotMatch(block, /First/);
+});
+
+test("renderBacklogIndexBlock marks an entry another role has claimed as in flight", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nbody\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n_None yet._\n## Fixed\n_None._\n");
+  // `feature` claimed the plan and its landing is queued (the move to Done merges later), so
+  // every other role's shared index must read it as taken rather than list it as open work.
+  const owner = {
+    ...loadLoopState(dir, "feature"),
+    claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
+  };
+  saveLoopState(dir, owner);
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /- 3-4: Volume slider \[in flight by feature\]/);
+});
+
+test("renderBacklogIndexBlock marks an entry a parallel-work instance has claimed as in flight by that instance", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nbody\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n_None yet._\n## Fixed\n_None._\n");
+  // A parallel-work instance's claim lives at .tumwater/state/feature-2.json, which the
+  // built-in catalog never names; the shared index must still read it as taken by that
+  // instance rather than list the plan as open for every other base to re-implement.
+  const owner = {
+    ...loadLoopState(dir, "feature-2"),
+    claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" } as const,
+  };
+  saveLoopState(dir, owner);
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /- 3-4: Volume slider \[in flight by feature-2\]/);
 });
 
 test("renderBacklogIndexBlock returns undefined when the actionable sections are empty", () => {
