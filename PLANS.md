@@ -2770,7 +2770,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater backlog` prints each blocked series as one heading with no body, so the plans a role can pick are not buried under thousands of lines of blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `renderBacklogMarkdown` in `src/backlog/backlog-render.ts` and reuses `groupBlockedSeries`/`partsLabel` from `src/backlog/backlog-structure.ts` unchanged; the dashboard plan edits only `src/ui/`)
+## Done
+
+### `tumwater backlog` prints each blocked series as one heading with no body, so the plans a role can pick are not buried under thousands of lines of blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `renderBacklogMarkdown` in `src/backlog/backlog-render.ts` and reuses `groupBlockedSeries`/`partsLabel` from `src/backlog/backlog-structure.ts` unchanged; the dashboard plan edits only `src/ui/`; done 2026-10-16)
 
 **Goal.** `tumwater backlog` (`cmdBacklog` in `src/cli/cli-query-commands.ts`) prints every `## Planned` entry with its full body. In this repo, more than 80 parts of the Plain terms series are blocked, each waiting on an earlier part, and together they fill thousands of lines. `plan --list` (`listAndAnnounce` in `src/backlog/backlog-cli.ts`) and the prompt's backlog index (`collapseBlockedSeries`) already show such a series as one line through `groupBlockedSeries`. `tumwater backlog` should do the same. Each series with two or more blocked parts becomes one heading with no body, placed where the first of those parts would have been. Every other entry prints as it does today. `--json` is unchanged, so scripts still get every entry.
 
@@ -2793,8 +2795,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New CLI test: `tumwater backlog` on a repo whose PLANS.md has a three-part series with parts 2 and 3 waiting on earlier parts prints the series heading once. `tumwater backlog --json` on the same repo still lists all three parts in `plans`, with `holds.plans` parallel to them.
 - The existing tests in `test/backlog-render.test.ts` pass unchanged. Their fixtures have no series with two blocked parts.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused; done 2026-10-16)
 

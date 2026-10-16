@@ -154,7 +154,9 @@ Usage:
                                    Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
-                                   same data the Markdown view renders; an entry a role is
+                                   same data the Markdown view renders; a series with two or more
+                                   blocked parts prints as one heading (--json still lists every
+                                   entry); an entry a role is
                                    working on carries \`[working on it: feature #2]\` (--json:
                                    an \`inProgress\` key parallel to the arrays); --ready keeps only the
                                    planned plans and open bugs no hold keeps from being

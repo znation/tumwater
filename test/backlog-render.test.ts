@@ -327,3 +327,58 @@ test("tumwater backlog --ready hides held entries and counts them", async () => 
   const none = await runCli(root, "backlog", "--ready");
   assert.doesNotMatch(none.out, /hidden/);
 });
+
+test("renderBacklogMarkdown prints a blocked series as one heading", () => {
+  const plan = (title: string) => ({ title, body: `body of ${title}` });
+  const base = { bugs: [], questions: [] } as unknown as Parameters<typeof renderBacklogMarkdown>[0];
+  const view = (titles: string[], holds: unknown[], inProgress?: (string | null)[]) =>
+    renderBacklogMarkdown({
+      ...base,
+      plans: titles.map(plan),
+      holds: { plans: holds, bugs: [] },
+      ...(inProgress ? { inProgress: { plans: inProgress, bugs: [] } } : {}),
+    } as never);
+  const titles = ["Ready", "S, part 1/3: a", "S, part 2/3: b", "S, part 3/3: c", "Other"];
+  const holds = [null, null, { blockedBy: ["S 1/3"] }, { blockedBy: ["S 2/3"] }, null];
+  const out = view(titles, holds);
+  const heading = "### S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]";
+  assert.equal(out.split(heading).length, 2);
+  assert.ok(out.includes("  body of Ready") && out.includes("  body of S, part 1/3: a") && out.includes("  body of Other"));
+  assert.ok(!out.includes("body of S, part 2/3") && !out.includes("body of S, part 3/3"));
+  assert.ok(out.indexOf("body of S, part 1/3") < out.indexOf(heading));
+  assert.ok(out.indexOf(heading) < out.indexOf("### Other"));
+  assert.match(out, /_\(each blocked series is one heading; /);
+
+  // A claimed part stays a full entry with its mark.
+  const claimed = view(titles, holds, [null, null, "feature #2", null, null]);
+  assert.match(claimed, /^### S, part 2\/3: b \[blocked: requires S 1\/3\] \[working on it: feature #2\]$/m);
+  // A lone blocked part, or a refused second part, groups nothing and adds no footer.
+  for (const h of [[null, null, { blockedBy: ["S 1/3"] }, null, null], [null, null, "refused", { blockedBy: ["S 2/3"] }, null]]) {
+    const o = view(titles, h);
+    assert.ok(!o.includes("blocked parts"));
+    assert.ok(!o.includes("each blocked series"));
+    assert.ok(o.includes("body of S, part 3/3"));
+  }
+});
+
+test("tumwater backlog prints a blocked series once; --json still lists every part", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    [
+      "# Plans", "## Planned",
+      "### Ser, part 1/3: a (planned 2026-10-01)", "body1",
+      "### Ser, part 2/3: b (planned 2026-10-01; requires Ser 1/3 landed)", "body2",
+      "### Ser, part 3/3: c (planned 2026-10-01; requires Ser 2/3 landed)", "body3",
+      "## Done", "_None._",
+    ].join("\n"),
+  );
+  const human = await runCli(root, "backlog");
+  assert.equal(human.code, 0);
+  assert.equal(human.out.split("### Ser, 2 blocked parts (2/3–3/3)").length, 2);
+  assert.ok(!human.out.includes("body2"));
+  const asJson = await runCli(root, "backlog", "--json");
+  const payload = JSON.parse(asJson.out) as { plans: unknown[]; holds: { plans: unknown[] } };
+  assert.equal(payload.plans.length, 3);
+  assert.equal(payload.holds.plans.length, 3);
+});

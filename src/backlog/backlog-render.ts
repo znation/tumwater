@@ -1,5 +1,6 @@
 import type { BacklogEntry } from "./backlog-md.js";
 import type { BacklogPayload } from "./backlog.js";
+import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
 /** The terminal's view of the project backlog — the same three open sections the GUI's
@@ -43,12 +44,44 @@ function renderSection(title: string, entries: BacklogEntry[], holds?: readonly 
     lines.push("_(none)_", "");
     return lines;
   }
-  for (let i = 0; i < entries.length; i++) {
-    const entry = entries[i]!;
-    lines.push(`### ${entry.title}${holdMark(holds?.[i] ?? null)}${inProgressMark(inProgress?.[i] ?? null)}`, "");
-    // The body is already trimmed by parseEntryDetails; only the indent is added here.
-    for (const line of entry.body.split("\n")) lines.push(line === "" ? "" : `  ${line}`);
-    lines.push("");
+  for (let i = 0; i < entries.length; i++) lines.push(...renderEntry(entries[i]!, holds?.[i] ?? null, inProgress?.[i] ?? null));
+  return lines;
+}
+
+/** One entry: its heading with hold and in-progress marks, then its body indented two spaces. */
+function renderEntry(entry: BacklogEntry, hold: EntryHold, runner: string | null): string[] {
+  const lines: string[] = [`### ${entry.title}${holdMark(hold)}${inProgressMark(runner)}`, ""];
+  // The body is already trimmed by parseEntryDetails; only the indent is added here.
+  for (const line of entry.body.split("\n")) lines.push(line === "" ? "" : `  ${line}`);
+  lines.push("");
+  return lines;
+}
+
+/** The Planned section. With holds, each series with two or more blocked parts prints as one
+ * body-less heading at its first part's place (the grouping `plan --list` uses); every other
+ * entry prints as renderSection would. Without holds it is renderSection itself. */
+function renderPlannedSection(entries: BacklogEntry[], holds?: readonly EntryHold[],
+  inProgress?: readonly (string | null)[],
+): string[] {
+  if (!holds || entries.length === 0) return renderSection("Planned features", entries, holds, inProgress);
+  const rows = entries.map((entry, index) => ({
+    index, title: entry.title, hold: holds[index] ?? null, claimer: inProgress?.[index] ?? undefined,
+  }));
+  const lines: string[] = ["## Planned features", ""];
+  let grouped = false;
+  for (const g of groupBlockedSeries(rows)) {
+    if (g.kind === "row") {
+      lines.push(...renderEntry(entries[g.row.index]!, g.row.hold, inProgress?.[g.row.index] ?? null));
+      continue;
+    }
+    grouped = true;
+    lines.push(
+      `### ${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`,
+      "",
+    );
+  }
+  if (grouped) {
+    lines.push("_(each blocked series is one heading; `tumwater plan --show <n>` prints a part, `tumwater backlog --json` lists every entry)_", "");
   }
   return lines;
 }
@@ -57,7 +90,7 @@ function renderSection(title: string, entries: BacklogEntry[], holds?: readonly 
  * Markdown. */
 export function renderBacklogMarkdown(payload: BacklogView): string {
   const lines: string[] = ["# tumwater backlog", ""];
-  lines.push(...renderSection("Planned features", payload.plans, payload.holds?.plans, payload.inProgress?.plans));
+  lines.push(...renderPlannedSection(payload.plans, payload.holds?.plans, payload.inProgress?.plans));
   lines.push(...renderSection("Open bugs", payload.bugs, payload.holds?.bugs, payload.inProgress?.bugs));
   lines.push(...renderSection("Open questions", payload.questions));
   return lines.join("\n").trimEnd();
