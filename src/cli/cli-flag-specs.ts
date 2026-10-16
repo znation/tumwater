@@ -265,6 +265,10 @@ export const STAT_FLAG: FlagSpec = { names: ["--stat"] };
  * printing the rows. Value-less, like STAT_FLAG. */
 export const SUMMARY_FLAG: FlagSpec = { names: ["--summary"] };
 
+/** The `--count` flag spec, accepted by `logs`: tally the selected window's event types
+ * instead of printing the rows. Value-less, like SUMMARY_FLAG. */
+export const COUNT_FLAG: FlagSpec = { names: ["--count"] };
+
 /** The `--force` flag spec, accepted by `retire` (the only override-the-rails command): one
  * definition of the flag's spelling beside ROLE_FLAG and JSON_FLAG, so the gate's accepted
  * vocabulary cannot drift from the command body's `args.includes("--force")`. */

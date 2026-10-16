@@ -28,6 +28,7 @@ import {
   sinceFlagSpec,
   STAT_FLAG,
   SUMMARY_FLAG,
+  COUNT_FLAG,
   typeFlagSpec,
   DRY_RUN_FLAG,
   FORCE_FLAG,
@@ -177,6 +178,7 @@ async function main(): Promise<void> {
         grepFlagSpec(GREP_VALUE_ERROR),
         typeFlagSpec(TYPE_VALUE_ERROR),
         JSON_FLAG,
+        COUNT_FLAG,
         ROLE_FLAG,
         { names: ["--prompt"] },
       ]);

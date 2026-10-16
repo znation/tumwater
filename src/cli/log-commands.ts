@@ -31,6 +31,24 @@ function sayEventLine(e: HarnessEvent, json: boolean): void {
   else say(formatEvent(e));
 }
 
+/** Render the `--count` tally: one `N × <type>` line per present event type, most-frequent
+ * first with ties broken alphabetically by type — the single shape shared by both window
+ * sources (-n and --since), so the print and the count cannot drift on which events count.
+ * In `--json` mode it emits one compact object mapping `type → count` with keys sorted, the
+ * machine-readable twin of the prose tally. */
+function sayTally(events: HarnessEvent[], json: boolean): void {
+  const counts = new Map<string, number>();
+  for (const e of events) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+  if (json) {
+    const obj: Record<string, number> = {};
+    for (const [type] of [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) obj[type] = counts.get(type)!;
+    sayJsonLine(obj);
+    return;
+  }
+  for (const [type, n] of [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))
+    say(`${n} × ${type}`);
+}
+
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
  * `--role` swaps in a pi transcript rather than the event log (--prompt requires --role, so
  * it is excluded with it), so each such flag fails naming both. One wording for all of them —
@@ -100,6 +118,13 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // excluded with it).
   const json = rest.includes("--json");
   rejectRoleViewRival(rest, "--json", json);
+  // `--count` tallies the window's present event types instead of printing the rows. Rival
+  // shapes stay exclusive: counting implies a bounded window (so -f/--follow is rejected)
+  // and the --role view is a pi transcript rather than the event log.
+  const count = rest.includes("--count");
+  rejectRoleViewRival(rest, "--count", count);
+  if (count && follow)
+    failRivalShapes("logs --count", "-f/--follow", "counting implies a bounded window; -f follows from now on");
   if (type !== null) rejectRoleViewRival(rest, "--type", true);
   if (grepPattern !== null) {
     rejectRoleViewRival(rest, "--grep", true);
@@ -132,6 +157,14 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       if (!json) say(type === null ? `no events in ${durationLabel(ms)}` : typeEmpty(type));
       return;
     }
+    // `--count` composes with the window: the tally covers exactly the filtered window rows
+    // the plain view would print (and answers the empty window with the plain view's own
+    // prose above), so the two cannot disagree on which events count. Never printed with the
+    // sparse-window note below: the note rides rows, and a count has none.
+    if (count) {
+      sayTally(filtered, json);
+      return;
+    }
     for (const e of filtered) sayEventLine(e, json);
     // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
@@ -158,6 +191,19 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);
   const shown = grepLower !== null || type !== null ? tail.events.filter(feedFilter) : tail.events;
+  // `--count` over the -n view answers with the tally of exactly the filtered rows the plain
+  // view would print, and carries over the plain view's empty-match prose below (a `--type`
+  // or `--grep` that matches nothing names its value; an empty unfiltered -n view prints
+  // nothing, as the plain view does). In JSON mode the empty output is the answer.
+  if (count) {
+    if (shown.length !== 0) sayTally(shown, json);
+    else if (!json && (grepPattern !== null || type !== null)) {
+      if (grepPattern !== null && type !== null)
+        say(`no events matching "${grepPattern}" or ${typeEmpty(type)}`);
+      else say(typeEmpty(type ?? grepPattern ?? ""));
+    }
+    return;
+  }
   for (const e of shown) sayEventLine(e, json);
   if (!follow) {
     // The empty-match line is prose: in JSON mode the empty output is the answer. It fires

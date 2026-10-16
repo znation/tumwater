@@ -531,3 +531,98 @@ test("tumwater help logs documents --type", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /--type <event type>/);
 });
+
+// --- logs --count (tally the window's event types instead of printing rows) ---
+
+test("logs --count prints one N × <type> line per present type, most-frequent-first", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count");
+  seedMixedLog(repo);
+
+  const r = await cli(repo, "logs", "--count");
+  assert.equal(r.code, 0);
+  // seedMixedLog: land_failed x2, tick_start x2, review_rejected x1, tick_end x1.
+  assert.match(r.stdout, /2 × land_failed/);
+  assert.match(r.stdout, /2 × tick_start/);
+  assert.match(r.stdout, /1 × review_rejected/);
+  assert.match(r.stdout, /1 × tick_end/);
+});
+
+test("logs --count composes with --type, --grep, --since, and -n", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count filters");
+  seedMixedLog(repo);
+
+  const typed = await cli(repo, "logs", "--count", "--type", "tick_end");
+  assert.equal(typed.code, 0);
+  assert.match(typed.stdout, /1 × tick_end/);
+  assert.ok(!typed.stdout.includes("land_failed"), "a --type subset counts only that type");
+
+  const grepped = await cli(repo, "logs", "--count", "--grep", "land_failed");
+  assert.equal(grepped.code, 0);
+  assert.match(grepped.stdout, /2 × land_failed/);
+
+  const windowed = await cli(repo, "logs", "--count", "--since", "30m");
+  assert.equal(windowed.code, 0);
+  assert.match(windowed.stdout, /2 × land_failed/);
+
+  const tailed = await cli(repo, "logs", "--count", "-n", "2");
+  assert.equal(tailed.code, 0);
+  assert.match(tailed.stdout, /1 × land_failed/);
+  assert.match(tailed.stdout, /1 × tick_end/);
+});
+
+test("logs --count --json emits a sorted type→count object", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count json");
+  seedMixedLog(repo);
+
+  const r = await cli(repo, "logs", "--count", "--json");
+  assert.equal(r.code, 0);
+  assert.deepEqual(JSON.parse(r.stdout.trim()), {
+    land_failed: 2,
+    review_rejected: 1,
+    tick_end: 1,
+    tick_start: 2,
+  });
+});
+
+test("logs --count rejects -f and --role, naming both flags", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count exclusions");
+
+  let r = await cli(repo, "logs", "--count", "-f");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--count cannot be combined with -f\/--follow/);
+
+  r = await cli(repo, "logs", "--count", "--follow");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--count cannot be combined with -f\/--follow/);
+
+  r = await cli(repo, "logs", "--count", "--role", "clean");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--count cannot be combined with --role/);
+});
+
+test("logs --count reports an empty window and empty match with the plain view's prose", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count empty");
+
+  const emptySince = await cli(repo, "logs", "--count", "--since", "1h");
+  assert.equal(emptySince.code, 0);
+  assert.match(emptySince.stdout, /no events in 1h/);
+  assert.ok(!emptySince.stdout.includes("rotated out"), "a count never prints the sparse-window note");
+
+  seedMixedLog(repo);
+  const emptyType = await cli(repo, "logs", "--count", "--type", "zzz");
+  assert.equal(emptyType.code, 0);
+  assert.match(emptyType.stdout, /no events matching "zzz"/);
+});
+
+test("tumwater help logs documents --count", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli logs count help");
+  const r = await cli(repo, "help", "logs");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /--count/);
+});
