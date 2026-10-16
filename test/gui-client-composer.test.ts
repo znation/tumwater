@@ -122,7 +122,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
     el,
     { innerHeight: 800, innerWidth: opts.innerWidth ?? 1280 },
     location,
-    opts.activeView ?? "fleet",
+    opts.activeView ?? "team",
     "open",
     () => { closeDrawerCalls.push("close"); },
     (msg: string) => { flashes.push(msg); },
@@ -151,7 +151,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
 }
 
 const IMG = { name: "a.png", type: "image/png", size: 1048576 };
-const STATUS = { loops: [{ role: "qa" }, { role: "bugfix" }], inbox: 2, roleInbox: { qa: 1 } };
+const STATUS = { roles: [{ role: "qa" }, { role: "bugfix" }], inbox: 2, roleInbox: { qa: 1 } };
 const SUBMIT = { preventDefault: () => {} };
 
 test("the target picker rebuilds only when the fleet's roles change, and a vanished target falls back to the director", () => {
@@ -175,7 +175,7 @@ test("the target picker rebuilds only when the fleet's roles change, and a vanis
   // A fleet without qa: rebuilt without qa, and a composer aimed at qa falls back to the
   // director (its placeholder switches back with the target).
   s.scope.setTarget("qa");
-  s.scope.renderComposer({ loops: [{ role: "bugfix" }], inbox: 0, roleInbox: {} });
+  s.scope.renderComposer({ roles: [{ role: "bugfix" }], inbox: 0, roleInbox: {} });
   assert.doesNotMatch(select.innerHTML, /value='qa'/);
   assert.equal(s.input().placeholder, "Tell the team what to do next…");
   const link2 = s.el("queuelink");
@@ -235,12 +235,12 @@ test("draftForDirector puts text in the box and leaves the cursor at its end", (
 test("focusComposer routes to the fleet view from anywhere and closes the drawer on a narrow window", () => {
   const s = composerScope({ activeView: "history", innerWidth: 1000 });
   s.scope.focusComposer();
-  assert.equal(s.location.hash, "fleet", "a composer off the fleet view is brought into sight by hash");
+  assert.equal(s.location.hash, "team", "a composer off the fleet view is brought into sight by hash");
   assert.deepEqual(s.closeDrawerCalls, ["close"], "narrow windows keep the composer clear of the drawer");
   assert.deepEqual(s.form().scrollCalls, [{ behavior: "smooth", block: "center" }]);
   assert.deepEqual(s.input().focusCalls, [{ preventScroll: true }]);
 
-  const wide = composerScope({ activeView: "fleet", innerWidth: 1280 });
+  const wide = composerScope({ activeView: "team", innerWidth: 1280 });
   wide.scope.focusComposer();
   assert.equal(wide.location.hash, "");
   assert.deepEqual(wide.closeDrawerCalls, []);
@@ -428,7 +428,7 @@ test("Enter submits, Shift+Enter adds a line, Escape blurs", () => {
 test("the image note under the chips names where a text-only loop's image prompt runs", () => {
   const s = composerScope();
   const status = {
-    loops: [
+    roles: [
       { role: "qa", imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
       { role: "bugfix", imageInput: true, imageReroute: null },
     ],
@@ -445,7 +445,7 @@ test("the image note under the chips names where a text-only loop's image prompt
   // submit gate will refuse on the server, which the flash reports).
   s.scope.setTarget("bugfix");
   assert.equal(s.el("promptimagenote").hidden, true);
-  s.scope.renderComposer({ loops: [{ role: "qa", imageInput: false, imageReroute: null }, { role: "bugfix", imageInput: true, imageReroute: null }], inbox: 0, roleInbox: {} });
+  s.scope.renderComposer({ roles: [{ role: "qa", imageInput: false, imageReroute: null }, { role: "bugfix", imageInput: true, imageReroute: null }], inbox: 0, roleInbox: {} });
   s.scope.setTarget("qa");
   assert.equal(s.el("promptimagenote").hidden, true);
 });

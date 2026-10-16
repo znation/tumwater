@@ -138,11 +138,11 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     const status = await getJson<
       ReturnType<typeof statusPayload> & {
         running: boolean;
-        loops: Array<{ role: string; phase: string }>;
+        roles: Array<{ role: string; phase: string }>;
       }
     >(base, "/api/status");
     assert.equal(status.running, false);
-    assert.ok(status.loops.some((l) => l.role === "director"));
+    assert.ok(status.roles.some((l) => l.role === "director"));
 
     // The served document is exactly the CLI's (`statusPayload`) plus one field only the server
     // can know — the serving process's own `serverBuildSha`, the page's cue to notice a newer
@@ -775,11 +775,11 @@ test("the GUI next run cell mirrors the TUI's nextRunCell rules", async () => {
 test("the dashboard page is one self-contained document: sidebar, views, composer, drawer, one poll", async () => {
   const { GUI_PAGE } = await import("../src/ui/gui/gui-page.js");
   // The sidebar carries the four views as #fragment links, so Back/Forward and bookmarks work.
-  for (const [id, href] of [["tab-fleet", "#fleet"], ["tab-history", "#history"], ["tab-usage", "#usage"], ["tab-failures", "#failures"]]) {
+  for (const [id, href] of [["tab-team", "#team"], ["tab-history", "#history"], ["tab-usage", "#usage"], ["tab-failures", "#failures"]]) {
     assert.match(GUI_PAGE, new RegExp(`<a href="${href}" id="${id}" class="tab`), `${id} links to ${href}`);
   }
   // Each view's container, the composer (with its target picker), the alerts, and the drawer.
-  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "loops", "backlog", "feed", "drawer", "soundwrap", "budgetwrap", "pausewrap"]) {
+  for (const id of ["fleet-view", "history", "report", "failures", "promptform", "prompttarget", "prompt", "alerts", "rolerows", "backlog", "feed", "drawer", "soundwrap", "budgetwrap", "pausewrap"]) {
     assert.match(GUI_PAGE, new RegExp(`id="${id}"`), `#${id} is in the shell`);
   }
   // The page makes no request off its own server: no remote scripts, styles, fonts, or images.
@@ -838,5 +838,5 @@ test("the page shell uses the team, role and inbox words but keeps the old ids a
   assert.match(GUI_PAGE, /<th class="c-loop">Role<\/th>/);
   assert.match(GUI_PAGE, /placeholder="Tell the team what to do next…"/);
   assert.match(GUI_PAGE, /<option value="">All roles<\/option>/);
-  assert.match(GUI_PAGE, /href="#fleet" id="tab-fleet"/, "the hash and ids stay for later series");
+  assert.match(GUI_PAGE, /href="#team" id="tab-team"/, "the hash and ids stay for later series");
 });

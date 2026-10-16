@@ -442,7 +442,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     };
     const messages = () => readEvents(repo).map((e) => (e.message as string | undefined) ?? "");
     const loopOrder = () =>
-      (statusPayload(repo) as { loops: Array<{ role: string }> }).loops.map((l) => l.role);
+      (statusPayload(repo) as { roles: Array<{ role: string }> }).roles.map((l) => l.role);
     await waitFor(() => finished("clean"), "the startup tick to finish");
 
     // Adding a custom entry starts its runner within one poll cycle — the live-reload

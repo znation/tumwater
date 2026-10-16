@@ -43,8 +43,8 @@ test("status payload carries the pooled worktree slot a loop holds or is pinned 
       },
     ],
   });
-  let payload = statusPayload(repo) as { loops: Array<{ role: string; slot?: string; slotPinned?: boolean }> };
-  const held = payload.loops.find((l) => l.role === "feature");
+  let payload = statusPayload(repo) as { roles: Array<{ role: string; slot?: string; slotPinned?: boolean }> };
+  const held = payload.roles.find((l) => l.role === "feature");
   assert.equal(held?.slot, "_slot-1");
   assert.equal(held?.slotPinned, false);
 
@@ -62,10 +62,10 @@ test("status payload carries the pooled worktree slot a loop holds or is pinned 
     ],
   });
   payload = statusPayload(repo) as typeof payload;
-  const pinned = payload.loops.find((l) => l.role === "feature");
+  const pinned = payload.roles.find((l) => l.role === "feature");
   assert.equal(pinned?.slot, "_slot-2");
   assert.equal(pinned?.slotPinned, true);
-  assert.equal(payload.loops.find((l) => l.role === "bugfix")?.slot, undefined);
+  assert.equal(payload.roles.find((l) => l.role === "bugfix")?.slot, undefined);
 });
 
 test("status payload carries an instance's claim title and base role", async () => {
@@ -81,13 +81,13 @@ test("status payload carries an instance's claim title and base role", async () 
     claim: { file: "PLANS.md", key: "plan a", title: "Plan A", at: Date.now(), source: "assigned" },
   });
   const payload = statusPayload(repo) as {
-    loops: Array<{ role: string; claim?: string; instanceOf?: string }>;
+    roles: Array<{ role: string; claim?: string; instanceOf?: string }>;
   };
-  const inst = payload.loops.find((l) => l.role === "feature-2");
+  const inst = payload.roles.find((l) => l.role === "feature-2");
   assert.equal(inst?.claim, "Plan A", "the instance row carries the claimed title");
   assert.equal(inst?.instanceOf, "feature", "the instance row names its base role");
   // The bare role keeps neither field (the common payload shape is unchanged).
-  const bare = payload.loops.find((l) => l.role === "feature");
+  const bare = payload.roles.find((l) => l.role === "feature");
   assert.equal(bare?.claim, undefined);
   assert.equal(bare?.instanceOf, undefined);
 });
@@ -99,10 +99,10 @@ test("status payload marks user-defined loops with the custom flag", async () =>
   cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // The payload's structural fixture type tolerates the extra field — assert on it directly.
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; custom?: boolean }> };
-  assert.ok(payload.loops.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; custom?: boolean }> };
+  assert.ok(payload.roles.some((l) => l.role === "nightly" && l.custom === true), "listed custom is marked");
   assert.equal(
-    payload.loops.filter((l) => l.custom).length,
+    payload.roles.filter((l) => l.custom).length,
     1,
     "only the custom carries the flag",
   );
@@ -121,9 +121,9 @@ test("status payload combines persisted + live token metrics for running loops o
   const file = piLogPath(repo, "feature");
   writeLogLines(file, [SESSION, assistantLine("turn one", { tokens: 8_000, output: 300 }), assistantLine("turn two", { tokens: 12_000, output: 500 })]);
   const payload = statusPayload(repo) as {
-    loops: Array<{ role: string; generated: number; peakCtx: number }>;
+    roles: Array<{ role: string; generated: number; peakCtx: number }>;
   };
-  const feature = payload.loops.find((l) => l.role === "feature");
+  const feature = payload.roles.find((l) => l.role === "feature");
   assert.ok(feature, "feature loop present in payload");
   assert.equal(feature.generated, 1_800, "running loop gen = persisted + live output (1000+300+500)");
   assert.equal(feature.peakCtx, 12_000, "running loop peak ctx = max(persisted, live)");
@@ -144,14 +144,14 @@ test("status payload carries the current work item for running loops only", asyn
   writeLogLines(file2, [SESSION, assistantLine("old finished work")]);
 
   const payload = statusPayload(repo) as {
-    loops: Array<{ role: string; currentWork: string | null }>;
+    roles: Array<{ role: string; currentWork: string | null }>;
   };
   assert.equal(
-    payload.loops.find((l) => l.role === "feature")?.currentWork,
+    payload.roles.find((l) => l.role === "feature")?.currentWork,
     'implement plan "Linear history on main"',
     "running loop shows its in-flight work item",
   );
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.currentWork, null, "idle loop never shows a stale item");
 });
 
 // The per-loop today spend on the GUI surface: /api/status
@@ -173,14 +173,14 @@ test("status payload carries todayUsd per loop from its daily window", async () 
   stale.dayCostUsd = 5.67;
   saveLoopState(repo, stale);
 
-  let payload = statusPayload(repo) as { loops: Array<{ role: string; todayUsd: number }> };
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
-  assert.equal(payload.loops.find((l) => l.role === "dry")?.todayUsd, 0, "stale stamp reads zero");
+  let payload = statusPayload(repo) as { roles: Array<{ role: string; todayUsd: number }> };
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.todayUsd, 12.34, "fresh window rides the payload");
+  assert.equal(payload.roles.find((l) => l.role === "dry")?.todayUsd, 0, "stale stamp reads zero");
 
   // A loop that never ticked (default state file) also carries an explicit zero field.
   saveLoopState(repo, freshLoopState("organize"));
   payload = statusPayload(repo) as typeof payload;
-  assert.equal(payload.loops.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
+  assert.equal(payload.roles.find((l) => l.role === "organize")?.todayUsd, 0, "missing window reads zero");
 });
 
 test("status payload carries the consecutive no-change streak per loop", async () => {
@@ -193,9 +193,9 @@ test("status payload carries the consecutive no-change streak per loop", async (
   // A loop that never ticked (absent field) reads as an explicit zero.
   saveLoopState(repo, freshLoopState("organize"));
 
-  let payload = statusPayload(repo) as { loops: Array<{ role: string; noChangeStreak: number }> };
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
-  assert.equal(payload.loops.find((l) => l.role === "organize")?.noChangeStreak, 0, "an absent field reads zero");
+  let payload = statusPayload(repo) as { roles: Array<{ role: string; noChangeStreak: number }> };
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.noChangeStreak, 4, "a persisted streak rides the payload");
+  assert.equal(payload.roles.find((l) => l.role === "organize")?.noChangeStreak, 0, "an absent field reads zero");
 });
 
 // Project status: planned features and open bugs from PLANS.md/BUGS.md.
@@ -398,10 +398,10 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   // No marker: not paused.
   let payload = statusPayload(repo) as {
     paused: boolean;
-    loops: Array<{ role: string; phase: string }>;
+    roles: Array<{ role: string; phase: string }>;
   };
   assert.equal(payload.paused, false);
-  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "paused");
+  assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "paused");
 
   // Drop the marker (what `tumwater pause` does) with spend at the cap: the flag flips and
   // the idle loop's phase reads `paused`, ahead of waiting: budget spent.
@@ -418,19 +418,19 @@ test("the status payload carries the operator pause flag; its phase outranks wai
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.paused, true, "the flag rides the payload top level");
   assert.equal(
-    payload.loops.find((l) => l.role === "clean")?.phase,
+    payload.roles.find((l) => l.role === "clean")?.phase,
     "paused",
     "user pause outranks waiting: budget spent in the phase payload",
   );
   // The director is exempt — its phase keeps its own label.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
+  assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // Removing the marker (what `tumwater resume` does) reverts both: flag false, and with the
   // spend still at the cap the loop falls back to waiting: budget spent.
   fs.rmSync(marker);
   payload = statusPayload(repo) as typeof payload;
   assert.equal(payload.paused, false);
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
@@ -479,9 +479,9 @@ test("the status payload carries each loop's last error for the rows that failed
   s.lastError = "429 Rate limit exceeded";
   saveLoopState(repo, s);
   saveLoopState(repo, freshLoopState("clean"));
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; lastError: string | null }> };
-  assert.equal(payload.loops.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.lastError, null);
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastError: string | null }> };
+  assert.equal(payload.roles.find((l) => l.role === "qa")?.lastError, "429 Rate limit exceeded");
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.lastError, null);
 });
 
 test("the status payload carries each loop's last-landed epoch ms, null until it lands", async () => {
@@ -491,9 +491,9 @@ test("the status payload carries each loop's last-landed epoch ms, null until it
   s.lastLandedAt = 123_456_789;
   saveLoopState(repo, s);
   saveLoopState(repo, freshLoopState("clean"));
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; lastLandedAt: number | null }> };
-  assert.equal(payload.loops.find((l) => l.role === "qa")?.lastLandedAt, 123_456_789);
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.lastLandedAt, null);
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastLandedAt: number | null }> };
+  assert.equal(payload.roles.find((l) => l.role === "qa")?.lastLandedAt, 123_456_789);
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.lastLandedAt, null);
 });
 
 test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
@@ -504,8 +504,8 @@ test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () 
   state.backoffSeconds = 90;
   saveLoopState(repo, state);
 
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
-  const clean = payload.loops.find((l) => l.role === "clean");
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }> };
+  const clean = payload.roles.find((l) => l.role === "clean");
   assert.ok(clean, "the loop has a payload row");
   assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms, formatted client-side");
   assert.equal(clean.backoffSeconds, 90);
@@ -531,24 +531,24 @@ test("the status payload carries capPaused; a held idle loop's phase reads waiti
   let payload = statusPayload(repo) as {
     capPaused: string[];
     pausedRoles: string[];
-    loops: Array<{ role: string; phase: string }>;
+    roles: Array<{ role: string; phase: string }>;
   };
   assert.deepEqual(payload.capPaused, ["clean"], "the held role rides the payload beside pausedRoles");
   assert.deepEqual(payload.pausedRoles, []);
   assert.equal(
-    payload.loops.find((l) => l.role === "clean")?.phase,
+    payload.roles.find((l) => l.role === "clean")?.phase,
     "waiting: daily cap spent",
     "the held idle loop's phase names its own cap",
   );
   // The director is exempt — its phase keeps its own label even when a cap entry names it.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
+  assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // No caps configured: the field is present and empty, and the phase reverts to idle.
   cfg.maxDailyCostUsdPerRole = {};
   saveConfig(repo, cfg);
   payload = statusPayload(repo) as typeof payload;
   assert.deepEqual(payload.capPaused, []);
-  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: daily cap spent");
+  assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: daily cap spent");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });

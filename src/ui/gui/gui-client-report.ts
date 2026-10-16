@@ -323,7 +323,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     // Keep this view's Loop picker in step with the fleet's role list (custom loops included).
     function syncRoles(d) {
       if (!o.rolePickerId || !d) return;
-      role = syncRolePicker(o.rolePickerId, reportBaseRoles(d.loops), role, o.roleKey);
+      role = syncRolePicker(o.rolePickerId, reportBaseRoles(d.roles), role, o.roleKey);
     }
     async function fetchView(throttled) {
       if (throttled && Date.now() - fetchedAt < 60000) return;

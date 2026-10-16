@@ -212,7 +212,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       todayAt = Date.now();
     } catch { /* keep the last numbers */ }
     todayLoading = false;
-    if (lastStatus && activeView === "fleet") renderStats(lastStatus); // vocabulary-ok: view id
+    if (lastStatus && activeView === "team") renderStats(lastStatus);
   }
   // stats:start
   function statTile(t) {
@@ -221,7 +221,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       "<span class='stat-sub'>" + t.sub + "</span>" + (t.meter || "") + (t.act ? "</button>" : "</div>");
   }
   function renderStats(d) {
-    const loops = d.loops || [];
+    const loops = d.roles || [];
     // The running set (phaseInfo.live), not the permit-holder inFlight: the exempt running
     // director is genuinely in flight, so the tile must count it even though it holds no
     // maxConcurrent permit (BUGS.md 2026-10-06).
@@ -523,7 +523,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // loops and persists, exactly as syncRolePicker does for the report and History pickers.
   function syncFeedRoles(d) {
     if (!d) return;
-    feedRole = syncRolePicker("feedrole", (d.loops || []).map((l) => l.role), feedRole, "feed-role");
+    feedRole = syncRolePicker("feedrole", (d.roles || []).map((l) => l.role), feedRole, "feed-role");
   }
   // An empty feed state: a li.empty with a bold head, a body, and the shared Clear-filter
   // button that ends all three search/error/filter-empty rows — one home for the button's
@@ -567,7 +567,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       : null;
     const shown = feedError ? [] : serverRows !== null ? serverRows : local;
     markActive($("feedfilter"), "filter", feedFilter);
-    const roles = new Set((d.loops || []).map((l) => l.role));
+    const roles = new Set((d.roles || []).map((l) => l.role));
     paintPanel("feed", shown.length
       ? tallyChips(shown) + shown.map((it) => {
         const kind = eventKind(it);
@@ -628,7 +628,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // activity:end
 
   function renderFleet(d) {
-    const loops = d.loops || [];
+    const loops = d.roles || [];
     const sub = plural(loops.length, "role") + " · " + (d.running ? loops.filter((l) => phaseInfo(l.phase).live).length + " in flight" : "the team is stopped") +
       (d.paused ? " · paused" : "");
     if ($("fleetsub").textContent !== sub) $("fleetsub").textContent = sub;

@@ -149,7 +149,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // loops and persists, exactly as syncRolePicker does for the report and Activity pickers.
   function syncHistoryRoles(d) {
     if (!d) return;
-    histRole = syncRolePicker("histrole", (d.loops || []).map((l) => l.role), histRole, "hist-role");
+    histRole = syncRolePicker("histrole", (d.roles || []).map((l) => l.role), histRole, "hist-role");
   }
   async function fetchHistory(throttled) {
     if (throttled && Date.now() - histFetchedAt < 4000) return;
@@ -290,7 +290,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const showSummary = histMode === "summary" && histSummary && histRows && histRows.length > 0;
     const bodyHtml = showSummary
       ? histSummaryHtml(histSummary)
-      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.loops) || []).map((l) => l.role)), histGrep, histSinceKey);
+      : historyTableHtml(histRows, histFilter, new Set(((lastStatus && lastStatus.roles) || []).map((l) => l.role)), histGrep, histSinceKey);
     body.innerHTML = historyNoteHtml(histNote) + bodyHtml;
   }
 `;

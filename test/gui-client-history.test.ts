@@ -332,7 +332,7 @@ test("fetchHistory drops and re-persists a loop scope the fleet no longer lists"
     () => false, // buildHistoryView returns early; only the fetch is observed
     (id: string) => (id === "histrole" ? select : undefined),
     iconStub,
-    { loops: [{ role: "feature" }, { role: "qa" }] },
+    { roles: [{ role: "feature" }, { role: "qa" }] },
     () => {},
     (title: string) => title,
     async (path: string) => { paths.push(path); return { rows: [] }; },

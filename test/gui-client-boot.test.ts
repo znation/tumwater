@@ -4,7 +4,7 @@ import { clientScope } from "./helpers/gui-client-scope.js";
 
 // The dashboard's view routing (src/ui/gui/gui-client-boot.ts's view-routing region): the
 // #fragment-driven switchView/route pair the page's tabs, Back/Forward buttons, and
-// #loop/<role> drawer links all run through. The pattern test/gui-client.test.ts uses:
+// #role/<role> drawer links all run through. The pattern test/gui-client.test.ts uses:
 // clientScope runs the marked region with stand-ins for the DOM and the render helpers.
 
 /** A fake DOM element good enough for switchView: hidden, classList, and the aria
@@ -24,7 +24,7 @@ function fakeEl(log: string[], tag: string) {
  * assertions read the elements' final state. */
 function bootScope(inject: Record<string, unknown>, log: string[]) {
   const els: Record<string, ReturnType<typeof fakeEl>> = {};
-  for (const id of ["fleet-view", "history", "report", "failures", "pending", "settings-view", "tab-fleet", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
+  for (const id of ["fleet-view", "history", "report", "failures", "pending", "settings-view", "tab-team", "tab-history", "tab-usage", "tab-failures", "tab-pending", "tab-settings"]) {
     els[id] = fakeEl(log, id);
   }
   return clientScope<{ switchView(v: string): void; route(): void; openLoopRole(): string | null }>(
@@ -37,7 +37,7 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   const log: string[] = [];
   const calls: string[] = [];
   const scope = bootScope({
-    lastStatus: { loops: [] },
+    lastStatus: { roles: [] },
     renderFleet: () => calls.push("renderFleet"),
     fetchHistory: () => calls.push("fetchHistory"),
     fetchReport: () => calls.push("fetchReport"),
@@ -51,7 +51,7 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   assert.equal(log.filter((l) => l.startsWith("history ")).join("|"), "history hidden=false");
   assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=true");
   assert.equal(log.filter((l) => l.startsWith("tab-history ")).join("|"), "tab-history active+|tab-history aria-current=page");
-  assert.equal(log.filter((l) => l.startsWith("tab-fleet ")).join("|"), "tab-fleet active-|tab-fleet -aria-current");
+  assert.equal(log.filter((l) => l.startsWith("tab-team ")).join("|"), "tab-team active-|tab-team -aria-current");
   // The view's own fetch ran, and no other view's did.
   assert.deepEqual(calls, ["fetchHistory"]);
 
@@ -71,11 +71,11 @@ test("switchView shows one view's section, marks its tab, and refetches that vie
   assert.deepEqual(calls, ["fetchPending"]);
 });
 
-test("switchView falls back to fleet for an unknown view and repaints fleet from the last status", () => {
+test("switchView falls back to team for an unknown view and repaints team from the last status", () => {
   const log: string[] = [];
   const calls: string[] = [];
   const scope = bootScope({
-    lastStatus: { loops: [] },
+    lastStatus: { roles: [] },
     renderFleet: (d: unknown) => calls.push("renderFleet " + JSON.stringify(d)),
     fetchHistory: () => calls.push("fetchHistory"),
   }, log);
@@ -84,8 +84,8 @@ test("switchView falls back to fleet for an unknown view and repaints fleet from
   // The unknown name became fleet: its section shows, its tab leads, and the last
   // status payload is what got painted (no fetch happens for the fallback).
   assert.equal(log.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
-  assert.equal(log.filter((l) => l.startsWith("tab-fleet ")).join("|"), "tab-fleet active+|tab-fleet aria-current=page");
-  assert.deepEqual(calls, ["renderFleet {\"loops\":[]}"]);
+  assert.equal(log.filter((l) => l.startsWith("tab-team ")).join("|"), "tab-team active+|tab-team aria-current=page");
+  assert.deepEqual(calls, ["renderFleet {\"roles\":[]}"]);
 
   // With no status ever received, the fallback still routes but paints nothing —
   // the pre-poll boot state must not crash on a missing payload.
@@ -95,21 +95,21 @@ test("switchView falls back to fleet for an unknown view and repaints fleet from
   assert.equal(quietLog.filter((l) => l.startsWith("fleet-view ")).join("|"), "fleet-view hidden=false");
 });
 
-test("route follows #loop/<role> into the drawer over fleet, and idempotently on re-route", () => {
+test("route follows #role/<role> into the drawer over fleet, and idempotently on re-route", () => {
   const log: string[] = [];
   const calls: string[] = [];
-  let hash = "#loop/feature";
+  let hash = "#role/feature";
   let openRole: string | null = null;
   const scope = bootScope({
     location: { get hash() { return hash; } },
-    lastStatus: { loops: [] },
+    lastStatus: { roles: [] },
     renderFleet: () => calls.push("renderFleet"),
     fetchHistory: () => calls.push("fetchHistory"),
     openLoopRole: () => openRole,
     openLoop: (role: string) => { calls.push("openLoop " + role); openRole = role; },
   }, log);
 
-  // A fresh load straight to #loop/feature: fleet is shown behind the drawer and the
+  // A fresh load straight to #role/feature: fleet is shown behind the drawer and the
   // feature drawer opens.
   scope.route();
   assert.deepEqual(calls, ["renderFleet", "openLoop feature"]);
@@ -122,7 +122,7 @@ test("route follows #loop/<role> into the drawer over fleet, and idempotently on
   assert.deepEqual(calls, [], "the already-open drawer is left alone");
 
   // Landing on a different loop's link does open that drawer.
-  hash = "#loop/qa";
+  hash = "#role/qa";
   scope.route();
   assert.deepEqual(calls, ["openLoop qa"]);
 
@@ -133,7 +133,7 @@ test("route follows #loop/<role> into the drawer over fleet, and idempotently on
   assert.deepEqual(calls, ["fetchHistory"], "the history view fetched, fleet not re-painted");
 
   // A later #loop route on an already-routed page must not force fleet back on.
-  hash = "#loop/feature";
+  hash = "#role/feature";
   calls.length = 0;
   log.length = 0;
   scope.route();
@@ -146,7 +146,7 @@ test("route survives a malformed percent-escape in the fragment instead of abort
   const calls: string[] = [];
   const scope = bootScope({
     location: { hash: "#%" },
-    lastStatus: { loops: [] },
+    lastStatus: { roles: [] },
     renderFleet: () => calls.push("renderFleet"),
     fetchHistory: () => calls.push("fetchHistory"),
   }, log);
@@ -291,4 +291,25 @@ test("note-save posts the textarea, note-clear needs a second click, note-discar
   scope.runAct("note-save", "feature");
   assert.deepEqual(posts[1], ["/api/role-notes", { role: "feature", text: "new\ntext" }]);
   assert.deepEqual(events.slice(-2), ["load feature", "notebook saved (8 bytes)"]);
+});
+
+test("route still follows the legacy #loop/<role> and #fleet hashes", () => {
+  const log: string[] = [];
+  const calls: string[] = [];
+  let hash = "#loop/qa";
+  const scope = bootScope({
+    location: { get hash() { return hash; } },
+    lastStatus: { roles: [] },
+    renderFleet: () => calls.push("renderFleet"),
+    openLoopRole: () => null,
+    openLoop: (role: string) => calls.push("openLoop " + role),
+  }, log);
+  scope.route();
+  assert.deepEqual(calls, ["renderFleet", "openLoop qa"]);
+
+  calls.length = 0;
+  hash = "#fleet";
+  scope.route();
+  assert.deepEqual(calls, ["renderFleet"]);
+  assert.equal(log.filter((l) => l.startsWith("tab-team ")).pop(), "tab-team aria-current=page");
 });

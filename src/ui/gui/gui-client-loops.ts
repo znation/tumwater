@@ -169,7 +169,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   // Rows are patched cell by cell: a working loop's elapsed time changes every second, and
   // rewriting only that cell keeps focus and hover on the row's buttons.
   function patchLoops(rows) {
-    const tbody = $("loops"); // vocabulary-ok: the loops table element id
+    const tbody = $("rolerows");
     const keys = rows.map((r) => r.key).join("|");
     if (keys !== loopKeys) {
       loopKeys = keys;
@@ -190,7 +190,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
   function renderLoops(d) {
     $("loopstable").classList.toggle("free", Boolean(d.budget && d.budget.free));
     const byGroup = LOOP_GROUPS.map(() => []);
-    for (const l of sortLoops(d.loops || [])) {
+    for (const l of sortLoops(d.roles || [])) {
       const rank = loopRank(l.phase);
       byGroup[LOOP_GROUPS.findIndex((g) => g.slice(1).includes(rank))].push(l);
     }
@@ -207,7 +207,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
     if (!rows.length) rows.push({ key: "empty", cls: "group", group: true, cells: ["No roles are enabled in tumwater.json"] });
     patchLoops(rows);
   }
-  $("loops").addEventListener("click", (ev) => { // vocabulary-ok: the loops table element id
+  $("rolerows").addEventListener("click", (ev) => {
     const b = clickClosest(ev, "button.rowaction");
     if (b) { ev.preventDefault(); rowAction(b.dataset.action, b.dataset.role, b.dataset.for === undefined ? undefined : Number(b.dataset.for)); return; }
     const tr = clickClosest(ev, "tr[data-role]");

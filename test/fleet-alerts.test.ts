@@ -100,7 +100,7 @@ test("loop trouble, a stale build, questions, and a pause, most urgent first", (
   assert.equal(by.mainred?.title, "main's check is failing — 1 role is blocked");
   assert.equal(by.failing?.title, "bugfix and qa are failing run after run");
   assert.equal(by.failing?.detail, "bugfix: 429 Rate limit exceeded · qa: see its transcript");
-  assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"], ["loop", "qa"]], "each failing loop opens from the alert");
+  assert.deepEqual(by.failing?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"], ["role", "qa"]], "each failing loop opens from the alert");
   assert.equal(by.stuck?.title, "feature and docs look stuck");
   // The tool-call stall gains the honest silence span from stuckMs (" for 12m00s"); the
   // "no agent output for 6m00s" phrase already carries its duration, so it does not double even
@@ -170,7 +170,7 @@ test("a streak behind a working label still raises the failing alert; a healthil
   assert.equal(alert?.tone, "red");
   assert.equal(alert?.title, "bugfix is failing run after run");
   assert.equal(alert?.detail, "bugfix: review rejected: not converging");
-  assert.deepEqual(alert?.actions.map((a) => [a.act, a.arg]), [["loop", "bugfix"]]);
+  assert.deepEqual(alert?.actions.map((a) => [a.act, a.arg]), [["role", "bugfix"]]);
 
   const healthyWorking: AlertLoop[] = [
     { role: "feature", phase: "working 30s · turn 1", errorStreak: false, inFlight: true },

@@ -29,9 +29,9 @@ test("snapshot loop rows carry the resolved selector always and the seam tier on
   assert.equal(plain.loops[0]?.model, "prov-a/model-a");
 
   // The payload ships the same field per row — the GUI renders it beside the loop name.
-  const plainPayload = statusPayload(repo) as { loops: Array<{ role: string; modelTier?: string; model?: string }> };
-  assert.equal(plainPayload.loops[0]?.model, "prov-a/model-a");
-  assert.equal(plainPayload.loops[0]?.modelTier, undefined);
+  const plainPayload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
+  assert.equal(plainPayload.roles[0]?.model, "prov-a/model-a");
+  assert.equal(plainPayload.roles[0]?.modelTier, undefined);
 
   // A tier map: each row carries its role's seam tier and that tier's resolved selector.
   writeConfig(repo, { model: { default: "prov-a/model-a", strong: "prov-s/model-s:high" } });
@@ -44,8 +44,8 @@ test("snapshot loop rows carry the resolved selector always and the seam tier on
   assert.equal(readme?.model, "prov-a/model-a"); // an undeclared tier inherits default
 
   // The payload ships the same fields per row — the GUI renders them beside the loop name.
-  const payload = statusPayload(repo) as { loops: Array<{ role: string; modelTier?: string; model?: string }> };
-  const planRow = payload.loops.find((l) => l.role === "plan");
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; modelTier?: string; model?: string }> };
+  const planRow = payload.roles.find((l) => l.role === "plan");
   assert.equal(planRow?.modelTier, "strong");
   assert.equal(planRow?.model, "prov-s/model-s:high");
 });
@@ -75,8 +75,8 @@ test("snapshot rows carry the active model-fallback episode", async () => {
     reason: "Request timed out.",
   });
   // The payload ships the same field for the dashboard row tag.
-  const payload = statusPayload(repo, now) as { loops: Array<{ role: string; fallback?: unknown }> };
-  assert.deepEqual(payload.loops.find((l) => l.role === "feature")?.fallback, active?.fallback);
+  const payload = statusPayload(repo, now) as { roles: Array<{ role: string; fallback?: unknown }> };
+  assert.deepEqual(payload.roles.find((l) => l.role === "feature")?.fallback, active?.fallback);
 
   // Probe due: this tick runs the primary, so the row stops naming the fallback.
   state.modelFallback.probeAt = now - 1;
@@ -212,8 +212,8 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
   try {
     // statusPayload reads the default models/settings path, so point it at the temp dir.
     process.env.PI_CODING_AGENT_DIR = dir;
-    const payload = statusPayload(repo) as { loops: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
-    const row = payload.loops.find((l) => l.role === "feature")!;
+    const payload = statusPayload(repo) as { roles: Array<{ role: string; model?: string; modelFromPi?: boolean }> };
+    const row = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(row.model, "prov/org/m:route:low");
     assert.equal(row.modelFromPi, true);
   } finally {
@@ -259,8 +259,8 @@ test("snapshot rows carry the image-input surface from the models catalog", asyn
   const savedDir = process.env.PI_CODING_AGENT_DIR;
   try {
     process.env.PI_CODING_AGENT_DIR = dir;
-    const payload = statusPayload(repo) as { loops: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
-    const featureRow = payload.loops.find((l) => l.role === "feature")!;
+    const payload = statusPayload(repo) as { roles: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
+    const featureRow = payload.roles.find((l) => l.role === "feature")!;
     assert.equal(featureRow.imageInput, false);
     assert.equal(featureRow.imageReroute, "strong (local/vision)");
   } finally {

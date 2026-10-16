@@ -169,7 +169,7 @@ export function fleetAlerts(
       detail: failing.some((l) => l.lastError)
         ? failing.map((l) => `${roleLabel(l.role)}: ${l.lastError || "see its transcript"}`).join(" · ")
         : "The streak clears only on the next healthy run; the transcript names each failure.",
-      actions: failing.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
+      actions: failing.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
     });
   }
   // A stall marker rides only a running label. The director is excluded from `inFlight` (it
@@ -182,7 +182,7 @@ export function fleetAlerts(
       tone: "amber",
       title: `${listRoles(stuck)} ${agree(stuck.length, "looks", "look")} stuck`,
       detail: stuck.map(stuckDetail).join(" · "),
-      actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
+      actions: stuck.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
     });
   }
   if (snap.build?.stale) {
@@ -267,7 +267,7 @@ export function fleetAlerts(
       tone: "amber",
       title: `No configured model can read images for ${listRoles(noTarget)}`,
       detail: "A run that reads an image fails, and image attachments to these roles are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
-      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "loop", arg: l.role })), // vocabulary-ok: act value owned by the scripting series
+      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${roleLabel(l.role)}`, act: "role", arg: l.role })),
     });
   } else if (textOnly.length > 0) {
     const targets = [...new Set(textOnly.map((l) => l.imageReroute ?? ""))].filter(Boolean);

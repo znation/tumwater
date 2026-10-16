@@ -61,7 +61,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     const slot = { name: g.series, label: `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)})` };
     for (const r of g.rows) planSeries[r.i] = slot;
   }
-  const loops = snap.loops.map((s) => {
+  const roles = snap.loops.map((s) => {
     // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
     // drift apart.
@@ -287,7 +287,7 @@ export function statusPayload(root: string, now = Date.now()): object {
     ...(snap.quietHours ? { quietHours: snap.quietHours } : {}),
     inQuietHours: snap.inQuietHours,
     quietBadge: quietBadge(snap.quietHours, snap.inQuietHours),
-    loops,
+    roles,
     // The recent event feed as the one-line text `tumwater logs` prints…
     events: recent.map((e) => formatEvent(e)),
     // …and the same events as data for the dashboard's activity feed: when, which loop, what
@@ -322,6 +322,6 @@ export function statusPayload(root: string, now = Date.now()): object {
     fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
-    alerts: fleetAlerts(snap, questions, loops, now),
+    alerts: fleetAlerts(snap, questions, roles, now),
   };
 }

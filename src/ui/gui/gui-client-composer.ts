@@ -26,7 +26,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // facts the images alert and the submit gate use, so the composer never promises a run the
   // gate would refuse.
   function renderPromptImageNote() {
-    const loop = (composerData && composerData.loops || []).find((l) => l.role === promptTarget);
+    const loop = (composerData && composerData.roles || []).find((l) => l.role === promptTarget);
     const note = $("promptimagenote");
     const text = loop && loop.imageInput === false && loop.imageReroute
       ? promptTarget + "'s model can't read images; image prompts run on " + loop.imageReroute
@@ -35,7 +35,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     note.hidden = text === "";
   }
   function renderComposer(d) {
-    const roles = (d.loops || []).map((l) => l.role).filter((r) => r !== "director");
+    const roles = (d.roles || []).map((l) => l.role).filter((r) => r !== "director");
     const key = roles.join(",");
     if (key !== targetKey) {
       targetKey = key;
@@ -93,7 +93,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   }
   // The composer sits on the Fleet view; bring it into sight from anywhere and focus it.
   function focusComposer() {
-    if (activeView !== "fleet") location.hash = "fleet"; // vocabulary-ok: dashboard route name
+    if (activeView !== "team") location.hash = "team";
     if (window.innerWidth <= 1180 && drawer) closeDrawer();
     $("promptform").scrollIntoView({ behavior: "smooth", block: "center" });
     promptInput.focus({ preventScroll: true });

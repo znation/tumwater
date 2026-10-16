@@ -91,12 +91,12 @@ for (const width of [undefined, 120, 60]) {
       failures++;
       console.log("GUI MISMATCH");
       for (const role of ROLES) {
-        const ja = pa.loops.find((l) => l.role === role);
-        const jb = pb.loops.find((l) => l.role === role);
+        const ja = (pa.roles ?? pa.loops).find((l) => l.role === role);
+        const jb = (pb.roles ?? pb.loops).find((l) => l.role === role);
         if (JSON.stringify(ja) !== JSON.stringify(jb)) console.log(`  ${role}:\n    base: ${JSON.stringify(ja)}\n    new:  ${JSON.stringify(jb)}`);
       }
       for (const k of Object.keys(pa)) {
-        if (k === "loops") continue;
+        if (k === "roles" || k === "loops") continue;
         if (JSON.stringify(pa[k]) !== JSON.stringify(pb[k])) console.log(`  field ${k}:\n    base: ${JSON.stringify(pa[k])}\n    new:  ${JSON.stringify(pb[k])}`);
       }
     } else {

@@ -5,7 +5,7 @@ import { GUI_CLIENT_DRAWER_JS } from "../src/ui/gui/gui-client-drawer.js";
 import { clientRegion, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's detail drawer, browser-side (src/ui/gui/gui-client-drawer.ts): the open/close
-// state machine over loops and backlog entries with its #loop/<role> hash
+// state machine over loops and backlog entries with its #role/<role> hash
 // routing, the loop drawer's paint (unknown role, a working loop's actions and metrics), the
 // backlog entry's load with its stale-response guard, and the transcript line classifier.
 // The pattern test/gui-client.test.ts uses: the real format and view-model regions of the
@@ -93,7 +93,7 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     history: {
       replaceState(_s: unknown, _t: string, hash: string) { historyLog.push(hash); location.hash = hash; },
     },
-    activeView: "fleet",
+    activeView: "team",
     pill: (info: { tone: string; label: string }) => `<pill ${info.tone}:${info.label}>`,
     icon: iconStub,
     abortConfirming: () => false,
@@ -136,7 +136,7 @@ function workingStatus() {
   return {
     running: true,
     pausedRoles: [] as string[],
-    loops: [{
+    roles: [{
       role: "clean", phase: "working · writing tests", inFlight: true,
       currentWork: "Adding drawer tests", lastResult: "changed", lastSummary: "did the thing",
       lastTickEndedAt: now - 60_000, commits: 2, ticks: 5, generated: 12_345, peakCtx: 90_000,
@@ -149,7 +149,7 @@ test("opening a loop routes the hash, toggling the same role closes it back to t
   const t = openDrawer(["toggleLoop", "openLoopRole"], { status: workingStatus() });
   t.scope.toggleLoop("clean");
   assert.equal(t.scope.openLoopRole(), "clean");
-  assert.ok(t.historyLog.includes("#loop/clean"), `hash not routed: ${t.historyLog}`);
+  assert.ok(t.historyLog.includes("#role/clean"), `hash not routed: ${t.historyLog}`);
   assert.equal(t.el("drawer").hidden, false);
   assert.equal(t.el("scrim").hidden, false);
   await flush();
@@ -158,7 +158,7 @@ test("opening a loop routes the hash, toggling the same role closes it back to t
   assert.equal(t.scope.openLoopRole(), null);
   assert.equal(t.el("drawer").hidden, true);
   assert.equal(t.el("scrim").hidden, true);
-  assert.ok(t.historyLog.includes("#fleet"), `hash not restored: ${t.historyLog}`);
+  assert.ok(t.historyLog.includes("#team"), `hash not restored: ${t.historyLog}`);
 
   t.scope.toggleLoop("bugfix");
   assert.equal(t.scope.openLoopRole(), "bugfix");
@@ -176,7 +176,7 @@ test("switching roles while a loop drawer is open moves it without closing", () 
 
 test("the loop drawer for a role the fleet no longer has says so, paints no actions, and still renders its pending change", async () => {
   const t = openDrawer(["toggleLoop"], {
-    status: { loops: [] },
+    status: { roles: [] },
     responses: { "/api/diff?role=gone": { state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff: "diff --git a/x b/x\n", dirtyFiles: [] } },
   });
   t.scope.toggleLoop("gone");
@@ -195,8 +195,8 @@ test("the loop drawer for a role the fleet no longer has says so, paints no acti
 test("an idle loop's drawer offers Wake later…, and its open chooser lists one button per duration", () => {
   const idle = () => {
     const status = workingStatus();
-    status.loops[0]!.phase = "sleeping";
-    status.loops[0]!.inFlight = false;
+    status.roles[0]!.phase = "sleeping";
+    status.roles[0]!.inFlight = false;
     return status;
   };
   const closed = openDrawer(["toggleLoop"], { status: idle() });
@@ -215,11 +215,11 @@ test("an idle loop's drawer offers Wake later…, and its open chooser lists one
 
 test("an idle loop's drawer offers Cancel scheduled wake only while a future wake names it", () => {
   const actionsFor = (scheduledWake: unknown, instanceOf?: string, scheduledWakes?: unknown) => {
-    const status = workingStatus() as unknown as { loops: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown; scheduledWakes?: unknown };
+    const status = workingStatus() as unknown as { roles: Array<{ phase: string; inFlight: boolean; instanceOf?: string }>; scheduledWake?: unknown; scheduledWakes?: unknown };
     if (scheduledWakes !== undefined) status.scheduledWakes = scheduledWakes;
-    if (instanceOf) status.loops[0]!.instanceOf = instanceOf;
-    status.loops[0]!.phase = "sleeping";
-    status.loops[0]!.inFlight = false;
+    if (instanceOf) status.roles[0]!.instanceOf = instanceOf;
+    status.roles[0]!.phase = "sleeping";
+    status.roles[0]!.inFlight = false;
     if (scheduledWake !== undefined) status.scheduledWake = scheduledWake;
     const t = openDrawer(["toggleLoop"], { status: status as never });
     t.scope.toggleLoop("clean");
@@ -315,7 +315,7 @@ test("loadLoopTicks throttles repeat polls to one fetch per 5 s unless forced, a
 test("a stale backlog response for a since-replaced entry is ignored", async () => {
   const deferred: Array<{ path: string; resolve: (v: unknown) => void }> = [];
   const t = openDrawer(["toggleEntry", "openEntryKey"], {
-    status: { loops: [] },
+    status: { roles: [] },
     overrides: {
       getJson: (path: string) => new Promise<unknown>((resolve) => deferred.push({ path, resolve })),
     },
@@ -345,7 +345,7 @@ test("a stale backlog response for a since-replaced entry is ignored", async () 
 
 test("an open question entry offers the composer's answer action, an empty body says so", async () => {
   const t = openDrawer(["toggleEntry"], {
-    status: { loops: [] },
+    status: { roles: [] },
     responses: { "/api/backlog?file=questions&index=2": { title: "Which backend?", body: "" } },
   });
   t.scope.toggleEntry("questions", 2);
@@ -360,7 +360,7 @@ test("an open question entry offers the composer's answer action, an empty body 
 
 test("closing the drawer silences refreshDrawer", async () => {
   const t = openDrawer(["toggleEntry", "refreshDrawer"], {
-    status: { loops: [] },
+    status: { roles: [] },
     responses: { "/api/backlog?file=questions&index=2": { title: "Which backend?", body: "" } },
   });
   t.scope.toggleEntry("questions", 2);
@@ -440,7 +440,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
     todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
   });
   const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
-    status: { running: true, pausedRoles: [], loops: [loop("clean"), loop("bugfix")] },
+    status: { running: true, pausedRoles: [], roles: [loop("clean"), loop("bugfix")] },
     responses: {
       "/api/role?role=clean": { notes: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
       "/api/role?role=bugfix": { notes: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
@@ -458,7 +458,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
   const older = loop("clean");
   older.lastTickEndedAt -= 5_000;
-  const polled = { running: true, pausedRoles: [], loops: [older, loop("bugfix")] };
+  const polled = { running: true, pausedRoles: [], roles: [older, loop("bugfix")] };
   t.scope.renderLoopDrawer(polled);
   assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");
   assert.equal(t.painted.filter(([id]) => id === "drawerrole").length, rolePaints, "drawerrole is not repainted");

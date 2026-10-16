@@ -30,9 +30,9 @@ test("/api/status exposes each loop's nextRunAt and backoffSeconds", async () =>
   const { server, base } = await startLocalGui(repo);
   try {
     const status = (await (await fetch(base + "/api/status")).json()) as {
-      loops: Array<{ role: string; nextRunAt: number; backoffSeconds: number }>;
+      roles: Array<{ role: string; nextRunAt: number; backoffSeconds: number }>;
     };
-    const clean = status.loops.find((l) => l.role === "clean");
+    const clean = status.roles.find((l) => l.role === "clean");
     assert.ok(clean, "the loop has a payload row");
     assert.equal(clean.nextRunAt, 1_758_800_000_000, "raw epoch ms — the GUI formats it client-side");
     assert.equal(clean.backoffSeconds, 90);

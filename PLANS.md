@@ -40,52 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms scripting, part 4/5: Rename the status payload's loops to roles and the alert action and the dashboard hashes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Script interfaces" and "Decisions"; touches src/ui/status-payload.ts and src/ui/fleet-alerts.ts and src/ui/gui and scripts/diff-check.mjs)
-
-**Goal.** These script-facing names change, and old bookmarks keep working:
-- `status --json` and `/api/status` list `roles[]` instead of `loops[]`.
-- Alert buttons that open a role use `act: "role"`.
-- The dashboard's addresses are `#team` and `#role/<id>`. `#fleet` and `#loop/<id>` still route.
-
-**Approach.**
-- Status payload (`statusPayload`, src/ui/status-payload.ts): publish the per-row array as `roles` and rename its local variable to match. `fleetAlerts(snap, questions, roles, now)` keeps its signature. Row fields are part 5/5's.
-- Alert action:
-  - src/ui/fleet-alerts.ts: the `act: "loop"` actions on the failing, stuck and images alerts become `act: "role"`.
-  - src/ui/gui/gui-client-boot.ts, `runAct`: `act === "loop"` becomes `act === "role"`, with no `"loop"` branch kept, because the payload and the page ship together.
-- The dashboard script reads the status payload's `loops` untyped. Grep `\bloops\b` in src/ui/gui/ and change each read that comes from the payload:
-  - gui-client-composer.ts: `composerData.loops`, `d.loops`
-  - gui-client-drawer.ts: `d.loops`
-  - gui-client-fleet.ts: `renderStats`, the feed role picker and feed, and the Team view's subtitle
-  - gui-client-history.ts: the role picker and the known-role set from `lastStatus.loops`
-  - gui-client-loops.ts: `sortLoops(d.loops …)`
-  - gui-client-report.ts: `syncRoles`'s `reportBaseRoles(d.loops)`
-- Hashes (`switchView` and `route` in src/ui/gui/gui-client-boot.ts, plus src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-composer.ts and src/ui/gui/gui-client-fleet.ts):
-  - The `VIEWS` key `fleet` becomes `team`. The element id it maps to, `fleet-view`, belongs to the code and stays.
-  - `activeView`'s initial value and every `activeView === "fleet"` or `location.hash = "fleet"` become `"team"`.
-  - In gui-page.ts, the brand link and the first tab link to `#team`, and that tab's id becomes `tab-team`, because `switchView` builds `"tab-" + key`.
-  - The drawer writes `#role/<id>`, and `route()` opens the drawer from both `role/` and the legacy `loop/`.
-  - `route()` sends a legacy `fleet` to `team`.
-  - Mark the two legacy literals `// vocabulary-ok: legacy dashboard hash, still routed`.
-- scripts/diff-check.mjs reads `roles`, and falls back to `loops` for a baseline built before this part.
-- Append `loops` to `RETIRED_CLIENT_READS`.
-- Tests. `snapshot(...).loops` is internal and stays; change only the payload uses:
-  - status payload: test/status-payload.test.ts; the `statusPayload` uses in test/status-data-models.test.ts, test/status-data.test.ts and test/status-data-fleet.test.ts; test/cli.test.ts (the `status --json` field list)
-  - tabs and hashes: test/gui.test.ts (the tab id and href pairs)
-  - server: test/gui-endpoints.test.ts, test/gui-server-api.test.ts, test/gui-operator.test.ts, test/gui-report.test.ts
-  - client fixtures in the test/gui-client-*.test.ts files: `{ loops: […] }` → `{ roles: […] }`, `activeView: "fleet"` → `"team"`, `tab-fleet` → `tab-team`, `#loop/` → `#role/`
-  - alert actions: test/fleet-alerts.test.ts
-  - e2e: test/orchestrator-2.e2e.test.ts
-
-**Files touched.** Source: src/ui/status-payload.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-page.ts, scripts/diff-check.mjs. Tests: test/script-keys.test.ts and those listed above.
-
-**Acceptance criteria.**
-- `tumwater status --json` has a top-level `roles` array and no `loops` key (test/cli.test.ts, test/status-payload.test.ts).
-- The failing, stuck and images alerts carry `act: "role"`, and the dashboard opens that role's drawer from it (test/fleet-alerts.test.ts, test/gui-client-boot.test.ts).
-- Opening a role's drawer sets `#role/<id>`, and loading `#loop/<id>` opens the same drawer.
-- `#team` and `#fleet` both show the Team view, and the first tab links to `#team` (test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, test/gui.test.ts).
-- test/script-keys.test.ts passes with `loops` listed.
-- `npm run test` passes.
-
 ### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui)
 
 **Goal.** The last script interfaces lose their retired keys:
@@ -2347,6 +2301,54 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Repo check, reported in VERIFIED rather than added as a test: a one-off script over this repo's BUGS.md `## Fixed` and PLANS.md `## Done` headings (via `fixedBugEntries`/`donePlanEntries` from the built `dist/`) finds no `finishedTitle` result that `FIXED_DATE_RE`/`DONE_DATE_RE` matches, and no result that is empty.
 - Unit (`test/status-payload.test.ts`, beside "status payload lists the five newest answered questions beside the open ones"): take a temp project whose PLANS.md has one planned entry and six done entries `D6 (planned 2026-09-30 by plan) — done 2026-10-06` … `D1 … — done 2026-10-01`, written newest first. Its BUGS.md has the fixed bugs `B2 (found by bugfix 2026-10-01; fixed 2026-10-03 by bugfix loop)` and `B1 with no stamp`. Then `donePlans` has 5 entries with titles exactly `D6`…`D2`, and the first `completedOn` is `"2026-10-06"`. `fixedBugs` equals `[{ title: "B2", completedOn: "2026-10-03" }, { title: "B1 with no stamp", completedOn: null }]`. `plans` still lists only the planned entry.
 - Unit (`test/gui-client-fleet.test.ts`, beside "the Questions tab lists answered questions under the open ones, read-only"): `renderBacklog` on the Plans tab with one planned title and two `donePlans` (`{ title: "A <b>x</b>", completedOn: "2026-10-05" }` and `{ title: "Old (split 2026-10-01 from W)", completedOn: null }`) paints the planned row, then the "Done recently" divider, then `A &lt;b&gt;x&lt;/b&gt;` with `done 2026-10-05`. The second title appears verbatim, parenthetical included, because the client does no stripping, and it has no meta. The finished rows contain no `backloglink` or `data-index`. The Bugs tab with `fixedBugs` shows "Fixed recently" and `fixed <date>`. With `donePlans`/`fixedBugs` absent or empty, neither divider text appears. The Questions tab never shows finished rows, and the Plans tab never shows fixed bugs.
+- `npm run test` passes.
+
+### Plain terms scripting, part 4/5: Rename the status payload's loops to roles and the alert action and the dashboard hashes (planned 2026-10-16 by user; done 2026-10-16; requires part 3/5 landed; design in plans/terminology.md "Script interfaces" and "Decisions"; touches src/ui/status-payload.ts and src/ui/fleet-alerts.ts and src/ui/gui and scripts/diff-check.mjs)
+
+**Goal.** These script-facing names change, and old bookmarks keep working:
+- `status --json` and `/api/status` list `roles[]` instead of `loops[]`.
+- Alert buttons that open a role use `act: "role"`.
+- The dashboard's addresses are `#team` and `#role/<id>`. `#fleet` and `#loop/<id>` still route.
+
+**Approach.**
+- Status payload (`statusPayload`, src/ui/status-payload.ts): publish the per-row array as `roles` and rename its local variable to match. `fleetAlerts(snap, questions, roles, now)` keeps its signature. Row fields are part 5/5's.
+- Alert action:
+  - src/ui/fleet-alerts.ts: the `act: "loop"` actions on the failing, stuck and images alerts become `act: "role"`.
+  - src/ui/gui/gui-client-boot.ts, `runAct`: `act === "loop"` becomes `act === "role"`, with no `"loop"` branch kept, because the payload and the page ship together.
+- The dashboard script reads the status payload's `loops` untyped. Grep `\bloops\b` in src/ui/gui/ and change each read that comes from the payload:
+  - gui-client-composer.ts: `composerData.loops`, `d.loops`
+  - gui-client-drawer.ts: `d.loops`
+  - gui-client-fleet.ts: `renderStats`, the feed role picker and feed, and the Team view's subtitle
+  - gui-client-history.ts: the role picker and the known-role set from `lastStatus.loops`
+  - gui-client-loops.ts: `sortLoops(d.loops …)`
+  - gui-client-report.ts: `syncRoles`'s `reportBaseRoles(d.loops)`
+- Hashes (`switchView` and `route` in src/ui/gui/gui-client-boot.ts, plus src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-composer.ts and src/ui/gui/gui-client-fleet.ts):
+  - The `VIEWS` key `fleet` becomes `team`. The element id it maps to, `fleet-view`, belongs to the code and stays.
+  - `activeView`'s initial value and every `activeView === "fleet"` or `location.hash = "fleet"` become `"team"`.
+  - In gui-page.ts, the brand link and the first tab link to `#team`, and that tab's id becomes `tab-team`, because `switchView` builds `"tab-" + key`.
+  - The drawer writes `#role/<id>`, and `route()` opens the drawer from both `role/` and the legacy `loop/`.
+  - `route()` sends a legacy `fleet` to `team`.
+  - Mark the two legacy literals `// vocabulary-ok: legacy dashboard hash, still routed`.
+- scripts/diff-check.mjs reads `roles`, and falls back to `loops` for a baseline built before this part.
+- Append `loops` to `RETIRED_CLIENT_READS`.
+- Tests. `snapshot(...).loops` is internal and stays; change only the payload uses:
+  - status payload: test/status-payload.test.ts; the `statusPayload` uses in test/status-data-models.test.ts, test/status-data.test.ts and test/status-data-fleet.test.ts; test/cli.test.ts (the `status --json` field list)
+  - tabs and hashes: test/gui.test.ts (the tab id and href pairs)
+  - server: test/gui-endpoints.test.ts, test/gui-server-api.test.ts, test/gui-operator.test.ts, test/gui-report.test.ts
+  - client fixtures in the test/gui-client-*.test.ts files: `{ loops: […] }` → `{ roles: […] }`, `activeView: "fleet"` → `"team"`, `tab-fleet` → `tab-team`, `#loop/` → `#role/`
+  - alert actions: test/fleet-alerts.test.ts
+  - e2e: test/orchestrator-2.e2e.test.ts
+
+**Files touched.** Source: src/ui/status-payload.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-page.ts, scripts/diff-check.mjs. Tests: test/script-keys.test.ts and those listed above.
+
+**Landed note.** The roles table body's element id changed from `loops` to `rolerows`: script-keys's quoted-key check would otherwise flag `$("loops")` as a retired read.
+
+**Acceptance criteria.**
+- `tumwater status --json` has a top-level `roles` array and no `loops` key (test/cli.test.ts, test/status-payload.test.ts).
+- The failing, stuck and images alerts carry `act: "role"`, and the dashboard opens that role's drawer from it (test/fleet-alerts.test.ts, test/gui-client-boot.test.ts).
+- Opening a role's drawer sets `#role/<id>`, and loading `#loop/<id>` opens the same drawer.
+- `#team` and `#fleet` both show the Team view, and the first tab links to `#team` (test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, test/gui.test.ts).
+- test/script-keys.test.ts passes with `loops` listed.
 - `npm run test` passes.
 
 ### The TUI's project-status pane lists the newest answered questions with their decisions below the open ones, so an operator in the terminal sees what was decided lately, as the dashboard's Questions tab shows (planned 2026-10-16 by plan; done 2026-10-16; independent of every other Planned entry. It edits `backlogLines` in `src/ui/tui/tui-backlog.ts`, the backlog branch of `paneBody` in `src/ui/tui/tui-pane.ts`, and exports one constant from `src/ui/status-payload.ts`, with tests in `test/tui-backlog.test.ts` plus one clause in `docs/cli.md`. It renames no payload key and touches neither `tui-keys.ts` nor the event reader, the doctor/retire/role JSON keys, or `renderBacklog`, which the in-flight plans edit)

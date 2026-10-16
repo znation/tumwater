@@ -35,7 +35,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     entryEditing = null;
     noteEditing = null;
     disarmNoteClear();
-    if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: the #loop/ hash stays
+    if (wasLoop && (location.hash.startsWith("#role/") || location.hash.startsWith("#loop/"))) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: legacy dashboard hash, still routed
     drawerTicks = null;
     drawerChange = null;
     drawerRole = null;
@@ -49,7 +49,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
 
   function openLoop(role) {
     drawer = { kind: "loop", role }; // vocabulary-ok: the drawer kind stays "loop"
-    const hash = "#loop/" + encodeURIComponent(role); // vocabulary-ok: the #loop/ hash stays
+    const hash = "#role/" + encodeURIComponent(role);
     if (location.hash !== hash) history.replaceState(null, "", hash);
     drawerTicks = null;
     drawerTicksAt = 0;
@@ -93,7 +93,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   function renderLoopDrawer(d) {
     const role = openLoopRole();
     if (!role) return;
-    const l = (d.loops || []).find((x) => x.role === role);
+    const l = (d.roles || []).find((x) => x.role === role);
     if (!l) {
       paintPanel("drawerhead", "<div class='kicker'>Role</div><h2 id='drawertitle' class='mono'>" + esc(roleLabel(role)) +
         "</h2><span class='muted'>This role is no longer part of the team.</span>");

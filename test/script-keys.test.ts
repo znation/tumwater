@@ -14,6 +14,7 @@ const RETIRED_CLIENT_READS = [
   "landingFailed",
   "landedByRole",
   "landingFailedByRole",
+  "loops",
 ];
 
 /** Lines of `source` that read a listed key as `.key` or as a quoted string key. */

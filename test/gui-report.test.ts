@@ -421,7 +421,7 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
       markActive: () => {},
       recall: () => null,
       store: () => {},
-      lastStatus: { loops: [{ role: "feature" }, { role: "bugfix" }] },
+      lastStatus: { roles: [{ role: "feature" }, { role: "bugfix" }] },
       getJson: async () => payload,
       errorPanel: (title: string) => "<div class='error'>" + title + "</div>",
       clickClosest: () => null,
@@ -470,7 +470,7 @@ test("the report Loop picker offers base roles only, so an instance id never lab
     // The persisted report scope names the instance id old builds offered.
     recall: (key: string) => (key === "usage-role" ? "feature-2" : null),
     store: (key: string, value: string) => { stored.push([key, value]); },
-    lastStatus: { loops: [{ role: "feature" }, { role: "feature-2", instanceOf: "feature" }, { role: "clean" }] },
+    lastStatus: { roles: [{ role: "feature" }, { role: "feature-2", instanceOf: "feature" }, { role: "clean" }] },
     getJson: async () => ({ markdown: "# usage" }),
     errorPanel: (title: string) => title,
     clickClosest: () => null,

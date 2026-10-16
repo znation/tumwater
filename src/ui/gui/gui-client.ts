@@ -346,7 +346,7 @@ const DOM_JS = String.raw`  const ICONS = ${JSON.stringify(ICON_PATHS)};
   let lastStatus = null;
   let serverBuildSha = null;
   let offline = false;
-  let activeView = "fleet"; // vocabulary-ok: view id, renamed with the #fleet hash in a later series
+  let activeView = "team";
 `;
 
 export const GUI_CLIENT_JS = [CORE_JS, FORMAT_JS, GUI_CLIENT_LABELS_JS, GUI_CLIENT_MODEL_JS, DOM_JS, GUI_CLIENT_MARKDOWN_JS, GUI_CLIENT_SOUND_JS, GUI_CLIENT_OPERATOR_JS, GUI_CLIENT_LOOPS_JS, GUI_CLIENT_FLEET_JS, GUI_CLIENT_COMPOSER_JS,

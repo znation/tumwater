@@ -284,14 +284,14 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   const doc = JSON.parse(r.stdout) as Record<string, unknown>;
   // Top-level fields — the same document GET /api/status serves for this root. `pid` is
   // absent while no harness runs (undefined does not survive JSON.stringify).
-  for (const field of ["running", "inbox", "inboxPrompts", "budget", "loops", "events", "plans", "bugs", "questions"]) {
+  for (const field of ["running", "inbox", "inboxPrompts", "budget", "roles", "events", "plans", "bugs", "questions"]) {
     assert.ok(field in doc, `top-level ${field} present`);
   }
   assert.equal(doc.running, false, "no harness running");
   assert.ok(!("pid" in doc), "no pid while the harness is not running");
 
   // Per-loop fields on every row.
-  const loops = doc.loops as Array<Record<string, unknown>>;
+  const loops = doc.roles as Array<Record<string, unknown>>;
   assert.ok(loops.length > 0);
   for (const l of loops) {
     for (const field of ["role", "phase", "ticks", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastTickEndedAt"]) {

@@ -30,7 +30,7 @@ export const GUI_PAGE = `<!doctype html>
 <div class="shell">
 <aside class="sidebar" aria-label="Team">
   <div class="side-top">
-    <a class="brand" href="#fleet" aria-label="tumwater team">${LOGO_SVG}<span>tumwater</span></a>
+    <a class="brand" href="#team" aria-label="tumwater team">${LOGO_SVG}<span>tumwater</span></a>
     <div class="side-top-actions">
       <span id="soundwrap"></span>
       <button type="button" class="icon-btn" id="themetoggle" title="Switch between light and dark" aria-label="Switch between light and dark">${iconSvg("sun", "theme-sun")}${iconSvg("moon", "theme-moon")}</button>
@@ -42,7 +42,7 @@ export const GUI_PAGE = `<!doctype html>
     <div class="side-status" id="statuschips" aria-live="polite"></div>
   </div>
   <nav class="side-nav" id="viewnav" aria-label="Views">
-    <a href="#fleet" id="tab-fleet" class="tab active" aria-current="page">${iconSvg("grid")}<span>Team</span><span class="badge t-red" id="navbadge" hidden></span></a>
+    <a href="#team" id="tab-team" class="tab active" aria-current="page">${iconSvg("grid")}<span>Team</span><span class="badge t-red" id="navbadge" hidden></span></a>
     <a href="#history" id="tab-history" class="tab">${iconSvg("list")}<span>History</span></a>
     <a href="#usage" id="tab-usage" class="tab">${iconSvg("bars")}<span>Usage</span></a>
     <a href="#failures" id="tab-failures" class="tab">${iconSvg("alert")}<span>Failures</span></a>
@@ -86,7 +86,7 @@ export const GUI_PAGE = `<!doctype html>
       <div class="table-wrap">
         <table class="table loops" id="loopstable">
           <thead><tr><th class="c-loop">Role</th><th class="c-status">Status</th><th class="c-activity">Now, or the last result</th><th class="c-today num">Spent today</th><th class="c-actions"><span class="sr-only">Actions</span></th></tr></thead>
-          <tbody id="loops"></tbody>
+          <tbody id="rolerows"></tbody>
         </table>
       </div>
     </section>

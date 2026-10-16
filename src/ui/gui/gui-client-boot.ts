@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The dashboard's boot, browser-side: view routing over #fragment links (Back/Forward and
- * bookmarks work, re-clicking the open tab refetches), #loop/<role> opening that loop's
+ * bookmarks work, re-clicking the open tab refetches), #role/<role> opening that loop's
  * drawer with the address bar following it, the global action dispatcher behind the
  * data-act/data-open attributes (alert and tile buttons, loop names anywhere, questions),
  * the keyboard shortcuts (Escape closes the drawer, "/" focuses the composer), the theme
@@ -17,9 +17,10 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   }
   // ---- views ----
   // view-routing:start
-  const VIEWS = { fleet: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
+  const VIEWS = { team: "fleet-view", history: "history", usage: "report", failures: "failures", pending: "pending", settings: "settings-view" }; // vocabulary-ok: view ids
   function switchView(v) {
-    if (!VIEWS[v]) v = "fleet"; // vocabulary-ok: view id
+    if (v === "fleet") v = "team"; // vocabulary-ok: legacy dashboard hash, still routed
+    if (!VIEWS[v]) v = "team";
     activeView = v;
     for (const k of Object.keys(VIEWS)) {
       $(VIEWS[k]).hidden = k !== v;
@@ -28,7 +29,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (k === v) tab.setAttribute("aria-current", "page");
       else tab.removeAttribute("aria-current");
     }
-    if (v === "fleet" && lastStatus) renderFleet(lastStatus); // vocabulary-ok: view id
+    if (v === "team" && lastStatus) renderFleet(lastStatus);
     if (v === "history") fetchHistory();
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
@@ -36,7 +37,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "settings") { fetchSettings(); fetchDoctor(); fetchBrief(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
-  // tab refetches its data. #loop/<role> opens that loop's drawer (over Fleet on a fresh load),
+  // tab refetches its data. #role/<role> opens that loop's drawer (over Fleet on a fresh load),
   // and the address bar follows the open drawer, so a loop's live view can be linked to.
   let routed = false;
   function route() {
@@ -46,9 +47,9 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // script and the dashboard never polls again — a frozen page from a hand-edited URL.
     let h = location.hash.slice(1);
     try { h = decodeURIComponent(h); } catch { /* malformed escape: route on the raw fragment */ }
-    if (h.startsWith("loop/")) { // vocabulary-ok: URL hash, old hashes keep routing
-      if (!routed) switchView("fleet"); // vocabulary-ok: view id
-      if (openLoopRole() !== h.slice(5)) openLoop(h.slice(5));
+    if (h.startsWith("role/") || h.startsWith("loop/")) { // vocabulary-ok: legacy dashboard hash, still routed
+      if (!routed) switchView("team");
+      if (openLoopRole() !== h.slice(h.indexOf("/") + 1)) openLoop(h.slice(h.indexOf("/") + 1));
     } else switchView(h);
     routed = true;
   }
@@ -93,7 +94,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     return ((lastStatus && lastStatus[file]) || [])[Number(index)];
   }
   function runAct(act, arg) {
-    if (act === "loop") openLoop(arg); // vocabulary-ok: data-act name
+    if (act === "role") openLoop(arg);
     else if (act === "close") closeDrawer();
     else if (act === "view") location.hash = arg;
     else if (act === "budget") openBudgetEditor();
@@ -108,7 +109,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       postAction("/api/reclaim", {}, (d) =>
         d && typeof d.message === "string" ? d.message : "Reclaim requested");
     else if (act === "questions" || act === "queued" || act === "backlog") {
-      if (activeView !== "fleet") location.hash = "fleet"; // vocabulary-ok: view id and URL hash
+      if (activeView !== "team") location.hash = "team";
       if (act !== "backlog") setBacklogTab(act);
       $("backlogcard").scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (act === "answer") {
@@ -195,7 +196,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     // A history row's drill-down button sits inside the row's data-open cell area but must not
     // open the drawer — expansion is the button's alone (gui-client-history's own delegated
     // handler toggles the card).
-    if (open && !t.closest("#loops") && !t.closest("[data-tickdetail]")) { // vocabulary-ok: element selectors
+    if (open && !t.closest("#rolerows") && !t.closest("[data-tickdetail]")) { // vocabulary-ok: element selectors
       ev.preventDefault();
       toggleLoop(open.dataset.open);
     }
@@ -227,7 +228,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   // ---- the poll ----
   function rerender() {
     if (!lastStatus) return;
-    if (activeView === "fleet") renderFleet(lastStatus); // vocabulary-ok: view id
+    if (activeView === "team") renderFleet(lastStatus);
     if (activeView === "pending") renderPendingQueue(lastStatus);
     if (drawer && drawer.kind === "loop") renderLoopDrawer(lastStatus); // vocabulary-ok: drawer kind
   }
@@ -268,7 +269,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       renderSidebar(d);
       renderAlerts(d);
       renderComposer(d);
-      if (activeView === "fleet") renderFleet(d); // vocabulary-ok: view id
+      if (activeView === "team") renderFleet(d);
       if (activeView === "pending") renderPendingQueue(d);
       if (activeView === "history") syncHistoryRoles(d);
       // Keep the Usage/Failures Loop pickers in step with the fleet while either is open.

@@ -82,7 +82,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   const payload = statusPayload(repo) as {
     landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
     landingBadge: string;
-    loops: Array<{ role: string; phase: string; inFlight: boolean }>;
+    roles: Array<{ role: string; phase: string; inFlight: boolean }>;
   };
   // Idle: depth 0 (the field is never null/absent — one stable shape for JSON consumers)
   // and the preformatted badge is empty, so the page appends nothing.
@@ -109,18 +109,18 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(p.landQueue.inFlight?.role, "clean");
   assert.equal(p.landQueue.inFlight?.sha, "abc1234");
   assert.match(
-    p.loops.find((l) => l.role === "clean")!.phase,
+    p.roles.find((l) => l.role === "clean")!.phase,
     /^merging \d+s · checking$/,
     "the landing role's phase is marker-driven, stage included",
   );
   assert.equal(p.landQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
-  assert.equal(p.loops.find((l) => l.role === "bugfix")!.phase, "due", "other roles keep their normal phase");
+  assert.equal(p.roles.find((l) => l.role === "bugfix")!.phase, "due", "other roles keep their normal phase");
   // The row-level inFlight flag (isActivePhase over the rendered phase) is the permit-holder
   // cap set the payload exports: the landing role is in flight, every other row is not. (The
   // GUI's row actions read their own live flag from the phase, which also includes the exempt
   // running director — BUGS.md 2026-10-06.)
-  assert.equal(p.loops.find((l) => l.role === "clean")!.inFlight, true, "the landing row is in flight");
-  assert.equal(p.loops.find((l) => l.role === "bugfix")!.inFlight, false, "idle rows are not");
+  assert.equal(p.roles.find((l) => l.role === "clean")!.inFlight, true, "the landing row is in flight");
+  assert.equal(p.roles.find((l) => l.role === "bugfix")!.inFlight, false, "idle rows are not");
 });
 
 // Regression (review of the editable-budget feature): the payload's budget object is now
@@ -143,17 +143,17 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
   const payload = statusPayload(repo) as {
     budget: { spentUsd: number; capUsd: number; free: boolean };
     budgetBadge: string;
-    loops: Array<{ role: string; phase: string }>;
+    roles: Array<{ role: string; phase: string }>;
   };
   assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, agent: "pi", fallback: null, tiers: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
   // No loop reads waiting: budget spent — the gate is off by definition while the cap is 0.
-  for (const l of payload.loops) {
+  for (const l of payload.roles) {
     assert.notEqual(l.phase, "waiting: budget spent", `${l.role} must not read waiting: budget spent with the cap disabled`);
   }
-  assert.match(payload.loops.find((l) => l.role === "clean")?.phase ?? "", /^(due|sleeping)/);
+  assert.match(payload.roles.find((l) => l.role === "clean")?.phase ?? "", /^(due|sleeping)/);
   // The director is exempt as always.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
+  assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 });
 
 // The operator module is served through string interpolation into GUI_CLIENT_JS, so a
@@ -184,10 +184,10 @@ test("a paused fleet's idle role loops read waiting: budget spent in the phase p
   s.dayCostUsd = 12.5; // >= cap → paused
   saveLoopState(repo, s);
 
-  let payload = statusPayload(repo) as { loops: Array<{ role: string; phase: string }> };
-  assert.equal(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
+  let payload = statusPayload(repo) as { roles: Array<{ role: string; phase: string }> };
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
   // The director is exempt from the cap — its phase keeps its own label.
-  assert.equal(payload.loops.find((l) => l.role === "director")?.phase, "ready for messages");
+  assert.equal(payload.roles.find((l) => l.role === "director")?.phase, "ready for messages");
 
   // Under the cap again: the idle loop goes back to its sleep/queue state.
   const under = freshLoopState("clean");
@@ -195,7 +195,7 @@ test("a paused fleet's idle role loops read waiting: budget spent in the phase p
   under.dayCostUsd = 1;
   saveLoopState(repo, under);
   payload = statusPayload(repo) as typeof payload;
-  assert.notEqual(payload.loops.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
+  assert.notEqual(payload.roles.find((l) => l.role === "clean")?.phase, "waiting: budget spent");
 });
 
 // POST /api/budget — the dashboard badge editor's save path: one shared setter with the
