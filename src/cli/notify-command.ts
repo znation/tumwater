@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { fail, say } from "./cli-output.js";
 import { loadConfig } from "../config/config.js";
-import { notifyCommandEnv } from "../events/notify.js";
+import { notifyCommandEnv, notifyExitGloss } from "../events/notify.js";
 
 /** The one representative allowlisted event `tumwater notify --test` fires: a failed landing
  * with loop `harness`. Fixed and opinionated — the goal is to prove the hook runs, not to
@@ -72,7 +72,10 @@ export async function cmdNotify(root: string, args: string[]): Promise<void> {
   } else if (result.code === 0) {
     say("notify hook exited 0");
   } else {
-    say(`notify hook exited with code ${result.code}`);
+    // The sh launch-failure gloss (same wording the real notifier warns with) names the fix
+    // for a hook that could not start: a typo'd `notify` command reads as a bare `code 127`
+    // without it.
+    say(`notify hook exited with code ${result.code}${notifyExitGloss(result.code)}`);
     process.exitCode = 1;
   }
 }

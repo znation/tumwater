@@ -60,6 +60,15 @@ test("a hook that exits non-zero makes notify --test exit non-zero and print the
   assert.match(r.stdout, /notify hook exited with code 3/);
 });
 
+test("a hook that cannot be found names the command-not-found exit rather than a bare code", async () => {
+  const repo = await initializedRepo();
+  const result = setConfigKey(repo, "notify", "definitely-not-a-real-command-77xyz");
+  assert.ok(result.ok, `setConfigKey failed: ${result.ok ? "" : result.error}`);
+  const r = await cli(repo, "notify", "--test");
+  assert.equal(r.code, 1);
+  assert.match(r.stdout, /notify hook exited with code 127 \(command not found\)/);
+});
+
 test("a hook that never exits is killed at the timeout and reported, not awaited forever", async () => {
   const repo = await initializedRepo();
   const result = setConfigKey(repo, "notify", "sleep 60");

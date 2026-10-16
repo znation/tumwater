@@ -88,12 +88,17 @@ export function notifyExitWarning(
   if (code === 0) return undefined;
   const hint = "check it with `tumwater notify --test`";
   if (code === null) return `${NOTIFY_FAILURE_PREFIX}was killed by ${signal} paging ${type} — ${hint}`;
-  // sh reports a command it could not launch as 127 (not found) or 126 (found but not
-  // executable) — most often the configured `notify` command is a typo or an uninstalled
-  // binary, so a bare "code 127" hides the fix that the gloss names.
-  const gloss =
-    code === 127 ? " (command not found)" : code === 126 ? " (found but not executable)" : "";
-  return `${NOTIFY_FAILURE_PREFIX}exited with code ${code}${gloss} paging ${type} — ${hint}`;
+  return `${NOTIFY_FAILURE_PREFIX}exited with code ${code}${notifyExitGloss(code)} paging ${type} — ${hint}`;
+}
+
+/** The sh launch-failure gloss for a notify hook that could not start: 127 is sh's "command
+ * not found", 126 its "found but not executable" — most often the configured `notify` command
+ * is a typo or an uninstalled/non-executable binary, so a bare "code 127" hides the fix the
+ * gloss names. Shared by the notifier's warning (notifyExitWarning above) and `tumwater
+ * notify --test`'s diagnostic (src/cli/notify-command.ts) so both surfaces name the same fix
+ * for a hook that cannot launch. Any other code gets no gloss. */
+export function notifyExitGloss(code: number): string {
+  return code === 127 ? " (command not found)" : code === 126 ? " (found but not executable)" : "";
 }
 
 /** Spawn the notify command for one event: detached with stdio ignored, so it outlives the
