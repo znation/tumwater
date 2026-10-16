@@ -33,7 +33,7 @@ function takeCancelledPrompt(root: string, role: string, file: string): CancelOu
   // A cancelled prompt's image attachments go with it; a dequeue leaves them for the tick to
   // read and they are removed on fulfillment (src/inbox/pending-prompt.ts).
   removeSameStemSiblings(root, role, file);
-  logEventBestEffort(root, { loop: role, type: "prompt_cancelled", preview: promptPreview(text) });
+  logEventBestEffort(root, { source: role, type: "prompt_cancelled", preview: promptPreview(text) });
   return { status: "cancelled", text };
 }
 

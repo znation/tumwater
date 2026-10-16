@@ -99,14 +99,14 @@ test("buildCheckSkipWarning for a timeout skip names the run's real deadline whe
 
 // --- buildCheckEvent: the one home of the event's shape ---
 
-test("buildCheckEvent carries loop, scope, status, script, and duration, and run timings when present", () => {
+test("buildCheckEvent carries source, scope, status, script, and duration, and run timings when present", () => {
   const bare = buildCheckEvent("coder", "gate", { status: "failed", script: "npm test" }, 1_500);
-  assert.deepEqual(bare, { loop: "coder", type: "build_check", scope: "gate", status: "failed", script: "npm test", durationMs: 1_500 });
+  assert.deepEqual(bare, { source: "coder", type: "build_check", scope: "gate", status: "failed", script: "npm test", durationMs: 1_500 });
 
   const run: BuildCheckRun = { spawnedAt: 5_000, settledAt: 6_200, timeoutMs: 30_000 };
   const withRun = buildCheckEvent("harness", "baseline", { status: "passed", script: "npm run build", run }, 1_200);
   assert.deepEqual(withRun, {
-    loop: "harness", type: "build_check", scope: "baseline", status: "passed",
+    source: "harness", type: "build_check", scope: "baseline", status: "passed",
     script: "npm run build", durationMs: 1_200,
     spawnedAt: 5_000, settledAt: 6_200,
   });

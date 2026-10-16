@@ -6,7 +6,7 @@ import { failureHeadline } from "../build/build-check-report.js";
 import { baselineCheckEventLogger, buildCheckSkipWarning, sleptPhrase, type BaselineCheckRun } from "../build/build-check-events.js";
 import { checkMainBaseline } from "./main-baseline.js";
 import { buildMainRedNote } from "../prompt/gate-prompts.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import type { TickOutcome } from "../tick/tick-outcome.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { errorMessage } from "../text/text.js";
@@ -49,7 +49,7 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
   logEventBestEffort(root, {
-    loop: "harness", // vocabulary-ok: event source
+    source: TUMWATER_SOURCE,
     type: "main_red_hold",
     sha: red.sha,
     script: red.script,

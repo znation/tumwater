@@ -7,7 +7,7 @@ import { resolveFromNodeModules } from "./build-check-detect.js";
 import { ensureDir, removeTree } from "../files/files.js";
 import { stagingDir, stagingRootDir } from "../paths.js";
 import { execFileAsync } from "../process/process.js";
-import { warnEvent, warnEventBestEffort } from "../events/events.js";
+import { warnEvent, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { shortSha } from "../text/format.js";
 
@@ -259,11 +259,11 @@ export function recoverInterruptedSwap(root: string, dist: string): boolean {
 export function repairInterruptedSwap(root: string, dist = distDir()): void {
   try {
     if (recoverInterruptedSwap(root, dist))
-      warnEventBestEffort(root, "harness", "an interrupted update swap left dist/ missing — restored it from .tumwater/build/dist.prev"); // vocabulary-ok: event source stays "harness" until the event log rename
+      warnEventBestEffort(root, TUMWATER_SOURCE, "an interrupted update swap left dist/ missing — restored it from .tumwater/build/dist.prev");
   } catch (err) {
     warnEventBestEffort(
       root,
-      "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+      TUMWATER_SOURCE,
       `dist/ is missing after an interrupted update swap and could not be restored from .tumwater/build/dist.prev: ${errorMessage(err)}`,
     );
   }
@@ -300,7 +300,7 @@ function sweepSupersededStagings(root: string): void {
  * event log is unwritable too, the new dist/ is already in place and stays the outcome. */
 function warnCleanup(root: string, message: string): void {
   try {
-    warnEvent(root, "harness", message); // vocabulary-ok: event source stays "harness" until the event log rename
+    warnEvent(root, TUMWATER_SOURCE, message);
   } catch {
     // Cleanup must not throw; the swap already succeeded.
   }

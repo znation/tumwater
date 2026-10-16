@@ -196,7 +196,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
           cfg = target.config;
           s.imageRerouteActive = true;
           logEventBestEffort(ctx.root, {
-            loop: ctx.role,
+            source: ctx.role,
             type: "image_reroute",
             run: s.ticks + 1,
             from: primaryCfg.model,
@@ -244,7 +244,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // string is what the runs actually use. Omitted when no model is configured (pi's own
   // default), so old logs and old configs render unchanged.
   logEventBestEffort(ctx.root, {
-    loop: ctx.role,
+    source: ctx.role,
     type: "run_start",
     run: tick,
     // A tick routed onto the image-capable target — a blind-read handoff or an attachment
@@ -437,7 +437,7 @@ async function tickWithWorktreePhase(
     // handoff resumes a FRESH session over those same edits (the newest author session belongs
     // to another agent), so it preserves the worktree exactly as a resume does.
     await abortSync(wt);
-    logEventBestEffort(ctx.root, { loop: ctx.role, type: "resume", cause: resumeCause });
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "resume", cause: resumeCause });
   } else {
     // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it
     // back on the land queue, so it lands through the orchestrator's landing pipeline — the
@@ -472,7 +472,7 @@ async function tickWithWorktreePhase(
         reason: "merge",
         applied: false,
       };
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "merge" });
+      logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "queued", sha: recovered.sha, reason: "merge" });
     } else if (recovered?.kind === "discarded") {
       // The pin hit the conflict cap and is gone: nothing holds the role any more, so this
       // tick authors on a fresh main like any other — told what was dropped and why.
@@ -528,7 +528,7 @@ async function tickWithWorktreePhase(
       s.conflictHandback = { ...hb, applied: true };
       await deleteRef(ctx.root, landingRefName(ctx.role));
       logEventBestEffort(ctx.root, {
-        loop: ctx.role,
+        source: ctx.role,
         type: "conflict_handback",
         action: "applied",
         sha: hb.sha,
@@ -542,7 +542,7 @@ async function tickWithWorktreePhase(
       // so the author starts fresh rather than retrying it every tick.
       s.conflictHandback = undefined;
       await deleteRef(ctx.root, landingRefName(ctx.role));
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
+      logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
     }
   }
 
@@ -579,7 +579,7 @@ async function tickWithWorktreePhase(
       }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });
+      logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "applied", round, sha });
       prompt = appendPromptNote(prompt, revisionNote);
     } else {
       // The clean re-apply conflicted: re-apply with the markers left in place so the author
@@ -595,9 +595,9 @@ async function tickWithWorktreePhase(
           round,
           applied: true,
         };
-        logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });
+        logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "applied", round, sha });
         logEventBestEffort(ctx.root, {
-          loop: ctx.role,
+          source: ctx.role,
           type: "conflict_handback",
           action: "applied",
           sha,
@@ -610,7 +610,7 @@ async function tickWithWorktreePhase(
       } else {
         s.revision = undefined;
         await deleteRef(ctx.root, rejectedRefName(ctx.role));
-        logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "conflict", round, sha });
+        logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "conflict", round, sha });
         prompt = appendPromptNote(prompt, buildRejectedReviewNote(lastReviewOrEmpty, ctx.role));
         prompt = appendPromptNote(prompt, "The rejected diff no longer applies to current main.");
       }

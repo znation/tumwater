@@ -9,7 +9,7 @@ import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./landing-slot.js";
 import { dropLanding, queuedLandingFiles, staleHeadFile, type LandingEntry } from "./landing-queue.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { vetRequest, type VetVerdict } from "./landing-batch.js";
 import {
@@ -65,7 +65,7 @@ function dropTornHead(root: string): void {
   dropLanding(stale);
   warnEventBestEffort(
     root,
-    "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+    TUMWATER_SOURCE,
     `merge queue head ${path.basename(stale)} is unreadable (torn or foreign) — dropped so the queue keeps moving`,
   );
 }

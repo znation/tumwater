@@ -271,27 +271,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms event log, part 7/9: Switch the run and merge path's event call sites to source (planned 2026-10-16 by user; requires part 6/9 landed; design in plans/terminology.md "Event log"; touches src/loop/ src/tick/ src/landing/ src/review/ src/verdict/ src/inbox/ src/git/ src/build/ src/baseline/ test/)
-
-**Goal.** Mechanical. Stage 2 of "Widely used fields", first directory group. Every event this group logs names its logger with `source:` and uses `TUMWATER_SOURCE` instead of `"harness"`. Nothing a reader sees changes.
-
-**Approach.**
-- In src/loop/, src/tick/, src/landing/, src/review/, src/verdict/, src/inbox/, src/git/, src/build/ and src/baseline/:
-  - every event-object key `loop:` passed to `logEvent`/`logEventBestEffort`, or built as a `HarnessEventInput`, becomes `source:`;
-  - every `"harness"` given as an event source becomes `TUMWATER_SOURCE`, whether it is an object value or the positional source argument of `warnEvent`, `warnEventBestEffort`, `buildCheckEvent` or `baselineCheckEventLogger`.
-- In src/build/build-check-events.ts, rename `buildCheckEvent`'s and `baselineCheckEventLogger`'s `loop` parameter to `source`.
-- Find the sites with a temporary local edit that makes `source` required in `HarnessEventInput`, scoped to these directories, then revert it. tsc lists every object. Grep `"harness"` for the positional ones.
-- Do not rename `loop` that is not an event field: `ctx.role`, LoopRunner and similar are code-series names.
-- Tests that capture this group's events through an injected seam, rather than reading the log, read `source`.
-- **Self-hosting:** safe. The written lines are byte-identical to part 6/9's, because the normalization already produced `source`/`"tumwater"`.
-
-**Files touched.** The modules above that log events (about 55 one-line sites: loop/ ~15, landing/ ~10, tick/ ~9, review/ ~7, git/ ~5, build/ ~5, inbox/ ~4, verdict/ ~2, baseline/ ~1), plus any test the suite flags.
-
-**Acceptance criteria.**
-- `grep -rnE '\bloop: ' src/{loop,tick,landing,review,verdict,inbox,git,build,baseline}` finds no event-object key.
-- `grep -rn '"harness"'` over the same directories finds no event source.
-- The events.jsonl lines produced by the loop and landing tests are unchanged from part 6/9's.
-- `npm run test` passes.
 
 ### Plain terms event log, part 8/9: Switch the remaining event call sites to source (planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
 
@@ -2449,6 +2428,28 @@ This part makes a used-up window a reason to move. While a window is rejected, e
 - Every existing budget, hold and window test passes, and `npm test` passes.
 
 **Landed notes.** A role pinned to subscription claude under a tier whose own model is not claude keeps its pin during a window (src/gates/budget-gates.ts), because dropping the pin would land it on the tier's priced primary; the `claude` hold still stops it. A reviewer pinned to subscription claude under such a tier goes to that tier's fallback pair instead, so the review does not hold the team. `claude_window_limited.tiers` names only tiers whose own model is claude.
+
+### Plain terms event log, part 7/9: Switch the run and merge path's event call sites to source (done 2026-10-16; planned 2026-10-16 by user; requires part 6/9 landed; design in plans/terminology.md "Event log"; touches src/loop/ src/tick/ src/landing/ src/review/ src/verdict/ src/inbox/ src/git/ src/build/ src/baseline/ test/)
+
+**Goal.** Mechanical. Stage 2 of "Widely used fields", first directory group. Every event this group logs names its logger with `source:` and uses `TUMWATER_SOURCE` instead of `"harness"`. Nothing a reader sees changes.
+
+**Approach.**
+- In src/loop/, src/tick/, src/landing/, src/review/, src/verdict/, src/inbox/, src/git/, src/build/ and src/baseline/:
+  - every event-object key `loop:` passed to `logEvent`/`logEventBestEffort`, or built as a `HarnessEventInput`, becomes `source:`;
+  - every `"harness"` given as an event source becomes `TUMWATER_SOURCE`, whether it is an object value or the positional source argument of `warnEvent`, `warnEventBestEffort`, `buildCheckEvent` or `baselineCheckEventLogger`.
+- In src/build/build-check-events.ts, rename `buildCheckEvent`'s and `baselineCheckEventLogger`'s `loop` parameter to `source`.
+- Find the sites with a temporary local edit that makes `source` required in `HarnessEventInput`, scoped to these directories, then revert it. tsc lists every object. Grep `"harness"` for the positional ones.
+- Do not rename `loop` that is not an event field: `ctx.role`, LoopRunner and similar are code-series names.
+- Tests that capture this group's events through an injected seam, rather than reading the log, read `source`.
+- **Self-hosting:** safe. The written lines are byte-identical to part 6/9's, because the normalization already produced `source`/`"tumwater"`.
+
+**Files touched.** The modules above that log events (about 55 one-line sites: loop/ ~15, landing/ ~10, tick/ ~9, review/ ~7, git/ ~5, build/ ~5, inbox/ ~4, verdict/ ~2, baseline/ ~1), plus any test the suite flags.
+
+**Acceptance criteria.**
+- `grep -rnE '\bloop: ' src/{loop,tick,landing,review,verdict,inbox,git,build,baseline}` finds no event-object key.
+- `grep -rn '"harness"'` over the same directories finds no event source.
+- The events.jsonl lines produced by the loop and landing tests are unchanged from part 6/9's.
+- `npm run test` passes.
 
 ### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it) — done 2026-10-16
 

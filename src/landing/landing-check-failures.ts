@@ -92,7 +92,7 @@ async function rejectChange(
   state.unreviewFailures = 0;
   saveLoopState(ctx.root, state);
   await deleteRef(ctx.root, landingRefName(role));
-  logEventBestEffort(ctx.root, { loop: role, type: "review_rejected", head, reasons });
+  logEventBestEffort(ctx.root, { source: role, type: "review_rejected", head, reasons });
   return "rejected";
 }
 

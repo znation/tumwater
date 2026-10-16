@@ -195,7 +195,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     // The assignment is durable in state before this event; an unwritable feed must not reject
     // the tick and make a claim that did land look unapplied (logEventBestEffort).
     logEventBestEffort(ctx.root, {
-      loop: ctx.role,
+      source: ctx.role,
       type: "claim",
       action: "assigned",
       key: first.key,
@@ -309,7 +309,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   if (revisionRound !== undefined) s.revision = undefined;
   // The landing sits in the durable queue above and the commit is pinned; the event is
   // observability, so an unwritable feed must not reject a tick whose work is already queued.
-  logEventBestEffort(ctx.root, { loop: ctx.role, type: "merge_queued", commit, summary });
+  logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
   // lastSummary and the run_end event carry it too for dashboards and logs.
   const finalSummary = highFriction

@@ -3,7 +3,7 @@ import type { LoopRunner } from "../loop/loop.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
 import type { SemaphoreLease } from "../concurrency/semaphore.js";
 import { runOnAbort } from "../process/process.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelSelector } from "../config/model-selector.js";
@@ -146,7 +146,7 @@ export function abortOnShutdown(signal: AbortSignal, controller: AbortController
  * poll. */
 export function guardLandingTask(root: string, role: string, promise: Promise<void>): Promise<void> {
   return promise.catch((err: unknown) => {
-    warnEventBestEffort(root, "harness", `merge task for ${role} could not settle: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
+    warnEventBestEffort(root, TUMWATER_SOURCE, `merge task for ${role} could not settle: ${errorMessage(err)}`);
   });
 }
 

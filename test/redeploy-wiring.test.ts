@@ -53,7 +53,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   // the feed's record that the fleet spent this minute verifying its successor.
   const baseline = events.filter((e) => e.type === "build_check" && e.scope === "baseline");
   assert.deepEqual(
-    baseline.map((e) => [e.status, e.loop, e.script]),
+    baseline.map((e) => [e.status, e.source, e.script]),
     [
       ["passed", "harness", "test"],
       ["failed", "harness", "test"],

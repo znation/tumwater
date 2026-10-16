@@ -196,7 +196,7 @@ export async function reviewAheadOfMain(
     state.unreviewFailures = 0;
     await resetWorktreeToMain(wt, mainBranch);
     logEventBestEffort(root, {
-      loop: role,
+      source: role,
       type: "review_rejected",
       head,
       reasons,
@@ -315,7 +315,7 @@ export async function reviewAheadOfMain(
   // needs the override.
   const followupCtx = reviewSessionDir === ctx.sessionDir ? ctx : { ...ctx, sessionDir: reviewSessionDir };
   logEventBestEffort(root, {
-    loop: role,
+    source: role,
     type: "review_start",
     head,
     ...(ctx.revisionRound !== undefined ? { revision: ctx.revisionRound } : {}),
@@ -407,7 +407,7 @@ export async function reviewAheadOfMain(
     // knows the diff was judged under a blind read.
     onBlindRead: (path, action) =>
       logEventBestEffort(root, {
-        loop: role,
+        source: role,
         type: "image_blind",
         run: ctx.tick,
         path,
@@ -493,7 +493,7 @@ export async function reviewAheadOfMain(
   // rejection is recorded against the author's diff.
   if (nudgeRepeat) {
     const message = `${nudgeRepeat} The review is failed on this repeat: the commit is kept, and the merge re-reviews it under the normal path.`;
-    logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { source: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     state.reviewResume = undefined;
     recordReview(state, "failed", [message], head);
     return keep(withRuns({ decision: "failed", detail: message }, pi, followUp, nudge));
@@ -547,7 +547,7 @@ export async function reviewAheadOfMain(
               : ""
         }`,
     );
-    logEventBestEffort(root, { loop: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
+    logEventBestEffort(root, { source: role, type: "review_failed", head, message, durationMs: Date.now() - reviewStartedAt });
     // A dead reviewer must never destroy committed work (BUGS.md 2026-09-20): leave the commit
     // for the next tick's re-review and do not advance the per-HEAD discard counter. That
     // holds for the review run itself (BUGS.md 2026-09-20), for the verdict-recovery
@@ -612,7 +612,7 @@ export async function reviewAheadOfMain(
   state.unreviewFailures = 0;
   await restoreReviewedHead(wt, head, root, role);
   logEventBestEffort(root, {
-    loop: role,
+    source: role,
     type: "review_verdict",
     head,
     reason: verdict.reasons[0],

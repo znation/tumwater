@@ -119,7 +119,7 @@ export async function handleRefusal(
       writeTextAtomic(plansFile, md);
       for (const title of dropped) {
         logEventBestEffort(ctx.root, {
-          loop: ctx.role,
+          source: ctx.role,
           type: "warning",
           message: `dropped refusal note on blocked plan "${title}": its prerequisite is still planned, so the block already holds it`,
         });
@@ -152,7 +152,7 @@ export async function handleRefusal(
     clearSupersededRejection(state);
     // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —
     // the note has already landed.
-    logEventBestEffort(ctx.root, { loop: ctx.role, type: "entry_refused", reason, files: notes });
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "entry_refused", reason, files: notes });
   }
   return { result: "refused", summary: reason, commit };
 }

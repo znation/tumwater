@@ -365,7 +365,7 @@ export function writeLandingOutcome(
   // bookkeeping: the slot picked the entry up (merge_queued, logged at enqueue) and finished
   // with or without landing.
   logEventBestEffort(root, {
-    loop: entry.role,
+    source: entry.role,
     type: result === "changed" ? "merge_done" : "merge_failed",
     commit: entry.sha,
     result,

@@ -14,7 +14,7 @@ import path from "node:path";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber, isJsonObject } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { worktreeUseLockPath, worktreeUsePath } from "../paths.js";
 
@@ -126,7 +126,7 @@ function updateWorktreeUseBestEffort(
   try {
     updateWorktreeUse(root, change);
   } catch (err) {
-    warnEventBestEffort(root, "harness", `could not update the worktree-use registry: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
+    warnEventBestEffort(root, TUMWATER_SOURCE, `could not update the worktree-use registry: ${errorMessage(err)}`);
   }
 }
 

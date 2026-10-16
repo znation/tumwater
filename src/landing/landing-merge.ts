@@ -179,7 +179,7 @@ async function tryMerge(
     // a completed landing into a rejected one and skip syncRootInstall below — the same
     // no-torn-feed policy as the orchestrator's other post-effect logging.
     if (commit !== mainBefore)
-      logEventBestEffort(ctx.root, { loop: ctx.role, type: "merged", commit, summary });
+      logEventBestEffort(ctx.root, { source: ctx.role, type: "merged", commit, summary });
     logNewQuestions(ctx.root, before, ctx.role);
     // Still under the lock: a landing that moved main's lockfile re-syncs the root install
     // every worktree resolves through before the next landing's check runs (BUGS.md 2026-10-01).

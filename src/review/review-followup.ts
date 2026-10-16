@@ -63,7 +63,7 @@ async function runFollowupTurn(
     // review.ts.
     onBlindRead: (path, action) =>
       logEventBestEffort(ctx.root, {
-        loop: ctx.role,
+        source: ctx.role,
         type: "image_blind",
         run: ctx.tick,
         path,

@@ -111,7 +111,7 @@ function editPromptAtFile(root: string, role: string, file: string, newText: str
     throw err;
   }
   const oldText = stripNotBeforeMarker(oldFileText);
-  logEventBestEffort(root, { loop: role, type: "prompt_edited", preview: promptPreview(composed) });
+  logEventBestEffort(root, { source: role, type: "prompt_edited", preview: promptPreview(composed) });
   return { status: "edited", oldText, newText: composed };
 }
 

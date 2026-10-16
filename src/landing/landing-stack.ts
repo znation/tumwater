@@ -248,7 +248,7 @@ export async function ffStackToMain(
     // unwritable feed must not flip a landed batch to a failure and skip syncRootInstall below.
     for (const entry of landed) {
       logEventBestEffort(root, {
-        loop: entry.role,
+        source: entry.role,
         type: "merged",
         commit: entry.sha,
         summary: entry.summary,

@@ -223,20 +223,20 @@ function buildCheckRunFields(outcome: BuildCheckOutcome): Record<string, number>
   };
 }
 
-/** The one home of the build_check event's shape — `{ loop, type: "build_check", scope,
+/** The one home of the build_check event's shape — `{ source, type: "build_check", scope,
  * status, script, durationMs }` plus the run-timing fields (buildCheckRunFields above) —
  * so the feed's most expensive event type cannot drift a field between its four surfaces:
  * runScopedBuildCheck's two priced events in build-check-scoped.ts (the killed retry and the
  * final verdict) and the red-main baseline loggers (main-red.ts's baselineCheckLogger,
  * redeploy.ts's redeploy mirror), which all paid the run whose timings the event carries. */
 export function buildCheckEvent(
-  loop: string,
+  source: string,
   scope: BuildCheckScope | "baseline",
   outcome: Pick<BuildCheckOutcome, "status" | "script" | "run" | "counts" | "install">,
   durationMs: number,
 ): HarnessEventInput {
   return {
-    loop,
+    source,
     type: "build_check",
     scope,
     status: outcome.status,
@@ -267,14 +267,14 @@ export interface BaselineCheckRun {
   durationMs: number;
 }
 
-/** The onRun hook that logs one baseline check's build_check event through `log` under `loop`:
+/** The onRun hook that logs one baseline check's build_check event through `log` under `source`:
  * main-red.ts's gate logger (logEventBestEffort) and redeploy.ts's green-check and witness hooks
  * all turn the same run shape into the same baseline event, so that mapping lives here once
  * instead of as three hand-rolled closures. `log` receives the event alone; a caller binds its
  * root (logEventBestEffort) or its RedeployEvent sink. */
 export function baselineCheckEventLogger(
-  loop: string,
+  source: string,
   log: (event: HarnessEventInput) => void,
 ): (run: BaselineCheckRun) => void {
-  return ({ outcome, durationMs }) => log(buildCheckEvent(loop, "baseline", outcome, durationMs));
+  return ({ outcome, durationMs }) => log(buildCheckEvent(source, "baseline", outcome, durationMs));
 }

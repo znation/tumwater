@@ -112,7 +112,7 @@ export function submitRolePrompt(
   }
   const prompt = text.trim();
   enqueueRolePrompt(root, role, prompt, notBeforeMs);
-  logEventBestEffort(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
+  logEventBestEffort(root, { source: role, type: "prompt_enqueued", preview: promptPreview(prompt) });
   return prompt;
 }
 
@@ -147,7 +147,7 @@ function submitPromptWithImages(root: string, role: string, text: string, images
     unlinkAllMissingTolerant(savedImagePaths);
     throw err;
   }
-  logEventBestEffort(root, { loop: role, type: "prompt_enqueued", preview: promptPreview(final) });
+  logEventBestEffort(root, { source: role, type: "prompt_enqueued", preview: promptPreview(final) });
   return final;
 }
 

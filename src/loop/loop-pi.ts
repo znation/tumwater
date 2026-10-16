@@ -171,7 +171,7 @@ export class LoopPi {
       // feed names who, on which tick, read which file on which blind model.
       onBlindRead: (path, action) =>
         logEventBestEffort(this.host.root, {
-          loop: this.host.role,
+          source: this.host.role,
           type: "image_blind",
           run: this.host.tickNumber(),
           path,

@@ -255,7 +255,7 @@ export class LoopRunner {
     const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
     if (assembled === null) return null;
     if (assembled.userPrompt !== null) {
-      logEventBestEffort(this.root, { loop: this.role, type: "prompt_taken", run: this.state.ticks, preview: promptPreview(assembled.userPrompt) });
+      logEventBestEffort(this.root, { source: this.role, type: "prompt_taken", run: this.state.ticks, preview: promptPreview(assembled.userPrompt) });
     }
     this.pending.record(assembled.userPrompt, assembled.userPromptFile);
     return assembled.prompt;

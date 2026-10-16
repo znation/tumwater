@@ -130,7 +130,7 @@ export async function syncRootInstall(
   // so an unwritable feed must not reject the landing that awaited this (landing-merge.ts's
   // tryMerge, landing-stack.ts's ffStackToMain).
   logEventBestEffort(root, {
-    loop: role,
+    source: role,
     type: "dep_install",
     packages: r.packages,
     status: r.ok ? "passed" : "failed",

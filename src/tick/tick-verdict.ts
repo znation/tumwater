@@ -204,7 +204,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       s.lastError = `read ${pi.imageBlind.path}, but ${from} cannot read images — rerouting to ${target.tier}`;
       ctx.pending.requeueForResume(s, ctx.userPrompt);
       logEventBestEffort(ctx.root, {
-        loop: ctx.role,
+        source: ctx.role,
         type: "image_reroute",
         run: s.ticks,
         from,
@@ -293,7 +293,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     // The drop's durable effects — the worktree reset, the rejected ref's deletion, and the
     // cleared state — have all landed; the event is observability, so an unwritable feed must
     // not end the tick as an error and mask a change that really was dropped.
-    logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
     return { result: "no_change" };
   }
   if (!changed) {

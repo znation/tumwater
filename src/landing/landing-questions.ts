@@ -11,7 +11,7 @@ import { logEventBestEffort } from "../events/events.js";
 export function logNewQuestions(root: string, before: string[], role: string): void {
   for (const question of openQuestions(root)) {
     if (!before.includes(question)) {
-      logEventBestEffort(root, { loop: role, type: "question_posted", question });
+      logEventBestEffort(root, { source: role, type: "question_posted", question });
     }
   }
 }

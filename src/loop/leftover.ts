@@ -173,7 +173,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     enqueuedAt: Date.now(),
   };
   enqueueLanding(ctx.root, entry);
-  logEventBestEffort(ctx.root, { loop: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
+  logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
 }
 

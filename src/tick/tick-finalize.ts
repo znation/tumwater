@@ -91,7 +91,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   ) {
     const title = s.claim.title;
     s.claim = undefined;
-    logEventBestEffort(root, { loop: role, type: "claim", action: "released", title, reason: outcome.result });
+    logEventBestEffort(root, { source: role, type: "claim", action: "released", title, reason: outcome.result });
   }
   // A wake consumed while this tick ran stamped the shared state in place, but the outcome
   // schedule above overwrites it (lastTickEndedAt past wokenAt, nextRunAt a fresh gap or
@@ -159,7 +159,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // carried no provider renders byte-identically to today.
   const providerCost = usage.serializeProviderCost();
   logEventBestEffort(root, {
-    loop: role,
+    source: role,
     type: "run_end",
     run: tick,
     result: outcome.result,

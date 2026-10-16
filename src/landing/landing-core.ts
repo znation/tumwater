@@ -346,7 +346,7 @@ async function recordRejectedChange(
     // The next tick gets the plain rejected note, not a revision note; mark it final so that
     // note says the rejected diff is gone rather than inviting another revision.
     if (state.lastReview) state.lastReview.exhausted = true;
-    logEventBestEffort(root, { loop: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
+    logEventBestEffort(root, { source: role, type: "revision", action: "exhausted", round: nextRound, sha: rejectedHead });
     return;
   }
   await setRef(root, rejectedRefName(role), rejectedHead);

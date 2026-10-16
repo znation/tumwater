@@ -5,7 +5,7 @@ import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
 import { dropLanding, queuedLandingFiles } from "./landing-queue.js";
 import { errorMessage } from "../text/text.js";
-import { warnEventBestEffort } from "../events/events.js";
+import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveLoopState } from "../loop/loop-state.js";
 import {
   abortOnShutdown,
@@ -58,7 +58,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
     try {
       await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     } catch (err) {
-      warnEventBestEffort(root, "harness", `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
+      warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`);
       dropLanding(v.file);
       removeLandingChange(root, role);
     }
@@ -196,7 +196,7 @@ function startMerge(ctx: LandingPipelineContext, p: LandingPipeline, picks: Vett
       } catch (writeErr) {
         warnEventBestEffort(
           root,
-          "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+          TUMWATER_SOURCE,
           `the merge error for ${head.state.role} could not be saved: ${errorMessage(writeErr)}`,
         );
       }

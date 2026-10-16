@@ -19,7 +19,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState, slotForDir, updateSlotsState } from "./slots-state.js";
 import { beginWorktreeUse } from "./worktree-use.js";
 import { ensureDetachedWorktree, removeWorktreeDir } from "./worktree.js";
-import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { logEventBestEffort, warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { subdirectoryNames } from "../files/files.js";
 import { dropProviderLeaseKey } from "../concurrency/provider-lease.js";
@@ -215,7 +215,7 @@ function logSlotWait(root: string, role: string, purpose: "tick" | "vet", waited
   if (waitedMs < SLOT_WAIT_EVENT_MS) return;
   const slots = readSlotsState(root).slots;
   logEventBestEffort(root, {
-    loop: role,
+    source: role,
     type: "slot_wait",
     role,
     purpose,
@@ -346,7 +346,7 @@ export async function removeDroppedSlots(
     try {
       await remove(root, dir);
     } catch (err) {
-      warnEventBestEffort(root, "harness", `could not remove idle workspace ${dir}: ${errorMessage(err)}`); // vocabulary-ok: event source stays "harness" until the event log rename
+      warnEventBestEffort(root, TUMWATER_SOURCE, `could not remove idle workspace ${dir}: ${errorMessage(err)}`);
     }
   }
 }
@@ -436,7 +436,7 @@ export async function retireLegacyRoleWorktrees(
     } catch (err) {
       warnEventBestEffort(
         root,
-        "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+        TUMWATER_SOURCE,
         `could not remove legacy role workspace ${victim}: ${errorMessage(err)}`,
       );
     }
@@ -463,7 +463,7 @@ export async function leaseSlot(
     } catch (err) {
       warnEventBestEffort(
         root,
-        "harness", // vocabulary-ok: event source stays "harness" until the event log rename
+        TUMWATER_SOURCE,
         `could not record use release for ${path.basename(dir)}: ${errorMessage(err)}`,
       );
     }

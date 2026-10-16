@@ -51,7 +51,7 @@ export function foldModelFallbackPhase(
   const willBeIn = next !== undefined && next.since > 0;
   if (!wasIn && willBeIn) {
     logEventBestEffort(ctx.root, {
-      loop: ctx.role,
+      source: ctx.role,
       type: "model_fallback_started",
       provider: fallbackCtx.fallback.provider,
       model: fallbackCtx.fallback.model,
@@ -78,7 +78,7 @@ function emitFallbackEnded(
 ): void {
   if (!wasIn) return;
   logEventBestEffort(ctx.root, {
-    loop: ctx.role,
+    source: ctx.role,
     type: "model_fallback_ended",
     provider: primary.provider,
     model: primary.model,
