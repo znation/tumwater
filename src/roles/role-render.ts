@@ -225,6 +225,14 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     if (p.usage.notionalCostUsd !== 0) spend += ` · ${usd(p.usage.notionalCostUsd)} notional`;
     lines.push(spend);
   }
+  // The per-role daily cap (role-view.ts's dailyCap): today's spend against the cap and whether
+  // it holds the loop now. Absent without a cap, so old goldens are unchanged.
+  if (p.dailyCap) {
+    const dc = p.dailyCap;
+    let cap = `- Daily cap: ${usd(dc.spentUsd)} of ${usd(dc.capUsd)} spent today (${dc.over ? "holding now — no new ticks until local midnight" : "not holding"})`;
+    if (dc.roleIds.length > 1) cap += ` · shared by ${dc.roleIds.join(", ")}`;
+    lines.push(cap);
+  }
   // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastTickEndedAt, read from
   // the same persisted state): when it may tick again, and when it last did — the one
   // place the fleet's `next run`/`last tick` vocabulary was absent. Rendered from the

@@ -15,9 +15,10 @@ import { DIRECTOR_ROLE, customRole, roleById, roleTier, unknownRoleMessage } fro
 import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
+import { baseRoleOf, loopIds } from "./loop-ids.js";
+import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
 import { quietHoursStatus } from "../scheduling/quiet-hours.js";
-import { baseRoleOf } from "./loop-ids.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
@@ -145,6 +146,12 @@ export interface RoleViewPayload {
    * two per-loop facts cannot drift on what they cover. Absent when all three are 0 (the
    * report's zero-means-absent convention), so a never-costly loop's JSON is unchanged. */
   usage?: { tokens: number; costUsd: number; notionalCostUsd: number };
+  /** The loop's `maxDailyCostUsdPerRole` cap and today's spend against it, from the same
+   * `roleCapVerdicts` the scheduler's gate and the status `capPaused` observer fold: `over` is
+   * whether the loop is held until local midnight, `spentUsd` the base role's instances' summed
+   * spend today, `roleIds` the instances sharing the cap. Absent when no cap above 0 applies
+   * (and for the director), so a fleet without per-role caps keeps its JSON shape. */
+  dailyCap?: { capUsd: number; spentUsd: number; over: boolean; roleIds: string[] };
 }
 
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
@@ -260,6 +267,19 @@ export function rolePayload(
     },
     { tokens: 0, costUsd: 0, notionalCostUsd: 0 },
   );
+  // The per-role daily cap, answered by the verdict the scheduler's gate shares (roleCapVerdicts)
+  // over the base role's instances, so the page cannot disagree with the hold. A cap of 0
+  // disables (roleCapPaused's rule) and the director is exempt, so neither carries the field.
+  const base = baseRoleOf(role);
+  const capUsd = cfg.maxDailyCostUsdPerRole?.[base];
+  let dailyCap: RoleViewPayload["dailyCap"];
+  if (role !== DIRECTOR_ROLE && typeof capUsd === "number" && Number.isFinite(capUsd) && capUsd > 0) {
+    const ids = loopIds(cfg).filter((id) => baseRoleOf(id) === base);
+    if (!ids.includes(role)) ids.push(role);
+    const runners = ids.map((id) => ({ role: id, state: id === role ? state : loadLoopState(root, id) }));
+    const verdict = roleCapVerdicts(runners, cfg.maxDailyCostUsdPerRole, now.getTime()).get(base);
+    if (verdict) dailyCap = { capUsd, spentUsd: verdict.spentUsd, over: verdict.over, roleIds: verdict.roleIds };
+  }
   // The role's notebook, read for display. The same degradation as every other read here: a
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
   let note: string | null = null;
@@ -328,5 +348,6 @@ export function rolePayload(
     ...(quietHours.length > 0 ? { quietHours } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
+    ...(dailyCap ? { dailyCap } : {}),
   };
 }

@@ -348,6 +348,13 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       if (notional !== 0) spend += " · " + fmtUsd(notional) + " notional";
       rows.push(kvRow("Spend", spend));
     }
+    // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap line.
+    if (view.dailyCap && typeof view.dailyCap === "object") {
+      const dc = view.dailyCap;
+      let cap = fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new ticks until local midnight" : "not holding") + ")";
+      if (Array.isArray(dc.roleIds) && dc.roleIds.length > 1) cap += " · shared by " + dc.roleIds.join(", ");
+      rows.push(kvRow("Daily cap", cap));
+    }
     if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(kvRow("Instructions override", clamp(view.instructions), view.instructions));
     if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
     return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";

@@ -8,6 +8,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { dayKey } from "../src/text/datetime.js";
 import { rolePayload } from "../src/roles/role-view.js";
 import { inspectMarkdownLines, renderRoleMarkdown } from "../src/roles/role-render.js";
 import { enqueuePrompt, enqueueRolePrompt } from "../src/inbox/inbox.js";
@@ -777,4 +778,52 @@ test("an instance id reads its base role's quiet-hours window; no window leaves 
   const bare = root();
   assert.equal("quietHours" in rolePayload(bare, "feature", NO_MODELS, at), false);
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(bare, "feature", NO_MODELS, at)), /Quiet hours/);
+});
+
+// The per-role daily cap (PLANS.md): rolePayload reads roleCapVerdicts, the verdict the
+// scheduler's gate shares, and the renderer names today's spend against the cap.
+test("role payload carries the daily cap verdict and renders a Daily cap line", () => {
+  const dir = root();
+  const now = new Date(2026, 9, 16, 12, 0, 0);
+  const today = dayKey(now.getTime());
+  writeConfig(dir, { maxDailyCostUsdPerRole: { coverage: 1 } });
+  saveLoopState(dir, { ...freshLoopState("coverage"), dayStamp: today, dayCostUsd: 1.2 });
+  const p = rolePayload(dir, "coverage", NO_MODELS, now);
+  assert.deepEqual(p.dailyCap, { capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["coverage"] });
+  assert.match(
+    renderRoleMarkdown(p),
+    /^- Daily cap: \$1\.20 of \$1\.00 spent today \(holding now — no new ticks until local midnight\)$/m,
+  );
+
+  // A spend stamped on an earlier day counts 0.
+  saveLoopState(dir, { ...freshLoopState("coverage"), dayStamp: "2020-01-01", dayCostUsd: 5 });
+  const old = rolePayload(dir, "coverage", NO_MODELS, now);
+  assert.equal(old.dailyCap?.over, false);
+  assert.equal(old.dailyCap?.spentUsd, 0);
+  assert.match(renderRoleMarkdown(old), /\(not holding\)$/m);
+});
+
+test("daily cap sums instances, and is absent for cap 0, the director, or no cap", () => {
+  const dir = root();
+  const now = new Date(2026, 9, 16, 12, 0, 0);
+  const today = dayKey(now.getTime());
+  writeConfig(dir, {
+    roles: { feature: { enabled: true, instances: 2 } },
+    maxDailyCostUsdPerRole: { feature: 1, coverage: 0 },
+  });
+  for (const id of ["feature", "feature-2"]) {
+    saveLoopState(dir, { ...freshLoopState(id), dayStamp: today, dayCostUsd: 0.6 });
+  }
+  const p = rolePayload(dir, "feature-2", NO_MODELS, now);
+  assert.equal(p.dailyCap?.over, true);
+  assert.equal(p.dailyCap?.spentUsd, 1.2);
+  assert.deepEqual(p.dailyCap?.roleIds, ["feature", "feature-2"]);
+  assert.match(renderRoleMarkdown(p), /· shared by feature, feature-2$/m);
+  assert.equal("dailyCap" in rolePayload(dir, "coverage", NO_MODELS, now), false);
+  assert.equal("dailyCap" in rolePayload(dir, "director", NO_MODELS, now), false);
+
+  const bare = root();
+  const np = rolePayload(bare, "feature", NO_MODELS, now);
+  assert.equal("dailyCap" in np, false);
+  assert.doesNotMatch(renderRoleMarkdown(np), /Daily cap/);
 });

@@ -673,6 +673,33 @@ test("the loop drawer renders a Spend row from the role payload's usage", async 
   assert.doesNotMatch(none.paintedFor("drawerrole"), /<dt>Spend<\/dt>/);
 });
 
+test("the loop drawer renders a Daily cap row only when the payload has a dailyCap", async () => {
+  const withCap = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: {
+      "/api/role?role=clean": {
+        note: null,
+        nextPrompt: null,
+        inboxCount: 0,
+        dailyCap: { capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["clean", "clean-2"] },
+      },
+    },
+  });
+  withCap.scope.toggleLoop("clean");
+  await flush();
+  assert.match(
+    withCap.paintedFor("drawerrole"),
+    /<dt>Daily cap<\/dt><dd[^>]*>\$1\.20 of \$1\.00 spent today \(holding now — no new ticks until local midnight\) · shared by clean, clean-2<\/dd>/,
+  );
+  const none = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0 } },
+  });
+  none.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(none.paintedFor("drawerrole"), /Daily cap/);
+});
+
 // A default pi fleet runs on pi's own saved default model: rolePayload sets `piDefault`
 // (a formatted selector) and leaves `provider`/`model` undefined, and the CLI's role view
 // names that default in its Model line (modelLine's `pi default (…)` branch). The
