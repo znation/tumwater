@@ -9,6 +9,7 @@ import { isAgentId } from "../config/model-selector.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
+import { expandHomeTilde } from "../files/files.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) fleet differs from an API one: unpriced or
@@ -23,9 +24,7 @@ export function piModelsPath(env: NodeJS.ProcessEnv = process.env, homeDir: stri
 export function piAgentDir(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string {
   const dir = env.PI_CODING_AGENT_DIR;
   if (!dir) return path.join(homeDir, ".pi", "agent");
-  if (dir === "~") return homeDir;
-  if (dir.startsWith("~/")) return path.join(homeDir, dir.slice(2));
-  return dir;
+  return expandHomeTilde(dir, homeDir);
 }
 
 export interface PiModelDef {

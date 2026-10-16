@@ -24,6 +24,7 @@ import { MODEL_TIERS } from "../../config/config-schema.js";
 import { routeModel } from "../../config/model-selector.js";
 import { agentBaseEnv } from "../../process/run-marker.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "../../pi/pi-bin.js";
+import { expandHomeTilde } from "../../files/files.js";
 import { claudeArgs } from "./claude-args.js";
 import { claudeEnv, claudeThirdPartyProvider } from "./claude-env.js";
 import { claudeTranslator } from "./claude-stream.js";
@@ -55,9 +56,7 @@ export function claudeConfigDir(
 ): string {
   const dir = env.CLAUDE_CONFIG_DIR;
   if (!dir) return path.join(homeDir, ".claude");
-  if (dir === "~") return homeDir;
-  if (dir.startsWith("~/")) return path.join(homeDir, dir.slice(2));
-  return dir;
+  return expandHomeTilde(dir, homeDir);
 }
 
 /** The transcript file claude writes for a session started in `cwd`: its resume check must find

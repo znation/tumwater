@@ -129,6 +129,17 @@ export function unlinkAllMissingTolerant(files: readonly string[]): void {
 /** The PATH a binary lookup searches by default: the process PATH, or the empty string when
  * it is unset (findOnPath then finds no directories). The one home of the default so every
  * caller that exposes a `pathEnv` override falls back the same way. */
+/** Expand a `~` at the start of a directory against the home dir, for an env var that points
+ * at a subdirectory of home — e.g. `$PI_CODING_AGENT_DIR` (pi-models.ts's piAgentDir) and
+ * `$CLAUDE_CONFIG_DIR` (claude-backend.ts's claudeConfigDir), which share this exact rule. The
+ * empty case is the caller's job (each returns its own default subpath); this helper only maps
+ * the bare `~` → home and `~/x` → home/x, otherwise the literal dir. */
+export function expandHomeTilde(dir: string, homeDir: string): string {
+  if (dir === "~") return homeDir;
+  if (dir.startsWith("~/")) return path.join(homeDir, dir.slice(2));
+  return dir;
+}
+
 export function envPath(): string {
   return process.env.PATH ?? "";
 }
