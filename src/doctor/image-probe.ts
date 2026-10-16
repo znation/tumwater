@@ -10,15 +10,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
 import { randomInt } from "node:crypto";
 import zlib from "node:zlib";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
-import { releaseChildHandles, signalTree } from "../process/process.js";
 import { imageProbesPath } from "../paths.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
+import { boundedProbe } from "./probe.js";
 
 /** How long a cached image-probe verdict stays valid while the claim is unchanged (7 days) —
  * a model's endpoint can change underneath a stale pass, so the answer is dated. */
@@ -197,54 +196,6 @@ function randomCode(): string {
 
 // ── Probe runner ──────────────────────────────────────────────────────────────────────────
 
-/** One bounded probe of the resolve pi binary: `null` when the spawn threw, the child errored,
- * the deadline passed, or stdout overran the cap — every case the caller reads as "could not
- * check". The child runs detached and at the deadline (or on overrun) its whole process group
- * is SIGKILLed and the promise settles, because `'close'` waits for the stdio pipes and a
- * grandchild holding them open would otherwise leave the promise pending past the deadline (the
- * same trap the doctor's other binary probes close). */
-function boundedProbe(
-  bin: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-): Promise<{ code: number | null; stdout: string } | null> {
-  return new Promise((resolve) => {
-    let child: ReturnType<typeof spawn>;
-    try {
-      // Detached so the deadline's signalTree reaches a grandchild too; stderr is ignored
-      // rather than piped, since nothing reads it and a full stderr pipe would block the child.
-      child = spawn(bin, args, { cwd: process.cwd(), detached: true, stdio: ["ignore", "pipe", "ignore"], env });
-    } catch {
-      resolve(null);
-      return;
-    }
-    let out = "";
-    let bytes = 0;
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const settle = (result: { code: number | null; stdout: string } | null): void => {
-      if (settled) return;
-      settled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      releaseChildHandles(child);
-      resolve(result);
-    };
-    const abort = (): void => {
-      signalTree(child, "SIGKILL");
-      settle(null);
-    };
-    timer = setTimeout(abort, timeoutMs);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      out += chunk.toString("utf8");
-      bytes += chunk.length;
-      if (bytes > PROBE_MAX_OUTPUT_BYTES) abort();
-    });
-    child.on("error", () => settle(null));
-    child.on("close", (code) => settle({ code, stdout: out }));
-  });
-}
-
 /** Parse the resolved probe's stdout (pi's `--mode json` event stream) the same way a real run
  * is parsed, so a live probe sees the same final text and error classification the harness
  * would. */
@@ -305,7 +256,7 @@ export async function runImageProbe(
       if (seam.model) args.push("--model", seam.model);
       if (seam.thinking) args.push("--thinking", seam.thinking);
       args.push(`@${pngPath}`, "Reply with only the 4-digit number shown in the image.");
-      const result = await boundedProbe(bin, args, env, timeoutMs);
+      const result = await boundedProbe(bin, args, env, timeoutMs, PROBE_MAX_OUTPUT_BYTES);
       if (result === null)
         return { verdict: "could-not-verify", detail: "the probe could not run or timed out" };
       const parsed = parseProbeOutput(result.stdout);

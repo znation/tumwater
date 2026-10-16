@@ -1,5 +1,5 @@
-import { spawn } from "node:child_process";
-import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
+import { childEnv } from "../process/process.js";
+import { boundedProbe } from "./probe.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole } from "../config/config-views.js";
 import { fallbackPair, resolveTierFallbacks, seamsInUse } from "../config/config-fallbacks.js";
@@ -138,71 +138,11 @@ export function claudeSeamsInUse(config: TumwaterConfig): boolean {
   return seamPairs(config).some((pair) => pair.agent === "claude");
 }
 
-/** One bounded probe of an agent binary: `null` when the spawn threw, the child errored, the
- * deadline passed, or stdout overran the cap — every case the caller must read as "could not
- * check", never as a verdict. The child runs detached and at the deadline (or on overrun) its
- * whole process group is SIGKILLed and the promise settles, because `'close'` waits for the
- * stdio pipes and a grandchild holding them open would otherwise leave the promise pending past
- * the deadline and hang `tumwater doctor` (the same trap git-run.ts's bounded spawn closes for
- * git). `timeoutMs` is a test seam; production callers leave it at the default. */
-function boundedProbe(
-  bin: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-  timeoutMs: number,
-): Promise<{ code: number | null; stdout: string } | null> {
-  return new Promise((resolve) => {
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn(bin, args, {
-        cwd: process.cwd(),
-        // Detached so the deadline's signalTree reaches a grandchild too; stderr is ignored
-        // rather than piped, since nothing reads it and a full stderr pipe would block the
-        // child until the deadline.
-        detached: true,
-        stdio: ["ignore", "pipe", "ignore"],
-        env,
-      });
-    } catch {
-      resolve(null);
-      return;
-    }
-    let out = "";
-    let bytes = 0;
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const settle = (result: { code: number | null; stdout: string } | null): void => {
-      if (settled) return;
-      settled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      // Destroy the captured stdout and unref the process handle (releaseChildHandles): a
-      // grandchild that escaped the group and holds the pipe's write end would otherwise keep
-      // the harness's event loop alive though the probe already has its answer.
-      releaseChildHandles(child);
-      resolve(result);
-    };
-    // Deadline or runaway output: kill the whole group, tear down the handles, and settle —
-    // do not wait for a `'close'` the group may never deliver.
-    const abort = (): void => {
-      signalTree(child, "SIGKILL");
-      settle(null);
-    };
-    timer = setTimeout(abort, timeoutMs);
-    child.stdout?.on("data", (chunk: Buffer) => {
-      out += chunk.toString("utf8");
-      bytes += chunk.length;
-      if (bytes > AUTH_CHECK_MAX_OUTPUT_BYTES) abort();
-    });
-    child.on("error", () => settle(null));
-    child.on("close", (code) => settle({ code, stdout: out }));
-  });
-}
-
 /** The default credential probe: run the resolved agent binary's own auth check for one
  * provider and read `ready` out of its JSON. The binary resolves exactly as the spawn does
  * (resolveAgentBin — the same source a real tick would launch), so doctor tests the auth of
  * the pi it would actually run. Never throws; every failure mode lands on "unknown". The
- * bounded subprocess is boundedProbe above, shared with the claude probes. */
+ * bounded subprocess is the shared boundedProbe (probe.ts), also used by the claude probes. */
 export async function piProviderAuth(
   config: TumwaterConfig,
   provider: string,
@@ -215,6 +155,7 @@ export async function piProviderAuth(
     ["auth", "check", "--provider", provider, "--json"],
     childEnv({ PATH: pathEnv }),
     timeoutMs,
+    AUTH_CHECK_MAX_OUTPUT_BYTES,
   );
   if (result === null) return "unknown";
   if (result.code !== 0) return "unknown";
@@ -239,7 +180,7 @@ function claudeProbe(
 ): Promise<{ code: number | null; stdout: string } | null> {
   const resolved = claudeBackend.resolveBin(config);
   const env = claudeEnv(childEnv({ PATH: pathEnv }), { quietTimeoutSeconds: 0 });
-  return boundedProbe(resolved.bin, args, env, timeoutMs);
+  return boundedProbe(resolved.bin, args, env, timeoutMs, AUTH_CHECK_MAX_OUTPUT_BYTES);
 }
 
 /** Run `claude auth status` under the same scrubbed environment a real run gets (claudeEnv),
