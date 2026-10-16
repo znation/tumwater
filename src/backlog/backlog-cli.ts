@@ -9,7 +9,7 @@ import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
 import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
 import { openBugEntries, plannedPlanEntries, ageInDays, entryAgeSuffix, filingDate } from "./backlog.js";
-import { backlogHolds, holdMark } from "./backlog-eligibility.js";
+import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
 import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -284,6 +284,8 @@ export function listAndAnnounce(
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
   const holds = backlogHolds(root);
   const entryHolds = bugSection ? holds.bugs : holds.plans;
+  const inProgress = backlogInProgress(root);
+  const entryRunners = bugSection ? inProgress.bugs : inProgress.plans;
   if (json) {
     sayJson({
       entries: entries.map((entry, i) => {
@@ -293,6 +295,7 @@ export function listAndAnnounce(
           title: entry.title,
           body: entry.body,
           hold: entryHolds[i] ?? null,
+          inProgress: entryRunners[i] ?? null,
           // The filing stamp the entry's own heading carries, and how many days it has waited
           // since then (both present only when the heading names a stamp — an undated entry
           // keeps the pre-existing shape with neither key).
@@ -308,7 +311,7 @@ export function listAndAnnounce(
     return;
   }
   const numbered = entries.map(
-    (entry, i) => `${entry.title}${holdMark(entryHolds[i] ?? null)}${entryAgeSuffix(entry.title)}`,
+    (entry, i) => `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`,
   );
   say(`${noun}s in ${fileName}:\n${numberedList(numbered)}`);
 }

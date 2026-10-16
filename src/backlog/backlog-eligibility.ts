@@ -13,6 +13,7 @@ import { allLiveClaims } from "../loop/loop-state.js";
 import { collapseWhitespace } from "../text/text.js";
 import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
+import { roleLabel } from "../roles/role-labels.js";
 import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
 import { actionableEntryRangesFor, stripEntryStamp } from "./backlog-structure.js";
 import { openBugEntries, plannedPlanEntries } from "./backlog.js";
@@ -346,6 +347,24 @@ export function backlogHolds(root: string): BacklogHolds {
 export function backlogMarks(root: string): { plans: string[]; bugs: string[] } {
   const holds = backlogHolds(root);
   return { plans: holds.plans.map(holdMark), bugs: holds.bugs.map(holdMark) };
+}
+
+/** The runner id holding a live claim on each planned plan and open bug, two arrays parallel
+ * to backlogHolds' (same readers, same order); `null` when no role is working on the entry.
+ * Keyed by entryKey alone, exactly as the backlog index's claim lookup is. */
+export function backlogInProgress(root: string): { plans: (string | null)[]; bugs: (string | null)[] } {
+  const claims = allLiveClaims(root);
+  const runnerOf = (entry: BacklogEntry): string | null => claims.get(entryKey(entry.title)) ?? null;
+  return {
+    plans: plannedPlanEntries(root).map(runnerOf),
+    bugs: openBugEntries(root).map(runnerOf),
+  };
+}
+
+/** The heading mark for an entry a role is working on: empty when nobody is, else
+ * ` [working on it: feature #2]` (the runner id through roleLabel). */
+export function inProgressMark(runner: string | null): string {
+  return runner === null ? "" : ` [working on it: ${roleLabel(runner)}]`;
 }
 
 /** The entries a `role` loop may take now, in file order: PLANS.md's `## Planned` entries for

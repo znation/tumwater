@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
 import { renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
 
@@ -157,6 +158,7 @@ test("tumwater backlog --json prints the three entry arrays the Markdown view re
     bugs: [],
     questions: [],
     holds: { plans: [], bugs: [] },
+    inProgress: { plans: [], bugs: [] },
   });
   assert.match(bare.out, /\n  "plans": \[\]/);
 });
@@ -244,4 +246,38 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
 test("tumwater help lists the backlog command", async () => {
   const help = await runCli(makeRepo(), "help");
   assert.match(help.out, /^  tumwater backlog \[--json\] {8}Show planned features, open bugs/m);
+});
+
+test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", () => {
+  const root = tmpdir();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
+  const payload = backlogPayload(root);
+  const md = renderBacklogMarkdown({
+    ...payload,
+    holds: { plans: [null, "needs-review"], bugs: [null] },
+    inProgress: { plans: [null, "feature-2"], bugs: [null] },
+  });
+  assert.match(md, /^### Timestamp of last result \(planned 2026-09-24\) \[needs review\] \[working on it: feature #2\]$/m);
+  assert.match(md, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
+});
+
+test("tumwater backlog shows the working-on-it mark and --json carries inProgress arrays", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), PLANS_MD);
+  fs.writeFileSync(path.join(root, "BUGS.md"), BUGS_MD);
+  saveLoopState(root, {
+    ...loadLoopState(root, "feature-2"),
+    claim: { file: "PLANS.md", key: "show open bugs in the tui", title: "Show open bugs in the TUI", at: 1, source: "assigned" },
+  });
+  const md = await runCli(root, "backlog");
+  assert.match(md.out, /^### Show open bugs in the TUI \(planned 2026-09-25\) \[working on it: feature #2\]$/m);
+  const doc = JSON.parse((await runCli(root, "backlog", "--json")).out) as {
+    plans: unknown[];
+    bugs: unknown[];
+    inProgress: { plans: (string | null)[]; bugs: (string | null)[] };
+  };
+  assert.equal(doc.inProgress.plans.length, doc.plans.length);
+  assert.equal(doc.inProgress.bugs.length, doc.bugs.length);
+  assert.deepEqual(doc.inProgress.plans.filter((x) => x !== null), ["feature-2"]);
 });

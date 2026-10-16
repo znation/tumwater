@@ -154,7 +154,9 @@ Usage:
   tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
-                                   same data the Markdown view renders
+                                   same data the Markdown view renders; an entry a role is
+                                   working on carries \`[working on it: feature #2]\` (--json:
+                                   an \`inProgress\` key parallel to the arrays)
   tumwater bug "<symptom>" [--json]
                                    File a bug into BUGS.md ## Open as the operator (stamped
                                    with today's date) and wake the bugfix loop; --json prints
@@ -186,7 +188,8 @@ Usage:
   tumwater bug --list [--json]     List the entries in BUGS.md ## Open, numbered (the read
                                    half of --edit/--cancel), each with its eligibility mark;
                                    --json prints the {entries} array — position, title, body,
-                                   hold — as data
+                                   hold, inProgress — as data; \`[working on it: …]\` marks an
+                                   entry a role is working on
   tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
@@ -222,7 +225,8 @@ Usage:
   tumwater plan --list [--json]    List the entries in PLANS.md ## Planned, numbered (the
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
-                                   body, hold — as data
+                                   body, hold, inProgress — as data; \`[working on it: …]\`
+                                   marks an entry a role is working on
   tumwater plan --show <n> [--json]
                                    Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);

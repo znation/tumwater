@@ -14,7 +14,7 @@ import { snapshot } from "../status/status-data.js";
 import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
-import { backlogHolds } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
@@ -145,7 +145,7 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // the JSON document prints.
   sayJsonOrRender(
     args,
-    () => ({ ...backlogPayload(root), holds: backlogHolds(root) }),
+    () => ({ ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) }),
     renderBacklogMarkdown,
   );
 }

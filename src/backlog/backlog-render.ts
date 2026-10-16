@@ -1,6 +1,6 @@
 import type { BacklogEntry } from "./backlog-md.js";
 import type { BacklogPayload } from "./backlog.js";
-import { holdMark, type EntryHold } from "./backlog-eligibility.js";
+import { holdMark, inProgressMark, type EntryHold } from "./backlog-eligibility.js";
 
 /** The terminal's view of the project backlog — the same three open sections the GUI's
  * /api/backlog endpoint and the TUI's project-status browse show, rendered as Markdown for
@@ -27,11 +27,17 @@ interface BacklogHolds {
 /** The renderer's view: the payload it always consumed, plus optional holds parallel to
  * `plans` and `bugs`. A missing `holds`, or an array shorter than its entries, leaves a
  * heading byte-identically to today. */
-type BacklogView = BacklogPayload & { holds?: BacklogHolds };
+type BacklogView = BacklogPayload & {
+  holds?: BacklogHolds;
+  /** Runner ids working on each entry (backlogInProgress), parallel to `plans` and `bugs`. */
+  inProgress?: { plans: (string | null)[]; bugs: (string | null)[] };
+};
 
 /** One `## ` section: its entries verbatim, or the single `_(none)_` placeholder line. When
  * `holds` is given, entry `i`'s hold mark rides on its `### ` heading. */
-function renderSection(title: string, entries: BacklogEntry[], holds?: readonly EntryHold[]): string[] {
+function renderSection(title: string, entries: BacklogEntry[], holds?: readonly EntryHold[],
+  inProgress?: readonly (string | null)[],
+): string[] {
   const lines: string[] = [`## ${title}`, ""];
   if (entries.length === 0) {
     lines.push("_(none)_", "");
@@ -39,7 +45,7 @@ function renderSection(title: string, entries: BacklogEntry[], holds?: readonly 
   }
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;
-    lines.push(`### ${entry.title}${holdMark(holds?.[i] ?? null)}`, "");
+    lines.push(`### ${entry.title}${holdMark(holds?.[i] ?? null)}${inProgressMark(inProgress?.[i] ?? null)}`, "");
     // The body is already trimmed by parseEntryDetails; only the indent is added here.
     for (const line of entry.body.split("\n")) lines.push(line === "" ? "" : `  ${line}`);
     lines.push("");
@@ -51,8 +57,8 @@ function renderSection(title: string, entries: BacklogEntry[], holds?: readonly 
  * Markdown. */
 export function renderBacklogMarkdown(payload: BacklogView): string {
   const lines: string[] = ["# tumwater backlog", ""];
-  lines.push(...renderSection("Planned features", payload.plans, payload.holds?.plans));
-  lines.push(...renderSection("Open bugs", payload.bugs, payload.holds?.bugs));
+  lines.push(...renderSection("Planned features", payload.plans, payload.holds?.plans, payload.inProgress?.plans));
+  lines.push(...renderSection("Open bugs", payload.bugs, payload.holds?.bugs, payload.inProgress?.bugs));
   lines.push(...renderSection("Open questions", payload.questions));
   return lines.join("\n").trimEnd();
 }

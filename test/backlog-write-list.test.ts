@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { initProject } from "../src/init/init.js";
+import { entryKey } from "../src/backlog/backlog-eligibility.js";
 import { openBugs, plannedPlans, entryAgeSuffix } from "../src/backlog/backlog.js";
+import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
@@ -191,3 +193,19 @@ test("help topics name the --list forms", async () => {
   assert.match(r.stdout, /tumwater plan --list \[--json\]/);
 });
 
+
+test("plan --list marks the entry a role is working on, and --json carries inProgress", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "PLANS.md"), seededPlansForList());
+  const p1 = "Export series, part 1/2: add export (planned 2026-10-01)";
+  saveLoopState(repo, {
+    ...loadLoopState(repo, "feature-2"),
+    claim: { file: "PLANS.md", key: entryKey(p1), title: p1, at: 1, source: "assigned" },
+  });
+  const r = await cli(repo, "plan", "--list");
+  assert.ok(r.stdout.includes(`1. ${p1} [working on it: feature #2]${entryAgeSuffix(p1)}`), r.stdout);
+  const j = JSON.parse((await cli(repo, "plan", "--list", "--json")).stdout) as {
+    entries: { inProgress: string | null }[];
+  };
+  assert.deepEqual(j.entries.map((e) => e.inProgress), ["feature-2", null]);
+});

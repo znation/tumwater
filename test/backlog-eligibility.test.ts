@@ -5,6 +5,8 @@ import path from "node:path";
 import {
   withoutRefusalNotes,
   backlogHolds,
+  backlogInProgress,
+  inProgressMark,
   eligibleEntries,
   entryHold,
   entryKey,
@@ -397,4 +399,21 @@ test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", 
   const self = planDependencyProblems([e("S, part 1/2: a (requires part 1/2 landed)")], []);
   assert.deepEqual(self.cycle, ["S 1/2", "S 1/2"]);
   assert.deepEqual(planDependencyProblems([e("Free plan")], []), { cycle: null, dangling: [], unparsed: [] });
+});
+
+test("backlogInProgress names the runner holding each entry's claim; inProgressMark labels it", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Volume slider (planned 2026-10-09)\nA.\n### Mute button (planned 2026-10-09)\nB.\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Crash on start (reported 2026-10-09)\nC.\n## Fixed\n_None._\n");
+  assert.deepEqual(backlogInProgress(dir), { plans: [null, null], bugs: [null] });
+  const claim = (key: string, title: string, file: "PLANS.md" | "BUGS.md") =>
+    ({ file, key, title, at: 1, source: "assigned" }) as const;
+  saveLoopState(dir, { ...loadLoopState(dir, "feature-2"), claim: claim("volume slider", "Volume slider", "PLANS.md") });
+  saveLoopState(dir, { ...loadLoopState(dir, "bugfix"), claim: claim("crash on start", "Crash on start", "BUGS.md") });
+  assert.deepEqual(backlogInProgress(dir), { plans: ["feature-2", null], bugs: ["bugfix"] });
+  assert.equal(inProgressMark(null), "");
+  assert.equal(inProgressMark("feature-2"), " [working on it: feature #2]");
 });
