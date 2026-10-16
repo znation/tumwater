@@ -3812,6 +3812,50 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - In `test/gui-client-drawer.test.ts`, a role payload with a holding `dailyCap` paints `<dt>Daily cap</dt>` with the same wording as the CLI line. A payload without the field paints no Daily cap row.
 - `npm run test` passes.
 
+### `tumwater doctor` checks the plans' `requires … landed` dependencies: it names a prerequisite that matches no plan, a clause that does not parse, and a dependency cycle (planned 2026-10-16 by plan; independent of every other eligible Planned entry. The two role-page plans touch `src/roles/` + `gui-client-drawer.ts` and customRoles 3/6 touches `src/config/`; this touches only `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, and their tests. Plain terms text 4/19 later rewords the doctor's check names, and it will pick up this one too)
+
+**Goal.** The claim allocator holds a plan part only while a prerequisite named in its heading's `requires … landed` clause is still under `## Planned` (`entryHoldAgainst` in `src/backlog/backlog-eligibility.ts`). Three mistakes in that clause go unnoticed:
+- **A dangling ref.** The clause names a series or part that no PLANS.md heading carries, through a typo like `Plain terms command 6/6` or a renumbered split. The ref is then never "still planned", so the dependent part becomes eligible at once and can land before its real prerequisite.
+- **An unparseable clause.** The clause has `requires … landed` text that `requiredParts` turns into no refs, such as a bare `requires part 1/2 landed` on a heading with no `<Series>, part i/n:` prefix. That holds nothing either.
+- **A cycle.** Two planned parts that require each other directly or through a chain are held forever, and the only sign is a `[blocked: …]` mark that never clears.
+
+`tumwater doctor` has backlog checks for refusals, stalled plans, stranded plans, and duplicate headings (`src/doctor/doctor-backlog.ts`), but none for dependencies. Grep finds no `cycle` or `dangling` in `src/backlog/` or `src/doctor/` other than an unrelated pid-recycling comment in doctor-orphans.ts. The plan role writes these clauses by hand, and a long series like Plain terms holds dozens of them, so a single typo can quietly reorder the series.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`:
+  - Split the clause extraction out of `requiredParts` into a private `requiresClause(title): string | null`. It covers the trailing or open parenthetical and the `/requires\s+(.+?)\s+landed\b/i` match, and returns the captured ref text. `requiredParts` keeps its behavior and existing tests.
+  - Add an exported pure `planDependencyProblems(planned: readonly BacklogEntry[], doneTitles: readonly string[]): { cycle: string[] | null; dangling: Array<{ title: string; ref: string }>; unparsed: string[] }`, with a doc comment in the file's style.
+  - **Known parts** are the `plannedPartKeys(planned)` keys plus the `partKey` of `seriesPart(t)` for each done title.
+  - **`dangling`** lists, in planned order, every ref of every planned entry whose `partKey` is not a known part. `ref` is formatted `${series} ${part}/${of}`, the same form `blockedBy` uses.
+  - **`unparsed`** lists the titles of planned entries where `requiresClause` is non-null but `requiredParts` returns [].
+  - **`cycle`** is the first cycle found by a depth-first walk over planned entries that have a `seriesPart`. Each entry has an edge to every planned entry its refs name by `partKey`, and a self-reference counts. The cycle is reported as its `Series i/n` names in walk order, starting and ending on the same node (e.g. `["S 1/2", "S 2/2", "S 1/2"]`). It is null when there is none.
+  - Refused and needs-review entries are judged the same as the rest, because their clauses still decide when they unblock.
+- `src/doctor/doctor-backlog.ts`: add `checkPlanDependencies(root)`, which reads `plannedPlanEntries(root)` and `donePlans(root)` (src/backlog/backlog.ts) and returns one outcome:
+  - It warns on the most serious problem first, never fails: a cycle, then dangling refs, then unparsed clauses.
+  - A cycle reads ``plan dependency cycle: S 1/2 → S 2/2 → S 1/2 — every part on it stays blocked forever; edit one heading's `requires … landed` clause to break it``.
+  - A dangling ref reads ``PLANS.md plan "<title truncated to FIX_CLAIM_HEADING_MAX>" requires <ref>, which no PLANS.md heading carries — the hold is void, so the plan is claimable now; fix the series name or part number``.
+  - An unparsed clause reads ``PLANS.md plan "<title>" has a `requires … landed` clause that names no part the allocator can read — it holds nothing; write each ref as `<Series> i/n` or give the heading a `<Series>, part i/n:` prefix``.
+  - Further items of the reported kind are appended through the module's `andMore` helper, and a count of the other kinds follows when non-zero: `(also N dangling ref(s), M unparsed clause(s))`.
+  - The ok outcome reads `every planned plan's requires clause names a known part, with no cycle`.
+  - Extend the module's header comment to list the new check.
+- `src/doctor/doctor.ts`: import it and add `{ name: "plan dependencies", ...checkPlanDependencies(root) }` right after the `stalled plans` row.
+
+**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, `test/backlog-eligibility.test.ts`, `test/doctor-backlog.test.ts`. There is no allocator, claim, index, or render change, so eligibility behaves exactly as before.
+
+**Acceptance criteria.**
+- `test/backlog-eligibility.test.ts` covers `planDependencyProblems` in these cases:
+  - Planned `S, part 2/3: …(requires part 1/3 landed)` with `S, part 1/3: …` among the done titles has no problems.
+  - The same entry requiring `T 1/3` (no such heading) yields `dangling: [{ title, ref: "T 1/3" }]`.
+  - A heading `Plain plan (requires part 1/2 landed)` with no series prefix yields it in `unparsed`.
+  - Planned `S, part 1/2: … (requires part 2/2 landed)` and `S, part 2/2: … (requires part 1/2 landed)` yield a non-null `cycle` that names both parts and starts and ends on the same name.
+  - A self-reference yields a one-hop cycle.
+  - A clause-free heading yields nothing.
+  - The existing `requiredParts` tests pass unchanged.
+- `test/doctor-backlog.test.ts` covers `checkPlanDependencies` on temp PLANS.md files: ok on a clean `## Planned` + `## Done` pair, ok when PLANS.md is absent, and a warn for each of the three kinds matching the wording above. When a cycle and a dangling ref are both present, the cycle is named and the line carries `(also 1 dangling ref(s), 0 unparsed clause(s))`.
+- The row-name list asserted in `test/doctor.test.ts` gains `"plan dependencies"` between `"stalled plans"` and `"stale questions"`.
+- Today's tree: the refused `tui-panes` plan heading in `## Planned` carries a bare `requires part 1/2 landed` with no series prefix, so `tumwater doctor` run on this repo warns `unparsed` for it. That warning is expected and correct, not a regression.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms groundwork, part 4/4: Give the dashboard client browser twins of the label helpers (planned 2026-10-16 by user; done 2026-10-16; requires part 1/4 and part 3/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/loop-ids.ts and src/ui/gui/gui-client-labels.ts and src/ui/gui/gui-client.ts plus a test)
