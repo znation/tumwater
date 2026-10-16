@@ -75,15 +75,20 @@ function rejectionCell(prevTicks: number, prevRejections: number, ticks: number,
 function percent(part: number, whole: number): string {
   const pct = (100 * part) / whole;
   const rounded = Math.round(pct);
-  if (rounded === 0 && part > 0) {
-    const oneDecimal = pct.toFixed(1);
-    return oneDecimal === "0.0" ? "<0.1%" : `${oneDecimal}%`;
-  }
-  if (rounded === 100 && part < whole) {
-    const oneDecimal = pct.toFixed(1);
-    return oneDecimal === "100.0" ? ">99.9%" : `${oneDecimal}%`;
-  }
+  // A nonzero ratio at the 0/100 edges must not round away to "0%"/"100%": both arms keep
+  // one decimal the same way, so they share one helper — the two calls differ only in the
+  // edge they guard ("0.0"/"<0.1%" vs "100.0"/">99.9%").
+  if (rounded === 0 && part > 0) return edgePercent(pct, "0.0", "<0.1%");
+  if (rounded === 100 && part < whole) return edgePercent(pct, "100.0", ">99.9%");
   return `${rounded}%`;
+}
+
+/** A near-edge one-decimal percent: `${n.d}%`, or the `edge` literal when even one decimal
+ * rounds back to the edge (`"0.0"` → "<0.1%", `"100.0"` → ">99.9%"). Shared by percent's two
+ * boundary windows so the formula cannot drift between them. */
+function edgePercent(pct: number, edgeWhole: string, edge: string): string {
+  const oneDecimal = pct.toFixed(1);
+  return oneDecimal === edgeWhole ? edge : `${oneDecimal}%`;
 }
 
 /** An error rate as a whole percent, or "—" when the role ran no ticks (an absence is not
