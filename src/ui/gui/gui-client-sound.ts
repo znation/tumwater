@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's sound layer, browser-side: one short synthesized cue when a new needs-you
  * alert appears (a failing loop, a red main, a spent budget, a lost server), scoped from
  * docs/feature-gui-audio-sound-effects.md to the alerts cue — the one moment the fleet

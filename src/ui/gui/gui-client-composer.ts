@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's composer, browser-side — the one input box that steers the director or any
  * single loop: the target selector with its per-target unsent drafts, the character counter,
  * the image attachments (dropped or pasted onto the box, rendered as removable chips), and
@@ -38,7 +39,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     const key = roles.join(",");
     if (key !== targetKey) {
       targetKey = key;
-      targetSelect.innerHTML = "<option value='director'>Director</option>" + (roles.length ? "<optgroup label='One loop, at its next tick'>" +
+      targetSelect.innerHTML = "<option value='director'>Director</option>" + (roles.length ? "<optgroup label='One role, at its next run'>" +
         roles.map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("") + "</optgroup>" : "");
       if (promptTarget !== "director" && !roles.includes(promptTarget)) setTarget("director");
       targetSelect.value = promptTarget;
@@ -46,18 +47,18 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     const n = (d.inbox || 0) + Object.values(d.roleInbox || {}).reduce((a, b) => a + b, 0);
     const link = $("queuelink");
     link.hidden = n === 0;
-    link.dataset.act = "queued";
-    const text = plural(n, "prompt") + " queued";
+    link.dataset.act = "queued"; // vocabulary-ok: data-act routing key the click handler matches
+    const text = plural(n, "message") + " in the inbox";
     if (link.textContent !== text) link.textContent = text;
     composerData = d;
     renderPromptImageNote();
   }
   function composerHint() {
     $("prompthint").innerHTML = esc(promptTarget === "director"
-      ? "The director runs this next, ahead of every loop."
-      : "Queued for the " + promptTarget + " loop's next tick; the loop wakes right away.") +
+      ? "The director runs this next, ahead of every role."
+      : "Goes to the " + roleLabel(promptTarget) + " inbox for its next run; the role wakes right away.") +
       " <kbd>Enter</kbd> sends · <kbd>Shift</kbd>+<kbd>Enter</kbd> adds a line · <kbd>/</kbd> jumps here";
-    promptInput.placeholder = promptTarget === "director" ? "Tell the fleet what to do next…" : "Tell the " + promptTarget + " loop what to do on its next tick…";
+    promptInput.placeholder = promptTarget === "director" ? "Tell the team what to do next…" : "Tell the " + roleLabel(promptTarget) + " role what to do on its next run…";
   }
   function setTarget(t) {
     if (t === promptTarget) return;
@@ -92,7 +93,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   }
   // The composer sits on the Fleet view; bring it into sight from anywhere and focus it.
   function focusComposer() {
-    if (activeView !== "fleet") location.hash = "fleet";
+    if (activeView !== "fleet") location.hash = "fleet"; // vocabulary-ok: dashboard route name
     if (window.innerWidth <= 1180 && drawer) closeDrawer();
     $("promptform").scrollIntoView({ behavior: "smooth", block: "center" });
     promptInput.focus({ preventScroll: true });
@@ -209,10 +210,10 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     const body = images && images.length ? { text, images } : { text };
     if (target === "director") {
       await postJson("/api/prompt", body);
-      return "Queued for the director — it runs next" + attached;
+      return "Added to the director's inbox — it runs next" + attached;
     }
     await postJson("/api/prompt-role", { role: target, ...body });
-    return "Queued for the " + target + " loop's next tick — it wakes now" + attached;
+    return "Added to the " + roleLabel(target) + " inbox for its next run — it wakes now" + attached;
   }
   // composer-send:end
   let sending = false;

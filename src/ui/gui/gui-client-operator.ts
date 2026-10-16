@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { PAUSE_REASON_MAX } from "../../fleet/fleet-state.js";
 
 /** The dashboard's fleet-wide operator controls, browser-side, all living in the sidebar so
@@ -123,11 +124,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     // A subscription-only fleet has no priced spend for a cap to bind, so the window card
     // stands in place of the spend card and carries no editor.
     if (cw && cw.only) {
-      return "<div class='side-card' title='Claude.ai subscription usage windows — a rejected window holds the claude seams until it resets'>" +
+      return "<div class='side-card' title='Claude.ai subscription usage windows — a rejected window pauses claude model jobs until it resets'>" +
         "<span class='side-card-label'>" + icon("clock") + "Claude window</span>" + windowLinesHtml(cw) + "</div>";
     }
     if (b.free) {
-      return "<div class='side-card' title='Every model the fleet can use is cost n/a, so there is nothing to cap'>" +
+      return "<div class='side-card' title='Every model the team can use is cost n/a, so there is nothing to cap'>" +
         "<span class='side-card-label'>" + icon("dollar") + "Spend</span><span class='side-card-value'>Free models</span>" + windowLinesHtml(cw) + "</div>";
     }
     const capped = b.capUsd > 0;
@@ -154,7 +155,7 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       html: "<label for='budgetinput'>Daily spend cap</label>" +
         "<div class='input-prefix'><span>$</span><input type='number' min='0' step='0.01' id='budgetinput' value='" +
         esc(b.capUsd > 0 ? String(b.capUsd) : "") + "' placeholder='no cap'></div>" +
-        "<p class='hint'>" + esc("Spent today: " + fmtUsd(b.spentUsd) + ". At the cap the loops " +
+        "<p class='hint'>" + esc("Spent today: " + fmtUsd(b.spentUsd) + ". At the cap the roles " +
           (b.fallback ? "switch to the free fallback model" : "pause") + " until midnight. Leave it empty for no cap.") + "</p>" +
         "<div class='popover-actions'><button type='button' class='btn btn-sm' id='budgetcancel'>Cancel</button>" +
         "<button type='button' class='btn btn-sm btn-primary' id='budgetset'>Save</button></div>",
@@ -237,11 +238,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
   function pauseControlHtml(d) {
     if (d.paused) {
       const left = pauseLeft(d);
-      return "<button type='button' class='btn btn-warn' id='pausebadge' title='" + esc("The fleet is paused — click to resume it" + (d.pauseReason ? " (" + d.pauseReason + ")" : "")) + "'>" +
-        icon("play") + "<span>Resume the fleet</span><span class='btn-note' id='pausenote'>" + (left ? esc(left) + " left" : "") + "</span></button>";
+      return "<button type='button' class='btn btn-warn' id='pausebadge' title='" + esc("The team is paused — click to resume it" + (d.pauseReason ? " (" + d.pauseReason + ")" : "")) + "'>" +
+        icon("play") + "<span>Resume the team</span><span class='btn-note' id='pausenote'>" + (left ? esc(left) + " left" : "") + "</span></button>";
     }
-    return "<button type='button' class='btn' id='pausebadge' aria-haspopup='menu' title='Pause the fleet — loops start no new ticks'>" +
-      icon("pause") + "<span>Pause the fleet</span><span class='btn-note'>" + icon("chev") + "</span></button>";
+    return "<button type='button' class='btn' id='pausebadge' aria-haspopup='menu' title='Pause the team — roles start no new runs'>" +
+      icon("pause") + "<span>Pause the team</span><span class='btn-note'>" + icon("chev") + "</span></button>";
   }
   function renderPauseBadge(d) {
     if (pauseMenuOpen) return;
@@ -258,11 +259,11 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const pop = openPopover("pausewrap", {
       menu: true,
       role: "menu",
-      html: "<div class='menu-title'>Pause the fleet</div>" +
+      html: "<div class='menu-title'>Pause the team</div>" +
         "<input type='text' id='pausereason' class='menu-input' maxlength=${PAUSE_REASON_MAX} placeholder='Reason (optional)' aria-label='Pause reason' style='margin:2px 10px 4px;width:calc(100% - 20px)'>" +
         PAUSE_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-pause='" + c[0] + "'>" +
           icon(c[0] ? "clock" : "pause") + esc(c[1]) + "</button>").join("") +
-        "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, and the director keeps running your prompts.</p>",
+        "<p class='hint' style='margin:4px 10px 4px'>Current runs finish, and the director keeps running your messages.</p>",
       onClosed: () => {
         pauseMenuOpen = false;
         renderPauseBadge(lastStatus);
@@ -279,8 +280,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     if (why) body.reason = why;
     // A failure changes nothing; the control still shows the real state.
     await postAction("/api/pause", body, paused
-      ? "Fleet paused" + (forSeconds > 0 ? " for " + humanSeconds(forSeconds) : "") + " — in-flight ticks finish"
-      : "Fleet resumed");
+      ? "Team paused" + (forSeconds > 0 ? " for " + humanSeconds(forSeconds) : "") + " — current runs finish"
+      : "Team resumed");
   }
   onClick((t, ev) => {
     if (t.closest("#pausebadge")) {
@@ -311,8 +312,8 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
       return "<button type='button' class='btn btn-warn' id='stopbadge' title='A stop is scheduled — click to cancel it'>" +
         icon("stop") + "<span>Cancel scheduled stop</span></button>";
     }
-    return "<button type='button' class='btn' id='stopbadge' aria-haspopup='menu' title='Wind the fleet down later — in-flight ticks finish, then it exits'>" +
-      icon("stop") + "<span>Stop the fleet later</span><span class='btn-note'>" + icon("chev") + "</span></button>";
+    return "<button type='button' class='btn' id='stopbadge' aria-haspopup='menu' title='Stop the team later — current runs finish, then it stops'>" +
+      icon("stop") + "<span>Stop the team later</span><span class='btn-note'>" + icon("chev") + "</span></button>";
   }
   function renderStopControl(d) {
     if (stopMenuOpen) return;
@@ -322,10 +323,10 @@ export const GUI_CLIENT_OPERATOR_JS = String.raw`  // shared-operator:start
     const pop = openPopover("stopwrap", {
       menu: true,
       role: "menu",
-      html: "<div class='menu-title'>Stop the fleet later</div>" +
+      html: "<div class='menu-title'>Stop the team later</div>" +
         STOP_CHOICES.map((c) => "<button type='button' class='menu-item' role='menuitem' data-stopin='" + c[0] + "'>" +
           icon("clock") + esc(c[1]) + "</button>").join("") +
-        "<p class='hint' style='margin:4px 10px 4px'>In-flight ticks finish, then the fleet exits.</p>",
+        "<p class='hint' style='margin:4px 10px 4px'>Current runs finish, then the team stops.</p>",
       onClosed: () => {
         stopMenuOpen = false;
         renderStopControl(lastStatus);

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** A small, safe Markdown renderer for the dashboard, browser-side: the failure digest and the
  * backlog entries (PLANS/BUGS/QUESTIONS.md bodies) are Markdown the loops write, and reading
  * them as rendered headings, lists, and tables beats a pre-formatted text blob. It covers what

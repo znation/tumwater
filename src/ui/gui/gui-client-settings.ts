@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's Settings view, browser-side: the curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
  * inline field + Save + Clear, one row per key. Values load once through GET /api/config when
@@ -52,9 +53,9 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // switchView calls fetchSettings) — no polling loop of its own.
   function buildSettingsView() {
     buildOnce("settings-view", "<div class='view-head'><div><h1>Settings</h1>" +
-      "<p>The fleet-wide settings an operator edits from here; everything else lives in tumwater.json or the CLI.</p></div></div>" +
+      "<p>The team-wide settings you edit from here; everything else lives in tumwater.json or the CLI.</p></div></div>" +
       "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>" +
-      "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health check</strong>" +
+      "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health</strong>" +
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
@@ -77,7 +78,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     try {
       body.innerHTML = renderDoctorReport(await getJson("/api/doctor"));
     } catch (err) {
-      body.innerHTML = errorPanel("Health check could not run", err, "empty");
+      body.innerHTML = errorPanel("Health checks could not run", err, "empty");
     }
   }
   async function fetchSettings() {
@@ -126,7 +127,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       showFlash("error: " + clientErrorMessage(err));
     }
   }
-  // The Initial prompt card: the brief file's name and the prompt in a textarea, filled from
+  // The Brief card: the brief file's name and the prompt in a textarea, filled from
   // GET /api/brief on each open. The form is deliberately not a settings-row, so the boot's
   // delegated settings submit listener never routes it to saveSetting.
   async function fetchBrief() {
@@ -134,11 +135,11 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     const card = $("briefcard");
     try {
       const d = await getJson("/api/brief");
-      card.innerHTML = "<form class='brief-form'><strong>Initial prompt</strong> <span class='settings-key'>" + esc(d.file) + "</span>" +
+      card.innerHTML = "<form class='brief-form'><strong>Brief</strong> <span class='settings-key'>" + esc(d.file) + "</span>" +
         "<textarea class='field' id='brief-text' rows='12'>" + esc(d.prompt) + "</textarea>" +
         "<button type='submit' class='btn btn-sm'>Save</button></form>";
     } catch (err) {
-      card.innerHTML = errorPanel("Initial prompt could not load", err, "empty");
+      card.innerHTML = errorPanel("Brief could not load", err, "empty");
     }
   }
   // Save posts the textarea's text to POST /api/brief — the same checks and commit as
@@ -146,7 +147,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   async function saveBrief(form) {
     try {
       const d = await postJson("/api/brief", { prompt: form.querySelector("textarea").value });
-      showFlash(!d.changed ? "Initial prompt unchanged" : d.committed ? "Initial prompt saved (committed to main)" : "Initial prompt saved");
+      showFlash(!d.changed ? "Brief unchanged" : d.committed ? "Brief saved (committed to main)" : "Brief saved");
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }

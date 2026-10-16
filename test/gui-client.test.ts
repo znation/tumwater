@@ -412,16 +412,16 @@ test("a loop's controls post explicit states, and an abort needs a confirming se
 test("the composer queues for the director or one loop through the CLI's endpoints", async () => {
   const posts: Array<{ path: string; body: unknown }> = [];
   let fail = false;
-  const { sendPrompt } = clientScope<{ sendPrompt(target: string, text: string): Promise<string> }>(["composer-send"], ["sendPrompt"], {
+  const { sendPrompt } = clientScope<{ sendPrompt(target: string, text: string): Promise<string> }>(["labels", "composer-send"], ["sendPrompt"], {
     postJson: async (path: string, body: unknown) => {
       posts.push({ path, body });
       if (fail) throw new Error(path + " failed: HTTP 400 — the prompt is 5000 chars");
       return { ok: true };
     },
   });
-  assert.equal(await sendPrompt("director", "prefer the stdlib"), "Queued for the director — it runs next");
+  assert.equal(await sendPrompt("director", "prefer the stdlib"), "Added to the director's inbox — it runs next");
   assert.deepEqual(posts.shift(), { path: "/api/prompt", body: { text: "prefer the stdlib" } });
-  assert.equal(await sendPrompt("qa", "retest --watch"), "Queued for the qa loop's next tick — it wakes now");
+  assert.equal(await sendPrompt("qa", "retest --watch"), "Added to the qa inbox for its next run — it wakes now");
   assert.deepEqual(posts.shift(), { path: "/api/prompt-role", body: { role: "qa", text: "retest --watch" } });
   fail = true;
   await assert.rejects(sendPrompt("director", "too long"), /HTTP 400/, "a refused prompt rejects, so the page keeps the text");
@@ -462,7 +462,7 @@ test("the stop control is empty when stopped, a menu opener when running, and Ca
   const { scope } = operatorScope();
   assert.equal(scope.stopControlHtml(null), "");
   assert.equal(scope.stopControlHtml({ running: false }), "");
-  assert.match(scope.stopControlHtml({ running: true }), /Stop the fleet later/);
+  assert.match(scope.stopControlHtml({ running: true }), /Stop the team later/);
   assert.match(scope.stopControlHtml({ running: true, scheduledStopAt: Date.now() + 1000 }), /Cancel scheduled stop/);
 });
 
@@ -601,14 +601,14 @@ test("the cap editor's plain-decimal rule matches the TUI's parseBudgetInput", (
 
 test("the pause control offers timed pauses and shows a timed pause's countdown", async () => {
   const { scope, posts, flashes } = operatorScope();
-  assert.match(scope.pauseControlHtml({ paused: false }), /aria-haspopup='menu'[^>]*>.*Pause the fleet/);
+  assert.match(scope.pauseControlHtml({ paused: false }), /aria-haspopup='menu'[^>]*>.*Pause the team/);
   const standing = scope.pauseControlHtml({ paused: true });
-  assert.match(standing, /Resume the fleet/);
+  assert.match(standing, /Resume the team/);
   assert.match(standing, /<span class='btn-note' id='pausenote'><\/span>/, "a standing pause has no countdown");
   assert.match(scope.pauseControlHtml({ paused: true, pausedUntil: Date.now() + 12 * 60_000 }), /id='pausenote'>12m left</);
   await scope.setFleetPause(true, 3600);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true, forSeconds: 3600 } });
-  assert.match(flashes.shift() ?? "", /^Fleet paused for 1h/);
+  assert.match(flashes.shift() ?? "", /^Team paused for 1h/);
   await scope.setFleetPause(true, 0);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: true } }, "until-resumed sends no deadline");
   await scope.setFleetPause(true, 3600, " why ");
@@ -618,7 +618,7 @@ test("the pause control offers timed pauses and shows a timed pause's countdown"
   assert.match(scope.pauseControlHtml({ paused: true, pauseReason: "deploy" }), /id='pausebadge' title='[^']*deploy/);
   await scope.setFleetPause(false);
   assert.deepEqual(posts.shift(), { path: "/api/pause", body: { paused: false } });
-  assert.equal(flashes.pop(), "Fleet resumed");
+  assert.equal(flashes.pop(), "Team resumed");
 });
 
 test("the page's shortSha abbreviates like format.ts's 8-character rule", () => {

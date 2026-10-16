@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's Usage and Failures views, browser-side. Usage renders /api/report as six
  * totals (each with its per-day average) over five daily bar charts — landed commits, ticks by
  * loop, output tokens, spend by loop, rejections by loop — with gridlines, a scale, and one
@@ -106,7 +107,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   function chartCommits(data) {
-    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#10b981", title: d.date + ": " + plural(d.commits, "commit") + " landed" }],
+    return reportSvg(data.series, (d) => [{ value: d.commits, color: "#10b981", title: d.date + ": " + plural(d.commits, "commit") + " merged" }],
       countAxis, true);
   }
 
@@ -133,7 +134,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   }
 
   function chartTicksByRole(data) {
-    return roleStackChart(data, "ticksByRole", (n) => plural(n, "tick"), countAxis, true);
+    return roleStackChart(data, "ticksByRole", (n) => plural(n, "run"), countAxis, true);
   }
 
   function chartCostByRole(data) {
@@ -204,7 +205,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     const tile = (label, ic, value, avg, extra) => "<div class='stat'><span class='stat-label'>" + icon(ic) + esc(label) +
       "</span><span class='stat-value'>" + esc(value) + "</span><span class='stat-sub'>" + esc(avg + " a day" + (extra || "")) + "</span></div>";
     return [
-      tile("Commits landed", "merge", String(t.commits), perDay(t.commits, (v) => v.toFixed(1)),
+      tile("Commits merged", "merge", String(t.commits), perDay(t.commits, (v) => v.toFixed(1)),
         " · " + workSplit(t)),
       // A role scope has no backlog tallies: features/bugs come from day-granular backlog-file
       // dates that carry no role, so the scoped collector zeroes them and the tiles stay out —
@@ -213,10 +214,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         tile("Features done", "plan", String(t.featuresDone), perDay(t.featuresDone, (v) => v.toFixed(1))),
         tile("Bugs fixed", "bug", String(t.bugsFixed), perDay(t.bugsFixed, (v) => v.toFixed(1))),
       ]),
-      tile("Ticks", "refresh", String(t.ticks), perDay(t.ticks, Math.round)),
+      tile("Runs", "refresh", String(t.ticks), perDay(t.ticks, Math.round)),
       tile("Output tokens", "bars", fmtTokens(t.tokensOut), perDay(t.tokensOut, (v) => fmtTokens(Math.round(v)))),
       tile("Spent", "dollar", fmtUsd(t.costUsd), perDay(t.costUsd, fmtUsd),
-        t.notionalCostUsd > 0 ? " · " + fmtUsd(t.notionalCostUsd) + " notional" : undefined),
+        t.notionalCostUsd > 0 ? " · " + fmtUsd(t.notionalCostUsd) + " estimated" : undefined),
     ].join("");
   }
 
@@ -227,7 +228,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // same way — role names are dynamic (custom loops) and the custom-loop charset admits HTML
   // metacharacters. Pure, so a test can drive it without a DOM.
   function rolePickerOptions(roles) {
-    return "<option value=''>All loops</option>" +
+    return "<option value=''>All roles</option>" +
       (roles || []).map((r) => "<option value='" + esc(r) + "'>" + esc(r) + "</option>").join("");
   }
   // Repaint one Loop picker from the fleet's role list, returning the scope to keep filtering
@@ -284,7 +285,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     // (a view that configured sinceChoices) sit in the same segmented control after the day
     // buttons; each carries its length as data-since so windowView can mark exactly one active.
     const rolePicker = rolePickerId
-      ? "<label><span class='sr-only'>Loop</span><select class='field' id='" + rolePickerId + "' data-role='1'><option value=''>All loops</option></select></label>"
+      ? "<label><span class='sr-only'>Role</span><select class='field' id='" + rolePickerId + "' data-role='1'><option value=''>All roles</option></select></label>"
       : "";
     const sinceButtons = (sinceChoices || []).map(([ms, label]) =>
       "<button type='button' data-since='" + ms + "'>" + esc(String(label)) + "</button>").join("");
@@ -380,7 +381,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   const usage = windowView({
     panelId: "report", title: "Usage", bodyId: "usagebody",
-    blurb: "What the fleet produced and what it cost, per day and per loop.",
+    blurb: "What the team produced and what it cost, per day and per role.",
     pickerId: "usagewindow", choices: [7, 14, 30, 90], refreshId: "usagerefresh",
     key: "usage-days", defaultDays: 14, roleKey: "usage-role", rolePickerId: "usagerole",
     sinceKey: "usage-since", sinceChoices: REPORT_SINCE_CHOICES,
@@ -400,13 +401,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The fleet-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Landed commits", chartCommits(d)) + block("Ticks by loop", chartTicksByRole(d)) +
-        block("Output tokens", chartTokens(d)) + block("Spend by loop", chartCostByRole(d)) +
-        block("Rejections by loop", chartRejectionsByRole(d)) +
+        block("Merged commits", chartCommits(d)) + block("Runs by role", chartTicksByRole(d)) +
+        block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
+        block("Rejections by role", chartRejectionsByRole(d)) +
         (d.totals.notionalCostUsd > 0
-          ? block("Notional spend by loop", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
-        (d.role ? "<p class='muted scope-note'>Loop scope: " + esc(d.role) +
-          " · landing runs and backlog tallies (features done / bugs fixed) are fleet-wide and omitted.</p>" : "") +
+          ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
+        (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
+          " · merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
           (!d.coversFullWindow ? " · " + ${JSON.stringify(SPARSE_WINDOW_NOTE)} : "") + "</p>" : "");
     },
@@ -414,7 +415,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   const failures = windowView({
     panelId: "failures", title: "Failures", bodyId: "failbody",
-    blurb: "What went wrong, where, and how often — the digest the telemetry loop reads.",
+    blurb: "What went wrong, where, and how often — the digest the telemetry role reads.",
     pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
     sinceKey: "fail-since", sinceChoices: REPORT_SINCE_CHOICES,

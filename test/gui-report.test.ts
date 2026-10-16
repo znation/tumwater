@@ -221,7 +221,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   // Landed commits: plain counts in the tooltip.
   const commitRects = parseRects(chartCommits(data));
   assert.equal(commitRects.length, 13);
-  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2 commits landed"));
+  assert.ok(commitRects.some((r) => r.title === "2026-09-04: 2 commits merged"));
 
   // Ticks by loop: one segment per (day, loop); the busiest loop sits at the bottom and leads
   // the legend, each loop keeping one palette color.
@@ -232,7 +232,7 @@ test("the Usage charts render bars on a shared scale, stacks per loop, and a lab
   const bug = day0.find((r) => r.title.includes("bugfix"))!;
   assert.ok(feat.y > bug.y, "the busiest loop sits at the bottom of the stack");
   assert.ok(Math.abs(feat.h - 3 * bug.h) < 0.05, "segment heights are proportional to their values");
-  assert.equal(feat.title, "2026-09-01 · feature: 3 ticks");
+  assert.equal(feat.title, "2026-09-01 · feature: 3 runs");
   const legend = chartTicksByRole(data);
   assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[0]}'></span>feature</span>`), "first loop gets the first color");
   assert.match(legend, new RegExp(`style='background:${REPORT_PALETTE[1]}'></span>bugfix</span>`));
@@ -335,13 +335,13 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
     });
 
   await scope.fetchReport();
-  assert.match(els.report!.innerHTML, /What the fleet produced and what it cost, per day and per loop\./,
+  assert.match(els.report!.innerHTML, /What the team produced and what it cost, per day and per role\./,
     "the Usage head's subtitle survives the windowView extraction");
   assert.doesNotMatch(els.report!.innerHTML, /undefined/);
   assert.match(els.usagebody!.innerHTML, /Usage report unavailable/, "the error path still names the view");
 
   await scope.fetchFailures();
-  assert.match(els.failures!.innerHTML, /What went wrong, where, and how often — the digest the telemetry loop reads\./,
+  assert.match(els.failures!.innerHTML, /What went wrong, where, and how often — the digest the telemetry role reads\./,
     "the Failures head's subtitle survives the windowView extraction");
   assert.doesNotMatch(els.failures!.innerHTML, /undefined/);
 
@@ -441,15 +441,15 @@ test("the scoped Usage render drops the fleet-only tiles and prints the scope li
   };
 
   const scoped = await runWith({ ...window, role: "feature" });
-  assert.match(scoped, /Loop scope: feature/, "the scoped render names the role");
-  assert.match(scoped, /landing runs and backlog tallies .* are fleet-wide and omitted/, "and states the omission");
+  assert.match(scoped, /Role scope: feature/, "the scoped render names the role");
+  assert.match(scoped, /merge runs and backlog tallies .* are team-wide and omitted/, "and states the omission");
   assert.doesNotMatch(scoped, /Features done/, "the fleet-only backlog tiles stay out");
   assert.doesNotMatch(scoped, /Bugs fixed/);
 
   const fleet = await runWith(window);
   assert.match(fleet, /Features done/, "the fleet-wide render keeps the backlog tiles");
   assert.match(fleet, /Bugs fixed/);
-  assert.doesNotMatch(fleet, /Loop scope:/, "and prints no scope line");
+  assert.doesNotMatch(fleet, /Role scope:/, "and prints no scope line");
 });
 
 test("the report Loop picker offers base roles only, so an instance id never labels another scope's body", async () => {
@@ -457,7 +457,7 @@ test("the report Loop picker offers base roles only, so an instance id never lab
   // instance would collect `feature`'s whole body under `feature-2`'s name — the GUI twin of
   // the TUI Ctrl+G bug. syncRoles paints rolePickerOptions(reportBaseRoles(loops)), so the
   // picker offers one `feature` option and no `feature-2`, and a persisted instance scope falls
-  // back to All loops instead of collecting the base body under the instance's name.
+  // back to All roles instead of collecting the base body under the instance's name.
   const els: Record<string, { dataset: Record<string, string>; innerHTML: string; value?: string; addEventListener(): void }> = {};
   for (const id of ["report", "usagebody", "usagewindow", "failures", "failbody", "failwindow", "usagerole", "failrole"]) {
     els[id] = { dataset: {}, innerHTML: "", addEventListener() {} };
@@ -489,7 +489,7 @@ test("the report Loop picker offers base roles only, so an instance id never lab
   const options = els.usagerole!.innerHTML;
   assert.match(options, /<option value='feature'>feature<\/option>/, "the base role is offered");
   assert.doesNotMatch(options, /feature-2/, "the instance id collects feature's body, so it is not an option");
-  assert.equal(els.usagerole!.value, "", "a persisted instance scope falls back to All loops");
+  assert.equal(els.usagerole!.value, "", "a persisted instance scope falls back to All roles");
   assert.deepEqual(stored, [["usage-role", ""]], "and the fallback persists");
 });
 
@@ -660,13 +660,13 @@ test("the Usage notional chart and Spent-tile figure render only when notional s
   const withNotional = await render({
     ...data, totals: { ...totals, notionalCostUsd: 12.5 },
   });
-  for (const s of ["Notional spend by loop", "API-equivalent, not in the cap", "$12.50 notional"]) {
+  for (const s of ["Estimated spend by role", "API-equivalent, not in the cap", "$12.50 estimated"]) {
     assert.ok(withNotional.includes(s), s);
   }
   const without = await render({
     ...data, series: data.series.map((d) => mkDay(d.date, {})), totals,
   });
-  for (const s of ["Notional spend by loop", "API-equivalent, not in the cap", "notional"]) {
+  for (const s of ["Estimated spend by role", "API-equivalent, not in the cap", "estimated"]) {
     assert.ok(!without.includes(s), s);
   }
 });

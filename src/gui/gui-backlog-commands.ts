@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * The dashboard's POST backlog/QUESTIONS command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
@@ -84,7 +85,7 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
     return;
   }
   if (outcome.status === "answered") {
-    const committed = await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`));
+    const committed = await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "answered", question: outcome.title, decision: outcome.decision, committed });
   } else if (outcome.status === "fenced") {
     sendJson(res, 409, { ok: false, error: UNCLOSED_FENCE_MESSAGE });
@@ -127,7 +128,7 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
     return;
   }
   const filed = fileEntryWithBody(root, kind, rawTitle, entryBody);
-  const committed = await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${kind}: ${filed.title}`));
+  const committed = await commitOperatorBacklogEdit(root, filed.file, stampedSubject("operator", `File ${kind}: ${filed.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
   submitRolePromptAndWake(root, role, wakeText(filed.title));
   sendJson(res, 200, { ok: true, file: filed.file, title: filed.title, committed });
 }
@@ -153,7 +154,7 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
     return;
   }
   if (outcome.status === "cancelled") {
-    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`));
+    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Cancel ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "cancelled", file: outcome.file, title: outcome.title, committed });
   } else {
     okGone(res);
@@ -195,7 +196,7 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
     return;
   }
   if (outcome.status === "edited") {
-    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`));
+    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Edit ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
     sendJson(res, 200, { ok: true, status: "edited", file: outcome.file, title: outcome.title, committed });
   } else {
     okGone(res);

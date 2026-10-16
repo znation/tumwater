@@ -161,7 +161,7 @@ test("the report hover chip is created once and lives outside #report", () => {
   );
 });
 
-test("rolePickerOptions renders All loops plus one escaped option per role, order preserved", () => {
+test("rolePickerOptions renders All roles plus one escaped option per role, order preserved", () => {
   // The Loop picker's options are the pure half of the role scope every picker shares (the
   // Usage/Failures views and History): the fleet list comes from /api/status's loops, custom
   // loops included, so a role name can carry HTML metacharacters and must be escaped in both
@@ -170,10 +170,10 @@ test("rolePickerOptions renders All loops plus one escaped option per role, orde
     ["format", "report-role"],
     ["rolePickerOptions"],
   );
-  assert.equal(rolePickerOptions([]), "<option value=''>All loops</option>", "no roles leaves only the fleet-wide option");
+  assert.equal(rolePickerOptions([]), "<option value=''>All roles</option>", "no roles leaves only the fleet-wide option");
   assert.equal(
     rolePickerOptions(["feature", "bugfix"]),
-    "<option value=''>All loops</option>" +
+    "<option value=''>All roles</option>" +
       "<option value='feature'>feature</option>" +
       "<option value='bugfix'>bugfix</option>",
     "one option per role, in the order given",

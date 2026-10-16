@@ -221,11 +221,11 @@ test("fetchDoctor paints the error panel into doctorbody when the fetch rejects"
     },
   });
   await fetchDoctor();
-  assert.match(els.doctorbody!.innerHTML, /Health check could not run/);
+  assert.match(els.doctorbody!.innerHTML, /Health checks could not run/);
   assert.match(els.doctorbody!.innerHTML, /boom/);
 });
 
-test("the Initial prompt card: built by the view, filled esc'd, saved with the textarea's text", async () => {
+test("the Brief card: built by the view, filled esc'd, saved with the textarea's text", async () => {
   const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {
     "settings-view": { innerHTML: "", dataset: {} },
     briefcard: { innerHTML: "", dataset: {} },
@@ -250,7 +250,7 @@ test("the Initial prompt card: built by the view, filled esc'd, saved with the t
   });
   els["settings-view"]!.dataset.built = "1";
   await fetchFail();
-  assert.match(els.briefcard!.innerHTML, /Initial prompt could not load no brief/);
+  assert.match(els.briefcard!.innerHTML, /Brief could not load no brief/);
 
   const flashes: string[] = [];
   const posts: Array<{ path: string; body: unknown }> = [];
@@ -269,7 +269,7 @@ test("the Initial prompt card: built by the view, filled esc'd, saved with the t
     await saveBrief(form);
   }
   assert.deepEqual(posts[0], { path: "/api/brief", body: { prompt: "new text" } });
-  assert.deepEqual(flashes, ["Initial prompt unchanged", "Initial prompt saved (committed to main)", "Initial prompt saved", "error: empty"]);
+  assert.deepEqual(flashes, ["Brief unchanged", "Brief saved (committed to main)", "Brief saved", "error: empty"]);
 });
 
 test("a submit on form.brief-form routes to saveBrief, and the settings listener is scoped to form.settings-row", () => {

@@ -113,7 +113,7 @@ function composerScope(opts: { activeView?: string; innerWidth?: number; failRea
       });
     }
   }
-  const code = [ESC_LINE, clientRegion("format"), GUI_CLIENT_COMPOSER_JS,
+  const code = [ESC_LINE, clientRegion("format"), clientRegion("labels"), GUI_CLIENT_COMPOSER_JS,
     `return { renderComposer, setTarget, draftForDirector, focusComposer, addPromptImages, isImageFile, fmtImageSize };`]
     .join("\n");
   const keys = ["$", "window", "location", "activeView", "drawer", "closeDrawer", "showFlash", "refresh", "postJson", "Element", "FileReader"];
@@ -159,13 +159,13 @@ test("the target picker rebuilds only when the fleet's roles change, and a vanis
   s.scope.renderComposer(STATUS);
   const select = s.el("prompttarget");
   assert.match(select.innerHTML, /<option value='director'>Director<\/option>/);
-  assert.match(select.innerHTML, /<optgroup label='One loop, at its next tick'>/);
+  assert.match(select.innerHTML, /<optgroup label='One role, at its next run'>/);
   assert.match(select.innerHTML, /<option value='qa'>qa<\/option>/);
   assert.match(select.innerHTML, /<option value='bugfix'>bugfix<\/option>/);
   const link = s.el("queuelink");
   assert.equal(link.hidden, false);
   assert.equal(link.dataset.act, "queued");
-  assert.equal(link.textContent, "3 prompts queued");
+  assert.equal(link.textContent, "3 messages in the inbox");
 
   // Same roles: no rebuild — the picker keeps whatever is in it.
   select.innerHTML = "SENTINEL";
@@ -177,10 +177,10 @@ test("the target picker rebuilds only when the fleet's roles change, and a vanis
   s.scope.setTarget("qa");
   s.scope.renderComposer({ loops: [{ role: "bugfix" }], inbox: 0, roleInbox: {} });
   assert.doesNotMatch(select.innerHTML, /value='qa'/);
-  assert.equal(s.input().placeholder, "Tell the fleet what to do next…");
+  assert.equal(s.input().placeholder, "Tell the team what to do next…");
   const link2 = s.el("queuelink");
   assert.equal(link2.hidden, true, "an empty queue hides the link");
-  assert.equal(link2.textContent, "0 prompts queued");
+  assert.equal(link2.textContent, "0 messages in the inbox");
 });
 
 test("the composer keeps one unsent draft per target and swaps hint and placeholder with it", () => {
@@ -190,8 +190,8 @@ test("the composer keeps one unsent draft per target and swaps hint and placehol
   input.value = "fix the flake";
   s.scope.setTarget("qa");
   assert.equal(input.value, "", "a fresh target starts from its own (empty) draft");
-  assert.equal(input.placeholder, "Tell the qa loop what to do on its next tick…");
-  assert.match(s.el("prompthint").innerHTML, /Queued for the qa loop&#39;s next tick; the loop wakes right away\./);
+  assert.equal(input.placeholder, "Tell the qa role what to do on its next run…");
+  assert.match(s.el("prompthint").innerHTML, /Goes to the qa inbox for its next run; the role wakes right away\./);
   assert.match(s.el("prompthint").innerHTML, /<kbd>Enter<\/kbd> sends/);
   input.value = "retest --watch";
   s.scope.setTarget("bugfix");
@@ -200,7 +200,7 @@ test("the composer keeps one unsent draft per target and swaps hint and placehol
   assert.equal(input.value, "retest --watch", "each target keeps its own unsent draft");
   s.scope.setTarget("director");
   assert.equal(input.value, "fix the flake");
-  assert.equal(input.placeholder, "Tell the fleet what to do next…");
+  assert.equal(input.placeholder, "Tell the team what to do next…");
 });
 
 test("the character counter appears past 80% of the cap and turns red past it, and the box autosizes", () => {
@@ -228,7 +228,7 @@ test("draftForDirector puts text in the box and leaves the cursor at its end", (
   assert.equal(input.value, "prefer the stdlib");
   assert.deepEqual(input.selections, [[17, 17]], "the cursor lands at the end of the text");
   assert.deepEqual(input.focusCalls, [{ preventScroll: true }]);
-  assert.equal(input.placeholder, "Tell the fleet what to do next…");
+  assert.equal(input.placeholder, "Tell the team what to do next…");
   assert.equal(s.location.hash, "", "already on the fleet view, no hash change");
 });
 
@@ -347,9 +347,9 @@ test("the composer's submit queues for the director or one loop through the CLI'
   await s.fire(s.form(), "submit", SUBMIT);
   await s.flush();
   assert.deepEqual(s.posts, [{ path: "/api/prompt-role", body: { role: "qa", text: "retest --watch" } }]);
-  assert.deepEqual(s.flashes, ["Queued for the qa loop's next tick — it wakes now"]);
+  assert.deepEqual(s.flashes, ["Added to the qa inbox for its next run — it wakes now"]);
   assert.equal(input.value, "", "a queued prompt clears the box");
-  assert.equal(input.placeholder, "Tell the fleet what to do next…", "the target fell back to the director");
+  assert.equal(input.placeholder, "Tell the team what to do next…", "the target fell back to the director");
   assert.equal(s.refreshes(), 1);
 
   // Whitespace-only text is a no-op, not a queued empty prompt.
@@ -388,7 +388,7 @@ test("a submit while one is already in flight is ignored, and pending images rid
   await s.flush();
   assert.equal(s.posts.length, 1, "the second press found the composer already sending and bailed");
   assert.deepEqual(s.posts[0]?.body, { text: "see screenshot", images: [{ name: "p.png", dataBase64: "QUJD" }] });
-  assert.match(s.flashes[0] ?? "", /Queued for the director — it runs next with 1 image/);
+  assert.match(s.flashes[0] ?? "", /Added to the director's inbox — it runs next with 1 image/);
   assert.equal(s.images().hidden, true, "a queued prompt clears the image chips too");
   assert.equal(s.el("promptsend").disabled, false);
 

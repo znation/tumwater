@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * The dashboard's POST prompt-queueing command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): prompt,

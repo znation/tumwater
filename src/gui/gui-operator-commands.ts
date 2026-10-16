@@ -1,3 +1,4 @@
+// vocabulary: plain
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
@@ -110,7 +111,7 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
 export async function handleBriefEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"prompt": "…"}');
   if (!body) return;
-  if (typeof body.prompt !== "string") return badRequest(res, `"prompt" must be a string — the full replacement initial prompt${gotSuffix(body.prompt)}`);
+  if (typeof body.prompt !== "string") return badRequest(res, `"prompt" must be a string — the full replacement brief${gotSuffix(body.prompt)}`);
   const outcome = await editInitialPrompt(root, body.prompt);
   if (!outcome.ok) return badRequest(res, outcome.error);
   sendJson(res, 200, { file: outcome.file, changed: outcome.changed, committed: outcome.committed });

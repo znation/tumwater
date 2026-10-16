@@ -194,54 +194,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
 - `npm run test` passes.
 
-### Plain terms text, part 13/19: The dashboard's remaining views and team controls (planned 2026-10-16 by user; requires part 4/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-report.ts + gui-client-settings.ts + gui-client-composer.ts + gui-client-operator.ts + gui-client-sound.ts + gui-client-markdown.ts + src/gui/ messages + tests)
-
-**Goal.** The remaining dashboard views use the TUI's names: the "Health check" card becomes "Health", and "Initial prompt" becomes "Brief". The pause and stop controls, the report charts and the server's dashboard responses speak of the team, roles and runs.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/ui/gui/gui-client-report.ts:
-  - Labels: "Commits merged", "Runs", "estimated", "All roles" and "Role".
-  - The intro: "What the team produced and what it cost, per day and per role."
-  - Charts: "Merged commits", "Runs by role", "Spend by role", "Rejections by role", "Estimated spend by role".
-  - The scope note: "Role scope: … merge runs and backlog tallies … are team-wide and omitted."
-  - The failures intro: "the digest the telemetry role reads". The id stays for the role ids series and needs no marker.
-- `renderDoctorReport` and the settings cards (src/ui/gui/gui-client-settings.ts):
-  - "Health check" → "Health", and "Health checks could not run".
-  - "Initial prompt" → "Brief", with "Brief unchanged", "Brief saved (committed to main)", "Brief saved" and "Brief could not load".
-  - The editable-key help text follows the rules.
-- src/ui/gui/gui-client-composer.ts: the target and notice text say "inbox" and "role". Mark the `queued` data-act.
-- src/ui/gui/gui-client-operator.ts:
-  - The claude window title: "a rejected window pauses claude model jobs until it resets".
-  - The cost note: "Every model the team can use is cost n/a …".
-  - The budget popover: "At the cap the roles …".
-  - Pause:
-    - "The team is paused — click to resume it", and "Resume the team".
-    - "Pause the team — roles start no new runs".
-    - "Current runs finish, and the director keeps running your messages."
-    - The toasts "Team paused — current runs finish" and "Team resumed".
-  - Stop: "Stop the team later — current runs finish, then it stops", and "Stop the team later".
-- gui-client-sound.ts and gui-client-markdown.ts have no visible text. Add the header only.
-- The dashboard's server modules in src/gui/:
-  - src/gui/gui-operator-commands.ts: "the director has no notes", and `"prompt" must be a string — the full replacement brief`.
-  - src/gui/gui-backlog-commands.ts and gui-prompt-commands.ts: add the header and mark their machine strings: the `operator` author, and the `defer` body key the messages name.
-  - Modules in src/gui/ with only machine strings, such as routes and event sources, take no header.
-
-**Files touched.**
-- src: src/ui/gui/gui-client-report.ts, gui-client-settings.ts, gui-client-composer.ts, gui-client-operator.ts, gui-client-sound.ts, gui-client-markdown.ts; src/gui/gui-operator-commands.ts, src/gui/gui-backlog-commands.ts, src/gui/gui-prompt-commands.ts.
-- Tests: test/gui-client-report.test.ts, test/gui-report.test.ts, test/gui-client-settings.test.ts, test/gui-client-composer.test.ts, test/gui-operator.test.ts, test/gui-endpoints.test.ts.
-
-**Acceptance criteria.**
-- The settings view's cards are titled "Health" and "Brief". The report view's charts read "Runs by role" and "Estimated spend by role".
-- The pause control reads "Pause the team", and while paused it reads "The team is paused — click to resume it".
-- Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
-- `npm run test` passes.
-
 ### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
 
 **Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
@@ -2971,6 +2923,54 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 13/19: The dashboard's remaining views and team controls (planned 2026-10-16 by user; requires part 4/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-report.ts + gui-client-settings.ts + gui-client-composer.ts + gui-client-operator.ts + gui-client-sound.ts + gui-client-markdown.ts + src/gui/ messages + tests) — done 2026-10-16
+
+**Goal.** The remaining dashboard views use the TUI's names: the "Health check" card becomes "Health", and "Initial prompt" becomes "Brief". The pause and stop controls, the report charts and the server's dashboard responses speak of the team, roles and runs.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/ui/gui/gui-client-report.ts:
+  - Labels: "Commits merged", "Runs", "estimated", "All roles" and "Role".
+  - The intro: "What the team produced and what it cost, per day and per role."
+  - Charts: "Merged commits", "Runs by role", "Spend by role", "Rejections by role", "Estimated spend by role".
+  - The scope note: "Role scope: … merge runs and backlog tallies … are team-wide and omitted."
+  - The failures intro: "the digest the telemetry role reads". The id stays for the role ids series and needs no marker.
+- `renderDoctorReport` and the settings cards (src/ui/gui/gui-client-settings.ts):
+  - "Health check" → "Health", and "Health checks could not run".
+  - "Initial prompt" → "Brief", with "Brief unchanged", "Brief saved (committed to main)", "Brief saved" and "Brief could not load".
+  - The editable-key help text follows the rules.
+- src/ui/gui/gui-client-composer.ts: the target and notice text say "inbox" and "role". Mark the `queued` data-act.
+- src/ui/gui/gui-client-operator.ts:
+  - The claude window title: "a rejected window pauses claude model jobs until it resets".
+  - The cost note: "Every model the team can use is cost n/a …".
+  - The budget popover: "At the cap the roles …".
+  - Pause:
+    - "The team is paused — click to resume it", and "Resume the team".
+    - "Pause the team — roles start no new runs".
+    - "Current runs finish, and the director keeps running your messages."
+    - The toasts "Team paused — current runs finish" and "Team resumed".
+  - Stop: "Stop the team later — current runs finish, then it stops", and "Stop the team later".
+- gui-client-sound.ts and gui-client-markdown.ts have no visible text. Add the header only.
+- The dashboard's server modules in src/gui/:
+  - src/gui/gui-operator-commands.ts: "the director has no notes", and `"prompt" must be a string — the full replacement brief`.
+  - src/gui/gui-backlog-commands.ts and gui-prompt-commands.ts: add the header and mark their machine strings: the `operator` author, and the `defer` body key the messages name.
+  - Modules in src/gui/ with only machine strings, such as routes and event sources, take no header.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-report.ts, gui-client-settings.ts, gui-client-composer.ts, gui-client-operator.ts, gui-client-sound.ts, gui-client-markdown.ts; src/gui/gui-operator-commands.ts, src/gui/gui-backlog-commands.ts, src/gui/gui-prompt-commands.ts.
+- Tests: test/gui-client-report.test.ts, test/gui-report.test.ts, test/gui-client-settings.test.ts, test/gui-client-composer.test.ts, test/gui-operator.test.ts, test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- The settings view's cards are titled "Health" and "Brief". The report view's charts read "Runs by role" and "Estimated spend by role".
+- The pause control reads "Pause the team", and while paused it reads "The team is paused — click to resume it".
+- Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
+- `npm run test` passes.
 
 ### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests) — done 2026-10-16
 
