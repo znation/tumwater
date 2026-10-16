@@ -7,7 +7,7 @@ import { resolvedDiffDiverges } from "./landing-diff.js";
 import {
   conflictedFiles,
   continueRebase,
-  ffMainTo,
+  ffMainToOrWhy,
   hasConflictMarkers,
   mainCommitsTouching,
   rebaseOntoMain,
@@ -163,7 +163,11 @@ async function tryMerge(
     if (!(await verifyLanding(ctx, wt, target, verifiedHead)))
       return "merge_blocked";
     const mainBefore = await headOf(ctx.root, ctx.mainBranch);
-    if (!(await ffMainTo(ctx.root, target, ctx.mainBranch))) return "merge_blocked";
+    const ffFailure = await ffMainToOrWhy(ctx.root, target, ctx.mainBranch);
+    if (ffFailure !== null) {
+      warnEventBestEffort(ctx.root, ctx.role, `merge blocked: ${ffFailure}`);
+      return "merge_blocked";
+    }
     const commit = await headOf(ctx.root, ctx.mainBranch);
     // A fast-forward to a commit main already contains is a no-op ("Already up to date"): the
     // change is already an ancestor of main (a leftover-recovery re-land of an entry main

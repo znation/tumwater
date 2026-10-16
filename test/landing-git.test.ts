@@ -8,6 +8,7 @@ import {
   conflictedFiles,
   continueRebase,
   ffMainTo,
+  ffMainToOrWhy,
   hasConflictMarkers,
   mainCommitsTouching,
   rebaseOntoMain,
@@ -211,4 +212,22 @@ test("hasConflictMarkers sees start/end markers but not a bare ======= separator
   // A path not on disk counts as resolved (the resolver chose the deletion).
   assert.equal(hasConflictMarkers(wt, ["gone.txt"]), false);
   assert.equal(hasConflictMarkers(wt, []), false);
+});
+
+test("ffMainToOrWhy names main having moved off the ref's base, with its new head", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "branch.txt"), "b\n");
+  commitIn(wt, "branch change");
+  const ref = headSha(wt);
+  fs.writeFileSync(path.join(root, "hand.txt"), "h\n");
+  commitIn(root, "hand commit on main");
+  const why = await ffMainToOrWhy(root, ref, "main");
+  assert.match(why ?? "", /^main moved outside the merge lock \(now [0-9a-f]+ hand commit on main\)$/);
+});
+
+test("ffMainToOrWhy returns null when the fast-forward succeeds", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "ok.txt"), "ok\n");
+  commitIn(wt, "ok change");
+  assert.equal(await ffMainToOrWhy(root, headSha(wt), "main"), null);
 });

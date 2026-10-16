@@ -15,8 +15,8 @@ import { useWorktree } from "../git/worktree-use.js";
 import { exemptSkipBlockReason } from "./landing-merge.js";
 import { logNewQuestions } from "./landing-questions.js";
 import { openQuestions } from "../backlog/backlog.js";
-import { logEventBestEffort } from "../events/events.js";
-import { ffMainTo } from "./landing-git.js";
+import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
+import { ffMainToOrWhy } from "./landing-git.js";
 import { syncRootInstall } from "../build/dep-install.js";
 import { withLock } from "../concurrency/lock.js";
 import type { BuildCheckOutcome } from "../build/build-check.js";
@@ -239,7 +239,11 @@ export async function ffStackToMain(
   if (!tip) return "changed"; // Empty stack: nothing to fast-forward (never called in production — the lander stacks at least one change).
   return withLock(mergeLockDir(root), async () => {
     const before = openQuestions(root);
-    if (!(await ffMainTo(root, tip.sha, mainBranch))) return "merge_blocked";
+    const ffFailure = await ffMainToOrWhy(root, tip.sha, mainBranch);
+    if (ffFailure !== null) {
+      warnEventBestEffort(root, tip.role, `merge blocked: ${ffFailure}`);
+      return "merge_blocked";
+    }
     // Best-effort like tryMerge's merged events: the stack is already fast-forwarded, so an
     // unwritable feed must not flip a landed batch to a failure and skip syncRootInstall below.
     for (const entry of landed) {

@@ -199,7 +199,11 @@ export function restoreConfigBytes(root: string, saved: Buffer | null): void {
  * preserves the live config across a landing that untracks it (plans/portability.md §4b/7):
  * without the write-back, the commit that removes the tracked config would delete the fleet's
  * running config out from under it and the next config poll would fall back to defaults. */
-export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
+export async function ffMainToOrWhy(
+  root: string,
+  ref: string,
+  mainBranch: string,
+): Promise<string | null> {
   const primaryBranch = await currentBranch(root);
   if (primaryBranch === mainBranch) {
     // The working-tree arm rewrites the same tracked files the CLI backlog writers read and
@@ -209,10 +213,41 @@ export async function ffMainTo(root: string, ref: string, mainBranch: string): P
     // stays one short section, never held across a build re-check.
     return withStateLockAsync(primaryWorktreeLockPath(root), async () => {
       const saved = await configBytesToPreserve(root, ref);
-      if ((await gitTry(root, "merge", "--ff-only", ref)) === null) return false;
+      try {
+        await git(root, "merge", "--ff-only", ref);
+      } catch (err) {
+        return ffFailureReason(root, ref, mainBranch, err);
+      }
       restoreConfigBytes(root, saved);
-      return true;
+      return null;
     });
   }
-  return (await gitTry(root, "push", ".", `${ref}:${mainBranch}`)) !== null;
+  try {
+    await git(root, "push", ".", `${ref}:${mainBranch}`);
+    return null;
+  } catch (err) {
+    return ffFailureReason(root, ref, mainBranch, err);
+  }
+}
+
+/** Why a fast-forward to `ref` failed: main having moved off `ref`'s base (a commit that did not
+ * take the merge lock) is named with its new head and subject; any other cause reports git's own
+ * error, e.g. a dirty primary checkout. */
+async function ffFailureReason(
+  root: string,
+  ref: string,
+  mainBranch: string,
+  err: unknown,
+): Promise<string> {
+  if ((await gitTry(root, "merge-base", "--is-ancestor", mainBranch, ref)) === null) {
+    const now = await gitTry(root, "log", "-1", "--format=%h %s", mainBranch);
+    return `main moved outside the merge lock (now ${now?.trim() ?? mainBranch})`;
+  }
+  const text = err instanceof Error ? err.message : String(err);
+  return `fast-forward failed: ${text.trim().split("\n")[0]}`;
+}
+
+/** Boolean form of ffMainToOrWhy for callers that need no reason. */
+export async function ffMainTo(root: string, ref: string, mainBranch: string): Promise<boolean> {
+  return (await ffMainToOrWhy(root, ref, mainBranch)) === null;
 }
