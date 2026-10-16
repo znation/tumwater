@@ -2195,22 +2195,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### docs/cli.md names every command `tumwater help` lists, and a test keeps it in step with `helpStanzas(HELP)` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/cli.md and adds test/cli-doc.test.ts; no source change and no payload or event key renamed)
-
-**Goal.** docs/cli.md calls itself the reference for "every `tumwater` command", but three commands that `HELP` in `src/cli/help.ts` lists never appear in it as `tumwater <command>`: `config` (documented only in docs/config.md), `notify` (`notify --test`, mentioned only in docs/config.md), and `version`. `resume` appears only as bare `` `resume [--role <id>]` `` after `tumwater pause`. Nothing checks the doc against the help, so a command added later can go missing the same way. This is the same kind of guard as test/config-doc.test.ts, which checks docs/config.md against `TOP_LEVEL_KEYS`.
-
-**Approach.**
-- `docs/cli.md`: add a table row `| Configure | … |` after the "Control the roles" row. It says that `tumwater config` prints the effective config as JSON, that `tumwater config get <key>` / `set <key> <value>` / `unset <key>` read, write, and remove one key, and that `tumwater notify --test` runs the configured notify hook once with a synthetic event. It links [config.md](config.md) for the keys. Take the wording from the `config` and `notify --test` stanzas in `HELP`, and do not restate the key list. Add one sentence after the completion paragraph: `tumwater version` prints the version. In the "Control the roles" row, change `` / `resume [--role <id>]` `` to `` / `tumwater resume [--role <id>]` ``.
-- `test/cli-doc.test.ts` (new, modelled on test/config-doc.test.ts): read `docs/cli.md` with `fileURLToPath(new URL("../../docs/cli.md", import.meta.url))`. For each distinct `command` in `helpStanzas(HELP)`, check that the doc matches `` new RegExp(`tumwater ${command}(?![\\w-])`) ``. Escape the command first, and use the lookahead so `tumwater re` cannot be satisfied by `tumwater reclaim`. Collect the commands that are missing and run one `assert.deepEqual(missing, [])`, so the failure names every gap. Add a second test checking that no key of `HIDDEN_COMMAND_ALIASES` (`run`, `tick`) is documented as `tumwater <alias>` with the same lookahead, because those aliases are deliberately hidden from help and completion.
-
-**Files touched.** docs/cli.md, test/cli-doc.test.ts.
-
-**Acceptance criteria.**
-- Before the doc edit, the new test fails and lists `config`, `notify`, `resume`, and `version`. After the edit, it passes.
-- The hidden-alias test passes against the edited doc.
-- The new rows use the docs/glossary.md wording (team, role, run).
-- `npm run test` passes.
-
 ### Every `tumwater <command>` the current docs quote is a command `tumwater help` lists, and a test keeps them that way (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/backends.md and docs/invariants.md and adds test/docs-commands.test.ts. It does not touch docs/cli.md or test/cli-doc.test.ts, which the docs/cli.md command-guard plan owns. No source change and no payload or event key renamed)
 
 **Goal.** Plain terms commands renamed `tumwater run` to `tumwater start`, but two current docs still tell the operator to use the old name. docs/backends.md says "export `HF_TOKEN` in the environment that runs `tumwater run`". docs/invariants.md INV-B6 says "A fresh unsupervised `tumwater run` clears a stale marker", and its heading ends "is cleared at a fresh `run`". `run` still dispatches only as a hidden alias (`HIDDEN_COMMAND_ALIASES` in src/cli/help.ts). Plain terms docs 5/5 covers machine-interface names (events, keys, routes, paths), not command names, so nothing will catch these. The docs/cli.md command-guard plan checks the other direction (each help command appears in cli.md). Nothing checks that a command quoted in the docs exists, so the next rename can leave the same kind of stale mention.
@@ -2233,6 +2217,22 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### docs/cli.md names every command `tumwater help` lists, and a test keeps it in step with `helpStanzas(HELP)` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/cli.md and adds test/cli-doc.test.ts; no source change and no payload or event key renamed) (done 2026-10-16)
+
+**Goal.** docs/cli.md calls itself the reference for "every `tumwater` command", but three commands that `HELP` in `src/cli/help.ts` lists never appear in it as `tumwater <command>`: `config` (documented only in docs/config.md), `notify` (`notify --test`, mentioned only in docs/config.md), and `version`. `resume` appears only as bare `` `resume [--role <id>]` `` after `tumwater pause`. Nothing checks the doc against the help, so a command added later can go missing the same way. This is the same kind of guard as test/config-doc.test.ts, which checks docs/config.md against `TOP_LEVEL_KEYS`.
+
+**Approach.**
+- `docs/cli.md`: add a table row `| Configure | … |` after the "Control the roles" row. It says that `tumwater config` prints the effective config as JSON, that `tumwater config get <key>` / `set <key> <value>` / `unset <key>` read, write, and remove one key, and that `tumwater notify --test` runs the configured notify hook once with a synthetic event. It links [config.md](config.md) for the keys. Take the wording from the `config` and `notify --test` stanzas in `HELP`, and do not restate the key list. Add one sentence after the completion paragraph: `tumwater version` prints the version. In the "Control the roles" row, change `` / `resume [--role <id>]` `` to `` / `tumwater resume [--role <id>]` ``.
+- `test/cli-doc.test.ts` (new, modelled on test/config-doc.test.ts): read `docs/cli.md` with `fileURLToPath(new URL("../../docs/cli.md", import.meta.url))`. For each distinct `command` in `helpStanzas(HELP)`, check that the doc matches `` new RegExp(`tumwater ${command}(?![\\w-])`) ``. Escape the command first, and use the lookahead so `tumwater re` cannot be satisfied by `tumwater reclaim`. Collect the commands that are missing and run one `assert.deepEqual(missing, [])`, so the failure names every gap. Add a second test checking that no key of `HIDDEN_COMMAND_ALIASES` (`run`, `tick`) is documented as `tumwater <alias>` with the same lookahead, because those aliases are deliberately hidden from help and completion.
+
+**Files touched.** docs/cli.md, test/cli-doc.test.ts.
+
+**Acceptance criteria.**
+- Before the doc edit, the new test fails and lists `config`, `notify`, `resume`, and `version`. After the edit, it passes.
+- The hidden-alias test passes against the edited doc.
+- The new rows use the docs/glossary.md wording (team, role, run).
+- `npm run test` passes.
 
 ### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui; done 2026-10-16)
 
