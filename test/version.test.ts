@@ -12,7 +12,7 @@ import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 // and the field read stay honest; the failure shapes are pinned against temp files, since a
 // working install never trips them and a raw stack trace was exactly what they replaced.
 
-test("packageVersion reads the running harness's own package.json", () => {
+test("packageVersion reads the running tumwater's own package.json", () => {
   const file = fileURLToPath(new URL("../../package.json", import.meta.url));
   const expected = readJson(file) as { version: string };
   const result = packageVersion(file);
@@ -23,7 +23,7 @@ test("packageVersion reads the running harness's own package.json", () => {
 test("packageVersion reports the reason when the file cannot be read", () => {
   const result = packageVersion(path.join(tmpdir("tw-ver-"), "absent.json"));
   assert.equal(result.version, undefined);
-  assert.match(result.problem ?? "", /^cannot read package.json \(the running harness's install looks broken\): ENOENT/);
+  assert.match(result.problem ?? "", /^cannot read package.json \(the running tumwater install looks broken\): ENOENT/);
 });
 
 test("packageVersion reports malformed JSON instead of throwing", () => {
@@ -32,7 +32,7 @@ test("packageVersion reports malformed JSON instead of throwing", () => {
   writeMalformedJson(file);
   const result = packageVersion(file);
   assert.equal(result.version, undefined);
-  assert.match(result.problem ?? "", /^cannot read package.json \(the running harness's install looks broken\): /);
+  assert.match(result.problem ?? "", /^cannot read package.json \(the running tumwater install looks broken\): /);
 });
 
 test("packageVersion fails a missing, blank, or non-string version field", () => {
@@ -42,7 +42,7 @@ test("packageVersion fails a missing, blank, or non-string version field", () =>
     fs.writeFileSync(file, body);
     const result = packageVersion(file);
     assert.equal(result.version, undefined, body);
-    assert.equal(result.problem, "package.json carries no version field (the running harness's install looks broken)", body);
+    assert.equal(result.problem, "package.json carries no version field (the running tumwater install looks broken)", body);
   }
 });
 
@@ -154,9 +154,9 @@ test("the compiled CLI fails `version` with the reason on a broken install", asy
   // with version.ts's wording. The bodies that have to parse stay valid JSON, so node's own
   // resolver reads them without complaint.
   const cases: Array<[string, RegExp]> = [
-    ["throw", /cannot read package\.json \(the running harness's install looks broken\)/],
-    ['{"name":"broken-install"}', /package\.json carries no version field \(the running harness's install looks broken\)/],
-    ['{"name":"broken-install","version":42}', /package\.json carries no version field \(the running harness's install looks broken\)/],
+    ["throw", /cannot read package\.json \(the running tumwater install looks broken\)/],
+    ['{"name":"broken-install"}', /package\.json carries no version field \(the running tumwater install looks broken\)/],
+    ['{"name":"broken-install","version":42}', /package\.json carries no version field \(the running tumwater install looks broken\)/],
   ];
   for (const [body, expected] of cases) {
     const r = await new Promise<{ code: number; stderr: string }>((resolve) => {

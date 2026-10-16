@@ -1,3 +1,4 @@
+// vocabulary: plain
 import {
   MODEL_TRIPLE_KEYS,
   MODEL_TIERS,
@@ -192,21 +193,21 @@ export function checkModelTripleField(
     checkKnownKeys(m, TIER_MAP_KEYS, `${prefix}model`, problems);
     if (obj.provider !== undefined)
       problems.push(
-        `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's selector (got provider ${show(obj.provider)})`,
+        `${prefix}model as a map by tier cannot coexist with ${prefix ? prefix : "the legacy top-level "}provider — move the provider into each tier's model id (got provider ${show(obj.provider)})`,
       );
     for (const [tier, v] of Object.entries(m))
       if (!isNonBlankString(v))
         problems.push(
-          `${prefix}model.${tier} must be a non-empty selector string (got ${show(v)})`,
+          `${prefix}model.${tier} must be a non-empty model id (got ${show(v)})`,
         );
     return;
   }
   if (typeof m !== "string") {
     const what =
       modelShape === "tier-map"
-        ? "a selector string or a map by tier (small, default, strong)"
+        ? "a model id or a map by tier (small, default, strong)"
         : modelShape === "tier-name"
-          ? "a selector string or a tier name (small, default, strong)"
+          ? "a model id or a tier name (small, default, strong)"
           : "a string";
     problems.push(`${prefix}model must be ${what} (got ${show(m)})`);
     return;
@@ -218,7 +219,7 @@ export function checkModelTripleField(
   if ((MODEL_TIERS as readonly string[]).includes(m)) {
     if (modelShape === "tier-name") return; // A valid tier reference.
     problems.push(
-      `${prefix}model must name a selector — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
+      `${prefix}model must name a model id — tier names are valid only as roles.<id>.model or review.model values (got ${show(m)})`,
     );
   }
 }
@@ -291,6 +292,6 @@ export function checkReservedArgs(
   args.forEach((arg, i) => {
     if (typeof arg !== "string") return;
     const why = whyFor(arg.split("=", 1)[0] as string);
-    if (why) problems.push(`${argsPath}[${i}] ${show(arg)} duplicates a flag the harness sets — ${why}`);
+    if (why) problems.push(`${argsPath}[${i}] ${show(arg)} duplicates a flag tumwater sets — ${why}`);
   });
 }

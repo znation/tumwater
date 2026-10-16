@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The config AS SEEN BY A RUN — the per-seam resolution half of the config views, split out
  * of config.ts: which provider/model/thinking a role, the reviewer, or the conflict resolver
  * resolves to, and which timeout a reviewer run gets. The budget/tier fallback side — which

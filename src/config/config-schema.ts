@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The tumwater.json config schema shape: the types `config-validation.ts` validates a
  * loaded config into and every config read site consumes, plus the key allow-lists and
  * value shapes (`TOP_LEVEL_KEYS` and friends) that say what a valid file may hold at each
@@ -484,14 +485,14 @@ export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high
  * `--continue` resumes a session the harness did not choose. Each flag maps to why it is
  * refused; the model triple points at the setting that owns it. */
 export const HARNESS_PI_FLAGS = new Map<string, string>([
-  ["--print", "the harness already runs pi non-interactively"],
-  ["-p", "the harness already runs pi non-interactively"],
-  ["--mode", "the harness requires pi's json output mode"],
-  ["--session-dir", "the harness owns each role's session directory"],
-  ["--continue", "the harness decides when to resume a session"],
-  ["-c", "the harness decides when to resume a session"],
-  ["-n", "the harness names the session"],
-  ["--name", "the harness names the session"],
+  ["--print", "tumwater already runs pi non-interactively"],
+  ["-p", "tumwater already runs pi non-interactively"],
+  ["--mode", "tumwater requires pi's json output mode"],
+  ["--session-dir", "tumwater owns each role's session directory"],
+  ["--continue", "tumwater decides when to resume a session"],
+  ["-c", "tumwater decides when to resume a session"],
+  ["-n", "tumwater names the session"],
+  ["--name", "tumwater names the session"],
   ["--provider", "set the top-level or per-role `provider` instead"],
   ["--model", "set the top-level or per-role `model` instead"],
   ["--thinking", "set the top-level or per-role `thinking` instead"],

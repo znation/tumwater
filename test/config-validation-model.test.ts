@@ -14,11 +14,11 @@ test("the fallback selector string is validated like its fallbackModel object fo
   // plans/model-tiers.md — whose values are selector strings or "pause".
   assert.match(
     validationError({ fallback: "" }),
-    /fallback must be a selector string or a map by tier \(got ""\)/,
+    /fallback must be a model id or a map by tier \(got ""\)/,
   );
   assert.match(
     validationError({ fallback: 3 }),
-    /fallback must be a selector string or a map by tier \(got 3\)/,
+    /fallback must be a model id or a map by tier \(got 3\)/,
   );
   assert.doesNotThrow(() => validateConfig({ fallback: "omlx/local-free" }));
   assert.doesNotThrow(() => validateConfig({ fallback: "omlx/local-free:low" }));
@@ -31,7 +31,7 @@ test("the fallback selector string is validated like its fallbackModel object fo
   );
   assert.match(
     validationError({ fallback: { default: "" } }),
-    /fallback\.default must be a non-empty selector string or "pause" \(got ""\)/,
+    /fallback\.default must be a non-empty model id or "pause" \(got ""\)/,
   );
   assert.match(
     validationError({ fallback: "pause" }),
@@ -56,10 +56,10 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
     validationError({ model: { medium: "prov/a" } }),
     /unknown key "medium" in model \(valid keys: small, default, strong\)/,
   );
-  // Map values are non-empty selector strings.
+  // Map values are non-empty model ids.
   assert.match(
     validationError({ model: { default: "" } }),
-    /model\.default must be a non-empty selector string \(got ""\)/,
+    /model\.default must be a non-empty model id \(got ""\)/,
   );
   // A map cannot coexist with the legacy top-level provider.
   assert.match(
@@ -69,7 +69,7 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
   // Tier names are valid only as roles.<id>.model / review.model values.
   assert.match(
     validationError({ model: "strong" }),
-    /model must name a selector — tier names are valid only as roles\.<id>\.model or review\.model values/,
+    /model must name a model id — tier names are valid only as roles\.<id>\.model or review\.model values/,
   );
   assert.doesNotThrow(() => validateConfig({ roles: { plan: { enabled: true, model: "strong" } } }));
   assert.doesNotThrow(() =>
@@ -79,7 +79,7 @@ test("validateConfig guards the tier-map and tier-name forms of model", () => {
   // A non-string model keeps an actionable message.
   assert.match(
     validationError({ roles: { plan: { enabled: true, model: 7 } } }),
-    /roles\.plan\.model must be a selector string or a tier name \(small, default, strong\) \(got 7\)/,
+    /roles\.plan\.model must be a model id or a tier name \(small, default, strong\) \(got 7\)/,
   );
 });
 

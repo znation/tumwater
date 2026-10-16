@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The bundled project templates for `tumwater init --template`
  * (docs/feature-project-templates.md). Static string data, no file reads and no runtime
  * dependencies: a template is a brief preamble (the operator's own words stay appended after
@@ -27,13 +28,13 @@ const PYTHON_CLI_PREAMBLE = `This project is a Python command-line tool.
 The entry point is a \`main()\` function guarded by \`if __name__ == "__main__":\` in a single
 module at the project root; the CLI parses arguments with the standard library's argparse.
 Every behavior change ships with tests runnable by \`python -m pytest\` (or unittest, once a
-suite exists), and the fleet keeps a README documenting install and usage as the tool grows.
+suite exists), and the team keeps a README documenting install and usage as the tool grows.
 Prefer the standard library over third-party dependencies.`;
 
 const NODE_CLI_PREAMBLE = `This project is a Node.js command-line tool.
 The entry point is \`bin.js\` (or \`src/main.js\`) wired to a \`bin\` field in package.json;
 argument parsing uses the standard library's util.parseArgs. Every behavior change ships with
-tests runnable by \`npm test\`, and the fleet keeps a README documenting install and usage as
+tests runnable by \`npm test\`, and the team keeps a README documenting install and usage as
 the tool grows. Prefer node built-ins over third-party dependencies.`;
 
 const STATIC_SITE_PREAMBLE = `This project is a small static website: plain HTML, CSS, and
@@ -44,7 +45,7 @@ markup, alt text, and keyboard-navigable controls.`;
 
 const blank: InitTemplate = {
   id: "blank",
-  description: "no preamble, no seeded backlog — the fleet self-plans from your brief",
+  description: "no preamble, no seeded backlog — the team plans itself from your brief",
   briefPreamble: "",
   starterPlans: [],
   starterDirs: [],
@@ -123,7 +124,7 @@ export function templateCatalog(): { id: string; description: string }[] {
  * into PLANS_TEMPLATE under `## Planned`; the other three files land byte-identically. */
 export const PLANS_TEMPLATE = `# Plans
 
-Planned features, written by the plan loop and implemented by the feature loop.
+Planned features, written by the plan role and implemented by the feature role.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
 ## Planned
@@ -137,7 +138,7 @@ _None yet._
 
 export const BUGS_TEMPLATE = `# Bugs
 
-Known bugs, recorded by any loop and fixed by the bugfix loop.
+Known bugs, recorded by any role and fixed by the bugfix role.
 Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs to Fixed, with the
 required \`**Validation gap:** <tag> — <one sentence>\` line recording what made the bug hard to
 confirm (tag one of: none, no-repro, no-fake, real-run-needed, no-observability, slow-check,
@@ -154,9 +155,9 @@ _None yet._
 
 export const QUESTIONS_TEMPLATE = `# Questions
 
-Open questions loops have posted for a human decision — each with context, the options, and the
-loop's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
-director). Loops never block on their own questions; they check here at the start of each tick.
+Open questions roles have posted for a human decision — each with context, the options, and the
+role's recommendation. Answer by moving an entry to ## Answered with your decision (or tell the
+director). Roles never block on their own questions; they check here at the start of each run.
 
 ## Open
 
@@ -170,7 +171,7 @@ _None yet._
 export const PRINCIPLES_TEMPLATE = `# Principles
 
 Design principles this project holds — the codified answer to "what would a senior engineer on
-this team always do." Every loop's prompt carries these; uphold them in everything you produce.
+this team always do." Every role's instructions carry these; uphold them in everything you produce.
 Only the director and steward roles may edit this file. Phrase new principles positively: state
 what to do, not what to avoid. This list is a starting point: the director and steward own it
 and will tune it to this project.
@@ -178,7 +179,7 @@ and will tune it to this project.
 - Prefer the standard library over a new dependency.
 - Keep each file focused on one responsibility, and small enough to read in one sitting.
 - Every behavior change ships with a test.
-- Small, complete, and correct beats big and half-done: one focused change per tick. Focused
+- Small, complete, and correct beats big and half-done: one focused change per run. Focused
   means one theme, not one site: a kind of fix applied everywhere it holds is one change, and
-  the same fix landed one site per tick spends a review and a landing on each.
+  the same fix applied one site per run spends a review and a merge on each.
 `;

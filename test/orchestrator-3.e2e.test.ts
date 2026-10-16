@@ -792,7 +792,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const events = readEvents(repo);
     const warnings = events.filter((e) => e.type === "warning" && e.loop === "harness");
     assert.ok(
-      warnings.some((e) => String((e as unknown as { message: string }).message).includes("role clean enabled — starting ticks")),
+      warnings.some((e) => String((e as unknown as { message: string }).message).includes("role clean enabled — starting runs")),
       "clean joined through the live-reload path, so its wiring is the one under test",
     );
     const indexOf = (predicate: (e: (typeof events)[number]) => boolean) => events.findIndex(predicate);

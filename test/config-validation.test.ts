@@ -334,15 +334,15 @@ test("validateConfig rejects piArgs entries that repeat a harness-managed flag",
   // collision and point at the setting that owns it.
   assert.match(
     validationError({ piArgs: ["--append-system-prompt", "x", "--mode", "text"] }),
-    /piArgs\[2\] "--mode" duplicates a flag the harness sets — the harness requires pi's json output mode/,
+    /piArgs\[2\] "--mode" duplicates a flag tumwater sets — tumwater requires pi's json output mode/,
   );
   assert.match(
     validationError({ piArgs: ["--model", "other"] }),
-    /piArgs\[0\] "--model" duplicates a flag the harness sets — set the top-level or per-role `model` instead/,
+    /piArgs\[0\] "--model" duplicates a flag tumwater sets — set the top-level or per-role `model` instead/,
   );
   assert.match(
     validationError({ piArgs: ["-n", "sneaky"] }),
-    /piArgs\[0\] "-n" duplicates a flag the harness sets — the harness names the session/,
+    /piArgs\[0\] "-n" duplicates a flag tumwater sets — tumwater names the session/,
   );
   // The `--flag=value` spelling repeats the same flag: pi's parser reads `--model=x` as
   // `--model x`, so the screen must match the flag before the `=` — exactly as the agents and
@@ -350,11 +350,11 @@ test("validateConfig rejects piArgs entries that repeat a harness-managed flag",
   // be appended last, silently overriding the model tumwater.json named.
   assert.match(
     validationError({ piArgs: ["--model=other"] }),
-    /piArgs\[0\] "--model=other" duplicates a flag the harness sets — set the top-level or per-role `model` instead/,
+    /piArgs\[0\] "--model=other" duplicates a flag tumwater sets — set the top-level or per-role `model` instead/,
   );
   assert.match(
     validationError({ piArgs: ["--provider=other"] }),
-    /piArgs\[0\] "--provider=other" duplicates a flag the harness sets/,
+    /piArgs\[0\] "--provider=other" duplicates a flag tumwater sets/,
   );
   // Non-conflicting extras still pass, including pi's own append-system-prompt and tool flags.
   assert.doesNotThrow(() =>
@@ -396,21 +396,21 @@ test("validateConfig validates the backends section: entry shapes and reserved f
   // refuse a passthrough that would be appended last and silently win.
   assert.match(
     validationError({ backends: { claude: { args: ["--model", "x"] } } }),
-    /backends\.claude\.args\[0\] "--model" duplicates a flag the harness sets/,
+    /backends\.claude\.args\[0\] "--model" duplicates a flag tumwater sets/,
   );
   assert.match(
     validationError({ backends: { claude: { args: ["--effort=low"] } } }),
-    /backends\.claude\.args\[0\] "--effort=low" duplicates a flag the harness sets/,
+    /backends\.claude\.args\[0\] "--effort=low" duplicates a flag tumwater sets/,
   );
   // The flags claudeArgs appends after the model are reserved too: an overdrawn
   // `--append-system-prompt-file` would replace the harness's AGENTS.md on the last-wins parse.
   assert.match(
     validationError({ backends: { claude: { args: ["--append-system-prompt-file", "/evil"] } } }),
-    /backends\.claude\.args\[0\] "--append-system-prompt-file" duplicates a flag the harness sets/,
+    /backends\.claude\.args\[0\] "--append-system-prompt-file" duplicates a flag tumwater sets/,
   );
   assert.match(
     validationError({ backends: { pi: { args: ["--mode", "text"] } } }),
-    /backends\.pi\.args\[0\] "--mode" duplicates a flag the harness sets/,
+    /backends\.pi\.args\[0\] "--mode" duplicates a flag tumwater sets/,
   );
   // A non-conflicting extra passes for both backends.
   assert.doesNotThrow(() =>

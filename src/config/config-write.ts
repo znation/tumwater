@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Harness-mediated config WRITES — the mutators behind the operator surfaces (the TUI's
  * Ctrl+B editor, the GUI's /api/budget endpoint) and the director's config requests. Each
  * one loads fresh (bypassing config.ts's stat cache), validates before writing, and writes
@@ -170,7 +171,7 @@ export function setConfigKey(
       if (problem) return fail(problem);
     }
     if (parsed.kind === "tier" && (typeof value !== "string" || value === "")) {
-      return fail(`model.${parsed.tier} must be a model selector string (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`);
+      return fail(`model.${parsed.tier} must be a model id (e.g. \`config set model.strong huggingface/zai-org/GLM-5.3-Flash:together:low\`) — got ${show(value)}`);
     }
     let oldValue: unknown;
     const result = writeConfigMutation(root, (cfg) => {

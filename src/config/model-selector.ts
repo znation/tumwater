@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Parsing model selector strings — `provider/id[:thinking]`, the form pi's own `--model`
  * accepts (plans/model-tiers.md "Selectors"). Tumwater parses them itself because pricing
  * (src/pi/pi-models.ts) needs the provider and id apart, while the argv builder

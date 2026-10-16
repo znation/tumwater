@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -33,12 +34,12 @@ export function packageVersion(file: string): PackageVersion {
     raw = JSON.parse(fs.readFileSync(file, "utf8"));
   } catch (err) {
     return {
-      problem: `cannot read package.json (the running harness's install looks broken): ${errorMessage(err)}`,
+      problem: `cannot read package.json (the running tumwater install looks broken): ${errorMessage(err)}`,
     };
   }
   const version = (raw as { version?: unknown } | null)?.version;
   if (typeof version !== "string" || version === "")
-    return { problem: "package.json carries no version field (the running harness's install looks broken)" };
+    return { problem: "package.json carries no version field (the running tumwater install looks broken)" };
   return { version };
 }
 

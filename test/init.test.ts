@@ -355,7 +355,7 @@ test("initProject's bare-init refusal names a marker-less README", async () => {
   sh(repo, "git", "commit", "-m", "own readme");
   await assert.rejects(
     () => initProject(repo, ""),
-    /initial prompt is required.*README\.md carries none/s,
+    /a brief is required.*README\.md carries none/s,
   );
   for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(!fs.existsSync(path.join(repo, f)), `${f} should not exist`);
@@ -367,7 +367,7 @@ test("initProject's bare-init refusal stays generic with no README to read", asy
   const dir = tmpdir();
   await assert.rejects(
     () => initProject(dir, "   "),
-    { message: "an initial prompt is required: tumwater init <prompt | --file prompt.md>" },
+    { message: "a brief is required: tumwater init <prompt | --file prompt.md>" },
   );
 });
 
@@ -391,7 +391,7 @@ test("initProject refuses a prompt that differs from the one a README-owned brie
   sh(repo, "git", "commit", "-m", "own readme with markers");
   await assert.rejects(
     () => initProject(repo, "a different prompt"),
-    /README\.md already carries a different initial prompt.*edit it in README\.md between.*bare `tumwater init`/s,
+    /README\.md already carries a different brief.*edit it in README\.md between.*bare `tumwater init`/s,
   );
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), readme);
   for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
@@ -451,7 +451,7 @@ test("a TUMWATER.md-owned brief refuses a different prompt instead of writing it
   sh(repo, "git", "commit", "-m", "own brief");
   await assert.rejects(
     () => initProject(repo, "a different prompt"),
-    /TUMWATER\.md already carries a different initial prompt.*edit it in TUMWATER\.md between/s,
+    /TUMWATER\.md already carries a different brief.*edit it in TUMWATER\.md between/s,
   );
   assert.ok(!fs.existsSync(path.join(repo, "README.md")), "no README.md carrying the dropped prompt");
   for (const f of ["PLANS.md", "BUGS.md", "tumwater.json"]) {
@@ -487,7 +487,7 @@ test("a TUMWATER.md-owned brief never gains a duplicate README.md on a matching 
 });
 
 test("initProject rejects empty prompts", async () => {
-  await assert.rejects(() => initProject(makeRepo(), "   "), /initial prompt is required/);
+  await assert.rejects(() => initProject(makeRepo(), "   "), /a brief is required/);
 });
 
 test("a bare init re-seeds a lost config from the README's prompt (portability 4a/7)", async () => {
@@ -554,7 +554,7 @@ test("initProject honors the caller's branch and git's init.defaultBranch prefer
 
 test("initProject validates before seeding: a bad prompt leaves no repo behind", async () => {
   const dir = tmpdir();
-  await assert.rejects(() => initProject(dir, "   "), /initial prompt is required/);
+  await assert.rejects(() => initProject(dir, "   "), /a brief is required/);
   assert.ok(!fs.existsSync(path.join(dir, ".git")));
 });
 

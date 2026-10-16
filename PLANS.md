@@ -678,50 +678,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
 - `npm run test` passes.
 
-### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests)
-
-**Goal.** Errors from loading, validating and editing tumwater.json, `tumwater init`'s messages, and the backlog skeletons init writes into a new project all use the glossary. That means "model id" instead of "selector", "tumwater" instead of "the harness", "role" instead of "loop", and "brief" instead of "initial prompt".
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- The commands series already rewrote the messages that name renamed keys. This part converts the rest of src/config/:
-  - config-field-checks.ts and config-validation.ts:
-    - Model values: "must be a non-empty model id", "a model id or a map by tier (small, default, strong)", and "tier names are valid only as …".
-    - "fallback and fallbackModel both name the over-cap model".
-    - Role names: "not a valid role name", and "role's instance ids".
-    - "it is managed by tumwater", and "duplicates a flag tumwater sets".
-  - config-schema.ts's reasons for reserved pi arguments: "tumwater already runs pi non-interactively", and the rest in the same form.
-  - config-live.ts: "disabled — no new runs", and "enabled — starting runs". Event sources stay, marked.
-  - config-write.ts and config-keys.ts say "model id". "tier" stays, because it names model tiers.
-  - config-views.ts, config-fallbacks.ts, config.ts and model-selector.ts: their prose follows the rules. Text that is only about pi stays.
-  - Validation kind tags such as `"tier-map"` are internal; mark any the guard flags.
-- src/init/init.ts:
-  - "a brief is required: tumwater init <prompt | --file prompt.md>".
-  - "… without a brief between the tumwater:prompt markers …", "already carries a different brief …", and "the brief with the …".
-  - The commit subject becomes "tumwater: init files".
-- src/init/init-templates.ts, the skeleton prose for PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md and README:
-  - "written by the plan role and implemented by the feature role".
-  - "recorded by any role and fixed by the bugfix role".
-  - "Open questions roles have posted …", and "they check here at the start of each run".
-  - "one focused change per run", and "a review and a merge on each".
-  - "the team keeps a README …", and "the team plans itself from your brief".
-  - These templates are multi-line. Interpolate any machine name kept inside one from a constant declared on a line ending `// vocabulary-ok:`.
-- src/version.ts: "the running tumwater install looks broken".
-
-**Files touched.**
-- src: src/config/config-field-checks.ts, config-validation.ts, config-schema.ts, config-live.ts, config-write.ts, config-keys.ts, config-views.ts, config-fallbacks.ts, config.ts, model-selector.ts; src/init/init.ts, src/init/init-templates.ts; src/version.ts.
-- Tests: test/config-validation*.test.ts, test/config-write.test.ts, test/config-live.test.ts, test/config-views.test.ts, test/config.test.ts, test/config-request.test.ts, test/init.test.ts, test/init-templates.test.ts, test/version.test.ts.
-
-**Acceptance criteria.**
-- The validation fixture for an empty model value says "model id". No config validation, write or live message asserted in tests contains "selector", "harness" or "loop".
-- `tumwater init` without a prompt says "a brief is required", and a newly initialized project's PLANS.md, BUGS.md and QUESTIONS.md speak of roles and runs.
-- `npm run test` passes.
-
 ### Plain terms text, part 15/19: Merge pipeline and review and check messages (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/landing/ + src/review/ + src/verdict/ + src/build/ + tests)
 
 **Goal.** Warnings and verdict reasons from the merge pipeline, the review gate and the check runner say merge, run, check and tumwater. These reach the feed, `tumwater history <role> <n>`, the failure digest and the authoring role's next prompt.
@@ -3595,6 +3551,50 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests) — done 2026-10-16
+
+**Goal.** Errors from loading, validating and editing tumwater.json, `tumwater init`'s messages, and the backlog skeletons init writes into a new project all use the glossary. That means "model id" instead of "selector", "tumwater" instead of "the harness", "role" instead of "loop", and "brief" instead of "initial prompt".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The commands series already rewrote the messages that name renamed keys. This part converts the rest of src/config/:
+  - config-field-checks.ts and config-validation.ts:
+    - Model values: "must be a non-empty model id", "a model id or a map by tier (small, default, strong)", and "tier names are valid only as …".
+    - "fallback and fallbackModel both name the over-cap model".
+    - Role names: "not a valid role name", and "role's instance ids".
+    - "it is managed by tumwater", and "duplicates a flag tumwater sets".
+  - config-schema.ts's reasons for reserved pi arguments: "tumwater already runs pi non-interactively", and the rest in the same form.
+  - config-live.ts: "disabled — no new runs", and "enabled — starting runs". Event sources stay, marked.
+  - config-write.ts and config-keys.ts say "model id". "tier" stays, because it names model tiers.
+  - config-views.ts, config-fallbacks.ts, config.ts and model-selector.ts: their prose follows the rules. Text that is only about pi stays.
+  - Validation kind tags such as `"tier-map"` are internal; mark any the guard flags.
+- src/init/init.ts:
+  - "a brief is required: tumwater init <prompt | --file prompt.md>".
+  - "… without a brief between the tumwater:prompt markers …", "already carries a different brief …", and "the brief with the …".
+  - The commit subject becomes "tumwater: init files".
+- src/init/init-templates.ts, the skeleton prose for PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md and README:
+  - "written by the plan role and implemented by the feature role".
+  - "recorded by any role and fixed by the bugfix role".
+  - "Open questions roles have posted …", and "they check here at the start of each run".
+  - "one focused change per run", and "a review and a merge on each".
+  - "the team keeps a README …", and "the team plans itself from your brief".
+  - These templates are multi-line. Interpolate any machine name kept inside one from a constant declared on a line ending `// vocabulary-ok:`.
+- src/version.ts: "the running tumwater install looks broken".
+
+**Files touched.**
+- src: src/config/config-field-checks.ts, config-validation.ts, config-schema.ts, config-live.ts, config-write.ts, config-keys.ts, config-views.ts, config-fallbacks.ts, config.ts, model-selector.ts; src/init/init.ts, src/init/init-templates.ts; src/version.ts.
+- Tests: test/config-validation*.test.ts, test/config-write.test.ts, test/config-live.test.ts, test/config-views.test.ts, test/config.test.ts, test/config-request.test.ts, test/init.test.ts, test/init-templates.test.ts, test/version.test.ts.
+
+**Acceptance criteria.**
+- The validation fixture for an empty model value says "model id". No config validation, write or live message asserted in tests contains "selector", "harness" or "loop".
+- `tumwater init` without a prompt says "a brief is required", and a newly initialized project's PLANS.md, BUGS.md and QUESTIONS.md speak of roles and runs.
+- `npm run test` passes.
 
 ### Plain terms text, part 4/19: `tumwater doctor` names its checks plainly (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/doctor/ + tests, done 2026-10-16)
 

@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { saveConfig } from "../config/config.js";
@@ -150,7 +151,7 @@ export async function initProject(
   if (combinedPrompt.length > INITIAL_PROMPT_MAX_CHARS) {
     throw new Error(
       tooLongMessage(
-        `the initial prompt with the ${tpl.id} template's preamble`,
+        `the brief with the ${tpl.id} template's preamble`,
         combinedPrompt.length,
         INITIAL_PROMPT_MAX_CHARS,
         PREFILL_REASON,
@@ -175,7 +176,7 @@ export async function initProject(
       ? ` (a bare \`tumwater init\` reads the prompt from README.md between ${PROMPT_START} and ${PROMPT_END}, but README.md carries none)`
       : "";
     throw new Error(
-      `an initial prompt is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
+      `a brief is required: tumwater init <prompt | --file prompt.md>${readmeHint}`,
     );
   }
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
@@ -187,7 +188,7 @@ export async function initProject(
   const wasRepo = await isGitRepo(root);
   if (branch !== undefined && wasRepo) {
     throw new Error(
-      `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the fleet at a branch with \`tumwater start --branch ${branch}\` (or baseBranch in tumwater.json)`,
+      `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the team at a branch with \`tumwater start --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
   }
   // The loops read the project's reason to exist back out of the project brief on every
@@ -204,7 +205,7 @@ export async function initProject(
   // creating anything so the user fixes it and re-runs.
   if (adopted && fs.existsSync(path.join(root, "TUMWATER.md"))) {
     throw new Error(
-      `TUMWATER.md already exists without an initial prompt between the tumwater:prompt markers, so your prompt would be lost — add it to TUMWATER.md between ${PROMPT_START} and ${PROMPT_END} (or delete TUMWATER.md so init creates one), then re-run \`tumwater init\``,
+      `TUMWATER.md already exists without a brief between the tumwater:prompt markers, so your prompt would be lost — add it to TUMWATER.md between ${PROMPT_START} and ${PROMPT_END} (or delete TUMWATER.md so init creates one), then re-run \`tumwater init\``,
     );
   }
   // The same loss one step later: a brief that already owns the managed sections is never
@@ -215,7 +216,7 @@ export async function initProject(
   // same prompt, or a bare init, is the idempotent re-seed and passes.
   if (prompt && brief !== null && combinedPrompt !== readInitialPrompt(root)) {
     throw new Error(
-      `${brief} already carries a different initial prompt between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
+      `${brief} already carries a different brief between the tumwater:prompt markers, and init never rewrites an existing project brief, so your prompt would be lost — to change the prompt, edit it in ${brief} between ${PROMPT_START} and ${PROMPT_END}; to re-seed with the current one, re-run a bare \`tumwater init\``,
     );
   }
 
@@ -332,7 +333,7 @@ export async function initProject(
     const staged = await gitTry(root, "diff", "--cached", "--quiet");
     if (staged === null) {
       // Non-zero exit = something is staged.
-      const message = withCommits ? "tumwater: init harness files" : "tumwater: init";
+      const message = withCommits ? "tumwater: init files" : "tumwater: init";
       await git(root, ...COMMIT_IDENT, "commit", "-m", message, "--", ...committable);
       committed = true;
     }

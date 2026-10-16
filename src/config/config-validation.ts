@@ -1,3 +1,4 @@
+// vocabulary: plain
 import {
   AGENT_IDS,
   AGENT_KEYS,
@@ -206,7 +207,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       checkReservedArgs(problems, entry.args as unknown[], `${prefix}.args`, (flag) =>
         id === "claude"
           ? HARNESS_CLAUDE_FLAGS.has(flag)
-            ? "it is harness-managed"
+            ? "it is managed by tumwater"
             : undefined
           : id === "pi"
             ? HARNESS_PI_FLAGS.get(flag)
@@ -365,7 +366,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
       for (const [tier, v] of Object.entries(f)) {
         if (!isNonBlankString(v))
           problems.push(
-            `fallback.${tier} must be a non-empty selector string or "pause" (got ${show(v)})`,
+            `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
           );
         else if (v !== "pause")
           // An entry is a pure selector (config-views' fallbackSelectorFields parses it with
@@ -373,10 +374,10 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
           checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
       }
     } else if (!isNonBlankString(f)) {
-      problems.push(`fallback must be a selector string or a map by tier (got ${show(f)})`);
+      problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
     } else if (f === "pause") {
       problems.push(
-        `fallback "pause" is only valid as a tier map value — a string fallback must name a selector`,
+        `fallback "pause" is only valid as a tier map value — a string fallback must name a model id`,
       );
     } else {
       // A selector-string fallback still parses to halves: report an empty one.
@@ -458,13 +459,13 @@ function checkSelectorValue(
           );
         } else if (!CUSTOM_NAME_RE.test(name)) {
           problems.push(
-            `${where}.name "${name}" is not a valid loop name: start with a lowercase letter or digit, then at most 31 more of [a-z0-9_-]`,
+            `${where}.name "${name}" is not a valid role name: start with a lowercase letter or digit, then at most 31 more of [a-z0-9_-]`,
           );
         } else if (allRoleIds().includes(name)) {
           problems.push(`${where}.name "${name}" collides with a built-in role id — pick another name`);
         } else if (baseRoleOf(name) !== name) {
           problems.push(
-            `${where}.name "${name}" would shadow the ${baseRoleOf(name)} loop's instance ids — pick another name`,
+            `${where}.name "${name}" would shadow the ${baseRoleOf(name)} role's instance ids — pick another name`,
           );
         } else if (customNames.has(name)) {
           problems.push(`${where}.name "${name}" is duplicated in customRoles — names must be unique`);

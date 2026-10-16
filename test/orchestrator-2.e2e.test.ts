@@ -302,7 +302,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     // captured count is final for the whole disabled window — no fixed sleep needed.
     await waitFor(
       () =>
-        messages().some((m) => m.includes("role dry disabled — stopping ticks")) &&
+        messages().some((m) => m.includes("role dry disabled — no new runs")) &&
         !loadLoopState(repo, "dry").running,
       "the disable to be processed with no in-flight tick",
     );
@@ -314,18 +314,18 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     landWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").ticks > cleanTicks, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "disabled role stops ticking");
-    assert.ok(messages().some((m) => m.includes("role dry disabled — stopping ticks")), "disable transition logged");
+    assert.ok(messages().some((m) => m.includes("role dry disabled — no new runs")), "disable transition logged");
 
     // Enabling a role that was not running at startup starts it (new runner).
     saveConfig(repo, fastConfig(["clean", "feature"]));
     await waitFor(() => finished("feature"), "newly enabled role to tick");
-    assert.ok(messages().some((m) => m.includes("role feature enabled — starting ticks")), "enable transition logged");
+    assert.ok(messages().some((m) => m.includes("role feature enabled — starting runs")), "enable transition logged");
     assert.equal(loadLoopState(repo, "dry").ticks, dryTicks, "still-disabled role stays stopped");
 
     // Re-enabling a previously running loop resumes it within one poll cycle.
     saveConfig(repo, fastConfig(["clean", "dry", "feature"]));
     await waitFor(() => loadLoopState(repo, "dry").ticks > dryTicks, "re-enabled role to tick again");
-    assert.ok(messages().some((m) => m.includes("role dry enabled — starting ticks")), "re-enable transition logged");
+    assert.ok(messages().some((m) => m.includes("role dry enabled — starting runs")), "re-enable transition logged");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -413,7 +413,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
     assert.equal(warningsWith("tumwater.json missing").length, 1, "one warning per vanish, not per poll");
     assert.equal(ofType("config_changed").length, 0, "a vanish is not a reconfiguration");
     assert.equal(ofType("max_concurrent_changed").length, 0, "the cap is retained");
-    assert.equal(warningsWith("enabled — starting ticks").length, 0, "no default-enabled role starts");
+    assert.equal(warningsWith("enabled — starting runs").length, 0, "no default-enabled role starts");
 
     // The file returning logs one line and reloads normally, diffed against the retained config:
     // config_changed names only what the returned file really changed.
@@ -468,7 +468,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     saveConfig(repo, fastConfig(["clean"]));
     await waitFor(
       () =>
-        messages().some((m) => m.includes("role docs-auditor disabled — stopping ticks")) &&
+        messages().some((m) => m.includes("role docs-auditor disabled — no new runs")) &&
         !loadLoopState(repo, "docs-auditor").running,
       "the removal to be processed with no in-flight tick",
     );
@@ -490,7 +490,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     );
     assert.equal(loadLoopState(repo, "docs-auditor").ticks, removedTicks + 1, "counters survived the removal");
     assert.ok(
-      messages().some((m) => m.includes("role docs-auditor enabled — starting ticks")),
+      messages().some((m) => m.includes("role docs-auditor enabled — starting runs")),
       "re-add transition logged",
     );
 

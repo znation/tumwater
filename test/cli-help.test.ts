@@ -82,7 +82,7 @@ test("a broken install's version command fails with the reason, and the floor ga
   // No package.json at all: version reports the broken install instead of a raw stack trace…
   const missing = await run("version");
   assert.equal(missing.code, 1);
-  assert.match(missing.stderr, /tumwater: cannot read package\.json \(the running harness's install looks broken\)/);
+  assert.match(missing.stderr, /tumwater: cannot read package\.json \(the running tumwater install looks broken\)/);
   // …and the Node-floor gate stands down (no engines spec to compare against), so help still
   // answers — the gate must not block every command on a value it cannot read. version.test.ts
   // covers the sibling shape, a package.json present but without a usable version field.

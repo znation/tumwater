@@ -106,7 +106,7 @@ test("configForRole resolves an instance id's model through its base role", () =
 test("a custom loop name shaped like an instance id is a validation error", () => {
   assert.throws(
     () => validateConfig({ customRoles: [{ name: "feature-2", task: "do a thing" }] }),
-    (err: unknown) => errorMessage(err).includes('would shadow the feature loop\'s instance ids'),
+    (err: unknown) => errorMessage(err).includes('would shadow the feature role\'s instance ids'),
   );
   assert.doesNotThrow(() => validateConfig({ customRoles: [{ name: "my-loop", task: "do a thing" }] }));
 });

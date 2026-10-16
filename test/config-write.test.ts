@@ -398,7 +398,7 @@ test("setConfigKey rejects an unknown tier and a non-string tier model, leaving 
 
   const notString = setConfigKey(dir, "model.strong", '""');
   assert.equal(notString.ok, false);
-  if (!notString.ok) assert.match(notString.error, /model\.strong must be a model selector string/);
+  if (!notString.ok) assert.match(notString.error, /model\.strong must be a model id/);
 
   assert.equal(fs.readFileSync(file, "utf8"), before, "rejected tier sets change nothing");
 });

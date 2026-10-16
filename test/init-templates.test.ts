@@ -132,7 +132,7 @@ test("an unknown template id and an overflowing preamble fail before any side ef
   const long = "x".repeat(INITIAL_PROMPT_MAX_CHARS);
   await assert.rejects(
     () => initProject(repo, long, undefined, { template: "python-cli" }),
-    /initial prompt with the python-cli template's preamble is \d+ chars/,
+    /the brief with the python-cli template's preamble is \d+ chars/,
   );
   assert.deepEqual(
     fs.readdirSync(repo).filter((n) => n !== ".git" && n !== "seed.txt"),
@@ -167,4 +167,14 @@ test("a near-miss --template id gets the did-you-mean hint, a far one does not",
   assert.match(unknownTemplateError("pythn-cli"), / — did you mean `python-cli`\?$/);
   // "nope" is a real word, not a typo of any id: the suggestion threshold stays off.
   assert.doesNotMatch(unknownTemplateError("nope"), /did you mean/);
+});
+
+test("the seed skeletons speak of roles and runs", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "Build a todo CLI.");
+  for (const f of ["PLANS.md", "BUGS.md", "QUESTIONS.md"]) {
+    const text = fs.readFileSync(path.join(repo, f), "utf8");
+    assert.match(text, /\b(plan|bugfix|feature) role\b|\broles\b/, `${f} names roles`);
+    assert.doesNotMatch(text, /\bloops?\b|\bticks?\b/i, `${f} keeps no retired words`);
+  }
 });
