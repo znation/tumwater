@@ -147,7 +147,7 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0]!.loop, "organize");
-  assert.match(warnings[0]!.message as string, /^3 consecutive tick failures: boom 3$/);
+  assert.match(warnings[0]!.message as string, /^3 runs failed in a row: boom 3$/);
   // Past the crossing the streak keeps counting without re-warning.
   await run(root, "organize", s, error(ERROR_STREAK_WARN + 1));
   assert.equal(eventsOfType(root, "warning").length, 1);
@@ -227,7 +227,7 @@ test("a leftover recovery failure feeds the error streak but never rides the tic
   await run(root, "organize", s, { result: "queued" }, { recoveryFailure: "review gate errored" });
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!.message as string, /3 consecutive tick failures: review gate errored$/);
+  assert.match(warnings[0]!.message as string, /3 runs failed in a row: review gate errored$/);
 });
 
 test("finalizeTick folds a main_red cause onto lastError so tick_end logs it", async () => {
@@ -294,7 +294,7 @@ test("the error-streak warning falls back to 'unknown error' when no cause is re
     await run(root, "organize", s, { result: "error", summary: `fail ${n}` });
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0]!.message as string, /^3 consecutive tick failures: unknown error$/);
+  assert.match(warnings[0]!.message as string, /^3 runs failed in a row: unknown error$/);
 });
 
 test("the quiet-kill warning names the recorded error when the crossing tick carries one", async () => {

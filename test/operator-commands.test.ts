@@ -236,7 +236,7 @@ test("cmdResume is a no-op without a marker and lifts one when present", async (
   await expectOk(() => cmdPause(root));
   assert.ok(fs.existsSync(pausedPath(root)));
   const { stdout } = await expectOk(() => cmdResume(root));
-  assert.match(stdout, /fleet resumed/);
+  assert.match(stdout, /team resumed/);
   assert.equal(fs.existsSync(pausedPath(root)), false);
 });
 
@@ -245,7 +245,7 @@ test("cmdResume with a live harness promises pickup within ~2s", async () => {
   markLive(root);
   await expectOk(() => cmdPause(root));
   const { stdout } = await expectOk(() => cmdResume(root));
-  assert.match(stdout, /fleet resumed/);
+  assert.match(stdout, /team resumed/);
   assert.match(stdout, /within ~2s/);
   assert.doesNotMatch(stdout, /no harness is running/);
 });
@@ -303,7 +303,7 @@ test("cmdResume (fleet) while roles are individually paused names the still-paus
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
   await expectOk(() => cmdPause(root, ["--role", "dry"]));
   const { stdout } = await expectOk(() => cmdResume(root));
-  assert.match(stdout, /fleet resumed/);
+  assert.match(stdout, /team resumed/);
   assert.match(stdout, /clean, dry are still individually paused/);
   // The per-role marker outlives the fleet resume.
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dry"]);
@@ -313,7 +313,7 @@ test("cmdResume (fleet) while roles are individually paused names the still-paus
   const bare = await expectOk(() => cmdPause(root));
   assert.doesNotMatch(bare.stdout, /individually paused/);
   const quiet = await expectOk(() => cmdResume(root));
-  assert.match(quiet.stdout, /fleet resumed/);
+  assert.match(quiet.stdout, /team resumed/);
   assert.doesNotMatch(quiet.stdout, /individually paused/);
 });
 

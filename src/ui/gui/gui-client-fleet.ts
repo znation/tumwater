@@ -501,7 +501,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     for (const e of events) counts.set(e.type, (counts.get(e.type) || 0) + 1);
     return "<div class='feed-tally chips'>" + [...counts.entries()]
       .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-      .map(([type, n]) => "<span class='chip mono'>" + n + " × " + esc(type) + "</span>").join("") + "</div>";
+      .map(([type, n]) => "<span class='chip mono' title='" + esc(type) + "'>" + n + " × " + esc(eventTypeLabel(type)) + "</span>").join("") + "</div>";
   }
   function renderFeed(d) {
     syncFeedRoles(d);

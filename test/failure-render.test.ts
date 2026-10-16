@@ -523,7 +523,7 @@ test("the digest replays harness decisions so a wrong response is visible", () =
   // Past the 72-char cap the line is cut on a word boundary with a remainder marker
   // (BUGS.md 2026-10-01), so the cut model name can never read as complete.
   assert.match(md, /budget fallback — \$10\.00 of \$10\.00 daily cost reached; on … \(\+26 chars\)/);
-  assert.match(md, /fleet paused/);
+  assert.match(md, /team paused/);
   assert.ok(
     md.indexOf("## Fleet state changes") < md.indexOf("## Outcome by role"),
     "the causal frame precedes the counts",
@@ -629,12 +629,12 @@ test("each harness state transition renders its own bounded line", () => {
       "budget paused — 3 ticks failed on fallback omlx/Qwen3.8-27B-MLX-oQ4",
     ],
     [{ type: "budget_resumed", spentUsd: 4, capUsd: 10 }, "budget resumed ($4.00 of $10.00 today)"],
-    [{ type: "fleet_resumed" }, "fleet resumed — role loops tick again"],
+    [{ type: "fleet_resumed" }, "team resumed — roles run again"],
     [
       { type: "role_paused", role: "docs" },
-      "role docs paused — it stops starting new ticks",
+      "role docs paused — it starts no new runs",
     ],
-    [{ type: "role_resumed", role: "docs" }, "role docs resumed — it ticks again"],
+    [{ type: "role_resumed", role: "docs" }, "role docs resumed — it runs again"],
     // The fleet-wide 429 hold (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"):
     // who tripped it and for how long, a relapse named, and the automatic re-open.
     [
@@ -670,7 +670,7 @@ test("each harness state transition renders its own bounded line", () => {
       "orchestrator started (pid 4321, build cccccccc)",
     ],
     [{ type: "orchestrator_start", pid: 4321 }, "orchestrator started (pid 4321)"],
-    [{ type: "orchestrator_stop" }, "orchestrator stopped"],
+    [{ type: "orchestrator_stop" }, "tumwater stopped"],
   ];
   for (const [ev, expected] of cases) {
     const root = tmpdir();

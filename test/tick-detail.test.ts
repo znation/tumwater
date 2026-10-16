@@ -155,8 +155,8 @@ test("renderTickDetail prints the summary header, the commit sha, and formatEven
   assert.match(lines[0]!, /^bugfix tick #3 — changed · 60s · /);
   assert.match(lines[0]!, / tok · \$0\.03 · commit abc1234/);
   // The trail is the shared event rendering, one line per event, in ts order.
-  assert.match(lines[1]!, /tick #3 started/);
-  assert.match(lines[3]!, /tick #3 changed — the fix/);
+  assert.match(lines[1]!, /run #3 started/);
+  assert.match(lines[3]!, /run #3 merged — the fix/);
 });
 
 test("renderTickDetail renders a corrupt outcome as ?, never undefined", () => {
@@ -185,7 +185,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   ]);
   const { stdout } = await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false));
   assert.match(stdout, /^bugfix tick #3 — changed · 30s · /);
-  assert.match(stdout, /tick #3 started/);
+  assert.match(stdout, /run #3 started/);
 
   const json = await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], true));
   const payload = JSON.parse(json.stdout) as TickDetail;
@@ -370,7 +370,7 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved landing"
   const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], false))).stdout;
   assert.match(text, /tick #1 — changed/);
   const lines = text.trimEnd().split("\n");
-  assert.match(lines[lines.length - 1]!, /landing of sha1abc\w* complete/);
+  assert.match(lines[lines.length - 1]!, /merge of sha1abc\w* done/);
   const payload = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], true))).stdout) as TickDetail;
   assert.equal(payload.landing?.type, "landed");
   assert.equal(renderTickDetail(readTickDetail(repo, "bugfix", 1)!), text.trimEnd());

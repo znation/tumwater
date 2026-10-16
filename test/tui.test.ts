@@ -153,7 +153,7 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
     // The flash confirms the queue and the event feed picks up the enqueue.
     const frame = tui.lastFrame();
     assert.match(frame, /queued for the director loop/);
-    assert.match(frame, /user prompt queued: fix the bug/);
+    assert.match(frame, /message added to the inbox: fix the bug/);
     // The input line is cleared after submit.
     assert.equal(tui.lines().at(-1), "director ›");
 
@@ -550,20 +550,20 @@ test("PgUp/PgDn page the Activity feed back through the event tail and resume th
 
   await withTui(repo, async (tui) => {
     const live = tui.lastFrame();
-    assert.match(live, /tick #60 started/, "the live tail shows the newest event");
+    assert.match(live, /run #60 started/, "the live tail shows the newest event");
     assert.match(live, /PgUp\/PgDn scroll/, "the Activity hint names the scroll keys");
 
     // PgUp pauses follow: the frame changes and leaves the newest event behind.
     tui.key(undefined, "pageup");
     let frame = tui.lastFrame();
     assert.notEqual(frame, live, "PgUp pages the feed back");
-    assert.doesNotMatch(frame, /tick #60 started/, "the paged feed no longer shows the newest event");
+    assert.doesNotMatch(frame, /run #60 started/, "the paged feed no longer shows the newest event");
 
     // PgUp clamps at the oldest loaded event.
     for (let i = 0; i < 20; i++) tui.key(undefined, "pageup");
     frame = tui.lastFrame();
-    assert.match(frame, /tick #1 started/, "PgUp clamps at the oldest event");
-    assert.doesNotMatch(frame, /tick #60 started/);
+    assert.match(frame, /run #1 started/, "PgUp clamps at the oldest event");
+    assert.doesNotMatch(frame, /run #60 started/);
     const oldest = frame;
     tui.key(undefined, "pageup");
     assert.equal(tui.lastFrame(), oldest, "PgUp past the oldest event is a no-op");

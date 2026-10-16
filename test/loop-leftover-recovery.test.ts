@@ -469,7 +469,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       assert.ok(
         warnings.some(
           (e) =>
-            String(e.message).includes('3 consecutive tick failures') &&
+            String(e.message).includes('3 runs failed in a row') &&
             String(e.message).includes('review failed: reviewer backend down'),
         ),
         `expected one warning naming the review failure, got: ${JSON.stringify(warnings)}`,

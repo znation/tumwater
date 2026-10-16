@@ -365,7 +365,7 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
   assert.deepEqual(events.map((e) => e.ts), [1000]);
   assert.deepEqual(events[0], {
     ts: 1000, loop: "feature", type: "tick_end", result: "changed",
-    message: "tick #1 changed — added a thing",
+    message: "run #1 merged — added a thing",
   });
   // The answer is exactly the shared computation: the scanned tail through eventMatchesGrep and
   // eventFeedItem — the one home each the CLI and the status payload also read (INV-A3).

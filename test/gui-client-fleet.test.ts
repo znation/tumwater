@@ -212,7 +212,7 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
     addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
   });
   const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void }>(
-    ["format", "view-model", "click-delegate", "activity", "report-role"],
+    ["format", "labels", "view-model", "click-delegate", "activity", "report-role"],
     ["renderFeed", "clearFeedFilter"],
     {
       recall: (key: string) => recalled[key] ?? null,
@@ -440,15 +440,17 @@ test("the Activity feed tallies its present event types like logs --count", () =
   });
   const html = panels["feed"] ?? "";
   // One N × <type> chip per present type, count-descending then type-name ascending.
-  assert.match(html, /3 × tick_end/);
-  assert.match(html, /2 × question_posted/);
-  assert.match(html, /2 × tick_start/);
+  assert.match(html, /3 × run finished/);
+  assert.match(html, /2 × question posted/);
+  assert.match(html, /2 × run started/);
   assert.match(html, /1 × merged/);
   // Order: the 3-count first, then the tied 2-counts alphabetically, then the 1-count.
-  assert.equal(html.indexOf("3 × tick_end") < html.indexOf("2 × question_posted"), true, "most frequent first");
-  assert.equal(html.indexOf("2 × question_posted") < html.indexOf("2 × tick_start"), true, "a count tie breaks by type name ascending");
-  assert.equal(html.indexOf("2 × tick_start") < html.indexOf("1 × merged"), true, "count-descending holds past the tie");
+  assert.equal(html.indexOf("3 × run finished") < html.indexOf("2 × question posted"), true, "most frequent first");
+  assert.equal(html.indexOf("2 × question posted") < html.indexOf("2 × run started"), true, "a count tie breaks by type name ascending");
+  assert.equal(html.indexOf("2 × run started") < html.indexOf("1 × merged"), true, "count-descending holds past the tie");
   assert.doesNotMatch(html, /0 ×/);
+  // The chip shows the label; the raw type stays reachable as its title.
+  assert.match(html, /title='tick_end'>3 × run finished/);
 });
 
 test("the Notable cull tallies only the notable rows", () => {
@@ -464,7 +466,7 @@ test("the Notable cull tallies only the notable rows", () => {
   });
   const html = panels["feed"] ?? "";
   assert.match(html, /1 × merged/);
-  assert.match(html, /1 × question_posted/);
+  assert.match(html, /1 × question posted/);
   assert.doesNotMatch(html, /tick_end/, "routine rows the Notable view hides are not tallied");
 });
 
@@ -497,8 +499,8 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
   // The server slice folds the same rows the <li> list paints (older merged x2, then a
   // land_failed and a failed tick_end): two merged, one land_failed, one tick_end.
   assert.match(html, /2 × merged/);
-  assert.match(html, /1 × land_failed/);
-  assert.match(html, /1 × tick_end/);
+  assert.match(html, /1 × merge failed/);
+  assert.match(html, /1 × run finished/);
   assert.doesNotMatch(html, /0 ×/);
 });
 

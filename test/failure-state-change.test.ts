@@ -112,15 +112,15 @@ test("budget_fallback and budget_resumed phrase the spend around the gate move",
 });
 
 test("fleet and role pauses render fixed and role-named lines", () => {
-  assert.equal(describeStateChange(ev({ type: "fleet_paused" })), "fleet paused — role loops stop starting new ticks");
-  assert.equal(describeStateChange(ev({ type: "fleet_resumed" })), "fleet resumed — role loops tick again");
+  assert.equal(describeStateChange(ev({ type: "fleet_paused" })), "team paused — roles start no new runs");
+  assert.equal(describeStateChange(ev({ type: "fleet_resumed" })), "team resumed — roles run again");
   assert.equal(
     describeStateChange(ev({ type: "role_paused", role: "steward" })),
-    "role steward paused — it stops starting new ticks",
+    "role steward paused — it starts no new runs",
   );
-  assert.equal(describeStateChange(ev({ type: "role_resumed", role: "steward" })), "role steward resumed — it ticks again");
+  assert.equal(describeStateChange(ev({ type: "role_resumed", role: "steward" })), "role steward resumed — it runs again");
   // A missing role renders as "?" rather than "undefined".
-  assert.equal(describeStateChange(ev({ type: "role_paused" })), "role ? paused — it stops starting new ticks");
+  assert.equal(describeStateChange(ev({ type: "role_paused" })), "role ? paused — it starts no new runs");
 });
 
 test("the error-streak, role-cap and model-fallback transitions render their reason", () => {
@@ -235,7 +235,7 @@ test("build_stale and the restart quartet render shas and the refusal reason", (
 });
 
 test("tick_deferred, orchestrator lifecycle, and supervisor_exit render their payloads", () => {
-  assert.equal(describeStateChange(ev({ type: "tick_deferred" })), "deferred — no work landed since last tick");
+  assert.equal(describeStateChange(ev({ type: "tick_deferred" })), "deferred — nothing merged since the last run");
   assert.equal(
     describeStateChange(ev({ type: "tick_deferred", reason: "backlog" })),
     "deferred — feature/bugfix backlog open",
@@ -245,7 +245,7 @@ test("tick_deferred, orchestrator lifecycle, and supervisor_exit render their pa
     "orchestrator started (pid 4242, build abcdef12)",
   );
   assert.equal(describeStateChange(ev({ type: "orchestrator_start", pid: 4242 })), "orchestrator started (pid 4242)");
-  assert.equal(describeStateChange(ev({ type: "orchestrator_stop" })), "orchestrator stopped");
+  assert.equal(describeStateChange(ev({ type: "orchestrator_stop" })), "tumwater stopped");
   assert.equal(
     describeStateChange(ev({ type: "supervisor_exit", generation: 7, code: 1 })),
     "fleet down — generation 7 exited 1",

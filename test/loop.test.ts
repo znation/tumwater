@@ -340,7 +340,7 @@ test("consecutive error ticks raise one warning per episode, not one per tick", 
     assert.equal(runner.state.consecutiveErrors, 3);
     const [w] = warnings();
     assert.ok(w, "the third consecutive failure crosses the threshold once");
-    assert.match(String(w.message), /3 consecutive tick failures: git is broken/);
+    assert.match(String(w.message), /3 runs failed in a row: git is broken/);
     // A fourth failure deepens the episode without a second alarm.
     assert.equal((await runner.tick()).result, "error");
     assert.equal(runner.state.consecutiveErrors, 4);

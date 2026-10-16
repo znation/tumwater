@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { squash } from "./text.js";
@@ -21,7 +22,7 @@ const NO_REASONS_GIVEN = "no reasons given";
  * roles-instructions caps (config/config-validation.ts), so the three cannot drift on the
  * wording. inbox-submit's promptLengthProblem renders a role-scoped variant ("it rides into
  * the <role> tick's prefill") and keeps its own wording. */
-export const PREFILL_REASON = "it rides into every tick's prefill";
+export const PREFILL_REASON = "it rides into every run's prefill";
 
 /** The reason a review rejection leads with — its first listed reason, or `no reasons given`
  * when the list is empty or its first entry is not a string. One home so the fallback cannot
@@ -101,7 +102,7 @@ export function pauseReasonSuffix(reason: string | undefined): string {
  * (landing-slot.ts), the two sites that build the message, so the operator-facing wording
  * their tests pin cannot drift between them. */
 export function consecutiveFailuresWarning(count: number, reason: string): string {
-  return `${count} consecutive tick failures: ${reason}`;
+  return `${count} runs failed in a row: ${reason}`;
 }
 
 /** The base line for an operator fleet pause — `fleet paused — role loops stop starting new
@@ -112,38 +113,38 @@ export function consecutiveFailuresWarning(count: number, reason: string): strin
  * `--for`/`--reason` spans before the dash, so it composes its own line and keeps that wording
  * inline. */
 export function fleetPausePhrase(): string {
-  return "fleet paused — role loops stop starting new ticks";
+  return "team paused — roles start no new runs";
 }
 
-/** The base line for lifting the fleet pause — `fleet resumed — role loops tick again` —
+/** The base line for lifting the fleet pause — `team resumed — roles run again` —
  * shared by the event feed (event-format.ts), the failure digest's Fleet state changes lines
  * (src/failure/failure-state-change.ts), and `tumwater resume`'s confirmation
  * (operator/operator-commands.ts, which appends its `--for` and still-paused-role spans), so the
  * three cannot drift. */
 export function fleetResumePhrase(): string {
-  return "fleet resumed — role loops tick again";
+  return "team resumed — roles run again";
 }
 
-/** The base line for a per-role pause — `role <id> paused — it stops starting new ticks` —
+/** The base line for a per-role pause — `role <id> paused — it starts no new runs` —
  * shared by the event feed (event-format.ts, which appends `(the rest of the fleet keeps running)`)
  * and the failure digest's Fleet state changes lines (src/failure/failure-state-change.ts, which
  * deliberately keeps the short form), so the two cannot drift on the base wording. The role is
  * coerced, so the digest's byte-sliced `field()` output and the feed's raw field both render. */
 export function rolePausePhrase(role: unknown): string {
-  return `role ${String(role)} paused — it stops starting new ticks`;
+  return `role ${String(role)} paused — it starts no new runs`;
 }
 
-/** The base line for a per-role resume — `role <id> resumed — it ticks again` — shared by the
+/** The base line for a per-role resume — `role <id> resumed — it runs again` — shared by the
  * event feed (event-format.ts) and the failure digest's Fleet state changes lines
  * (src/failure/failure-state-change.ts), so the two cannot drift. The role is coerced, like
  * rolePausePhrase. */
 export function roleResumePhrase(role: unknown): string {
-  return `role ${String(role)} resumed — it ticks again`;
+  return `role ${String(role)} resumed — it runs again`;
 }
 
 /** The line for an orchestrator shutdown — the event feed (event-format.ts) and the failure
  * digest's Fleet state changes lines (src/failure/failure-state-change.ts) both render it. */
-export const ORCHESTRATOR_STOPPED = "orchestrator stopped";
+export const ORCHESTRATOR_STOPPED = "tumwater stopped";
 
 /** A HarnessEvent's loosely typed `roles` list as a `A, B, C` phrase — the single home of the
  * array coercion and join, shared by the event feed (event-format.ts: counters_reset's scope,

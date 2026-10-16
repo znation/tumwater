@@ -33,7 +33,7 @@ test("prompt queues for the director and logs an event; empty text fails", async
   // The queueing is visible in `logs`.
   r = await cli(repo, "logs", "-n", "5");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /user prompt queued: add dark mode/);
+  assert.match(r.stdout, /message added to the inbox: add dark mode/);
 });
 test("prompt --list shows queued prompts numbered in execution order", async () => {
   const repo = makeRepo();
@@ -93,7 +93,7 @@ test("prompt --cancel removes the Nth queued prompt and reports its text", async
 
   r = await cli(repo, "logs", "-n", "5");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /user prompt cancelled: /);
+  assert.match(r.stdout, /message removed from the inbox: /);
 });
 
 test("prompt --cancel fails on out-of-range or non-numeric positions without side effects", async () => {

@@ -30,22 +30,22 @@ test("logs -n dumps the last N events in order without following", async () => {
   const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["-n", "2"]));
   // The last two events, oldest of the pair first: the log order is the print order,
   // and the first of the three logged events is cut by the count.
-  assert.match(out, /tests\s+tick #1 started/);
-  assert.match(out, /clean\s+tick #1 changed/);
-  assert.ok(!/clean\s+tick #1 started/.test(out), "only the requested count is shown");
+  assert.match(out, /tests\s+run #1 started/);
+  assert.match(out, /clean\s+run #1 merged/);
+  assert.ok(!/clean\s+run #1 started/.test(out), "only the requested count is shown");
 });
 
 test("logs --grep filters the -n view by raw type and rendered line, case-insensitively", async () => {
   const repo = repoWithEvents();
   // The raw type id matches even where the rendering paraphrases it.
   const { stdout: raw } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "tick_end"]));
-  assert.match(raw, /clean\s+tick #1 changed/);
+  assert.match(raw, /clean\s+run #1 merged/);
   assert.ok(!raw.includes("started"), "the unmatched tick_start row is filtered out");
 
   // Case-insensitive, and matches the rendered line too.
   const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "TICK"]));
-  assert.match(out, /tick #1 started/);
-  assert.match(out, /tick #1 changed/);
+  assert.match(out, /run #1 started/);
+  assert.match(out, /run #1 merged/);
 });
 
 test("logs --grep with no matches says so instead of printing nothing silently", async () => {
@@ -59,7 +59,7 @@ test("logs --since prints a bounded past window oldest-first and flags an unprov
   const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--since", "1h"]));
   // Oldest first, unlike the -n view: a window reads forward.
   const first = out.indexOf("started");
-  const second = out.indexOf("changed");
+  const second = out.indexOf("merged");
   assert.ok(first >= 0 && second > first, `events print oldest-first: ${JSON.stringify(out)}`);
   // A fresh repo's log cannot prove it covers the window's start, so the rotation
   // caveat rides along with the rows.
@@ -123,7 +123,7 @@ test("logs --count tallies event types most-frequent-first over the -n window", 
   logEvent(repo, { loop: "clean", type: "tick_end", tick: 3, result: "none" });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count"]));
   // Three tick_start, two tick_end: most-frequent first.
-  assert.equal(stdout, "3 × tick_start\n2 × tick_end\n");
+  assert.equal(stdout, "3 × run started (tick_start)\n2 × run finished (tick_end)\n");
 });
 
 test("logs --count breaks ties alphabetically by type", async () => {
@@ -132,7 +132,7 @@ test("logs --count breaks ties alphabetically by type", async () => {
   logEvent(repo, { loop: "b", type: "tick_start", tick: 1 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count"]));
   // Equal counts: ties break by type (tick_end before tick_start).
-  assert.equal(stdout, "1 × tick_end\n1 × tick_start\n");
+  assert.equal(stdout, "1 × run finished (tick_end)\n1 × run started (tick_start)\n");
 });
 
 test("logs --count --since scopes the tally to the window and never prints the rotation note", async () => {
@@ -140,7 +140,7 @@ test("logs --count --since scopes the tally to the window and never prints the r
   logEvent(repo, { loop: "a", type: "tick_start", tick: 1 });
   logEvent(repo, { loop: "b", type: "tick_start", tick: 2 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--since", "1h"]));
-  assert.equal(stdout, "2 × tick_start\n");
+  assert.equal(stdout, "2 × run started (tick_start)\n");
   assert.ok(!stdout.includes("rotated out"), "a count never prints the sparse-window note");
 });
 
@@ -157,7 +157,7 @@ test("logs --count -n scopes the tally to the last N events", async () => {
   logEvent(repo, { loop: "a", type: "tick_start", tick: 2 });
   logEvent(repo, { loop: "b", type: "tick_end", tick: 2, result: "changed" });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "-n", "2"]));
-  assert.equal(stdout, "1 × tick_end\n1 × tick_start\n");
+  assert.equal(stdout, "1 × run finished (tick_end)\n1 × run started (tick_start)\n");
 });
 
 test("logs --count --grep and --type count only their matches", async () => {
@@ -166,9 +166,9 @@ test("logs --count --grep and --type count only their matches", async () => {
   logEvent(repo, { loop: "a", type: "tick_end", tick: 1, result: "changed" });
   logEvent(repo, { loop: "b", type: "tick_start", tick: 2 });
   const grepped = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "tick_start"]));
-  assert.equal(grepped.stdout, "2 × tick_start\n");
+  assert.equal(grepped.stdout, "2 × run started (tick_start)\n");
   const typed = await expectOkAsync(() => cmdLogs(repo, ["--count", "--type", "tick_end"]));
-  assert.equal(typed.stdout, "1 × tick_end\n");
+  assert.equal(typed.stdout, "1 × run finished (tick_end)\n");
 });
 
 test("logs --count --grep with no matches prints the no-match prose", async () => {

@@ -23,10 +23,10 @@ test("formatEvent renders the budget warning with the spend phrase and the still
     spentUsd: 40.005,
     capUsd: 50,
   } as never);
-  assert.match(warned, /harness\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; the gate is still open/);
+  assert.match(warned, /tumwater\s+budget warning — \$40\.01 of \$50\.00 of the daily cap spent; runs still start/);
 });
 
-test("formatEvent renders the per-role cap warning naming the role and that it keeps ticking", () => {
+test("formatEvent renders the per-role cap warning naming the role and that it keeps running", () => {
   const warned = formatEvent({
     ts: 0,
     loop: "harness",
@@ -35,7 +35,7 @@ test("formatEvent renders the per-role cap warning naming the role and that it k
     spentUsd: 0.85,
     capUsd: 1,
   } as never);
-  assert.match(warned, /harness\s+role docs at \$0\.85 of \$1\.00 of its daily cap — it keeps ticking/);
+  assert.match(warned, /tumwater\s+role docs at \$0\.85 of \$1\.00 of its daily cap — it keeps running/);
   assert.match(warned, /raise or remove the cap in tumwater\.json before it pauses/);
 });
 
@@ -47,7 +47,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     spentUsd: 50.123,
     capUsd: 50,
   } as never);
-  assert.match(paused, /harness\s+budget paused — \$50\.12 of \$50\.00 daily cost reached/);
+  assert.match(paused, /tumwater\s+budget paused — \$50\.12 of \$50\.00 daily cost reached/);
   assert.ok(!paused.includes("warning"), "a routine state change is not a warning");
 
   const resumed = formatEvent({
@@ -57,7 +57,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     spentUsd: 12.345,
     capUsd: 50,
   } as never);
-  assert.match(resumed, /harness\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
+  assert.match(resumed, /tumwater\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
   // The per-role cap transitions (src/gates/role-cap-gates.ts) name the role, its spend vs its
   // cap, and the two lift paths; the resume states the loop ticks again. Fleet-rendering
@@ -70,7 +70,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     spentUsd: 0.5,
     capUsd: 0.5,
   } as never);
-  assert.match(rolePaused, /harness\s+role docs paused — \$0\.50 of \$0\.50 of its daily cap spent/);
+  assert.match(rolePaused, /tumwater\s+role docs paused — \$0\.50 of \$0\.50 of its daily cap spent/);
   assert.match(rolePaused, /raised or removed in tumwater\.json or the local day rolls over/);
   assert.ok(!rolePaused.includes("warning"), "a routine state change is not a warning");
 
@@ -80,7 +80,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     type: "role_cap_resumed",
     role: "docs",
   } as never);
-  assert.match(roleResumed, /harness\s+role docs resumed — it is under its daily cap again and ticks again/);
+  assert.match(roleResumed, /tumwater\s+role docs resumed — it is under its daily cap again and runs again/);
 
   // The handback (PLANS.md 2026-09-30): the reopen names which in-flight fallback ticks were
   // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
@@ -90,7 +90,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     type: "budget_handback",
     roles: ["steward", "plan"],
   } as never);
-  assert.match(handback, /harness\s+budget reopened: handed steward, plan back to the primary/);
+  assert.match(handback, /tumwater\s+budget reopened: handed steward, plan back to the primary/);
   const bareHandback = formatEvent({ ts: 0, loop: "harness", type: "budget_handback" } as never);
   assert.match(bareHandback, /budget reopened: handed \? back to the primary/);
 
@@ -111,7 +111,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(
     fallback,
-    /harness\s+budget fallback — \$10\.50 of \$10\.00 daily cost reached; role loops continue on omlx\/local-free \(cost n\/a\)/,
+    /tumwater\s+over-cap model — \$10\.50 of \$10\.00 daily cost reached; roles continue on omlx\/local-free \(cost n\/a\)/,
   );
   const refused = formatEvent({
     ts: 0,
@@ -121,7 +121,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     capUsd: 10,
     fallbackRejected: "omlx/typo",
   } as never);
-  assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
+  assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(over-cap model omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
   // A free fallback the breaker demoted (BUGS.md 2026-09-20): the backend is what to fix, and
   // the fleet retries it on its own — both belong on the line.
   const demoted = formatEvent({
@@ -135,7 +135,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(
     demoted,
-    /budget paused — \$10\.50 of \$10\.00 daily cost reached \(fallback omlx\/qwen is not serving — 3 consecutive ticks failed on it; one probe tick retries it after a cool-down\)/,
+    /budget paused — \$10\.50 of \$10\.00 daily cost reached \(over-cap model omlx\/qwen is not serving — 3 runs failed in a row on it; one trial run retries it after a cool-down\)/,
   );
   assert.ok(!demoted.includes("warning"), "a routine state change is not a warning");
 });
@@ -151,7 +151,7 @@ test("formatEvent renders the maxConcurrent change event plainly with from and t
     from: 1,
     to: 4,
   } as never);
-  assert.match(line, /harness\s+maxConcurrent changed: 1 → 4/);
+  assert.match(line, /tumwater\s+maxConcurrent changed: 1 → 4/);
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
@@ -170,7 +170,7 @@ test("formatEvent renders the retention change event plainly with from and to", 
     from: 30,
     to: 1,
   } as never);
-  assert.match(line, /harness\s+sessionRetentionDays changed: 30 → 1/);
+  assert.match(line, /tumwater\s+sessionRetentionDays changed: 30 → 1/);
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
@@ -187,7 +187,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
     type: "config_changed",
     keys: ["provider", "thrashTurns"],
   } as never);
-  assert.match(line, /harness\s+config changed: provider, thrashTurns/);
+  assert.match(line, /tumwater\s+config changed: provider, thrashTurns/);
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no keys; the fallback must still render.
@@ -204,13 +204,13 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   const paused = formatEvent({ ts: 0, loop: "harness", type: "fleet_paused" } as never);
   assert.match(
     paused,
-    /harness\s+fleet paused — role loops stop starting new ticks \(director keeps running\)$/,
+    /tumwater\s+team paused — roles start no new runs \(director keeps running\)$/,
     `the pause must state its scope and the director exemption: ${paused}`,
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
   const resumed = formatEvent({ ts: 0, loop: "harness", type: "fleet_resumed" } as never);
-  assert.match(resumed, /harness\s+fleet resumed — role loops tick again$/, `resume line: ${resumed}`);
+  assert.match(resumed, /tumwater\s+team resumed — roles run again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });
 
@@ -221,13 +221,13 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   const paused = formatEvent({ ts: 0, loop: "harness", type: "role_paused", role: "docs" } as never);
   assert.match(
     paused,
-    /harness\s+role docs paused — it stops starting new ticks \(the rest of the fleet keeps running\)$/,
+    /tumwater\s+role docs paused — it starts no new runs \(the rest of the team keeps running\)$/,
     `the pause must name the role and what keeps running: ${paused}`,
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
   const resumed = formatEvent({ ts: 0, loop: "harness", type: "role_resumed", role: "docs" } as never);
-  assert.match(resumed, /harness\s+role docs resumed — it ticks again$/, `resume line: ${resumed}`);
+  assert.match(resumed, /tumwater\s+role docs resumed — it runs again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 
   // role_streak_paused (src/gates/streak-gate.ts): the breaker's pause IS the harness handling the
@@ -242,7 +242,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   } as never);
   assert.match(
     streakPaused,
-    /harness\s+role docs paused — 10 ticks failed in a row; fix the cause and resume it \(tumwater resume --role <id>\)$/,
+    /tumwater\s+role docs paused — 10 runs failed in a row; fix the cause and resume it \(tumwater resume --role <id>\)$/,
     `breaker pause line: ${streakPaused}`,
   );
   assert.ok(!streakPaused.includes("warning"), `the breaker's pause is routine, not a warning: ${streakPaused}`);
@@ -263,7 +263,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
   } as never);
   assert.match(
     hold,
-    /harness\s+429 hold — bugfix, coverage rate-limited by the provider; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
+    /tumwater\s+waiting: provider limit — bugfix, coverage rate-limited by the provider; roles on every provider start no new runs for 60s \(director keeps running\)$/,
     `the hold must name its roles, duration and scope: ${hold}`,
   );
   assert.ok(!hold.includes("warning"), `the hold is routine, not a warning: ${hold}`);
@@ -279,7 +279,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
   assert.match(relapse, /for 15m \(relapse 4\) \(director keeps running\)$/, `relapse line: ${relapse}`);
 
   const resumed = formatEvent({ ts: 0, loop: "harness", type: "rate_limit_resumed" } as never);
-  assert.match(resumed, /harness\s+429 hold lifted — role loops on every provider tick again$/, `resumed line: ${resumed}`);
+  assert.match(resumed, /tumwater\s+provider limit lifted — roles on every provider run again$/, `resumed line: ${resumed}`);
 });
 
 // The hold's generalization (PLANS.md 2026-09-29): a backend-failure kind renders as a backend
@@ -297,13 +297,13 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     backend,
-    /harness\s+backend hold \(connection error\) — bugfix, clean hit backend failures; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
+    /tumwater\s+waiting: backend failing \(connection error\) — bugfix, clean hit backend failures; roles on every provider start no new runs for 60s \(director keeps running\)$/,
     `backend hold line: ${backend}`,
   );
   const modelLoad = formatEvent({
     ts: 0, loop: "harness", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
   } as never);
-  assert.match(modelLoad, /backend hold \(model load failure\) — dry hit backend failures; role loops on every provider start nothing new for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
+  assert.match(modelLoad, /waiting: backend failing \(model load failure\) — dry hit backend failures; roles on every provider start no new runs for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
   // A timeout storm names its own phrase too — the digest pools plain and progressing tick
   // timeouts under this kind, and a timeout hold must not borrow a connection's wording.
@@ -312,7 +312,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     timeout,
-    /harness\s+backend hold \(request timed out\) — tests hit backend failures; role loops on every provider start nothing new for 60s \(director keeps running\)$/,
+    /tumwater\s+waiting: backend failing \(request timed out\) — tests hit backend failures; roles on every provider start no new runs for 60s \(director keeps running\)$/,
     `timeout hold line: ${timeout}`,
   );
   const timeoutResumed = formatEvent({
@@ -320,7 +320,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     timeoutResumed,
-    /harness\s+backend hold lifted \(request timed out\) — role loops on every provider tick again$/,
+    /tumwater\s+backend recovered \(request timed out\) — roles on every provider run again$/,
     `timeout resumed line: ${timeoutResumed}`,
   );
 
@@ -331,14 +331,14 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   } as never);
   assert.match(
     backendResumed,
-    /harness\s+backend hold lifted \(connection error\) — role loops on every provider tick again$/,
+    /tumwater\s+backend recovered \(connection error\) — roles on every provider run again$/,
     `backend resumed line: ${backendResumed}`,
   );
   // A rate-limit hold's lift (and a torn resumed line with no kind) keeps the historical wording.
   const rlResumed = formatEvent({
     ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "rate-limit",
   } as never);
-  assert.match(rlResumed, /429 hold lifted — role loops on every provider tick again$/, `rate-limit resumed line: ${rlResumed}`);
+  assert.match(rlResumed, /provider limit lifted — roles on every provider run again$/, `rate-limit resumed line: ${rlResumed}`);
 });
 
 test("formatEvent renders main_red_hold as its message with no warning prefix", () => {
@@ -353,9 +353,9 @@ test("formatEvent renders main_red_hold as its message with no warning prefix", 
 // never "NaN", for freeGB, holdGB, and freedGB alike.
 test("formatEvent renders the disk-floor events' GB fields one-decimal and never NaN", () => {
   const low = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: 12.34, holdGB: 5 } as never);
-  assert.match(low, /disk low — 12\.3 GB free on the worktrees volume \(floor 5\.0 GB\)/, `disk low line: ${low}`);
+  assert.match(low, /waiting: low disk — 12\.3 GB free on the workspaces volume \(floor 5\.0 GB\)/, `disk low line: ${low}`);
   const ok = formatEvent({ ts: 0, loop: "harness", type: "disk_ok", freeGB: 12.34 } as never);
-  assert.match(ok, /disk recovered — 12\.3 GB free on the worktrees volume/, `disk ok line: ${ok}`);
+  assert.match(ok, /disk recovered — 12\.3 GB free on the workspaces volume/, `disk ok line: ${ok}`);
   const reclaim = formatEvent({
     ts: 0, loop: "harness", type: "disk_reclaim", mode: "pressure", worktrees: ["a", "b"], freedGB: 1.25, freeGB: 40,
   } as never);
@@ -363,7 +363,7 @@ test("formatEvent renders the disk-floor events' GB fields one-decimal and never
 
   // Corrupt values: each GB field falls back to 0.0 rather than interpolating NaN.
   const torn = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: "x", holdGB: null } as never);
-  assert.match(torn, /disk low — 0\.0 GB free on the worktrees volume \(floor 0\.0 GB\)/, `torn disk low line: ${torn}`);
+  assert.match(torn, /waiting: low disk — 0\.0 GB free on the workspaces volume \(floor 0\.0 GB\)/, `torn disk low line: ${torn}`);
   const tornReclaim = formatEvent({ ts: 0, loop: "harness", type: "disk_reclaim", freedGB: "x", freeGB: null } as never);
   assert.match(tornReclaim, /freed 0\.0 GB from \?; 0\.0 GB free now/, `torn disk reclaim line: ${tornReclaim}`);
 });
@@ -380,7 +380,7 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
   } as never);
   assert.match(
     warning,
-    new RegExp(`harness\\s+claude subscription window five_hour near its limit, resets ${clock} — subscription claude seams keep ticking`),
+    new RegExp(`tumwater\\s+claude subscription window five_hour near its limit, resets ${clock} — subscription claude model jobs keep running`),
     `warning line: ${warning}`,
   );
   const limited = formatEvent({
@@ -388,12 +388,12 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
   } as never);
   assert.match(
     limited,
-    new RegExp(`harness\\s+claude subscription window five_hour rejected — claude seams start nothing new, resets ${clock} \\(director keeps running\\)`),
+    new RegExp(`tumwater\\s+waiting: claude subscription window five_hour rejected — claude model jobs wait, resets ${clock} \\(director keeps running\\)`),
     `limited line: ${limited}`,
   );
   assert.ok(!limited.includes("warning"), "a routine hold is not a warning");
   const reset = formatEvent({ ts: 0, loop: "harness", type: "claude_window_reset" } as never);
-  assert.match(reset, /harness\s+claude subscription window reset — claude seams tick again/, `reset line: ${reset}`);
+  assert.match(reset, /tumwater\s+claude subscription window reset — claude model jobs run again/, `reset line: ${reset}`);
 
   // A torn limited line with no resetsAt drops the clause instead of rendering NaN.
   const torn = formatEvent({ ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour" } as never);

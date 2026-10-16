@@ -1,4 +1,7 @@
+// vocabulary: plain
 import { eventRole, eventTick, eventUsage } from "./event-read.js";
+import { eventTypeLabel } from "./event-labels.js";
+import { roleLabel } from "../roles/role-labels.js";
 import type { HarnessEvent } from "./events.js";
 import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
@@ -107,7 +110,7 @@ export function outcomeText(e: HarnessEvent): string {
  * no-work spelling, the only clause the pre-field builds could log. */
 export function deferredReasonText(e: HarnessEvent): string {
   if (e.reason === "plans-full") return "plan backlog at its target";
-  return e.reason === "backlog" ? "feature/bugfix backlog open" : "no work landed since last tick";
+  return e.reason === "backlog" ? "feature/bugfix backlog open" : "nothing merged since the last run";
 }
 
 /** Human one-liner for an event, shared by `logs`, `run` output, and the TUI activity pane:
@@ -125,7 +128,8 @@ export function formatEvent(e: HarnessEvent): string {
   // sat right of every ASCII row's (the same unit mistake the aligned tables shed). The loop
   // itself goes through eventRole, so a torn or hand-edited event with no loop shows "?" like
   // the usage report and failure digest, never String(undefined)'s literal "undefined".
-  const loop = padToWidth(eventRole(e), 9);
+  const source = eventRole(e);
+  const loop = padToWidth(source === "harness" ? "tumwater" : roleLabel(source), 10); // vocabulary-ok: "harness" is the stored event source
   return `${time} ${loop} ${eventMessage(e)}`;
 }
 
@@ -155,7 +159,7 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
     case "tick_start":
-      return `tick #${eventTick(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
+      return `run #${eventTick(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
     case "tick_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
       // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
@@ -163,23 +167,23 @@ export function eventMessage(e: HarnessEvent): string {
       // "tick #N refused" would force operators to open the transcript for the reason.
       const extra = e.summary ? ` — ${textOr(e.summary)}` : e.error ? ` — ${textOr(e.error)}` : "";
       // Per-tick usage: where the day's spend went.
-      return `tick #${eventTick(e)} ${outcomeText(e)}${extra}${usagePhrase(e)}`;
+      return `run #${eventTick(e)} ${eventTypeLabel(outcomeText(e))}${extra}${usagePhrase(e)}`;
     }
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
     case "land_queued":
       // Merge queue 3/5: routine state change (the tick committed and the landing slot is
       // ahead) — no warning prefix. The landing's own events follow it.
-      return `queued ${shortSha(e.commit)} for landing — ${textOr(e.summary)}`;
-    case "landed":
+      return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
+    case "landed": // vocabulary-ok: event type
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
       // render bare — the same phrase tick_end carries for its run.
-      return `landing of ${shortSha(e.commit)} complete${elapsed(e.durationMs)}${usagePhrase(e)}`;
+      return `merge of ${shortSha(e.commit)} done${elapsed(e.durationMs)}${usagePhrase(e)}`;
     case "land_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
-      return `landing of ${shortSha(e.commit)} did not land (${outcomeText(e)})${elapsed(e.durationMs)}`;
+      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `question posted: ${textOr(e.question)}`;
@@ -193,31 +197,31 @@ export function eventMessage(e: HarnessEvent): string {
       // prefix. One per deferral episode; the tick's own events cover the episode's end.
       return `deferred — ${deferredReasonText(e)}`;
     case "orchestrator_start":
-      return `orchestrator started (pid ${textOr(e.pid)}${e.build ? `, build ${shortSha(e.build)}` : ""})`;
+      return `tumwater started (pid ${textOr(e.pid)}${e.build ? `, version ${shortSha(e.build)}` : ""})`;
     case "orchestrator_stop":
       return ORCHESTRATOR_STOPPED;
     case "prompt_enqueued":
-      return `user prompt queued: ${textOr(e.preview)}`;
+      return `message added to the inbox: ${textOr(e.preview)}`;
     case "prompt_cancelled":
       // Routine operation (the user removed a queued prompt), not a warning.
-      return `user prompt cancelled: ${textOr(e.preview)}`;
+      return `message removed from the inbox: ${textOr(e.preview)}`;
     case "prompt_edited":
       // Routine operation (the user corrected a queued prompt), not a warning.
-      return `user prompt edited: ${textOr(e.preview)}`;
+      return `inbox message edited: ${textOr(e.preview)}`;
     case "prompt_taken":
       // Routine: a tick dequeued the operator's request to run it.
-      return `user prompt taken by tick #${eventTick(e)}: ${textOr(e.preview)}`;
+      return `inbox message taken by run #${eventTick(e)}: ${textOr(e.preview)}`;
     case "counters_reset": {
       // One role → the event is filed under that loop; several → one harness-level event
       // listing them.
       const roles = rolesPhrase(e.roles, "");
       const scope = roles ? ` for ${roles}` : "";
-      return `counters reset${scope} (ticks, commits, tokens, cost)`;
+      return `counters reset${scope} (runs, merges, tokens, cost)`;
     }
     case "tick_aborted":
       // Routine state change (the user stopped one loop's tick), like counters_reset — no
       // warning prefix. The resulting tick_end line carries the user_aborted outcome.
-      return `tick aborted by user`;
+      return `run stopped by you`;
     case "review_start": {
       // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part
       // 3/3). The verb names that, because a bare "reviewing" line reads as a from-scratch run;
@@ -235,7 +239,7 @@ export function eventMessage(e: HarnessEvent): string {
       // into the author's next tick prompt, and this line is the operator's pointer to it.
       const more =
         reasons.length > 1
-          ? ` (+${reasons.length - 1} more — the author's next tick carries every reason)`
+          ? ` (+${reasons.length - 1} more — the author's next run carries every reason)`
           : "";
       return `review rejected ${shortSha(e.head)} — ${firstReason(reasons)}${more}${elapsed(e.durationMs)}`;
     }
@@ -260,17 +264,17 @@ export function eventMessage(e: HarnessEvent): string {
       // FULL configured command otherwise (checkScriptName in build/build-check.ts), so no "npm"
       // prefix is asserted here — the bare name reads correctly for both kinds ("npm test" would
       // misrender a cargo or make-based project's check).
-      return `build check (${textOr(e.scope)}): ${textOr(e.script)} ${outcomeText(e)}${elapsed(e.durationMs)}`;
+      return `check (${textOr(e.scope)}): ${textOr(e.script)} ${eventTypeLabel(outcomeText(e))}${elapsed(e.durationMs)}`;
     case "dep_install": {
       // The root checkout's install catching up with a landed lockfile change — routine on
       // success; a failure also rides its own warning, which says what happens meanwhile.
       const pkgs = stringList(e.packages).join(", ");
-      return `root install (${pkgs}) ${outcomeText(e)}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
+      return `root install (${pkgs}) ${eventTypeLabel(outcomeText(e))}${e.error ? ` — ${textOr(e.error)}` : ""}${elapsed(e.durationMs)}`;
     }
     case "budget_warning":
       // The early page beside budget_paused: the cap is not reached yet, so say so — the
-      // operator still has room to raise it or fix the fallback before the fleet stops.
-      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent; the gate is still open`;
+      // operator still has room to raise it or fix the fallback before the team stops.
+      return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent; runs still start`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
       // the gate refused is named here: it is the whole reason the fleet stopped instead of
@@ -278,9 +282,9 @@ export function eventMessage(e: HarnessEvent): string {
       // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
       // the backend, not the price, is what to fix, and the fleet retries it on its own.
       const refused = e.fallbackRejected
-        ? ` (fallback ${textOr(e.fallbackRejected)} is not a cost n/a model in pi's models.json)`
+        ? ` (over-cap model ${textOr(e.fallbackRejected)} is not a cost n/a model in pi's models.json)`
         : e.fallbackDemoted
-          ? ` (fallback ${textOr(e.fallbackDemoted)} is not serving — ${textOr(e.failures)} consecutive ticks failed on it; one probe tick retries it after a cool-down)`
+          ? ` (over-cap model ${textOr(e.fallbackDemoted)} is not serving — ${textOr(e.failures)} runs failed in a row on it; one trial run retries it after a cool-down)`
           : "";
       return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
     }
@@ -292,8 +296,8 @@ export function eventMessage(e: HarnessEvent): string {
       // strong-tier borrow at a glance; a tier-free event keeps today's single-pair text.
       const tierEntries = fallbackTierEntries(isJsonObject(e.tiers) ? e.tiers : undefined);
       if (tierEntries.length >= 2)
-        return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${tierEntries.join(", ")} (cost n/a)`;
-      return `budget fallback — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; role loops continue on ${textOr(e.provider, "pi's default provider")}/${textOr(e.model, "pi's default model")} (cost n/a)`;
+        return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${tierEntries.join(", ")} (cost n/a)`;
+      return `over-cap model — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached; roles continue on ${textOr(e.provider, "pi's default provider")}/${textOr(e.model, "pi's default model")} (cost n/a)`;
     }
     case "budget_resumed":
       return `budget resumed (${budgetPhrase(e.spentUsd, e.capUsd)} today)`;
@@ -311,25 +315,25 @@ export function eventMessage(e: HarnessEvent): string {
       return fleetResumePhrase();
     case "role_paused":
       // Routine state change, like fleet_paused — no warning prefix.
-      return `${rolePausePhrase(textOr(e.role))} (the rest of the fleet keeps running)`;
+      return `${rolePausePhrase(textOr(e.role))} (the rest of the team keeps running)`;
     case "role_resumed":
       return roleResumePhrase(textOr(e.role));
     case "role_streak_paused":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the pause IS the
       // harness handling the failure. Names the streak depth and the lift command, so the
       // operator knows why the loop stopped and what to do about it.
-      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} ticks failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
+      return `role ${textOr(e.role)} paused — ${textOr(e.streak)} runs failed in a row; fix the cause and resume it (tumwater resume --role <id>)`;
     case "role_cap_warning":
       // The per-role early page beside role_cap_paused: the cap is not reached yet, so say so —
       // the operator still has room to raise it before the loop stops.
-      return `role ${textOr(e.role)} at ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap — it keeps ticking; raise or remove the cap in tumwater.json before it pauses`;
+      return `role ${textOr(e.role)} at ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap — it keeps running; raise or remove the cap in tumwater.json before it pauses`;
     case "role_cap_paused":
       // Routine state change, like budget_paused — no warning prefix: the pause IS the harness
       // holding the role's own spend line. Names the role, its spend vs its cap, and the two
       // lift paths, so the operator knows why the loop stopped and what to do about it.
-      return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new ticks until the cap is raised or removed in tumwater.json or the local day rolls over`;
+      return `role ${textOr(e.role)} paused — ${budgetPhrase(e.spentUsd, e.capUsd)} of its daily cap spent; it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over`;
     case "role_cap_resumed":
-      return `role ${textOr(e.role)} resumed — it is under its daily cap again and ticks again`;
+      return `role ${textOr(e.role)} resumed — it is under its daily cap again and runs again`;
     case "main_red_hold":
       // The message already names the SHA, script, and consequence; the problem tone comes
       // from PROBLEM_EVENTS.
@@ -338,20 +342,20 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like role_cap_paused — no warning prefix: the hold IS the harness
       // keeping maintenance landings in proportion to work. Names the window's counts so the
       // operator can see why the hygiene loops stopped and what would re-open them.
-      return `maintenance quota reached — ${textOr(e.maint)} maintenance landings against an allowance of ${textOr(e.allowance)} in the last 24h (${textOr(e.work)} work); the maintenance loops are held until the window rolls over`;
+      return `waiting: maintenance allowance used — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h (${textOr(e.work)} work); the maintenance roles wait until the window rolls over`;
     case "maintenance_quota_resumed":
-      return `maintenance quota re-opened — ${textOr(e.maint)} maintenance landings against an allowance of ${textOr(e.allowance)} in the last 24h; the maintenance loops tick again`;
+      return `maintenance allowance reopened — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h; the maintenance roles run again`;
     case "bootstrap_complete":
       // Routine state change, like counters_reset — no warning prefix: the fleet just finished
       // its bootstrap and the maintenance loops are admitted.
-      return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance loops now tick`;
+      return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
     case "disk_low":
       // Routine state change, like fleet_paused — no warning prefix: the hold IS the harness
       // handling the low disk, and naming the free space and the floor tells the operator
       // whether to clear space or lower diskHoldGB in tumwater.json.
-      return `disk low — ${gigabytes(e.freeGB)} free on the worktrees volume (floor ${gigabytes(e.holdGB)}); new work is held until space recovers`;
+      return `waiting: low disk — ${gigabytes(e.freeGB)} free on the workspaces volume (floor ${gigabytes(e.holdGB)}); new work waits until space recovers`;
     case "disk_ok":
-      return `disk recovered — ${gigabytes(e.freeGB)} free on the worktrees volume; new work starts again`;
+      return `disk recovered — ${gigabytes(e.freeGB)} free on the workspaces volume; new work starts again`;
     case "disk_reclaim": {
       // Routine maintenance, no warning prefix: the pass freed space so the hold need not
       // engage. Naming the mode, the worktrees, and the delta tells the operator what and why.
@@ -366,28 +370,28 @@ export function eventMessage(e: HarnessEvent): string {
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = rolesPhrase(e.roles, "several roles");
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold (${backendKindPhrase(e.kind)})${providerAt(e)} — ${roles} hit backend failures; role loops on ${providerScope(e)} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
-      return `429 hold${providerAt(e)} — ${roles} rate-limited by the provider; role loops on ${providerScope(e)} start nothing new ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+        return `waiting: backend failing (${backendKindPhrase(e.kind)})${providerAt(e)} — ${roles} hit backend failures; roles on ${providerScope(e)} start no new runs ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
+      return `waiting: provider limit${providerAt(e)} — ${roles} rate-limited by the provider; roles on ${providerScope(e)} start no new runs ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
     case "rate_limit_resumed": {
       // The ended hold's kind rides the resumed event (pollFleetHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
       if (e.kind && e.kind !== "rate-limit")
-        return `backend hold lifted (${backendKindPhrase(e.kind)})${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
-      return `429 hold lifted${providerAt(e)} — role loops on ${providerScope(e)} tick again`;
+        return `backend recovered (${backendKindPhrase(e.kind)})${providerAt(e)} — roles on ${providerScope(e)} run again`;
+      return `provider limit lifted${providerAt(e)} — roles on ${providerScope(e)} run again`;
     }
     case "claude_window_warning":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
       // telling us the window is filling, not failing. It names the window and when it resets.
-      return `claude subscription window ${textOr(e.windowType)} near its limit${windowResetPhrase(e)} — subscription claude seams keep ticking`;
+      return `claude subscription window ${textOr(e.windowType)} near its limit${windowResetPhrase(e)} — subscription claude model jobs keep running`;
     case "claude_window_limited":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
       // harness handling the account's own throttle. Names the window, the reset, and which
       // seams stop, so the operator knows why claude held and what keeps running.
-      return `claude subscription window ${textOr(e.windowType)} rejected — claude seams start nothing new${windowResetPhrase(e)} (director keeps running)`;
+      return `waiting: claude subscription window ${textOr(e.windowType)} rejected — claude model jobs wait${windowResetPhrase(e)} (director keeps running)`;
     case "claude_window_reset":
-      return `claude subscription window reset — claude seams tick again`;
+      return `claude subscription window reset — claude model jobs run again`;
     case "max_concurrent_changed": {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
@@ -425,7 +429,7 @@ export function eventMessage(e: HarnessEvent): string {
         e.action === "logged"
           ? " (gate run logged)"
           : e.action === "fail"
-            ? " — tick failed"
+            ? " — run failed"
             : "";
       return `blind image read: ${textOr(e.path)} on ${textOr(e.model, "the model")}${action}`;
     }
@@ -434,52 +438,52 @@ export function eventMessage(e: HarnessEvent): string {
       // 4/5). Routine-with-explanation — no warning prefix: names the hop the way the
       // handoff reads, and whether the traits-of-attachment preflight avoided a failed tick.
       return e.preflight === true
-        ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed tick`
-        : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next tick runs there after a blind read on ${textOr(e.from, "the prior model")}`;
+        ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed run`
+        : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next run goes there after a blind read on ${textOr(e.from, "the prior model")}`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
       // it.
-      return `build ${shortSha(e.build)} is stale — main ${shortSha(e.head)} is ${plural(finiteNumber(e.aheadCommits, 0), "commit")} ahead in src/`;
+      return `update available (${plural(finiteNumber(e.aheadCommits, 0), "commit")} behind) — restarts when idle`;
     case "restart_pending":
-      return `restart pending — main ${shortSha(e.head)} is green; compiling and draining in-flight ticks (no new ticks start)`;
+      return `restart pending — main ${shortSha(e.head)} is green; finishing current runs (no new runs start)`;
     case "restart": {
       const aborted = finiteNumber(e.abortedTicks, 0);
-      return `restarting onto build ${shortSha(e.to)} (drained ${minutes(e.drainedMs)}m${
-          aborted > 0 ? `, ${aborted} tick(s) will resume on the new build` : ""
+      return `restarting onto update ${shortSha(e.to)} (finished current work in ${minutes(e.drainedMs)}m${
+          aborted > 0 ? `, ${aborted} run(s) resume after the restart` : ""
         })`;
     }
     case "restart_refused":
       // The restart is refused, not failed: the running build stays and the gate is re-asked
       // every poll, so the line names both builds and what the operator must repair.
-      return `restart onto build ${shortSha(e.to)} refused — the new build could not start here: ${textOr(e.reason)}; staying on build ${shortSha(e.from)} until it can`;
+      return `restart onto update ${shortSha(e.to)} refused — the new version could not start here: ${textOr(e.reason)}; staying on version ${shortSha(e.from)} until it can`;
     case "restart_blocked":
       // The restart is blocked, not refused: a verdict latched this head, so the line names
       // what failed and that only main moving can end it.
-      return `restart blocked for main ${shortSha(e.to)} — ${textOr(e.reason)}; staying on build ${shortSha(e.from)} until main moves`;
+      return `restart blocked for main ${shortSha(e.to)} — ${textOr(e.reason)}; staying on version ${shortSha(e.from)} until main moves`;
     case "supervisor_exit": {
       // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
       const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
-      return `fleet down — generation ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; the supervisor exited (restart with \`tumwater start\`)`;
+      return `tumwater is down — restart ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; start it again with \`tumwater start\``;
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator
       // reading the feed can tell a restart from a loop fighting the context ceiling, and a
       // cross-agent handoff from either — the handoff keeps the worktree but starts fresh.
       return e.cause === "cut-off"
-        ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
+        ? "resuming the run cut off at the context ceiling (compacted pi session, same workspace)"
         : e.cause === "handoff"
-          ? "handing the interrupted tick off to a fresh session on another agent (same worktree, uncommitted edits kept)"
+          ? "handing the interrupted run off to a fresh session on another agent (same workspace, uncommitted edits kept)"
           : e.cause === "image-reroute"
-            ? "handing the blind-read tick off to a fresh session on an image-capable model (same worktree, uncommitted edits kept)"
-            : "resuming the tick a shutdown interrupted (same pi session and worktree)";
+            ? "handing the blind-read run off to a fresh session on an image-capable model (same workspace, uncommitted edits kept)"
+            : "resuming the run a shutdown interrupted (same agent session and workspace)";
     case "slot_wait": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
       // working as designed. Names the wait, the pool it waited on, and how many slots are
       // pinned, so the operator can raise worktreeSlots with the numbers in hand.
-      const purpose = e.purpose === "vet" ? "vet" : "tick";
-      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} for a free worktree slot (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} slots, ${textOr(e.pinned)} pinned)`;
+      const purpose = e.purpose === "vet" ? "check" : "run";
+      return `waited ${shortSpanPhrase(finiteNumber(e.waitedMs, 0))} to start (${textOr(e.role)} ${purpose}; ${textOr(e.slots)} workspaces, ${textOr(e.pinned)} pinned)`;
     }
     case "claim":
       // Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7):
@@ -491,7 +495,7 @@ export function eventMessage(e: HarnessEvent): string {
       // Priority headroom (part 7/7): a reserve appearing or vanishing is the scheduler working
       // as designed; it names the permits withheld for the work tier so an operator can see why
       // maintenance concurrency dipped.
-      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work loops that have work to take`;
+      return `${finiteNumber(e.reserve, 0)} permit(s) reserved for work roles that have work to take`;
     case "warning":
       return `warning: ${textOr(e.message)}`;
     default:

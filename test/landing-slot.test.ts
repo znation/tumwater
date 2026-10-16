@@ -260,7 +260,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   const crossed = warnings();
   assert.equal(crossed.length, 1, "the landing-side crossing warns exactly once");
   assert.equal(crossed[0]!.loop, "improve");
-  assert.match(crossed[0]!.message as string, /^3 consecutive tick failures: /);
+  assert.match(crossed[0]!.message as string, /^3 runs failed in a row: /);
 
   // The other half of the invariant: a rejection landing onto a streak the episode already
   // warned at (preserved across the queued tick at the bar) must not warn again.

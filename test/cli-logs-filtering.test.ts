@@ -26,14 +26,14 @@ test("logs --since prints only the events of the window, oldest-first", async ()
 
   const r = await cli(repo, "logs", "--since", "1h");
   assert.equal(r.code, 0);
-  // tick #3 (45m) and #4 (10m) sit inside the 1h window, oldest-first; #1 (2d) is outside on
+  // run #3 (45m) and #4 (10m) sit inside the 1h window, oldest-first; #1 (2d) is outside on
   // both the day key and ts, #2 (90m) only on ts — the day-keyed read over-reads the cutoff's
   // own day, and the ts filter must remove it.
-  const three = r.stdout.indexOf("tick #3 started");
-  const four = r.stdout.indexOf("tick #4 started");
+  const three = r.stdout.indexOf("run #3 started");
+  const four = r.stdout.indexOf("run #4 started");
   assert.ok(three > -1 && four > three, r.stdout);
-  assert.ok(!r.stdout.includes("tick #1 started"), r.stdout);
-  assert.ok(!r.stdout.includes("tick #2 started"), r.stdout);
+  assert.ok(!r.stdout.includes("run #1 started"), r.stdout);
+  assert.ok(!r.stdout.includes("run #2 started"), r.stdout);
   // The 2-day-old line proves the retained log reaches back before the window's first day,
   // so the window is known complete: no rotation note.
   assert.ok(!r.stdout.includes("note:"), r.stdout);
@@ -50,7 +50,7 @@ test("logs --since proves same-day coverage by timestamp, not day key", async ()
 
   const r = await cli(repo, "logs", "--since", "1h");
   assert.equal(r.code, 0);
-  assert.ok(r.stdout.includes("tick #2 started") && r.stdout.includes("tick #3 started"), r.stdout);
+  assert.ok(r.stdout.includes("run #2 started") && r.stdout.includes("run #3 started"), r.stdout);
   assert.ok(!r.stdout.includes("note:"), `no note when the log provably covers the window:\n${r.stdout}`);
 });
 
@@ -130,7 +130,7 @@ test("logs --since notes only an unproven window that has rows", async () => {
   seedEvents(repo, [10 * 60_000]);
   const r = await cli(repo, "logs", "--since", "2h");
   assert.equal(r.code, 0);
-  const rows = r.stdout.indexOf("tick #1 started");
+  const rows = r.stdout.indexOf("run #1 started");
   const note = r.stdout.indexOf("note: the log's oldest retained event lies inside this window");
   assert.ok(rows > -1 && note > rows, r.stdout);
 });
@@ -173,15 +173,13 @@ test("logs --grep matches the event type id even where the rendering paraphrases
 
   const r = await cli(repo, "logs", "--grep", "review_rejected");
   assert.equal(r.code, 0);
-  // The type id prefix matches both review events: the review_rejected whose rendered line
-  // says "review rejected", and the land_failed whose result names the type. Everything else
-  // (the tick lines, the other land_failed) is filtered out.
+  // The type id matches the review_rejected event; the land_failed whose result names the code
+  // renders the result's label ("review rejected"), so the raw code no longer matches its line.
+  // Everything else (the run lines, the other land_failed) is filtered out.
   assert.ok(r.stdout.includes("review rejected abc1234"), r.stdout);
-  assert.ok(r.stdout.includes("did not land (review_rejected)"), r.stdout);
-  assert.ok(!r.stdout.includes("tick #"), r.stdout);
-  assert.ok(!r.stdout.includes("build_check"), r.stdout);
-  // Oldest-first, in the normal line format.
-  assert.ok(r.stdout.indexOf("did not land") < r.stdout.indexOf("review rejected"), r.stdout);
+  assert.ok(!r.stdout.includes("failed (review rejected)"), r.stdout);
+  assert.ok(!r.stdout.includes("run #"), r.stdout);
+  assert.ok(!r.stdout.includes("check ran"), r.stdout);
 });
 
 test("logs --grep matches the rendered line, case-insensitively", async () => {
@@ -189,17 +187,17 @@ test("logs --grep matches the rendered line, case-insensitively", async () => {
   await initProject(repo, "cli logs grep text");
   seedMixedLog(repo);
 
-  let r = await cli(repo, "logs", "--grep", "did not land");
+  let r = await cli(repo, "logs", "--grep", "failed (");
   assert.equal(r.code, 0);
-  assert.ok(r.stdout.includes("did not land (build_check)"), r.stdout);
-  assert.ok(r.stdout.includes("did not land (review_rejected)"), r.stdout);
+  assert.ok(r.stdout.includes("failed (check ran)"), r.stdout);
+  assert.ok(r.stdout.includes("failed (review rejected)"), r.stdout);
   assert.ok(!r.stdout.includes("review rejected abc1234"), r.stdout);
 
   // Case-insensitive over both the type id and the rendered line.
   r = await cli(repo, "logs", "--grep", "REVIEW_REJECTED");
   assert.ok(r.stdout.includes("review rejected abc1234"), r.stdout);
-  r = await cli(repo, "logs", "--grep", "Did Not Land");
-  assert.ok(r.stdout.includes("did not land (build_check)"), r.stdout);
+  r = await cli(repo, "logs", "--grep", "FAILED (");
+  assert.ok(r.stdout.includes("failed (check ran)"), r.stdout);
 });
 
 test("logs --grep: -n bounds the scanned window, not the printed rows", async () => {
@@ -286,17 +284,17 @@ test("logs --grep -f applies the filter to the seeded window and every followed 
 
   const s = spawnCli(repo, ["logs", "--grep", "land_failed", "-f"]);
   try {
-    await s.waitFor((out) => out.includes("did not land (build_check)"), "the seeded match");
+    await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
     // A new event appended while following: the matching one appears, the non-matching one
     // does not (the filter holds across rotation, on every event the callback sees).
     const file = eventsLogPath(repo);
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "tick_start", tick: 7 }) + "\n");
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
-    await s.waitFor((out) => out.includes("did not land (conflict)"), "the live match");
+    await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();
-    assert.ok(!out.includes("tick #7"), `followed events must be filtered too:\n${out}`);
+    assert.ok(!out.includes("run #7"), `followed events must be filtered too:\n${out}`);
     assert.ok(!out.includes("review rejected abc1234"), `the seeded window must be filtered too:\n${out}`);
   } finally {
     s.kill();
@@ -331,7 +329,7 @@ test("logs --grep --json filters before serialization", async () => {
   }
   // Rendered prose never leaks into the JSON stream — the paraphrase "review rejected" is
   // exactly what a text-scraping script would have to match, and must not appear here.
-  assert.ok(!r.stdout.includes("did not land"), r.stdout);
+  assert.ok(!r.stdout.includes("failed ("), r.stdout);
 });
 
 test("logs --json --grep with no matches prints nothing", async () => {
@@ -357,7 +355,7 @@ test("logs --since --json prints the window as oldest-first NDJSON", async () =>
   assert.deepEqual(lines.map((l) => JSON.parse(l).tick), [3, 4], r.stdout);
   // No rotation-note prose, and no rendered lines, in the JSON stream.
   assert.ok(!r.stdout.includes("note:"), r.stdout);
-  assert.ok(!r.stdout.includes("tick #"), r.stdout);
+  assert.ok(!r.stdout.includes("run #"), r.stdout);
 });
 
 test("logs --since --json over an empty window prints nothing", async () => {
@@ -410,8 +408,8 @@ test("logs --type prints only events of exactly that type, where --grep substrin
 
   const r = await cli(repo, "logs", "--type", "land_failed", "-n", "200");
   assert.equal(r.code, 0);
-  assert.ok(r.stdout.includes("did not land (review_rejected)"), r.stdout);
-  assert.ok(!r.stdout.includes("tick #"), r.stdout);
+  assert.ok(r.stdout.includes("failed (review rejected)"), r.stdout);
+  assert.ok(!r.stdout.includes("run #"), r.stdout);
   assert.ok(!r.stdout.includes("woke (land_failed)"), `--type is an exact id, not a substring:\n${r.stdout}`);
 
   // The same log under --grep DOES match the quoted reason text (where --type refused it).
@@ -435,7 +433,7 @@ test("logs --since --type filters the window, and an empty match is gentle prose
   let r = await cli(repo, "logs", "--since", "1h", "--type", "review_rejected");
   assert.equal(r.code, 0);
   assert.ok(r.stdout.includes("review rejected"), r.stdout);
-  assert.ok(!r.stdout.includes("did not land"), r.stdout);
+  assert.ok(!r.stdout.includes("failed ("), r.stdout);
 
   // An all-filtered window answers with the type's own no-match line (prose only).
   r = await cli(repo, "logs", "--since", "1h", "--type", "nosuchthing");
@@ -453,13 +451,13 @@ test("logs --type -n composes with --grep (type AND text) and with --json", asyn
   await initProject(repo, "cli logs type compose");
   seedMixedLog(repo); // two land_failed (review_rejected / build_check), a review_rejected, ticks.
 
-  // Both rules hold: land_failed events whose text ALSO mentions review_rejected (only the
+  // Both rules hold: land_failed events whose text ALSO mentions "review rejected" (only the
   // one with result review_rejected, not the build_check one, and not the review_rejected
   // event itself).
-  const g = await cli(repo, "logs", "--type", "land_failed", "--grep", "review_rejected", "-n", "200");
+  const g = await cli(repo, "logs", "--type", "land_failed", "--grep", "review rejected", "-n", "200");
   assert.equal(g.code, 0);
-  assert.ok(g.stdout.includes("did not land (review_rejected)"), g.stdout);
-  assert.ok(!g.stdout.includes("did not land (build_check)"), g.stdout);
+  assert.ok(g.stdout.includes("failed (review rejected)"), g.stdout);
+  assert.ok(!g.stdout.includes("failed (check ran)"), g.stdout);
   assert.ok(!g.stdout.includes("review rejected abc1234"), g.stdout);
 
   // --json filters before serialization: every emitted line is a land_failed event.
@@ -509,15 +507,15 @@ test("logs --type -f holds the filter across the seeded window and rotation", as
 
   const s = spawnCli(repo, ["logs", "--type", "land_failed", "-f"]);
   try {
-    await s.waitFor((out) => out.includes("did not land (build_check)"), "the seeded match");
+    await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
     const file = eventsLogPath(repo);
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "tick_start", tick: 7 }) + "\n");
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
-    await s.waitFor((out) => out.includes("did not land (conflict)"), "the live match");
+    await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();
-    assert.ok(!out.includes("tick #7"), `followed events must be filtered too:\n${out}`);
+    assert.ok(!out.includes("run #7"), `followed events must be filtered too:\n${out}`);
     assert.ok(!out.includes("review rejected abc1234"), `the seeded window must be filtered too:\n${out}`);
   } finally {
     s.kill();
@@ -542,10 +540,10 @@ test("logs --count prints one N × <type> line per present type, most-frequent-f
   const r = await cli(repo, "logs", "--count");
   assert.equal(r.code, 0);
   // seedMixedLog: land_failed x2, tick_start x2, review_rejected x1, tick_end x1.
-  assert.match(r.stdout, /2 × land_failed/);
-  assert.match(r.stdout, /2 × tick_start/);
-  assert.match(r.stdout, /1 × review_rejected/);
-  assert.match(r.stdout, /1 × tick_end/);
+  assert.match(r.stdout, /2 × merge failed \(land_failed\)/);
+  assert.match(r.stdout, /2 × run started \(tick_start\)/);
+  assert.match(r.stdout, /1 × review rejected \(review_rejected\)/);
+  assert.match(r.stdout, /1 × run finished \(tick_end\)/);
 });
 
 test("logs --count composes with --type, --grep, --since, and -n", async () => {
@@ -555,21 +553,21 @@ test("logs --count composes with --type, --grep, --since, and -n", async () => {
 
   const typed = await cli(repo, "logs", "--count", "--type", "tick_end");
   assert.equal(typed.code, 0);
-  assert.match(typed.stdout, /1 × tick_end/);
+  assert.match(typed.stdout, /1 × run finished \(tick_end\)/);
   assert.ok(!typed.stdout.includes("land_failed"), "a --type subset counts only that type");
 
   const grepped = await cli(repo, "logs", "--count", "--grep", "land_failed");
   assert.equal(grepped.code, 0);
-  assert.match(grepped.stdout, /2 × land_failed/);
+  assert.match(grepped.stdout, /2 × merge failed \(land_failed\)/);
 
   const windowed = await cli(repo, "logs", "--count", "--since", "30m");
   assert.equal(windowed.code, 0);
-  assert.match(windowed.stdout, /2 × land_failed/);
+  assert.match(windowed.stdout, /2 × merge failed \(land_failed\)/);
 
   const tailed = await cli(repo, "logs", "--count", "-n", "2");
   assert.equal(tailed.code, 0);
-  assert.match(tailed.stdout, /1 × land_failed/);
-  assert.match(tailed.stdout, /1 × tick_end/);
+  assert.match(tailed.stdout, /1 × merge failed \(land_failed\)/);
+  assert.match(tailed.stdout, /1 × run finished \(tick_end\)/);
 });
 
 test("logs --count --json emits a sorted type→count object", async () => {

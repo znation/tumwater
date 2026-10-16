@@ -172,7 +172,7 @@ test("pause and resume are idempotent with no harness running", async () => {
   // Resume removes the marker and confirms; a second resume reports not paused.
   r = await cli(repo, "resume");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /fleet resumed/);
+  assert.match(r.stdout, /team resumed/);
   assert.match(r.stdout, /no harness is running/);
   assert.ok(!fs.existsSync(marker), "the marker is removed");
 
@@ -248,7 +248,7 @@ test("pause --for writes a timed marker and resume lifts it early", async () => 
 
   // Resume still lifts a timed pause early, unchanged.
   const resume = await cli(repo, "resume");
-  assert.match(resume.stdout, /fleet resumed/);
+  assert.match(resume.stdout, /team resumed/);
   assert.equal(fs.existsSync(pausedPath(repo)), false);
 });
 
@@ -267,7 +267,7 @@ test("pause and resume name the live effect when a harness is running", async ()
 
   const r = await cli(repo, "resume");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /fleet resumed/);
+  assert.match(r.stdout, /team resumed/);
   assert.match(r.stdout, /within ~2s/);
   assert.doesNotMatch(r.stdout, /no harness is running/);
 

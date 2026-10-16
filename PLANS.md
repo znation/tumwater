@@ -21,56 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 1/19: Event messages and the Activity tally speak the glossary (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/events/event-format.ts + src/text/phrases.ts + sayTally in src/cli/log-commands.ts + tallyChips in src/ui/gui/gui-client-fleet.ts + tests)
-
-**Goal.** Every event line that `tumwater logs`, the TUI Activity pane, the dashboard feed and the notify hook show reads in plain terms ("feature #2 run #12 merged", "team paused — roles start no new runs", "waiting: low disk"). The per-type tally (`tumwater logs --count` and the dashboard's Activity chips) shows display labels instead of raw codes like `3 × tick_end`.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel` (the groundwork helpers).
-  - Strings that name a renamed command or config key use its new name ("Commands and config").
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `eventMessage` (src/events/event-format.ts): rewrite every case. Examples of the target wording:
-  - Runs: `tick_start` → `run #N started on <model>`. `tick_end` → `run #N <eventTypeLabel(result)> — <summary>`, so `no_change` reads "no change", `changed` reads "merged" and `queued` reads "waiting to merge". `tick_aborted` → "run stopped by you".
-  - Merges: `land_queued` → "waiting to merge <sha> — <summary>". `landed` → "merge of <sha> done". `land_failed` → "merge of <sha> failed (<label>)".
-  - Pauses: `fleet_paused`, `fleet_resumed` and `role_paused` say "team", "roles" and "runs". `role_streak_paused` → "… N runs failed in a row …".
-  - Waits: `disk_low`, `maintenance_quota_hold`, `bootstrap_complete`, `rate_limit_hold` and `claude_window_*` use the Wording rules' "waiting" forms ("waiting: low disk — …", "the maintenance roles wait until the window rolls over"). "claude seams" becomes "claude model jobs".
-  - Budget: `budget_fallback` and the fallback clause of `budget_paused` say "over-cap model".
-  - Updates and restarts:
-    - `build_stale` → "update available (N commits behind) — restarts when idle".
-    - `restart_pending` → "… finishing current runs (no new runs start)".
-    - `restart` → "restarting onto update <sha> (finished current work in Nm; N run(s) resume after the restart)".
-    - `restart_refused` and `restart_blocked` → "staying on version <sha>".
-    - `supervisor_exit` → "tumwater is down — restart N …; start it again with `tumwater start`".
-    - `orchestrator_start` → "tumwater started (pid N, version <sha>)", and `ORCHESTRATOR_STOPPED` → "tumwater stopped".
-  - Waiting to start: `slot_wait` → "waited 3m to start (<role> run; 5 workspaces, 2 pinned)", with purpose `vet` read as "check". `permit_reserve` → "… reserved for work roles that have work to take".
-  - Inbox: `prompt_enqueued`, `prompt_cancelled`, `prompt_edited` and `prompt_taken` → "message added to the inbox: …", "… taken by run #N: …".
-  - `resume` causes say "run" and "agent". Only the cut-off cause, which only pi produces, keeps "pi session".
-- `deferredReasonText`: "no work landed since last tick" → "nothing merged since the last run".
-- `formatEvent`: print the source column as `roleLabel(eventRole(e))`, and as "tumwater" for the `"harness"` source (the event log series renames the stored value later). Widen the padded column from 9 to 10 so `feature #2` fits. `eventFeedItem` keeps shipping the raw id, because it is a JSON value.
-- src/text/phrases.ts: reword the text of `PREFILL_REASON`, `consecutiveFailuresWarning`, `fleetPausePhrase`, `fleetResumePhrase`, `rolePausePhrase`, `roleResumePhrase` and `ORCHESTRATOR_STOPPED` ("team paused — roles start no new runs", "team resumed — roles run again", "… it starts no new runs"). Function names stay for the code series.
-- `sayTally` (src/cli/log-commands.ts): each prose line becomes `N × <label> (<type>)`, so the code a user passes to `logs --type` stays visible. `--count --json` keeps the raw types. Change nothing else in log-commands.ts and add no header to it; part 6/19 converts the rest.
-- `tallyChips` (src/ui/gui/gui-client-fleet.ts): chip text becomes `N × <label>` from the browser twin of `eventTypeLabel`, with the raw type as the chip's `title`. Only this function changes there; part 10/19 converts the rest of the file and adds its header.
-- Event-type `case` labels (`case "tick_end":` …) stay. If the guard flags one, end its line with `// vocabulary-ok: event type`.
-- The notify hook's `TUMWATER_EVENT_MESSAGE` is `formatEvent`'s line, so it changes with this part. src/events/notify.ts holds only machine strings (the event log series owns them) and is not converted here.
-
-**Files touched.**
-- src: src/events/event-format.ts, src/text/phrases.ts, src/cli/log-commands.ts (`sayTally` only), src/ui/gui/gui-client-fleet.ts (`tallyChips` only).
-- Tests:
-  - test/event-format.test.ts, test/event-format-fleet.test.ts, test/phrases.test.ts, test/log-commands.test.ts, test/log-commands-views.test.ts.
-  - test/cli-logs-filtering.test.ts, for its `--grep` patterns that match message text.
-  - The tally cases in test/gui-client-fleet.test.ts.
-  - Any e2e or TUI suite that asserts a rendered event line. Find them by grepping for `tick #`, `for landing`, `role loops` and `fleet paused`.
-- Reads (does not edit): src/events/notify.ts.
-
-**Acceptance criteria.**
-- `formatEvent` of a `tick_end` from `feature-2` with result `no_change` reads `<time> feature #2  run #N no change …`, and a `"harness"` event's source column reads `tumwater`.
-- event-format.ts and phrases.ts carry the header, and the vocabulary guard passes. No `eventMessage` output asserted in test/event-format*.test.ts contains a retired word.
-- `tumwater logs --count` prints lines like `3 × run finished (tick_end)`, and `--count --json` is unchanged. The dashboard tally chips show labels, with the raw type as their title.
-- `npm run test` passes.
-
 ### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
 
 **Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
@@ -3659,6 +3609,56 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `tumwater doctor` lists `claimed bugs`, `plans stuck in Planned`, `macOS port leak`, `models for each tier`, `parallel instances`, `workspaces`, `merge lock` and `stale merge-queue entries`. Its routing block starts `routing: job · model · backend`.
 - The header reads `tumwater doctor — running (pid …)` or `tumwater doctor — not running`.
 - No check name or detail asserted in test/doctor*.test.ts contains a retired word, and the guard passes on the headed doctor modules.
+- `npm run test` passes.
+
+### Plain terms text, part 1/19: Event messages and the Activity tally speak the glossary (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/events/event-format.ts + src/text/phrases.ts + sayTally in src/cli/log-commands.ts + tallyChips in src/ui/gui/gui-client-fleet.ts + tests; done 2026-10-16)
+
+**Goal.** Every event line that `tumwater logs`, the TUI Activity pane, the dashboard feed and the notify hook show reads in plain terms ("feature #2 run #12 merged", "team paused — roles start no new runs", "waiting: low disk"). The per-type tally (`tumwater logs --count` and the dashboard's Activity chips) shows display labels instead of raw codes like `3 × tick_end`.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel` (the groundwork helpers).
+  - Strings that name a renamed command or config key use its new name ("Commands and config").
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `eventMessage` (src/events/event-format.ts): rewrite every case. Examples of the target wording:
+  - Runs: `tick_start` → `run #N started on <model>`. `tick_end` → `run #N <eventTypeLabel(result)> — <summary>`, so `no_change` reads "no change", `changed` reads "merged" and `queued` reads "waiting to merge". `tick_aborted` → "run stopped by you".
+  - Merges: `land_queued` → "waiting to merge <sha> — <summary>". `landed` → "merge of <sha> done". `land_failed` → "merge of <sha> failed (<label>)".
+  - Pauses: `fleet_paused`, `fleet_resumed` and `role_paused` say "team", "roles" and "runs". `role_streak_paused` → "… N runs failed in a row …".
+  - Waits: `disk_low`, `maintenance_quota_hold`, `bootstrap_complete`, `rate_limit_hold` and `claude_window_*` use the Wording rules' "waiting" forms ("waiting: low disk — …", "the maintenance roles wait until the window rolls over"). "claude seams" becomes "claude model jobs".
+  - Budget: `budget_fallback` and the fallback clause of `budget_paused` say "over-cap model".
+  - Updates and restarts:
+    - `build_stale` → "update available (N commits behind) — restarts when idle".
+    - `restart_pending` → "… finishing current runs (no new runs start)".
+    - `restart` → "restarting onto update <sha> (finished current work in Nm; N run(s) resume after the restart)".
+    - `restart_refused` and `restart_blocked` → "staying on version <sha>".
+    - `supervisor_exit` → "tumwater is down — restart N …; start it again with `tumwater start`".
+    - `orchestrator_start` → "tumwater started (pid N, version <sha>)", and `ORCHESTRATOR_STOPPED` → "tumwater stopped".
+  - Waiting to start: `slot_wait` → "waited 3m to start (<role> run; 5 workspaces, 2 pinned)", with purpose `vet` read as "check". `permit_reserve` → "… reserved for work roles that have work to take".
+  - Inbox: `prompt_enqueued`, `prompt_cancelled`, `prompt_edited` and `prompt_taken` → "message added to the inbox: …", "… taken by run #N: …".
+  - `resume` causes say "run" and "agent". Only the cut-off cause, which only pi produces, keeps "pi session".
+- `deferredReasonText`: "no work landed since last tick" → "nothing merged since the last run".
+- `formatEvent`: print the source column as `roleLabel(eventRole(e))`, and as "tumwater" for the `"harness"` source (the event log series renames the stored value later). Widen the padded column from 9 to 10 so `feature #2` fits. `eventFeedItem` keeps shipping the raw id, because it is a JSON value.
+- src/text/phrases.ts: reword the text of `PREFILL_REASON`, `consecutiveFailuresWarning`, `fleetPausePhrase`, `fleetResumePhrase`, `rolePausePhrase`, `roleResumePhrase` and `ORCHESTRATOR_STOPPED` ("team paused — roles start no new runs", "team resumed — roles run again", "… it starts no new runs"). Function names stay for the code series.
+- `sayTally` (src/cli/log-commands.ts): each prose line becomes `N × <label> (<type>)`, so the code a user passes to `logs --type` stays visible. `--count --json` keeps the raw types. Change nothing else in log-commands.ts and add no header to it; part 6/19 converts the rest.
+- `tallyChips` (src/ui/gui/gui-client-fleet.ts): chip text becomes `N × <label>` from the browser twin of `eventTypeLabel`, with the raw type as the chip's `title`. Only this function changes there; part 10/19 converts the rest of the file and adds its header.
+- Event-type `case` labels (`case "tick_end":` …) stay. If the guard flags one, end its line with `// vocabulary-ok: event type`.
+- The notify hook's `TUMWATER_EVENT_MESSAGE` is `formatEvent`'s line, so it changes with this part. src/events/notify.ts holds only machine strings (the event log series owns them) and is not converted here.
+
+**Files touched.**
+- src: src/events/event-format.ts, src/text/phrases.ts, src/cli/log-commands.ts (`sayTally` only), src/ui/gui/gui-client-fleet.ts (`tallyChips` only).
+- Tests:
+  - test/event-format.test.ts, test/event-format-fleet.test.ts, test/phrases.test.ts, test/log-commands.test.ts, test/log-commands-views.test.ts.
+  - test/cli-logs-filtering.test.ts, for its `--grep` patterns that match message text.
+  - The tally cases in test/gui-client-fleet.test.ts.
+  - Any e2e or TUI suite that asserts a rendered event line. Find them by grepping for `tick #`, `for landing`, `role loops` and `fleet paused`.
+- Reads (does not edit): src/events/notify.ts.
+
+**Acceptance criteria.**
+- `formatEvent` of a `tick_end` from `feature-2` with result `no_change` reads `<time> feature #2  run #N no change …`, and a `"harness"` event's source column reads `tumwater`.
+- event-format.ts and phrases.ts carry the header, and the vocabulary guard passes. No `eventMessage` output asserted in test/event-format*.test.ts contains a retired word.
+- `tumwater logs --count` prints lines like `3 × run finished (tick_end)`, and `--count --json` is unchanged. The dashboard tally chips show labels, with the raw type as their title.
 - `npm run test` passes.
 
 ### The dashboard's Plans/Bugs tabs and the TUI's backlog pane show the `[working on it: …]` mark (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It touches only `src/backlog/backlog-eligibility.ts`, `docs/cli.md`, and two tests, none of which the in-flight commands 4/6 or stale-bugs plans edit; done 2026-10-16)

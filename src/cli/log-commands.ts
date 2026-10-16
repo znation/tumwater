@@ -9,6 +9,7 @@ import { compareCodeUnits, increment } from "../collections.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
+import { eventTypeLabel } from "../events/event-labels.js";
 import { followFile } from "../files/tail.js";
 import { createTranscriptRenderer } from "../ui/transcript.js";
 import { readTranscriptTail } from "../ui/transcript-tail.js";
@@ -47,7 +48,7 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
     return;
   }
   for (const [type, n] of [...counts.entries()].sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0])))
-    say(`${n} × ${type}`);
+    say(`${n} × ${eventTypeLabel(type)} (${type})`);
 }
 
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:

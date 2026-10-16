@@ -26,7 +26,7 @@ export async function withRunningFleet(
   const s = spawnCli(repo, ["run"]);
   try {
     await s.waitFor(
-      (out) => out.includes("tumwater running on branch main") && out.includes("orchestrator started (pid"),
+      (out) => out.includes("tumwater running on branch main") && out.includes("tumwater started (pid"),
       "the run banner and orchestrator event",
     );
     await body(s);
