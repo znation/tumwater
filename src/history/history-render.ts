@@ -59,17 +59,17 @@ export function renderRow(row: TickRow, widths: RowWidths): string {
 /** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
  * display width; each number column right-aligns under its header; the last column, `last change`,
  * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
-export function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
-  const all = [...summary.loops, summary.total];
-  const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.loop))].map(displayWidth));
+export function renderSummary(summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }): string {
+  const all = [...summary.roles, summary.total];
+  const loopWidth = Math.max(...["role", ...all.map((r) => roleLabel(r.role))].map(displayWidth));
   const cols = ["runs", "changes", "none", "problems", "tokens", "cost"] as const;
   const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
-    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(c === "runs" ? r.ticks : r[c]);
+    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(c === "runs" ? r.runs : r[c]);
   const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
   const line = (loop: string, cells: string[], lastChange: string): string =>
     [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
   return [
     line("role", [...cols], "last change"),
-    ...all.map((r) => line(roleLabel(r.loop), cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
+    ...all.map((r) => line(roleLabel(r.role), cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
   ].join("\n");
 }

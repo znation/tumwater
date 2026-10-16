@@ -244,8 +244,8 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
     status: workingStatus(),
     responses: {
       "/api/history?n=8&role=clean": { rows: [
-        { tick: 3, ts: now - 120_000, result: "changed", detail: "tidied the drawer", durationMs: 65_000, time: "12:00:00" },
-        { tick: 2, ts: now - 240_000, result: "changed", detail: "raced the cutoff", durationMs: 119_999, time: "11:58:00" },
+        { run: 3, ts: now - 120_000, result: "changed", detail: "tidied the drawer", durationMs: 65_000, time: "12:00:00" },
+        { run: 2, ts: now - 240_000, result: "changed", detail: "raced the cutoff", durationMs: 119_999, time: "11:58:00" },
       ] },
       "/api/transcript?role=clean&n=200": { lines: ["── tick 3", "→ npm test"] },
     },

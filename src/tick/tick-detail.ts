@@ -32,7 +32,7 @@ function tickNotFoundPhrase(role: string, what: string): string {
 }
 
 /** The not-found wording a missed tick lookup owes its surface — `tumwater tick <role> <n>`'s
- * stdout line and the GUI /api/tick endpoint's 404 JSON error, one template so the CLI's prose
+ * stdout line and the GUI /api/run endpoint's 404 JSON error, one template so the CLI's prose
  * and the browser's error card cannot drift when the phrasing moves. Names the shape a user
  * can act on: the tick number, the loop, and that the scanned window (not the world) is what
  * came up empty. */
@@ -42,7 +42,7 @@ export function tickNotFoundMessage(role: string, tick: number): string {
 
 /** The not-found wording for `tumwater tick <role> --last`, sibling of tickNotFoundMessage —
  * the same surfaces but naming what the last-form scan actually asked for: the newest
- * completed tick, not a number the user supplied. Module-local: the GUI's /api/tick 404 only
+ * completed tick, not a number the user supplied. Module-local: the GUI's /api/run 404 only
  * ever serves the numbered form, so this wording has no second consumer. */
 function tickNotFoundLastMessage(role: string): string {
   return tickNotFoundPhrase(role, "completed run");
@@ -67,7 +67,7 @@ async function tickCommitStat(root: string, sha: string | null): Promise<string>
   return out.trimEnd();
 }
 
-/** The pinned commit's stat text for a tick, shared by `tick --stat` and GET /api/tick so both
+/** The pinned commit's stat text for a tick, shared by `tick --stat` and GET /api/run so both
  * apply one rule for the sha and the "(no commit …)" / "(commit … is not in this repository)"
  * texts. */
 export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
@@ -86,10 +86,10 @@ export function renderTickDetail(d: TickDetail): string {
   if (d.durationMs !== null) summary.push(shortSpanPhrase(d.durationMs));
   if (d.usage !== "") summary.push(d.usage);
   const sha = tickCommitSha(d);
-  let header = `${roleLabel(d.role)} run #${d.tick} — ${summary.join(" · ")}`;
+  let header = `${roleLabel(d.role)} run #${d.run} — ${summary.join(" · ")}`;
   if (sha !== null) header += ` · commit ${shortSha(sha)}`;
   const lines = [header, ...d.events.map(formatEvent)];
-  if (d.landing !== null) lines.push(formatEvent(d.landing));
+  if (d.merge !== null) lines.push(formatEvent(d.merge));
   return lines.join("\n");
 }
 
@@ -129,7 +129,7 @@ export async function cmdTick(
   // number, read from readTickRows' newest-first scan for the role. An empty scan is not
   // found by construction, so the not-found path below takes it with the last-form wording.
   const tick = last
-    ? (readTickRows(root, 1, role)[0]?.tick ?? null)
+    ? (readTickRows(root, 1, role)[0]?.run ?? null)
     : parseCountFlag("history <n>", positionals[1]);
   const detail = tick === null ? null : readTickDetail(root, role, tick);
   if (tick === null) {

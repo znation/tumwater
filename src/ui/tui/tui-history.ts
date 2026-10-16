@@ -20,7 +20,7 @@ export function historyPaneText(rows: readonly TickRow[]): string {
   return rows
     .map((row) => {
       const { duration } = tickRowCells(row);
-      const parts = [row.time, `${row.loop} #${row.tick}`, row.result, duration];
+      const parts = [row.time, `${row.role} #${row.run}`, row.result, duration];
       if (row.usage) parts.push(row.usage);
       if (row.detail) parts.push(row.detail);
       return parts.join("  ");

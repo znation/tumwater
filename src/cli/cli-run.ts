@@ -255,14 +255,14 @@ export function inheritedWindowStart(raw: string | undefined, now: number): numb
  * that ended since the window opened — every tick counted once by its outcome class. Only the
  * final exit prints it; a mid-window self-redeploy hands off silently and the next generation
  * inherits the window start, so the table spans every generation. */
-export function windowSummary(label: string, summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string {
+export function windowSummary(label: string, summary: { roles: HistorySummaryRow[]; total: HistorySummaryRow }, covered: boolean): string {
   const { total } = summary;
   const lines = [
-    total.ticks === 0
+    total.runs === 0
       ? `for ${label}: 0 runs — nothing ran`
-      : `for ${label}: ${plural(total.ticks, "run")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
+      : `for ${label}: ${plural(total.runs, "run")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
   ];
-  if (total.ticks > 0) lines.push(renderSummary(summary));
+  if (total.runs > 0) lines.push(renderSummary(summary));
   if (!covered) lines.push(SPARSE_WINDOW_NOTE);
   return lines.join("\n");
 }

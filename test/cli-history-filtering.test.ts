@@ -64,7 +64,7 @@ test("history --since --json emits the window's rows raw and an empty document f
   const r = await cli(repo, "history", "--since", "1h", "--json");
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as { rows: Array<Record<string, unknown>> };
-  assert.deepEqual(payload.rows.map((row) => [row.loop, row.tick]), [["feature", 3], ["clean", 2]]);
+  assert.deepEqual(payload.rows.map((row) => [row.role, row.run]), [["feature", 3], ["clean", 2]]);
   // Raw epoch ms, not the rendered time: exactly the seeded 10m-ago run_end's stamp — compared
   // to the seed's own clock, not a read after the CLI ran, which a loaded host pushed past the
   // old 5 s tolerance (7-8 s CLI runs, BUGS.md 2026-10-01).
@@ -223,8 +223,8 @@ test("history --grep --json filters the payload and stays a document when empty"
 
   const r = await cli(repo, "history", "--json", "--grep", "widget");
   assert.equal(r.code, 0);
-  const payload = JSON.parse(r.stdout) as { rows: Array<{ loop: string }> };
-  assert.deepEqual(payload.rows.map((row) => row.loop), ["feature"]);
+  const payload = JSON.parse(r.stdout) as { rows: Array<{ role: string }> };
+  assert.deepEqual(payload.rows.map((row) => row.role), ["feature"]);
 
   const empty = await cli(repo, "history", "--json", "--grep", "no such text");
   assert.equal(empty.code, 0);
@@ -269,8 +269,8 @@ test("history --result narrows to one outcome class and composes with --json", a
   // --json swaps in the collector's payload: exactly the filtered rows, no prose or note.
   const json = await cli(repo, "history", "--result", "problems", "--json");
   assert.equal(json.code, 0);
-  const payload = JSON.parse(json.stdout) as { rows: Array<{ loop: string; result: string }> };
-  assert.deepEqual(payload.rows.map((r) => [r.loop, r.result]), [["bugfix", "error"]]);
+  const payload = JSON.parse(json.stdout) as { rows: Array<{ role: string; result: string }> };
+  assert.deepEqual(payload.rows.map((r) => [r.role, r.result]), [["bugfix", "error"]]);
 });
 
 test("history --result composes with --since and --role", async () => {
@@ -361,9 +361,9 @@ test("history --summary tallies each loop's outcomes over the rows the table wou
   ]);
 
   const json = await cli(repo, "history", "--summary", "--json");
-  const payload = JSON.parse(json.stdout) as { loops: unknown[]; total: unknown };
-  assert.equal(payload.loops.length, 3);
-  assert.deepEqual(payload.total, { loop: "total", ticks: 3, changes: 1, none: 1, problems: 1, tokens: 2400, costUsd: 0.02, lastChangeTs: 1787222695956 });
+  const payload = JSON.parse(json.stdout) as { roles: unknown[]; total: unknown };
+  assert.equal(payload.roles.length, 3);
+  assert.deepEqual(payload.total, { role: "total", runs: 3, changes: 1, none: 1, problems: 1, tokens: 2400, costUsd: 0.02, lastChangeTs: 1787222695956 });
 
   const scoped = await cli(repo, "history", "--summary", "--role", "feature");
   assert.equal(scoped.stdout.trim().split("\n").length, 3);

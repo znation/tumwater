@@ -161,7 +161,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : drawerTicks.length
         ? "<ul class='ticks'>" + drawerTicks.map((t) => { // vocabulary-ok: the ticks class stays
           const res = resultInfo(t.result);
-          return "<li><span class='when' title='" + esc(t.time) + "'>#" + esc(t.tick) + " · " + esc(fmtAgo(t.ts)) + "</span>" +
+          return "<li><span class='when' title='" + esc(t.time) + "'>#" + esc(t.run) + " · " + esc(fmtAgo(t.ts)) + "</span>" +
             "<span class='clamp1' title='" + esc(t.detail) + "'><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span> " + esc(t.detail) + "</span>" +
             "<span class='when'>" + (t.durationMs === null ? "" : esc(fmtSpan(Number(t.durationMs)))) + "</span></li>";
         }).join("") + "</ul>"

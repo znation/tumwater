@@ -99,7 +99,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
  * `{ mainBranch, roles }`, no per-role patch halves); `?role=<id>` → collectRoleChange (the
  * full per-role view with `diff`/`uncommittedDiff`, `tumwater diff --role <id> --json`). The
  * role is a target, not a filter, so it validates through rejectBadRole exactly like
- * /api/transcript and /api/tick (unknown/missing → 400 naming the valid ids) — the same ids
+ * /api/transcript and /api/run (unknown/missing → 400 naming the valid ids) — the same ids
  * `parseRoleFlag` accepts on the CLI, including disabled and user-defined loops. The
  * collectors degrade absent worktrees and missing base branches to their `state` instead of
  * throwing, so a fresh or half-built repo still answers 200. Reads git plumbing directly, so
@@ -257,7 +257,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
   sendJson(res, 200, { events: matched.map(eventFeedItem) });
 }
 
-/** Handle GET /api/tick?role=<id>&tick=N: one tick's full event trail — readTickDetail's
+/** Handle GET /api/run?role=<id>&run=N: one tick's full event trail — readTickDetail's
  * TickDetail, the collector `tumwater tick <role> <n>` prints from, plus `text`: the same
  * payload through renderTickDetail, pre-rendered server-side like /api/transcript's lines so
  * the browser shows the CLI's exact rendering instead of re-implementing the event formatting.
@@ -271,7 +271,7 @@ export function handleLogs(q: URLSearchParams, res: http.ServerResponse, root: s
 export async function handleTick(q: URLSearchParams, res: http.ServerResponse, root: string): Promise<void> {
   const role = q.get("role");
   if (rejectBadRole(root, res, role)) return;
-  const tick = intQuery(q, res, "tick", "positive");
+  const tick = intQuery(q, res, "run", "positive");
   if (tick === null) return;
   const detail = readTickDetail(root, role as string, tick);
   if (detail === null) {
@@ -284,7 +284,7 @@ export async function handleTick(q: URLSearchParams, res: http.ServerResponse, r
  * the same collection behind `tumwater role <id>` — so the drawer's Notebook and Next tick
  * prompt sections render what the CLI shows without re-implementing the assembly. The role
  * is a target here, so it validates through rejectBadRole exactly like /api/transcript and
- * /api/tick (unknown/missing → the shared 400 naming the valid ids and correcting typos);
+ * /api/run (unknown/missing → the shared 400 naming the valid ids and correcting typos);
  * rolePayload is only reached with an id rejectBadRole accepted, so its own unknown-role
  * throw never fires. Reads files directly, so it works whether or not the fleet is running. */
 export function handleRole(q: URLSearchParams, res: http.ServerResponse, root: string): void {

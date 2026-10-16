@@ -138,7 +138,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
   }
 });
 
-// The interleaved event seed /api/history and /api/tick both read: one tick with a paired
+// The interleaved event seed /api/history and /api/run both read: one tick with a paired
 // start (its duration comes from the pair), one end-only skipped tick (no start, so no
 // fabricated duration), and a merged event that tickRows must ignore.
 function historySeedEvents(): HarnessEvent[] {
@@ -168,7 +168,7 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
     assert.equal(res.status, 200);
     const d = (await res.json()) as { rows: ReturnType<typeof tickRows> };
     assert.deepEqual(d, { rows: tickRows(events, 20, null) });
-    assert.deepEqual(d.rows.map((r) => [r.loop, r.tick]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
+    assert.deepEqual(d.rows.map((r) => [r.role, r.run]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
     assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own run_start");
     assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
 
@@ -227,16 +227,16 @@ test("gui /api/history serves a trailing window from readTickRowsSince with its 
   const { server, base: url } = await startLocalGui(repo);
   try {
     // The window's rows come from the same collector as `tumwater history --since`.
-    const all = (await (await fetch(url + "/api/history?sinceMs=7200000")).json()) as { rows: { loop: string; tick: number }[]; covered: boolean; note: string };
+    const all = (await (await fetch(url + "/api/history?sinceMs=7200000")).json()) as { rows: { role: string; run: number }[]; covered: boolean; note: string };
     assert.deepEqual(all.rows, readTickRowsSince(repo, 7_200_000, null).rows);
-    assert.deepEqual(all.rows.map((r) => [r.loop, r.tick]), [["feature", 1], ["clean", 9]], "newest first");
+    assert.deepEqual(all.rows.map((r) => [r.role, r.run]), [["feature", 1], ["clean", 9]], "newest first");
     // The log starts inside the window, so coverage cannot be proven and the shared note rides.
     assert.equal(all.covered, false);
     assert.equal(all.note, SPARSE_WINDOW_NOTE);
     // role composes with the window; a window narrower than every event holds none.
-    const clean = (await (await fetch(url + "/api/history?sinceMs=7200000&role=clean")).json()) as { rows: { loop: string }[] };
+    const clean = (await (await fetch(url + "/api/history?sinceMs=7200000&role=clean")).json()) as { rows: { role: string }[] };
     assert.deepEqual(clean.rows, readTickRowsSince(repo, 7_200_000, "clean").rows);
-    assert.deepEqual(clean.rows.map((r) => r.loop), ["clean"]);
+    assert.deepEqual(clean.rows.map((r) => r.role), ["clean"]);
     const tiny = await (await fetch(url + "/api/history?sinceMs=1")).json();
     assert.deepEqual((tiny as { rows: unknown[] }).rows, []);
   } finally {
@@ -254,8 +254,8 @@ test("gui /api/history?grep filters through the CLI's shared haystack rule after
   try {
     // A pattern matching one seeded row returns only it, case-insensitively, through the same
     // canonical row line `tumwater history --grep` filters.
-    const one = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("SORTED IMPORTS"))).json()) as { rows: { loop: string; tick: number }[] };
-    assert.deepEqual(one.rows.map((r) => [r.loop, r.tick]), [["clean", 9]]);
+    const one = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("SORTED IMPORTS"))).json()) as { rows: { role: string; run: number }[] };
+    assert.deepEqual(one.rows.map((r) => [r.role, r.run]), [["clean", 9]]);
     // A pattern matching none is an empty row set, never prose or an error.
     assert.deepEqual(await (await fetch(base + "/api/history?grep=" + encodeURIComponent("no such text"))).json(), { rows: [] });
     // An empty pattern filters nothing.
@@ -266,14 +266,14 @@ test("gui /api/history?grep filters through the CLI's shared haystack rule after
     // n bounds the scanned window first: the newest row is clean#9, so feature#1's detail is
     // outside the scan even though the retained log holds it — the CLI's -n rule.
     assert.deepEqual(await (await fetch(base + "/api/history?n=1&grep=" + encodeURIComponent("tidy up"))).json(), { rows: [] });
-    const wide = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("tidy up"))).json()) as { rows: { loop: string; tick: number }[] };
-    assert.deepEqual(wide.rows.map((r) => [r.loop, r.tick]), [["feature", 1]]);
+    const wide = (await (await fetch(base + "/api/history?grep=" + encodeURIComponent("tidy up"))).json()) as { rows: { role: string; run: number }[] };
+    assert.deepEqual(wide.rows.map((r) => [r.role, r.run]), [["feature", 1]]);
   } finally {
     server.close();
   }
 });
 
-test("gui /api/tick serves one tick's detail over the live route, 404 when the scan misses", async () => {
+test("gui /api/run serves one run's detail over the live route, 404 when the scan misses", async () => {
   const repo = makeRepo();
   await initProject(repo, "tick api test");
   // The same seed the /api/history test uses: clean#9 is paired, feature#2 is end-only.
@@ -283,23 +283,23 @@ test("gui /api/tick serves one tick's detail over the live route, 404 when the s
   const { server, base } = await startLocalGui(repo);
   try {
     // The paired tick answers the collector's payload plus the pre-rendered text.
-    const res = await fetch(base + "/api/tick?role=clean&tick=9");
+    const res = await fetch(base + "/api/run?role=clean&run=9");
     assert.equal(res.status, 200);
-    const d = (await res.json()) as { role: string; tick: number; durationMs: number | null; events: { type: string }[]; text: string };
+    const d = (await res.json()) as { role: string; run: number; durationMs: number | null; events: { type: string }[]; text: string };
     assert.equal(d.role, "clean");
-    assert.equal(d.tick, 9);
+    assert.equal(d.run, 9);
     assert.equal(d.durationMs, 46_000);
     assert.deepEqual(d.events.map((e) => e.type), ["run_start", "run_end"]);
     assert.match(d.text, /^clean run #9 — merged · 46s/);
 
     // A tick the scan does not hold → 404 (never a crash); a bad role and a non-count tick →
     // the shared 400s.
-    const missing = await fetch(base + "/api/tick?role=clean&tick=42");
+    const missing = await fetch(base + "/api/run?role=clean&run=42");
     assert.equal(missing.status, 404);
     assert.match(((await missing.json()) as { error: string }).error, /no run #42 for clean/);
-    assert.equal((await fetch(base + "/api/tick?role=nope&tick=9")).status, 400);
-    assert.equal((await fetch(base + "/api/tick?role=clean&tick=0")).status, 400);
-    assert.equal((await fetch(base + "/api/tick")).status, 400, "no role and no tick → 400");
+    assert.equal((await fetch(base + "/api/run?role=nope&run=9")).status, 400);
+    assert.equal((await fetch(base + "/api/run?role=clean&run=0")).status, 400);
+    assert.equal((await fetch(base + "/api/run")).status, 400, "no role and no run → 400");
   } finally {
     server.close();
   }
@@ -318,8 +318,8 @@ test("gui /api/history grows its role-filtered scan window until it reaches the 
   writeEvents(repo, events);
   const { server, base } = await startLocalGui(repo);
   try {
-    const d = (await (await fetch(base + "/api/history?role=qa&n=5")).json()) as { rows: { loop: string; tick: number }[] };
-    assert.deepEqual(d.rows.map((r) => [r.loop, r.tick]), [["qa", 5], ["qa", 4], ["qa", 3], ["qa", 2], ["qa", 1]], "all 5 qa rows despite the diluting sibling");
+    const d = (await (await fetch(base + "/api/history?role=qa&n=5")).json()) as { rows: { role: string; run: number }[] };
+    assert.deepEqual(d.rows.map((r) => [r.role, r.run]), [["qa", 5], ["qa", 4], ["qa", 3], ["qa", 2], ["qa", 1]], "all 5 qa rows despite the diluting sibling");
     // The honest shortfall: the log holds fewer qa ticks than asked and the scan reached the
     // log's start — what exists is returned, not an error or a hang.
     const short = (await (await fetch(base + "/api/history?role=qa&n=10")).json()) as { rows: unknown[] };

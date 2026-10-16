@@ -12,8 +12,8 @@ function row(over: Partial<TickRow> = {}): TickRow {
   return {
     ts: 0,
     time: "14:03",
-    loop: "feature",
-    tick: 7,
+    role: "feature",
+    run: 7,
     result: "changed",
     durationMs: 90_000,
     tokens: 0,
@@ -38,7 +38,7 @@ test("an empty usage and an empty detail are omitted, not left as gaps", () => {
 });
 
 test("rows render newest-first, one line each, and no rows is the empty string", () => {
-  const rows = [row({ tick: 8, time: "14:05" }), row({ tick: 7, time: "14:03" })];
+  const rows = [row({ run: 8, time: "14:05" }), row({ run: 7, time: "14:03" })];
   assert.equal(historyPaneText(rows), "14:05  feature #8  changed  90s  $0.42  Add the history pane\n14:03  feature #7  changed  90s  $0.42  Add the history pane");
   assert.equal(historyPaneText([]), "");
 });

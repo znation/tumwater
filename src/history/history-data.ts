@@ -56,8 +56,8 @@ export function historyClass(result: string): HistoryResultClass {
  * sum. `lastChangeTs` is the newest changes-class row's `ts`, or null when the loop had none among
  * the rows. The `total` line of a summary uses the loop name "total". */
 export interface HistorySummaryRow {
-  loop: string;
-  ticks: number;
+  role: string;
+  runs: number;
   changes: number;
   none: number;
   problems: number;
@@ -68,24 +68,24 @@ export interface HistorySummaryRow {
 
 /** Tally rows per loop by historyClass, each row counted once. Loops come back in plain string
  * order (not localeCompare) so the order is deterministic; `total` sums every loop. Pure. */
-export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]; total: HistorySummaryRow } {
-  const blank = (loop: string): HistorySummaryRow => ({ loop, ticks: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
+export function summarizeTickRows(rows: TickRow[]): { roles: HistorySummaryRow[]; total: HistorySummaryRow } {
+  const blank = (role: string): HistorySummaryRow => ({ role, runs: 0, changes: 0, none: 0, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null });
   const byLoop = new Map<string, HistorySummaryRow>();
   const total = blank("total");
   for (const row of rows) {
-    let entry = byLoop.get(row.loop);
-    if (!entry) byLoop.set(row.loop, (entry = blank(row.loop)));
+    let entry = byLoop.get(row.role);
+    if (!entry) byLoop.set(row.role, (entry = blank(row.role)));
     const cls = historyClass(row.result);
     for (const t of [entry, total]) {
-      t.ticks += 1;
+      t.runs += 1;
       t[cls] += 1;
       t.tokens += row.tokens;
       t.costUsd += row.costUsd;
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
-  const loops = [...byLoop.values()].sort((a, b) => compareCodeUnits(a.loop, b.loop));
-  return { loops, total };
+  const roles = [...byLoop.values()].sort((a, b) => compareCodeUnits(a.role, b.role));
+  return { roles, total };
 }
 
 /** How much of a tick's summary or error a row keeps. Long enough to name the work, short
@@ -138,8 +138,8 @@ interface TickRowJoin {
 export interface TickRow {
   ts: number;
   time: string;
-  loop: string;
-  tick: number;
+  role: string;
+  run: number;
   result: string;
   durationMs: number | null;
   tokens: number;
@@ -164,8 +164,8 @@ export interface TickRowCells {
 
 export function tickRowCells(row: TickRow): TickRowCells {
   return {
-    loop: roleLabel(row.loop),
-    tick: String(row.tick),
+    loop: roleLabel(row.role),
+    tick: String(row.run),
     result: eventTypeLabel(row.result),
     duration: row.durationMs === null ? "—" : shortSpanPhrase(row.durationMs),
     usage: row.usage,
@@ -204,7 +204,7 @@ export function tickRowLine(
  * /api/history?grep so the two cannot disagree on the rule. The row's cells and column order
  * come from tickRowCells and tickRowLine, the one home for each. */
 export function tickRowGrepHaystack(row: TickRow): string {
-  return `run_end ${tickRowLine(row)} ${row.loop} ${row.result}`;
+  return `run_end ${tickRowLine(row)} ${row.role} ${row.result}`;
 }
 
 /** The shared tick-grep rule: a case-insensitive substring match over tickRowGrepHaystack.
@@ -368,8 +368,8 @@ export function tickRows(
       time: formatTimestamp(e.ts),
       tokens: usage.tokens,
       costUsd: usage.costUsd,
-      loop: eventRole(e),
-      tick: eventTick(e),
+      role: eventRole(e),
+      run: eventTick(e),
       result,
       durationMs: tickSpanMs(e, starts),
       usage: usageText(e),

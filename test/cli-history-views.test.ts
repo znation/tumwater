@@ -113,9 +113,9 @@ test("history on an empty log prints the empty-log prose; --json prints a bare d
 test("history --json serves the rows as raw data, newest first", async () => {
   const repo = repoWithTicks();
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, ["--json"]));
-  const parsed = JSON.parse(stdout) as { rows: Array<{ loop: string; ts: number; tokens: number; costUsd: number; result: string }> };
+  const parsed = JSON.parse(stdout) as { rows: Array<{ role: string; ts: number; tokens: number; costUsd: number; result: string }> };
   assert.deepEqual(
-    parsed.rows.map((r) => r.loop),
+    parsed.rows.map((r) => r.role),
     ["docs", "clean", "dry"],
   );
   const clean = parsed.rows[1]!;

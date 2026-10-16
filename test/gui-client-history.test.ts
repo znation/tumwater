@@ -8,7 +8,7 @@ import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { clientRegion, clientScope, ESC_LINE, iconStub } from "./helpers/gui-client-scope.js";
 
 // The dashboard's History view (src/ui/gui/gui-client-history.ts): the table it paints from
-// /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/tick
+// /api/history's rows, its tick drill-down (the per-row details toggle and the card /api/run
 // serves), and its place in the assembled script.
 
 test("GUI_CLIENT_JS carries the history module verbatim", () => {
@@ -26,9 +26,9 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   }>(HISTORY_REGIONS, ["historyTableHtml", "historyClass"], { icon: iconStub });
   const now = Date.now();
   const rows = [
-    { ts: now - 5 * 60_000, time: "2026-09-29 15:33:31", loop: "coverage", tick: 5, result: "queued", durationMs: 45_000, usage: "12.0k tok · $0.04", detail: "bumped coverage" },
-    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", loop: "gone-loop", tick: 7, result: "no_change", durationMs: null, usage: "", detail: "" },
-    { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", loop: "qa", tick: 2, result: "error", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
+    { ts: now - 5 * 60_000, time: "2026-09-29 15:33:31", role: "coverage", run: 5, result: "queued", durationMs: 45_000, usage: "12.0k tok · $0.04", detail: "bumped coverage" },
+    { ts: now - 9 * 60_000, time: "2026-09-29 15:29:00", role: "gone-loop", run: 7, result: "no_change", durationMs: null, usage: "", detail: "" },
+    { ts: now - 20 * 60_000, time: "2026-09-29 15:18:00", role: "qa", run: 2, result: "error", durationMs: 240_000, usage: "900 tok", detail: "<script>x</script>" },
   ];
   const html = historyTableHtml(rows, "all", new Set(["coverage", "qa"]));
   assert.match(html, /<tr class='clickable' data-open='coverage'>/, "a fleet loop's row opens its drawer");
@@ -217,7 +217,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
     },
   });
   const { histDetails, toggleHistDetail, historyTableHtml } = scope;
-  const rows = [{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: 46_000, usage: "", detail: "d" }];
+  const rows = [{ ts: 0, time: "t", role: "clean", run: 9, result: "changed", durationMs: 46_000, usage: "", detail: "d" }];
   const htmlWith = () => historyTableHtml(rows, "all", new Set(["clean"]));
 
   // Expanding installs the loading entry synchronously and paints it before the fetch answers.
@@ -228,7 +228,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
 
   // The fetch answers into the cache; the card then shows the pre-rendered trail.
   await sleep(0);
-  assert.deepEqual(calls, ["/api/tick?role=clean&tick=9"]);
+  assert.deepEqual(calls, ["/api/run?role=clean&run=9"]);
   assert.equal(histDetails.get("clean#9")?.state, "ok");
   const card = htmlWith();
   assert.match(card, /clean tick #9 — changed · 46s/);
@@ -240,7 +240,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   assert.doesNotMatch(htmlWith(), /detail-row/);
   toggleHistDetail("clean", "9");
   assert.match(htmlWith(), /event one/);
-  assert.deepEqual(calls, ["/api/tick?role=clean&tick=9"], "the cached card is reused, not refetched");
+  assert.deepEqual(calls, ["/api/run?role=clean&run=9"], "the cached card is reused, not refetched");
 
   // A refetch invalidates the cache (fetchHistory clears it), so the next expand fetches again.
   histDetails.clear();
@@ -265,7 +265,7 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   toggleHistDetail("clean", "9");
   await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
-  const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
+  const html = historyTableHtml([{ ts: 0, time: "t", role: "clean", run: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
   assert.match(html, /no tick #9 for clean in the scanned window/);
   assert.doesNotMatch(html, /Loading run detail…/);
   // And the errored entry is cached: re-expanding reuses it without a second request.
@@ -288,7 +288,7 @@ test("the fetched tick detail keeps the server's stat, and an older server's mis
     scope.toggleHistDetail("clean", "9");
     await sleep(0);
     assert.equal(scope.histDetails.get("clean#9")?.state, "ok");
-    const html = scope.historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
+    const html = scope.historyTableHtml([{ ts: 0, time: "t", role: "clean", run: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
     assert.equal(html.includes("hist-detail-stat"), shown);
     if (shown) assert.match(html, /a\.ts \| 2 \+-/);
   }
@@ -308,8 +308,8 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   toggleHistDetail("clean", "9");
   await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
-  const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
-  assert.match(html, /\/api\/tick answered clean run 9 without a text field/);
+  const html = historyTableHtml([{ ts: 0, time: "t", role: "clean", run: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
+  assert.match(html, /\/api\/run answered clean run 9 without a text field/);
   assert.match(html, /tumwater may not match/, "the card's esc() escapes the message's apostrophe");
 });
 
@@ -350,12 +350,12 @@ test("histSummaryHtml paints one row per loop plus the total, with the report fo
   );
   const now = Date.now();
   const summary = {
-    loops: [
-      { loop: "clean", ticks: 2, changes: 2, none: 0, problems: 0, tokens: 500, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
-      { loop: "feature", ticks: 1, changes: 0, none: 1, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null },
-      { loop: "qa", ticks: 1, changes: 0, none: 0, problems: 1, tokens: 12_500, costUsd: 0, lastChangeTs: null },
+    roles: [
+      { role: "clean", runs: 2, changes: 2, none: 0, problems: 0, tokens: 500, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
+      { role: "feature", runs: 1, changes: 0, none: 1, problems: 0, tokens: 0, costUsd: 0, lastChangeTs: null },
+      { role: "qa", runs: 1, changes: 0, none: 0, problems: 1, tokens: 12_500, costUsd: 0, lastChangeTs: null },
     ],
-    total: { loop: "total", ticks: 4, changes: 2, none: 1, problems: 1, tokens: 13_000, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
+    total: { role: "total", runs: 4, changes: 2, none: 1, problems: 1, tokens: 13_000, costUsd: 0.25, lastChangeTs: now - 5 * 60_000 },
   };
   const html = histSummaryHtml(summary);
   // The column set mirrors history --summary: loop, ticks, changes, none, problems, tokens,
@@ -393,7 +393,7 @@ test("fetchHistory rides the server summary and a persisted Summary mode survive
   const code = [ESC_LINE, GUI_CLIENT_HISTORY_JS, "return { fetchHistory, getHistSummary: () => histSummary, histMode };"].join("\n");
   const run = new Function(...keys, code) as (...args: unknown[]) => {
     fetchHistory(throttled?: boolean): Promise<void>;
-    getHistSummary(): { loops: unknown[] } | null;
+    getHistSummary(): { roles: unknown[] } | null;
     histMode: string;
   };
   const scope = run(
@@ -405,9 +405,9 @@ test("fetchHistory rides the server summary and a persisted Summary mode survive
     null,
     () => {},
     (title: string) => title,
-    async () => ({ rows: [{ loop: "clean" }], summary: { loops: [{ loop: "clean" }], total: { loop: "total" } } }),
+    async () => ({ rows: [{ role: "clean" }], summary: { roles: [{ role: "clean" }], total: { role: "total" } } }),
   );
   assert.equal(scope.histMode, "summary", "the persisted mode restores on load");
   await scope.fetchHistory(false);
-  assert.deepEqual(scope.getHistSummary()?.loops, [{ loop: "clean" }], "the fetched summary rides beside the rows, so toggling never refetches");
+  assert.deepEqual(scope.getHistSummary()?.roles, [{ role: "clean" }], "the fetched summary rides beside the rows, so toggling never refetches");
 });

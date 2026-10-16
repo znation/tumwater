@@ -555,7 +555,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     trailGen++;
     try {
       const row = readTickRows(root, 1, historyRole)[0];
-      const detail = row === undefined ? null : readTickDetail(root, row.loop, row.tick);
+      const detail = row === undefined ? null : readTickDetail(root, row.role, row.run);
       trailCache = detail === null ? null : renderTickDetail(detail);
       if (detail !== null) loadTrailStat(detail);
     } catch (err) {
@@ -705,7 +705,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
             // injected seam or an unexpected failure) flashes the reason and leaves the rows
             // shown rather than escaping the handler and killing the TUI.
             try {
-              const detail = readTickDetail(root, row.loop, row.tick);
+              const detail = readTickDetail(root, row.role, row.run);
               trailCache = detail === null ? null : renderTickDetail(detail);
               trailMode = true;
               if (detail !== null) loadTrailStat(detail);

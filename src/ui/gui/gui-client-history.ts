@@ -85,7 +85,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // history-detail:start
   // Tick drill-down state: one open card at a time, keyed "role#tick", with each key's cache
   // entry — { state: "loading" } while its fetch is in flight, { state: "error", message }
-  // when one failed, { state: "ok", text } once /api/tick answered. Cached until the view
+  // when one failed, { state: "ok", text } once /api/run answered. Cached until the view
   // refetches (fetchHistory clears the map), so collapsing and re-expanding reuses the card.
   const histDetails = new Map();
   let histDetailOpen = "";
@@ -129,13 +129,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // (and a re-expand during flight sees it and lets the first fetch finish).
     histDetails.set(key, { state: "loading" });
     try {
-      const d = await getJson("/api/tick?role=" + encodeURIComponent(role) + "&tick=" + encodeURIComponent(String(tick))); // vocabulary-ok: the /api/tick route and tick= parameter stay
+      const d = await getJson("/api/run?role=" + encodeURIComponent(role) + "&run=" + encodeURIComponent(String(tick)));
       // Name the endpoint, the tick it answered for, and the likely cause: a 200 without
       // text is a server too old (or too new) for this dashboard's client, not a lost tick —
       // a 404 already answers that shape with the CLI's own not-found wording.
       if (!d || typeof d.text !== "string")
         throw new Error(
-          "/api/tick answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard", // vocabulary-ok: the /api/tick route stays
+          "/api/run answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard",
         );
       histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "" });
     } catch (err) {
@@ -162,7 +162,7 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
       // The summary rides the same fetch (the endpoint folds the exact rows it served into
       // its additive summary), so toggling to Summary never refetches; a server too old to
       // include it leaves histSummary null and the toggle falls back to the table.
-      histSummary = d && d.summary && Array.isArray(d.summary.loops) ? d.summary : null;
+      histSummary = d && d.summary && Array.isArray(d.summary.roles) ? d.summary : null;
       // The trailing-window shape carries the server's coverage; the count shape has no note.
       histNote = d && typeof d.note === "string" ? d.note : "";
       // A refetch invalidates the drill-down cache: cached trails could disagree with the new
@@ -230,19 +230,19 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         const res = resultInfo(r.result);
         // The drill-down toggle rides the drawer's button style and lives in its own leading
         // cell; only a fleet loop's row carries one, the same rows that open the drawer (the
-        // /api/tick endpoint validates the role, so an id the config no longer knows would
+        // /api/run endpoint validates the role, so an id the config no longer knows would
         // only ever answer 400).
-        const key = histDetailKey(r.loop, r.tick);
+        const key = histDetailKey(r.role, r.run);
         const open = histDetailOpen === key;
-        const toggle = known.has(r.loop)
-          ? "<button type='button' class='btn btn-sm hist-x' data-tickdetail='1' data-role='" + esc(r.loop) +
-            "' data-tick='" + esc(r.tick) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>" // vocabulary-ok: the data-tick name stays
+        const toggle = known.has(r.role)
+          ? "<button type='button' class='btn btn-sm hist-x' data-tickdetail='1' data-role='" + esc(r.role) +
+            "' data-tick='" + esc(r.run) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>" // vocabulary-ok: the data-tick name stays
           : "";
-        const row = "<tr" + (known.has(r.loop) ? " class='clickable' data-open='" + esc(r.loop) + "'" : "") + ">" +
+        const row = "<tr" + (known.has(r.role) ? " class='clickable' data-open='" + esc(r.role) + "'" : "") + ">" +
           "<td class='c-x'>" + toggle + "</td>" +
           "<td title='" + esc(r.time) + "'><span class='clamp1'>" + esc(fmtAgo(r.ts)) + "</span></td>" +
-          "<td class='mono'>" + esc(roleLabel(r.loop)) + "</td>" +
-          "<td class='c-tick num muted'>#" + esc(r.tick) + "</td>" + // vocabulary-ok: the c-tick class stays
+          "<td class='mono'>" + esc(roleLabel(r.role)) + "</td>" +
+          "<td class='c-tick num muted'>#" + esc(r.run) + "</td>" + // vocabulary-ok: the c-tick class stays
           "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='num c-dur'>" + (r.durationMs === null || r.durationMs === undefined ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
@@ -261,12 +261,12 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // the newest changes-class tick's age via fmtAgo, a dash when the loop had none. Pure — the
   // view's render paints what this returns.
   function histSummaryHtml(summary) {
-    const all = summary.loops.concat(summary.total ? [summary.total] : []);
+    const all = summary.roles.concat(summary.total ? [summary.total] : []);
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
     const rowsHtml = all.map((r) =>
-      "<tr" + (r.loop === "total" ? " class='hist-total'" : "") + ">" +
-      "<td class='mono'>" + esc(r.loop === "total" ? r.loop : roleLabel(r.loop)) + "</td>" +
-      cell(r, "ticks") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") + // vocabulary-ok: the summary's ticks key stays
+      "<tr" + (r.role === "total" ? " class='hist-total'" : "") + ">" +
+      "<td class='mono'>" + esc(r.role === "total" ? r.role : roleLabel(r.role)) + "</td>" +
+      cell(r, "runs") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
     return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th>Last change</th></tr></thead><tbody>" +

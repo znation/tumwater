@@ -207,7 +207,7 @@ export function startGui(
     "GET /api/logs": (_req, res, target) => handleLogs(target.searchParams, res, root),
     "GET /api/transcript": (_req, res, target) => handleTranscript(target.searchParams, res, root),
     "GET /api/prompt-text": (_req, res, target) => handlePromptText(target.searchParams, res, root),
-    "GET /api/tick": (_req, res, target) => handleTick(target.searchParams, res, root),
+    "GET /api/run": (_req, res, target) => handleTick(target.searchParams, res, root),
     "GET /api/role": (_req, res, target) => handleRole(target.searchParams, res, root),
     "GET /api/diff": (_req, res, target) => handleDiff(target.searchParams, res, root),
     "GET /api/backlog": (_req, res, target) => handleBacklog(target.searchParams, res, root),

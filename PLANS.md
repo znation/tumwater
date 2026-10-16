@@ -40,51 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms scripting, part 3/5: Rename the history and run-trail JSON keys and move GET /api/tick to /api/run (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Script interfaces"; touches src/history and src/tick/tick-detail-data.ts and src/gui and the dashboard History view)
-
-**Goal.** These script-facing names change:
-- `history --json` rows and `/api/history` rows carry `role` and `run`.
-- The summary (`history --summary --json`, and `/api/history?summary`) has the shape `{roles: [{role, runs, changes, none, problems, tokens, costUsd, lastChangeTs}], total}`.
-- The run trail (`history <role> <n> --json`) carries `run` and `merge`.
-- `GET /api/tick?role=<id>&tick=N` becomes `GET /api/run?role=<id>&run=N`, and the old route is not kept.
-
-**Approach.**
-- History rows and summary (src/history/history-data.ts):
-  - `TickRow.loop` → `role`, `TickRow.tick` → `run`.
-  - `HistorySummaryRow.loop` → `role`, `.ticks` → `runs`.
-  - `summarizeTickRows` returns `{ roles, total }`, and the total row's `role` is `"total"`.
-  - The class counts (`changes`, `none`, `problems`) and `lastChangeTs` keep their names. Plain terms commands kept `HISTORY_RESULT_CLASSES` internal and maps `--result merged` to the `changes` class, so the summary's class keys and the dashboard's History filter values stay as they are.
-  - `TickRowCells` holds the text table's column keys, not payload keys. Leave it.
-  - Let `tsc` drive the typed readers: `renderSummary` and `renderRow` (src/history/history-render.ts), `windowSummary` (src/cli/cli-run.ts), src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts and src/tick/tick-detail.ts.
-- Run trail (src/tick/tick-detail-data.ts): `TickDetail.tick` → `run`, `TickDetail.landing` → `merge`. The readers are `renderTickDetail` and `tickDetailStat` in src/tick/tick-detail.ts, and the TUI trail pane. `TickDetail.events` holds raw events, whose fields belong to Plain terms event log.
-- Route:
-  - In `guiRoutes` (src/gui/gui-server.ts), `"GET /api/tick"` becomes `"GET /api/run"`.
-  - `handleTick` (src/gui/gui-endpoints.ts) reads the query parameter `run` instead of `tick`, as `intQuery(q, res, "run", "positive")`. Update its doc comment and every other comment in src/gui/ that names `/api/tick`.
-  - Handler and function names stay; Plain terms code run renames them.
-- Dashboard script, src/ui/gui/gui-client-history.ts:
-  - The drill-down fetch becomes `"/api/run?role=…&run=…"`.
-  - Row reads `r.loop`/`r.tick` become `r.role`/`r.run`.
-  - `d.summary.loops` (and its `Array.isArray` probe) becomes `d.summary.roles`, with `r.loop === "total"` becoming `r.role === "total"`.
-  - `cell(r, "ticks")` becomes `cell(r, "runs")`. `cell(r, "changes")` and `r.lastChangeTs` stay.
-- Dashboard script, src/ui/gui/gui-client-drawer.ts: the recent-runs list's `t.tick` becomes `t.run`.
-- The DOM attribute `data-tick` (and `dataset.tick`) belongs to the code, not the payload. Leave it.
-- In test/script-keys.test.ts, add an assertion that `GUI_CLIENT_JS` does not contain `/api/tick`.
-- In these test files, the event fixtures (`{ loop: …, type: "tick_end", tick: 1 }`) are event-log lines, not payload rows. Leave them for Plain terms event log. Change only row, summary and trail assertions:
-  - test/history-data.test.ts, test/cli-history.test.ts, test/cli-history-filtering.test.ts, test/cli-history-views.test.ts
-  - test/gui-server-api.test.ts (the route and rows), test/gui-endpoints.test.ts (the summary)
-  - test/gui-client-history.test.ts, test/gui-client-drawer.test.ts
-  - test/tick-detail.test.ts, test/tick-detail-data.test.ts
-  - test/tui-history.test.ts, test/tui-keys.test.ts, test/cli-run.test.ts
-
-**Files touched.** Source: src/history/history-data.ts, src/history/history-render.ts, src/cli/cli-run.ts, src/tick/tick-detail-data.ts, src/tick/tick-detail.ts, src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts, src/gui/gui-server.ts, src/gui/gui-endpoints.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-drawer.ts. Tests: test/script-keys.test.ts and those listed above.
-
-**Acceptance criteria.**
-- `tumwater history --json` rows have `role` and `run`, with no `loop` or `tick`. `history --summary --json` is `{roles, total}`, with rows keyed `role`, `runs`, `changes`, `none`, `problems`, `tokens`, `costUsd` and `lastChangeTs`.
-- `tumwater history <role> <n> --json` has `run` and `merge`, with no `tick` or `landing` key.
-- `GET /api/run?role=clean&run=9` serves the trail. `GET /api/tick` answers 404, and `run=0` or a missing `run` answers 400 (test/gui-server-api.test.ts).
-- The dashboard's History drill-down, its Summary table and the drawer's recent runs render from fixtures that use the new keys, and test/script-keys.test.ts passes.
-- `npm run test` passes.
-
 ### Plain terms scripting, part 4/5: Rename the status payload's loops to roles and the alert action and the dashboard hashes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Script interfaces" and "Decisions"; touches src/ui/status-payload.ts and src/ui/fleet-alerts.ts and src/ui/gui and scripts/diff-check.mjs)
 
 **Goal.** These script-facing names change, and old bookmarks keep working:
@@ -2385,6 +2340,51 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.**
 - Unit (`test/tui-backlog.test.ts`, beside "backlogLines renders subheaders with counts, entries in order"): `backlogLines(["plan A"], [], [], 1, ["Q — yes"])` ends with `"answered recently (1):", "Q — yes"`. `backlogLines([], [], [], 0, ["Q — yes"])` returns the three subheaders, each followed by `(none)`, then the answered section, and not the single "nothing" line. The existing `backlogLines` assertions pass unchanged.
 - Unit (same file, beside "paneBody's backlog list and entry mode show the same eligibility mark beside the title"): take a temp project whose QUESTIONS.md has one open question and six answered ones (A1…A6 appended oldest first, each with an `**Answered 2026-10-0N by operator:** pick N` line). In list mode, `paneBody({ kind: "backlog" }, …)` shows `answered recently (5):` after the open question. The next row starts with `A6` and contains `pick 6`, and `A1` does not appear. The `answered recently (5):` row is bold, as the other subheaders are. With `selectedEntry: 1`, the pane clamps to the open question (the flat list holds only the one open entry) and does not show an answered entry. With no answered questions, the text `answered recently` does not appear.
+- `npm run test` passes.
+
+### Plain terms scripting, part 3/5: Rename the history and run-trail JSON keys and move GET /api/tick to /api/run (done 2026-10-16, planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Script interfaces"; touches src/history and src/tick/tick-detail-data.ts and src/gui and the dashboard History view)
+
+**Goal.** These script-facing names change:
+- `history --json` rows and `/api/history` rows carry `role` and `run`.
+- The summary (`history --summary --json`, and `/api/history?summary`) has the shape `{roles: [{role, runs, changes, none, problems, tokens, costUsd, lastChangeTs}], total}`.
+- The run trail (`history <role> <n> --json`) carries `run` and `merge`.
+- `GET /api/tick?role=<id>&tick=N` becomes `GET /api/run?role=<id>&run=N`, and the old route is not kept.
+
+**Approach.**
+- History rows and summary (src/history/history-data.ts):
+  - `TickRow.loop` → `role`, `TickRow.tick` → `run`.
+  - `HistorySummaryRow.loop` → `role`, `.ticks` → `runs`.
+  - `summarizeTickRows` returns `{ roles, total }`, and the total row's `role` is `"total"`.
+  - The class counts (`changes`, `none`, `problems`) and `lastChangeTs` keep their names. Plain terms commands kept `HISTORY_RESULT_CLASSES` internal and maps `--result merged` to the `changes` class, so the summary's class keys and the dashboard's History filter values stay as they are.
+  - `TickRowCells` holds the text table's column keys, not payload keys. Leave it.
+  - Let `tsc` drive the typed readers: `renderSummary` and `renderRow` (src/history/history-render.ts), `windowSummary` (src/cli/cli-run.ts), src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts and src/tick/tick-detail.ts.
+- Run trail (src/tick/tick-detail-data.ts): `TickDetail.tick` → `run`, `TickDetail.landing` → `merge`. The readers are `renderTickDetail` and `tickDetailStat` in src/tick/tick-detail.ts, and the TUI trail pane. `TickDetail.events` holds raw events, whose fields belong to Plain terms event log.
+- Route:
+  - In `guiRoutes` (src/gui/gui-server.ts), `"GET /api/tick"` becomes `"GET /api/run"`.
+  - `handleTick` (src/gui/gui-endpoints.ts) reads the query parameter `run` instead of `tick`, as `intQuery(q, res, "run", "positive")`. Update its doc comment and every other comment in src/gui/ that names `/api/tick`.
+  - Handler and function names stay; Plain terms code run renames them.
+- Dashboard script, src/ui/gui/gui-client-history.ts:
+  - The drill-down fetch becomes `"/api/run?role=…&run=…"`.
+  - Row reads `r.loop`/`r.tick` become `r.role`/`r.run`.
+  - `d.summary.loops` (and its `Array.isArray` probe) becomes `d.summary.roles`, with `r.loop === "total"` becoming `r.role === "total"`.
+  - `cell(r, "ticks")` becomes `cell(r, "runs")`. `cell(r, "changes")` and `r.lastChangeTs` stay.
+- Dashboard script, src/ui/gui/gui-client-drawer.ts: the recent-runs list's `t.tick` becomes `t.run`.
+- The DOM attribute `data-tick` (and `dataset.tick`) belongs to the code, not the payload. Leave it.
+- In test/script-keys.test.ts, add an assertion that `GUI_CLIENT_JS` does not contain `/api/tick`.
+- In these test files, the event fixtures (`{ loop: …, type: "tick_end", tick: 1 }`) are event-log lines, not payload rows. Leave them for Plain terms event log. Change only row, summary and trail assertions:
+  - test/history-data.test.ts, test/cli-history.test.ts, test/cli-history-filtering.test.ts, test/cli-history-views.test.ts
+  - test/gui-server-api.test.ts (the route and rows), test/gui-endpoints.test.ts (the summary)
+  - test/gui-client-history.test.ts, test/gui-client-drawer.test.ts
+  - test/tick-detail.test.ts, test/tick-detail-data.test.ts
+  - test/tui-history.test.ts, test/tui-keys.test.ts, test/cli-run.test.ts
+
+**Files touched.** Source: src/history/history-data.ts, src/history/history-render.ts, src/cli/cli-run.ts, src/tick/tick-detail-data.ts, src/tick/tick-detail.ts, src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts, src/gui/gui-server.ts, src/gui/gui-endpoints.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-drawer.ts. Tests: test/script-keys.test.ts and those listed above.
+
+**Acceptance criteria.**
+- `tumwater history --json` rows have `role` and `run`, with no `loop` or `tick`. `history --summary --json` is `{roles, total}`, with rows keyed `role`, `runs`, `changes`, `none`, `problems`, `tokens`, `costUsd` and `lastChangeTs`.
+- `tumwater history <role> <n> --json` has `run` and `merge`, with no `tick` or `landing` key.
+- `GET /api/run?role=clean&run=9` serves the trail. `GET /api/tick` answers 404, and `run=0` or a missing `run` answers 400 (test/gui-server-api.test.ts).
+- The dashboard's History drill-down, its Summary table and the drawer's recent runs render from fixtures that use the new keys, and test/script-keys.test.ts passes.
 - `npm run test` passes.
 
 ### Plain terms scripting, part 2/5: Rename the report --json keys and add the script-keys guard (done 2026-10-16, planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "Script interfaces"; touches src/report and the dashboard Usage and Team views and test/script-keys.test.ts)

@@ -25,12 +25,12 @@ import type { HarnessEvent } from "../events/events.js";
  * timestamp falls inside the pair — the tick-less in-tick events (`review_verdict`,
  * `build_check`, `warning`) included, other loops' events excluded. A tick that ended `queued`
  * has its landing's verdict resolved the way history rows do: `result` becomes the landing's
- * result and `landing` the `landed`/`land_failed` event that carries it (logged after the
- * block, so not in `events`); `landing` is null for every other tick, and for a queued tick
+ * result and `merge` the `landed`/`land_failed` event that carries it (logged after the
+ * block, so not in `events`); `merge` is null for every other tick, and for a queued tick
  * whose landing is still pending or whose outcome rotated out (`result` stays `queued`). */
 export interface TickDetail {
   role: string;
-  tick: number;
+  run: number;
   startTs: number | null;
   endTs: number | null;
   durationMs: number | null;
@@ -39,7 +39,7 @@ export interface TickDetail {
   costUsd: number;
   usage: string;
   events: HarnessEvent[];
-  landing: HarnessEvent | null;
+  merge: HarnessEvent | null;
 }
 
 /** The event block of `role`'s tick `n`, or null when the scanned window holds no such tick.
@@ -131,7 +131,7 @@ function detailFrom(
   }
   return {
     role,
-    tick,
+    run: tick,
     startTs,
     endTs: end === null ? null : end.ts,
     durationMs: end === null ? null : tickSpanMs(end, tickStartMap(scoped)),
@@ -140,6 +140,6 @@ function detailFrom(
     costUsd: usageNums.costUsd,
     usage: end === null ? "" : usageText(end),
     events: block,
-    landing,
+    merge: landing,
   };
 }

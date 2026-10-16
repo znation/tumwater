@@ -463,21 +463,21 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   assert.equal(captured.status, 200);
   const { rows, summary } = data as {
     rows: Parameters<typeof summarizeTickRows>[0];
-    summary: { loops: { loop: string; lastChangeTs: number | null }[]; total: { ticks: number; changes: number; none: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
+    summary: { roles: { role: string; lastChangeTs: number | null }[]; total: { runs: number; changes: number; none: number; problems: number; tokens: number; costUsd: number; lastChangeTs: number } };
   };
   assert.equal(rows.length, 4);
   // The summary folds the exact served rows through the shared collector, so it can never
   // disagree with the table it scrolls beside (`history --summary`'s own tally).
   assert.deepEqual(summary, summarizeTickRows(rows));
-  assert.deepEqual(summary.loops.map((l) => l.loop), ["clean", "feature"]);
-  assert.equal(summary.total.ticks, 4);
+  assert.deepEqual(summary.roles.map((l) => l.role), ["clean", "feature"]);
+  assert.equal(summary.total.runs, 4);
   assert.equal(summary.total.changes, 2);
   assert.equal(summary.total.none, 1);
   assert.equal(summary.total.problems, 1);
   assert.equal(summary.total.tokens, 1000);
   assert.equal(summary.total.lastChangeTs, now - 900_000, "the newest changes-class run across every role");
-  assert.equal(summary.loops[0]?.lastChangeTs, now - 900_000, "clean changed only at 15m ago");
-  assert.equal(summary.loops[1]?.lastChangeTs, now - 3_000_000, "feature changed only at 50m ago");
+  assert.equal(summary.roles[0]?.lastChangeTs, now - 900_000, "clean changed only at 15m ago");
+  assert.equal(summary.roles[1]?.lastChangeTs, now - 3_000_000, "feature changed only at 50m ago");
   // The count shape without the flag is today's byte-for-byte: no summary key.
   const bare = await serveHistory(root, "?n=50");
   assert.ok(!("summary" in (bare.data as object)));
@@ -487,9 +487,9 @@ test("handleHistory ?summary folds the served rows into an additive per-role sum
   assert.ok("summary" in (blank.data as object), "an empty value still counts as the flag present");
   // The trailing-window arm folds the same way, riding { rows, covered, note }.
   const win = await serveHistory(root, "?sinceMs=3600000&summary=1");
-  const wdata = win.data as { rows: Parameters<typeof summarizeTickRows>[0]; covered: boolean; note: string; summary: { total: { ticks: number } } };
+  const wdata = win.data as { rows: Parameters<typeof summarizeTickRows>[0]; covered: boolean; note: string; summary: { total: { runs: number } } };
   assert.equal(wdata.rows.length, 4);
-  assert.equal(wdata.summary.total.ticks, 4);
+  assert.equal(wdata.summary.total.runs, 4);
   assert.deepEqual(wdata.summary, summarizeTickRows(wdata.rows));
 });
 
@@ -506,7 +506,7 @@ test("handleTick serves one run's collector payload plus its pre-rendered text",
     // Another loop's same-numbered tick must not leak into clean's block.
     JSON.stringify({ ts: 48_000, loop: "feature", type: "run_end", run: 3, result: "no_change" }),
   ]);
-  const { captured, data } = await serveTick(root, "?role=clean&tick=3");
+  const { captured, data } = await serveTick(root, "?role=clean&run=3");
   const detail = readTickDetail(root, "clean", 3);
   assert.ok(detail);
   assert.equal(captured.status, 200);
@@ -528,7 +528,7 @@ test("handleTick's stat names a pinned commit that is not in the repository", as
     JSON.stringify({ ts: 2_000, loop: "clean", type: "land_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }),
     JSON.stringify({ ts: 3_000, loop: "clean", type: "run_end", run: 3, result: "changed" }),
   ]);
-  const { data } = await serveTick(root, "?role=clean&tick=3");
+  const { data } = await serveTick(root, "?role=clean&run=3");
   assert.match((data as { stat: string }).stat, /^\(commit [0-9a-f]+ is not in this repository\)$/);
 });
 
@@ -539,20 +539,20 @@ test("handleTick's error cases: role and run 400s, a missed run 404", async () =
     JSON.stringify({ ts: 2_000, loop: "clean", type: "run_end", run: 3, result: "no_change" }),
   ]);
   // The role is a target here, not a filter: missing and unknown are 400s naming the valid ids.
-  assert.equal((await serveTick(root, "?tick=3")).captured.status, 400);
-  const unknown = await serveTick(root, "?role=nope&tick=3");
+  assert.equal((await serveTick(root, "?run=3")).captured.status, 400);
+  const unknown = await serveTick(root, "?role=nope&run=3");
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role "nope"/);
   // The tick is an explicit count: required, and a positive integer through intQuery.
   assert.equal((await serveTick(root, "?role=clean")).captured.status, 400);
   for (const bad of ["abc", "0", "-5", "1e3"]) {
-    const r = await serveTick(root, `?role=clean&tick=${bad}`);
-    assert.equal(r.captured.status, 400, `tick=${bad} → 400`);
-    assert.match((r.data as { error: string }).error, /tick must be a positive integer/);
+    const r = await serveTick(root, `?role=clean&run=${bad}`);
+    assert.equal(r.captured.status, 400, `run=${bad} → 400`);
+    assert.match((r.data as { error: string }).error, /run must be a positive integer/);
   }
   // A tick the scanned window does not hold — never ran, or rotation ate it — is a not-found
   // status with the CLI's wording, not a crash.
-  const missing = await serveTick(root, "?role=clean&tick=9");
+  const missing = await serveTick(root, "?role=clean&run=9");
   assert.equal(missing.captured.status, 404);
   assert.match((missing.data as { error: string }).error, /no run #9 for clean in the scanned window/);
   for (const r of [unknown, missing]) assert.equal("stat" in (r.data as object), false, "error bodies carry no stat");

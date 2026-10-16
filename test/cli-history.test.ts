@@ -168,14 +168,16 @@ test("history --json prints the tick rows as machine-readable data", async () =>
   const rows = payload.rows as Array<Record<string, unknown>>;
   assert.equal(rows.length, 3); // The run_start contributes no row.
   // Newest first, with the raw fields the table's renderings are derived from.
-  assert.equal(rows[0]!["loop"], "bugfix");
+  assert.ok(!("loop" in rows[0]!) && !("tick" in rows[0]!), "rows carry role and run, not loop or tick");
+  assert.equal(rows[0]!["run"], 9);
+  assert.equal(rows[0]!["role"], "bugfix");
   assert.equal(rows[0]!["ts"], 1787222760000);
   assert.equal(rows[0]!["tokens"], 0); // Omit-when-zero: absent usage fields read as 0.
   assert.equal(rows[0]!["costUsd"], 0);
-  assert.equal(rows[1]!["loop"], "clean");
+  assert.equal(rows[1]!["role"], "clean");
   assert.equal(rows[1]!["result"], "no_change");
   assert.equal(rows[1]!["usage"], "");
-  assert.equal(rows[2]!["loop"], "feature");
+  assert.equal(rows[2]!["role"], "feature");
   assert.equal(rows[2]!["ts"], 1787222695956);
   assert.equal(rows[2]!["tokens"], 2400);
   assert.equal(rows[2]!["costUsd"], 0.02);
@@ -199,8 +201,8 @@ test("history --json combines with --role and -n and still rejects unknown flags
 
   const scoped = await cli(repo, "history", "--json", "--role", "feature", "-n", "5");
   assert.equal(scoped.code, 0);
-  const payload = JSON.parse(scoped.stdout) as { rows: Array<{ loop: string; tick: number }> };
-  assert.deepEqual(payload.rows.map((r) => [r.loop, r.tick]), [["feature", 7]]);
+  const payload = JSON.parse(scoped.stdout) as { rows: Array<{ role: string; run: number }> };
+  assert.deepEqual(payload.rows.map((r) => [r.role, r.run]), [["feature", 7]]);
   // The same scope through the table path renders the same single row's detail.
   const table = await cli(repo, "history", "--role", "feature", "-n", "5");
   assert.match(table.stdout, /added a widget/);

@@ -43,7 +43,7 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
   const d = readTickDetail(root, "bugfix", 3);
   assert.ok(d !== null);
   assert.equal(d.role, "bugfix");
-  assert.equal(d.tick, 3);
+  assert.equal(d.run, 3);
   assert.equal(d.startTs, 4000);
   assert.equal(d.endTs, 7000);
   assert.equal(d.durationMs, 3000);
@@ -190,7 +190,7 @@ test("cmdTick prints the human view, the --json payload, and the not-found line"
   const json = await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], true));
   const payload = JSON.parse(json.stdout) as TickDetail;
   assert.equal(payload.role, "bugfix");
-  assert.equal(payload.tick, 3);
+  assert.equal(payload.run, 3);
   assert.equal(payload.startTs, 1000);
   assert.equal(payload.endTs, 31_000);
   assert.equal(payload.durationMs, 30_000);
@@ -372,6 +372,6 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved landing"
   const lines = text.trimEnd().split("\n");
   assert.match(lines[lines.length - 1]!, /merge of sha1abc\w* done/);
   const payload = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], true))).stdout) as TickDetail;
-  assert.equal(payload.landing?.type, "landed");
+  assert.equal(payload.merge?.type, "landed");
   assert.equal(renderTickDetail(readTickDetail(repo, "bugfix", 1)!), text.trimEnd());
 });

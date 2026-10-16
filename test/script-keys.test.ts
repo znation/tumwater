@@ -34,6 +34,11 @@ test("the dashboard script reads no retired payload key", () => {
   assert.deepEqual(retiredReads(GUI_CLIENT_JS, RETIRED_CLIENT_READS), []);
 });
 
+test("the dashboard script calls /api/run, not the retired /api/tick route", () => {
+  assert.equal(GUI_CLIENT_JS.includes("/api/tick"), false);
+  assert.ok(GUI_CLIENT_JS.includes("/api/run?role="));
+});
+
 test("the matcher flags a property read and a quoted key, and passes a longer name", () => {
   assert.deepEqual(retiredReads("x = d.ticksByRole;\ny = f(d, 'landingRuns');", RETIRED_CLIENT_READS), [
     "ticksByRole on line 1",
