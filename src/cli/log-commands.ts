@@ -5,6 +5,7 @@ import {
   readEventsSince,
   SPARSE_WINDOW_NOTE,
 } from "../events/event-window.js";
+import { increment } from "../collections.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
@@ -38,7 +39,7 @@ function sayEventLine(e: HarnessEvent, json: boolean): void {
  * machine-readable twin of the prose tally. */
 function sayTally(events: HarnessEvent[], json: boolean): void {
   const counts = new Map<string, number>();
-  for (const e of events) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+  for (const e of events) increment(counts, e.type);
   if (json) {
     const obj: Record<string, number> = {};
     for (const [type] of [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) obj[type] = counts.get(type)!;

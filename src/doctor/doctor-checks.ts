@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { increment } from "../collections.js";
 import {
   enabledRoleIds,
   loadConfig,
@@ -635,7 +636,7 @@ export function checkFlakyChecks(root: string): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
   const counts = new Map<string, number>();
   for (const key of flakeWarningKeys(events)) {
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    increment(counts, key);
   }
   const flapped = [...counts.entries()]
     .filter(([, n]) => n >= 2)

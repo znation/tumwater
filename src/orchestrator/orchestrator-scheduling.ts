@@ -5,6 +5,7 @@
  * Split out of runOrchestrator's poll body so the WHY-due policy reads on its own screen;
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
  * landing drain) and the launch call itself. */
+import { increment } from "../collections.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
 import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
@@ -152,7 +153,7 @@ export async function pollRunnerReasons(
   const baseCounts = new Map<string, number>();
   for (const runner of runners) {
     const base = baseRoleOf(runner.role);
-    baseCounts.set(base, (baseCounts.get(base) ?? 0) + 1);
+    increment(baseCounts, base);
   }
   for (const [base, count] of baseCounts) {
     if (count <= 1) continue;
