@@ -421,3 +421,31 @@ test("Enter submits, Shift+Enter adds a line, Escape blurs", () => {
   s.fire(input, "keydown", { key: "Escape", preventDefault: () => {} });
   assert.equal(blurred, true);
 });
+
+// Image input, part 5/5 (plans/image-input.md "Surfaces"): the composer shows, under the image
+// chips, where an image prompt to a text-only loop will run (read from the status payload's
+// per-loop imageInput/imageReroute), and hides it for a vision loop.
+test("the image note under the chips names where a text-only loop's image prompt runs", () => {
+  const s = composerScope();
+  const status = {
+    loops: [
+      { role: "qa", imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+      { role: "bugfix", imageInput: true, imageReroute: null },
+    ],
+    inbox: 0,
+    roleInbox: {},
+  };
+  s.scope.renderComposer(status);
+  s.scope.setTarget("qa");
+  const note = s.el("promptimagenote");
+  assert.equal(note.hidden, false);
+  assert.match(note.textContent, /qa's model can't read images; image prompts run on strong \(claude-opus-5-5\)/);
+
+  // A vision loop shows no note; a text-only loop with no target shows none either (the
+  // submit gate will refuse on the server, which the flash reports).
+  s.scope.setTarget("bugfix");
+  assert.equal(s.el("promptimagenote").hidden, true);
+  s.scope.renderComposer({ loops: [{ role: "qa", imageInput: false, imageReroute: null }, { role: "bugfix", imageInput: true, imageReroute: null }], inbox: 0, roleInbox: {} });
+  s.scope.setTarget("qa");
+  assert.equal(s.el("promptimagenote").hidden, true);
+});

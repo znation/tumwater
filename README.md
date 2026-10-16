@@ -58,6 +58,13 @@ file backlog entries, and `tumwater pause`, `resume`, `wake`, and `stop` control
 --all-interfaces` exposes the dashboard, and with it the director prompt, to your whole network,
 so pair it with `--token <secret>`.
 
+`tumwater prompt --attach <image>` gives a loop an image to read at its next tick. When a loop's
+model cannot read images, the command refuses the attachment up front (naming the fix) unless
+the loop reroutes a blind read to a vision model, in which case it says where the prompt will run;
+`tumwater doctor` probes each claimed image-input model once (cached 7 days, `--reprobe` to force)
+and the dashboards and `tumwater role <id>` say which loops read images and where a blind tick
+reroutes.
+
 Every command, flag, and TUI key is in [docs/cli.md](docs/cli.md); `tumwater help` prints the
 same list, and `tumwater completion bash|zsh` prints shell completion. Settings live in
 `tumwater.json` and edits apply live while the fleet runs; see [docs/config.md](docs/config.md).

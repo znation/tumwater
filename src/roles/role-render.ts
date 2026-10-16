@@ -116,6 +116,20 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   lines.push(`- State: ${state}`);
   lines.push(`- Scheduling tier: ${p.tier} (${p.tier === 0 ? "work" : "maintenance/observer"})`);
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
+  // Image input (plans/image-input.md "Surfaces", part 5/5): whether this loop's own model
+  // reads images, and — when it cannot — where a tick that reads an image reroutes. Not just
+  // `yes`/`no`: a text-only loop that falls back names the target, so `tumwater role <id>`
+  // explains the fleet alert without running doctor. Unknown (null) renders `unknown` rather
+  // than guessing.
+  const images =
+    p.imageInput === true
+      ? "yes"
+      : p.imageInput === false
+        ? p.imageReroute
+          ? `no — reruns on ${p.imageReroute}`
+          : "no"
+        : "unknown";
+  lines.push(`- Images: ${images}`);
   // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
   // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
   if (p.modelFallback) {

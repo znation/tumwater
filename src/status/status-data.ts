@@ -19,7 +19,7 @@ import {
 import type { LandingInFlight } from "../landing/landing-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
-import { collectRoleRows } from "./status-roles.js";
+import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
 
@@ -56,6 +56,10 @@ export interface StatusSnapshot {
   inboxNotBefore: Array<number | null>;
   /** Open questions awaiting a human answer (QUESTIONS.md's ## Open) — the header badge. */
   questions: number;
+  /** The doctor's live image-probe failures (plans/image-input.md "Surfaces", part 5/5):
+   * every claimed model whose probe failed (fresh verdict), labelled as `<provider>/<model>`.
+   * Empty when nothing failed or no probe ran — the amber probe alert keys on this. */
+  imageProbeFailures: string[];
   /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
    * customLoops) for the dashboards' asterisk — display-only metadata computed here at the
    * source, from the same last-known-good config that produced the role list, so a transiently
@@ -92,6 +96,15 @@ export interface StatusSnapshot {
      * instance row so a dashboard can group and label parallel work instances
      * (plans/parallel-work-instances.md "Observability", part 6/7). Absent on the bare role. */
     instanceOf?: string;
+    /** The loop's image-input capability (plans/image-input.md "Surfaces", part 5/5): true
+     * when its own model reads images, false when it is text-only, null when the fleet cannot
+     * tell (an unknown pair). Always present, so both observer surfaces answer without running
+     * doctor. */
+    imageInput: boolean | null;
+    /** The loop's image reroute target as `<tier> (<model>)`, or null when no other tier reads
+     * images — the `reruns on …` the images alert and role page name. Named `imageRerouteLabel`
+     * to avoid the persisted LoopState.imageReroute handoff record. Always present. */
+    imageRerouteLabel: string | null;
   }>;
   /** The daily cost budget, unconditionally (cap 0 = disabled — the display decides what to
    * show): today's fleet spend vs the cap, for the header badge on both dashboards (`· budget:
@@ -351,6 +364,9 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // the rows agree.
   const slots = readSlotsState(root).slots;
   const loops = collectRoleRows(root, cfg, now, slots, modelsPath);
+  // The doctor's cached image-probe failures (part 5/5): one read per snapshot, labelled, so
+  // the amber probe alert and `status --json` both answer from the same collector.
+  const imageProbeFailures = collectImageProbeFailures(root, now);
   // One inbox pass per poll (status-inbox.ts) serves all four director fields and the per-role
   // counts/entries from the same queuedRolePromptEntries reads.
   const { inbox, inboxPrompts, inboxFiles, inboxQueuedAt, inboxNotBefore, roleInbox, roleInboxPrompts } =
@@ -412,6 +428,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     roleInbox,
     roleInboxPrompts,
     questions: openQuestions(root).length,
+    imageProbeFailures,
     loops,
     // Unconditional (never null): a disabled fleet still shows its spend and the badge is
     // the affordance for SETTING a cap. models.json itself is stat-cached inside pi-models.ts,

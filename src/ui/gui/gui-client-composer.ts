@@ -17,6 +17,22 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   let promptTarget = "director";
   let targetKey = "";
   const drafts = {}; // each target keeps its own unsent draft
+  // The last status payload, kept so setTarget can re-render the image note between polls.
+  let composerData = null;
+  // The image-input notice under the image chips (plans/image-input.md "Surfaces", part 5/5):
+  // when the selected non-director loop's model can't read images but reroutes a blind read
+  // to another tier, say so — read from the status payload (imageInput/imageReroute), the same
+  // facts the images alert and the submit gate use, so the composer never promises a run the
+  // gate would refuse.
+  function renderPromptImageNote() {
+    const loop = (composerData && composerData.loops || []).find((l) => l.role === promptTarget);
+    const note = $("promptimagenote");
+    const text = loop && loop.imageInput === false && loop.imageReroute
+      ? promptTarget + "'s model can't read images; image prompts run on " + loop.imageReroute
+      : "";
+    if (note.textContent !== text) note.textContent = text;
+    note.hidden = text === "";
+  }
   function renderComposer(d) {
     const roles = (d.loops || []).map((l) => l.role).filter((r) => r !== "director");
     const key = roles.join(",");
@@ -33,6 +49,8 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     link.dataset.act = "queued";
     const text = plural(n, "prompt") + " queued";
     if (link.textContent !== text) link.textContent = text;
+    composerData = d;
+    renderPromptImageNote();
   }
   function composerHint() {
     $("prompthint").innerHTML = esc(promptTarget === "director"
@@ -50,6 +68,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     composerHint();
     autosize();
     updateCount();
+    renderPromptImageNote();
   }
   function autosize() {
     promptInput.style.height = "auto";

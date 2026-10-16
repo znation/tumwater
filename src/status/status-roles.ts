@@ -14,6 +14,8 @@ import { formatModelSelector } from "../config/model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { isJsonObject } from "../files/json-object.js";
 import { loopStateForPoll } from "./status-polls.js";
+import { roleImageInfo, seamImageLabel } from "../agent/image-input.js";
+import { imageProbeEntryFresh, readImageProbeCache } from "../doctor/image-probe.js";
 
 /** One status-table row: the persisted loop state plus the display-only fields the dashboard
  * computes at the source (`custom`, the resolved selector, the active fallback, the pooled
@@ -29,6 +31,15 @@ export type StatusLoopRow = LoopState & {
   slot?: string;
   slotPinned?: boolean;
   instanceOf?: string;
+  /** The loop's image-input capability (plans/image-input.md "Surfaces", part 5/5): `true`
+   * when its own model reads images, `false` when it is text-only, null when the fleet cannot
+   * tell. Always present, so `status --json` and the dashboards answer without running
+   * doctor. */
+  imageInput: boolean | null;
+  /** The loop's image reroute target as `<tier> (<model>)`, or null when no other tier reads
+   * images — the `reruns on …` every surface names. Always present. (Named `imageRerouteLabel`
+   * to avoid the persisted LoopState.imageReroute handoff record of the same name.) */
+  imageRerouteLabel: string | null;
 };
 
 /** One row per enabled loop id (part 5b/7). `configForRole`, `modelFallbackView`, the leased /
@@ -47,6 +58,9 @@ export function collectRoleRows(
 ): StatusLoopRow[] {
   const roles = loopIds(cfg);
   const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
+  // One probe-cache read per poll serves every row's image-input surface (same no-data policy
+  // as every other degraded read: a missing cache is an empty one).
+  const probes = readImageProbeCache(root);
   return roles.map((r) => {
     const base = { ...loopStateForPoll(root, r), custom: isCustomRole(cfg, r) };
     const leased = slots.find((slot) => slot.lease?.role === r);
@@ -58,6 +72,11 @@ export function collectRoleRows(
     // seam consumes. Part 7a (model-tiers.md "Observability"): the seam tier tag is added
     // only with a tier map declared, where it names the tier a role rides.
     const eff = configForRole(cfg, r);
+    // The image-input surface (plans/image-input.md "Surfaces", part 5/5): the loop's own
+    // capability and its reroute target, one shared resolver so the status rows, the role
+    // page, and the submit gate cannot disagree about who reads images or where a blind
+    // prompt would run.
+    const image = roleImageInfo(cfg, r, modelsPath, probes);
     // Model failure fallback, part 2/2: while the role's episode is active its ticks run on
     // the tier-resolved fallback pair, so the row names that pair, the episode's start, and
     // the failure that tripped it. `now` is the poll's own clock (the snapshot seam), so
@@ -76,6 +95,8 @@ export function collectRoleRows(
     return {
       ...base,
       ...modelSelectorField(eff),
+      imageInput: image.imageInput,
+      imageRerouteLabel: image.imageReroute,
       ...(modelFromPi
         ? {
             model: formatModelSelector({
@@ -91,4 +112,22 @@ export function collectRoleRows(
       ...(baseRoleOf(r) === r ? {} : { instanceOf: baseRoleOf(r) }),
     };
   });
+}
+
+/** The doctor's live-probe failures (plans/image-input.md "Surfaces", part 5/5): every cached
+ * probe verdict of `fail` that is still fresh (the claim is unchanged and within the 7-day
+ * TTL), labelled as `<provider>/<model>`. A claimed model that failed the probe reads `false`
+ * everywhere (seamImageInput honors a fresh failure), but the observability value is naming
+ * it — a claim the doctor contradicted is exactly what the amber probe alert and the role/status
+ * rows should surface, not just "this loop is text-only". A torn or missing cache answers
+ * empty (the same no-data policy as the per-loop read). */
+export function collectImageProbeFailures(root: string, now: number = Date.now()): string[] {
+  const probes = readImageProbeCache(root);
+  const out: string[] = [];
+  for (const [key, entry] of Object.entries(probes)) {
+    if (entry.verdict !== "fail" || !imageProbeEntryFresh(entry, now)) continue;
+    const [agent, provider, model] = key.split("/");
+    out.push(seamImageLabel(agent || undefined, provider || undefined, model || undefined));
+  }
+  return out.sort();
 }

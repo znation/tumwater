@@ -15,6 +15,7 @@ import { pausedRolesPath, roleNotesPath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
@@ -472,4 +473,42 @@ test("a pi seam naming no model shows pi's own saved default", () => {
   const bare = rolePayload(dir, "feature", path.join(dir, "empty", "models.json"));
   assert.equal(bare.piDefault, undefined);
   assert.match(renderRoleMarkdown(bare), /- Model: pi default \(default tier\)/m);
+});
+
+// Image input, part 5/5 (plans/image-input.md "Surfaces"): the role page carries an `Images:`
+// line — the loop's own capability and, when it cannot read images, where a blind read
+// reroutes. The text-only default-tier loop names its vision strong target; a vision loop says
+// yes; an unknown seam (no models file) says unknown rather than guessing.
+test("role payload reports image input and the renderer's Images line", () => {
+  const dir = root();
+  const dirModels = tmpdir("role-image-");
+  const models = writeModelsFile(
+    dirModels,
+    JSON.stringify({
+      providers: {
+        local: {
+          models: [
+            { id: "text" },
+            { id: "vision", input: ["text", "image"] },
+          ],
+        },
+      },
+    }),
+  );
+  writeConfig(dir, { model: { default: "local/text", strong: "local/vision" } });
+  const feature = rolePayload(dir, "feature", models); // rides default → text-only
+  assert.equal(feature.imageInput, false);
+  assert.equal(feature.imageReroute, "strong (local/vision)");
+  const md = renderRoleMarkdown(feature);
+  assert.match(md, /- Images: no — reruns on strong \(local\/vision\)/);
+
+  const plan = rolePayload(dir, "plan", models); // rides strong → reads images
+  assert.equal(plan.imageInput, true);
+  assert.equal(plan.imageReroute, null);
+  assert.match(renderRoleMarkdown(plan), /- Images: yes/);
+
+  // An unknown seam (no models) reads unknown — never assumed capable.
+  const unknown = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(unknown.imageInput, null);
+  assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
 });

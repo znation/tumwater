@@ -73,6 +73,12 @@ export function statusPayload(root: string, now = Date.now()): object {
       // unclaimed row so the common payload shape is unchanged.
       ...(s.claim ? { claim: s.claim.title } : {}),
       ...(s.instanceOf ? { instanceOf: s.instanceOf } : {}),
+      // The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5), always
+      // present: whether its own model reads images and where a blind prompt reroutes — the
+      // GUI's images alert and composer notice read them (the JSON field is `imageReroute`, the
+      // display label, not the persisted handoff state).
+      ...(s.imageInput !== undefined ? { imageInput: s.imageInput } : {}),
+      ...(s.imageRerouteLabel !== undefined ? { imageReroute: s.imageRerouteLabel } : {}),
       phase,
       // In-flight flag derived from the same rendered phase (isActivePhase's
       // permit-holder prefixes: working/reviewing/landing). The running director is excluded

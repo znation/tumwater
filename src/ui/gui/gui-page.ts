@@ -68,6 +68,7 @@ export const GUI_PAGE = `<!doctype html>
         <button type="submit" class="btn btn-primary" id="promptsend" title="Send (Enter)">${iconSvg("send")}<span>Send</span></button>
       </div>
       <div id="promptimages" class="chips" hidden></div>
+      <div id="promptimagenote" class="composer-note" hidden></div>
       <div class="composer-foot">
         <span id="prompthint"></span>
         <span class="composer-meta"><span id="promptcount"></span><a href="#" id="queuelink" hidden></a></span>

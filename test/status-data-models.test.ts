@@ -219,3 +219,50 @@ test("statusPayload ships modelFromPi beside the model it names", async () => {
     else process.env.PI_CODING_AGENT_DIR = savedDir;
   }
 });
+
+// Image input, part 5/5 (plans/image-input.md "Surfaces"): every snapshot row carries the
+// loop's image-input capability and its reroute target as a display label, computed by the
+// same resolver the role page and submit gate use — so `status --json` and the images alert
+// answer without running doctor. A default-tier text-only loop reroutes to the vision strong
+// tier; a strong-tier loop reads images itself.
+test("snapshot rows carry the image-input surface from the models catalog", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "image surface");
+  const dir = tmpdir("status-image-");
+  const models = writeModelsFile(
+    dir,
+    JSON.stringify({
+      providers: {
+        local: {
+          models: [
+            { id: "text" }, // no input → text-only
+            { id: "vision", input: ["text", "image"] },
+          ],
+        },
+      },
+    }),
+  );
+  // plan rides the strong tier; feature rides default. Default is text-only, strong reads images,
+  // so the default-tier loop is text-only with a reroute target naming strong.
+  writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
+  const snap = snapshot(repo, models);
+  const feature = snap.loops.find((l) => l.role === "feature")!;
+  assert.equal(feature.imageInput, false);
+  assert.equal(feature.imageRerouteLabel, "strong (local/vision)");
+  const plan = snap.loops.find((l) => l.role === "plan")!;
+  assert.equal(plan.imageInput, true);
+  assert.equal(plan.imageRerouteLabel, null);
+  // The payload ships the same surface for the dashboard's images alert and composer notice.
+  // statusPayload reads the default models path, so point it at the temp dir the snapshot used.
+  const savedDir = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = dir;
+    const payload = statusPayload(repo) as { loops: Array<{ role: string; imageInput?: boolean | null; imageReroute?: string | null }> };
+    const featureRow = payload.loops.find((l) => l.role === "feature")!;
+    assert.equal(featureRow.imageInput, false);
+    assert.equal(featureRow.imageReroute, "strong (local/vision)");
+  } finally {
+    if (savedDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = savedDir;
+  }
+});

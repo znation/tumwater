@@ -14,6 +14,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { expectFailAsync, expectOkAsync as expectOk } from "./helpers/exit-capture.js";
 
 /** src/inbox/prompt-commands.ts's own tests: the `tumwater prompt` CLI layer had no in-process
@@ -505,6 +506,46 @@ test("prompt --edit --attach fails on a bad path by name with the queue untouche
   assert.deepEqual(queuedRolePrompts(root, "bugfix"), ["queued"], "the queue is untouched");
   assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a failed edit");
 });
+// Image input, part 5/5: `--edit --attach` runs through the same gate as a fresh `--attach`
+// (the review objection that the edit path bypassed it), so an image no configured model can
+// read is refused for an edited prompt too — before a byte is written — and a reroute prints
+// where the edited prompt runs.
+test("prompt --edit --attach refuses an image the target loop cannot read, and names where a rerouted edit runs", async () => {
+  const root = makeRoot();
+  const modelsDir = tmpdir("cli-edit-img-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const img = path.join(root, "shot.png");
+  fs.writeFileSync(img, Buffer.from("not-a-real-png"));
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = modelsDir;
+    enqueueRolePrompt(root, "feature", "first");
+    // No configured model can read images → the edited-in attachment is refused up front and
+    // the queue is untouched.
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/text" } });
+    const refused = await expectFailAsync(() =>
+      cmdPrompt(root, ["--role", "feature", "--edit", "1", "--attach", img, "edited"]),
+    );
+    assert.match(refused, /feature's model can't read images and no configured model reads images for it/);
+    assert.deepEqual(queuedRolePrompts(root, "feature"), ["first"], "the refused edit leaves the queue untouched");
+    assert.equal(eventsOfType(root, "prompt_edited").length, 0, "no event on a refused edit");
+
+    // A vision strong tier reroutes a blind read → the edit lands and the notice names where.
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
+    const ok = await expectOk(() =>
+      cmdPrompt(root, ["--role", "feature", "--edit", "1", "--attach", img, "edited"]),
+    );
+    assert.match(`${ok.stdout}${ok.stderr}`, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
+    assert.match(`${ok.stdout}${ok.stderr}`, /edited: edited/);
+    assert.equal(eventsOfType(root, "prompt_edited").length, 1);
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+  }
+});
 
 // --- bare --edit <n> opens $VISUAL/$EDITOR ---
 
@@ -645,4 +686,41 @@ test("prompt --edit <n> with a buffer over the prompt cap fails with the length 
   );
   assert.match(result, /rides into the clean tick's prefill/);
   assert.ok(before.equals(fs.readFileSync(file)), "no write landed when the edit was rejected");
+});
+
+// Image input, part 5/5 (plans/image-input.md "Attachments" + "Surfaces"): the CLI's
+// `--attach` gate. An image to a loop whose seam reads none and that has no reroute target
+// fails non-zero naming the fix and queues nothing; with a reroute target it queues and
+// prints where the prompt will run.
+test("prompt --attach refuses an image the target loop cannot read, and names where a rerouted one runs", async () => {
+  const root = makeRoot();
+  const modelsDir = tmpdir("cli-image-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const imgDir = tmpdir("cli-attach-");
+  const img = path.join(imgDir, "shot.png");
+  fs.writeFileSync(img, Buffer.from("not-a-real-png"));
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  try {
+    process.env.PI_CODING_AGENT_DIR = modelsDir;
+
+    // No configured model can read images → the attach is refused up front, nothing queued.
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/text" } });
+    const o = await expectFailAsync(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
+    assert.match(o, /feature's model can't read images and no configured model reads images for it/);
+    assert.match(o, /models\.json/);
+    assert.equal(queuedRolePrompts(root, "feature").length, 0, "the refused attachment queues nothing");
+
+    // A vision strong tier reroutes a blind read → accepted, and the notice names where it runs.
+    writeJsonFile(configPath(root), { ...defaultConfig(), model: { default: "local/text", strong: "local/vision" } });
+    const ok = await expectOk(() => cmdPrompt(root, ["--role", "feature", "--attach", img, "look at this"]));
+    assert.match(`${ok.stdout}${ok.stderr}`, /feature's model can't read images; this prompt runs on strong \(local\/vision\)/);
+    assert.match(`${ok.stdout}${ok.stderr}`, /queued for the feature loop/);
+    assert.equal(queuedRolePrompts(root, "feature").length, 1);
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+  }
 });

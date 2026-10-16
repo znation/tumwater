@@ -391,6 +391,10 @@ export function renderStatusSpans(
     errorStreak: onErrorStreak(s),
     inFlight: isActivePhase(phase),
     ...(s.lastError ? { lastError: s.lastError } : {}),
+    // The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5): always
+    // present, so the TUI's images attention line keys on it like the dashboard's.
+    imageInput: s.imageInput,
+    imageReroute: s.imageRerouteLabel,
   }));
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.

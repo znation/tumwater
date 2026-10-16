@@ -7,6 +7,7 @@
  * inbox-edit, operator-intent) and touches no socket beyond its own `res`.
  */
 import { submitPrompt } from "../inbox/inbox-submit.js";
+import { imagePromptGuidance } from "../inbox/inbox-submit.js";
 import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attachments.js";
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
@@ -107,7 +108,27 @@ export async function handlePromptRole(req: http.IncomingMessage, res: http.Serv
   const role = body.role as string;
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
-  sendJson(res, 200, { ok: true, message: submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs) });
+  // Image-input submit gate (plans/image-input.md "Attachments", part 5/5): an attachment the
+  // target loop cannot read (and that no tier reroutes) answers 400 naming the fix before
+  // anything is queued — the same gate submitRolePrompt enforces, surfaced as a user-input
+  // error rather than the server's 500. A loop that reroutes a blind read is not refused; its
+  // notice rides in the confirmation the composer flashes.
+  let notice = "";
+  if (fields.images && fields.images.length > 0) {
+    const guidance = imagePromptGuidance(root, role);
+    if (guidance.refusal) {
+      badRequest(res, guidance.refusal);
+      return;
+    }
+    notice = guidance.notice ?? "";
+  }
+  const message = [
+    submitRolePromptAndWake(root, role, fields.text, fields.images, fields.notBeforeMs),
+    notice,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  sendJson(res, 200, { ok: true, message });
 }
 
 /** Handle POST /api/prompt-cancel: retract one queued prompt addressed by its queue file —
@@ -154,6 +175,17 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   if (rejectBadQueueFileName(res, body.file)) return;
   const fields = checkedPromptFields(res, body, role);
   if (!fields) return;
+  // Image-input gate (plans/image-input.md "Attachments", part 5/5), the edit twin of
+  // handlePromptRole's: an image edited into the queued prompt answers 400 naming the fix
+  // when the target loop cannot read it (and no tier reroutes it) — the same gate
+  // submitRolePrompt enforces — before anything is written.
+  if (fields.images && fields.images.length > 0) {
+    const guidance = imagePromptGuidance(root, role);
+    if (guidance.refusal) {
+      badRequest(res, guidance.refusal);
+      return;
+    }
+  }
   let outcome: EditOutcome;
   try {
     outcome = editQueuedFile(root, role, body.file as string, fields.text, fields.images);

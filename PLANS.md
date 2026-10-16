@@ -6,36 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Image input, part 5/5: the dashboard, the TUI, and prompt attachments say which loops cannot read images (planned 2026-10-15 by user; requires part 4/5 landed; design and decisions in plans/image-input.md "Surfaces" and "Attachments"; touches src/status/, src/ui/, src/roles/role-render.ts, src/inbox/, src/gui/gui-prompt-commands.ts, and the docs)
-
-**Goal.** An operator should know without running doctor that a loop's model cannot read images, and what happens when one of its ticks tries. An attachment no configured model can read should be refused when it is submitted, not discovered at tick time.
-
-**Approach.** See plans/image-input.md "Surfaces".
-- Status: add per-loop `imageInput: true | false | null` and `imageReroute: "<tier> (<model>)" | null`, plus the cached probe failures, to the snapshot and `status --json` (src/status/status-roles.ts and the payload).
-- A new `images` alert in `fleetAlerts` (src/ui/fleet-alerts.ts), shared by the dashboard banner and the TUI attention lines:
-  - **blue** when every text-only loop has a target: "<roles> run on models that can't read images" — "A tick that reads an image stops and reruns on <tier> (<model>)."
-  - **amber** when some text-only loop has none: "No configured model can read images for <roles>" — "A tick that reads an image fails, and image attachments to these loops are refused. Declare image input on a vision model in pi's models.json, or point a tier at one."
-  - **amber** when a model claims images but failed doctor's probe.
-  - **No alert** when every enabled loop reads images.
-- Role page (src/roles/role-render.ts, `tumwater role <id>` and the dashboard panel): `Images: no — reruns on strong (…)`.
-- Submit gate in `submitRolePrompt` (src/inbox/inbox-submit.ts), reached by the GUI endpoint and `tumwater prompt --attach`:
-  - refuse images when the target loop's seam reads none and it has no target, naming the fix;
-  - otherwise return a notice the CLI prints and the composer shows under the image chips (src/ui/gui/gui-client-composer.ts), e.g. "feature's model can't read images; this prompt runs on strong (claude-opus-5-5)".
-- Docs: README.md (`prompt --attach`), docs/cli.md (`doctor --reprobe`, the image input check), docs/backends.md (image input: claims, probe, reroute).
-
-**Files touched.**
-- src/status/status-roles.ts and the status payload, src/ui/fleet-alerts.ts, src/roles/role-render.ts
-- src/inbox/inbox-submit.ts, src/inbox/prompt-commands.ts, src/gui/gui-prompt-commands.ts, src/ui/gui/gui-client-composer.ts
-- README.md, docs/cli.md, docs/backends.md
-- tests: fleet-alerts, status, role-render, inbox-submit, GUI prompt endpoint, and gui-client tests
-
-**Acceptance criteria.**
-- With an all-claude config there is no `images` alert, and every loop reports `imageInput: true`.
-- With a text-only default and a vision strong, the alert is blue and names the default-tier loops and the strong model. With nothing able to read images, it is amber. A cached probe failure raises the amber probe alert.
-- `tumwater prompt --attach x.png` to a loop with no reroute target exits non-zero naming the fix, and queues nothing (no image file left behind). To a loop with a target, it queues the prompt and prints where it will run. The GUI endpoint behaves the same, and the composer shows the notice.
-- `tumwater role feature` shows the `Images:` line.
-
-
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
 
 **Refused 2026-10-14 by feature: prerequisite part 1/2 has not landed — `tui-editors.ts` does not exist (git ls-files and a grep under `src/`/`test/` for `tui-editors`/`createTuiEditors` find nothing) and the `tui-editors` entry is still under `## Planned`. This part 2/2's whole approach — `createTuiKeys` shrinking to an outer shell that constructs the `tui-editors` and `tui-panes` sub-factories, and the editors receiving `refreshPaneCache`/`refreshTrail`/`refreshQueued` as deps from `tui-panes` through `createTuiKeys` — builds on part 1/2 already having landed, which it has not. Land the `tui-editors` split first.
@@ -237,6 +207,35 @@ test/orchestrator-permits.e2e.test.ts.
 - Instance suffixes aggregate into their base role exactly as `Commits by role` does (`feature-2` counts under `feature`): a grep of the fold's landed keying shows `baseRoleOf` used, not the raw `eventRole`.
 - No behavior change elsewhere: `landingRuns`/`landingFailed`/`landingShareLine` keep their exact current totals (the per-role maps are a parallel tally, never subtracted), a role-scoped report prints no landing line (its `ROLE_SCOPE_NOTE` is unchanged), and `report --json` omits `landedByRole`/`landingFailedByRole` when no role has either (the zero-means-absent convention).
 - `npm run test` passes.
+
+### Image input, part 5/5: the dashboard, the TUI, and prompt attachments say which loops cannot read images (planned 2026-10-15 by user; requires part 4/5 landed; design and decisions in plans/image-input.md "Surfaces" and "Attachments"; touches src/status/, src/ui/, src/roles/role-render.ts, src/inbox/, src/gui/gui-prompt-commands.ts, and the docs) — done 2026-10-16
+
+**Goal.** An operator should know without running doctor that a loop's model cannot read images, and what happens when one of its ticks tries. An attachment no configured model can read should be refused when it is submitted, not discovered at tick time.
+
+**Approach.** See plans/image-input.md "Surfaces".
+- Status: add per-loop `imageInput: true | false | null` and `imageReroute: "<tier> (<model>)" | null`, plus the cached probe failures, to the snapshot and `status --json` (src/status/status-roles.ts and the payload).
+- A new `images` alert in `fleetAlerts` (src/ui/fleet-alerts.ts), shared by the dashboard banner and the TUI attention lines:
+  - **blue** when every text-only loop has a target: "<roles> run on models that can't read images" — "A tick that reads an image stops and reruns on <tier> (<model>)."
+  - **amber** when some text-only loop has none: "No configured model can read images for <roles>" — "A tick that reads an image fails, and image attachments to these loops are refused. Declare image input on a vision model in pi's models.json, or point a tier at one."
+  - **amber** when a model claims images but failed doctor's probe.
+  - **No alert** when every enabled loop reads images.
+- Role page (src/roles/role-render.ts, `tumwater role <id>` and the dashboard panel): `Images: no — reruns on strong (…)`.
+- Submit gate in `submitRolePrompt` (src/inbox/inbox-submit.ts), reached by the GUI endpoint and `tumwater prompt --attach`:
+  - refuse images when the target loop's seam reads none and it has no target, naming the fix;
+  - otherwise return a notice the CLI prints and the composer shows under the image chips (src/ui/gui/gui-client-composer.ts), e.g. "feature's model can't read images; this prompt runs on strong (claude-opus-5-5)".
+- Docs: README.md (`prompt --attach`), docs/cli.md (`doctor --reprobe`, the image input check), docs/backends.md (image input: claims, probe, reroute).
+
+**Files touched.**
+- src/status/status-roles.ts and the status payload, src/ui/fleet-alerts.ts, src/roles/role-render.ts
+- src/inbox/inbox-submit.ts, src/inbox/prompt-commands.ts, src/gui/gui-prompt-commands.ts, src/ui/gui/gui-client-composer.ts
+- README.md, docs/cli.md, docs/backends.md
+- tests: fleet-alerts, status, role-render, inbox-submit, GUI prompt endpoint, and gui-client tests
+
+**Acceptance criteria.**
+- With an all-claude config there is no `images` alert, and every loop reports `imageInput: true`.
+- With a text-only default and a vision strong, the alert is blue and names the default-tier loops and the strong model. With nothing able to read images, it is amber. A cached probe failure raises the amber probe alert.
+- `tumwater prompt --attach x.png` to a loop with no reroute target exits non-zero naming the fix, and queues nothing (no image file left behind). To a loop with a target, it queues the prompt and prints where it will run. The GUI endpoint behaves the same, and the composer shows the notice.
+- `tumwater role feature` shows the `Images:` line.
 
 ### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow) — done 2026-10-16
 

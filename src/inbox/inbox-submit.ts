@@ -10,6 +10,9 @@ import { logEventBestEffort } from "../events/events.js";
 import { INITIAL_PROMPT_MAX_CHARS } from "../brief/brief.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { tooLongMessage } from "../text/text.js";
+import { defaultConfig, loadConfigSafe } from "../config/config.js";
+import { roleImageInfo } from "../agent/image-input.js";
+import { readImageProbeCache } from "../doctor/image-probe.js";
 
 /** The user-facing submission pipeline for the prompt queues (the store's mechanics —
  * listing, peeking, dequeuing, cancelling, and their race policy — live in src/inbox/inbox.ts,
@@ -41,6 +44,34 @@ export function promptLengthProblem(text: string, role: string = DIRECTOR_ROLE):
   );
 }
 
+/** The image-input submit guidance for one loop (plans/image-input.md "Surfaces" and
+ * "Attachments", part 5/5): what an image-carrying prompt to `role` means. `refusal` is the
+ * throw-and-submit-nothing message when the loop's seam reads no images and no peer tier can
+ * (an attachment no configured model can read is refused at submit, not discovered at tick
+ * time); `notice` is what a surface prints/shows when the prompt will instead rerun on another
+ * tier. Both null when the loop's own model reads images (or capability is unknown — an
+ * unknown seam is never assumed incapable, mirroring the doctor's `tier models` stance), so
+ * the common text-only or vision path says nothing. One resolver (roleImageInfo), shared with
+ * the status rows and role page, so the gate cannot disagree with what `tumwater role` or the
+ * images alert claim. */
+export function imagePromptGuidance(root: string, role: string): { refusal?: string; notice?: string } {
+  const { config } = loadConfigSafe(root);
+  const cfg = config ?? defaultConfig();
+  // The same probe cache the status rows, role page, and images alert read (roleImageInfo's
+  // fourth argument): a claimed pi model whose doctor probe failed reads text-only here too,
+  // so the gate never grants image capability that the surfaces report as absent.
+  const { imageInput, imageReroute } = roleImageInfo(cfg, role, undefined, readImageProbeCache(root));
+  if (imageInput !== false) return {};
+  if (imageReroute) {
+    return {
+      notice: `${role}'s model can't read images; this prompt runs on ${imageReroute}`,
+    };
+  }
+  return {
+    refusal: `${role}'s model can't read images and no configured model reads images for it — declare image input on a vision model in pi's models.json, or point a tier at one`,
+  };
+}
+
 /** A user submits a new prompt for one loop (TUI, GUI, or CLI): enqueue it there and record it
  * in the event log under that loop, best-effort — the queue write is the durable effect the
  * caller asked for, so an unwritable feed must not report the submit as failed. Returns the
@@ -69,6 +100,12 @@ export function submitRolePrompt(
   if (images && images.length > 0) {
     const imageProblem = promptImagesProblem(images);
     if (imageProblem) throw new Error(imageProblem);
+    // Image input gate (plans/image-input.md "Attachments", part 5/5): an attachment no
+    // configured model can read is refused here, before anything is queued or written — the
+    // tick would only fail discovering it. A loop that reroutes a blind read is not refused;
+    // the surface prints/shows the notice instead (imagePromptGuidance is called again there).
+    const guidance = imagePromptGuidance(root, role);
+    if (guidance.refusal) throw new Error(guidance.refusal);
     return submitPromptWithImages(root, role, text, images, notBeforeMs);
   }
   const prompt = text.trim();

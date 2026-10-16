@@ -41,6 +41,7 @@ import {
 } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
+import { imagePromptGuidance } from "./inbox-submit.js";
 
 /** Fail with the ambiguity or miss message of a list-wide position resolution, else return
  * the resolved value narrowed. Shared by sayListedOutcome and the editor form so the wordings
@@ -221,6 +222,19 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
     // `--attach` list is read through the same helper the enqueue form uses and appended to
     // the prompt's images in place.
     const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
+    // Image-input gate, `--edit`'s twin of the submit branch below (plans/image-input.md
+    // "Attachments", part 5/5): editing an attachment into a queued prompt is the same
+    // tick-time discovery the submit gate prevents, so the refusal promise holds across every
+    // CLI attach surface — an image no configured model can read is refused before a byte is
+    // written, and a loop that reroutes a blind read is told where the prompt will run. The
+    // target loop is resolved first (the same resolution the verb below makes) so the gate can
+    // name it.
+    if (images !== undefined && images.length > 0) {
+      const loop = role ?? failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
+      const guidance = imagePromptGuidance(root, loop);
+      if (guidance.refusal) return fail(guidance.refusal);
+      if (guidance.notice) say(guidance.notice);
+    }
     const typed = parsed.text;
     if (typed === null) {
       // Bare `--edit <n>`: open the prompt's body in the editor. The loop is resolved first
@@ -277,8 +291,16 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   // parsed duration, computed at submit so the deferral starts when the operator queued it.
   const dueMs = parsed.atDelayMs !== null ? Date.now() + parsed.atDelayMs : undefined;
   // `--attach <path>`: read and validate through the shared helper (a bad path fails by name
-  // before anything is queued).
+  // before anything is queued). An attachment the target loop cannot read is refused here by
+  // name — the same gate submitRolePrompt enforces, surfaced early so the CLI exits non-zero
+  // with the fix before anything is written or queued; a loop that reroutes a blind read is
+  // not refused, but the operator is told where the prompt will actually run.
   const images = parsed.attachPaths.length > 0 ? readPromptImages(parsed.attachPaths) : undefined;
+  if (images && images.length > 0) {
+    const guidance = imagePromptGuidance(root, target);
+    if (guidance.refusal) return fail(guidance.refusal);
+    if (guidance.notice) say(guidance.notice);
+  }
   const wake = submitRolePromptAndWake(root, target, parsed.text, images, dueMs);
   const attached = images !== undefined ? ` with ${images.length} image(s)` : "";
   if (parsed.atDelayMs !== null) {

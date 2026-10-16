@@ -8,7 +8,7 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelTier, FallbackModelConfig } from "../config/config-schema.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { roleSeamTier, withModelOverrides } from "../config/config-views.js";
+import { configForRole, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { BORROW_ORDER, resolveTierFallbacks } from "../config/config-fallbacks.js";
 import { isAgentId } from "../config/model-selector.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
@@ -84,12 +84,13 @@ export function imageReroute(
   modelsPath: string = piModelsPath(),
   account: ClaudeAccount | null = null,
   probes?: ImageProbeCache,
+  providers: Map<string, PiModelDef[]> | null = null,
 ): ImageReroute | null {
   const tier = roleSeamTier(config, role);
   const candidates = BORROW_ORDER[tier].filter((t) => t !== tier);
   if (candidates.length === 0) return null;
-  const providers = readPiProviders(modelsPath);
-  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providers, probes) === true;
+  const providerMap = providers ?? readPiProviders(modelsPath);
+  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providerMap, probes) === true;
   if (regime === "primary") {
     for (const t of candidates) {
       const rc = withModelOverrides(config, t, {});
@@ -100,7 +101,7 @@ export function imageReroute(
   // Fallback regime: only the tiers' free fallback pairs qualify (resolveTierFallbacks over the
   // price check), never a priced primary model — a reroute must not spend past the cap.
   const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
-    piPairFree(providers, p.provider, p.model, account),
+    piPairFree(providerMap, p.provider, p.model, account),
   );
   for (const t of candidates) {
     const pair = resolved[t].pair;
@@ -123,6 +124,52 @@ export function imageRerouteTarget(
   modelsPath: string = piModelsPath(),
   account: ClaudeAccount | null = null,
   probes?: ImageProbeCache,
+  providers: Map<string, PiModelDef[]> | null = null,
 ): ResolvedModelConfig | null {
-  return imageReroute(config, role, regime, modelsPath, account, probes)?.config ?? null;
+  return imageReroute(config, role, regime, modelsPath, account, probes, providers)?.config ?? null;
+}
+
+/** A seam's model as one readable token, the same label the doctor's `image input` check uses
+ * (`claude/<id>` for a claude seam, `provider/model` for pi). The one home of the label, so
+ * the surface strings (the images alert, the role page, the status rows) and the doctor report
+ * cannot drift. `agent === "claude"` reads the backend-owned answer; a pi seam shows its pair. */
+export function seamImageLabel(
+  agent: string | undefined,
+  provider: string | undefined,
+  model: string | undefined,
+): string {
+  return agent === "claude" ? (model ?? "claude backend") : `${provider ?? "?"}/${model ?? "?"}`;
+}
+
+/** The per-loop image-input surface (plans/image-input.md "Surfaces"): one call gives a caller
+ * both the loop's own capability (`imageInput`, seamImageInput's true/false/null) and its
+ * reroute target as the display label `<tier> (<model>)` or null when no peer tier reads
+ * images. Shared by the status rows, the role page, and the submit gate so the three surfaces
+ * can never disagree about what one loop can read or where its image prompts run. */
+interface RoleImageInfo {
+  /** Whether the loop's own model reads images (`true`), is text-only (`false`), or the fleet
+   * cannot tell (null — an unknown pair the `tier models` check already flags). */
+  imageInput: boolean | null;
+  /** The reroute target as `<tier> (<model>)`, or null when no other tier reads images. */
+  imageReroute: string | null;
+}
+
+/** Compute RoleImageInfo for one loop. `modelsPath` and `probes` are injectable; the providers
+ * catalog is read (stat-cached) here and also handed to imageReroute so a poll that asks many
+ * loops still parses the catalog once. All reads mirror the doctor's `image input` check, so
+ * the surface and the check agree about capability. */
+export function roleImageInfo(
+  config: TumwaterConfig,
+  role: string,
+  modelsPath: string = piModelsPath(),
+  probes?: ImageProbeCache,
+): RoleImageInfo {
+  const providers = readPiProviders(modelsPath);
+  const rc = configForRole(config, role);
+  const imageInput = seamImageInput(rc, providers, probes);
+  const rr = imageReroute(config, role, "primary", modelsPath, null, probes, providers);
+  const imageRerouteStr = rr
+    ? `${rr.tier} (${seamImageLabel(rr.config.agent, rr.config.provider, rr.config.model)})`
+    : null;
+  return { imageInput, imageReroute: imageRerouteStr };
 }

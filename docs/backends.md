@@ -66,6 +66,36 @@ fallback is carrying the fleet.
   `models.json` entry sets `compat.thinkingTokenBudgetField: "thinking_budget"`; without it,
   `:high` on that model is a no-op.
 
+## Image input (claims, probe, reroute)
+
+A loop reads an image (an `--attach` on a queued prompt, or a file the tick itself points pi
+at) only when its model's seam can. Capability has one source of truth — `seamImageInput`
+(`src/agent/image-input.ts`):
+
+- **Claude seams** can always read images (every Claude model does), so `agent: "claude"`
+  answers `true` for any model, never probed.
+- **pi seams** read the model's `input` list in pi's `models.json` — `"image"` present means
+  capable, and *absent* means text-only. A pair missing from `models.json` is *unknown* (the
+  `tier models` doctor check already flags it), not assumed capable.
+
+A claimed pi seam is only as good as the **live probe** confirms: `tumwater doctor` shows each
+claimed model a real generated PNG and checks the answer, caching the verdict in
+`.tumwater/state/image-probes.json` for 7 days. A failed probe makes the seam read `false`
+everywhere — a claim the doctor contradicted must not let a blind read through. The TUI Health
+tab and the dashboard never probe (a refresh must not spend a model call); `--reprobe` forces
+terminal runs to probe again.
+
+When a tick does read an image on a text-only seam, the run is stopped and the loop **reroutes**
+onto a peer tier that reads images (small → default → strong from the loop's own tier; a strong
+seam never drops to small). The surfaces say so without running doctor: `tumwater role <id>` and
+`status --json` show the loop's `imageInput` and its reroute target, and the images fleet alert
+is blue when every text-only loop has a target ("reruns on …") or amber when some loop has none
+or a claimed model failed the probe.
+
+The same capability gates **submission**: `tumwater prompt --attach` and the dashboard refuse an
+image when the target loop reads none and no tier can, naming the fix before anything is queued;
+when the loop reroutes, the prompt is accepted and the command says where it will run.
+
 ## Claude Code (`agent: "claude"`)
 
 `agent` in `tumwater.json` names the backend bare selectors and the no-model default run on;

@@ -25,6 +25,8 @@ import {
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
 import { formatModelSelector } from "../config/model-selector.js";
+import { roleImageInfo } from "../agent/image-input.js";
+import { readImageProbeCache } from "../doctor/image-probe.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { roleNotesPath } from "../paths.js";
@@ -75,6 +77,13 @@ export interface RoleViewPayload {
    * 6d/7): "subscription" or "api" from the account file, absent for a pi seam or when no
    * account read exists. */
   billing?: ClaudeBilling;
+  /** Whether the loop's own model reads images (plans/image-input.md "Surfaces", part 5/5):
+   * true / false / null (unknown), always present so the role page and the status rows share
+   * one capability answer. */
+  imageInput: boolean | null;
+  /** The loop's image reroute target as `<tier> (<model>)`, or null when no other tier reads
+   * images — the role page's `Images: no — reruns on …` line. */
+  imageReroute: string | null;
   /** The primary subscription window's type (`five_hour`), present only for a subscription
    * reading that reported a window — the renderer's "(5h window)". */
   billingWindow?: string;
@@ -180,6 +189,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     modelFallback: modelFallbackView(episode, cfg, role),
     ...(account !== null ? { billing: account.billing } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
+    ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minTickIntervalSeconds: effective.minTickIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,

@@ -56,6 +56,10 @@ export function snapshotWith(
        * literal LoopState does not carry — a test passes it to exercise the `on fallback`
        * name-cell suffix. */
       fallback?: StatusSnapshot["loops"][number]["fallback"];
+      /** The loop's image-input surface (plans/image-input.md "Surfaces", part 5/5), which
+       * a literal LoopState does not carry — a test passes it to exercise the images alert. */
+      imageInput?: boolean | null;
+      imageRerouteLabel?: string | null;
     }
   >,
   budget: StatusSnapshot["budget"] = DEFAULT_BUDGET,
@@ -96,7 +100,16 @@ export function snapshotWith(
     questions: 0,
     // `custom` is display-only metadata snapshot() computes per row; the fixture defaults it
     // to false so existing all-built-in tables stay byte-identical.
-    loops: loops.map((partial) => ({ ...freshLoopState(partial.role), ...partial, custom: partial.custom ?? false })),
+    loops: loops.map((partial) => ({
+      ...freshLoopState(partial.role),
+      ...partial,
+      custom: partial.custom ?? false,
+      // The image-input surface (plans/image-input.md "Surfaces", part 5/5) is always
+      // present; the fixture defaults a row that does not name one to `unknown`/no target so
+      // existing tables stay byte-identical (no images alert, no Images line change).
+      imageInput: partial.imageInput ?? null,
+      imageRerouteLabel: partial.imageRerouteLabel ?? null,
+    })),
     budget,
     paused,
     pausedRoles,
@@ -110,6 +123,7 @@ export function snapshotWith(
     // assertions stay byte-identical; a test sets quietHours/inQuietHours to exercise the
     // badge (status-header.test.ts).
     inQuietHours: false,
+    imageProbeFailures: [],
     build: null,
     // The fixture's queue is idle: depth 0 keeps every existing header line byte-identical
     // (the 4/5 badge is empty at depth 0) and renders no in-flight label.

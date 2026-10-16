@@ -14,6 +14,7 @@ const base: Snap = {
   build: null,
   paused: false,
   inQuietHours: false,
+  imageProbeFailures: [],
 };
 
 test("a healthy fleet raises nothing; a stopped one says how to start it", () => {
@@ -236,4 +237,54 @@ test("a disk hold raises one amber alert naming the free space and the floor", (
     "low but not held: no alert",
   );
   assert.deepEqual(fleetAlerts(base, [], [], Date.now()), [], "no disk block: nothing new");
+});
+
+// Image input, part 5/5 (plans/image-input.md "Surfaces"): the images alert. No alert when
+// every enabled loop reads images (or capability is unknown — an unknown seam is not counted
+// as text-only). Blue when every text-only loop has a reroute target (a blind read reruns — an
+// inform, not an ask); amber when some text-only loop has none (a blind read fails and image
+// submissions are refused). A separate amber when a claimed model failed doctor's live probe.
+test("images alert: parity needs no alert; a text-only fleet with targets is blue", () => {
+  const vision: AlertLoop[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
+    { role: "plan", phase: "idle", errorStreak: false, inFlight: false, imageInput: true, imageReroute: null },
+  ];
+  assert.deepEqual(fleetAlerts(base, [], vision, Date.now()).filter((a) => a.key === "images"), []);
+  // Unknown capability is not counted as text-only — no alert, matching the doctor's stance.
+  const unknown: AlertLoop[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: null, imageReroute: null },
+  ];
+  assert.deepEqual(fleetAlerts(base, [], unknown, Date.now()).filter((a) => a.key === "images"), []);
+
+  const rerouting: AlertLoop[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+    { role: "organize", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+  ];
+  const [images] = fleetAlerts(base, [], rerouting, Date.now()).filter((a) => a.key === "images");
+  assert.equal(images?.tone, "blue");
+  assert.equal(images?.title, "feature and organize run on models that can't read images");
+  assert.match(images?.detail ?? "", /stops and reruns on strong \(claude-opus-5-5\)\./);
+  assert.equal(alertNeedsYou(images!), false, "a rerun means nothing fails — it informs");
+});
+
+test("images alert: a text-only loop with no target is amber and asks", () => {
+  const noTarget: AlertLoop[] = [
+    { role: "feature", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: null },
+    { role: "bugfix", phase: "idle", errorStreak: false, inFlight: false, imageInput: false, imageReroute: "strong (claude-opus-5-5)" },
+  ];
+  const [images] = fleetAlerts(base, [], noTarget, Date.now()).filter((a) => a.key === "images");
+  assert.equal(images?.tone, "amber");
+  assert.equal(images?.title, "No configured model can read images for feature");
+  assert.match(images?.detail ?? "", /image attachments to these loops are refused/);
+  assert.equal(images?.actions[0]?.arg, "feature");
+  assert.equal(alertNeedsYou(images!), true, "a blind read fails — it asks");
+});
+
+test("images alert: a cached probe failure is amber, whatever the loops resolved to", () => {
+  const over = fleetAlerts({ ...base, imageProbeFailures: ["local/vision"] }, [], [], Date.now());
+  const [probe] = over.filter((a) => a.key === "images-probe");
+  assert.equal(probe?.tone, "amber");
+  assert.match(probe?.title ?? "", /failed doctor's probe/);
+  assert.match(probe?.detail ?? "", /local\/vision declare image input but failed/);
+  assert.equal(alertNeedsYou(probe!), true);
 });

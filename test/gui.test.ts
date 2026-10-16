@@ -13,7 +13,8 @@ import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
 import { fetchLoopback, postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
-import { makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
+import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
+import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { clockOf, dayKey } from "./helpers/oracles.js";
 
 // The dashboard tests read JSON responses the way gui-client's own getJson guard does; this
@@ -781,4 +782,44 @@ test("the dashboard page is one self-contained document: sidebar, views, compose
   // its reschedule sits outside the try, so no two polls can ever be in flight at once.
   assert.equal(GUI_PAGE.match(/setTimeout\(pollLoop, 1000\)/g)?.length ?? 0, 1, "one poll timer");
   assert.doesNotMatch(GUI_PAGE, /setInterval\(/, "no stacked polls");
+});
+
+// Image input, part 5/5 (plans/image-input.md "Attachments" + "Surfaces"): the GUI submit
+// gate. An image to a loop whose seam reads none and that has no reroute target answers 400
+// naming the fix and queues nothing; with a reroute target it accepts and its confirmation
+// names where the prompt will run. The server reads the config per request, so one running
+// server serves both the refused and the accepted submission as the config changes.
+test("gui /api/prompt-role refuses images with no reroute target and names where a rerouted prompt runs", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui image gate");
+  const modelsDir = tmpdir("gui-image-");
+  writeModelsFile(
+    modelsDir,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+  const png = Buffer.from("89504e470d0a1a0a", "hex");
+  const image = { name: "shot.png", dataBase64: png.toString("base64") };
+  const saved = process.env.PI_CODING_AGENT_DIR;
+  const { server, base } = await startLocalGui(repo);
+  try {
+    process.env.PI_CODING_AGENT_DIR = modelsDir;
+
+    // No configured model can read images → 400 naming the fix, nothing queued.
+    writeConfig(repo, { model: { default: "local/text", strong: "local/text" } });
+    const refused = await postJson(base, "/api/prompt-role", { role: "feature", text: "look", images: [image] });
+    assert.equal(refused.status, 400);
+    assert.match(((await refused.json()) as { error: string }).error, /no configured model reads images for it/);
+    assert.equal(queuedRolePrompts(repo, "feature").length, 0);
+
+    // A vision strong tier reroutes a blind read → accepted, the confirmation names where.
+    writeConfig(repo, { model: { default: "local/text", strong: "local/vision" } });
+    const ok = await postJson(base, "/api/prompt-role", { role: "feature", text: "look", images: [image] });
+    assert.equal(ok.status, 200);
+    assert.match(((await ok.json()) as { message: string }).message, /runs on strong \(local\/vision\)/);
+    assert.equal(queuedRolePrompts(repo, "feature").length, 1);
+  } finally {
+    if (saved === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = saved;
+    server.close();
+  }
 });

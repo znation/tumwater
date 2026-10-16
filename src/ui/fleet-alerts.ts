@@ -43,6 +43,13 @@ export interface AlertLoop {
   errorStreak: boolean;
   inFlight: boolean;
   lastError?: string | null;
+  /** Whether the loop's own model reads images (plans/image-input.md "Surfaces", part 5/5):
+   * `false` marks a text-only loop the `images` alert considers; null (unknown) is not
+   * counted as text-only. Always present on the real status rows. */
+  imageInput?: boolean | null;
+  /** The loop's image reroute target as `<tier> (<model>)`, when a peer tier reads images.
+   * Absent (or null) when no other tier reads images — the amber no-target alert. */
+  imageReroute?: string | null;
 }
 
 function listRoles(loops: readonly AlertLoop[]): string {
@@ -62,7 +69,16 @@ function localizeInstants(text: string): string {
 export function fleetAlerts(
   snap: Pick<
     StatusSnapshot,
-    "running" | "budget" | "build" | "paused" | "pausedUntil" | "pauseReason" | "quietHours" | "inQuietHours" | "disk"
+    | "running"
+    | "budget"
+    | "build"
+    | "paused"
+    | "pausedUntil"
+    | "pauseReason"
+    | "quietHours"
+    | "inQuietHours"
+    | "disk"
+    | "imageProbeFailures"
   >,
   questions: readonly string[],
   loops: readonly AlertLoop[],
@@ -216,6 +232,42 @@ export function fleetAlerts(
       title: "The fleet is not running",
       detail: "Start it with tumwater run in the project directory; the dashboards pick it up on their own.",
       actions: [{ label: "Copy the command", act: "copy", arg: "tumwater run" }],
+    });
+  }
+  // Image input (plans/image-input.md "Surfaces", part 5/5): a loop whose model cannot read
+  // images. Blue when every text-only loop has a reroute target (a tick that reads an image
+  // stops and reruns — nothing fails); amber when some text-only loop has none (a blind read
+  // fails and image submissions are refused); a separate amber when a claimed model failed
+  // doctor's live probe (the claim is contradicted, whatever any loop resolved to). No alert
+  // when every enabled loop reads images (imageInput true or unknown — an unknown seam is not
+  // counted as text-only, mirroring the submit gate and the doctor's `tier models` stance).
+  const textOnly = loops.filter((l) => l.imageInput === false);
+  const noTarget = textOnly.filter((l) => l.imageReroute == null || l.imageReroute === "");
+  if (noTarget.length > 0) {
+    out.push({
+      key: "images",
+      tone: "amber",
+      title: `No configured model can read images for ${listRoles(noTarget)}`,
+      detail: "A tick that reads an image fails, and image attachments to these loops are refused. Declare image input on a vision model in pi's models.json, or point a tier at one.",
+      actions: noTarget.slice(0, 3).map((l) => ({ label: `Open ${l.role}`, act: "loop", arg: l.role })),
+    });
+  } else if (textOnly.length > 0) {
+    const targets = [...new Set(textOnly.map((l) => l.imageReroute ?? ""))].filter(Boolean);
+    out.push({
+      key: "images",
+      tone: "blue",
+      title: `${listRoles(textOnly)} ${agree(textOnly.length, "runs", "run")} on models that can't read images`,
+      detail: `A tick that reads an image stops and reruns on ${targets.join(", ")}.`,
+      actions: [],
+    });
+  }
+  if (snap.imageProbeFailures.length > 0) {
+    out.push({
+      key: "images-probe",
+      tone: "amber",
+      title: `A claimed image-capable model failed doctor's probe`,
+      detail: `${snap.imageProbeFailures.join(", ")} declare image input but failed the live probe — run \`tumwater doctor --reprobe\` to re-check.`,
+      actions: [{ label: "See failures", act: "view", arg: "failures" }],
     });
   }
   return out;
