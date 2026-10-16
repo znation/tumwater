@@ -104,6 +104,14 @@ export function rankByCount<T>(
   return [...items].sort((a, b) => count(b) - count(a) || key(a).localeCompare(key(b)));
 }
 
+/** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
+ * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used by
+ * src/cli/cli-run.ts, src/cli/log-commands.ts, src/history/history-data.ts and
+ * src/report/report-render.ts. */
+export function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /** rankByCount for `[key, count]` entry pairs (count first): src/report/report-render.ts's
  * rankedRoleMap and src/fleet/failure-spread.ts's strongest-kind pick. */
 export function rankCountEntries<K extends string>(

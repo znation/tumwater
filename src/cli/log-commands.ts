@@ -5,7 +5,7 @@ import {
   readEventsSince,
   SPARSE_WINDOW_NOTE,
 } from "../events/event-window.js";
-import { increment } from "../collections.js";
+import { compareCodeUnits, increment } from "../collections.js";
 import { parseEventLine, readEventsTailWithEnd } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";
 import { eventMatchesGrep, formatEvent } from "../events/event-format.js";
@@ -42,11 +42,11 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
   for (const e of events) increment(counts, e.type);
   if (json) {
     const obj: Record<string, number> = {};
-    for (const [type] of [...counts.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))) obj[type] = counts.get(type)!;
+    for (const [type] of [...counts.entries()].sort((a, b) => compareCodeUnits(a[0], b[0]))) obj[type] = counts.get(type)!;
     sayJsonLine(obj);
     return;
   }
-  for (const [type, n] of [...counts.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))
+  for (const [type, n] of [...counts.entries()].sort((a, b) => b[1] - a[1] || compareCodeUnits(a[0], b[0])))
     say(`${n} × ${type}`);
 }
 

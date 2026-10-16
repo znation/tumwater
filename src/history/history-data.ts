@@ -14,7 +14,7 @@ import { formatTimestamp } from "../text/datetime.js";
 import { squash, textOr } from "../text/text.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { outcomeText, usageText } from "../events/event-format.js";
-import { groupBy } from "../collections.js";
+import { compareCodeUnits, groupBy } from "../collections.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
  * fleet; the ceiling bounds how much log one ask re-reads — more rows only re-read more log
@@ -73,7 +73,7 @@ export function summarizeTickRows(rows: TickRow[]): { loops: HistorySummaryRow[]
       if (cls === "changes") t.lastChangeTs = Math.max(t.lastChangeTs ?? row.ts, row.ts);
     }
   }
-  const loops = [...byLoop.values()].sort((a, b) => (a.loop < b.loop ? -1 : a.loop > b.loop ? 1 : 0));
+  const loops = [...byLoop.values()].sort((a, b) => compareCodeUnits(a.loop, b.loop));
   return { loops, total };
 }
 

@@ -4,7 +4,7 @@
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were
  * the only implementations living in the dispatcher itself. */
 import type { StdioOptions } from "node:child_process";
-import { increment } from "../collections.js";
+import { compareCodeUnits, increment } from "../collections.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { fail, say } from "./cli-output.js";
 import {
@@ -415,7 +415,7 @@ export function onceSummary(
   // would order `[key, count]` tuples by their "key,count" string form, which happens to
   // agree only while each key is unique.
   const counts = [...outcomes.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .sort(([a], [b]) => compareCodeUnits(a, b))
     .map(([k, n]) => `${n} ${k}`)
     .join(", ");
   const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
