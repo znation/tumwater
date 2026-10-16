@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
-import { configForRole, fallbackPair, resolveTierFallbacks, seamsInUse } from "../config/config-views.js";
+import { configForRole } from "../config/config-views.js";
+import { fallbackPair, resolveTierFallbacks, seamsInUse } from "../config/config-fallbacks.js";
 import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId } from "../config/model-selector.js";

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { loadConfigSafe } from "../config/config.js";
-import { seamsInUse } from "../config/config-views.js";
+import { seamsInUse } from "../config/config-fallbacks.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { findOnPath } from "../files/files.js";
 import { GIT_MISSING_MESSAGE } from "../git/git-run.js";

@@ -4,11 +4,10 @@ import type { readSlotsState } from "../git/slots-state.js";
 import type { ModelTier, TumwaterConfig } from "../config/config-schema.js";
 import {
   configForRole,
-  modelFallbackView,
   modelSelectorField,
   roleSeamTier,
-  type ModelFallbackView,
 } from "../config/config-views.js";
+import { modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { isCustomRole } from "../config/config.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { formatModelSelector } from "../config/model-selector.js";

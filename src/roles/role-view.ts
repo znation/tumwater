@@ -18,13 +18,11 @@ import { loadLoopState } from "../loop/loop-state.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import {
   configForRole,
-  fallbackPair,
-  modelFallbackView,
   resolvedModelFields,
   reviewRunConfig,
   roleSeamTier,
-  type ModelFallbackView,
 } from "../config/config-views.js";
+import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
 import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";

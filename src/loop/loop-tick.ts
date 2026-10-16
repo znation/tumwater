@@ -20,13 +20,13 @@ import {
 } from "../prompt/gate-prompts.js";
 import type { LoopPi } from "./loop-pi.js";
 import {
-  fallbackRoleConfig,
   modelSelectorField,
   reviewRunConfig,
   scheduleConfigForRole,
   seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
+import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";

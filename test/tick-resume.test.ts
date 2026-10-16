@@ -14,7 +14,7 @@ import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { slotPinnedForResume } from "../src/loop/loop-tick.js";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackRoleConfig } from "../src/config/config-views.js";
+import { fallbackRoleConfig } from "../src/config/config-fallbacks.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend, claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
 import { initializedWorktree, tmpdir } from "./fixtures/repo-fixtures.js";

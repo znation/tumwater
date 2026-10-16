@@ -28,7 +28,8 @@ import {
   type DoctorReport,
 } from "./doctor-checks.js";
 import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
-import { agentQualifiedSelector, seamsInUse } from "../config/config-views.js";
+import { agentQualifiedSelector } from "../config/config-views.js";
+import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkRefusedEntries, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "./doctor-backlog.js";
 
 /** Pre-flight environment check (`tumwater doctor`). The harness's preconditions are

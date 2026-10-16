@@ -9,12 +9,10 @@ import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import {
   configForRole,
   resolverConfig,
-  resolveTierFallbacks,
   reviewConfig,
   roleSeamTier,
-  tierFallbackLabels,
-  tiersResolveDistinctPairs,
 } from "../config/config-views.js";
+import { resolveTierFallbacks, tierFallbackLabels, tiersResolveDistinctPairs } from "../config/config-fallbacks.js";
 import { enabledRoleIds } from "../config/config.js";
 import { fallbackModelFree, fleetModelsFree, piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";

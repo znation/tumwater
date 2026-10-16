@@ -11,10 +11,10 @@ import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { LoopPi } from "./loop-pi.js";
 import {
   configForRole,
-  fallbackRoleConfig,
   seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
+import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { PendingPrompt } from "../inbox/pending-prompt.js";
 import { modelFallbackActive } from "./model-fallback.js";
 import { clearBackoff } from "../scheduling/backoff.js";

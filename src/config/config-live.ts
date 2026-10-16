@@ -1,7 +1,8 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { loopIds } from "../roles/loop-ids.js";
-import { configForRole, fleetModelLabel, modelSelectorField, seamsInUse } from "./config-views.js";
+import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
+import { seamsInUse } from "./config-fallbacks.js";
 import { bestEffortEventLogger } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
 import { configPath } from "../paths.js";

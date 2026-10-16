@@ -51,7 +51,8 @@ import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { logEventBestEffort } from "../events/events.js";
 import { assignInfoFieldIfChanged, writeOrchestratorInfoBestEffort, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
-import { roleSeamTier, type TierFallbackMap } from "../config/config-views.js";
+import { roleSeamTier } from "../config/config-views.js";
+import type { TierFallbackMap } from "../config/config-fallbacks.js";
 
 /** The orchestrator poll loop's fleet-wide gates and alarms, as one family: the daily cost budget
  * gate, the operator and per-role pause gates, quiet hours, the disk floor's hold, the fleet-wide

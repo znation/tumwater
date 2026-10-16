@@ -3,32 +3,36 @@ import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import {
-  agentQualifiedSelector,
-  applyFallbackModel,
-  configForRole,
   FALLBACK_REVIEW_TIMEOUT_S,
+  REVIEW_TIMEOUT_S,
+  agentQualifiedSelector,
+  configForRole,
   fallbackDisplayPair,
-  fallbackPair,
-  fallbackRoleConfig,
   fleetModelLabel,
   modelSelectorField,
+  resolvedAgentConfig,
   resolverConfig,
   reviewConfig,
-  resolvedAgentConfig,
-  resolveTierFallbacks,
   reviewRunConfig,
-  REVIEW_TIMEOUT_S,
   seamConcurrencyKey,
   seamHoldKey,
   tierModel,
+} from "../src/config/config-views.js";
+import {
+  applyFallbackModel,
+  fallbackPair,
+  fallbackRoleConfig,
+  resolveTierFallbacks,
   type TierFallback,
   type TierFallbackMap,
-} from "../src/config/config-views.js";
+} from "../src/config/config-fallbacks.js";
 import { routeModel } from "../src/config/model-selector.js";
 
-// config-views.ts's derived views over a loaded config: how the role, review, and fallback
-// overlays resolve on top of the top-level pi settings. The load/save/validation side of the
-// config lives in test/config.test.ts; the validators have test/config-validation.test.ts.
+// The config views' derived models over a loaded config: how the role, review, and fallback
+// overlays resolve on top of the top-level pi settings. The per-seam resolution lives in
+// src/config/config-views.ts; the budget/tier fallback resolution in
+// src/config/config-fallbacks.ts. The load/save/validation side of the config lives in
+// test/config.test.ts and test/config-validation.test.ts.
 
 test("configForRole applies role overrides over top-level pi settings", () => {
   const config: TumwaterConfig = defaultConfig();

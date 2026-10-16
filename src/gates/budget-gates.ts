@@ -26,7 +26,7 @@ import {
   tierFallbackLabels,
   tiersResolveDistinctPairs,
   type TierFallbackMap,
-} from "../config/config-views.js";
+} from "../config/config-fallbacks.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { logEventBestEffort } from "../events/events.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";

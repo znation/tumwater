@@ -8,7 +8,8 @@
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelTier, FallbackModelConfig } from "../config/config-schema.js";
 import type { ResolvedModelConfig } from "../config/config-views.js";
-import { BORROW_ORDER, resolveTierFallbacks, roleSeamTier, withModelOverrides } from "../config/config-views.js";
+import { roleSeamTier, withModelOverrides } from "../config/config-views.js";
+import { BORROW_ORDER, resolveTierFallbacks } from "../config/config-fallbacks.js";
 import { isAgentId } from "../config/model-selector.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";

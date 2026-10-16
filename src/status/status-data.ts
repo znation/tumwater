@@ -4,7 +4,7 @@ import type { BuildStatus } from "../build/build-info.js";
 import { openBugs, openQuestions } from "../backlog/backlog.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import type { ModelTier } from "../config/config-schema.js";
-import type { ModelFallbackView } from "../config/config-views.js";
+import type { ModelFallbackView } from "../config/config-fallbacks.js";
 import type { ClaudeWindowEntry } from "../agent/claude/claude-account.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { configForStatus, queueInFlight, mainCheckForPoll, maintenanceQuotaForPoll, type MainCheckStatus } from "./status-polls.js";
