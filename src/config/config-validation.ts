@@ -365,7 +365,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
     if (isJsonObject(f)) {
       checkKnownKeys(f, TIER_MAP_KEYS, "fallback", problems);
       for (const [tier, v] of Object.entries(f)) {
-        if (!isNonBlankString(v))
+        if (Array.isArray(v)) checkFallbackList(`fallback.${tier}`, v, problems);
+        else if (!isNonBlankString(v))
           problems.push(
             `fallback.${tier} must be a non-empty model id or "pause" (got ${show(v)})`,
           );
@@ -374,6 +375,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
           // no legacy provider in scope); "pause" names no model and stays valid.
           checkSelectorValue(`fallback.${tier}`, v, undefined, problems);
       }
+    } else if (Array.isArray(f)) {
+      checkFallbackList("fallback", f, problems);
     } else if (!isNonBlankString(f)) {
       problems.push(`fallback must be a model id or a map by tier (got ${show(f)})`);
     } else if (f === "pause") {
@@ -409,6 +412,20 @@ function checkSelectorHalves(
   problems: string[],
 ): void {
   checkSelectorValue(`${prefix}${key}`, obj[key], legacyProvider, problems);
+}
+
+/** Validate a `fallback` list (a tier's ordered chain): non-empty, each element a non-blank
+ * model id that is not `"pause"` (a whole-tier value only) and parses to both halves. */
+function checkFallbackList(name: string, list: unknown[], problems: string[]): void {
+  if (list.length === 0) problems.push(`${name} list must not be empty — name at least one model id`);
+  list.forEach((el, i) => {
+    const at = `${name}[${i}]`;
+    if (!isNonBlankString(el))
+      problems.push(`${name} list element ${i} must be a non-empty model id (got ${show(el)})`);
+    else if (el === "pause")
+      problems.push(`${name} list element ${i} is "pause" — "pause" is only valid as a whole-tier value`);
+    else checkSelectorValue(at, el, undefined, problems);
+  });
 }
 
 /** Report one selector string that parses to an empty provider or model half. `name` is the

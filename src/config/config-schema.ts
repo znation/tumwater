@@ -22,6 +22,10 @@ import { objectOrEmpty } from "../files/json-object.js";
 export const MODEL_TIERS = ["small", "default", "strong"] as const;
 export type ModelTier = (typeof MODEL_TIERS)[number];
 
+/** One tier's fallback: a selector string, or an ordered list of them tried first to last
+ * (the first usable step runs; plans/fallback-chain.md "Terms"). */
+type FallbackChain = string | string[];
+
 /** The agent backends an `agent` value may name (plans/agent-backends.md "Config"). The
  * registry (src/agent/agent-backend.ts) is the runtime source, but the schema reserves these
  * ids so validation rejects a typo'd backend at load time instead of falling back to pi. The
@@ -339,10 +343,10 @@ export interface TumwaterConfig {
   notify?: string;
   /** The budget fallback as one selector string `provider/id[:thinking]` (plans/model-tiers.md),
    * the shorthand form of `fallbackModel` — `"fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"` —
-   * or a map by tier whose values are selectors or `"pause"` (each tier's own entry is
-   * consulted when that tier runs at the cap; part 5a/8). Setting `fallback` and
-   * `fallbackModel` both is a validation error. */
-  fallback?: string | Partial<Record<ModelTier, string>>;
+   * or an ordered list of selectors, or a map by tier whose values are selectors, lists, or
+   * `"pause"` (each tier's own entry is consulted when that tier runs at the cap;
+   * part 5a/8). Setting `fallback` and `fallbackModel` both is a validation error. */
+  fallback?: FallbackChain | Partial<Record<ModelTier, FallbackChain>>;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
    * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free

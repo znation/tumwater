@@ -23,6 +23,7 @@ import {
   applyFallbackModel,
   fallbackPair,
   resolveTierFallbacks,
+  tierChainSteps,
   tierFallbackLabels,
   tiersResolveDistinctPairs,
   type TierFallbackMap,
@@ -259,6 +260,15 @@ export function pollBudgetGate(
       if (!pairNames.includes(n)) pairNames.push(n);
     }
   }
+  // Every price-free step of every tier's chain gets a breaker entry too: a demoted step's
+  // successor must have one, or fallbackServingPair would read it as not serving.
+  const chainPairs = tierChainSteps(liveConfig)
+    .map((s) => s.pair)
+    .filter(pairFreeAt);
+  for (const p of chainPairs) {
+    const n = modelPairName(p);
+    if (!pairNames.includes(n)) pairNames.push(n);
+  }
   state.breakers = rekeyFallbackBreakers(state.breakers, pairNames, liveConfig.maxDailyCostUsd);
   state.engaged = reached && fallbackReady ? pairName : null;
   // The demotion-aware resolution (part 5c/8): the same engine over the FULL usable predicate —
@@ -416,7 +426,7 @@ export function pollBudgetGate(
     spentUsd,
     capUsd,
     resumed,
-    pairs: distinctPairs(priceResolved),
+    pairs: distinctPairs(priceResolved, chainPairs),
     priceResolved,
     servingResolved,
     budgetActive: reached,
@@ -430,10 +440,11 @@ export function pollBudgetGate(
 /** The distinct non-null fallback pairs a resolution hands out (tier order, first occurrence
  * first) — the handback match list: a reopen hands back every in-flight tick running on any of
  * them (part 5c/8's per-tier handback). */
-function distinctPairs(resolved: TierFallbackMap): FallbackModelConfig[] {
+function distinctPairs(resolved: TierFallbackMap, chainPairs: FallbackModelConfig[]): FallbackModelConfig[] {
   const out: FallbackModelConfig[] = [];
-  for (const tier of MODEL_TIERS) {
-    const p = resolved[tier].pair;
+  // The resolved pairs first, then every other price-free chain step: a run can be on any step.
+  const candidates = [...MODEL_TIERS.map((t) => resolved[t].pair), ...chainPairs];
+  for (const p of candidates) {
     if (p !== null && !out.some((q) => modelPairName(q) === modelPairName(p))) out.push(p);
   }
   return out;

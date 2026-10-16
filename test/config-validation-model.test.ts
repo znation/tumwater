@@ -96,3 +96,11 @@ test("validateConfig bounds maintenancePerWorkMerge to a number of 0 or more", (
     /maintenancePerWorkMerge must be a number of 0 or more \(got "2"\)/,
   );
 });
+
+test("fallback lists: non-empty, each element a model id, pause only as a whole-tier value", () => {
+  assert.doesNotThrow(() => validateConfig({ fallback: ["omlx/a", "omlx/b"] }));
+  assert.doesNotThrow(() => validateConfig({ fallback: { default: ["omlx/a", "omlx/b"], strong: "pause" } }));
+  for (const bad of [[], [""], ["pause"], [3]])
+    assert.match(validationError({ fallback: bad }), /fallback list/);
+  assert.match(validationError({ fallback: { default: [] } }), /fallback\.default list/);
+});

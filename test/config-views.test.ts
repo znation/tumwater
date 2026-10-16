@@ -23,6 +23,7 @@ import {
   fallbackPair,
   fallbackRoleConfig,
   resolveTierFallbacks,
+  seamsInUse,
   type TierFallback,
   type TierFallbackMap,
 } from "../src/config/config-fallbacks.js";
@@ -769,4 +770,22 @@ test("Mixing providers: one config serves HF on pi, claude for strong seams, and
     provider: "omlx",
     model: "Qwen3.8-27B-MLX-oQ4e-mtp",
   });
+});
+
+test("a fallback list runs its first usable step, then borrows, and seamsInUse lists every step", () => {
+  const config: TumwaterConfig = defaultConfig();
+  config.fallback = { default: ["omlx/a", "omlx/b"], strong: "pause" };
+  const bad = new Set(["a"]);
+  const r = resolveTierFallbacks(config, (p) => !bad.has(p.model ?? ""));
+  assert.equal(r.default.pair?.model, "b");
+  assert.equal(r.default.step, 1);
+  assert.equal(resolveTierFallbacks(config, () => true).default.step, undefined);
+  // Both steps unusable: default pauses, and strong (pause) never borrows small.
+  assert.equal(resolveTierFallbacks(config, () => false).default.pair, null);
+  assert.equal(resolveTierFallbacks(config, () => false).strong.pair, null);
+  // small borrows default's first usable step.
+  assert.equal(r.small.pair?.model, "b");
+  assert.equal(r.small.from, "default");
+  const labels = seamsInUse(config).map((s) => s.label);
+  assert.ok(labels.includes("fallback:default") && labels.includes("fallback:default#1"));
 });

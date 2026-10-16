@@ -5,47 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 3/7: `fallback` takes an ordered list per tier, and each tier runs on the first usable step (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Terms" and "Config"; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
-
-**Goal.** Each tier has exactly one fallback today, borrowed from another tier when it has none. Chains of more than one were left out of plans/fallback-model.md. This part lets `fallback` list several model ids per tier, tried in order. The breaker that demotes a fallback after three failed runs then moves the tier to the next step instead of pausing it. For example, a local server that is down falls through to a second local server.
-
-Only free steps exist in this part (zero-priced pi models, and subscription Claude while its window is open). Part 4/7 adds priced steps.
-
-**Approach.**
-- src/config/config-schema.ts: change `fallback` to `FallbackChain | Partial<Record<ModelTier, FallbackChain | "pause">>`, with `FallbackChain = string | string[]`.
-- src/config/config-validation.ts:
-  - A list must be non-empty, and each element a non-empty model id.
-  - `"pause"` is a whole-tier value only, never a list element.
-  - The string and map forms validate exactly as today, and `fallback` with `fallbackModel` stays an error.
-- src/config/config-fallbacks.ts:
-  - `tierOwnFallback` becomes `tierOwnChain(config, tier): FallbackModelConfig[]`. It returns an empty list for no fallback or `"pause"`, and a one-element list for a string or the legacy `fallbackModel` object.
-  - `resolveTierFallbacks` returns the first `usable` step of the tier's own chain. Otherwise it walks `BORROW_ORDER`'s other tiers' own chains in order and takes the first usable step. Otherwise the tier pauses.
-  - `TierFallback` gains `step` (the 0-based index in the chain that supplied the pair) for surfaces.
-  - `fallbackRoleConfig` (the model-failure fallback) keeps taking the first step.
-  - `seamsInUse` lists every step of every tier's chain: `fallback:<tier>` for the first, `fallback:<tier>#<n>` for later ones. The startup gate and doctor then check every step's binary and credentials.
-- src/gates/budget-gates.ts: key the breaker map (`rekeyFallbackBreakers`) by every price-free step of every tier's chain, not only each tier's price-resolved winner.
-  - Otherwise a demoted step's successor has no breaker entry, so `fallbackServingPair` reads it as not serving.
-  - The handback `pairs` cover every step a run can be on.
-- docs/backends.md: a list example in the fallback section, and the rule that a tier runs its first usable step.
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
-- Docs: docs/backends.md.
-- Tests: test/config-validation-model.test.ts, test/config-views.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
-
-**Acceptance criteria.**
-- Resolution:
-  - With `[A, B]`, an unpriced A resolves to B.
-  - A demoted A also resolves to B.
-  - With both unusable, the tier borrows the next tier's chain.
-  - Strong never borrows small.
-  - `"pause"` pauses.
-  - A plain string resolves exactly as before.
-- Budget gate at the cap, with `fallback: [A, B]` (both zero-priced): after three failed runs on A, the default tier resolves to B, and the gate stays `fallback`. Today it reads `paused`.
-- Validation: `[]`, `[""]`, `["pause"]` and a non-string element are each rejected with a message naming `fallback`.
-- `seamsInUse` lists both steps.
-- Every existing fallback, tier and budget test passes unchanged, and `npm test` passes.
-
 ### Fallback chain, part 4/7: Priced fallback steps with their own daily caps (planned 2026-10-16 by user; requires part 3/7 landed; design in plans/fallback-chain.md "When a step is available" and "Spend per step"; touches src/config/ src/loop/loop-state.ts src/budget/budget.ts src/tick/tick-usage.ts src/loop/loop-pi.ts src/gates/budget-gates.ts docs/backends.md and their tests)
 
 **Goal.** A fallback must be free today, because it only ever runs at the cap. Once a used-up window also moves work (part 1/7), the step after the subscription is often a paid one. For example, "spend up to $5 a day on HF Inference Providers, then go local". This part lets a step be an object with its own daily cap, and lets priced steps sit in a chain. A priced step is usable only while the team is under `maxDailyCostUsd` and the step is under its own cap, so no cap can be passed.
@@ -2365,6 +2324,47 @@ Today its prompt goes back to the inbox after each failed run and runs again on 
 - `tumwater help plan` and `tumwater help bug` show the `--top` stanza. `bug --top 2 --help` prints the bug help rather than filing a bug, which is the `FREEFORM_VALUED_FLAGS` path.
 - test/cli-doc.test.ts passes with `--top` named in docs/cli.md. `tumwater completion bash` offers `--top` after `plan` because the spec is derived from the help text. Confirm this with a grep of its output; no completion code change is needed.
 - `npm run test` passes.
+
+### Fallback chain, part 3/7: `fallback` takes an ordered list per tier, and each tier runs on the first usable step (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Terms" and "Config"; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests) — done 2026-10-16
+
+**Goal.** Each tier has exactly one fallback today, borrowed from another tier when it has none. Chains of more than one were left out of plans/fallback-model.md. This part lets `fallback` list several model ids per tier, tried in order. The breaker that demotes a fallback after three failed runs then moves the tier to the next step instead of pausing it. For example, a local server that is down falls through to a second local server.
+
+Only free steps exist in this part (zero-priced pi models, and subscription Claude while its window is open). Part 4/7 adds priced steps.
+
+**Approach.**
+- src/config/config-schema.ts: change `fallback` to `FallbackChain | Partial<Record<ModelTier, FallbackChain | "pause">>`, with `FallbackChain = string | string[]`.
+- src/config/config-validation.ts:
+  - A list must be non-empty, and each element a non-empty model id.
+  - `"pause"` is a whole-tier value only, never a list element.
+  - The string and map forms validate exactly as today, and `fallback` with `fallbackModel` stays an error.
+- src/config/config-fallbacks.ts:
+  - `tierOwnFallback` becomes `tierOwnChain(config, tier): FallbackModelConfig[]`. It returns an empty list for no fallback or `"pause"`, and a one-element list for a string or the legacy `fallbackModel` object.
+  - `resolveTierFallbacks` returns the first `usable` step of the tier's own chain. Otherwise it walks `BORROW_ORDER`'s other tiers' own chains in order and takes the first usable step. Otherwise the tier pauses.
+  - `TierFallback` gains `step` (the 0-based index in the chain that supplied the pair) for surfaces.
+  - `fallbackRoleConfig` (the model-failure fallback) keeps taking the first step.
+  - `seamsInUse` lists every step of every tier's chain: `fallback:<tier>` for the first, `fallback:<tier>#<n>` for later ones. The startup gate and doctor then check every step's binary and credentials.
+- src/gates/budget-gates.ts: key the breaker map (`rekeyFallbackBreakers`) by every price-free step of every tier's chain, not only each tier's price-resolved winner.
+  - Otherwise a demoted step's successor has no breaker entry, so `fallbackServingPair` reads it as not serving.
+  - The handback `pairs` cover every step a run can be on.
+- docs/backends.md: a list example in the fallback section, and the rule that a tier runs its first usable step.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/config-validation-model.test.ts, test/config-views.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
+
+**Acceptance criteria.**
+- Resolution:
+  - With `[A, B]`, an unpriced A resolves to B.
+  - A demoted A also resolves to B.
+  - With both unusable, the tier borrows the next tier's chain.
+  - Strong never borrows small.
+  - `"pause"` pauses.
+  - A plain string resolves exactly as before.
+- Budget gate at the cap, with `fallback: [A, B]` (both zero-priced): after three failed runs on A, the default tier resolves to B, and the gate stays `fallback`. Today it reads `paused`.
+- Validation: `[]`, `[""]`, `["pause"]` and a non-string element are each rejected with a message naming `fallback`.
+- `seamsInUse` lists both steps.
+- Every existing fallback, tier and budget test passes unchanged, and `npm test` passes.
 
 ### `tumwater completion fish` prints a native fish completion script built from the same help-derived spec (planned 2026-10-16 by plan; independent of every other Planned entry. It touches src/cli/completion.ts, the `completion` case in src/cli.ts, the `completion` stanza in src/cli/help.ts, docs/cli.md, README.md, and test/completion.test.ts. It does not touch the TUI, payload keys, or event names) (done 2026-10-16)
 

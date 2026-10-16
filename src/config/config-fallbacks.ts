@@ -37,7 +37,7 @@ import {
 
 /** The resolved model fields of a pure `fallback` selector string: parsed as a pure selector
  * (no legacy provider in scope), with the ambient top-level thinking when the selector
- * carries none. fallbackPair's map and string branches and tierOwnFallback share this
+ * carries none. fallbackPair's map and string branches and tierOwnChain share this
  * assembly, so all three read one rule for how a `fallback` selector resolves. */
 function fallbackSelectorFields(
   selector: string,
@@ -90,7 +90,7 @@ export function fallbackPair(
 
 /** The legacy `fallbackModel` object resolved to a pair: its own fields over the top-level
  * values, the same precedence every other override section uses. Private — reached only
- * through tierOwnFallback (the default tier's own fallback) and so fallbackPair's resolution,
+ * through tierOwnChain (the default tier's own fallback) and so fallbackPair's resolution,
  * which keeps the object and the string/map forms on one rule without recursing. */
 function legacyFallbackPair(config: TumwaterConfig): FallbackModelConfig | null {
   const fbo = config.fallbackModel;
@@ -110,6 +110,10 @@ function legacyFallbackPair(config: TumwaterConfig): FallbackModelConfig | null 
 export interface TierFallback {
   pair: FallbackModelConfig | null;
   from: ModelTier | null;
+  /** The 0-based index in the supplying tier's chain of the step `pair` came from, set only
+   * for a later step (absent means the first step, or no pair): a first-step resolution keeps
+   * the `{ pair, from }` shape every existing consumer compares against. */
+  step?: number;
 }
 
 /** The resolution of all three tiers, keyed by tier name. */
@@ -130,55 +134,70 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
  * for the doctor's `image input` check naming the tier a text-only loop reroutes to. */
 export { BORROW_ORDER };
 
-/** A tier's OWN fallback pair — what the `fallback` key declares at that tier's map entry,
- * or (default only) the string form of `fallback` or the legacy `fallbackModel` object — or
- * undefined when the tier declares nothing or declares `"pause"` (an explicit opt-out, which
- * also makes it unborrowable: a tier with no own fallback offers nothing to borrow). Parsed
+/** A tier's OWN fallback chain, first step first — what the `fallback` key declares at that
+ * tier's map entry (a selector or a list of them), or (default only) the string/list form of
+ * `fallback` or the legacy `fallbackModel` object (a one-element chain). Empty when the tier
+ * declares nothing or declares `"pause"` (an explicit opt-out, which also makes it
+ * unborrowable: a tier with no own fallback offers nothing to borrow). Each step is parsed
  * like fallbackPair: a pure selector, with the ambient top-level thinking when the selector
  * carries none. */
-function tierOwnFallback(config: TumwaterConfig, tier: ModelTier): FallbackModelConfig | undefined {
+function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelConfig[] {
   const fb = config.fallback;
-  let selector: string | undefined;
+  let raw: string | string[] | undefined;
   if (fb !== undefined) {
-    // The top-level string form names the default tier's own fallback; `"pause"` is rejected
+    // The top-level string/list form names the default tier's own chain; `"pause"` is rejected
     // by validation but defensively names no model (matching the map entries below).
-    if (typeof fb === "string") selector = tier === "default" && fb !== "pause" ? fb : undefined;
-    else {
-      const raw = fb[tier];
-      if (raw !== undefined && raw !== "pause") selector = raw;
-    }
+    if (typeof fb === "string" || Array.isArray(fb)) raw = tier === "default" ? fb : undefined;
+    else raw = fb[tier];
   } else if (tier === "default") {
     // The legacy `fallbackModel` object is the default tier's own fallback, with its
     // provider/thinking fields and the top-level borrow precedence.
-    return legacyFallbackPair(config) ?? undefined;
+    const legacy = legacyFallbackPair(config);
+    return legacy === null ? [] : [legacy];
   }
-  if (selector === undefined) return undefined;
-  return fallbackSelectorFields(selector, config);
+  if (raw === undefined || raw === "pause") return [];
+  return (Array.isArray(raw) ? raw : [raw])
+    .filter((s) => s !== "pause")
+    .map((s) => fallbackSelectorFields(s, config));
 }
 
+/** Every step of every tier's own chain, as the pair and its 0-based index in that chain — the
+ * enumeration the budget gate keys its breakers by and seamsInUse checks binaries over. */
+export function tierChainSteps(
+  config: TumwaterConfig,
+): { tier: ModelTier; step: number; pair: FallbackModelConfig }[] {
+  return MODEL_TIERS.flatMap((tier) =>
+    tierOwnChain(config, tier).map((pair, step) => ({ tier, step, pair })),
+  );
+}
+
+const stepField = (step: number): { step?: number } => (step > 0 ? { step } : {});
+
 /** Which free pair each tier runs on at the daily cap (plans/model-tiers.md "Budget fallback
- * by tier", part 5a/8). A tier runs its own declared fallback when `usable(pair)`; otherwise
- * it borrows another tier's OWN fallback — never one that tier itself borrowed — in
- * BORROW_ORDER's order; otherwise it pauses (`pair: null`). The engine is pure: the caller
- * supplies `usable` (part 5b/8 wires it to pair pricing and the fallback breaker), so the
- * same rules are testable with a stub and the gates cannot disagree with each other. A
- * config with no fallback at all resolves every tier to pause, and a single `fallback: F`
- * reads as default's own pair, which small and strong then borrow — today's behavior. */
+ * by tier", part 5a/8). A tier runs the first `usable(pair)` step of its own declared chain;
+ * otherwise it borrows the first usable step of another tier's OWN chain — never one that
+ * tier itself borrowed — in BORROW_ORDER's order; otherwise it pauses (`pair: null`). The
+ * engine is pure: the caller supplies `usable` (part 5b/8 wires it to pair pricing and the
+ * fallback breaker), so the same rules are testable with a stub and the gates cannot disagree
+ * with each other. A config with no fallback at all resolves every tier to pause, and a single
+ * `fallback: F` reads as default's own pair, which small and strong then borrow — today's
+ * behavior. */
 export function resolveTierFallbacks(
   config: TumwaterConfig,
   usable: (pair: FallbackModelConfig) => boolean,
 ): TierFallbackMap {
-  const own = (tier: ModelTier) => {
-    const pair = tierOwnFallback(config, tier);
-    return pair !== undefined && usable(pair) ? pair : undefined;
+  const firstUsable = (tier: ModelTier): { pair: FallbackModelConfig; step: number } | undefined => {
+    const chain = tierOwnChain(config, tier);
+    const step = chain.findIndex((p) => usable(p));
+    return step < 0 ? undefined : { pair: chain[step]!, step };
   };
   const resolve = (tier: ModelTier): TierFallback => {
-    const mine = own(tier);
-    if (mine) return { pair: mine, from: null };
+    const mine = firstUsable(tier);
+    if (mine) return { pair: mine.pair, from: null, ...stepField(mine.step) };
     for (const t of BORROW_ORDER[tier]) {
       if (t === tier) continue;
-      const theirs = own(t);
-      if (theirs) return { pair: theirs, from: t };
+      const theirs = firstUsable(t);
+      if (theirs) return { pair: theirs.pair, from: t, ...stepField(theirs.step) };
     }
     return { pair: null, from: null };
   };
@@ -245,12 +264,9 @@ export function seamsInUse(config: TumwaterConfig): SeamInUse[] {
   if (config.review.enabled) add("review", reviewRunConfig(config));
   add("resolver", resolverConfig(config));
   add("director", configForRole(config, DIRECTOR_ROLE));
-  const fallbacks = resolveTierFallbacks(config, () => true);
-  for (const tier of MODEL_TIERS) {
-    const pair = fallbacks[tier].pair;
-    if (pair === null) continue;
+  for (const { tier, step, pair } of tierChainSteps(config)) {
     add(
-      `fallback:${tier}`,
+      step === 0 ? `fallback:${tier}` : `fallback:${tier}#${step}`,
       withModelOverrides(config, tier, { provider: pair.provider, model: pair.model, thinking: pair.thinking }),
     );
   }

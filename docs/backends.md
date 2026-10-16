@@ -47,6 +47,12 @@ default and never small, because a weak reviewer or planner costs more than a pa
 "fallback": { "default": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp" }
 ```
 
+A tier's `fallback` may also be an ordered list of model ids (`"fallback": ["omlx/a", "omlx/b"]`, or
+a list as a map value). A tier runs its first usable step: the first one that is free and that the
+failure breaker has not demoted, so a local server that is down falls through to the next. When no
+step of a tier's own list is usable the tier borrows another tier's list as before, and otherwise
+pauses. `"pause"` is a whole-tier value, never a list element.
+
 The legacy `provider` key and `fallbackModel` object still parse for existing configs, but
 tumwater writes the model id forms above.
 

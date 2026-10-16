@@ -692,3 +692,26 @@ test("the cap alone never moves the director, and a window with no fallback leav
   bare.fallbackModel = undefined;
   assert.equal(poll(root, newBudgetGateState(bare), bare, models).directorConfig, bare);
 });
+
+test("a chain's demoted first step moves the default tier to the next step instead of pausing", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.fallback = ["free/qwen-free", "free/llama-free"];
+  const state = newBudgetGateState(cfg);
+  state.breakers = {
+    "free/qwen-free": {
+      ...IDLE_FALLBACK_BREAKER,
+      pair: "free/qwen-free",
+      capUsd: 10,
+      failures: 3,
+      probeAt: Date.now() + 3_600_000,
+    },
+  };
+  const p = poll(root, state, cfg, models, [spentLoopState("feature", 10)]);
+  assert.equal(p.gate, "fallback");
+  assert.equal(p.servingResolved.default.pair?.model, "llama-free");
+  assert.equal(p.servingResolved.default.step, 1);
+  assert.deepEqual(Object.keys(state.breakers).sort(), ["free/llama-free", "free/qwen-free"]);
+  assert.deepEqual(p.pairs.map((x) => x.model).sort(), ["llama-free", "qwen-free"]);
+});
