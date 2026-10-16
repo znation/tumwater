@@ -324,6 +324,14 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
     if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min tick interval", view.minTickIntervalSeconds + "s"));
+    // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
+    // mirrors quietWindowEnd (browser code cannot import it).
+    if (Array.isArray(view.quietHours)) view.quietHours.forEach(function (w) {
+      if (!w || typeof w.window !== "string") return;
+      const end = String(w.window).split("-")[1];
+      const state = w.inWindow ? "holding now — quiet until " + (end ? end.trim() : "") : "not holding now";
+      rows.push(kvRow("Quiet hours", w.window + " (" + (w.scope === "role" ? "own window" : "fleet window") + "; " + state + ")"));
+    });
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
     // The loop's own spend over its retained event window (rolePayload's usage, summed from the
     // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,

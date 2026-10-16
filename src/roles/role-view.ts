@@ -16,6 +16,8 @@ import { queuedRolePromptCount } from "../inbox/inbox.js";
 import { pausedRoles } from "../fleet/fleet-state.js";
 import { loadLoopState } from "../loop/loop-state.js";
 import { yieldMultiplierFor } from "../scheduling/backoff.js";
+import { quietHoursStatus } from "../scheduling/quiet-hours.js";
+import { baseRoleOf } from "./loop-ids.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
@@ -116,6 +118,11 @@ export interface RoleViewPayload {
    * backoff is in force. */
   nextRunAt: number;
   backoffSeconds: number;
+  /** The quiet-hours windows that govern this loop, the loop's own (`quietHoursPerRole`, looked
+   * up by base role as the gate does) first and the fleet-wide `quietHours` second, each with
+   * whether the local clock sits inside it now. Absent when no window parses and for the
+   * director, which both gates exempt. */
+  quietHours?: Array<{ scope: "role" | "fleet"; window: string; inWindow: boolean }>;
   /** The yield multiplier the loop's recent-yield ring earns right now — the same
    * `×N` the status `next run` cell rides (status-render.ts's nextRunCell reads
    * yieldMultiplierFor) — so the role view's Schedule cannot understate a quiet
@@ -143,7 +150,12 @@ export interface RoleViewPayload {
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
  * — a test seam, like status/status-data.ts's snapshot — consulted only when a fallback pair is
  * configured (the freeness verdict needs the definitions; nothing else does). */
-export function rolePayload(root: string, role: string, modelsPath = piModelsPath()): RoleViewPayload {
+export function rolePayload(
+  root: string,
+  role: string,
+  modelsPath = piModelsPath(),
+  now: Date = new Date(),
+): RoleViewPayload {
   // loadConfigSafe (not loadConfigCached's hold-last-good machinery — this is a one-shot
   // command, not a poller): a broken or missing file degrades to the defaults, so the
   // command still answers for built-in roles on a torn repo.
@@ -255,6 +267,15 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     const text = readTextOrNull(roleNotesPath(root, role));
     note = text !== null && text.trim() !== "" ? text : null;
   }
+  // The windows the scheduler applies (gates/gate-polls.ts), through the same parser and
+  // predicate; the director is exempt from both gates.
+  const quietHours: NonNullable<RoleViewPayload["quietHours"]> = [];
+  if (role !== DIRECTOR_ROLE) {
+    const own = quietHoursStatus(cfg.quietHoursPerRole?.[baseRoleOf(role)], now);
+    if (own.window !== null) quietHours.push({ scope: "role", window: own.window, inWindow: own.inWindow });
+    const fleet = quietHoursStatus(cfg.quietHours, now);
+    if (fleet.window !== null) quietHours.push({ scope: "fleet", window: fleet.window, inWindow: fleet.inWindow });
+  }
   return {
     id: role,
     title: resolved.title,
@@ -304,6 +325,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     backoffSeconds: state.backoffSeconds,
     yieldMultiplier: yieldMultiplierFor(state),
     ...(state.lastTickEndedAt !== undefined ? { lastTickEndedAt: state.lastTickEndedAt } : {}),
+    ...(quietHours.length > 0 ? { quietHours } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),
   };

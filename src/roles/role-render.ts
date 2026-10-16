@@ -3,6 +3,7 @@ import { compactTokens, usd } from "../text/format.js";
 import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
+import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
@@ -124,7 +125,16 @@ function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number;
   return line;
 }
 
-/** The loop's schedule as two Markdown bullet lines — `Next tick` and `Last tick` — in the
+/** One quiet-hours bullet: the window, whose it is, and whether it holds the loop now — with
+ * the same `quiet until <end>` text the status table uses. */
+function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): string {
+  const whose = w.scope === "role" ? "own window" : "fleet window";
+  const state = w.inWindow ? `holding now — quiet until ${quietWindowEnd(w.window)}` : "not holding now";
+  return `- Quiet hours: ${w.window} (${whose}; ${state})`;
+}
+
+/** The loop's schedule as Markdown bullet lines — `Next tick`, `Last tick`, then one
+ * `Quiet hours` line per governing window (none when the payload carries no windows) — in the
  * same words and wording family as the fleet surface's `next run` cell (status-render.ts's
  * nextRunCell), so the role view and the status table cannot drift on when a loop acts next:
  * a never-scheduled loop (nextRunAt 0) reads `not scheduled yet`; a due loop reads `due now`;
@@ -151,7 +161,7 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
     p.lastTickEndedAt !== undefined
       ? `${formatTimestamp(p.lastTickEndedAt)} (${humanSeconds(secondsSince(p.lastTickEndedAt, now))} ago)`
       : "never";
-  return [`- Next tick: ${next}`, `- Last tick: ${last}`];
+  return [`- Next tick: ${next}`, `- Last tick: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
 }
 
 /** Render one loop's inspection payload as Markdown. `now` is injected (default Date.now())

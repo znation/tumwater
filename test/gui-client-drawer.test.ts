@@ -588,6 +588,26 @@ test("the loop drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
 });
 
+test("the Configuration section paints a Quiet hours row per window, worded like the CLI", async () => {
+  const mk = (extra: object) => openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, model: "pi/default", modelTier: "default", minTickIntervalSeconds: 30, ...extra } },
+  });
+  const t = mk({ quietHours: [
+    { scope: "role", window: "23:00-07:00", inWindow: true },
+    { scope: "fleet", window: "12:00-13:00", inWindow: false },
+  ] });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>23:00-07:00 \(own window; holding now — quiet until 07:00\)<\/dd>/);
+  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(fleet window; not holding now\)<\/dd>/);
+  const none = mk({});
+  none.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(none.paintedFor("drawerrole"), /Quiet hours/);
+});
+
 test("the Configuration section omits absent fields (cap-less fleet, no fallback, image-\nyes, notes-only)", async () => {
   // A cap-less fleet carries no provider row; no fallbacks, no images-reroute.
   const partial = openDrawer(["toggleLoop"], {

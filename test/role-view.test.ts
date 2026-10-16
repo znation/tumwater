@@ -746,3 +746,35 @@ test("role schedule surfaces the yield multiplier a quiet scalable loop is servi
   assert.match(settled, /- Next tick: due now$/m);
   assert.doesNotMatch(settled, /×/);
 });
+
+test("the role view names the quiet-hours windows governing the loop and whether one holds now", () => {
+  const dir = root();
+  writeConfig(dir, { quietHours: "12:00-13:00", quietHoursPerRole: { qa: "23:00-07:00" } });
+  const at = new Date(2026, 9, 16, 23, 30);
+  const p = rolePayload(dir, "qa", NO_MODELS, at);
+  assert.deepEqual(p.quietHours, [
+    { scope: "role", window: "23:00-07:00", inWindow: true },
+    { scope: "fleet", window: "12:00-13:00", inWindow: false },
+  ]);
+  const md = renderRoleMarkdown(p);
+  assert.match(md, /- Last tick: .*\n- Quiet hours: 23:00-07:00 \(own window; holding now — quiet until 07:00\)\n- Quiet hours: 12:00-13:00 \(fleet window; not holding now\)/);
+  // The director is exempt from both gates.
+  assert.equal("quietHours" in rolePayload(dir, "director", NO_MODELS, at), false);
+});
+
+test("a malformed per-role window yields no role entry", () => {
+  const dir = root();
+  writeConfig(dir, { quietHoursPerRole: { feature: "25:00-07:00" } });
+  assert.equal("quietHours" in rolePayload(dir, "feature", NO_MODELS, new Date(2026, 9, 16, 12, 0)), false);
+});
+
+test("an instance id reads its base role's quiet-hours window; no window leaves no key", () => {
+  const dir = root();
+  writeConfig(dir, { quietHoursPerRole: { feature: "23:00-07:00" } });
+  const at = new Date(2026, 9, 16, 12, 0);
+  const p = rolePayload(dir, "feature-2", NO_MODELS, at);
+  assert.deepEqual(p.quietHours, [{ scope: "role", window: "23:00-07:00", inWindow: false }]);
+  const bare = root();
+  assert.equal("quietHours" in rolePayload(bare, "feature", NO_MODELS, at), false);
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(bare, "feature", NO_MODELS, at)), /Quiet hours/);
+});
