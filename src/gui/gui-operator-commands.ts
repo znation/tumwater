@@ -12,7 +12,7 @@ import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { editInitialPrompt } from "../brief/brief-edit.js";
 import { validRoleIds } from "./gui-args.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody, sendRequestResult } from "./gui-endpoint-common.js";
 import { wakeInSecondsMs } from "./gui-fleet-commands.js";
@@ -40,7 +40,7 @@ export async function handleStopSchedule(req: http.IncomingMessage, res: http.Se
   if (!body) return;
   if (body.cancel === true) {
     if (body.inSeconds !== undefined) {
-      sendJson(res, 400, { error: "cancel and inSeconds cannot be combined" });
+      badRequest(res, "cancel and inSeconds cannot be combined");
       return;
     }
     sendJson(res, 200, { ok: true, message: cancelScheduledStopMessage(root) });
@@ -49,7 +49,7 @@ export async function handleStopSchedule(req: http.IncomingMessage, res: http.Se
   const inMs = wakeInSecondsMs(res, body);
   if (inMs === null) return;
   if (inMs === undefined) {
-    sendJson(res, 400, { error: "inSeconds or cancel is required" });
+    badRequest(res, "inSeconds or cancel is required");
     return;
   }
   sendRequestResult(res, requestScheduledStop(root, inMs));
@@ -96,12 +96,12 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
   const body = await readRoleBody(req, res, '{"role": "feature", "text": "…"}', root);
   if (!body) return;
   const role = body.role as string;
-  if (role === DIRECTOR_ROLE) return sendJson(res, 400, { error: "the director has no notebook" });
-  if (typeof body.text !== "string") return sendJson(res, 400, { error: `"text" must be a string — the full replacement note, or "" to clear it${gotSuffix(body.text)}` });
+  if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no notebook");
+  if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement note, or "" to clear it${gotSuffix(body.text)}`);
   try {
     sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), body.text) });
   } catch (err) {
-    sendJson(res, 400, { error: errorMessage(err) });
+    badRequest(res, errorMessage(err));
   }
 }
 /** Handle POST /api/brief: replace the initial prompt through editInitialPrompt — the same
@@ -110,8 +110,8 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
 export async function handleBriefEdit(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readPostBody(req, res, '{"prompt": "…"}');
   if (!body) return;
-  if (typeof body.prompt !== "string") return sendJson(res, 400, { error: `"prompt" must be a string — the full replacement initial prompt${gotSuffix(body.prompt)}` });
+  if (typeof body.prompt !== "string") return badRequest(res, `"prompt" must be a string — the full replacement initial prompt${gotSuffix(body.prompt)}`);
   const outcome = await editInitialPrompt(root, body.prompt);
-  if (!outcome.ok) return sendJson(res, 400, { error: outcome.error });
+  if (!outcome.ok) return badRequest(res, outcome.error);
   sendJson(res, 200, { file: outcome.file, changed: outcome.changed, committed: outcome.committed });
 }

@@ -15,7 +15,7 @@ import { parseDurationMs } from "../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { rejectBadQueueFileName, rejectBadRole, requirePromptText } from "./gui-args.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { errorMessage, gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
@@ -46,7 +46,7 @@ function checkedPromptImages(res: http.ServerResponse, body: Record<string, unkn
   if (body.images === undefined) return undefined;
   const problem = promptImagesProblem(body.images);
   if (problem) {
-    sendJson(res, 400, { error: problem });
+    badRequest(res, problem);
     return null;
   }
   return body.images as PromptImageInput[];
@@ -64,11 +64,11 @@ function checkedPromptDefer(res: http.ServerResponse, body: Record<string, unkno
   if (body.defer === undefined) return undefined;
   const ms = typeof body.defer === "string" ? parseDurationMs(body.defer) : null;
   if (ms === null) {
-    sendJson(res, 400, { error: `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(body.defer)}` });
+    badRequest(res, `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(body.defer)}`);
     return null;
   }
   if (ms > PAUSE_FOR_MAX_MS) {
-    sendJson(res, 400, { error: `defer is capped at 90d${gotSuffix(body.defer)}` });
+    badRequest(res, `defer is capped at 90d${gotSuffix(body.defer)}`);
     return null;
   }
   return Date.now() + ms;
@@ -158,7 +158,7 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
   try {
     outcome = editQueuedFile(root, role, body.file as string, fields.text, fields.images);
   } catch (err) {
-    sendJson(res, 400, { error: errorMessage(err) });
+    badRequest(res, errorMessage(err));
     return;
   }
   sendJson(

@@ -18,6 +18,13 @@ export function sendJson(res: http.ServerResponse, status: number, body: unknown
   res.end(JSON.stringify(body));
 }
 
+/** Send a 400 Bad Request carrying a single client-error message — the one shape every /api
+ * handler's validation/authoring failure replies with ({ error: "..." }), so the status and
+ * the `{ error }` wrapper live here instead of being open-coded at each call site. */
+export function badRequest(res: http.ServerResponse, message: string): void {
+  sendJson(res, 400, { error: message });
+}
+
 /** Max request body for the /api POST endpoints, in wire bytes. Sized for the prompt
  * endpoints' image attachments: 4 images × 5 MiB × 4/3 base64 expansion ≈ 27 MiB must fit one
  * POST, with headroom — the cap exists to bound memory on a local dashboard, not to be tight.
@@ -148,7 +155,7 @@ export async function readJsonObject(
   // because it sends a different status.
   const parsed = parseJsonObject(body);
   if (!parsed) {
-    sendJson(res, 400, { error: `body must be a JSON object like ${example}` });
+    badRequest(res, `body must be a JSON object like ${example}`);
     return null;
   }
   return parsed;

@@ -12,7 +12,7 @@ import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEn
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { collapseWhitespace, errorMessage } from "../text/text.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
@@ -23,7 +23,7 @@ import type http from "node:http";
 function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unknown>): "bug" | "plan" | null {
   const kind = body.kind;
   if (kind !== "bug" && kind !== "plan") {
-    sendJson(res, 400, { error: 'kind must be "bug" or "plan"' });
+    badRequest(res, 'kind must be "bug" or "plan"');
     return null;
   }
   return kind;
@@ -40,11 +40,11 @@ function checkedEntryPositionAndTitle(
 ): { position: number; title: string } | null {
   const { position, title } = body;
   if (typeof position !== "number" || !Number.isInteger(position) || position < 1) {
-    sendJson(res, 400, { error: "position must be a positive integer" });
+    badRequest(res, "position must be a positive integer");
     return null;
   }
   if (typeof title !== "string" || title === "") {
-    sendJson(res, 400, { error: "title must be a non-empty string" });
+    badRequest(res, "title must be a non-empty string");
     return null;
   }
   return { position, title };
@@ -67,20 +67,20 @@ export async function handleQuestionAnswer(req: http.IncomingMessage, res: http.
   if (!pair) return;
   const { position, title } = pair;
   if (typeof decision !== "string" || decision.trim() === "") {
-    sendJson(res, 400, { error: 'questions answer needs a decision: questions answer <n> "<decision>"' });
+    badRequest(res, 'questions answer needs a decision: questions answer <n> "<decision>"');
     return;
   }
   const keptDecision = normalizeEntryBody(decision);
   const problem = bodyStructureProblem(keptDecision);
   if (problem !== null) {
-    sendJson(res, 400, { error: problem });
+    badRequest(res, problem);
     return;
   }
   let outcome: AnswerOutcome;
   try {
     outcome = tryAnswerQuestion(root, position, keptDecision, title, true);
   } catch (err) {
-    sendJson(res, 400, { error: errorMessage(err) });
+    badRequest(res, errorMessage(err));
     return;
   }
   if (outcome.status === "answered") {
@@ -106,24 +106,24 @@ export async function handleBacklogFile(req: http.IncomingMessage, res: http.Ser
   if (!kind) return;
   const rawTitle = typeof body.title === "string" ? body.title : "";
   if (collapseWhitespace(rawTitle) === "") {
-    sendJson(res, 400, { error: "title required" });
+    badRequest(res, "title required");
     return;
   }
   const { role, wakeText } = OPERATOR_FILE_KINDS[kind];
   const problem = promptLengthProblem(wakeText(collapseWhitespace(rawTitle)), role);
   if (problem) {
-    sendJson(res, 400, { error: problem });
+    badRequest(res, problem);
     return;
   }
   const rawBody = body.body;
   if (rawBody !== undefined && typeof rawBody !== "string") {
-    sendJson(res, 400, { error: "body must be a string" });
+    badRequest(res, "body must be a string");
     return;
   }
   const entryBody = normalizeEntryBody(rawBody ?? "");
   const bodyProblem = bodyStructureProblem(entryBody);
   if (bodyProblem) {
-    sendJson(res, 400, { error: bodyProblem });
+    badRequest(res, bodyProblem);
     return;
   }
   const filed = fileEntryWithBody(root, kind, rawTitle, entryBody);
@@ -149,7 +149,7 @@ export async function handleBacklogCancel(req: http.IncomingMessage, res: http.S
   try {
     outcome = tryCancelEntry(root, kind, position, title);
   } catch (err) {
-    sendJson(res, 400, { error: errorMessage(err) });
+    badRequest(res, errorMessage(err));
     return;
   }
   if (outcome.status === "cancelled") {
@@ -175,23 +175,23 @@ export async function handleBacklogEdit(req: http.IncomingMessage, res: http.Ser
   const { position, title } = pair;
   const { newTitle, newBody } = body;
   if (typeof newTitle !== "string" || collapseWhitespace(newTitle) === "") {
-    sendJson(res, 400, { error: "newTitle required" });
+    badRequest(res, "newTitle required");
     return;
   }
   if (typeof newBody !== "string") {
-    sendJson(res, 400, { error: "newBody must be a string" });
+    badRequest(res, "newBody must be a string");
     return;
   }
   const problem = bodyStructureProblem(newBody.replace(/\r\n?/g, "\n"));
   if (problem !== null) {
-    sendJson(res, 400, { error: problem });
+    badRequest(res, problem);
     return;
   }
   let outcome: EditEntryOutcome;
   try {
     outcome = tryEditEntry(root, kind, position, title, newTitle, newBody);
   } catch (err) {
-    sendJson(res, 400, { error: errorMessage(err) });
+    badRequest(res, errorMessage(err));
     return;
   }
   if (outcome.status === "edited") {

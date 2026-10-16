@@ -35,7 +35,7 @@ import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readQueuedPromptBody } from "../inbox/inbox-edit.js";
 import { intQuery, rejectBadQueueFileName, rejectBadRole, sinceMsQuery, windowDays } from "./gui-args.js";
 import { readBrief } from "../brief/brief.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { typoSuffix } from "../text/suggest.js";
 import type http from "node:http";
 /** Handle GET /api/transcript?role=<id>&n=N: rendered transcript lines for one loop's pi
@@ -75,14 +75,12 @@ const BACKLOG_FILE_VALUES = BACKLOG_FILE_NAMES.join(", ");
 export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root: string): void {
   const file = q.get("file");
   if (file === null) {
-    sendJson(res, 400, { error: `file required (valid values: ${BACKLOG_FILE_VALUES})` });
+    badRequest(res, `file required (valid values: ${BACKLOG_FILE_VALUES})`);
     return;
   }
   const reader = BACKLOG_FILE_READERS.get(file);
   if (!reader) {
-    sendJson(res, 400, {
-      error: `unknown file ${JSON.stringify(file)} (valid values: ${BACKLOG_FILE_VALUES})${typoSuffix(file, BACKLOG_FILE_NAMES)}`,
-    });
+    badRequest(res, `unknown file ${JSON.stringify(file)} (valid values: ${BACKLOG_FILE_VALUES})${typoSuffix(file, BACKLOG_FILE_NAMES)}`);
     return;
   }
   const entries = reader(root);
@@ -90,7 +88,7 @@ export function handleBacklog(q: URLSearchParams, res: http.ServerResponse, root
   if (index === null) return;
   const entry = entries[index];
   if (!entry) {
-    sendJson(res, 400, { error: `index ${index} out of range (${file} has ${entries.length} open entries)` });
+    badRequest(res, `index ${index} out of range (${file} has ${entries.length} open entries)`);
     return;
   }
   sendJson(res, 200, { title: entry.title, body: entry.body });
@@ -144,7 +142,7 @@ export function handleReport(q: URLSearchParams, res: http.ServerResponse, root:
  * null once the 400 is sent. */
 function reportSinceMs(q: URLSearchParams, res: http.ServerResponse): number | null {
   if (q.get("days") !== null) {
-    sendJson(res, 400, { error: "days and sinceMs are mutually exclusive; days counts whole local days, sinceMs totals a trailing window" });
+    badRequest(res, "days and sinceMs are mutually exclusive; days counts whole local days, sinceMs totals a trailing window");
     return null;
   }
   return sinceMsQuery(q, res, REPORT_SINCE_MAX_MS, (sinceMs) =>
@@ -198,7 +196,7 @@ export function handleHistory(q: URLSearchParams, res: http.ServerResponse, root
   const grep = q.get("grep") || null; // "" and absent both filter nothing
   if (q.get("sinceMs") !== null) {
     if (q.get("n") !== null) {
-      sendJson(res, 400, { error: "sinceMs cannot be combined with n (a count and a window are rival shapes)" });
+      badRequest(res, "sinceMs cannot be combined with n (a count and a window are rival shapes)");
       return;
     }
     const sinceMs = sinceMsQuery(q, res, LOGS_SINCE_MAX_MS, (ms) =>

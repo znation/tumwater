@@ -16,7 +16,7 @@ import { queueFileNameProblem } from "../inbox/inbox-cancel.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { gotSuffix, parseNonNegativeInt, parsePositiveInt } from "../text/text.js";
 import { typoSuffix } from "../text/suggest.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import type http from "node:http";
 
 /** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
@@ -43,15 +43,13 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
   if (role === undefined && allowMissing) return false;
   const validIds = validRoleIds(root);
   if (role === undefined || role === null) {
-    sendJson(res, 400, { error: `role required (valid ids: ${validIds.join(", ")})` });
+    badRequest(res, `role required (valid ids: ${validIds.join(", ")})`);
     return true;
   }
   if (typeof role !== "string" || !validIds.includes(role)) {
-    sendJson(res, 400, {
-      error: `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})${
-        typeof role === "string" ? typoSuffix(role, validIds) : ""
-      }`,
-    });
+    badRequest(res, `unknown role ${JSON.stringify(role)} (valid ids: ${validIds.join(", ")})${
+      typeof role === "string" ? typoSuffix(role, validIds) : ""
+    }`);
     return true;
   }
   return false;
@@ -65,7 +63,7 @@ export function rejectBadRole(root: string, res: http.ServerResponse, role: unkn
 export function rejectBadQueueFileName(res: http.ServerResponse, name: unknown): boolean {
   const problem = queueFileNameProblem(name);
   if (problem === null) return false;
-  sendJson(res, 400, { error: problem });
+  badRequest(res, problem);
   return true;
 }
 
@@ -87,7 +85,7 @@ export function intQuery(
   const raw = q.get(name);
   if (raw === null) {
     if (fallback !== undefined) return fallback;
-    sendJson(res, 400, { error: `${name} required` });
+    badRequest(res, `${name} required`);
     return null;
   }
   const parsed = kind === "positive" ? parsePositiveInt(raw) : parseNonNegativeInt(raw);
@@ -137,12 +135,12 @@ export function requirePromptText(
     return null;
   }
   if (!text.trim()) {
-    sendJson(res, 400, { error: "text required" });
+    badRequest(res, "text required");
     return null;
   }
   const tooLong = promptLengthProblem(text, role);
   if (tooLong) {
-    sendJson(res, 400, { error: tooLong });
+    badRequest(res, tooLong);
     return null;
   }
   return text;
@@ -166,7 +164,7 @@ export function sinceMsQuery(
   const sinceMs = intQuery(q, res, "sinceMs", "positive");
   if (sinceMs === null) return null;
   if (sinceMs > maxMs) {
-    sendJson(res, 400, { error: overCap(sinceMs) });
+    badRequest(res, overCap(sinceMs));
     return null;
   }
   return sinceMs;
@@ -184,9 +182,7 @@ export function requireConfigKey(
 ): string | null {
   const key = body.key;
   if (typeof key !== "string" || !(EDITABLE_CONFIG_KEYS as readonly string[]).includes(key)) {
-    sendJson(res, 400, {
-      error: `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`,
-    });
+    badRequest(res, `key must be one of ${EDITABLE_CONFIG_KEYS.join(", ")}${key === undefined ? "" : gotSuffix(key)}`);
     return null;
   }
   return key;

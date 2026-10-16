@@ -8,7 +8,7 @@
 import { normalizePauseReason, pauseFleet, pauseRole, resumeFleet, resumeRole } from "../fleet/fleet-state.js";
 import { cancelWakes, PAUSE_FOR_MAX_MS, requestWake } from "../operator/operator-intent.js";
 import { requirePausedFlag, validRoleIds } from "./gui-args.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { gotSuffix } from "../text/text.js";
 import { readPostBody, readRoleBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
@@ -31,11 +31,11 @@ function boundedSecondsMs(
   const seconds = body[field];
   if (seconds === undefined) return undefined;
   if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
-    sendJson(res, 400, { error: `${field} must be a positive number of seconds${gotSuffix(seconds)}` });
+    badRequest(res, `${field} must be a positive number of seconds${gotSuffix(seconds)}`);
     return null;
   }
   if (seconds * 1000 > PAUSE_FOR_MAX_MS) {
-    sendJson(res, 400, { error: `${field} is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(seconds)}${capHint}` });
+    badRequest(res, `${field} is capped at ${PAUSE_FOR_MAX_MS / 1000} seconds (90 days)${gotSuffix(seconds)}${capHint}`);
     return null;
   }
   return Math.round(seconds * 1000);
@@ -49,7 +49,7 @@ function pauseForSecondsMs(res: http.ServerResponse, body: Record<string, unknow
   const forSeconds = body.forSeconds;
   if (forSeconds === undefined) return undefined;
   if (!pausing) {
-    sendJson(res, 400, { error: "forSeconds only applies when pausing (paused: true)" });
+    badRequest(res, "forSeconds only applies when pausing (paused: true)");
     return null;
   }
   const ms = boundedSecondsMs(res, body, "forSeconds", " — pause without it for a standing pause");
@@ -62,11 +62,11 @@ function pauseReasonField(res: http.ServerResponse, body: Record<string, unknown
   const reason = body.reason;
   if (reason === undefined) return undefined;
   if (!pausing) {
-    sendJson(res, 400, { error: "reason only applies when pausing (paused: true)" });
+    badRequest(res, "reason only applies when pausing (paused: true)");
     return null;
   }
   if (typeof reason !== "string") {
-    sendJson(res, 400, { error: `reason must be a string${gotSuffix(reason)}` });
+    badRequest(res, `reason must be a string${gotSuffix(reason)}`);
     return null;
   }
   return reason.trim() === "" ? undefined : reason;

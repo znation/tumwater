@@ -6,7 +6,7 @@
  */
 import { checkDailyBudgetUsd, setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { requireConfigKey } from "./gui-args.js";
-import { sendJson } from "./http-body.js";
+import { badRequest, sendJson } from "./http-body.js";
 import { readPostBody } from "./gui-endpoint-common.js";
 import type http from "node:http";
 
@@ -19,14 +19,14 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
   if (!body) return;
   const value = body.maxDailyCostUsd;
   if (value === undefined) {
-    sendJson(res, 400, { error: "maxDailyCostUsd required" });
+    badRequest(res, "maxDailyCostUsd required");
     return;
   }
   // The shared rule (finite ≥ 0; 0 disables): missing/non-finite/negative → 400 with
   // the offending value named.
   const problem = checkDailyBudgetUsd(value);
   if (problem) {
-    sendJson(res, 400, { error: problem });
+    badRequest(res, problem);
     return;
   }
   const result = setDailyBudgetUsd(root, value as number);
@@ -44,7 +44,7 @@ export async function handleBudget(req: http.IncomingMessage, res: http.ServerRe
  * retried request gets the same wording from either surface. Its void return keeps the guard
  * a one-liner: `if (!result.ok) return configKeyError(res, key, result);` */
 function configKeyError(res: http.ServerResponse, key: string, result: { error: string }): void {
-  sendJson(res, 400, { error: `${key}: ${result.error}` });
+  badRequest(res, `${key}: ${result.error}`);
 }
 /** Handle POST /api/config-set: the Settings view's per-key Save — one curated key set to
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
@@ -62,7 +62,7 @@ export async function handleConfigSet(req: http.IncomingMessage, res: http.Serve
   const key = requireConfigKey(res, body);
   if (key === null) return;
   if (body.value === undefined) {
-    sendJson(res, 400, { error: `value required for ${key}` });
+    badRequest(res, `value required for ${key}`);
     return;
   }
   // setConfigKey takes the raw CLI text; a JSON round-trip of an already-parsed value is
