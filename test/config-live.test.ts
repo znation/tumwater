@@ -120,9 +120,12 @@ test("a top-level model edit logs one model_changed with the new label, edge-tri
 // logs model_changed — an edit that moves a bare id to another backend must not read as
 // "nothing changed".
 test("flipping agent over a bare-id model logs one model_changed", () => {
+  // A non-claude bare id: over `pi` it stays bare, over `claude` it names the backend, so the
+  // flip relabels the tier. (A bare `claude-…` id routes to claude over pi already — rule 3a —
+  // so the flip would not relabel it.)
   const config = cloneConfig(defaultConfig());
   config.agent = "pi";
-  config.model = "claude-sonnet-5-5";
+  config.model = "sonnet";
   const { root, live } = liveReload(config);
   live.poll();
 
@@ -133,8 +136,8 @@ test("flipping agent over a bare-id model logs one model_changed", () => {
 
   const models = modelEvents(root);
   assert.equal(models.length, 1, "a backend flip over a bare id is a model change");
-  assert.equal(models[0]!.from, "claude-sonnet-5-5");
-  assert.equal(models[0]!.to, "claude/claude-sonnet-5-5");
+  assert.equal(models[0]!.from, "sonnet");
+  assert.equal(models[0]!.to, "claude/sonnet");
 });
 
 test("a roles.<id>.model edit logs a model_changed carrying the per-role diff", () => {

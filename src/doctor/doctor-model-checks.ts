@@ -439,6 +439,14 @@ export async function checkTierModels(
       warns.push(`${model} names no provider — pi resolves it with its own default, tumwater cannot verify it`);
       continue;
     }
+    // A Claude model routed to pi (plans/provider-concurrency.md "Routing a bare Claude model id
+    // to claude"): a named provider keeps it on pi, but since Anthropic's 2026-04-04
+    // third-party-harness change a Claude plan's limits cover only first-party tools, so it is
+    // billed per token even under a Claude subscription login — the bare `claude-…` form on the
+    // claude CLI uses the plan's included usage instead.
+    if (model?.startsWith("claude-")) {
+      warns.push(`${provider}/${model} runs on pi and is billed per token, not the Claude plan's included usage — use a bare claude-… id to route it to the claude CLI`);
+    }
     const defs = providers?.get(provider);
     if (!defs) {
       fails.push(`provider ${provider} is not in pi's definitions (${modelsPath})`);

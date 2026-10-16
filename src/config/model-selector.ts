@@ -72,14 +72,26 @@ const AGENT_DEFAULT_MODELS: Record<AgentId, Partial<Record<ModelTier, string>>> 
  * naming a registered agent id runs that agent (and its provider field is cleared, since it is
  * a namespace, not a pi provider); any other provider runs on pi, the one backend with
  * providers; no provider at all runs on the config's `agent`. When no model id survives the
- * resolution, the backend's tier default fills in (pi supplies none). */
+ * resolution, the backend's tier default fills in (pi supplies none).
+ *
+ * Rule 3a (plans/provider-concurrency.md "Routing a bare Claude model id to claude"): a bare id
+ * (no provider) that starts with `claude-` runs on claude, whatever `configAgent` says — the one
+ * prefix where the model id decides the backend. A named provider still wins
+ * (`anthropic/claude-…` stays pi); bare aliases (`sonnet`, `opus`) keep today's routing. */
 export function routeModel(
   provider: string | undefined,
   model: string | undefined,
   configAgent: string,
   tier: ModelTier,
 ): { agent: string; model?: string } {
-  const agent = provider === undefined ? configAgent : isAgentId(provider) ? provider : "pi";
+  const agent =
+    provider === undefined
+      ? model?.startsWith("claude-")
+        ? "claude"
+        : configAgent
+      : isAgentId(provider)
+        ? provider
+        : "pi";
   if (model !== undefined) return { agent, model };
   const def = AGENT_DEFAULT_MODELS[agent as AgentId]?.[tier];
   return def !== undefined ? { agent, model: def } : { agent };

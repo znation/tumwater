@@ -67,6 +67,24 @@ with a `fallback` that a failing role switches to. `agent: "claude"` runs bare s
 Code instead. Requirements, the fallback and usage-window behavior, and how subscription runs are
 billed (as notional spend, outside the daily cap) are in [docs/backends.md](docs/backends.md).
 
+**Mixing providers:** a bare model id that starts with `claude-` runs on the claude CLI even
+under the default `agent: "pi"`, so one config can mix a Claude strong tier with pi providers:
+
+```json
+{
+  "model": {
+    "default": "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
+    "strong": "claude-opus-5-5"
+  },
+  "fallback": "omlx/Qwen3.8-27B-MLX-oQ4e-mtp"
+}
+```
+
+The default tier runs on pi through Hugging Face, the strong seams (the reviewer and the
+conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
+oMLX — all concurrently, under each provider's cap. Prefix `anthropic/` (`anthropic/claude-…`)
+to keep a Claude model on pi instead (billed per token). See [plans/agent-backends.md §3](plans/agent-backends.md).
+
 For how the loops, review gate, scheduling, and self-redeploy work, see
 [docs/how-it-works.md](docs/how-it-works.md). For a measured comparison of tumwater's own
 code against human-written open source, see [docs/code-metrics.md](docs/code-metrics.md).

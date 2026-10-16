@@ -200,6 +200,37 @@ test("checkTierModels warns on a declared selector that names no provider", asyn
   assert.equal(probed, 0, "a providerless pair is not probed");
 });
 
+test("checkTierModels notes per-token billing for a Claude model routed to pi; a bare claude id stays silent", async () => {
+  const root = readyRepo();
+  const file = path.join(tmpdir("doctor-pi-claude-"), "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        anthropic: { models: [{ id: "claude-opus-5-5", cost: { input: 15, output: 75 } }] },
+      },
+    }),
+  );
+  // `anthropic/claude-opus-5-5` keeps pi (a named provider beats rule 3a) and is billed per
+  // token even under a Claude subscription login, so doctor names the seam.
+  writeConfig(root, { model: "anthropic/claude-opus-5-5" });
+  const pinned = await checkTierModels(root, file, async () => "ready");
+  assert.equal(pinned.level, "warn");
+  assert.match(pinned.detail, /anthropic\/claude-opus-5-5 runs on pi and is billed per token/);
+  // A bare `claude-opus-5-5` routes to the claude CLI (rule 3a), so it is not a pi pair: the
+  // pi sweep must not name it score-wise nor probe pi's auth.
+  writeConfig(root, { model: "claude-opus-5-5" });
+  let probed = 0;
+  const bare = await checkTierModels(root, file, async () => {
+    probed++;
+    return "ready";
+  });
+  assert.equal(bare.level, "ok");
+  assert.match(bare.detail, /claude-routed .*resolved by the claude backend/);
+  assert.ok(!bare.detail.includes("billed per token"), `a bare claude id must not draw the pi-billing note: ${bare.detail}`);
+  assert.equal(probed, 0, "a claude-routed pair never probes pi's auth");
+});
+
 test("checkTierModels warns when a priced model's cache reads are declared free", async () => {
   const dir = tmpdir("doctor-models-");
   const file = path.join(dir, "models.json");

@@ -47,3 +47,8 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 
 Model backends (OpenAI-compatible endpoints, the `claude` agent, and fallbacks) are covered in
 [backends.md](backends.md).
+
+A bare model id that starts with `claude-` (such as `"strong": "claude-opus-5-5"`) routes to the
+claude CLI even under the default `agent: "pi"`, so a Claude model runs on the claude CLI's
+included usage beside models from other providers on pi; `anthropic/claude-…` keeps pi (see
+[plans/agent-backends.md §3](../plans/agent-backends.md) rule 3a).

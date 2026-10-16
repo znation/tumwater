@@ -86,57 +86,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-
-### Mixed claude + pi fleets, part 4/4: a bare `claude-…` model id runs on the claude CLI, and the docs show a mixed fleet (planned 2026-10-15 from an operator request; requires part 3/4 landed; last of the series)
-
-Design: plans/provider-concurrency.md §9 "Routing a bare Claude model id to claude".
-
-**Goal.** An operator who writes a Claude model next to models from other providers gets the
-claude CLI for it and pi for the rest, with no `agent` key and no `claude/` prefix.
-
-**Approach.**
-- `routeModel` (src/config/model-selector.ts) gets rule 3a: a bare id (no provider) starting with
-  `claude-` routes to `claude`, whatever `configAgent` says.
-  - A named provider still wins: `anthropic/claude-…` and `openrouter/anthropic/claude-…` stay
-    on pi.
-  - Bare aliases (`sonnet`, `opus`, `haiku`) keep today's routing.
-- `agentQualifiedSelector` already prints the routed form, so events and status show
-  `claude/claude-opus-5-5`.
-- Doctor's routing table (part 1/4) makes the move visible. Doctor's "names no provider — pi
-  resolves it with its own default" note (src/doctor/doctor-model-checks.ts) no longer fires for
-  a `claude-` id.
-- Doctor notes a seam that routes a Claude model to pi (`anthropic/claude-…` or similar): it is
-  billed per token even when pi is logged in with a Claude subscription, since Anthropic's
-  2026-04-04 third-party-harness change. A bare `claude-…` id on the claude CLI uses the plan's
-  included usage instead.
-- Docs:
-  - docs/config.md and plans/agent-backends.md §3 list rule 3a;
-  - the README gets a short "Mixing providers" example (HF default tier, Claude strong tier,
-    oMLX fallback) that names `anthropic/…` as the way to keep a Claude model on pi.
-
-**Files touched.** src/config/model-selector.ts, src/doctor/doctor-model-checks.ts,
-plans/agent-backends.md, docs/config.md, README.md, test/config-views.test.ts,
-test/doctor-model-checks.test.ts.
-
-**Acceptance criteria (this part).**
-- Doctor notes the per-token billing for a seam on `anthropic/claude-opus-5-5`, and stays silent
-  for a bare `claude-opus-5-5`.
-- `routeModel` routes as follows:
-
-  | Call | Result |
-  | --- | --- |
-  | `routeModel(undefined, "claude-opus-5-5", "pi", "strong")` | `{ agent: "claude", model: "claude-opus-5-5" }` |
-  | `routeModel("anthropic", "claude-opus-5-5", "pi", "strong")` | `{ agent: "pi", … }` |
-  | `routeModel(undefined, "sonnet", "pi", "default")` | still `{ agent: "pi", model: "sonnet" }` |
-
-- The README's example config, put through `configForRole`/`reviewConfig`/`resolverConfig`, gives:
-  - pi with provider `huggingface` for the default tier;
-  - claude for the strong seams;
-  - pi with provider `omlx` for the fallback pair.
-
-  A config-views test pins this.
-- `npm test` passes.
-
 ### Per-provider concurrency caps, part 4/5: a tick's lease follows its runs across providers (planned 2026-10-15 from an operator request; requires part 3/5 landed; part 5/5 follows)
 
 Design: plans/provider-concurrency.md §5 "Leases follow the tick's runs".
@@ -280,6 +229,56 @@ test/orchestrator-permits.e2e.test.ts and the claims and landing suites that cov
   in-use is back under the cap.
 - A work loop whose provider is full adds nothing to the reserve: a maintenance tick on another
   provider is granted the permit.
+- `npm test` passes.
+
+### Mixed claude + pi fleets, part 4/4: a bare `claude-…` model id runs on the claude CLI, and the docs show a mixed fleet (planned 2026-10-15 from an operator request; requires part 3/4 landed; last of the series) — done 2026-10-16
+
+Design: plans/provider-concurrency.md §9 "Routing a bare Claude model id to claude".
+
+**Goal.** An operator who writes a Claude model next to models from other providers gets the
+claude CLI for it and pi for the rest, with no `agent` key and no `claude/` prefix.
+
+**Approach.**
+- `routeModel` (src/config/model-selector.ts) gets rule 3a: a bare id (no provider) starting with
+  `claude-` routes to `claude`, whatever `configAgent` says.
+  - A named provider still wins: `anthropic/claude-…` and `openrouter/anthropic/claude-…` stay
+    on pi.
+  - Bare aliases (`sonnet`, `opus`, `haiku`) keep today's routing.
+- `agentQualifiedSelector` already prints the routed form, so events and status show
+  `claude/claude-opus-5-5`.
+- Doctor's routing table (part 1/4) makes the move visible. Doctor's "names no provider — pi
+  resolves it with its own default" note (src/doctor/doctor-model-checks.ts) no longer fires for
+  a `claude-` id.
+- Doctor notes a seam that routes a Claude model to pi (`anthropic/claude-…` or similar): it is
+  billed per token even when pi is logged in with a Claude subscription, since Anthropic's
+  2026-04-04 third-party-harness change. A bare `claude-…` id on the claude CLI uses the plan's
+  included usage instead.
+- Docs:
+  - docs/config.md and plans/agent-backends.md §3 list rule 3a;
+  - the README gets a short "Mixing providers" example (HF default tier, Claude strong tier,
+    oMLX fallback) that names `anthropic/…` as the way to keep a Claude model on pi.
+
+**Files touched.** src/config/model-selector.ts, src/doctor/doctor-model-checks.ts,
+plans/agent-backends.md, docs/config.md, README.md, test/config-views.test.ts,
+test/doctor-model-checks.test.ts.
+
+**Acceptance criteria (this part).**
+- Doctor notes the per-token billing for a seam on `anthropic/claude-opus-5-5`, and stays silent
+  for a bare `claude-opus-5-5`.
+- `routeModel` routes as follows:
+
+  | Call | Result |
+  | --- | --- |
+  | `routeModel(undefined, "claude-opus-5-5", "pi", "strong")` | `{ agent: "claude", model: "claude-opus-5-5" }` |
+  | `routeModel("anthropic", "claude-opus-5-5", "pi", "strong")` | `{ agent: "pi", … }` |
+  | `routeModel(undefined, "sonnet", "pi", "default")` | still `{ agent: "pi", model: "sonnet" }` |
+
+- The README's example config, put through `configForRole`/`reviewConfig`/`resolverConfig`, gives:
+  - pi with provider `huggingface` for the default tier;
+  - claude for the strong seams;
+  - pi with provider `omlx` for the fallback pair.
+
+  A config-views test pins this.
 - `npm test` passes.
 
 ### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows) — done 2026-10-16

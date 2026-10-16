@@ -240,15 +240,17 @@ test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => 
   );
   // A bare-id model is agent-qualified by routing (PLANS.md "Mixed claude + pi fleets, part
   // 3/4" gap 7): over `pi` it stays bare, over `claude` it names the backend — so a live
-  // `agent` flip relabels the tier and the reload logs model_changed.
+  // `agent` flip relabels the tier and the reload logs model_changed. (Rule 3a exempts a
+  // bare `claude-…` id: it routes to claude over pi already, so the flip no longer relabels
+  // it — a non-claude bare id keeps testing the flip.)
   const bare: TumwaterConfig = defaultConfig();
   bare.agent = "pi";
-  bare.model = "claude-sonnet-5-5";
-  assert.equal(fleetModelLabel(bare), "claude-sonnet-5-5");
+  bare.model = "local-model";
+  assert.equal(fleetModelLabel(bare), "local-model");
   const onClaude: TumwaterConfig = defaultConfig();
   onClaude.agent = "claude";
-  onClaude.model = "claude-sonnet-5-5";
-  assert.equal(fleetModelLabel(onClaude), "claude/claude-sonnet-5-5");
+  onClaude.model = "local-model";
+  assert.equal(fleetModelLabel(onClaude), "claude/local-model");
 });
 
 test("fallbackDisplayPair agent-qualifies a backend pair and keeps a pi pair bare", () => {
@@ -594,6 +596,16 @@ test("routeModel: a registered provider runs its agent; any other provider runs 
   // A bare id (no provider) runs the top-level agent.
   assert.deepEqual(routeModel(undefined, "sonnet", "claude", "default"), { agent: "claude", model: "sonnet" });
   assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
+  // Rule 3a (plans/provider-concurrency.md): a bare id starting with `claude-` runs on claude,
+  // whatever the top-level agent says.
+  assert.deepEqual(routeModel(undefined, "claude-opus-5-5", "pi", "strong"), {
+    agent: "claude",
+    model: "claude-opus-5-5",
+  });
+  // A named provider still wins: `anthropic/claude-…` stays pi.
+  assert.equal(routeModel("anthropic", "claude-opus-5-5", "pi", "strong").agent, "pi");
+  // Bare aliases keep today's routing.
+  assert.deepEqual(routeModel(undefined, "sonnet", "pi", "default"), { agent: "pi", model: "sonnet" });
   // No model at all: the backend's tier default, or none for pi.
   assert.deepEqual(routeModel(undefined, undefined, "claude", "small"), {
     agent: "claude",
@@ -722,4 +734,35 @@ test("a legacy pi config gains no model and stays on pi", () => {
   assert.equal(bareFeature.agent, "pi");
   assert.equal(bareFeature.provider, "omlx");
   assert.equal(bareFeature.model, undefined);
+});
+
+test("Mixing providers: one config serves HF on pi, claude for strong seams, and an oMLX fallback on pi", () => {
+  // PLANS.md "Mixed claude + pi fleets, part 4/4" README example: a Claude model id beside
+  // models from other providers, with no `agent` key and no `claude/` prefix. Rule 3a keeps
+  // the bare `claude-…` id on the claude CLI while named providers stay on pi.
+  const config: TumwaterConfig = defaultConfig();
+  config.model = {
+    default: "huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra",
+    strong: "claude-opus-5-5",
+  };
+  config.fallback = "omlx/Qwen3.8-27B-MLX-oQ4e-mtp";
+  // The default tier (feature role) runs on pi through HF.
+  const feature = configForRole(config, "feature");
+  assert.equal(feature.agent, "pi");
+  assert.equal(feature.provider, "huggingface");
+  // `:deepinfra` is a provider pin for the serving endpoint, not a thinking level, so it rides
+  // on the id; no thinking suffix resolves.
+  assert.equal(feature.model, "deepseek-ai/DeepSeek-V4.1-Flash:deepinfra");
+  assert.equal(feature.thinking, undefined);
+  // The strong seams (reviewer and conflict resolver) run on the claude CLI.
+  assert.equal(reviewConfig(config).agent, "claude");
+  assert.equal(reviewConfig(config).model, "claude-opus-5-5");
+  assert.equal(resolverConfig(config).agent, "claude");
+  assert.equal(resolverConfig(config).model, "claude-opus-5-5");
+  assert.equal(resolverConfig(config).provider, undefined);
+  // The fallback pair runs on pi through oMLX (no thinking suffix, so none is added).
+  assert.deepEqual(fallbackPair(config), {
+    provider: "omlx",
+    model: "Qwen3.8-27B-MLX-oQ4e-mtp",
+  });
 });
