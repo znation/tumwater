@@ -424,7 +424,7 @@ test("POST /api/wake writes the same state as `tumwater wake` and rejects bad bo
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), {
     ok: true,
-    message: "wake requested for feature — takes effect on the next `tumwater run` (no harness is running)",
+    message: "wake requested for feature — takes effect on the next `tumwater start` (no harness is running)",
   });
   const marker = readJson(wakeRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
@@ -522,7 +522,7 @@ test("POST /api/abort writes the marker for a live fleet, answers 409 when not, 
   // client error, so the CLI's not-live error rides out as 409 and nothing is written.
   let res = await postJson(base, "/api/abort", { role: "feature" });
   assert.equal(res.status, 409);
-  assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater run` first" });
+  assert.deepEqual(await res.json(), { error: "no harness is running — start it with `tumwater start` first" });
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "not-live writes no marker");
 
   // Record this test process as the running orchestrator (it is alive): now the request

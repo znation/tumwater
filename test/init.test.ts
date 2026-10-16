@@ -572,7 +572,7 @@ test("initProject refuses --branch on an existing repo instead of silently ignor
   // The refusal is pure validation: nothing is written and the branch is untouched.
   await assert.rejects(
     () => initProject(repo, "Build a thing.", "trunk"),
-    /--branch only seeds a new repository.*tumwater run --branch trunk/,
+    /--branch only seeds a new repository.*tumwater start --branch trunk/,
   );
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
   assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "main");

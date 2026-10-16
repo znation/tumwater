@@ -461,7 +461,7 @@ export function eventMessage(e: HarnessEvent): string {
       // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
       const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
-      return `fleet down — generation ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; the supervisor exited (restart with \`tumwater run\`)`;
+      return `fleet down — generation ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; the supervisor exited (restart with \`tumwater start\`)`;
     }
     case "resume":
       // Two causes share the resume machinery; the line names the real one so an operator

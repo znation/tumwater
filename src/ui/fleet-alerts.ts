@@ -198,7 +198,7 @@ export function fleetAlerts(
             key: "build",
             tone: "blue",
             title: `main is ${behind} ahead of the running build`,
-            detail: snap.build.restartPending ? "The fleet restarts onto it once in-flight work drains." : "Restart tumwater run to pick it up.",
+            detail: snap.build.restartPending ? "The fleet restarts onto it once in-flight work drains." : "Restart tumwater start to pick it up.",
             actions: [],
           },
     );
@@ -246,8 +246,8 @@ export function fleetAlerts(
       key: "stopped",
       tone: "gray",
       title: "The fleet is not running",
-      detail: "Start it with tumwater run in the project directory; the dashboards pick it up on their own.",
-      actions: [{ label: "Copy the command", act: "copy", arg: "tumwater run" }],
+      detail: "Start it with tumwater start in the project directory; the dashboards pick it up on their own.",
+      actions: [{ label: "Copy the command", act: "copy", arg: "tumwater start" }],
     });
   }
   // Image input (plans/image-input.md "Surfaces", part 5/5): a loop whose model cannot read

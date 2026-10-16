@@ -197,7 +197,7 @@ test("a fallback names its provider or nothing; a plain stale build asks for a m
   assert.deepEqual(stale.map((a) => [a.key, a.tone, a.title]), [
     ["build", "blue", "main is 2 commits ahead of the running build"],
   ]);
-  assert.equal(stale[0]?.detail, "Restart tumwater run to pick it up.");
+  assert.equal(stale[0]?.detail, "Restart tumwater start to pick it up.");
 });
 
 // The dashboard colors phases and results in its own tones; the TUI in the terminal's. Both

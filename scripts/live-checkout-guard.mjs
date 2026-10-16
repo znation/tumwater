@@ -1,5 +1,5 @@
 // First step of package.json's "test" and "test:e2e" scripts, ahead of eslint, tsc and the
-// stamp: refuse to run the suite in a checkout that a live fleet runs from. `tumwater run`
+// stamp: refuse to run the suite in a checkout that a live fleet runs from. `tumwater start`
 // executes that checkout's dist/, and the dashboards poll dist/build-info.json to follow its
 // redeploys, while the suite's first steps recompile and restamp that same dist/ — an unvetted
 // deploy under the running fleet that races its redeploy swap. On 2026-09-29 a bugfix agent
@@ -25,7 +25,7 @@ try {
 if (Number.isInteger(pid) && pid > 0 && alive(pid)) {
   process.stderr.write(
     `tumwater: refusing to run the suite in ${root} — a live fleet runs from this checkout ` +
-      `(\`tumwater run\`, pid ${pid}).\n` +
+      `(\`tumwater start\`, pid ${pid}).\n` +
       "Its first steps recompile and restamp this checkout's dist/, the code that fleet and its dashboards execute.\n" +
       "Run it from a worktree instead: a fleet loop's own is .tumwater/worktrees/<role>, the directory its run started in.\n",
   );

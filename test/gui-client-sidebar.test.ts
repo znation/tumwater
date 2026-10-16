@@ -152,12 +152,12 @@ test("the sidebar shows a Stops in row only for a windowed run", () => {
   assert.doesNotMatch(panels.statuschips!, /Stops in/);
 });
 
-test("the Stops in row's explanation names stop --in for a scheduled stop and run --for otherwise", () => {
+test("the Stops in row's explanation names stop --in for a scheduled stop and start --for otherwise", () => {
   const { renderSidebar, panels } = sidebarScope();
   renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5, scheduledStopAt: 5 });
   assert.match(panels.statuschips!, /stop --in/);
   renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5, scheduledStopAt: 9 });
-  assert.match(panels.statuschips!, /run --for/);
+  assert.match(panels.statuschips!, /start --for/);
   renderSidebar({ running: true, pid: 123, runWindowBadge: " · stops in 2h", runStopsAt: 5 });
-  assert.match(panels.statuschips!, /run --for/);
+  assert.match(panels.statuschips!, /start --for/);
 });

@@ -86,8 +86,9 @@ async function main(): Promise<void> {
       // to the commands that actually boot or serve a fleet.
       await (await import("./cli/cli-run.js")).cmdInit(root, args);
       break;
+    case "start":
     case "run":
-      rejectUnknownArgs("run", args, RUN_FLAG_SPECS);
+      rejectUnknownArgs("start", args, RUN_FLAG_SPECS);
       await (await import("./cli/cli-run.js")).cmdRun(root, args);
       break;
     case "tui":

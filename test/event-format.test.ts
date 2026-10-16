@@ -572,7 +572,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   } as never);
   assert.match(blocked, /restart blocked for main bbbbbbbb — main is red; staying on build aaaaaaaa until main moves/);
   const down = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" } as never);
-  assert.match(down, /fleet down — generation 2 exited 1: not initialized; the supervisor exited \(restart with `tumwater run`\)/);
+  assert.match(down, /fleet down — generation 2 exited 1: not initialized; the supervisor exited \(restart with `tumwater start`\)/);
   const killed = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" } as never);
   assert.match(killed, /fleet down — generation 1 was killed by SIGKILL; the supervisor exited/);
 });

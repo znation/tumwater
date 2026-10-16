@@ -249,6 +249,11 @@ export function spawnRunChild(
   env: NodeJS.ProcessEnv = {},
   stdio: StdioOptions = "inherit",
 ): Promise<ChildExit> {
+  // Spawn `run`, never `start`: the supervisor runs the build it started on, but each child
+  // loads dist/src/cli.js, which a redeploy replaces with main's newest build. Every build from
+  // the `start` rename on accepts `run`, and older builds accept only `run`, so `run` works
+  // against whatever build the child meets, even after a rollback; spawning `start` would make
+  // an updated supervisor's respawn fail with "unknown command" on a reverted build.
   return spawnSupervised(
     ["run", ...extraArgs],
     signal,

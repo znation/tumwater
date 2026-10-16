@@ -315,9 +315,10 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
  * parseBranchFlag), `--once` (one full round of ticks, then exit), `--role <id>`
  * (scope a --once round to one loop, parsed by parseRoleFlag), and `--gui` (also serve the
  * browser dashboard on its defaults; port/token selection stays on `tumwater gui`). Exported
- * so the caller's rejectUnknownArgs check and its tests share one definition of what `run`
- * accepts — before this vocabulary existed, run parsed --branch and silently ignored
- * every other flag, so a typo'd option ran the daemon with default behavior. */
+ * so the caller's rejectUnknownArgs check and its tests share one definition of what `start`
+ * (and its hidden alias `run`) accepts — before this vocabulary existed, run parsed --branch
+ * and silently ignored every other flag, so a typo'd option ran the daemon with default
+ * behavior. */
 export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
@@ -336,7 +337,7 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
   // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
   // 90-day cap is the spec's own validate (shared with pause), and the --once rival rule
   // stays in cmdRun beside the timer it arms.
-  durationFlagSpec("run --for"),
+  durationFlagSpec("start --for"),
   ROLE_FLAG,
 ];
 

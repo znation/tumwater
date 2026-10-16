@@ -33,7 +33,7 @@ import {
 
 /** The error every live-harness-only command reports (abort, stop): one literal so the two
  * surfaces cannot drift on the message an operator sees when nothing is running. */
-export const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater run` first";
+export const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater start` first";
 
 /** How a marker command reports when its marker takes effect, derived from one liveness
  * check: `live` says whether a fleet will consume it now, `when` is the " within ~2s" such a
@@ -45,7 +45,7 @@ export function markerApplyNote(root: string): { live: boolean; when: string; ta
   return {
     live,
     when: live ? " within ~2s" : "",
-    tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater run`",
+    tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater start`",
   };
 }
 
@@ -57,7 +57,7 @@ export function markerApplyNote(root: string): { live: boolean; when: string; ta
 function applyClause(live: boolean, when: string, verb: string): string {
   return live
     ? `a running fleet ${verb}${when}`
-    : "takes effect on the next `tumwater run` (no harness is running)";
+    : "takes effect on the next `tumwater start` (no harness is running)";
 }
 
 /** The marker-writing core of `reset-counters`: zero each target's state file directly when no
@@ -79,7 +79,7 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
   writeJsonAtomic(resetRequestPath(root), { at: Date.now(), roles });
   // Only a live fleet consumes the marker; without one the state files are already zeroed and
-  // the next `tumwater run` is when the in-memory copies catch up. Name which case this is
+  // the next `tumwater start` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
   return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
 }
@@ -160,7 +160,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
       `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(inMs)} — ` +
       (live
         ? "a running fleet applies it within one poll after the deadline"
-        : "no harness is running — the next `tumwater run` applies it after the deadline")
+        : "no harness is running — the next `tumwater start` applies it after the deadline")
     );
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }

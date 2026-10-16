@@ -66,7 +66,7 @@ test("abort refuses when no harness is running — missing or stale info file al
   let r = await cli(repo, "abort", "--role", "feature");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /no harness is running/);
-  assert.match(r.stderr, /tumwater run/);
+  assert.match(r.stderr, /tumwater start/);
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "no marker written");
 
   // A stale info file (dead pid) must read the same way: a crash leaves the file behind,
@@ -158,7 +158,7 @@ test("pause and resume are idempotent with no harness running", async () => {
   assert.equal(r.code, 0);
   assert.match(r.stdout, /fleet paused/);
   assert.match(r.stdout, /no harness is running/);
-  assert.match(r.stdout, /next `tumwater run`/);
+  assert.match(r.stdout, /next `tumwater start`/);
   const first = fs.readFileSync(marker, "utf8");
   const m = JSON.parse(first) as { at: number };
   assert.ok(m.at > 0, "the marker carries the pause timestamp");

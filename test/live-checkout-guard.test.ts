@@ -50,7 +50,7 @@ test("the guard refuses the checkout a live fleet runs from, naming the pid and 
   const r = runGuard(dir);
   assert.equal(r.status, 1);
   assert.equal(r.stdout, "");
-  assert.match(r.stderr, new RegExp(`\\(\`tumwater run\`, pid ${process.pid}\\)`));
+  assert.match(r.stderr, new RegExp(`\\(\`tumwater start\`, pid ${process.pid}\\)`));
   assert.match(r.stderr, /recompile and restamp this checkout's dist\//);
   assert.match(r.stderr, /Run it from a worktree instead: a fleet loop's own is \.tumwater\/worktrees\/<role>/);
 });

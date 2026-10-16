@@ -179,7 +179,7 @@ export async function initProject(
     );
   }
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
-  // fleet's business (`tumwater run --branch` or baseBranch chooses it at runtime), so a
+  // fleet's business (`tumwater start --branch` or baseBranch chooses it at runtime), so a
   // --branch given here would otherwise be silently ignored — the exact failure mode
   // rejectUnknownArgs exists to prevent. Fail before any side effect, dry-run included.
   // Whether `root` already is a repo is asked once here; nothing below until the `git init`
@@ -187,7 +187,7 @@ export async function initProject(
   const wasRepo = await isGitRepo(root);
   if (branch !== undefined && wasRepo) {
     throw new Error(
-      `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the fleet at a branch with \`tumwater run --branch ${branch}\` (or baseBranch in tumwater.json)`,
+      `--branch only seeds a new repository: this directory is already a git repository and init leaves its checked-out branch alone — drop --branch, or point the fleet at a branch with \`tumwater start --branch ${branch}\` (or baseBranch in tumwater.json)`,
     );
   }
   // The loops read the project's reason to exist back out of the project brief on every

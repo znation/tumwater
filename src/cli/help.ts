@@ -12,14 +12,15 @@ Usage:
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
                                    lists them), --dry-run: write nothing)
-  tumwater run [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]
-                                   Run all enabled loops (headless; Ctrl+C stops);
-                                   --once runs one full round of ticks, drains the
-                                   landings it produced, and exits (for cron/CI);
-                                   exits 3 when a tick ended in error, review_error,
-                                   merge_conflict, merge_blocked, or main_red;
-                                   --once --role <id> scopes that round to one loop;
-                                   --for <duration> runs for that window then drains, prints a per-loop summary
+  tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]
+                                   Start the team: every enabled role runs in turn (headless;
+                                   Ctrl+C finishes current work, then stops);
+                                   --once does one round of runs, finishes the
+                                   merges it produced, and exits (for cron/CI);
+                                   exits 3 when a run ended in error, review failed,
+                                   a merge conflicted or was blocked, or main's check is failing;
+                                   --once --role <id> limits that round to one role;
+                                   --for <duration> runs for that window then finishes current work, prints a per-role summary
                                    (one window across self-redeploys),
                                    and exits like Ctrl+C would (for an overnight
                                    trial, a demo, a CI step);
@@ -28,8 +29,8 @@ Usage:
                                    defaults — see that command for --port and --token);
                                    --tui also hosts the observer TUI in this terminal
                                    (the \`tumwater tui\` view — quitting it stops the
-                                   fleet like Ctrl+C)
-  tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
+                                   team like Ctrl+C)
+  tumwater tui                     Dashboard + prompt input (observes a running \`tumwater start\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,
                                    localhost only; --all-interfaces serves the whole
@@ -376,9 +377,14 @@ export function helpStanzas(help: string = HELP): HelpStanza[] {
   return stanzas;
 }
 
+/** Commands that still dispatch but are not listed in help or completion: alias -> the command
+ * whose topic they print. `run` is the older name of `start`. */
+export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start" };
+
 /** The usage text for one command — every stanza whose command matches, then a pointer back to
  * the full list — or null when nothing in the help names that command. */
 export function helpTopic(command: string, help: string = HELP): string | null {
+  if (Object.hasOwn(HIDDEN_COMMAND_ALIASES, command)) command = HIDDEN_COMMAND_ALIASES[command] as string;
   const matches = helpStanzas(help).filter((s) => s.command === command);
   if (matches.length === 0) return null;
   return matches.map((s) => s.text).join("\n") + "\n\nSee `tumwater help` for the full command list.";

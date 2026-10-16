@@ -67,7 +67,7 @@ test("reset-counters zeroes counters in every role's state file and writes the f
   assert.match(r.stdout, /counters reset for/);
   // No orchestrator.json in this repo: the honest no-harness wording, not a ~2s pickup
   // promise no process will make (the live wording is pinned by the test below).
-  assert.match(r.stdout, /takes effect on the next `tumwater run`/);
+  assert.match(r.stdout, /takes effect on the next `tumwater start`/);
   assert.match(r.stdout, /no harness is running/);
   assert.doesNotMatch(r.stdout, /within ~2s/);
 

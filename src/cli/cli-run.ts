@@ -79,7 +79,7 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
       `fresh project — maintenance loops wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
     );
   }
-  say("next: `tumwater run` in one terminal, `tumwater tui` in another");
+  say("next: `tumwater start` in one terminal, `tumwater tui` in another");
 }
 
 /** `tumwater run`: boot the fleet and stream its event feed to this terminal until it stops.
@@ -319,7 +319,7 @@ export function armScheduledStopWatch(root: string, onStop: () => void): { clear
 export function parseRunWindow(args: string[], once: boolean): number | null {
   const raw = flagValue(args, "--for");
   if (raw === null) return null;
-  const ms = parseDurationFlag("run --for", raw);
+  const ms = parseDurationFlag("start --for", raw);
   if (once) failRivalShapes("--for", "--once", "a one-round run and a windowed run cannot both apply");
   failOverDurationCap("--for", ms, PAUSE_FOR_MAX_MS);
   return ms;

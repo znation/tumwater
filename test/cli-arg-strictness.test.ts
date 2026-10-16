@@ -53,7 +53,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   r = await cli(repo, "run", "--verbose");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --verbose/);
-  assert.match(r.stderr, /valid flags for tumwater run: --branch <name>/);
+  assert.match(r.stderr, /valid flags for tumwater start: --branch <name>/);
 
   // …including version and help, which used to accept anything silently: `version --json`
   // printed a version as if it had answered the query, and `help extra` printed usage.
@@ -93,4 +93,14 @@ test("tick's dispatcher admits --last for tick alone, and still rejects it elsew
   const other = await cli(repo, "logs", "--last");
   assert.equal(other.code, 1);
   assert.match(other.stderr, /unknown argument: --last/);
+});
+
+test("start and its hidden alias run reject unknown flags under the start name", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "start alias");
+  for (const command of ["start", "run"]) {
+    const r = await cli(repo, command, "--bogus");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /valid flags for tumwater start:/);
+  }
 });

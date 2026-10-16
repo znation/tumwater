@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HELP, helpStanzas, helpTopic, helpTopicForArgs, suggestCommand } from "../src/cli/help.js";
+import { HELP, HIDDEN_COMMAND_ALIASES, helpStanzas, helpTopic, helpTopicForArgs, suggestCommand } from "../src/cli/help.js";
 
 /** Every command the full help lists — the set a `tumwater help <command>` topic must cover. */
 const ALL_COMMANDS = [
   "init",
-  "run",
+  "start",
   "tui",
   "gui",
   "status",
@@ -140,4 +140,11 @@ test("helpTopicForArgs returns null when there is no help request or no topic", 
   assert.equal(helpTopicForArgs(undefined, ["--help"]), null); // bare `tumwater --help`
   assert.equal(helpTopicForArgs("--help", []), null); // the help command case handles it
   assert.equal(helpTopicForArgs("statu", ["--help"]), null); // no topic: dispatch names the typo
+});
+
+test("run is a hidden alias of start: same topic, no listing", () => {
+  assert.deepEqual(HIDDEN_COMMAND_ALIASES, { run: "start" });
+  assert.equal(helpTopic("run"), helpTopic("start"));
+  assert.doesNotMatch(HELP, /tumwater run\b/);
+  assert.equal(suggestCommand("run"), null);
 });

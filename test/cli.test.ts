@@ -58,7 +58,7 @@ test("init creates the harness files and is idempotent", async () => {
     (/created .*/.exec(r.stdout))?.[0],
     "created README.md, PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md, tumwater.json, .gitignore (committed)",
   );
-  assert.match(r.stdout, /next: `tumwater run` in one terminal, `tumwater tui` in another/);
+  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater tui` in another/);
   for (const f of ["README.md", "PLANS.md", "BUGS.md", "tumwater.json"]) {
     assert.ok(fs.existsSync(path.join(repo, f)), `${f} exists`);
   }
@@ -74,7 +74,7 @@ test("init seeds a git repo in an empty directory (BUGS.md 2026-09-08)", async (
   assert.equal(r.code, 0);
   assert.match(r.stdout, /initialized a new git repository on branch main/);
   assert.match(r.stdout, /created README\.md/);
-  assert.match(r.stdout, /next: `tumwater run` in one terminal, `tumwater tui` in another/);
+  assert.match(r.stdout, /next: `tumwater start` in one terminal, `tumwater tui` in another/);
   assert.equal(sh(dir, "git", "symbolic-ref", "--short", "HEAD"), "main");
 });
 
@@ -148,7 +148,7 @@ test("init --branch in an existing repo fails instead of silently ignoring the f
   const r = await cli(repo, "init", "Build a thing.", "--branch", "trunk");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /--branch only seeds a new repository/);
-  assert.match(r.stderr, /tumwater run --branch trunk/);
+  assert.match(r.stderr, /tumwater start --branch trunk/);
   // The refusal precedes every side effect: no harness files, branch unchanged.
   assert.ok(!fs.existsSync(path.join(repo, "README.md")));
   assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "main");

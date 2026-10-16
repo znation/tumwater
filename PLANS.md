@@ -224,48 +224,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The dashboard Settings view edits `backends`, and `/api/config` serves it. `tumwater completion --config-keys` lists `backend`, `backends.pi.bin` and `backends.claude.args`, and no `agents.` key.
 - `npm run test` passes.
 
-### Plain terms commands, part 5/6: Make tumwater start the command that runs the team with run as a hidden alias (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and the strings that say tumwater run plus scripts/live-checkout-guard.mjs)
-
-**Goal.** `tumwater start` starts the team and pairs with `tumwater stop`, with the same flags. `tumwater run` keeps working forever but is not shown in help or completion. Every message that tells you to run `tumwater run` says `tumwater start`.
-
-**Approach.**
-- src/cli.ts: `case "start": case "run":` share one body, `rejectUnknownArgs("start", args, RUN_FLAG_SPECS)` then `cmdRun`. Errors name `start` for either spelling. test/affected-tests.ts reads fallthrough case labels, so it maps `start` to cli-run.ts with no edit.
-- src/cli/help.ts:
-  - Replace the `tumwater run …` stanza with `tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]`. Rewrite its description in plain terms ("Glossary" and "Wording rules": roles, runs, merges, "finishes current work, then stops", exit 3 when a run ended in error, review failed, merge conflict, merge blocked or main's check failing).
-  - The `tui` stanza says it observes a running `tumwater start`.
-  - Add `HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start" }`. `helpTopic` resolves an own-property alias first, so `tumwater help run` and `tumwater run --help` print the start topic.
-  - `suggestCommand` and completion read only the stanzas, so `run` drops out of both.
-- Flag labels: src/cli/cli-flag-specs.ts `durationFlagSpec("start --for")` and src/cli/cli-run.ts `parseDurationFlag("start --for", …)`. Update the RUN_FLAG_SPECS doc comment.
-- Change every user-visible string that names the command. Find them with `grep -rn "tumwater run\b\|\brun --\(for\|once\|gui\|tui\)" src scripts`, ignoring comments:
-  - src/ui/fleet-alerts.ts: the stale-build detail, the stopped alert's detail, and its copy action `arg`;
-  - src/ui/status-render.ts: "not running — start with `tumwater start`";
-  - src/ui/gui/gui-client-fleet.ts: "Start it with tumwater start", and "started with start --for";
-  - src/init/init.ts: the `--branch` hint;
-  - src/cli/cli-run.ts: the `next:` line after init;
-  - src/doctor/doctor-checks.ts: the rebuild hint;
-  - src/events/event-format.ts: the supervisor_exit line;
-  - src/operator/operator-intent.ts: `NO_HARNESS_ERROR` and the three "next `tumwater run`" tails;
-  - scripts/live-checkout-guard.mjs: the refusal text.
-  - Change only the command name in each string. Plain terms text rewrites the rest of their wording.
-- The supervisor keeps spawning its child generations as `run` in src/process/supervisor.ts `spawnRunChild`. Add a comment explaining why:
-  - The supervisor runs the build it started on, but each child loads dist/src/cli.js, which a redeploy replaces with main's newest build.
-  - Every build from this part on accepts `run`, and older builds accept only `run`. So spawning `run` works against whatever build the child meets, even after a rollback, while spawning `start` would make an updated supervisor's respawn fail with "unknown command" on a reverted build.
-  - Do not "fix" this to `start`.
-- Comments elsewhere that say `tumwater run` may stay. Plain terms code run renames `cmdRun`/cli-run.ts and their comments.
-- Tests:
-  - New cases in test/cli-help.test.ts or test/help.test.ts: `tumwater start --bogus` fails naming `valid flags for tumwater start`; `tumwater run --bogus` fails the same way (alias); `helpTopic("run") === helpTopic("start")`; `HELP` has no `tumwater run` line; `completionSpec().commands` has `start` and not `run`.
-  - Update the assertions on the changed strings: test/cli-arg-strictness, cli-args, cli, cli-operators, cli-operators-fleet, event-format, operator-intent, init, live-checkout-guard, tui-frame, fleet-alerts, gui-operator, orchestrator-once.e2e.
-  - Existing tests that spawn the CLI as `run` stay as they are and keep covering the alias.
-
-**Files touched.** src/cli.ts, src/cli/help.ts, src/cli/cli-flag-specs.ts, src/cli/cli-run.ts, src/process/supervisor.ts (comment only), src/ui/fleet-alerts.ts, src/ui/status-render.ts, src/ui/gui/gui-client-fleet.ts, src/init/init.ts, src/doctor/doctor-checks.ts, src/events/event-format.ts, src/operator/operator-intent.ts, scripts/live-checkout-guard.mjs, and the tests listed.
-
-**Acceptance criteria.**
-- `tumwater start --once` behaves exactly as `tumwater run --once` did, and `tumwater run --once` still works.
-- `tumwater help` lists `tumwater start` and no `tumwater run`. `tumwater help run` prints the start topic. Bash completion offers `start` and not `run`.
-- `grep -rn "tumwater run" src scripts` matches only comments.
-- `spawnRunChild` still passes `run`, with the comment above.
-- `npm run test` passes.
-
 ### Plain terms commands, part 6/6: Show one run's trail as tumwater history role n and rename the result class changes to merged (planned 2026-10-16 by user; requires part 4/6 and part 5/6 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and src/tick/tick-detail.ts and src/history/ and src/ui/tui/tui-keys.ts plus tests)
 
 **Goal.** `tumwater history <role> <n> [--last] [--stat] [--json]` prints one run's full trail. `history <role> --last` prints the newest one. The bare `history [flags]` listing is unchanged. `tumwater tick …` stays as a hidden alias. `history --result merged` replaces `--result changes`, which keeps working unlisted.
@@ -3952,6 +3910,49 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms commands, part 5/6: Make tumwater start the command that runs the team with run as a hidden alias (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and the strings that say tumwater run plus scripts/live-checkout-guard.mjs) (done 2026-10-16)
+
+**Goal.** `tumwater start` starts the team and pairs with `tumwater stop`, with the same flags. `tumwater run` keeps working forever but is not shown in help or completion. Every message that tells you to run `tumwater run` says `tumwater start`.
+
+**Approach.**
+- src/cli.ts: `case "start": case "run":` share one body, `rejectUnknownArgs("start", args, RUN_FLAG_SPECS)` then `cmdRun`. Errors name `start` for either spelling. test/affected-tests.ts reads fallthrough case labels, so it maps `start` to cli-run.ts with no edit.
+- src/cli/help.ts:
+  - Replace the `tumwater run …` stanza with `tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]`. Rewrite its description in plain terms ("Glossary" and "Wording rules": roles, runs, merges, "finishes current work, then stops", exit 3 when a run ended in error, review failed, merge conflict, merge blocked or main's check failing).
+  - The `tui` stanza says it observes a running `tumwater start`.
+  - Add `HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start" }`. `helpTopic` resolves an own-property alias first, so `tumwater help run` and `tumwater run --help` print the start topic.
+  - `suggestCommand` and completion read only the stanzas, so `run` drops out of both.
+- Flag labels: src/cli/cli-flag-specs.ts `durationFlagSpec("start --for")` and src/cli/cli-run.ts `parseDurationFlag("start --for", …)`. Update the RUN_FLAG_SPECS doc comment.
+- Change every user-visible string that names the command. Find them with `grep -rn "tumwater run\b\|\brun --\(for\|once\|gui\|tui\)" src scripts`, ignoring comments:
+  - src/ui/fleet-alerts.ts: the stale-build detail, the stopped alert's detail, and its copy action `arg`;
+  - src/ui/status-render.ts: "not running — start with `tumwater start`";
+  - src/ui/gui/gui-client-fleet.ts: "Start it with tumwater start", and "started with start --for";
+  - src/init/init.ts: the `--branch` hint;
+  - src/cli/cli-run.ts: the `next:` line after init;
+  - src/doctor/doctor-checks.ts: the rebuild hint;
+  - src/events/event-format.ts: the supervisor_exit line;
+  - src/operator/operator-intent.ts: `NO_HARNESS_ERROR` and the three "next `tumwater run`" tails;
+  - scripts/live-checkout-guard.mjs: the refusal text.
+  - Change only the command name in each string. Plain terms text rewrites the rest of their wording.
+- The supervisor keeps spawning its child generations as `run` in src/process/supervisor.ts `spawnRunChild`. Add a comment explaining why:
+  - The supervisor runs the build it started on, but each child loads dist/src/cli.js, which a redeploy replaces with main's newest build.
+  - Every build from this part on accepts `run`, and older builds accept only `run`. So spawning `run` works against whatever build the child meets, even after a rollback, while spawning `start` would make an updated supervisor's respawn fail with "unknown command" on a reverted build.
+  - Do not "fix" this to `start`.
+- Comments elsewhere that say `tumwater run` may stay. Plain terms code run renames `cmdRun`/cli-run.ts and their comments.
+- Tests:
+  - New cases in test/cli-help.test.ts or test/help.test.ts: `tumwater start --bogus` fails naming `valid flags for tumwater start`; `tumwater run --bogus` fails the same way (alias); `helpTopic("run") === helpTopic("start")`; `HELP` has no `tumwater run` line; `completionSpec().commands` has `start` and not `run`.
+  - Update the assertions on the changed strings: test/cli-arg-strictness, cli-args, cli, cli-operators, cli-operators-fleet, event-format, operator-intent, init, live-checkout-guard, tui-frame, fleet-alerts, gui-operator, orchestrator-once.e2e.
+  - Existing tests that spawn the CLI as `run` stay as they are and keep covering the alias.
+
+**Files touched.** src/cli.ts, src/cli/help.ts, src/cli/cli-flag-specs.ts, src/cli/cli-run.ts, src/process/supervisor.ts (comment only), src/ui/fleet-alerts.ts, src/ui/status-render.ts, src/ui/gui/gui-client-fleet.ts, src/init/init.ts, src/doctor/doctor-checks.ts, src/events/event-format.ts, src/operator/operator-intent.ts, scripts/live-checkout-guard.mjs, and the tests listed.
+
+**Acceptance criteria.**
+- `tumwater start --once` behaves exactly as `tumwater run --once` did, and `tumwater run --once` still works.
+- `tumwater help` lists `tumwater start` and no `tumwater run`. `tumwater help run` prints the start topic. Bash completion offers `start` and not `run`.
+- `grep -rn "tumwater run" src scripts` matches only comments.
+- `spawnRunChild` still passes `run`, with the comment above.
+- `npm run test` passes.
+
 
 ### Plain terms commands, part 1/6: Accept renamed config keys through one alias table starting with mergeBatchMax and maintenancePerWorkMerge (done 2026-10-16; planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/cli/config-commands.ts and src/doctor/ plus the two keys' readers and tumwater.example.json)
 

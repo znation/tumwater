@@ -324,7 +324,7 @@ test("the gate fails an over-cap --for/--in before the ready-repo gate can mask 
   );
   assert.match(wake.stderr, /wake --in is capped at 90d \(got 91d\)/);
   const run = expectFail(() => rejectUnknownArgs("run", ["--for", "100d"], RUN_FLAG_SPECS));
-  assert.match(run.stderr, /run --for is capped at 90d \(got 100d\)/);
+  assert.match(run.stderr, /start --for is capped at 90d \(got 100d\)/);
   // At or under the cap the gate accepts the value; the bodies' own checks never fire.
   expectOk(() =>
     rejectUnknownArgs("pause", ["--for", "90d", "--role", "feature"],

@@ -238,7 +238,7 @@ export function renderStatusSpans(
   // indefinite pause keeps today's header byte-identical.
   const running: StatusSpan[] = snap.running
     ? [{ text: "running", tone: "green" }, { text: ` (pid ${snap.pid}` }, ...badgeSpans(buildBadge(snap.build), snap.build?.stale ? "yellow" : undefined), { text: ")" }]
-    : [{ text: "not running — start with `tumwater run`", tone: "dim" }];
+    : [{ text: "not running — start with `tumwater start`", tone: "dim" }];
   lines.push([
     { text: "tumwater", tone: "brand" },
     { text: ` · ${name} · ` },

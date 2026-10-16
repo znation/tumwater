@@ -694,7 +694,7 @@ export async function checkBuild(
       ? `; auto-restart is BLOCKED (${running.restartBlocked}) and will not retry until main moves or the block clears`
       : running?.restartPending
         ? "; auto-restart is under way"
-        : "; run `npm run build` and restart `tumwater run` (auto-restart does this for a running fleet)";
+        : "; run `npm run build` and restart `tumwater start` (auto-restart does this for a running fleet)";
     return warnOutcome(`dist/ from ${sha} is stale — main has ${stale.aheadCommits} later commit(s) touching ${STALE_INPUTS_LABEL}${next}`);
   }
   return okOutcome(`dist/ from ${sha}, matches main`);

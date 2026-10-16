@@ -40,7 +40,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     else {
       rows = d.running
         ? row("green", "<span class='dot live'></span>", "Running", "Orchestrator running as pid " + d.pid)
-        : row("gray", "<span class='dot'></span>", "Stopped", "Start it with tumwater run");
+        : row("gray", "<span class='dot'></span>", "Stopped", "Start it with tumwater start");
       if (d.build) {
         const stale = d.build.stale;
         // A stale build's refresh icon IS the restart button — restartButton(), the same
@@ -96,7 +96,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         rows += row("blue", icon("info"), esc(badgeLabel(d.runWindowBadge)),
           d.scheduledStopAt !== undefined && d.scheduledStopAt === d.runStopsAt
             ? "A scheduled stop (tumwater stop --in) — the fleet drains in-flight work and exits then."
-            : "This run was started with run --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
+            : "This run was started with start --for; at the deadline it drains in-flight work, prints a per-loop summary, and exits.");
       }
       // The configured quiet-hours window ("Quiet hours … part 2/2"): the schedule as
       // standing information, amber while the local clock is inside it — the same

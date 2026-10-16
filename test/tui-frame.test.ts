@@ -71,7 +71,7 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
   const alerts = [
     alert("failing", "red", "qa is failing tick after tick", "qa: 429"),
     alert("questions", "indigo", "1 question needs your answer", "Q1"),
-    alert("build", "blue", "main is 2 commits ahead of the running build", "Restart tumwater run to pick it up."),
+    alert("build", "blue", "main is 2 commits ahead of the running build", "Restart tumwater start to pick it up."),
     alert("stopped", "gray", "The fleet is not running"),
   ];
   const lines = alertLines(alerts, 200).map(plain);
@@ -80,7 +80,7 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
     "? 1 question needs your answer — Q1",
     "  +2 more — the dashboard lists them all",
   ]);
-  assert.deepEqual(alertLines(alerts.slice(0, 3), 200).map(plain).at(-1), "i main is 2 commits ahead of the running build — Restart tumwater run to pick it up.");
+  assert.deepEqual(alertLines(alerts.slice(0, 3), 200).map(plain).at(-1), "i main is 2 commits ahead of the running build — Restart tumwater start to pick it up.");
   assert.equal(alertLines(alerts.slice(0, 1), 12).map(plain)[0], clipToWidth("! qa is failing tick after tick — qa: 429", 12));
   assert.deepEqual(alertLines([], 80), []);
 });

@@ -81,7 +81,7 @@ test("markerApplyNote reports the no-harness tail without an orchestrator info f
   const n = markerApplyNote(deadRoot());
   assert.equal(n.live, false);
   assert.equal(n.when, "");
-  assert.match(n.tail, /next `tumwater run`/);
+  assert.match(n.tail, /next `tumwater start`/);
 });
 
 test("markerApplyNote reports a live fleet and the ~2s window when the orchestrator is alive", () => {
@@ -283,7 +283,7 @@ test("rolePauseMessage reports the idempotent no-op and the full pause confirmat
   // Not live: the tail says where the marker lands instead.
   assert.match(
     rolePauseMessage(dead, "fix", true),
-    /^role fix paused — it stops starting new ticks at its next eligibility check \(in-flight ticks finish; the rest of the fleet is unaffected\).*next `tumwater run`/,
+    /^role fix paused — it stops starting new ticks at its next eligibility check \(in-flight ticks finish; the rest of the fleet is unaffected\).*next `tumwater start`/,
   );
   // A timed pause echoes the duration and the wall-clock resume time; `now` is passed
   // explicitly so the same-day phrasing the fixture pins cannot flip under a later run date.
