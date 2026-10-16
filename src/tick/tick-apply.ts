@@ -296,6 +296,11 @@ export function applyLandingOutcome(
   s.queuedSummary = undefined;
   if (result === "changed") {
     s.commits += 1;
+    // The last-landed timestamp: set only on a successful landing, so the rendered age means
+    // "time since the loop last actually landed on main" — a rejected/merge_conflict/aborted
+    // landing, like a no_change tick, leaves the prior value standing (PLANS.md "Each loop's
+    // last-landed age").
+    s.lastLandedAt = Date.now();
     s.lastApprovedPatchId = undefined; // see applyTickOutcome
     // A landing supersedes a stale rejection: a model-reviewed landing has already overwritten
     // lastReview with its approve, but a review-exempt (or review-disabled) landing records no

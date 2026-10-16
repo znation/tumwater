@@ -150,6 +150,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       kv("Tokens, " + tickWord, fmtTokens(l.generated)) + kv("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
       kv("Spent today", fmtUsd(l.todayUsd)) + kv("Spent in total", fmtUsd(l.costUsd)) +
       kv("Last tick ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
+      kv("Last landed", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
       kv("Next run", nextNote) + "</dl>";
     const ticks = drawerTicks === null
       ? "<p class='muted'>Loading…</p>"

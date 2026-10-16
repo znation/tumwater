@@ -265,6 +265,13 @@ export interface LoopState {
    * NOT zeroed by reset-counters: the budget is a safety valve, not an observation window. */
   dayCostUsd?: number;
   lastError?: string;
+  /** Epoch ms (Date.now()) of the last time this loop landed a change on main (set only in
+   * applyLandingOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
+   * landing, and absent on state files written before the field existed, so the last-landed
+   * age reads "never" until then. Mirrors lastTickEndedAt: an observational timestamp that
+   * reset-counters deliberately leaves alone — the dry-spell question it answers is about
+   * landed work, not counters. */
+  lastLandedAt?: number;
   /** The backlog entry this instance is assigned to implement or fix (plans/parallel-work-
    * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
    * entryKey) that survives a done stamp or a Refused note, the verbatim heading at
@@ -385,6 +392,7 @@ export function loadLoopState(root: string, role: string): LoopState {
   s.dayCostUsd = healNumber(s.dayCostUsd, 0);
   healOptionalNumber(s, "lastTickStartedAt");
   healOptionalNumber(s, "lastTickEndedAt");
+  healOptionalNumber(s, "lastLandedAt");
   healOptionalNumber(s, "wokenAt");
   healOptionalNumber(s, "cutOffStreak");
   healOptionalNumber(s, "quietKillStreak");

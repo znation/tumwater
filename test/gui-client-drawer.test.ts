@@ -278,6 +278,8 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(meta, /Peak context, this tick<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
   assert.match(meta, /1m ago/); // the last tick's age, through the real fmtAgo
+  // A loop with no lastLandedAt reports never landed in its drawer kv.
+  assert.match(meta, /Last landed<\/dt><dd title='never'>never</);
   // The fetched tick rows render with the real result/age/span formatters.
   assert.match(meta, /#3 · /);
   assert.match(meta, /tidied the drawer/);

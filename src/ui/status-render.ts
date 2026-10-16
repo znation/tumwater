@@ -37,6 +37,14 @@ export function lastTickCell(ts: number | undefined): string {
   return `${s} · ${ago(ts)}`;
 }
 
+/** The table's `last landed` cell: when the loop last landed a change on main, in the SAME
+ * absolute-time-plus-relative-age shape as the `last tick` cell (lastTickCell), so the two
+ * columns cannot drift on what "ago" means. A loop that has never landed shows the same dash
+ * lastTickCell uses for a never-ticked loop. */
+export function lastLandedCell(ts: number | undefined): string {
+  return lastTickCell(ts);
+}
+
 /** The table's `next run` cell: when the loop may tick again, or `-` when that is not the
  * operator's question — a loop in flight (an active rendered phase: working/reviewing/landing,
  * or `s.running`) has no next run to speak of, and a stopped fleet renders no schedule at all
@@ -91,11 +99,13 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
  * first: `last result` (holds the tick summary), then `state` (live working detail), then
  * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
- * lines clip; its minimum is a bare HH:MM:SS. Indices are positional in the `cols` array
- * below — renumber when columns change. (`today`, like `cost`, is a short fixed-width cell:
- * never flexible.) */
+ * lines clip; its minimum is a bare HH:MM:SS. `last landed` sits right of `last tick` and is
+ * not flexible: it is a short sibling time cell whose width follows lastTickCell's, and the
+ * whole-line clip that already protects the header also bounds it. Indices are positional in
+ * the `cols` array below — renumber when columns change. (`today`, like `cost`, is a short
+ * fixed-width cell: never flexible.) */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
-  { index: 9, minWidth: 12 },
+  { index: 10, minWidth: 12 },
   { index: 1, minWidth: 12 },
   { index: 8, minWidth: 10 },
 ];
@@ -239,7 +249,7 @@ export function renderStatusSpans(
   // on it.
   // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
   // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
-  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last result", "next run"];
+  const cols = ["loop", "state", "ticks", "commits", "gen", "peak ctx", "cost", "today", "last tick", "last landed", "last result", "next run"];
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
   // its own, up to three stats + reads per loop per second. The phase is computed once per
@@ -308,6 +318,7 @@ export function renderStatusSpans(
       cell(usd(s.totalCostUsd)),
       cell(usd(dailyCost(s))),
       cell(lastTickCell(s.lastTickEndedAt)),
+      cell(lastLandedCell(s.lastLandedAt)),
       s.lastResult
         ? [{ text: s.lastResult, ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
         : cell("-"),
@@ -330,6 +341,7 @@ export function renderStatusSpans(
     // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
     // same loops, so cells and total agree by construction.
     usd(snap.budget.spentUsd),
+    "",
     "",
     "",
     "",

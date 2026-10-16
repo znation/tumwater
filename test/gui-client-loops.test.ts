@@ -198,6 +198,14 @@ test("a row's name cell tags custom loops and queued prompts, and shows today's 
   assert.equal(cells[3], "<div>$1.50</div><div class='sub'>$20.25 total</div>");
 });
 
+test("a row's name line names when the loop last landed, or 'never' when it has not", () => {
+  const landed = loopCells({ role: "feature", phase: "sleeping", ticks: 4, commits: 2, todayUsd: 0, costUsd: 0,
+    lastLandedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
+  assert.match(landed, /landed 3m ago/, "the row names the last-landed age through fmtAgo");
+  const fresh = loopCells({ role: "new", phase: "sleeping", ticks: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+  assert.match(fresh, /landed never/, "a loop that has never landed says never");
+});
+
 test("a loop row renders its model tier tag and selector when the payload carries them", () => {
   const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
   const named = cells({ role: "plan", phase: "sleeping", ticks: 2, commits: 1, modelTier: "strong", model: "prov-s/model-s:high" });

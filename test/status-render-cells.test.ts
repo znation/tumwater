@@ -6,7 +6,7 @@
  * status-fixtures.ts. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lastTickCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
+import { lastTickCell, lastLandedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
@@ -43,6 +43,13 @@ test("lastTickCell prefixes the date once older than a day", () => {
 
 test("lastTickCell is a bare dash for loops that never ticked", () => {
   assert.equal(lastTickCell(undefined), "-");
+});
+
+test("lastLandedCell reuses the last-tick clock cell: absolute time plus relative age, dash when never landed", () => {
+  const ts = Date.now() - 180_000;
+  assert.equal(lastLandedCell(ts), `${stampOf(ts)} · 3m ago`);
+  assert.equal(lastLandedCell(undefined), "-");
+  assert.equal(lastLandedCell(ts), lastTickCell(ts), "landed and tick clock cells cannot drift");
 });
 
 test("renderStatus shows the absolute last-tick time in the table row", () => {
@@ -83,21 +90,21 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
 
   // Stage 1: only `last result` shrinks.
   let w = tableCells(renderStatus(root, snap, total - 5)).widths;
-  assert.equal(col(w, 9), col(natural, 9) - 5, "last result absorbs the first overflow");
+  assert.equal(col(w, 10), col(natural, 10) - 5, "last result absorbs the first overflow");
   assert.equal(col(w, 1), col(natural, 1), "state untouched while last result has room");
   assert.equal(col(w, 8), col(natural, 8), "last tick untouched until the others are exhausted");
 
   // Stage 2: `last result` clamped at its minimum; `state` shrinks next.
-  w = tableCells(renderStatus(root, snap, total - (col(natural, 9) - 12) - 5)).widths;
-  assert.equal(col(w, 9), 12, "last result clamped at its minimum");
+  w = tableCells(renderStatus(root, snap, total - (col(natural, 10) - 12) - 5)).widths;
+  assert.equal(col(w, 10), 12, "last result clamped at its minimum");
   assert.ok(col(w, 1) < col(natural, 1), "state shrinks after last result is exhausted");
   assert.equal(col(w, 8), col(natural, 8), "last tick still untouched");
 
   // Stage 3: both at their minimums; `last tick` shrinks last, down to a bare HH:MM:SS.
   w = tableCells(
-    renderStatus(root, snap, total - (col(natural, 9) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
+    renderStatus(root, snap, total - (col(natural, 10) - 12) - (col(natural, 1) - 12) - (col(natural, 8) - 10)),
   ).widths;
-  assert.equal(col(w, 9), 12);
+  assert.equal(col(w, 10), 12);
   assert.equal(col(w, 1), 12);
   assert.equal(col(w, 8), 10, "last tick shrinks last and only to its HH:MM:SS minimum");
 
@@ -105,6 +112,18 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
   for (const line of renderStatus(root, snap, 80).split("\n")) {
     assert.ok(line.length <= 80, `line exceeds 80 cols: ${JSON.stringify(line)} (${line.length})`);
   }
+});
+
+test("renderStatus shows the last-landed age in the table row, dash when never landed", () => {
+  const ts = Date.now() - 180_000;
+  const landed = snapshotWith([{ role: "clean", lastTickEndedAt: ts, lastLandedAt: ts - 60_000 }]);
+  const landedRow = renderStatus(tmpdir(), landed).split("\n").find((l) => l.startsWith("clean")) ?? "";
+  assert.ok(landedRow.includes(`${stampOf(ts - 60_000)} · 4m ago`), `row missing the landed age: ${JSON.stringify(landedRow)}`);
+  // A loop that has never landed shows the same dash as a never-ticked loop.
+  const fresh = snapshotWith([{ role: "new", lastTickEndedAt: ts }]);
+  const { lines: freshLines, cellAt, headers } = tableCells(renderStatus(tmpdir(), fresh));
+  const freshRow = freshLines.find((l) => l.startsWith("new")) ?? "";
+  assert.equal(cellAt(freshRow, headers.indexOf("last landed")), "-", "never-landed cell is the dash");
 });
 
 // The per-loop today-spend column: `today` sits between cost

@@ -265,18 +265,24 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   applyLandingOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
+  assert.ok(s.lastLandedAt !== undefined && s.lastLandedAt <= Date.now(), "a changed landing stamps lastLandedAt");
   assert.equal(s.phase, undefined);
   // The landed patch's approval is spent: the same patch authored again is a new change.
   assert.equal(s.lastApprovedPatchId, undefined);
+
+  // A fresh loop starts with no last-landed stamp: the age reads "never" until it lands.
+  assert.equal(freshLoopState("feature").lastLandedAt, undefined);
 
   // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
   // retry rides next-tick leftover recovery, so the state just has to show the failure.
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshLoopState("feature");
     n.lastApprovedPatchId = "p1";
+    n.lastLandedAt = 12345; // a prior landing's stamp
     applyLandingOutcome(n, result, change);
     assert.equal(n.lastResult, result);
     assert.equal(n.commits, 0, `${result} lands nothing on main`);
+    assert.equal(n.lastLandedAt, 12345, `${result} leaves the prior last-landed stamp`);
     assert.equal(n.phase, undefined);
     // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses
     // it.

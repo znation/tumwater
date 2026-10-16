@@ -62,26 +62,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 
 
-### Each loop's last-landed age: `tumwater status`, the TUI and the dashboard say when a loop last landed a change to main (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch only the `run`/`logs` CLI wiring and `src/doctor`, and this touches none of them: just `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, src/ui/status-payload.ts, `src/ui/status-render.ts`, `src/ui/gui/`, and their tests, so it lands beside them on any feature run)
-
-**Goal.** The fleet row already names a loop's `commits` (a lifetime count) and its last-tick time (`lastTickEndedAt`), and the just-landed no-change streak counts consecutive empty ticks. None of them answer the wall-clock question an autonomous-fleet operator most wants: "when did this loop last actually land something on main?" A loop can tick `no_change` forever — the streak climbs but resets on any landing, and the commits count climbs without saying how long the dry spell has been. This adds the direct answer, the productivity complement to `lastError` and `lastTickEndedAt`.
-
-**Approach.** Persist one timestamp and render it, mirroring how `lastError` rides LoopState → status-payload → the table/dashboard.
-- `src/loop/loop-state.ts`: add `lastLandedAt?: number` to `LoopState` beside `lastError`/`lastTickEndedAt` (epoch ms; absent until the first landing, absent on states written before the field existed).
-- `src/tick/tick-apply.ts` `applyLandingOutcome`'s `changed` branch — the same site that does `s.commits += 1` and resets `consecutiveErrors`: set `s.lastLandedAt = Date.now()`. `Date.now()` is already used in this function (the rejected branch's backoff rung), so no new clock seam; a `rejected`/`merge_conflict`/`aborted` landing leaves the prior value, so the age means "last successful landing".
-- src/ui/status-payload.ts per-loop row: carry `lastLandedAt: s.lastLandedAt ?? null` beside `lastTickEndedAt`, so `tumwater status --json` exposes the epoch ms.
-- `src/ui/status-render.ts`: add a last-landed cell to each loop row (a `· <N> ago` suffix, reusing the existing `ago`/`lastTickCell` relative-time formatter so the last-tick and last-landed columns cannot drift on what "ago" means); a loop that has never landed shows the same dash `lastTickCell` uses for a never-ticked loop.
-- `src/ui/gui/gui-client-fleet.ts` (and the role drawer where it lists `lastTickEndedAt`): render "landed <N> ago" from the payload field with the GUI's own `fmtAgo`, matching the `ago` rule client-side.
-- Tests: extend the status-payload/status-render loop-row tests and the tick-apply landing tests — a `changed` landing sets `lastLandedAt`; a rejection/merge-conflict leaves the prior value; a fresh loop carries none; the rendered age matches the relative-time format.
-
-**Files touched.** `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, src/ui/status-payload.ts, `src/ui/status-render.ts`, `src/ui/gui/gui-client-fleet.ts` (and the drawer site if it lists the last tick), and the matching `test/` suites (tick-apply, status, gui-fleet). No `src/cli`, `src/doctor`, `src/review`, or `src/loop` scheduler change.
-
-**Acceptance criteria.**
-- A loop whose change lands shows a last-landed age in `tumwater status`, the TUI fleet table, and the dashboard Fleet rows; a loop that has never landed shows the same dash as a never-ticked loop; the age is unchanged by a `rejected`/`merge_conflict`/`no_change` outcome.
-- `lastLandedAt` is set only in `applyLandingOutcome`'s `changed` branch, pinned by the tick-apply test; it rides the persisted `LoopState` like `lastError`/`lastTickEndedAt`, so a restart keeps it.
-- The status table and the dashboard render the age with the same relative-time formatter as the last-tick column (no drift), and `tumwater status --json` carries the `lastLandedAt` epoch ms.
-- `npm run test` passes.
-
 ### Each loop's schedule in `tumwater role <id>`: the role view says when a loop last ticked and when it next runs (planned 2026-10-16 by plan; independent of every other Planned entry — the two eligible waiting entries touch the `run` CLI wiring (`--tui`) and the status payload/render + `gui-client-fleet` (last-landed), and this touches none of them: only `src/roles/role-view.ts`, `src/roles/role-render.ts`, and `test/role-view.test.ts`. The one file it reads, `src/loop/loop-state.ts`, is read-only here via the `loadLoopState` rolePayload already calls — no `src/loop`, `src/status`, `src/ui/status-*`, `src/cli`, or `src/tick` edit)
 
 **Goal.** `tumwater role <id>` is the one-loop inspection surface: it names the loop's model, tier, images, fallbacks, billing, min interval, queued prompts, notebook, next prompt, and recent tick outcomes — but never says when the loop WILL act next or last did. The status table and TUI/GUI already carry a `next run` column (status-render.ts's `nextRunCell`, status-payload's `nextRunAt`/`backoffSeconds`, gui-client.ts's `fmtNextRun`) and the loop's `lastTickEndedAt`; the role view is the one place those scheduling facts are absent. So `tumwater role feature` cannot answer the operator's simplest question — "when will this loop check in again, and why is it backing off?" This adds a Schedule block answering it, in the same fields and wording family as the fleet surface so the two cannot drift.
@@ -103,6 +83,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+### Each loop's last-landed age: `tumwater status`, the TUI and the dashboard say when a loop last landed a change to main — done 2026-10-16
+
+**Goal.** The fleet row already names a loop's `commits` (a lifetime count) and its last-tick time (`lastTickEndedAt`), and the just-landed no-change streak counts consecutive empty ticks. None of them answer the wall-clock question an autonomous-fleet operator most wants: "when did this loop last actually land something on main?" A loop can tick `no_change` forever — the streak climbs but resets on any landing, and the commits count climbs without saying how long the dry spell has been. This adds the direct answer, the productivity complement to `lastError` and `lastTickEndedAt`.
+
+**Approach.** Persist one timestamp and render it, mirroring how `lastError` rides LoopState → status-payload → the table/dashboard.
+- `src/loop/loop-state.ts`: add `lastLandedAt?: number` to `LoopState` beside `lastError`/`lastTickEndedAt` (epoch ms; absent until the first landing, absent on states written before the field existed).
+- `src/tick/tick-apply.ts` `applyLandingOutcome`'s `changed` branch — the same site that does `s.commits += 1` and resets `consecutiveErrors`: set `s.lastLandedAt = Date.now()`. `Date.now()` is already used in this function (the rejected branch's backoff rung), so no new clock seam; a `rejected`/`merge_conflict`/`aborted` landing leaves the prior value, so the age means "last successful landing".
+- src/ui/status-payload.ts per-loop row: carry `lastLandedAt: s.lastLandedAt ?? null` beside `lastTickEndedAt`, so `tumwater status --json` exposes the epoch ms.
+- `src/ui/status-render.ts`: add a last-landed cell to each loop row (a `· <N> ago` suffix, reusing the existing `ago`/`lastTickCell` relative-time formatter so the last-tick and last-landed columns cannot drift on what "ago" means); a loop that has never landed shows the same dash `lastTickCell` uses for a never-ticked loop.
+- `src/ui/gui/gui-client-loops.ts` (the fleet rows, where the drawer also lists the last tick): render "landed <N> ago" from the payload field with the GUI's own `fmtAgo`, matching the `ago` rule client-side.
+- Tests: extend the status-payload/status-render loop-row tests and the tick-apply landing tests — a `changed` landing sets `lastLandedAt`; a rejection/merge-conflict leaves the prior value; a fresh loop carries none; the rendered age matches the relative-time format.
+
+**Files touched.** `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, src/ui/status-payload.ts, `src/ui/status-render.ts`, `src/ui/gui/gui-client-loops.ts` (the fleet-row render; the drawer site `gui-client-drawer.ts` gained a "Last landed" kv), and the matching `test/` suites (tick-apply, status, gui-loops, gui-drawer). No `src/cli`, `src/doctor`, `src/review`, or `src/loop` scheduler change.
+
+**Acceptance criteria.**
+- A loop whose change lands shows a last-landed age in `tumwater status`, the TUI fleet table, and the dashboard Fleet rows; a loop that has never landed shows the same dash as a never-ticked loop; the age is unchanged by a `rejected`/`merge_conflict`/`no_change` outcome.
+- `lastLandedAt` is set only in `applyLandingOutcome`'s `changed` branch, pinned by the tick-apply test; it rides the persisted `LoopState` like `lastError`/`lastTickEndedAt`, so a restart keeps it.
+- The status table and the dashboard render the age with the same relative-time formatter as the last-tick column (no drift), and `tumwater status --json` carries the `lastLandedAt` epoch ms.
+- `npm run test` passes.
+
 ### A doctor check names checks the review gate kept recognizing as flakes: a "flaky checks" check surfaces the gate's flake memory (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `src/tick`, `src/loop`, `src/ui/status-*`, and `src/cli/`, and this touches none of them: only `src/doctor/` and the one exported window constant in `src/review/known-flakes.ts`, so it lands on any feature run alongside them) — done 2026-10-16
 
 **Goal.** When a scoped check failure passes on its one immediate re-run, the review gate logs `gate check failed then passed on retry — flaky: <headline>` and the failure is excused (src/review/review-precheck.ts ~line 75-79); `src/review/known-flakes.ts` is the gate's memory of those warnings so a later repeat of the same normalized headline is not misattributed to whichever change happened to hit it. That memory is internal: no doctor check, `tumwater status`, TUI, or GUI ever names that the suite is flapping. So a genuinely flaky check silently burns a re-run each landing and hides real instability — an operator never learns which checks keep failing-and-passing, which is exactly the information that explains intermittent rejections and signals a suite that needs attention. The gate already owns the only two things a surfacing needs (`FLAKY_WARNING_PREFIX` and the 24h `KNOWN_FLAKE_WINDOW_MS`); only the read-and-name surface is missing.

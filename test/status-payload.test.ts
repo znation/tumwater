@@ -466,6 +466,18 @@ test("the status payload carries each loop's last error for the rows that failed
   assert.equal(payload.loops.find((l) => l.role === "clean")?.lastError, null);
 });
 
+test("the status payload carries each loop's last-landed epoch ms, null until it lands", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui last landed test");
+  const s = freshLoopState("qa");
+  s.lastLandedAt = 123_456_789;
+  saveLoopState(repo, s);
+  saveLoopState(repo, freshLoopState("clean"));
+  const payload = statusPayload(repo) as { loops: Array<{ role: string; lastLandedAt: number | null }> };
+  assert.equal(payload.loops.find((l) => l.role === "qa")?.lastLandedAt, 123_456_789);
+  assert.equal(payload.loops.find((l) => l.role === "clean")?.lastLandedAt, null);
+});
+
 test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
   const repo = makeRepo();
   await initProject(repo, "payload schedule test");
