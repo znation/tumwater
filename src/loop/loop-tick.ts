@@ -556,6 +556,12 @@ async function tickWithWorktreePhase(
   let revisionRound: number | undefined;
   if (s.revision && ctx.role !== DIRECTOR_ROLE && userPrompt === null) {
     const { sha, round } = s.revision;
+    // The prompt's rejected/revision notes read the loop's most recent rejection; an absent
+    // one (a fresh loop or a hand-edited state) reads the empty reasons list. Computed once
+    // for the three revision-append sites and the rejected-note fallback below, so the
+    // get-or-default idiom cannot drift between them.
+    const lastReviewOrEmpty = s.lastReview ?? { reasons: [] };
+    const revisionNote = buildRevisionNote(lastReviewOrEmpty, round);
     if (resuming || handoff) {
       // The interrupted revision run's applied edits are still in the worktree (both the
       // resume and the cross-agent handoff keep uncommitted work), so this tick still owns
@@ -567,12 +573,12 @@ async function tickWithWorktreePhase(
         // tick-prompt.ts suppresses the rejected-review note whenever state.revision is set,
         // so without this the fresh run would see neither the objections nor the revision
         // instructions. A resume keeps its session context and must not see the note twice.
-        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
+        prompt += `\n\n${revisionNote}`;
       }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
       logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });
-      prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
+      prompt += `\n\n${revisionNote}`;
     } else {
       // The clean re-apply conflicted: re-apply with the markers left in place so the author
       // resolves them rather than losing the revision (PLANS.md "Robust conflict landing, part
@@ -596,14 +602,14 @@ async function tickWithWorktreePhase(
           reason: "revision",
           conflicted: withConflicts.conflicted,
         });
-        prompt += `\n\n${buildRevisionNote(s.lastReview ?? { reasons: [] }, round)}`;
+        prompt += `\n\n${revisionNote}`;
         const intent = await handbackIntent(wt, ctx.mainBranch, sha, withConflicts.conflicted);
         prompt += `\n\n${buildConflictHandbackNote("revision", withConflicts.conflicted, intent)}`;
       } else {
         s.revision = undefined;
         await deleteRef(ctx.root, rejectedRefName(ctx.role));
         logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "conflict", round, sha });
-        prompt += `\n\n${buildRejectedReviewNote(s.lastReview ?? { reasons: [] }, ctx.role)}`;
+        prompt += `\n\n${buildRejectedReviewNote(lastReviewOrEmpty, ctx.role)}`;
         prompt += `\n\nThe rejected diff no longer applies to current main.`;
       }
     }
