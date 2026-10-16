@@ -497,7 +497,10 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         `    return () => process.off("SIGUSR2", onSignal);\n` +
         `  },\n` +
         `});\n` +
-        `fs.writeFileSync(started, String(process.pid));\n` +
+        // Written then renamed, so the test never sees `started` created but still empty or
+        // partial, and reads a truncated pid.
+        `fs.writeFileSync(started + ".tmp", String(process.pid));\n` +
+        `fs.renameSync(started + ".tmp", started);\n` +
         `setInterval(() => {}, 10_000);\n` +
         // A leak guard, not part of the behavior under test: it must sit far beyond the
         // test's wait budget, so a broken run cannot leak the grandchild for long.
