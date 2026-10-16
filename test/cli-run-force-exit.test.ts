@@ -72,7 +72,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
         // one and the run takes the graceful path (the `expected the forced exit code` flakes,
         // BUGS.md 2026-09-30).
         process.kill(info.pid, "SIGINT");
-        await s.waitFor((out) => out.includes("stopping — waiting for in-flight ticks"), "the first Ctrl+C's stop");
+        await s.waitFor((out) => out.includes("stopping — finishing current runs"), "the first Ctrl+C's stop");
         // Wait out terminateChild's SIGTERM → SIGKILL grace: the moment a loaded host's
         // scheduling used to let the old test's graceful stop finish under it. The holder
         // keeps the tick pending past pi's death, so the second Ctrl+C still finds the stop in

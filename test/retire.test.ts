@@ -1,7 +1,7 @@
 // --- retire --role <id>: remove a disabled loop's worktree, branch, and per-role state ---
 // The removal is plain git + file work on the repo (no running harness involved), so the whole
 // surface is testable with fixtures: an initialized repo plus the ensureWorktree artifacts a
-// retired loop leaves behind. The safety rails (enabled role, unlanded commits, dirty worktree,
+// retired loop leaves behind. The safety rails (enabled role, unmerged commits, dirty worktree,
 // mid-tick) must refuse without removing anything; --force overrides; a second run is
 // idempotent, reporting what was already gone.
 
@@ -50,7 +50,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
   assert.equal(branchGone, null, "branch deleted");
 });
 
-test("retire refuses an enabled role, unlanded commits, a dirty worktree, and a mid-tick loop; --force goes through", async () => {
+test("retire refuses an enabled role, unmerged commits, a dirty worktree, and a mid-tick loop; --force goes through", async () => {
   const { root, wt } = await initializedWorktree();
 
   // Enabled role: refuse, nothing removed.
@@ -67,10 +67,10 @@ test("retire refuses an enabled role, unlanded commits, a dirty worktree, and a 
   sh(wt, "git", "commit", "-m", "unlanded work");
   r = await cli(root, "retire", "--role", "improve");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /unlanded commit/);
+  assert.match(r.stderr, /unmerged commit/);
   assert.ok(fs.existsSync(wt), "unlanded-commit refusal removes nothing");
 
-  // --force overrides and removes everything, unlanded commits included.
+  // --force overrides and removes everything, unmerged commits included.
   r = await cli(root, "retire", "--role", "improve", "--force", "--json");
   assert.equal(r.code, 0, r.stderr);
   assert.ok(!fs.existsSync(worktreePath(root, "improve")));
@@ -93,7 +93,7 @@ test("retire refuses a dirty worktree and a mid-tick loop before removing anythi
   saveLoopState(root, state);
   const r2 = await cli(root, "retire", "--role", "improve");
   assert.equal(r2.code, 1);
-  assert.match(r2.stderr, /tick is in flight/);
+  assert.match(r2.stderr, /run is in progress/);
   assert.ok(fs.existsSync(wt), "mid-tick refusal removes nothing");
   const status: RetireStatus = await collectRetire(root, "improve");
   assert.equal(status.midTick, true);
@@ -227,11 +227,11 @@ test("retire counts a dead worktree's unlanded branch commits even when the dire
   fs.rmSync(wt, { recursive: true, force: true });
 
   const status: RetireStatus = await collectRetire(root, "improve");
-  assert.equal(status.aheadOfMain, 1, "the branch ref's unlanded commit is counted");
+  assert.equal(status.aheadOfMain, 1, "the branch ref's unmerged commit is counted");
 
   const r = await cli(root, "retire", "--role", "improve");
   assert.equal(r.code, 1, "refuses without --force");
-  assert.match(r.stderr, /unlanded commit/);
+  assert.match(r.stderr, /unmerged commit/);
   assert.ok(sh(root, "git", "branch", "--list", branchName("improve")).trim() !== "", "branch survives");
 });
 

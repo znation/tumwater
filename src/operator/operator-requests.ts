@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import type { LoopRunner } from "../loop/loop.js";
@@ -80,7 +81,7 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
     logEvent(root, event);
   } catch (err) {
     try {
-      warnEvent(root, "harness", `could not record ${event.type} request: ${errorMessage(err)}`);
+      warnEvent(root, "harness", `could not record ${event.type} request: ${errorMessage(err)}`); // vocabulary-ok: event source/reason code stays
     } catch {
       // The event feed is the failure; there is nothing left to report on.
     }
@@ -96,8 +97,8 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
 function warnStatePersistFailed(root: string, role: string, err: unknown): void {
   warnEventBestEffort(
     root,
-    "harness",
-    `could not persist ${role}'s state for an operator request: ${errorMessage(err)}`,
+    "harness", // vocabulary-ok: event source/reason code stays
+    `could not persist ${role}'s state for your request: ${errorMessage(err)}`,
   );
 }
 
@@ -135,7 +136,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
     const [only] = applied;
     // One role → filed under that loop; several → one harness-level event listing them.
     if (applied.length === 1 && only) logRequestEvent(root, { loop: only, type: "counters_reset" });
-    else logRequestEvent(root, { loop: "harness", type: "counters_reset", roles: applied });
+    else logRequestEvent(root, { loop: "harness", type: "counters_reset", roles: applied }); // vocabulary-ok: event source/reason code stays
   }
   removeQuiet(markerFile);
 }
@@ -247,7 +248,7 @@ function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]
       warnStatePersistFailed(root, r.role, err);
       continue; // warn stands in for the wake event; nothing persisted to celebrate
     }
-    logRequestEvent(root, { loop: r.role, type: "wake", reason: "operator" });
+    logRequestEvent(root, { loop: r.role, type: "wake", reason: "operator" }); // vocabulary-ok: event source/reason code stays
   }
   for (const role of runnerlessTargets(root, markerFile, runners)) {
     try {
@@ -256,7 +257,7 @@ function applyWakeMarker(root: string, markerFile: string, runners: LoopRunner[]
       warnStatePersistFailed(root, role, err);
       continue;
     }
-    logRequestEvent(root, { loop: role, type: "wake", reason: "operator" });
+    logRequestEvent(root, { loop: role, type: "wake", reason: "operator" }); // vocabulary-ok: event source/reason code stays
   }
   removeQuiet(markerFile);
 }
@@ -318,7 +319,7 @@ export function consumeAbortRequests(
   // unwritable event feed is what failed, and there is nothing left to report on then.
   const warnFailure = (role: string, err: unknown): void => {
     try {
-      warnEvent(root, "harness", `could not consume abort request for ${role}: ${errorMessage(err)}`);
+      warnEvent(root, "harness", `could not consume abort request for ${role}: ${errorMessage(err)}`); // vocabulary-ok: event source/reason code stays
     } catch {
       // The feed is the failure; the remaining markers still get their turn below.
     }

@@ -21,61 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests)
-
-**Goal.** The output of `tumwater start`, `stop`, `pause`, `resume`, `wake`, `abort`, `retire`, `reclaim`, `reset-counters`, `brief` and `logs --role` speaks the glossary. Examples: "team paused — roles start no new runs", "tumwater is not running — start it with `tumwater start` first", "brief updated in README.md".
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/cli/cli-run.ts:
-  - "stopping — finishing current runs (Ctrl+C again to force)".
-  - "roles:", and "0 runs — nothing ran".
-  - "restarting onto the update (restart N)".
-  - "tumwater restarted itself too many times in a minute — giving up".
-  - "maintenance roles wait until …".
-- src/operator/operator-commands.ts:
-  - `cmdPause` → "team paused — roles start no new runs (current runs finish; the director keeps running your messages)".
-  - `cmdStop` → "stop requested — the team finishes current work, then stops (the same path as Ctrl+C)".
-  - The `pause --reason` error says "the whole team". `cmdRetire` and `cmdReclaim` messages follow the rules.
-- src/operator/operator-intent.ts:
-  - `NO_HARNESS_ERROR` → "tumwater is not running — start it with `tumwater start` first". The constant name stays.
-  - `markerApplyNote` and `requestScheduledStop` follow the rules.
-  - `requestRestart` → "no update is waiting — tumwater is current with main".
-  - `rolePauseMessage` → "… it starts no new runs (current runs finish; the rest of the team is unaffected)".
-  - `roleResumeMessage` → "the team pause is still active".
-- Other operator modules:
-  - src/operator/operator-requests.ts: messages only; event sources stay, marked.
-  - src/operator/retire.ts: "unmerged commit(s) — merge or discard them first", "a run is in progress for this role", "the merge ref".
-- The brief:
-  - `readmeTemplate` and `briefTemplate` (src/brief/brief.ts): the heading "## Initial prompt" → "## Brief", and "The readme loop keeps this section up to date." → "The readme role keeps this section up to date." The read-error text follows the rules. The `tumwater:prompt` markers stay, because they are parsed.
-  - src/brief/brief-edit.ts: "the new brief is empty", "the new brief contains a tumwater:prompt marker …". The commit subject keeps the `tumwater(operator):` prefix and becomes "Edit brief".
-  - src/cli/brief-command.ts: "brief unchanged", "brief updated in <file>".
-- Other CLI output:
-  - src/cli/cli-query-commands.ts: "the team roster prints no patch", "--json does not apply to a notes write", "the director has no notes".
-  - src/cli/cli-command-args.ts: "… aim it at one role".
-  - The rest of src/cli/log-commands.ts: `logs --role` shows "the role's agent transcript", because the claude backend writes one too.
-  - src/cli.ts: "the running tumwater install looks broken".
-  - src/cli/config-commands.ts and src/fleet/reclaim.ts: their messages.
-
-**Files touched.**
-- src: src/cli/cli-run.ts, src/cli.ts, src/cli/cli-query-commands.ts, src/cli/cli-command-args.ts, src/cli/log-commands.ts, src/cli/config-commands.ts, src/cli/brief-command.ts, src/brief/brief.ts, src/brief/brief-edit.ts, src/operator/operator-commands.ts, src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/operator/retire.ts, src/fleet/reclaim.ts.
-- Tests:
-  - test/operator-commands.test.ts, test/operator-intent.test.ts, test/operator-requests.test.ts, test/retire.test.ts.
-  - test/cli-run*.test.ts, test/cli-operators.test.ts, test/cli-operators-fleet.test.ts, test/scheduled-stop.test.ts, test/cli.test.ts.
-  - test/tui-operator-keys.test.ts and test/gui-operator.test.ts, which surface the same operator-intent messages.
-  - test/brief-command.test.ts, test/brief.test.ts, test/init.test.ts (the brief template), test/fleet-state.test.ts, test/reclaim.test.ts.
-
-**Acceptance criteria.**
-- `tumwater pause` prints `team paused — roles start no new runs …`, and `tumwater stop` prints `… the team finishes current work, then stops …`. Any operator command run while nothing is running prints ``tumwater is not running — start it with `tumwater start` first``.
-- `tumwater brief --set f.md` prints `brief updated in …`, and a new project's README template has `## Brief`.
-- `tumwater retire` refusals say "unmerged commit(s)" and "a run is in progress for this role".
-- `npm run test` passes.
-
 ### Plain terms text, part 7/19: Inbox and backlog command output and the role page (planned 2026-10-16 by user; requires part 3/19, part 6/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/inbox/ + src/backlog/backlog-write.ts + backlog-cli.ts + question-answer.ts + backlog-structure.ts + src/roles/role-render.ts + role-view.ts + roles.ts + tests)
 
 **Goal.** These commands speak of the inbox, notes, runs and custom roles:
@@ -3026,6 +2971,61 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests) — done 2026-10-16
+
+**Goal.** The output of `tumwater start`, `stop`, `pause`, `resume`, `wake`, `abort`, `retire`, `reclaim`, `reset-counters`, `brief` and `logs --role` speaks the glossary. Examples: "team paused — roles start no new runs", "tumwater is not running — start it with `tumwater start` first", "brief updated in README.md".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/cli/cli-run.ts:
+  - "stopping — finishing current runs (Ctrl+C again to force)".
+  - "roles:", and "0 runs — nothing ran".
+  - "restarting onto the update (restart N)".
+  - "tumwater restarted itself too many times in a minute — giving up".
+  - "maintenance roles wait until …".
+- src/operator/operator-commands.ts:
+  - `cmdPause` → "team paused — roles start no new runs (current runs finish; the director keeps running your messages)".
+  - `cmdStop` → "stop requested — the team finishes current work, then stops (the same path as Ctrl+C)".
+  - The `pause --reason` error says "the whole team". `cmdRetire` and `cmdReclaim` messages follow the rules.
+- src/operator/operator-intent.ts:
+  - `NO_HARNESS_ERROR` → "tumwater is not running — start it with `tumwater start` first". The constant name stays.
+  - `markerApplyNote` and `requestScheduledStop` follow the rules.
+  - `requestRestart` → "no update is waiting — tumwater is current with main".
+  - `rolePauseMessage` → "… it starts no new runs (current runs finish; the rest of the team is unaffected)".
+  - `roleResumeMessage` → "the team pause is still active".
+- Other operator modules:
+  - src/operator/operator-requests.ts: messages only; event sources stay, marked.
+  - src/operator/retire.ts: "unmerged commit(s) — merge or discard them first", "a run is in progress for this role", "the merge ref".
+- The brief:
+  - `readmeTemplate` and `briefTemplate` (src/brief/brief.ts): the heading "## Initial prompt" → "## Brief", and "The readme loop keeps this section up to date." → "The readme role keeps this section up to date." The read-error text follows the rules. The `tumwater:prompt` markers stay, because they are parsed.
+  - src/brief/brief-edit.ts: "the new brief is empty", "the new brief contains a tumwater:prompt marker …". The commit subject keeps the `tumwater(operator):` prefix and becomes "Edit brief".
+  - src/cli/brief-command.ts: "brief unchanged", "brief updated in <file>".
+- Other CLI output:
+  - src/cli/cli-query-commands.ts: "the team roster prints no patch", "--json does not apply to a notes write", "the director has no notes".
+  - src/cli/cli-command-args.ts: "… aim it at one role".
+  - The rest of src/cli/log-commands.ts: `logs --role` shows "the role's agent transcript", because the claude backend writes one too.
+  - src/cli.ts: "the running tumwater install looks broken".
+  - src/cli/config-commands.ts and src/fleet/reclaim.ts: their messages.
+
+**Files touched.**
+- src: src/cli/cli-run.ts, src/cli.ts, src/cli/cli-query-commands.ts, src/cli/cli-command-args.ts, src/cli/log-commands.ts, src/cli/config-commands.ts, src/cli/brief-command.ts, src/brief/brief.ts, src/brief/brief-edit.ts, src/operator/operator-commands.ts, src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/operator/retire.ts, src/fleet/reclaim.ts.
+- Tests:
+  - test/operator-commands.test.ts, test/operator-intent.test.ts, test/operator-requests.test.ts, test/retire.test.ts.
+  - test/cli-run*.test.ts, test/cli-operators.test.ts, test/cli-operators-fleet.test.ts, test/scheduled-stop.test.ts, test/cli.test.ts.
+  - test/tui-operator-keys.test.ts and test/gui-operator.test.ts, which surface the same operator-intent messages.
+  - test/brief-command.test.ts, test/brief.test.ts, test/init.test.ts (the brief template), test/fleet-state.test.ts, test/reclaim.test.ts.
+
+**Acceptance criteria.**
+- `tumwater pause` prints `team paused — roles start no new runs …`, and `tumwater stop` prints `… the team finishes current work, then stops …`. Any operator command run while nothing is running prints ``tumwater is not running — start it with `tumwater start` first``.
+- `tumwater brief --set f.md` prints `brief updated in …`, and a new project's README template has `## Brief`.
+- `tumwater retire` refusals say "unmerged commit(s)" and "a run is in progress for this role".
+- `npm run test` passes.
 
 ### Plain terms text, part 12/19: Dashboard role drawer and History view (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-drawer.ts + gui-client-history.ts + tests) (done 2026-10-16)
 

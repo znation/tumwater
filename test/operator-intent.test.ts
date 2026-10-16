@@ -118,7 +118,7 @@ test("requestResetCounters zeroes the named roles' counters and preserves schedu
   // The marker names its targets: only a live fleet consumes it, and it must know which.
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "reset-counters.json"))?.roles, ["fix", "docs"]);
   assert.match(msg, /^counters reset for fix, docs — /);
-  assert.match(msg, /no harness is running/);
+  assert.match(msg, /tumwater is not running/);
 });
 
 test("requestWake clears backoff and pulls nextRunAt to now, leaving counters alone", () => {
@@ -143,7 +143,7 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
   assert.equal(s.lastMainHead, "abc");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);
   assert.match(msg, /^wake requested for fix — /);
-  assert.match(msg, /no harness is running/);
+  assert.match(msg, /tumwater is not running/);
 });
 
 test("requestWake with a positive delay schedules the marker and skips the state change", () => {
@@ -204,7 +204,7 @@ test("requestResetCounters leaves a live fleet's state file to the orchestrator 
   assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
   assert.equal(stateOf(root, "fix").ticks, 7, "the counter is left for the orchestrator to zero");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "reset-counters.json"))?.roles, ["fix"]);
-  assert.match(msg, /a running fleet picks this up/);
+  assert.match(msg, /the running team picks this up/);
 });
 
 test("requestWake leaves a live fleet's state file to the orchestrator (no racing rewrite)", () => {
@@ -222,7 +222,7 @@ test("requestWake leaves a live fleet's state file to the orchestrator (no racin
   assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
   assert.equal(stateOf(root, "fix").backoffSeconds, 300, "the schedule is left for the orchestrator to clear");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);
-  assert.match(msg, /a running fleet applies it/);
+  assert.match(msg, /the running team applies it/);
 });
 
 test("submitRolePromptAndWake queues the prompt and wakes only that role", () => {
@@ -251,7 +251,7 @@ test("requestAbort drops a per-role marker for a live fleet and notes the direct
   const r = requestAbort(root, "fix");
   assert.equal(r.ok, true);
   if (!r.ok) throw new Error("unreachable");
-  assert.match(r.message, /^abort requested for fix — a running fleet applies it within ~2s$/);
+  assert.match(r.message, /^abort requested for fix — the running team applies it within ~2s$/);
   assert.ok(readJsonFile(path.join(root, STATE_DIR, "abort-fix.json")));
   // The director's in-flight prompt is dequeued at tick start, so its abort says the prompt is
   // discarded — an ordinary role's confirmation must not carry that note.
@@ -283,29 +283,29 @@ test("rolePauseMessage reports the idempotent no-op and the full pause confirmat
   // Not live: the tail says where the marker lands instead.
   assert.match(
     rolePauseMessage(dead, "fix", true),
-    /^role fix paused — it stops starting new ticks at its next eligibility check \(in-flight ticks finish; the rest of the fleet is unaffected\).*next `tumwater start`/,
+    /^role fix paused — it starts no new runs \(current runs finish; the rest of the team is unaffected\).*next `tumwater start`/,
   );
   // A timed pause echoes the duration and the wall-clock resume time; `now` is passed
   // explicitly so the same-day phrasing the fixture pins cannot flip under a later run date.
   const now = new Date(2026, 8, 30, 12, 0, 0).getTime();
   const until = new Date(2026, 8, 30, 14, 5, 0).getTime();
   const timed = rolePauseMessage(dead, "fix", true, { ms: 30 * 60_000, untilMs: until }, now);
-  assert.match(timed, /paused for 30m — it stops starting new ticks/);
+  assert.match(timed, /paused for 30m — it starts no new runs/);
   assert.match(timed, /— resumes automatically at 14:05:00/);
 });
 
 test("roleResumeMessage reports the no-op and the fleet-pause interplay note", () => {
   const dead = deadRoot();
   assert.equal(roleResumeMessage(dead, "fix", false), "role fix was not paused");
-  assert.match(roleResumeMessage(dead, "fix", true), /^role fix resumed — it starts ticking again at its next eligibility check/);
-  assert.doesNotMatch(roleResumeMessage(dead, "fix", true), /fleet pause is still active/);
+  assert.match(roleResumeMessage(dead, "fix", true), /^role fix resumed — it starts new runs again/);
+  assert.doesNotMatch(roleResumeMessage(dead, "fix", true), /team pause is still active/);
 
   // With the fleet pause marker present, a non-director resume must say the stronger gate
   // still holds — silence would promise ticks the scheduler then denies.
   writeMarker(pausedPath(dead), { at: Date.now() });
-  assert.match(roleResumeMessage(dead, "fix", true), /the fleet pause is still active — `tumwater resume` lifts it/);
+  assert.match(roleResumeMessage(dead, "fix", true), /the team pause is still active — `tumwater resume` lifts it/);
   // The director is exempt from that gate, so its resumption is real and the note is absent.
-  assert.doesNotMatch(roleResumeMessage(dead, "director", true), /fleet pause is still active/);
+  assert.doesNotMatch(roleResumeMessage(dead, "director", true), /team pause is still active/);
 });
 
 test("PAUSE_FOR_MAX_MS is exactly 90 days", () => {

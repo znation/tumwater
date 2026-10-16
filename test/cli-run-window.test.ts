@@ -103,8 +103,8 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     assert.equal(code, 0, `expected clean exit at the deadline; output so far:\n${s.out()}`);
     assert.match(s.out(), /tumwater running on branch main · for 3s ·/);
     assert.match(s.out(), /deadline reached — stopping/);
-    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
-    assert.match(s.out(), /for 3s: \d+ ticks?/);
+    assert.match(s.out(), /stopping — finishing current runs/);
+    assert.match(s.out(), /for 3s: \d+ runs?/);
     assert.ok(!s.out().includes("ghost"), `a pre-window tick leaked into the summary:\n${s.out()}`);
     assert.ok(!s.out().split("\n").some((l) => l.startsWith("once:")), "no once: line under --for");
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");

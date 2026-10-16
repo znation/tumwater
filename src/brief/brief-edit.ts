@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_END, PROMPT_START, briefPath, replaceInitialPrompt } from "./brief.js";
@@ -23,11 +24,11 @@ const NO_BRIEF = "no project brief with a prompt block found — run `tumwater i
  * dashboard's Settings card, so the two cannot drift. */
 export async function editInitialPrompt(root: string, text: string): Promise<BriefEditOutcome> {
   const prompt = text.trim();
-  if (prompt === "") return { ok: false, error: "the new initial prompt is empty" };
+  if (prompt === "") return { ok: false, error: "the new brief is empty" };
   if (prompt.length > INITIAL_PROMPT_MAX_CHARS)
-    return { ok: false, error: tooLongMessage("the new initial prompt", prompt.length, INITIAL_PROMPT_MAX_CHARS, PREFILL_REASON) };
+    return { ok: false, error: tooLongMessage("the new brief", prompt.length, INITIAL_PROMPT_MAX_CHARS, PREFILL_REASON) };
   if (prompt.includes(PROMPT_START) || prompt.includes(PROMPT_END))
-    return { ok: false, error: "the new initial prompt contains a tumwater:prompt marker, which would break the block for every reader" };
+    return { ok: false, error: "the new brief contains a tumwater:prompt marker, which would break the block for every reader" };
   const file = briefPath(root);
   if (file === null) return { ok: false, error: NO_BRIEF };
   const name = path.basename(file);
@@ -40,6 +41,6 @@ export async function editInitialPrompt(root: string, text: string): Promise<Bri
     return true;
   });
   if (typeof changed === "string") return { ok: false, error: changed };
-  const committed = changed && (await commitOperatorBacklogEdit(root, name, stampedSubject("operator", "Edit initial prompt")));
+  const committed = changed && (await commitOperatorBacklogEdit(root, name, stampedSubject("operator", "Edit brief"))); // vocabulary-ok: commit prefix stays
   return { ok: true, file: name, changed, committed };
 }

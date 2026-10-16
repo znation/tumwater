@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// vocabulary: plain
 /** The CLI's entry point and command dispatcher — the `bin` target package.json points at
  * (dist/src/cli.js). main() runs the Node-floor gate from package.json's `engines.node`, answers a
  * `--help` topic before any command parses arguments or gates on a ready repo, resolves the repo
@@ -224,7 +225,7 @@ async function main(): Promise<void> {
       await cmdHistory(root, args);
       break;
     }
-    case "tick":
+    case "tick": // vocabulary-ok: command name stays
       await runTrailCommand(root, args);
       break;
     case "diff":
@@ -396,7 +397,7 @@ async function main(): Promise<void> {
       // raw stack trace, and a non-string version fails instead of printing "undefined".
       const { version, problem } = packageVersion(PACKAGE_JSON);
       if (problem !== undefined || version === undefined)
-        fail(problem ?? "package.json carries no version field (the running harness's install looks broken)");
+        fail(problem ?? "package.json carries no version field (the running tumwater install looks broken)");
       say(version);
       break;
     }

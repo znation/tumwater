@@ -48,7 +48,7 @@ test("run survives a SIGINT aimed at the supervisor alone and still stops on SIG
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
-    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
+    assert.match(s.out(), /stopping — finishing current runs/);
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
   });
 });
@@ -65,7 +65,7 @@ test("a SIGINT reaching the orchestrator generation stops the fleet cleanly", as
     process.kill(info.pid, "SIGINT");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after the generation's SIGINT; output so far:\n${s.out()}`);
-    assert.match(s.out(), /stopping — waiting for in-flight ticks/,
+    assert.match(s.out(), /stopping — finishing current runs/,
       "the generation announces the graceful stop");
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
     // A stop the operator asked for is not the fleet dying: no supervisor_exit trace.

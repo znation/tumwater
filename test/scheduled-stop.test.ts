@@ -16,7 +16,7 @@ import { sleep } from "./helpers/wait.js";
 
 test("stop --in schedules a marker with a live pid, sends no signal, and fails without a harness", async () => {
   const root = tmpdir();
-  assert.match(await expectFailAsync(() => cmdStop(root, ["--in", "2h"])), /no harness is running/);
+  assert.match(await expectFailAsync(() => cmdStop(root, ["--in", "2h"])), /tumwater is not running/);
   assert.ok(!fs.existsSync(scheduledStopPath(root)), "nothing was written");
   writeOrchestratorMarker(root, [], { pid: process.pid });
   const before = Date.now();

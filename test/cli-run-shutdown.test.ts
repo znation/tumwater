@@ -67,7 +67,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
 
   onlyCleanRole(repo);
   await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
-    assert.match(s.out(), /loops: clean/);
+    assert.match(s.out(), /roles: clean/);
 
     // The top-level process is the supervisor (src/process/supervisor.ts), not the orchestrator:
     // the event stream names the orchestrator's own pid, which must be a different process.
@@ -81,7 +81,7 @@ test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", as
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);
-    assert.match(s.out(), /stopping — waiting for in-flight ticks/);
+    assert.match(s.out(), /stopping — finishing current runs/);
 
     // Graceful shutdown removed the info file: a stale marker would make every later
     // `tumwater run` refuse to start.
@@ -98,7 +98,7 @@ test("run's banner lists one loop per instance, so the CLI roster matches the ru
   await withRunningFleet(repo, fakePiIdle(), async (s) => {
     // Startup's `enabled` must be `loopIds`, not `enabledRoleIds`: the roster the banner names
     // is the roster the orchestrator starts runners for.
-    assert.match(s.out(), /loops: [^\n]*feature, feature-2/);
+    assert.match(s.out(), /roles: [^\n]*feature, feature-2/);
   });
 });
 

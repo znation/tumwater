@@ -52,7 +52,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   // which proves the id was accepted rather than rejected).
   r = await cli(repo, "abort", "--role", "docs-sync");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater is not running/);
 });
 // --- reset-counters ---
 
@@ -68,7 +68,7 @@ test("reset-counters zeroes counters in every role's state file and writes the f
   // No orchestrator.json in this repo: the honest no-harness wording, not a ~2s pickup
   // promise no process will make (the live wording is pinned by the test below).
   assert.match(r.stdout, /takes effect on the next `tumwater start`/);
-  assert.match(r.stdout, /no harness is running/);
+  assert.match(r.stdout, /tumwater is not running/);
   assert.doesNotMatch(r.stdout, /within ~2s/);
 
   for (const role of ["feature", "clean"]) {
@@ -135,13 +135,13 @@ test("reset-counters and wake name the live effect when a harness is running", a
 
   const reset = await cli(repo, "reset-counters");
   assert.equal(reset.code, 0);
-  assert.match(reset.stdout, /a running fleet picks this up within ~2s/);
-  assert.doesNotMatch(reset.stdout, /no harness is running/);
+  assert.match(reset.stdout, /the running team picks this up within ~2s/);
+  assert.doesNotMatch(reset.stdout, /tumwater is not running/);
 
   const wake = await cli(repo, "wake");
   assert.equal(wake.code, 0);
-  assert.match(wake.stdout, /a running fleet applies it within ~2s/);
-  assert.doesNotMatch(wake.stdout, /no harness is running/);
+  assert.match(wake.stdout, /the running team applies it within ~2s/);
+  assert.doesNotMatch(wake.stdout, /tumwater is not running/);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
@@ -214,19 +214,19 @@ test("wake --role targets one loop; unknown or missing role fails without side e
 // Unlike the marker commands above, stop reaches a real process: the pid in
 // .tumwater/state/orchestrator.json. The liveness gate and failure wording match abort's.
 
-test("stop refuses when no harness is running — missing or stale info file alike", async () => {
+test("stop refuses when tumwater is not running — missing or stale info file alike", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli stop no harness");
 
   let r = await cli(repo, "stop");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater is not running/);
 
   // A stale info file (dead pid) reads the same way: nothing alive to signal.
   writeOrchestratorMarker(repo, [], { pid: 2_000_000_000 });
   r = await cli(repo, "stop");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater is not running/);
 });
 
 test("stop SIGTERMs the recorded pid and prints the drain confirmation", async () => {
@@ -248,7 +248,7 @@ test("stop SIGTERMs the recorded pid and prints the drain confirmation", async (
     });
     const r = await cli(repo, "stop");
     assert.equal(r.code, 0);
-    assert.match(r.stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
+    assert.match(r.stdout, /stop requested — the team finishes current work, then stops/);
 
     // The child died from the SIGTERM `stop` sent, not from anything the test tore down.
     const { signal } = await Promise.race([

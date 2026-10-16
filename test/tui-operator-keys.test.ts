@@ -32,16 +32,16 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
     assert.deepEqual(pausedRoles(repo), [], "the editor writes nothing until Enter");
     tui.key(undefined, "return");
     assert.deepEqual(pausedRoles(repo), ["clean"]);
-    assert.match(tui.lastFrame(), /role clean paused — it stops starting new ticks/);
+    assert.match(tui.lastFrame(), /role clean paused — it starts no new runs/);
     // The status table's cell for the paused idle role reads `paused` while the marker stands
     // (per-role pause 1/2 wires loopPhase through snap.pausedRoles).
     assert.match(tui.lines().join("\n"), /clean[^\n]*paused/);
 
     tui.key(undefined, "p", { ctrl: true });
     assert.deepEqual(pausedRoles(repo), []);
-    assert.match(tui.lastFrame(), /role clean resumed — it starts ticking again/);
+    assert.match(tui.lastFrame(), /role clean resumed — it starts new runs again/);
     // No fleet pause is active, so the interplay note stays out of the flash.
-    assert.doesNotMatch(tui.lastFrame(), /fleet pause is still active/);
+    assert.doesNotMatch(tui.lastFrame(), /team pause is still active/);
   });
 });
 
@@ -60,7 +60,7 @@ test("Ctrl+P's resume flash carries the fleet-pause interplay note while the fle
     assert.deepEqual(pausedRoles(repo), []);
     assert.match(
       tui.lastFrame(),
-      /role clean resumed[^]*\(the fleet pause is still active — `tumwater resume` lifts it\)/,
+      /role clean resumed[^]*\(the team pause is still active — `tumwater resume` lifts it\)/,
     );
   });
 });
@@ -120,14 +120,14 @@ test("Ctrl+A flashes the abort confirmation with a live harness and the liveness
     tui.key(undefined, "a", { ctrl: true });
     // No harness: the liveness gate rejects before any marker is written, and the failure
     // flashes with the error prefix (the same contract the GUI's 409 body serves).
-    assert.match(tui.lastFrame(), /error: no harness is running/);
+    assert.match(tui.lastFrame(), /error: tumwater is not running/);
     assert.equal(fs.existsSync(abortRequestPath(repo, "clean")), false);
 
     // A live harness (the test process itself stands in for the orchestrator's pid) lets the
     // same keypress drop the per-role abort marker and flash the confirmation.
     writeOrchestratorMarker(repo, ["clean"]);
     tui.key(undefined, "a", { ctrl: true });
-    assert.match(tui.lastFrame(), /abort requested for clean — a running fleet applies it within ~2s/);
+    assert.match(tui.lastFrame(), /abort requested for clean — the running team applies it within ~2s/);
     assert.equal(fs.existsSync(abortRequestPath(repo, "clean")), true);
   });
 });
@@ -389,7 +389,7 @@ test("Ctrl+Q, '2h', Enter without a harness flashes the refusal and writes no ma
     tui.key(undefined, "q", { ctrl: true });
     for (const ch of "2h") tui.key(ch, ch);
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /error: no harness is running/);
+    assert.match(tui.lastFrame(), /error: tumwater is not running/);
     assert.equal(scheduledStopAt(repo), undefined);
   });
 });

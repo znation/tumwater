@@ -1,3 +1,4 @@
+// vocabulary: plain
 import fs from "node:fs";
 import path from "node:path";
 import { briefCandidates } from "../paths.js";
@@ -30,7 +31,7 @@ export const STATUS_END = "<!-- tumwater:status:end -->";
 function managedSections(heading: string, initialPrompt: string): string {
   return `# ${heading}
 
-## Initial prompt
+## Brief
 
 ${PROMPT_START}
 ${initialPrompt.trim()}
@@ -39,7 +40,7 @@ ${PROMPT_END}
 ## Status
 
 ${STATUS_START}
-_No status yet. The readme loop keeps this section up to date._
+_No status yet. The readme role keeps this section up to date._
 ${STATUS_END}
 `;
 }
@@ -87,7 +88,7 @@ function firstBriefText(
       text = fs.readFileSync(candidate, "utf8");
     } catch (err) {
       throw new Error(
-        `cannot read the project brief ${JSON.stringify(path.basename(candidate))}: ${errorMessage(err)} — every loop reads this file's prompt each tick, so make it a readable file carrying the ${PROMPT_START}/${PROMPT_END} markers (or move it aside)`,
+        `cannot read the project brief ${JSON.stringify(path.basename(candidate))}: ${errorMessage(err)} — every role reads this file's brief on each run, so make it a readable file carrying the ${PROMPT_START}/${PROMPT_END} markers (or move it aside)`,
       );
     }
     if (accepts(text)) return { file: path.basename(candidate), text };
@@ -149,7 +150,7 @@ function extractPrompt(text: string): string | null {
   // for every tick instead of injecting the whole thing (the same defensive cap readPrinciples
   // applies, through text.ts's truncateWithNote), with a visible note so the loss is not
   // silent. init rejects the normal path before it is committed, so this is the backstop.
-  return truncateWithNote(prompt, INITIAL_PROMPT_MAX_CHARS, "initial prompt");
+  return truncateWithNote(prompt, INITIAL_PROMPT_MAX_CHARS, "brief");
 }
 
 /** The resolved brief as one value: the owning file's basename (briefFile) and its extracted

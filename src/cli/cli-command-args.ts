@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The free-form-prompt commands' bespoke argument parsers: `tumwater init` and
  * `tumwater prompt`, whose positionals are prompt TEXT rather than a token list. Every
  * shared helper in cli/cli-args.ts assumes flags claim their tokens and rejects whatever is
@@ -397,6 +398,6 @@ export function parsePromptArgs(args: string[]): PromptArgs {
   // Name the fix, like the sibling operator commands' usage errors (bug/plan carry their
   // BUG_USAGE/PLAN_USAGE lines): "prompt text required" alone never said what to type.
   if (!text)
-    fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one loop)');
+    fail('prompt text required — usage: tumwater prompt "<text>" (add --role <id> to aim it at one role)');
   return { mode: "enqueue", role, text, atDelayMs, attachPaths: attachPaths };
 }

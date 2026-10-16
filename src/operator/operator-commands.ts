@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { knownRoleIds, loadConfig } from "../config/config.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from "../cli/cli-args.js";
@@ -219,7 +220,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
     // when no marker carries it. Before any marker is written, beside the other fail-fasts.
     if (reason !== undefined)
       fail(
-        "pause --reason states why the whole fleet is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
+        "pause --reason states why the whole team is paused — a per-role pause carries no reason (drop --role, or run bare `tumwater pause --reason <text>`)",
       );
     // Per-role branch: pauseRole in src/fleet/fleet-state.ts is the single writer of the role
     // marker (the TUI's Ctrl+P and the dashboard's /api/pause-role toggle call it too), so
@@ -243,7 +244,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   const { forPhrase, note } = timedPauseBits(timed, now);
   const why = pauseReasonSuffix(reason);
   say(
-    `fleet paused${forPhrase}${why} — role loops stop starting new ticks${when} (in-flight ticks finish; the director keeps running your prompts)${note}${tail}`,
+    `team paused${forPhrase}${why} — roles start no new runs${when} (current runs finish; the director keeps running your messages)${note}${tail}`,
   );
 }
 
@@ -302,9 +303,9 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
   // already stopped — say so and exit clean rather than surfacing Node's raw kill error;
   // anything else (EPERM on a recycled pid, …) comes back as signalOrchestrator's message.
   if (signalOrchestrator(info.pid) === "signalled")
-    say("stop requested — the fleet drains its in-flight ticks and exits (the same path as Ctrl+C)");
+    say("stop requested — the team finishes current work, then stops (the same path as Ctrl+C)");
   else
-    say("the orchestrator exited before the stop signal landed — nothing is running");
+    say("the orchestrator exited before the stop signal arrived — nothing is running");
 }
 
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the

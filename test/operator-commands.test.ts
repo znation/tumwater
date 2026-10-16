@@ -174,7 +174,7 @@ test("cmdAbort without --role fails before writing any marker", async () => {
 test("cmdAbort with no live harness fails instead of leaving an unconsumable marker", async () => {
   const root = tmpdir();
   const stderr = await expectFailAsync(() => cmdAbort(root, ["--role", "coverage"]));
-  assert.match(stderr, /no harness is running/);
+  assert.match(stderr, /tumwater is not running/);
   assert.equal(fs.existsSync(abortRequestPath(root, "coverage")), false);
 });
 
@@ -206,8 +206,8 @@ test("cmdAbort rejects an unknown role id", async () => {
 test("cmdPause writes the marker, reports no-harness timing, and is idempotent", async () => {
   const root = tmpdir(); // fresh repo: no .tumwater/ yet — ensureParentDir must create it
   const first = await expectOk(() => cmdPause(root));
-  assert.match(first.stdout, /fleet paused/);
-  assert.match(first.stdout, /no harness is running/);
+  assert.match(first.stdout, /team paused/);
+  assert.match(first.stdout, /tumwater is not running/);
   assert.ok(fs.existsSync(pausedPath(root)));
   const second = await expectOk(() => cmdPause(root));
   assert.match(second.stdout, /already paused/);
@@ -226,7 +226,7 @@ test("cmdPause with a live harness promises pickup within ~2s", async () => {
   markLive(root);
   const { stdout } = await expectOk(() => cmdPause(root));
   assert.match(stdout, /within ~2s/);
-  assert.doesNotMatch(stdout, /no harness is running/);
+  assert.doesNotMatch(stdout, /tumwater is not running/);
 });
 
 test("cmdResume is a no-op without a marker and lifts one when present", async () => {
@@ -247,7 +247,7 @@ test("cmdResume with a live harness promises pickup within ~2s", async () => {
   const { stdout } = await expectOk(() => cmdResume(root));
   assert.match(stdout, /team resumed/);
   assert.match(stdout, /within ~2s/);
-  assert.doesNotMatch(stdout, /no harness is running/);
+  assert.doesNotMatch(stdout, /tumwater is not running/);
 });
 
 // --- per-role pause (`pause --role <id>` / `resume --role <id>`) ---
@@ -256,7 +256,7 @@ test("cmdPause --role pauses one role, is idempotent, and leaves the fleet marke
   const root = tmpdir();
   const first = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.match(first.stdout, /role clean paused/);
-  assert.match(first.stdout, /in-flight ticks finish; the rest of the fleet is unaffected/);
+  assert.match(first.stdout, /current runs finish; the rest of the team is unaffected/);
   assert.ok(fs.existsSync(pausedRolesPath(root)));
   assert.ok(!fs.existsSync(pausedPath(root)), "a per-role pause never writes the fleet marker");
   const second = await expectOk(() => cmdPause(root, ["--role", "clean"]));
@@ -292,7 +292,7 @@ test("cmdResume --role while the fleet pause holds names the stronger gate inste
   await expectOk(() => cmdPause(root, ["--role", "dry"]));
   const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(stdout, /role clean resumed/);
-  assert.match(stdout, /fleet pause is still active/);
+  assert.match(stdout, /team pause is still active/);
   // The marker really was lifted; only the wording acknowledges the fleet gate.
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dry"]);
 });
@@ -338,7 +338,7 @@ const NOON = new Date(2100, 0, 15, 12, 0, 0).getTime();
 test("cmdPause --for writes a timed fleet marker and names the auto-resume", async () => {
   const root = tmpdir();
   const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"], NOON));
-  assert.match(stdout, /fleet paused for 30m — role loops stop starting new ticks/);
+  assert.match(stdout, /team paused for 30m — roles start no new runs/);
   assert.match(stdout, /resumes automatically at 12:30:00/);
   const marker = readJson(pausedPath(root)) as { at: number; until: number };
   assert.equal(marker.until, NOON + 30 * 60_000);
@@ -352,7 +352,7 @@ test("cmdPause --for over a standing pause overwrites the deadline and reports i
   const evening = new Date(2100, 0, 15, 23, 20, 0).getTime();
   await expectOk(() => cmdPause(root, ["--for", "30m"], evening));
   const { stdout } = await expectOk(() => cmdPause(root, ["--for", "2h"], evening));
-  assert.match(stdout, /fleet paused for 2h —/, "a fresh --for is a fresh confirmation, not 'already paused'");
+  assert.match(stdout, /team paused for 2h —/, "a fresh --for is a fresh confirmation, not 'already paused'");
   assert.match(stdout, /resumes automatically on 2100-01-16 at 01:20:00/);
   const marker = readJson(pausedPath(root)) as { until: number };
   assert.equal(marker.until, evening + 2 * 60 * 60_000);
@@ -366,14 +366,14 @@ test("cmdPause after an expired deadline reports a fresh pause", async () => {
   ensureParentDir(pausedPath(root));
   fs.writeFileSync(pausedPath(root), JSON.stringify({ at: Date.now() - 60_000, until: Date.now() - 30_000 }));
   const { stdout } = await expectOk(() => cmdPause(root));
-  assert.match(stdout, /fleet paused/);
+  assert.match(stdout, /team paused/);
   assert.doesNotMatch(stdout, /already paused/);
 });
 
 test("cmdPause --role --for writes the role marker with the deadline and overwrites on a re-pause", async () => {
   const root = tmpdir();
   const { stdout } = await expectOk(() => cmdPause(root, ["--role", "clean", "--for", "2h"], NOON));
-  assert.match(stdout, /role clean paused for 2h — it stops starting new ticks/);
+  assert.match(stdout, /role clean paused for 2h — it starts no new runs/);
   assert.match(stdout, /resumes automatically at 14:00:00/);
   const readUntil = () => (readJson(pausedRolesPath(root)) as { roles: string[]; until: number }).until;
   const first = readUntil();
@@ -396,12 +396,12 @@ test("cmdPause --role --for writes the role marker with the deadline and overwri
 test("cmdPause --reason quotes the why in the confirmation and the marker", async () => {
   const root = tmpdir();
   const { stdout } = await expectOk(() => cmdPause(root, ["--reason", "deploying to prod"]));
-  assert.match(stdout, /fleet paused — "deploying to prod" — role loops stop starting new ticks/);
+  assert.match(stdout, /team paused — "deploying to prod" — roles start no new runs/);
   const marker = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(marker.reason, "deploying to prod");
   // A --for overwrite carries its own reason beside the refreshed deadline.
   const timed = await expectOk(() => cmdPause(root, ["--for", "30m", "--reason", "deploys"], NOON));
-  assert.match(timed.stdout, /fleet paused for 30m — "deploys" — role loops stop starting new ticks/);
+  assert.match(timed.stdout, /team paused for 30m — "deploys" — roles start no new runs/);
   const timedMarker = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(timedMarker.reason, "deploys");
   // A multi-line operator note folds to the one line every pause surface renders — the
@@ -410,7 +410,7 @@ test("cmdPause --reason quotes the why in the confirmation and the marker", asyn
   await expectOk(() => cmdResume(root)); // the multiline pause must be a fresh write, not the standing no-op
   const multiline = await expectOk(() => cmdPause(root, ["--reason", "deploying\nthe new build\ttonight"]));
   assert.equal(multiline.stdout.trim().split("\n").length, 1, "the confirmation stays one line");
-  assert.match(multiline.stdout, /fleet paused — "deploying the new build tonight" — role loops/);
+  assert.match(multiline.stdout, /team paused — "deploying the new build tonight" — roles start no new runs/);
   const foldedMarker = readJson(pausedPath(root)) as { reason?: string };
   assert.equal(foldedMarker.reason, "deploying the new build tonight", "the marker carries the folded line");
 });
@@ -442,7 +442,7 @@ test("cmdPause --reason on a standing pause stays the no-op and keeps the standi
 test("cmdPause --role --reason fails fast and writes no role marker", async () => {
   const root = tmpdir();
   const stderr = await expectFailAsync(() => cmdPause(root, ["--role", "clean", "--reason", "why"]));
-  assert.match(stderr, /pause --reason states why the whole fleet is paused/);
+  assert.match(stderr, /pause --reason states why the whole team is paused/);
   assert.match(stderr, /a per-role pause carries no reason/);
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "no role pause was recorded");
   assert.ok(!fs.existsSync(pausedPath(root)), "no fleet pause was recorded either");
@@ -459,17 +459,17 @@ test("cmdPause --reason without a value fails with the gate's own wording", asyn
 
 // cmdStop is the one operator command that reaches a real process instead of a disk marker,
 // so until now it was only exercised by spawning the whole CLI (test/cli.test.ts), which
-// cannot assert that the signal landed on the recorded pid or pin the wording in-process.
+// cannot assert that the signal arrived on the recorded pid or pin the wording in-process.
 
 test("cmdStop fails closed with no info file, and with a torn one naming a dead pid", async () => {
   const root = tmpdir();
   const absent = await expectFailAsync(() => cmdStop(root));
-  assert.match(absent, /no harness is running/);
+  assert.match(absent, /tumwater is not running/);
 
   // A torn or stale info file (a pid that is not running) is the same "nothing to stop".
   writeOrchestratorMarker(root, [], { pid: 999_999_999 });
   const dead = await expectFailAsync(() => cmdStop(root));
-  assert.match(dead, /no harness is running/);
+  assert.match(dead, /tumwater is not running/);
 });
 
 test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", async () => {
@@ -484,7 +484,7 @@ test("cmdStop SIGTERMs the recorded orchestrator pid and reports the drain", asy
   writeOrchestratorMarker(root, [], { pid: live.child.pid });
   try {
     const { stdout } = await expectOk(() => cmdStop(root));
-    assert.match(stdout, /stop requested — the fleet drains its in-flight ticks and exits/);
+    assert.match(stdout, /stop requested — the team finishes current work, then stops/);
     const exit = await new Promise<{ code: number | null; signal: string | null }>((resolve) =>
       live.child.once("exit", (code, signal) => resolve({ code, signal })),
     );
@@ -506,7 +506,7 @@ test("cmdStop reports a pid that died between the check and the signal as alread
   writeOrchestratorMarker(root, []);
 
   const { stdout } = await expectOk(() => cmdStop(root));
-  assert.match(stdout, /the orchestrator exited before the stop signal landed — nothing is running/);
+  assert.match(stdout, /the orchestrator exited before the stop signal arrived — nothing is running/);
   assert.deepEqual(
     kill.mock.calls.map((c) => c.arguments),
     [

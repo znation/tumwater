@@ -27,7 +27,7 @@ function writeBrief(root: string, text: string): void {
 test("readmeTemplate wraps the trimmed prompt in managed markers and seeds an empty status", () => {
   const t = readmeTemplate("myproj", "  Build a thing.\n\nMore detail.\n");
   assert.ok(t.startsWith("# myproj\n"));
-  assert.ok(t.includes("## Initial prompt"), "has an initial-prompt heading");
+  assert.ok(t.includes("## Brief"), "has an initial-prompt heading");
   assert.ok(t.includes("## Status"), "has a status heading");
   const start = t.indexOf(PROMPT_START);
   const end = t.indexOf(PROMPT_END, start + PROMPT_START.length);
@@ -44,7 +44,7 @@ test("readInitialPrompt round-trips the prompt from a fresh template", () => {
 test("briefTemplate wraps the trimmed prompt in the same two managed sections as the README template", () => {
   const t = briefTemplate("myproj", "  Build a thing.\n");
   assert.ok(t.startsWith("# myproj"));
-  assert.ok(t.includes("## Initial prompt"), "has an initial-prompt heading");
+  assert.ok(t.includes("## Brief"), "has an initial-prompt heading");
   assert.ok(t.includes("## Status"), "has a status heading");
   const start = t.indexOf(PROMPT_START);
   const end = t.indexOf(PROMPT_END, start + PROMPT_START.length);

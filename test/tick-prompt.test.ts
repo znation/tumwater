@@ -426,7 +426,7 @@ test("the brief's initial prompt survives an over-long hand edit via the truncat
   );
   const result = promptFor(dir, "coverage");
   assert.ok(result);
-  assert.match(result.prompt, /\[initial prompt truncated at 4096 chars\]/);
+  assert.match(result.prompt, /\[brief truncated at 4096 chars\]/);
 });
 
 // `tumwater prompt --role <id>` queues a prompt only that

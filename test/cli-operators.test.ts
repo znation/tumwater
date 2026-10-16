@@ -58,14 +58,14 @@ test("abort validates its arguments before touching anything", async () => {
   }
 });
 
-test("abort refuses when no harness is running — missing or stale info file alike", async () => {
+test("abort refuses when tumwater is not running — missing or stale info file alike", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli abort no harness");
 
   // No orchestrator info at all: nothing would consume the marker.
   let r = await cli(repo, "abort", "--role", "feature");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater is not running/);
   assert.match(r.stderr, /tumwater start/);
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "no marker written");
 
@@ -75,7 +75,7 @@ test("abort refuses when no harness is running — missing or stale info file al
   writeOrchestratorMarker(repo, [], { pid: 2_000_000_000 }); // beyond any pid space
   r = await cli(repo, "abort", "--role", "feature");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no harness is running/);
+  assert.match(r.stderr, /tumwater is not running/);
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "stale info writes no marker");
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
@@ -134,7 +134,7 @@ test("abort's confirmation names the discarded prompt only for the director", as
   // and the base confirmation stays byte-identical.
   const f = await cli(repo, "abort", "--role", "feature");
   assert.equal(f.code, 0);
-  assert.match(f.stdout, /abort requested for feature — a running fleet applies it within ~2s/);
+  assert.match(f.stdout, /abort requested for feature — the running team applies it within ~2s/);
   assert.ok(!f.stdout.includes("discarded"), `no director clause for non-director roles:\n${f.stdout}`);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
@@ -156,8 +156,8 @@ test("pause and resume are idempotent with no harness running", async () => {
   // meaningful (the fleet then starts already paused), so they say where it takes effect.
   let r = await cli(repo, "pause");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /fleet paused/);
-  assert.match(r.stdout, /no harness is running/);
+  assert.match(r.stdout, /team paused/);
+  assert.match(r.stdout, /tumwater is not running/);
   assert.match(r.stdout, /next `tumwater start`/);
   const first = fs.readFileSync(marker, "utf8");
   const m = JSON.parse(first) as { at: number };
@@ -173,7 +173,7 @@ test("pause and resume are idempotent with no harness running", async () => {
   r = await cli(repo, "resume");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /team resumed/);
-  assert.match(r.stdout, /no harness is running/);
+  assert.match(r.stdout, /tumwater is not running/);
   assert.ok(!fs.existsSync(marker), "the marker is removed");
 
   r = await cli(repo, "resume");
@@ -204,7 +204,7 @@ test("pause --for is capped at 90d and accepts the boundary value", async () => 
   // The boundary value passes and writes the timed marker's { at, until } shape.
   r = await cli(repo, "pause", "--for", "90d");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /fleet paused for 90d/);
+  assert.match(r.stdout, /team paused for 90d/);
   const m = readJson(marker) as { at: number; until: number };
   assert.ok(m.until > Date.now() + 89 * 24 * 60 * 60 * 1000, "the deadline is 90 days out");
 });
@@ -238,7 +238,7 @@ test("pause --for writes a timed marker and resume lifts it early", async () => 
 
   const r = await cli(repo, "pause", "--for", "30m");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /fleet paused for 30m —/);
+  assert.match(r.stdout, /team paused for 30m —/);
   // The CLI reads the real clock, so which phrasing the note takes (bare clock, or
   // date-stamped once the deadline crosses midnight) depends on when the suite runs — the
   // test pins the contract (the confirmation names the auto-resume), not the clock's position.
@@ -261,15 +261,15 @@ test("pause and resume name the live effect when a harness is running", async ()
 
   const p = await cli(repo, "pause");
   assert.equal(p.code, 0);
-  assert.match(p.stdout, /fleet paused/);
+  assert.match(p.stdout, /team paused/);
   assert.match(p.stdout, /within ~2s/);
-  assert.doesNotMatch(p.stdout, /no harness is running/);
+  assert.doesNotMatch(p.stdout, /tumwater is not running/);
 
   const r = await cli(repo, "resume");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /team resumed/);
   assert.match(r.stdout, /within ~2s/);
-  assert.doesNotMatch(r.stdout, /no harness is running/);
+  assert.doesNotMatch(r.stdout, /tumwater is not running/);
 
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
@@ -283,7 +283,7 @@ test("pause and resume accept --role to gate one loop, with per-role wording and
   let r = await cli(repo, "pause", "--role", "clean");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /role clean paused/);
-  assert.match(r.stdout, /the rest of the fleet is unaffected/);
+  assert.match(r.stdout, /the rest of the team is unaffected/);
   assert.ok(fs.existsSync(marker), "the per-role marker is written");
   assert.ok(!fs.existsSync(pausedPath(repo)), "the fleet marker is untouched");
 
@@ -381,7 +381,7 @@ test("role --clear-notes and --notes-file write the loop's notebook", async () =
   for (const [args, msg] of [
     [["feature", "--clear-notes", "--notes-file", "x"], /not both/],
     [["feature", "--clear-notes", "--json"], /--json does not apply/],
-    [["director", "--clear-notes"], /director has no notebook/],
+    [["director", "--clear-notes"], /director has no notes/],
     [["bogus", "--clear-notes"], /unknown role: bogus/],
   ] as const) {
     r = await cli(repo, "role", ...args);
@@ -476,7 +476,7 @@ test("wake --in schedules the marker; without --in the immediate shape is unchan
   const immediate = readJson(wakeRequestPath(repo)) as { at: number; roles: string[]; notBeforeMs?: number };
   assert.ok(immediate, "the immediate marker is written");
   assert.equal(immediate.notBeforeMs, undefined);
-  assert.match(r.stdout, /no harness is running/);
+  assert.match(r.stdout, /tumwater is not running/);
 });
 
 test("wake --cancel drops scheduled wakes without writing a marker", async () => {

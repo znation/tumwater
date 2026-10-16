@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The read-only query commands' bodies (status, diff, backlog, questions, role), split out of
  * cli.ts's dispatcher: main() routes to a cmd* here exactly as it routes to operator-commands's
  * cmdAbort or config-commands's cmdConfig, and cli.ts keeps only routing and the help/version
@@ -104,7 +105,7 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // already failed above). A named role keeps the full per-role view.
   const role = parseRoleFlag(args, knownRoleIdsCached(root));
   if (role === null) {
-    if (args.includes("--stat")) fail("diff --stat needs --role <id> (the fleet roster prints no patch)");
+    if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
     sayJsonOrRender(args, await collectFleetChanges(root), renderFleetChange);
   } else {
     const change = await collectRoleChange(root, role, { stat: args.includes("--stat") });
@@ -228,7 +229,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (file !== undefined) {
     if (words.length > 2) fail(`unexpected argument ${JSON.stringify(words[2])} — with --file the decision comes from the file`);
     const answered = answerQuestionFromText(root, n, readPromptFileArg(file));
-    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md");
+    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
     return;
   }
@@ -242,7 +243,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     );
     if (edited.trim() === "") fail("questions answer needs a decision: the editor left it blank; nothing changed");
     const answered = answerQuestionFromText(root, n, edited, question.title);
-    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md");
+    warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${answered.title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
     sayAnswered(n, answered.title, jsonFlag, answered.decision);
     return;
   }
@@ -251,7 +252,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   // answerQuestion collapses the free-form decision to one line before writing it; report
   // that landed text in the --json payload so it matches the file, not the caller's spacing.
   const { title, decision: landedDecision } = answerQuestion(root, n, decision);
-  warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md");
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, "QUESTIONS.md", stampedSubject("operator", `Answer question: ${title}`)), "QUESTIONS.md"); // vocabulary-ok: commit prefix stays
   sayAnswered(n, title, jsonFlag, landedDecision);
 }
 
@@ -274,8 +275,8 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   const notesFile = flagValue(rest, "--notes-file");
   if (clear || rest.includes("--notes-file")) {
     if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
-    if (rest.includes("--json")) fail("--json does not apply to a notebook write");
-    if (id === DIRECTOR_ROLE) fail("the director has no notebook");
+    if (rest.includes("--json")) fail("--json does not apply to a notes write");
+    if (id === DIRECTOR_ROLE) fail("the director has no notes");
     const cfg = loadConfigSafe(root).config ?? defaultConfig();
     if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
     const text = clear ? "" : readPromptFileArg(notesFile || fail("--notes-file needs a path"));

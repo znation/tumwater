@@ -1,3 +1,4 @@
+// vocabulary: plain
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,19 +34,19 @@ import {
 
 /** The error every live-harness-only command reports (abort, stop): one literal so the two
  * surfaces cannot drift on the message an operator sees when nothing is running. */
-export const NO_HARNESS_ERROR = "no harness is running — start it with `tumwater start` first";
+export const NO_HARNESS_ERROR = "tumwater is not running — start it with `tumwater start` first";
 
 /** How a marker command reports when its marker takes effect, derived from one liveness
  * check: `live` says whether a fleet will consume it now, `when` is the " within ~2s" such a
  * fleet picks it up in, and `tail` names the fallback ("takes effect on the next `tumwater
- * run`") while no harness is running. Every marker command shares this so none can promise a
+ * run`") while tumwater is not running. Every marker command shares this so none can promise a
  * timing the others deny — the one place that user-facing contract lives. */
 export function markerApplyNote(root: string): { live: boolean; when: string; tail: string } {
   const live = orchestratorAlive(root);
   return {
     live,
     when: live ? " within ~2s" : "",
-    tail: live ? "" : "; no harness is running, so it takes effect on the next `tumwater start`",
+    tail: live ? "" : "; tumwater is not running, so it takes effect on the next `tumwater start`",
   };
 }
 
@@ -56,8 +57,8 @@ export function markerApplyNote(root: string): { live: boolean; when: string; ta
  * differ. */
 function applyClause(live: boolean, when: string, verb: string): string {
   return live
-    ? `a running fleet ${verb}${when}`
-    : "takes effect on the next `tumwater start` (no harness is running)";
+    ? `the running team ${verb}${when}`
+    : "takes effect on the next `tumwater start` (tumwater is not running)";
 }
 
 /** The marker-writing core of `reset-counters`: zero each target's state file directly when no
@@ -159,8 +160,8 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
     return (
       `wake scheduled for ${roles.join(", ")} — wakes in ${durationLabel(inMs)} — ` +
       (live
-        ? "a running fleet applies it within one poll after the deadline"
-        : "no harness is running — the next `tumwater start` applies it after the deadline")
+        ? "the running team applies it within one poll after the deadline"
+        : "tumwater is not running — the next `tumwater start` applies it after the deadline")
     );
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
@@ -174,7 +175,7 @@ export function requestScheduledStop(root: string, inMs: number): RequestResult 
   scheduleStop(root, Date.now() + inMs);
   return {
     ok: true,
-    message: `stop scheduled in ${durationLabel(inMs)} — the fleet drains its in-flight ticks and exits then; \`tumwater stop --cancel\` drops it`,
+    message: `stop scheduled in ${durationLabel(inMs)} — the team finishes current work, then stops; \`tumwater stop --cancel\` drops it`,
   };
 }
 
@@ -198,7 +199,7 @@ export type RequestResult = { ok: true; message: string } | { ok: false; error: 
 export function requestRestart(root: string): RequestResult {
   const info = readOrchestratorInfo(root);
   if (info?.build && info.build.stale !== true) {
-    return { ok: false, error: "no restart is pending — the running build is current with main" };
+    return { ok: false, error: "no update is waiting — tumwater is current with main" };
   }
   writeJsonAtomic(restartRequestPath(root), { at: Date.now() });
   const { live, when } = markerApplyNote(root);
@@ -245,7 +246,7 @@ export function requestAbort(root: string, role: string): RequestResult {
     return { ok: false, error: NO_HARNESS_ERROR };
   }
   writeJsonAtomic(abortRequestPath(root, role), { at: Date.now() });
-  let confirmation = `abort requested for ${role} — a running fleet applies it within ~2s`;
+  let confirmation = `abort requested for ${role} — the running team applies it within ~2s`;
   if (role === DIRECTOR_ROLE) {
     // The director's in-flight prompt was dequeued from the inbox file at tick start and an
     // abort discards it without re-queueing — say so, since the discard is otherwise silent.
@@ -304,7 +305,7 @@ export function rolePauseMessage(
   if (!changed) return `role ${role} is already paused`;
   const { when, tail } = markerApplyNote(root);
   const { forPhrase, note } = timedPauseBits(timed, now);
-  return `role ${role} paused${forPhrase} — it stops starting new ticks at its next eligibility check${when} (in-flight ticks finish; the rest of the fleet is unaffected)${note}${tail}`;
+  return `role ${role} paused${forPhrase} — it starts no new runs${when} (current runs finish; the rest of the team is unaffected)${note}${tail}`;
 }
 
 /** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
@@ -317,9 +318,9 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
   if (!changed) return `role ${role} was not paused`;
   const { when, tail } = markerApplyNote(root);
   const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
-    ? " (the fleet pause is still active — `tumwater resume` lifts it)"
+    ? " (the team pause is still active — `tumwater resume` lifts it)"
     : "";
-  return `role ${role} resumed — it starts ticking again at its next eligibility check${when}${fleetNote}${tail}`;
+  return `role ${role} resumed — it starts new runs again${when}${fleetNote}${tail}`;
 }
 
 /** The `tumwater pause --for <duration>` cap: 90 days. A timed pause is meant to answer "step

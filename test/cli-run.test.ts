@@ -148,7 +148,7 @@ test("counts the round's ticks and buckets them by last result, sorted by key", 
   );
 
   // Only the ticks this round advanced count: qa had 1 tick before, so 2 of its 3 are new.
-  assert.equal(line, "once: 5 ticks — 1 changed, 1 error, 1 no_change");
+  assert.equal(line, "once: 5 runs — 1 changed, 1 error, 1 no_change");
 });
 
 test("one advanced tick reads singular; zero ticks read `nothing ran`", () => {
@@ -156,12 +156,12 @@ test("one advanced tick reads singular; zero ticks read `nothing ran`", () => {
   saveLoopState(root, state("clean", { ticks: 1, lastResult: "no_change" }));
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
-    "once: 1 tick — 1 no_change",
+    "once: 1 run — 1 no_change",
   );
   // A role that never advanced is skipped with the settle reason too (here: idle, from the map).
   assert.equal(
     onceSummary(root, ["docs"], new Map([["docs", 0]]), new Map([["docs", "idle"]])),
-    "once: 0 ticks — nothing ran, 1 skipped (idle)",
+    "once: 0 runs — nothing ran, 1 skipped (idle)",
   );
 });
 
@@ -178,7 +178,7 @@ test("a skipped role reports the orchestrator's settle reason verbatim, not a st
     new Map([["clean", "deferred"]]),
   );
 
-  assert.equal(line, "once: 0 ticks — nothing ran, 1 skipped (deferred)");
+  assert.equal(line, "once: 0 runs — nothing ran, 1 skipped (deferred)");
 });
 
 test("skip reasons are reported verbatim and in role order", () => {
@@ -202,7 +202,7 @@ test("skip reasons are reported verbatim and in role order", () => {
     ]),
   );
 
-  assert.equal(line, "once: 0 ticks — nothing ran, 3 skipped (deferred, disabled, backoff)");
+  assert.equal(line, "once: 0 runs — nothing ran, 3 skipped (deferred, disabled, backoff)");
 });
 
 test("a role the settle map lacks falls back to state, via the pause marker", () => {
@@ -212,7 +212,7 @@ test("a role the settle map lacks falls back to state, via the pause marker", ()
 
   const line = onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map());
 
-  assert.equal(line, "once: 0 ticks — nothing ran, 1 skipped (paused)");
+  assert.equal(line, "once: 0 runs — nothing ran, 1 skipped (paused)");
 });
 
 test("a role enabled mid-round counts by the round's ticks-run map, not its whole history", () => {
@@ -233,7 +233,7 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
     ]),
   );
 
-  assert.equal(line, "once: 1 tick — 1 changed, 1 skipped (idle)");
+  assert.equal(line, "once: 1 run — 1 changed, 1 skipped (idle)");
 });
 
 test("a ran role with no recorded last result buckets as no_change", () => {
@@ -245,7 +245,7 @@ test("a ran role with no recorded last result buckets as no_change", () => {
 
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
-    "once: 1 tick — 1 no_change",
+    "once: 1 run — 1 no_change",
   );
 });
 
@@ -265,7 +265,7 @@ test("a role the round's ticks-run map lacks counts zero and settles, not its hi
     new Map([["improve", 1]]),
   );
 
-  assert.equal(line, "once: 1 tick — 1 changed, 1 skipped (idle)");
+  assert.equal(line, "once: 1 run — 1 changed, 1 skipped (idle)");
 });
 
 test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
@@ -282,7 +282,7 @@ test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
 
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map()),
-    "once: 0 ticks — nothing ran, 1 skipped (idle)",
+    "once: 0 runs — nothing ran, 1 skipped (idle)",
   );
 });
 
@@ -295,7 +295,7 @@ test("the fallback reads a raised backoffSeconds as backoff", () => {
 
   assert.equal(
     onceSummary(root, ["qa"], new Map([["qa", 1]]), new Map()),
-    "once: 0 ticks — nothing ran, 1 skipped (backoff)",
+    "once: 0 runs — nothing ran, 1 skipped (backoff)",
   );
 });
 
@@ -311,7 +311,7 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
 
   assert.equal(
     onceSummary(root, ["improve"], new Map([["improve", 1]]), new Map()),
-    "once: 0 ticks — nothing ran, 1 skipped (resume pending)",
+    "once: 0 runs — nothing ran, 1 skipped (resume pending)",
   );
 });
 
@@ -343,14 +343,14 @@ const tickRow = (loop: string, result: string, tick: number): TickRow =>
 test("windowSummary counts every tick once by outcome class, with the history table", () => {
   const out = windowSummary("2h", summarizeTickRows([tickRow("clean", "changed", 1), tickRow("clean", "no_change", 2), tickRow("qa", "error", 1)]), true);
   const lines = out.split("\n");
-  assert.equal(lines[0], "for 2h: 3 ticks — 1 changes, 1 none, 1 problems");
+  assert.equal(lines[0], "for 2h: 3 runs — 1 changes, 1 none, 1 problems");
   assert.match(lines[1] ?? "", /^role\s+runs\s+changes\s+none\s+problems\s+tokens\s+cost\s+last change$/);
   assert.deepEqual(lines.slice(2).map((l) => l.split(/\s+/)[0]), ["clean", "qa", "total"]);
 });
 
 test("windowSummary says nothing ran for an empty window and notes a sparse one", () => {
-  assert.equal(windowSummary("2h", summarizeTickRows([]), true), "for 2h: 0 ticks — nothing ran");
-  assert.equal(windowSummary("2h", summarizeTickRows([]), false), `for 2h: 0 ticks — nothing ran\n${SPARSE_WINDOW_NOTE}`);
+  assert.equal(windowSummary("2h", summarizeTickRows([]), true), "for 2h: 0 runs — nothing ran");
+  assert.equal(windowSummary("2h", summarizeTickRows([]), false), `for 2h: 0 runs — nothing ran\n${SPARSE_WINDOW_NOTE}`);
   assert.ok(windowSummary("2h", summarizeTickRows([tickRow("a", "changed", 1)]), false).endsWith(SPARSE_WINDOW_NOTE));
 });
 

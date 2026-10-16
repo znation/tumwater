@@ -240,7 +240,7 @@ test("handleRestart refuses with nothing written when the running build is not s
   seedFleet(root, { sha: "a".repeat(40), builtAt: 1, stale: false });
   const { captured, data } = await serveRestart(root);
   assert.equal(captured.status, 409);
-  assert.match((data as { error: string }).error, /no restart is pending/);
+  assert.match((data as { error: string }).error, /no update is waiting/);
   assert.equal(fs.existsSync(restartRequestPath(root)), false, "a fresh build's press writes nothing");
 });
 
@@ -249,7 +249,7 @@ test("handleRestart with no fleet running writes the marker harmlessly and says 
   const { captured, data } = await serveRestart(root);
   assert.equal(captured.status, 200);
   assert.equal((data as { ok: boolean }).ok, true);
-  assert.match((data as { message: string }).message, /no harness is running/);
+  assert.match((data as { message: string }).message, /tumwater is not running/);
   assert.equal(fs.existsSync(restartRequestPath(root)), true, "the marker waits for the next run's first poll");
 });
 
@@ -311,7 +311,7 @@ test("handleStopSchedule refuses a stopped fleet with 409 and writes no marker",
   const root = tmpdir();
   const { captured, data } = await serveStopSchedule(root, { inSeconds: 7200 });
   assert.equal(captured.status, 409);
-  assert.match((data as { error: string }).error, /no harness is running/);
+  assert.match((data as { error: string }).error, /tumwater is not running/);
   assert.equal(scheduledStopAt(root), undefined);
 });
 
@@ -1138,7 +1138,7 @@ test("handleRoleNotes writes, clears, and rejects bad input without touching the
 
   const bad = [
     [{ role: "nope", text: "z" }, /^unknown role "nope"/],
-    [{ role: DIRECTOR_ROLE, text: "z" }, /^the director has no notebook$/],
+    [{ role: DIRECTOR_ROLE, text: "z" }, /^the director has no notes$/],
     [{ role: "feature", text: 5 }, /"text" must be a string/],
     [{ role: "feature", text: "a".repeat(ROLE_NOTES_MAX_BYTES + 1) }, new RegExp(`note is ${ROLE_NOTES_MAX_BYTES + 1} bytes`)],
   ] as const;
@@ -1174,7 +1174,7 @@ test("POST /api/brief replaces the prompt and commits on main; refusals leave th
   assert.deepEqual(ok.data, { file: "README.md", changed: true, committed: true });
   assert.equal(readBrief(repo)?.prompt, "new idea");
   assertClean(repo);
-  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), "tumwater(operator): Edit initial prompt");
+  assert.equal(sh(repo, "git", "log", "-1", "--format=%s"), "tumwater(operator): Edit brief");
   const after = head();
   const again = await post({ prompt: "new idea" });
   assert.deepEqual(again.data, { file: "README.md", changed: false, committed: false });

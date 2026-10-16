@@ -89,14 +89,14 @@ export async function handleAbort(req: http.IncomingMessage, res: http.ServerRes
 
 /** Handle POST /api/role-notes: the loop drawer's notebook Edit/Clear — the same saveRoleNote
  * `tumwater role <id> --notes-file` / `--clear-notes` call, so the 4 KB cap and its wording
- * cannot drift. `"text": ""` clears. The director has no notebook (400, the CLI's wording); a
+ * cannot drift. `"text": ""` clears. The director has no notes (400, the CLI's wording); a
  * non-string text is a 400 before anything is written; an over-cap note is a 400 carrying
  * saveRoleNote's byte-count message. */
 export async function handleRoleNotes(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
   const body = await readRoleBody(req, res, '{"role": "feature", "text": "…"}', root);
   if (!body) return;
   const role = body.role as string;
-  if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no notebook");
+  if (role === DIRECTOR_ROLE) return badRequest(res, "the director has no notes");
   if (typeof body.text !== "string") return badRequest(res, `"text" must be a string — the full replacement note, or "" to clear it${gotSuffix(body.text)}`);
   try {
     sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), body.text) });

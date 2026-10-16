@@ -28,8 +28,8 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     const r = await cli(repo, "run", "--once", "--role", "clean");
     assert.equal(r.code, 0, `exit 0 on its own (stderr: ${r.stderr})`);
     assert.match(r.stdout, /tumwater once on branch main/, `the once banner: ${r.stdout}`);
-    assert.match(r.stdout, /loops: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
-    assert.match(r.stdout, /once: 1 tick — 1 no_change/,
+    assert.match(r.stdout, /roles: clean\n/, `the banner names only the scoped role: ${r.stdout}`);
+    assert.match(r.stdout, /once: 1 run — 1 no_change/,
       `the summary counts only the scoped role's tick: ${r.stdout}`);
     assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");

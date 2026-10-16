@@ -22,7 +22,7 @@ test("brief --file replaces the prompt, commits on main, and a repeat is a no-op
   const r = await cli(repo, "brief", "--file", file);
   assert.equal(r.code, 0);
   assertClean(repo);
-  assert.equal(subject(repo), "tumwater(operator): Edit initial prompt");
+  assert.equal(subject(repo), "tumwater(operator): Edit brief");
   const shown = await cli(repo, "brief");
   assert.match(shown.stdout, /Build a better thing\./);
   const json = JSON.parse((await cli(repo, "brief", "--json")).stdout);
@@ -30,7 +30,7 @@ test("brief --file replaces the prompt, commits on main, and a repeat is a no-op
   const head = sh(repo, "git", "rev-parse", "HEAD");
   const again = await cli(repo, "brief", "--file", file);
   assert.equal(again.code, 0);
-  assert.match(again.stdout, /initial prompt unchanged/);
+  assert.match(again.stdout, /brief unchanged/);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
 });
 
@@ -54,7 +54,7 @@ test("brief --file on a head off the base branch reports the edit without claimi
   sh(repo, "git", "checkout", "--detach");
   const r = await cli(repo, "brief", "--file", promptFile("Off main prompt.\n"));
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /initial prompt updated in README\.md/);
+  assert.match(r.stdout, /brief updated in README\.md/);
   assert.doesNotMatch(r.stdout, /committed to main/);
   // The write landed even though nothing was committed.
   assert.match((await cli(repo, "brief")).stdout, /Off main prompt\./);
@@ -119,7 +119,7 @@ test("brief --edit saves the edited buffer as --file would; unchanged writes not
   const head = sh(repo, "git", "rev-parse", "HEAD");
   let r = await cliWithEnv(repo, same.env, ["brief", "--edit"]);
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /initial prompt unchanged/);
+  assert.match(r.stdout, /brief unchanged/);
   assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
   r = await cliWithEnv(repo, same.env, ["brief", "--edit", "--json"]);
   assert.deepEqual(JSON.parse(r.stdout), { file: "README.md", changed: false, committed: false });
@@ -127,7 +127,7 @@ test("brief --edit saves the edited buffer as --file would; unchanged writes not
   r = await cliWithEnv(repo, s.env, ["brief", "--edit"]);
   assert.equal(r.code, 0);
   assert.equal(fs.readFileSync(s.received, "utf8").trim(), before);
-  assert.equal(subject(repo), "tumwater(operator): Edit initial prompt");
+  assert.equal(subject(repo), "tumwater(operator): Edit brief");
   assert.match((await cli(repo, "brief")).stdout, /Edited in editor\./);
 });
 
@@ -153,7 +153,7 @@ test("brief --edit refuses an empty buffer, a failing editor, no editor, and --f
   const readme = fs.readFileSync(path.join(repo, "README.md"), "utf8");
   let r = await cliWithEnv(repo, editorStub("empty", `fs.writeFileSync(file, "");`).env, ["brief", "--edit"]);
   assert.notEqual(r.code, 0);
-  assert.match(r.stderr, /the new initial prompt is empty/);
+  assert.match(r.stderr, /the new brief is empty/);
   r = await cliWithEnv(repo, editorStub("bad", "process.exit(1);").env, ["brief", "--edit"]);
   assert.match(r.stderr, /editor exited with status 1; nothing changed/);
   r = await cliWithEnv(repo, { VISUAL: "", EDITOR: "" }, ["brief", "--edit"]);

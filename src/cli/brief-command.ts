@@ -1,3 +1,4 @@
+// vocabulary: plain
 import path from "node:path";
 import { readBrief, renderBrief } from "../brief/brief.js";
 import { editInitialPrompt } from "../brief/brief-edit.js";
@@ -35,7 +36,7 @@ export async function cmdBrief(root: string, args: string[]): Promise<void> {
     text = editInEditor(brief.prompt, "brief.md", "pass --file <path>");
     if (text.trim() === brief.prompt.trim()) {
       if (json) sayJson({ file: path.basename(brief.file), changed: false, committed: false });
-      else say("initial prompt unchanged");
+      else say("brief unchanged");
       return;
     }
   } else text = readPromptFileArg(args[fileIdx + 1]!);
@@ -43,6 +44,6 @@ export async function cmdBrief(root: string, args: string[]): Promise<void> {
   if (!outcome.ok) fail(outcome.error);
   const { file: name, changed, committed } = outcome;
   if (json) sayJson({ file: name, changed, committed });
-  else if (!changed) say("initial prompt unchanged");
-  else say(`initial prompt updated in ${name}${committed ? " (committed to main)" : ""}`);
+  else if (!changed) say("brief unchanged");
+  else say(`brief updated in ${name}${committed ? " (committed to main)" : ""}`);
 }

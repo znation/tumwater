@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
  * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,
@@ -76,7 +77,7 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
   say(`created ${result.created.join(", ")}${result.committed ? " (committed)" : ""}`);
   if (result.bootstrap !== null) {
     say(
-      `fresh project — maintenance loops wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
+      `fresh project — maintenance roles wait until ${result.bootstrap} plans are done; remove "bootstrap" from tumwater.json to end that early`,
     );
   }
   say("next: `tumwater start` in one terminal, `tumwater tui` in another");
@@ -152,7 +153,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const stop = () => {
     if (stopping) process.exit(130);
     stopping = true;
-    say("\nstopping — waiting for in-flight ticks (Ctrl+C again to force)");
+    say("\nstopping — finishing current runs (Ctrl+C again to force)");
     controller.abort();
   };
   process.on("SIGINT", stop);
@@ -202,7 +203,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       ? `tumwater once on branch ${mainBranch}${rootNote} — one round, then exit`
       : `tumwater running on branch ${mainBranch}${forNote}${build}${rootNote} — Ctrl+C to stop`,
   );
-  say(`loops: ${roles.join(", ")}`);
+  say(`roles: ${roles.join(", ")}`);
   say("watch: `tumwater tui` or `tumwater logs -f` in another terminal; events stream below\n");
   const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
@@ -258,8 +259,8 @@ export function windowSummary(label: string, summary: { loops: HistorySummaryRow
   const { total } = summary;
   const lines = [
     total.ticks === 0
-      ? `for ${label}: 0 ticks — nothing ran`
-      : `for ${label}: ${plural(total.ticks, "tick")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
+      ? `for ${label}: 0 runs — nothing ran`
+      : `for ${label}: ${plural(total.ticks, "run")} — ${total.changes} changes, ${total.none} none, ${total.problems} problems`,
   ];
   if (total.ticks > 0) lines.push(renderSummary(summary));
   if (!covered) lines.push(SPARSE_WINDOW_NOTE);
@@ -419,7 +420,7 @@ export function onceSummary(
     .map(([k, n]) => `${n} ${k}`)
     .join(", ");
   const skipNote = skipped.length === 0 ? "" : `, ${skipped.length} skipped (${skipped.join(", ")})`;
-  return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
+  return `once: ${plural(ticks, "run")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
 /** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
@@ -531,10 +532,10 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
         // restart line over the ink full-screen render and corrupt it — the same interleaving
         // childStdio silences for the children. The TUI renders status from on-disk state, so
         // the redeploy is visible there as the fleet coming back.
-        if (!plan.spawnTui) say(`\nrestarting on the new build (generation ${generation})\n`);
+        if (!plan.spawnTui) say(`\nrestarting onto the update (restart ${generation})\n`);
       },
       onCrashLoop: () =>
-        process.stderr.write("tumwater: the harness restarted itself too many times in a minute — giving up\n"),
+        process.stderr.write("tumwater restarted itself too many times in a minute — giving up\n"),
       // Re-ask the startup gate for the reason: a generation that dies right after a respawn
       // most likely met an environment that no longer boots (the 2026-09-22 child found
       // tumwater.json gone). A crash loop's generations all asked for restarts, so the gate

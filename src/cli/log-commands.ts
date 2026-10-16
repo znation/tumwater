@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { fail, say, sayJsonLine } from "./cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag, parseTypeFlag } from "./cli-args.js";
 import {
@@ -18,7 +19,7 @@ import { eventsLogPath, piLogPath } from "../paths.js";
 /** The read-only observing half of the CLI's non-dispatch commands: `tumwater logs` and its
  * `--role` transcript view, split out of cli.ts so the entry point stays a dispatch table. Unlike
  * operator/operator-commands.ts these write nothing but stdout — they only read the event log and
- * each loop's pi transcript. It lives beside the other CLI command bodies (history.ts,
+ * each loop's agent transcript. It lives beside the other CLI command bodies (history.ts,
  * cli/cli-query-commands.ts, operator/operator-commands.ts), which may import the ui/ rendering
  * layer they drive — here the event formatter and the transcript renderer — while src/ui/
  * itself stays off src/ module boundaries it does not own. */
@@ -52,14 +53,14 @@ function sayTally(events: HarnessEvent[], json: boolean): void {
 }
 
 /** The shared rival-shape guard for logs flags that only apply to the event-log feed:
- * `--role` swaps in a pi transcript rather than the event log (--prompt requires --role, so
+ * `--role` swaps in a transcript rather than the event log (--prompt requires --role, so
  * it is excluded with it), so each such flag fails naming both. One wording for all of them —
  * the --json, --grep, and --since checks cannot drift apart in what they say or why. `active`
  * is the flag's own presence — --json alone composes with nothing here but --role, while
  * --grep and --since call from inside their own presence guards. */
 function rejectRoleViewRival(rest: string[], flag: string, active: boolean): void {
   if (active && (rest.includes("--role") || rest.includes("--prompt")))
-    failRivalShapes(`logs ${flag}`, "--role", "the --role view is a pi transcript, not the event log; --prompt requires --role");
+    failRivalShapes(`logs ${flag}`, "--role", "the --role view is the role's agent transcript, not the event log; --prompt requires --role");
 }
 
 /** The missing-pattern error cmdLogs prints for a valueless `--grep`, exported so cli.ts's
@@ -80,13 +81,13 @@ function typeEmpty(type: string): string {
 
 /** `tumwater logs [-f] [-n <count>] [--since <duration>] [--role <id>] [--prompt]`: follow or
  * dump the harness event log, with `--since` a bounded past window of it, or with `--role` one
- * loop's pi transcript (see cmdLogsTranscript). */
+ * loop's agent transcript (see cmdLogsTranscript). */
 export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
   // (review_rejected, land_failed) be filtered even where the rendering paraphrases them.
-  // Rival shapes stay exclusive — --role swaps in a pi transcript rather than this event log
+  // Rival shapes stay exclusive — --role swaps in a transcript rather than this event log
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags. The flag scan itself
   // (the value lookup, the `rest` construction that keeps a flag-shaped pattern from
@@ -122,7 +123,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   rejectRoleViewRival(rest, "--json", json);
   // `--count` tallies the window's present event types instead of printing the rows. Rival
   // shapes stay exclusive: counting implies a bounded window (so -f/--follow is rejected)
-  // and the --role view is a pi transcript rather than the event log.
+  // and the --role view is the role's agent transcript rather than the event log.
   const count = rest.includes("--count");
   rejectRoleViewRival(rest, "--count", count);
   if (count && follow)
@@ -137,7 +138,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // it reads a bounded past window (event-window.ts's day-keyed backwards scan) and prints the
   // survivors oldest-first, so an operator can ask for "the hour around that 429 storm" without
   // guessing a count. Rival shapes stay exclusive — follow means "from now on", -n means "last
-  // N", and --role swaps in a pi transcript rather than this event log — and each failure names
+  // N", and --role swaps in a transcript rather than this log — and each failure names
   // both flags. (--prompt requires --role, so it is excluded with it.)
   const ms = parseSinceFlag(rest, "logs --since", LOGS_SINCE_MAX_MS);
   if (ms !== null) {
@@ -238,7 +239,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   await new Promise(() => {}); // Follow until Ctrl+C.
 }
 
-/** `tumwater logs --role <id>`: print (and optionally follow) one loop's pi transcript —
+/** `tumwater logs --role <id>`: print (and optionally follow) one loop's agent transcript —
  * run separators, abbreviated thinking, assistant text, and tool calls; with `--prompt` also
  * each run's exact prompt text. Read-only; the raw log is pi's streaming event stream, so only
  * complete renderable events are shown. */
