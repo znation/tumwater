@@ -220,6 +220,23 @@ test("tickOnPair matches only an in-flight tick on the fallback pair", () => {
   assert.equal(tickOnPair({ provider: "paid", model: "big-paid" }, pair), false, "a primary tick keeps running");
   assert.equal(tickOnPair(null, pair), false, "an idle loop has nothing to hand back");
   assert.equal(tickOnPair({ provider: "local", model: "local-free" }, null), false, "no fallback, no handback");
+  // A claude fallback pair (PLANS.md "Mixed claude + pi fleets, part 2/4"): setTickPair now
+  // keys the in-flight tick by the seam that ran (seamHoldKey → "claude"), and the fallback
+  // pair is seam-keyed the same way (config-views.ts's seamKeyedFallbackProvider names the
+  // backend for both a `claude/<id>` and a bare `<id>` selector on a claude fleet) — so a
+  // claude fallback tick IS handed back in both selector forms, and a tick whose provider is
+  // a different seam (a pi `omlx` author here) never matches and is not returned.
+  const claude = { provider: "claude", model: "claude-sonnet-5-5" };
+  assert.equal(tickOnPair({ provider: "claude", model: "claude-sonnet-5-5" }, claude), true);
+  assert.equal(
+    tickOnPair({ provider: "omlx", model: "claude-sonnet-5-5" }, claude),
+    false,
+    "a tick on a different seam is not handed back to the claude fallback",
+  );
+  // A bare-selector claude fallback never reaches tickOnPair with provider undefined: the
+  // fallback pair is seam-keyed at creation (config-views.test.ts, seamKeyedFallbackProvider),
+  // so both `claude/<id>` and a bare `<id>` on a claude fleet produce the `claude` pair above
+  // and both hand the tick back through this same match.
 });
 
 test("a fallback pi prices above zero cannot engage: the gate pauses and the event says why", () => {

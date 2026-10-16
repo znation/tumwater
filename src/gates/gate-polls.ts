@@ -409,6 +409,12 @@ export function pollFleetGates(
   // read the same list, like holdObservations on the reducer side. Keying on the effective
   // provider is what lets a storm on the fallback pair form its own hold while the abandoned
   // primary stays clear (PLANS.md "Model failure fallback, part 1/2").
+  //
+  // Each stamp (lastRateLimit/lastBackendFailure) carries the hold key of the backend that
+  // ACTUALLY failed — a reviewer run folded through the author's loop stamps `claude`, not
+  // the pi author's provider — and the polls' observation mapper files each stamp under that
+  // key, falling back to runProvider here for a stamp without one (PLANS.md "Mixed claude +
+  // pi fleets, part 2/4"). The spreads below carry the stamps wholesale, provider included.
   const holdInputs = (rs: readonly LoopRunner[]): HoldInputs[] =>
     rs.map((r) => ({
       role: r.role,

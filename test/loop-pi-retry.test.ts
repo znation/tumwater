@@ -3,10 +3,13 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { sessionDir } from "../src/paths.js";
 import { defaultConfig } from "../src/config/config.js";
+import { configForRole } from "../src/config/config-views.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
-import { withPi } from "./fakes/fake-pi.js";
+import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/loop-pi-fixtures.js";
+import { LoopRunner } from "../src/loop/loop.js";
+import { landingUsage } from "../src/landing/landing-slot.js";
 
 // The shared transient-failure retry (src/loop/loop-pi.ts's runWithTransientRetry): the one
 // bounded retry every pi run takes — the 429 branch with its Retry-After wait and cap, the
@@ -44,6 +47,89 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
   } finally {
     restore();
   }
+});
+
+test("a 429 run folds its seam hold key (the provider it ran on), not just the run", async () => {
+  // PLANS.md "Mixed claude + pi fleets, part 2/4", gap 3: the rate-limit stamp must name the
+  // backend that failed. Every run folds its seam hold key (seamHoldKey of the run's config)
+  // — an `omlx` pi seam folds `omlx`, a claude seam would fold `claude` — so a storm is
+  // blamed on the backend that actually failed, never the role's default provider.
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
+  });
+  try {
+    const cfg = defaultConfig();
+    cfg.agent = "pi";
+    cfg.provider = "omlx";
+    cfg.model = "qwen";
+    const { loopPi, usage, foldProviders } = makeHost(root, cfg);
+    const result = await loopPi.runRolePi(root, "work", "tumwater-feature-3-author");
+    assert.equal(result.ok, true, "the retry succeeds");
+    assert.equal(usage.length, 2, "both attempts fold");
+    assert.deepEqual(foldProviders, ["omlx", "omlx"], "both attempt folds name the omlx seam");
+  } finally {
+    restore();
+  }
+});
+
+test("a 429 on a non-default reviewer seam folds that seam's hold key through foldLandingUsage", async () => {
+  // The reviewer case: the gate's reviewer run folds through foldLandingUsage (authoring
+  // false), and its config is the review seam — so the storm it ends on holds that seam's
+  // key, not the pi author's default provider. (With a claude reviewer this is `claude`;
+  // the omlx seam here proves the mechanism on the fake-pi backend.)
+  const root = tmpdir();
+  const args = path.join(root, "args");
+  const restore = recordingFakePi(args, {
+    firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
+  });
+  try {
+    const cfg = defaultConfig();
+    cfg.agent = "pi";
+    cfg.provider = "omlx";
+    cfg.model = "qwen";
+    const { loopPi, landingUsage, landingFoldProviders } = makeHost(root, cfg);
+    const result = await loopPi.runGatePi({
+      cwd: root,
+      kind: "gate",
+      prompt: "review the change",
+      config: configForRole(cfg, "feature"),
+      sessionDir: sessionDir(root, "feature"),
+      sessionName: "tumwater-review-feature-1",
+      rawLogFile: path.join(root, "log.jsonl"),
+      nativeLogFile: path.join(root, "native.jsonl"),
+      label: "review",
+    });
+    assert.equal(result.ok, true, "the retry succeeds");
+    assert.equal(landingUsage.length, 1, "the failed attempt folds through foldLandingUsage");
+    assert.deepEqual(landingFoldProviders, ["omlx"], "the reviewer storm folds omlx");
+  } finally {
+    restore();
+  }
+});
+
+test("a 429 on a claude reviewer's final run folds the review seam through foldLandingUsage", () => {
+  // The reviewer's FINAL (retried) run is folded by landing-core.ts's reviewPinnedChange
+  // through the landingUsage fold (src/landing/landing-slot.ts); loop-pi.ts folds only the
+  // RETRIED first attempt. That final fold must stamp the REVIEW seam's hold key too — a
+  // storm on a claude reviewer holds `claude`, never the pi author's default provider
+  // (PLANS.md "Mixed claude + pi fleets, part 2/4", gap 3). The author's own provider is
+  // omlx; the review seam is a claude model, so a correct landingUsage folds `claude`.
+  const root = tmpdir();
+  const cfg = defaultConfig();
+  cfg.agent = "pi";
+  cfg.provider = "omlx";
+  cfg.model = "qwen";
+  cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
+  const author = new LoopRunner(root, "feature", cfg, "main");
+  const { foldUsage } = landingUsage(author);
+  foldUsage(piRunResult({ ok: false, transientRateLimit: true }));
+  assert.equal(
+    author.lastRateLimit?.provider,
+    "claude",
+    "the reviewer's 429 holds claude, not the pi author's omlx",
+  );
 });
 
 test("a rate-limited run with no Retry-After hint waits the minute-scale refill pause, not 0", async () => {

@@ -44,14 +44,14 @@ export class LoopRunner {
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
    * src/tick/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
    * runner (src/fleet/fleet-polls.ts), so the field keeps its place on the runner's surface. */
-  get lastRateLimit(): { at: number; retryAfterSeconds?: number } | undefined {
+  get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
     return this.usage.lastRateLimit;
   }
   /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick/tick-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
    * kinds the fleet-wide hold groups storms by (src/fleet/fleet-hold.ts). Same runner surface,
    * same consumer. */
-  get lastBackendFailure(): { at: number; kind: BackendFailureKind } | undefined {
+  get lastBackendFailure(): { at: number; kind: BackendFailureKind; provider?: string } | undefined {
     return this.usage.lastBackendFailure;
   }
   /** Per-tick and lifetime usage accounting (src/tick/tick-usage.ts): the turns/cost windows the
@@ -120,8 +120,8 @@ export class LoopRunner {
       signal: this.signal,
       runSignal: () => this.runSignal(),
       warn: (message) => this.warn(message),
-      foldUsage: (run) => this.foldUsage(run),
-      foldLandingUsage: (run) => this.foldLandingUsage(run),
+      foldUsage: (run, provider) => this.foldUsage(run, provider),
+      foldLandingUsage: (run, provider) => this.foldLandingUsage(run, provider),
       tickNumber: () => this.state.ticks,
       sleep: this.sleep,
     });
@@ -255,8 +255,8 @@ export class LoopRunner {
    * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
    * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
    * wiring (src/landing/landing-slot.ts) reach them. */
-  private foldUsage(run: PiRunResult): void {
-    this.usage.fold(this.state, run);
+  private foldUsage(run: PiRunResult, provider?: string): void {
+    this.usage.fold(this.state, run, true, provider);
   }
 
   /** Run pi for the orchestrator's landing slot (merge queue 3/5): runRolePi's shared wiring
@@ -283,10 +283,10 @@ export class LoopRunner {
    * (reviewer, conflict resolution) into the AUTHORING role's counters, so the fleet's daily
    * cost and the per-role usage windows attribute that spend to the role that authored the
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
-  foldLandingUsage(run: PiRunResult): void {
+  foldLandingUsage(run: PiRunResult, provider?: string): void {
     // authoring=false: a landing/review run's usage counts toward cost and prompt tokens, but
     // never toward the tick's pre-edit counter (src/tick/tick-usage.ts fold).
-    this.usage.fold(this.state, run, false);
+    this.usage.fold(this.state, run, false, provider);
   }
 
   /** Run one full tick of this role loop (the pipeline lives in src/loop/loop-tick.ts):

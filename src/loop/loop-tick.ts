@@ -24,6 +24,7 @@ import {
   modelSelectorField,
   reviewRunConfig,
   scheduleConfigForRole,
+  seamHoldKey,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
@@ -154,7 +155,11 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // Capture what this tick runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
   // the loop is idle must not name a later tick's resume.
-  ctx.setTickPair({ provider: cfg.provider, model: cfg.model });
+  // The pair is keyed by the seam that ran (seamHoldKey), not the pi provider: a claude
+  // fallback tick carries `claude`, matching the configured fallback pair that tickOnPair
+  // (src/gates/budget-gates.ts) compares against, so a tick on a claude fallback is handed
+  // back when the budget gate reopens (PLANS.md "Mixed claude + pi fleets, part 2/4").
+  ctx.setTickPair({ provider: seamHoldKey(cfg), model: cfg.model });
   ctx.setHandedBack(false);
   s.ticks += 1;
   // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):

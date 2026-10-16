@@ -73,14 +73,14 @@ export class TickUsage {
    * cross-role view, and a field on the runner the orchestrator already holds carries the
    * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
    * restart forgetting it costs nothing. Undefined until the first such run. */
-  lastRateLimit?: { at: number; retryAfterSeconds?: number };
+  lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
   /** This loop's most recent pi run that ended on a provider-wide failure that was NOT rate
    * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
    * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
    * the same rule and for the same consumer as lastRateLimit above: the fleet-wide hold
    * (src/fleet/fleet-hold.ts) reads it every poll. In memory only, like lastRateLimit.
    * Undefined until the first such run. */
-  lastBackendFailure?: { at: number; kind: BackendFailureKind };
+  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
 
   /** Clear the per-tick windows (turns, costUsd, the prompt-token counters) at tick start.
    * lastRateLimit and lastBackendFailure are NOT cleared: they are episodic observations the
@@ -101,7 +101,7 @@ export class TickUsage {
    * the loop's lifetime totals on `s`. `authoring` is false for a landing/review run folded
    * through foldLandingUsage: those never advance the tick's pre-edit counter, which measures
    * the authoring search. */
-  fold(s: LoopState, run: PiRunResult, authoring = true): void {
+  fold(s: LoopState, run: PiRunResult, authoring = true, provider?: string): void {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;
     s.peakContextTokens = Math.max(counter(s.peakContextTokens), run.peakContextTokens);
     s.totalCostUsd = counter(s.totalCostUsd) + run.costUsd;
@@ -135,11 +135,11 @@ export class TickUsage {
     // auto-retry and then
     // finished would stamp a 429 at its end, possibly hours late, and could trip a false storm.
     if (run.transientRateLimit && !run.ok)
-      this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds };
+      this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds, provider };
     // The backend-failure sibling of the stamp above, same rule: only a run that ENDED on the
     // failure counts, and the kind travels with it (src/pi/pi-stream.ts backendKind classified
     // the text at parse time). A 429 never lands here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
-      this.lastBackendFailure = { at: Date.now(), kind: run.backendKind };
+      this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider };
   }
 }

@@ -12,9 +12,14 @@ import { assistantLine } from "./pi-events.js";
 export interface Recording {
   warns: string[];
   usage: PiRunResult[];
+  /** The seam hold key (seamHoldKey of the run's config) each foldUsage call carried, in
+   * parallel to `usage` — a claude run folds `claude`, not the role's pi provider. */
+  foldProviders: (string | undefined)[];
   /** Runs folded through foldLandingUsage (landing/review/conflict) — kept apart so a test
    * can prove those never charge the tick's pre-edit prefix. */
   landingUsage: PiRunResult[];
+  /** The seam hold key each foldLandingUsage call carried, parallel to `landingUsage`. */
+  landingFoldProviders: (string | undefined)[];
   /** Wall-clock ms of each foldUsage call, parallel to `usage`. */
   foldTimes: number[];
   /** ms passed to the retry's injected sleep, in call order. */
@@ -31,7 +36,9 @@ export function makeHost(
 ): Recording & { loopPi: LoopPi; config: TumwaterConfig } {
   const warns: string[] = [];
   const usage: PiRunResult[] = [];
+  const foldProviders: (string | undefined)[] = [];
   const landingUsage: PiRunResult[] = [];
+  const landingFoldProviders: (string | undefined)[] = [];
   const foldTimes: number[] = [];
   const sleeps: number[] = [];
   const sleepAts: number[] = [];
@@ -43,12 +50,14 @@ export function makeHost(
     signal: undefined as AbortSignal | undefined,
     runSignal: () => ctl.signal,
     warn: (message: string) => warns.push(message),
-    foldUsage: (run: PiRunResult) => {
+    foldUsage: (run: PiRunResult, provider?: string) => {
       usage.push(run);
+      foldProviders.push(provider);
       foldTimes.push(Date.now());
     },
-    foldLandingUsage: (run: PiRunResult) => {
+    foldLandingUsage: (run: PiRunResult, provider?: string) => {
       landingUsage.push(run);
+      landingFoldProviders.push(provider);
     },
     tickNumber: () => 1,
     // The retry's wait, recorded instead of lived through: a hint-less 429 now defaults to
@@ -60,7 +69,7 @@ export function makeHost(
     abortRunSignal: () => ctl.abort(),
   };
   const loopPi = new LoopPi(host as unknown as ConstructorParameters<typeof LoopPi>[0]);
-  return { loopPi, warns, usage, landingUsage, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
+  return { loopPi, warns, usage, foldProviders, landingUsage, landingFoldProviders, foldTimes, sleeps, sleepAts, abortRunSignal: ctl.abort.bind(ctl), config };
 }
 
 /** A fake pi that records each invocation's argv. `firstRun` runs only on the first

@@ -25,8 +25,8 @@ import { groupBy } from "../collections.js";
 export type HoldInputs = {
   role: string;
   provider?: string;
-  lastRateLimit?: { at: number; retryAfterSeconds?: number };
-  lastBackendFailure?: { at: number; kind: BackendFailureKind };
+  lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
+  lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
 };
 
 /** The HoldObservation list both fleet-wide failure polls step their reducer with, gathered
@@ -36,11 +36,16 @@ export type HoldInputs = {
  * fields the hold reads (its poll's own words), it simply does not use retry-after. */
 function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
   return runners.flatMap((r) => [
+    // Each stamp is filed under the backend that ACTUALLY failed (its own provider, the
+    // failing run's seam hold key — PLANS.md "Mixed claude + pi fleets, part 2/4"), falling
+    // back to the runner's own provider when the stamp carries none (a pre-part-2/4 stamp, or
+    // an unconfigured pi-default seam): a 429 storm on a claude reviewer must hold `claude`,
+    // not the pi author's provider it folded through.
     ...(r.lastRateLimit
-      ? [{ role: r.role, provider: r.provider, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
+      ? [{ role: r.role, provider: r.lastRateLimit.provider ?? r.provider, kind: "rate-limit" as const, at: r.lastRateLimit.at, retryAfterSeconds: r.lastRateLimit.retryAfterSeconds }]
       : []),
     ...(r.lastBackendFailure
-      ? [{ role: r.role, provider: r.provider, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
+      ? [{ role: r.role, provider: r.lastBackendFailure.provider ?? r.provider, kind: r.lastBackendFailure.kind, at: r.lastBackendFailure.at }]
       : []),
   ]);
 }

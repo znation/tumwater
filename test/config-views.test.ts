@@ -323,6 +323,30 @@ test("a map-form fallback engages its default entry until part 5/8 tiers it", ()
   assert.equal(fallbackPair({ ...config, fallback: { default: "pause" } }), null);
 });
 
+test("a non-pi fallback pair is keyed by its backend, in both selector forms", () => {
+  // PLANS.md "Mixed claude + pi fleets, part 2/4": the budget gate's handback matches the
+  // tick's seamHoldKey capture against the fallback pair, so a fallback that routes to a
+  // non-pi backend must carry that backend as its provider — a namespaced `claude/<id>` and
+  // a bare `<id>` on a claude fleet both read `claude`, so a tick on either form is handed
+  // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
+  const claude: TumwaterConfig = { ...defaultConfig(), agent: "claude" };
+  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {
+    provider: "claude",
+    model: "claude-sonnet-5-5",
+  });
+  assert.deepEqual(fallbackPair({ ...claude, fallback: "claude-sonnet-5-5" }), {
+    provider: "claude",
+    model: "claude-sonnet-5-5",
+  }, "a bare claude selector on a claude fleet keys claude too");
+  const pi: TumwaterConfig = defaultConfig();
+  pi.fallback = "omlx/qwen";
+  assert.deepEqual(fallbackPair(pi), { provider: "omlx", model: "qwen" });
+  const bare: TumwaterConfig = defaultConfig();
+  bare.provider = "omlx";
+  bare.fallback = "qwen";
+  assert.deepEqual(fallbackPair(bare), { model: "qwen" }, "a bare pi selector keeps its no-provider shape");
+});
+
 // Part 5a/8: the per-tier budget-fallback resolution engine.
 
 test("resolveTierFallbacks with a single fallback: every tier lands on it, default own", () => {

@@ -220,6 +220,51 @@ test("pollFleetHold separates the same kind at different providers: no cross-pro
   assert.equal(holdEvents(root).length, 0);
 });
 
+test("a stamp's own provider dominates the runner's: a claude reviewer storm holds claude, not the pi author provider", () => {
+  // PLANS.md "Mixed claude + pi fleets, part 2/4", gap 3: a 429 on a claude reviewer folds
+  // through the pi author's run and stamps `claude` (the failing seam's hold key). The
+  // runner-level provider is the pi author's `huggingface`, so without the stamp's own
+  // provider the storm would hold the pi author's provider instead. The observation mapper
+  // files each stamp under its own provider, and only falls back to the runner's when the
+  // stamp carries none.
+  const root = tmpdir("tumwater-fleet-polls-");
+  const holds = pollFleetHold(
+    root,
+    new Map(),
+    [
+      runner("clean", { provider: "huggingface", lastRateLimit: { at: T0, provider: "claude" } }),
+      runner("coverage", { provider: "huggingface", lastRateLimit: { at: T0 + 1_000, provider: "claude" } }),
+    ],
+    T0 + 1_000,
+  );
+  const claude = holds.get("claude")!;
+  assert.notEqual(claude.until, null, "the claude reviewer storm trips claude's hold");
+  assert.equal(claude.provider, "claude");
+  assert.deepEqual(claude.roles, ["clean", "coverage"]);
+  // The pi author provider got no storm observations at all, so it is not even a hold key —
+  // and plainly not a held one.
+  assert.ok(!heldProviders(holds).has("huggingface"), "the pi author provider stays open");
+  assert.deepEqual([...heldProviders(holds)], ["claude"]);
+});
+
+test("a stamp without its own provider falls back to the runner's provider", () => {
+  // A pre-part-2/4 stamp (or an unconfigured pi-default seam) carries no provider; the
+  // observation is then filed under the runner's own provider, preserving the old behavior.
+  const root = tmpdir("tumwater-fleet-polls-");
+  const holds = pollFleetHold(
+    root,
+    new Map(),
+    [
+      runner("clean", { provider: "omlx", lastRateLimit: { at: T0 } }),
+      runner("coverage", { provider: "omlx", lastRateLimit: { at: T0 + 1_000 } }),
+    ],
+    T0 + 1_000,
+  );
+  const omlx = holds.get("omlx")!;
+  assert.notEqual(omlx.until, null, "the fallback-to-runProvider observation still trips the hold");
+  assert.equal(omlx.provider, "omlx");
+});
+
 test("a lifted provider's hold stays in the map with its relapse memory but stops reading as held", () => {
   const root = tmpdir("tumwater-fleet-polls-");
   const storm = (provider: string, at: number) => [

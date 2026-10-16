@@ -17,6 +17,7 @@ import {
   startFallbackProbeAt,
   type FallbackBreakerPolicy,
 } from "../budget/fallback-breaker.js";
+import { seamHoldKey } from "../config/config-views.js"
 import type { FleetGateStates } from "../gates/gate-polls.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
@@ -184,9 +185,12 @@ export function launchDueTicks(ctx: LaunchContext): void {
           // part 1/2").
           const now = Date.now();
           const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(now);
+          // The breaker is keyed by the seam that ran (seamHoldKey), like the tick pair and
+          // the fleet-hold stamps (PLANS.md "Mixed claude + pi fleets, part 2/4"): a claude
+          // fallback tick demotes the `claude/<model>` breaker entry, never `?/…`.
           const ranPair =
             budgetActive && cfg?.model !== undefined
-              ? modelPairName({ provider: cfg.provider, model: cfg.model })
+              ? modelPairName({ provider: seamHoldKey(cfg), model: cfg.model })
               : null;
           const ranOn = ranPair !== null ? gateStates.budget.breakers[ranPair] : undefined;
           const outcome = await runner.tick();

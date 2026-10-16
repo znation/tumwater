@@ -4,7 +4,7 @@ import { runPi, type PiRunKind, type PiRunOptions } from "../pi/pi.js";
 import { agentSessionResumable } from "../agent/agent-backend.js";
 import { HOLD_BASE_MS } from "../fleet/fleet-hold.js";
 import { backendKindPhrase } from "../text/phrases.js";
-import { configForRole, type ResolvedModelConfig } from "../config/config-views.js";
+import { configForRole, seamHoldKey, type ResolvedModelConfig } from "../config/config-views.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
 import { dailyCost, fleetDailyCost } from "../budget/budget.js";
@@ -87,11 +87,17 @@ interface LoopPiHost {
   /** The signal a tick's own runs watch: harness shutdown OR per-tick user abort. */
   runSignal(): AbortSignal;
   warn(message: string): void;
-  foldUsage(run: PiRunResult): void;
+  /** Fold an authoring run's usage. `provider` is that run's seam hold key
+   * (seamHoldKey of the run's config), which the fold stamps onto the fleet-hold's rate-limit
+   * and backend-failure observations so a storm is blamed on the backend that actually failed
+   * (PLANS.md "Mixed claude + pi fleets, part 2/4"). */
+  foldUsage(run: PiRunResult, provider?: string): void;
   /** Fold a landing/review run's usage into the authoring role's counters WITHOUT touching
    * the tick's pre-edit prefix (TickUsage.fold's authoring=false): the reviewer's and conflict
-   * resolver's context is not the authoring tick's pre-edit search. */
-  foldLandingUsage(run: PiRunResult): void;
+   * resolver's context is not the authoring tick's pre-edit search. `provider` is the review
+   * seam's hold key — a 429 storm on a claude reviewer must hold `claude`, not the pi author's
+   * provider. */
+  foldLandingUsage(run: PiRunResult, provider?: string): void;
   tickNumber(): number;
   /** The transient retry's pause before re-running, injectable so tests record the wait
    * instead of living through it (a hint-less 429 waits a real minute). Unset means the
@@ -242,8 +248,14 @@ export class LoopPi {
     // The fold every attempt takes: an authoring run charges the loop's tick counters
     // (foldUsage); a landing, reviewer, or conflict-resolution run charges the same cost and
     // prompt-token totals but never the tick's pre-edit prefix (foldLandingUsage).
+    // The seam this run actually ran on, as the fleet hold keys it (seamHoldKey): the fold
+    // stamps the rate-limit and backend-failure observations with it, so a storm on a claude
+    // reviewer holds `claude` and a pi author on a different provider stays open. opts.config
+    // is always the run's own resolved seam (reviewRunConfig for the reviewer, the role's
+    // config or fallback pair for the author), so this names the backend that failed.
+    const provider = seamHoldKey(opts.config);
     const fold = (run: PiRunResult): void =>
-      authoring ? this.host.foldUsage(run) : this.host.foldLandingUsage(run);
+      authoring ? this.host.foldUsage(run, provider) : this.host.foldLandingUsage(run, provider);
     const pi = await runPi(opts);
     this.warnFallbackClone(pi);
     if (
@@ -462,7 +474,7 @@ export class LoopPi {
         `tumwater-${this.host.role}-${this.host.tickNumber()}-${suffix}`,
         "author",
         true,
-        undefined,
+        cfg,
         this.authorNotesPath(),
       ),
       config: {

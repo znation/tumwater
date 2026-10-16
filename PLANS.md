@@ -126,50 +126,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
 
-### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow)
-
-Design: plans/provider-concurrency.md §9, gaps 2–4 and "One key".
-
-**Goal.**
-- A tick on a claude fallback is handed back when the budget gate reopens.
-- A dead claude fallback is demoted.
-- A 429 storm on a claude reviewer holds `claude` instead of the pi author's provider. The same
-  holds for any author and reviewer on two different pi providers.
-- A SUMMARY or stage-fix follow-up on a fallback seam names that seam's agent.
-
-**Approach.**
-- `setTickPair` (src/loop/loop-tick.ts) records `{ provider: seamHoldKey(cfg), model: cfg.model }`.
-  For a pi seam that is unchanged. For a claude seam it carries `claude`, matching the configured
-  fallback pair that `tickOnPair` (src/gates/budget-gates.ts) compares against.
-- The launch pass's `ranPair` (src/orchestrator/orchestrator-launch.ts) builds its breaker key
-  the same way. Audit every other `modelPairName({ provider: cfg.provider, … })` and switch it.
-- The failure stamps `lastRateLimit` and `lastBackendFailure` (src/tick/tick-usage.ts) gain
-  `provider`, the failing run's `seamHoldKey`. `LoopPi.runWithTransientRetry` knows it from
-  `opts.config` and passes it into the fold.
-  - gate-polls.ts's `holdInputs` files each stamp under its own provider, falling back to
-    `runProvider` for a stamp without one.
-  - The fleet-hold reducer (src/fleet/fleet-hold.ts) is unchanged, because it already keys by
-    provider.
-- `requestFollowUp` (src/loop/loop-pi.ts) passes its `cfg` to `loopPiOpts`, so `nativeLogFile`
-  and the authoring budget cap follow the seam the follow-up runs on.
-
-**Files touched.** src/loop/loop-tick.ts, src/orchestrator/orchestrator-launch.ts,
-src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/gate-polls.ts, and tests:
-test/budget-gates.test.ts, test/fleet-polls.test.ts, test/loop-pi.test.ts,
-test/loop-fallback.test.ts, and the part 1/4 e2e harness.
-
-**Acceptance criteria (this part).**
-- A role ticking on `fallback: "claude/claude-sonnet-5-5"` while the cap holds is handed back
-  when the cap is raised. Today it is not; the test fails on the old code.
-- Two failing role ticks on a claude fallback demote the `claude/claude-sonnet-5-5` breaker
-  entry. No `?/…` pair name appears in events or orchestrator info.
-- Two roles whose claude reviewer runs end on 429 inside the storm window hold `claude`. Their pi
-  author provider stays open, and `reviewHeldNow` turns true.
-- Two pi providers (author `huggingface`, reviewer `omlx`) are held separately in the same way.
-- A follow-up during a model-failure episode on the other backend writes its native log under
-  that backend's name.
-- `npm test` passes.
-
 ### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows)
 
 Design: plans/provider-concurrency.md §9, gaps 5–7.
@@ -406,6 +362,50 @@ README.md, and their tests.
 
 
 ## Done
+### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow) — done 2026-10-15
+
+Design: plans/provider-concurrency.md §9, gaps 2–4 and "One key".
+
+**Goal.**
+- A tick on a claude fallback is handed back when the budget gate reopens.
+- A dead claude fallback is demoted.
+- A 429 storm on a claude reviewer holds `claude` instead of the pi author's provider. The same
+  holds for any author and reviewer on two different pi providers.
+- A SUMMARY or stage-fix follow-up on a fallback seam names that seam's agent.
+
+**Approach.**
+- `setTickPair` (src/loop/loop-tick.ts) records `{ provider: seamHoldKey(cfg), model: cfg.model }`.
+  For a pi seam that is unchanged. For a claude seam it carries `claude`, matching the configured
+  fallback pair that `tickOnPair` (src/gates/budget-gates.ts) compares against.
+- The launch pass's `ranPair` (src/orchestrator/orchestrator-launch.ts) builds its breaker key
+  the same way. Audit every other `modelPairName({ provider: cfg.provider, … })` and switch it.
+- The failure stamps `lastRateLimit` and `lastBackendFailure` (src/tick/tick-usage.ts) gain
+  `provider`, the failing run's `seamHoldKey`. `LoopPi.runWithTransientRetry` knows it from
+  `opts.config` and passes it into the fold.
+  - gate-polls.ts's `holdInputs` files each stamp under its own provider, falling back to
+    `runProvider` for a stamp without one.
+  - The fleet-hold reducer (src/fleet/fleet-hold.ts) is unchanged, because it already keys by
+    provider.
+- `requestFollowUp` (src/loop/loop-pi.ts) passes its `cfg` to `loopPiOpts`, so `nativeLogFile`
+  and the authoring budget cap follow the seam the follow-up runs on.
+
+**Files touched.** src/loop/loop-tick.ts, src/orchestrator/orchestrator-launch.ts,
+src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/gate-polls.ts, and tests:
+test/budget-gates.test.ts, test/fleet-polls.test.ts, test/loop-pi.test.ts,
+test/loop-fallback.test.ts, and the part 1/4 e2e harness.
+
+**Acceptance criteria (this part).**
+- A role ticking on `fallback: "claude/claude-sonnet-5-5"` while the cap holds is handed back
+  when the cap is raised. Today it is not; the test fails on the old code.
+- Two failing role ticks on a claude fallback demote the `claude/claude-sonnet-5-5` breaker
+  entry. No `?/…` pair name appears in events or orchestrator info.
+- Two roles whose claude reviewer runs end on 429 inside the storm window hold `claude`. Their pi
+  author provider stays open, and `reviewHeldNow` turns true.
+- Two pi providers (author `huggingface`, reviewer `omlx`) are held separately in the same way.
+- A follow-up during a model-failure episode on the other backend writes its native log under
+  that backend's name.
+- `npm test` passes.
+
 
 ### Image input, part 3/5: a tick whose agent reads an image on a model that cannot see it is stopped and fails (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Detecting a blind read" and "Failing the tick"; touches src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts, src/loop/model-fallback.ts, src/events/, a different area from part 2/5's doctor files) — done 2026-10-15
 

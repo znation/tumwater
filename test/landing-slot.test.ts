@@ -58,7 +58,10 @@ function queued(root: string, role = "improve"): { entry: LandingEntry; file: st
 
 test("landingUsage charges each run to both the authoring role and the landing's own accumulator", () => {
   const folded: PiRunResult[] = [];
-  const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run) } as unknown as LoopRunner;
+  // landingUsage keys the reviewer's fold by the review seam (PLANS.md "Mixed claude + pi
+  // fleets, part 2/4"), so the stub author must carry a config; these tests don't assert on
+  // the stamp, only on the cost/token accounting, so a default config is enough.
+  const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
   const { usage, foldUsage } = landingUsage(author);
 
   foldUsage(piRun(120, 0.5));
@@ -78,7 +81,7 @@ test("landingUsage charges each run to both the authoring role and the landing's
 // and its real field stays empty.
 test("a subscription landing run folds as notional, and rides the event's notional field", () => {
   const root = makeRepo();
-  const author = { foldLandingUsage: () => {} } as unknown as LoopRunner;
+  const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
   const { usage, foldUsage } = landingUsage(author);
   foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
   foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));

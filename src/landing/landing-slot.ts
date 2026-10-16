@@ -1,6 +1,7 @@
 import { dropLanding, type LandingEntry } from "./landing-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
+import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
@@ -370,16 +371,24 @@ export type LandingUsage = { tokens: number; cost: number; notionalCost?: number
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
  * conflict-resolution spend belongs to the authoring role) and the landing's own accumulator
  * (the landed/land_failed event's usage). Every vet builds its wiring through this, and its
- * merge reuses it, so the accounting — and any future change to it — lives in one place. */
+ * merge reuses it, so the accounting — and any future change to it — lives in one place.
+ * `reviewProvider` is this landing's reviewer seam hold key (seamHoldKey of reviewRunConfig),
+ * folded onto the rate-limit and backend-failure stamps this fold writes: a 429 on a claude
+ * reviewer must hold `claude`, not the pi author's provider (PLANS.md "Mixed claude + pi
+ * fleets, part 2/4"). The reviewer's final runs are folded HERE (landing-core.ts's
+ * reviewPinnedChange), not inside LoopPi — loop-pi.ts stamps the retried first attempt; this
+ * stamps the final run, which ends on a different seam when the reviewer runs on a
+ * non-pi backend. */
 export function landingUsage(author: LoopRunner): {
   usage: LandingUsage;
   foldUsage: (run: PiRunResult) => void;
 } {
   const usage: LandingUsage = { tokens: 0, cost: 0 };
+  const reviewProvider = seamHoldKey(reviewRunConfig(author.config));
   return {
     usage,
     foldUsage: (run) => {
-      author.foldLandingUsage(run);
+      author.foldLandingUsage(run, reviewProvider);
       usage.tokens += run.outputTokens;
       if (runCostIsReal(run)) usage.cost += run.costUsd;
       else usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;

@@ -2,10 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { roleNotesPath, sessionDir } from "../src/paths.js";
+import { nativeLogPath, roleNotesPath, sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
+import { agentSessionResumable } from "../src/agent/agent-backend.js";
+import { claudeTranscriptPath } from "../src/agent/claude/claude-backend.js";
+import { defaultConfig } from "../src/config/config.js";
+import { configForRole } from "../src/config/config-views.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
+import { withClaudeReplay } from "./fakes/fake-claude.js";
+import { claudeInit, claudeResult } from "./fixtures/claude-events.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/loop-pi-fixtures.js";
 
@@ -95,6 +101,46 @@ test("requestSummary carries the role notebook path, like the authoring run", as
         `[${roleNotesPath(root, "feature")}]`,
         "the follow-up runs with the role's notebook path in its environment",
       );
+    },
+  );
+});
+
+test("a follow-up that runs on a claude seam writes its native log under that seam's name", async () => {
+  // PLANS.md "Mixed claude + pi fleets, part 2/4", gap 4: the follow-up (requestFollowUp)
+  // must pass its effective config to loopPiOpts, so a SUMMARY turn running on the claude
+  // fallback during a model-failure episode writes its native log (and computes its
+  // authoring budget) under the claude seam, never the pi primary.
+  const root = tmpdir();
+  await withClaudeReplay(
+    [
+      claudeInit({ sessionId: "c1" }),
+      claudeResult({ totalCostUsd: 0.01 }),
+    ],
+    async () => {
+      // The role's own config is a PI seam; the follow-up we hand it runs on the claude seam
+      // (a model-failure fallback to the other backend). Resolving that seam through
+      // configForRole gives a well-formed run config.
+      const roleCfg = defaultConfig();
+      roleCfg.agent = "pi";
+      const claudeCfg = defaultConfig();
+      claudeCfg.agent = "claude";
+      claudeCfg.model = "claude-sonnet-5-5";
+      const claudeSeam = configForRole(claudeCfg, "feature");
+      const { loopPi } = makeHost(root, roleCfg);
+      // Seed a resumable claude author session exactly as a real claude authoring run would
+      // leave one: the ledger record plus its transcript file under the temp $HOME (the fake
+      // claude writes the transcript; seeding it ourselves keeps this test focused on the
+      // follow-up wiring rather than the claude resume mechanics already pinned elsewhere).
+      const dir = sessionDir(root, "feature");
+      recordSession(dir, { agent: "claude", id: "followup-session", kind: "author", name: "n", cwd: root, at: Date.now() });
+      fs.mkdirSync(path.dirname(claudeTranscriptPath(root, "followup-session")), { recursive: true });
+      fs.writeFileSync(claudeTranscriptPath(root, "followup-session"), "{}");
+      assert.equal(agentSessionResumable(dir, { kind: "author", agent: "claude" }), true, "the seeded claude session is resumable");
+      // The SUMMARY follow-up now continues that claude session.
+      const result = await loopPi.requestSummary(root, claudeSeam);
+      assert.ok(result, "a resumable claude session produces a run");
+      assert.match(fs.readFileSync(nativeLogPath(root, "feature", "claude"), "utf8"), /"type":"result"/, "the follow-up's native log lands at the claude seam path");
+      assert.ok(!fs.existsSync(nativeLogPath(root, "feature", "pi")), "no pi native log for a claude follow-up");
     },
   );
 });

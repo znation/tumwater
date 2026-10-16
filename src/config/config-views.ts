@@ -4,7 +4,7 @@
  * persistence side (defaults, loading, saving, the role-selection helpers) lives in
  * config.ts, the write side in config-write.ts. */
 import { MODEL_TIERS, type AgentConfig, type FallbackModelConfig, type ModelTier, type TumwaterConfig } from "./config-schema.js";
-import { formatModelSelector, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
+import { formatModelSelector, isAgentId, parseModelSelector, routeModel, type ModelSelector } from "./model-selector.js";
 import { isJsonObject } from "../files/json-object.js";
 import { modelPairName } from "../budget/budget.js";
 import { DIRECTOR_ROLE, roleById } from "../roles/roles.js";
@@ -267,7 +267,27 @@ function fallbackSelectorFields(
   config: TumwaterConfig,
 ): Pick<FallbackModelConfig, "provider" | "model" | "thinking"> {
   const parsed = parseModelSelector(selector);
-  return resolvedModelFields(parsed.provider, parsed.model, parsed.thinking ?? config.thinking);
+  return resolvedModelFields(
+    seamKeyedFallbackProvider(config, parsed.provider),
+    parsed.model,
+    parsed.thinking ?? config.thinking,
+  );
+}
+
+/** A fallback pair's provider keyed by the seam it routes to (PLANS.md "Mixed claude + pi
+ * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
+ * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
+ * fleet both read `claude` — so the budget gate's handback (gate-polls.ts's tickOnPair
+ * against the tick's seamHoldKey capture, loop-tick.ts's setTickPair) matches a tick on
+ * either selector form. The same routing rule as routeModel: a provider naming an agent is
+ * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
+ * its own provider (a bare pi selector keeps undefined, exactly as before). */
+function seamKeyedFallbackProvider(
+  config: TumwaterConfig,
+  provider: string | undefined,
+): string | undefined {
+  const agent = provider === undefined ? config.agent : isAgentId(provider) ? provider : "pi";
+  return agent !== "pi" ? agent : provider;
 }
 
 /** The `model` selector a run actually starts on, as an event/payload field: the resolved
@@ -372,7 +392,7 @@ function legacyFallbackPair(config: TumwaterConfig): FallbackModelConfig | null 
   // The top-level model is a selector too (parsed the same way withModelOverrides does), so a
   // fallback field that omits model borrows the parsed id, never the raw selector string.
   const topSel = topTierSelector(config, "default");
-  const provider = fbo.provider ?? topSel?.provider ?? config.provider;
+  const provider = seamKeyedFallbackProvider(config, fbo.provider ?? topSel?.provider ?? config.provider);
   const model = fbo.model ?? topSel?.model;
   const thinking = fbo.thinking ?? topSel?.thinking ?? config.thinking;
   return resolvedModelFields(provider, model, thinking);
