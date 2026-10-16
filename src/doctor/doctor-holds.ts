@@ -6,7 +6,7 @@ import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
-import { loadLoopState } from "../loop/loop-state.js";
+import { loadLoopState, type LoopState } from "../loop/loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { squash } from "../text/text.js";
@@ -24,9 +24,14 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 /** The standing-hold checks: `pause` (checkPause), `quiet hours` (checkQuietHours), and `budget`
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
  * (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all read-only reports of
- * holds on ticking.
- *
- * The `pause` check: names a standing operator pause so doctor does not print "ready to run"
+ * holds on ticking. */
+function loadLoopStates(root: string, config: TumwaterConfig): LoopState[] {
+  return loopIds(config)
+    .map((id) => loadLoopState(root, id))
+    .sort((a, b) => a.role.localeCompare(b.role));
+}
+
+/** The `pause` check: names a standing operator pause so doctor does not print "ready to run"
  * over a fleet that starts no tick. Read-only: it reads the same fleet and per-role pause
  * markers the scheduler reads (standingFleetPause, pausedRoles, pausedRolesUntil — all treat
  * an expired marker as absent), so its verdict cannot disagree with what the fleet does. A
@@ -96,7 +101,7 @@ export function checkBudget(
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const states = loopIds(config).map((id) => loadLoopState(root, id));
+  const states = loadLoopStates(root, config);
   const spent = published?.spentUsd ?? fleetDailyCost(states, now);
   const caps = config.maxDailyCostUsdPerRole;
   const capped = [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)]
@@ -130,9 +135,7 @@ export function checkMaintenanceQuota(
   now: number = Date.now(),
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const loops = loopIds(config)
-    .map((id) => loadLoopState(root, id))
-    .map((s) => ({ role: s.role, running: aliveFleet && s.running === true }));
+  const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveFleet && s.running === true }));
   const queued = aliveFleet ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
   const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkLanding, loops, queued, now);
   if (held.length > 0) {
@@ -221,10 +224,8 @@ export function checkProviderHolds(root: string, now: number = Date.now()): Chec
  * fail: a failing loop does not stop the fleet from running. */
 export function checkErrorStreaks(root: string, config: TumwaterConfig | undefined): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
-  const failing = loopIds(config)
-    .map((id) => loadLoopState(root, id))
-    .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN)
-    .sort((a, b) => a.role.localeCompare(b.role));
+  const failing = loadLoopStates(root, config)
+    .filter((s) => (s.consecutiveErrors ?? 0) >= ERROR_STREAK_WARN);
   if (failing.length === 0) return okOutcome("no loop failing consecutively");
   const paused = new Set(pausedRoles(root));
   const phrases = failing.map((s) => {
@@ -250,10 +251,8 @@ export function checkMainRed(root: string, config: TumwaterConfig | undefined): 
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const mainCheck = mainCheckForPoll(root, config);
   const ids = loopIds(config);
-  const held = ids
-    .map((id) => loadLoopState(root, id))
-    .filter((s) => heldByMainRed(s, mainCheck))
-    .sort((a, b) => a.role.localeCompare(b.role));
+  const held = loadLoopStates(root, config)
+    .filter((s) => heldByMainRed(s, mainCheck));
   if (held.length === 0) return okOutcome("no loop held by a red main");
   const err = held.find((s) => s.lastError)?.lastError;
   const cause = err ? ` — ${squash(err, 160)}` : "";
