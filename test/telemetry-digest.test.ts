@@ -2,28 +2,30 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { TELEMETRY_DIGEST_DAYS, telemetryDigest } from "../src/tick/telemetry-digest.js";
-import { atLocalTs as at } from "./helpers/oracles.js";
+import { TELEMETRY_DIGEST_MS, telemetryDigest } from "../src/tick/telemetry-digest.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // The digest buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings), matching the reader and collectReport (dayKey).
 
-test("TELEMETRY_DIGEST_DAYS is the role's one-day window", () => {
-  assert.equal(TELEMETRY_DIGEST_DAYS, 1);
+test("TELEMETRY_DIGEST_MS is the role's trailing 24 h window", () => {
+  assert.equal(TELEMETRY_DIGEST_MS, 24 * 3_600_000);
 });
 
-test("telemetryDigest renders the digest over the role's one-day window", () => {
+test("telemetryDigest renders the trailing 24 h, including the previous evening", () => {
   const root = makeRepo();
+  const now = Date.now();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
-    { ts: at(3), loop: "feature", type: "run_end", result: "error", error: "older, out of window" },
+    { ts: now - 3_600_000, loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    // Inside 24 h but on the previous calendar day whenever the digest runs before 23:00 local.
+    { ts: now - 23 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "last evening failure" },
+    { ts: now - 40 * 3_600_000, loop: "feature", type: "run_end", result: "error", error: "older, out of window" },
   ]);
   const digest = telemetryDigest(root);
   assert.ok(digest, "a readable log always yields a digest string");
-  assert.match(digest, /\(1 day\)/);
   assert.match(digest, /pi exited null/);
+  assert.match(digest, /last evening failure/);
   assert.doesNotMatch(digest, /older, out of window/);
 });
 
@@ -56,7 +58,7 @@ test("a missing log reads as idle while a present-but-corrupt feed is named unre
   // The bug: both shapes rendered the same "no events retained", so the telemetry role's own
   // evidence could not tell "the fleet was idle" from "I could not read the log".
   const missing = makeRepo();
-  assert.match(telemetryDigest(missing) ?? "", /^no events retained$/m);
+  assert.match(telemetryDigest(missing) ?? "", /^no events in the last 1d$/m);
 
   const corrupt = makeRepo();
   writeEvents(corrupt, ["{not json"]);
