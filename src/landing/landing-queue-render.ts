@@ -23,6 +23,7 @@ export function queueEntryLandingLabel(sha: string, inFlight: LandingInFlight | 
   let label = "landing";
   if (change.startedAt) label += ` ${humanSeconds(secondsSince(change.startedAt, now))}`;
   if (change.stage) label += ` · ${LANDING_STAGE_LABELS[change.stage]}`;
+  if (change.stageSince !== undefined) label += ` ${humanSeconds(secondsSince(change.stageSince, now))}`;
   return label;
 }
 

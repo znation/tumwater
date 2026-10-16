@@ -513,6 +513,35 @@ test("the build-check and merging landing stages render their label and never re
   }
 });
 
+// The per-stage elapsed (PLANS.md 2026-10-15): a landing cell carrying stageSince appends it
+// after the stage for every staged arm (build-check/merging and the reviewing/resolving tail),
+// and omits it when absent, so an older generation's cell keeps its current label.
+test("loopPhase appends the per-stage elapsed after a staged landing, when the cell carries stageSince", () => {
+  const s = freshLoopState("clean");
+  const startedAt = Date.now() - 90_000; // 90s of landing → "1m30s"
+  const stageSince = Date.now() - 30_000; // 30s in THIS stage → "30s"
+  // build-check (a plain staged arm): the stage elapsed appends after the stage.
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check", stageSince }),
+    "landing 1m30s · build check 30s",
+  );
+  // Without stageSince the current label is unchanged (the old generation's cell).
+  assert.equal(
+    loopPhase(s, true, undefined, false, undefined, false, { status: "landing", startedAt, stage: "build-check" }),
+    "landing 1m30s · build check",
+  );
+  // reviewing (a scrutinized arm): the stage elapsed renders before the in-flight detail tail;
+  // without a log the tail is the bare staged label carrying it.
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing", stageSince }),
+    "landing 1m30s · reviewing 30s",
+  );
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, false, { status: "landing", startedAt, stage: "reviewing" }),
+    "landing 1m30s · reviewing",
+  );
+});
+
 test("the reviewing landing stage carries the reviewer run's live detail, timed from the landing", () => {
   const root = tmpdir();
   // The landing's reviewer writes the role's own raw log from its lander worktree — the gate

@@ -273,13 +273,48 @@ test("setLandingStage advances only its own role's record, and only its stage", 
   // landing's startedAt (the cell's elapsed) are preserved.
   setLandingStage(root, "bugfix", "build-check");
   const after = readLandingMarker(root)!;
-  assert.deepEqual(after.changes, [{ ...before.changes![0]!, stage: "build-check" }]);
+  assert.equal(after.changes![0]!.stage, "build-check");
+  assert.ok(after.changes![0]!.stageSince! >= before.changes![0]!.stageSince!, "the transition re-stamped stageSince");
   assert.deepEqual([after.role, after.sha, after.startedAt, after.stage], [before.role, before.sha, before.startedAt, "build-check"]);
   // An older generation's one-change marker carries no records: no pipeline change is staged on it.
   const single = { role: "bugfix", sha: "b", summary: "s", startedAt: 2, stage: "merging" } as const;
   writeLandingMarker(root, single);
   setLandingStage(root, "bugfix", "reviewing");
   assert.deepEqual(readLandingMarker(root), single);
+});
+
+// The per-stage elapsed (PLANS.md 2026-10-15): each change's record stamps `stageSince` ONCE
+// when it enters its current stage — at addLandingChange with its initial `rebasing`, and on
+// each setLandingStage transition, leaving an unchanged stage alone.
+test("addLandingChange and setLandingStage stamp stageSince on each stage entry", () => {
+  const root = makeRepo();
+  addLandingChange(root, { role: "alpha", sha: "a".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const added = readLandingMarker(root)!.changes![0]!;
+  assert.equal(added.stageSince, added.startedAt, "the initial rebasing stamps its own start");
+  // A transition to another stage moves stageSince with it.
+  const before = readLandingMarker(root)!.changes![0]!.stageSince!;
+  setLandingStage(root, "alpha", "reviewing");
+  const atReview = readLandingMarker(root)!.changes![0]!;
+  assert.equal(atReview.stage, "reviewing");
+  assert.ok(atReview.stageSince! >= before, "the transition re-stamps the new stage's entry");
+  // Re-staging the same stage leaves stageSince alone (the existing unchanged-stage no-op).
+  const stamp = readLandingMarker(root)!.changes![0]!.stageSince!;
+  setLandingStage(root, "alpha", "reviewing");
+  assert.equal(readLandingMarker(root)!.changes![0]!.stageSince, stamp, "an unchanged stage keeps its stamp");
+  // A marker that never transitions keeps one stageSince equal to its start.
+  const root2 = makeRepo();
+  addLandingChange(root2, { role: "beta", sha: "b".repeat(40), tick: 1, summary: "s", enqueuedAt: 1 }, new Set());
+  const b = readLandingMarker(root2)!.changes![0]!;
+  assert.equal(b.stageSince, b.startedAt, "a never-transitioned change's stageSince is its start");
+  // A foreign stageSince is dropped by isLandingChange rather than read field-by-field.
+  fs.writeFileSync(
+    landingStatePath(root2),
+    JSON.stringify({
+      role: "beta", sha: "b".repeat(40), summary: "s", startedAt: 1, stage: "rebasing", stageSince: "oops",
+      changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "landing", stageSince: "oops" }],
+    }),
+  );
+  assert.deepEqual(landingChanges(readLandingMarker(root2)!).map((c) => c.role), [], "a bad stageSince record reads as absent");
 });
 
 // A check parked for its process-wide permit names the wait, not a running check — so a row
@@ -372,6 +407,11 @@ test("the marker's records come and go per change, and its top level follows the
 test("landingChanges reads a one-change marker as one landing record", () => {
   const single = { role: "clean", sha: "c", summary: "s", startedAt: 5, stage: "reviewing" } as const;
   assert.deepEqual(landingChanges(single), [{ ...single, status: "landing" }]);
+  // A top-level stageSince (a newer generation's one-change marker) rides the legacy record;
+  // without one, the record carries none — backward compatible with the old generation.
+  const withSince = { ...single, stageSince: 6 } as const;
+  assert.equal(landingChanges(withSince)[0]!.stageSince, 6, "a top-level stageSince rides the legacy record");
+  assert.equal(landingChanges(single)[0]!.stageSince, undefined);
 });
 
 test("a foreign changes shape or a null record degrades instead of crashing a landing", () => {

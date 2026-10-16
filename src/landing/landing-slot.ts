@@ -5,7 +5,7 @@ import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
-import { isJsonObject } from "../files/json-object.js";
+import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
 import { landingStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
@@ -81,6 +81,9 @@ export interface LandingChange {
   status: LandingChangeStatus;
   startedAt?: number;
   stage?: LandingStage;
+  /** When this change ENTERED its CURRENT stage (epoch ms) — stamped ONCE on the transition
+   * that set `stage`, so the per-stage elapsed a label renders measures only that stage. */
+  stageSince?: number;
 }
 
 /** The in-flight landing marker (plans/merge-queue.md 4/5): which changes are landing right
@@ -102,6 +105,7 @@ export interface LandingInFlight {
   summary: string;
   startedAt: number;
   stage?: LandingStage;
+  stageSince?: number;
   changes?: LandingChange[];
 }
 
@@ -198,6 +202,7 @@ export function addLandingChange(root: string, entry: LandingEntry, live: Readon
     status: "landing",
     startedAt,
     stage: "rebasing",
+    stageSince: startedAt,
   };
   rewriteMarker(root, {
     role: entry.role,
@@ -205,6 +210,7 @@ export function addLandingChange(root: string, entry: LandingEntry, live: Readon
     summary: entry.summary,
     startedAt,
     stage: "rebasing",
+    stageSince: startedAt,
     changes: [...kept, change],
   });
 }
@@ -239,6 +245,7 @@ export function setLandingStage(root: string, role: string, stage: LandingStage)
   updateLandingChange(root, role, (change) => {
     if (change.stage === stage) return false; // already there — keep the marker as written
     change.stage = stage;
+    change.stageSince = Date.now();
     return true;
   });
 }
@@ -282,6 +289,7 @@ export function landingChanges(marker: LandingInFlight): LandingChange[] {
           status: "landing",
           startedAt: marker.startedAt,
           stage: marker.stage,
+          ...(marker.stageSince !== undefined ? { stageSince: marker.stageSince } : {}),
         },
       ];
 }
@@ -297,7 +305,8 @@ export function isLandingChange(value: unknown): value is LandingChange {
     typeof value.role === "string" &&
     typeof value.sha === "string" &&
     typeof value.summary === "string" &&
-    (value.status === "landing" || value.status === "vetted" || value.status === "done")
+    (value.status === "landing" || value.status === "vetted" || value.status === "done") &&
+    (value.stageSince === undefined || nonNegativeNumber(value.stageSince, null) !== null)
   );
 }
 

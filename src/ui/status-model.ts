@@ -27,7 +27,7 @@ import { landingChanges, LANDING_STAGE_LABELS, type LandingChange } from "../lan
  * (status-render.ts). Depends on status/status-data.ts one way: deriving reads the snapshot
  * and never collects fleet state itself (live tick detail is display-only). */
 
-type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage">;
+type LandingCell = Pick<LandingChange, "status" | "startedAt" | "stage" | "stageSince">;
 
 /** The snapshot's in-flight landing record (merge queue 4/5) filtered to one role: this
  * role's change record while the pipeline holds it — vetting or merging it (`landing`), or
@@ -41,7 +41,7 @@ export function landingForRole(landQueue: StatusSnapshot["landQueue"], role: str
   if (!landQueue.inFlight) return null;
   const change = landingChanges(landQueue.inFlight).find((c) => c.role === role);
   return change && change.status !== "done"
-    ? { status: change.status, startedAt: change.startedAt, stage: change.stage }
+    ? { status: change.status, startedAt: change.startedAt, stage: change.stage, stageSince: change.stageSince }
     : null;
 }
 
@@ -131,7 +131,8 @@ export function loopPhase(
     if (landing.status === "vetted") return "vetted, awaiting merge";
     const head = landing.startedAt === undefined ? "landing" : `landing ${duration(Date.now() - landing.startedAt)}`;
     if (!landing.stage) return head;
-    const staged = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
+    const base = `${head} · ${LANDING_STAGE_LABELS[landing.stage]}`;
+    const staged = landing.stageSince === undefined ? base : `${base} ${duration(Date.now() - landing.stageSince)}`;
     if (landing.stage !== "reviewing" && landing.stage !== "resolving") return staged;
     // The reviewer writes the role's own log from its leased pooled slot, and the conflict
     // resolver from the merge worktree, both as gate runs (loop-pi.ts): the GATE accumulator,

@@ -305,6 +305,10 @@ test("renderLandingQueue marks entries with a live in-flight record and leaves t
   assert.equal(renderLandingQueue(view, now, undefined), plain);
   const noStage = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stage: undefined }] };
   assert.match(renderLandingQueue(view, now, noStage), /\[landing 2m\] · s a/);
+  // A record carrying stageSince appends the per-stage elapsed after the stage (PLANS.md
+  // 2026-10-15): `landing 2m · reviewing 30s`.
+  const withSince = { ...inFlight, changes: [{ ...inFlight.changes[0]!, stageSince: now - 30_000 }] };
+  assert.match(renderLandingQueue(view, now, withSince).split("\n")[1]!, /\[landing 2m · reviewing 30s\] · s a$/);
 });
 
 test("queueEntryLandingLabel reads an older-generation marker with no changes array as one landing record", () => {
@@ -312,4 +316,8 @@ test("queueEntryLandingLabel reads an older-generation marker with no changes ar
   const old = { role: "a", sha: "1".repeat(40), summary: "s", startedAt: now - 60_000, stage: "merging" as const };
   assert.equal(queueEntryLandingLabel("1".repeat(40), old, now), "landing 1m · merging");
   assert.equal(queueEntryLandingLabel("2".repeat(40), old, now), "");
+  // A newer generation's one-change marker carries stageSince at the top level; the label
+  // appends it, while an old one without it keeps the current text.
+  const withSince = { ...old, stageSince: now - 30_000 };
+  assert.equal(queueEntryLandingLabel("1".repeat(40), withSince, now), "landing 1m · merging 30s");
 });
