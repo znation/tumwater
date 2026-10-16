@@ -61,6 +61,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 
+
+### Each loop's last-landed age: `tumwater status`, the TUI and the dashboard say when a loop last landed a change to main (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch only the `run`/`logs` CLI wiring and `src/doctor`, and this touches none of them: just `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, src/ui/status-payload.ts, `src/ui/status-render.ts`, `src/ui/gui/`, and their tests, so it lands beside them on any feature run)
+
+**Goal.** The fleet row already names a loop's `commits` (a lifetime count) and its last-tick time (`lastTickEndedAt`), and the just-landed no-change streak counts consecutive empty ticks. None of them answer the wall-clock question an autonomous-fleet operator most wants: "when did this loop last actually land something on main?" A loop can tick `no_change` forever — the streak climbs but resets on any landing, and the commits count climbs without saying how long the dry spell has been. This adds the direct answer, the productivity complement to `lastError` and `lastTickEndedAt`.
+
+**Approach.** Persist one timestamp and render it, mirroring how `lastError` rides LoopState → status-payload → the table/dashboard.
+- `src/loop/loop-state.ts`: add `lastLandedAt?: number` to `LoopState` beside `lastError`/`lastTickEndedAt` (epoch ms; absent until the first landing, absent on states written before the field existed).
+- `src/tick/tick-apply.ts` `applyLandingOutcome`'s `changed` branch — the same site that does `s.commits += 1` and resets `consecutiveErrors`: set `s.lastLandedAt = Date.now()`. `Date.now()` is already used in this function (the rejected branch's backoff rung), so no new clock seam; a `rejected`/`merge_conflict`/`aborted` landing leaves the prior value, so the age means "last successful landing".
+- src/ui/status-payload.ts per-loop row: carry `lastLandedAt: s.lastLandedAt ?? null` beside `lastTickEndedAt`, so `tumwater status --json` exposes the epoch ms.
+- `src/ui/status-render.ts`: add a last-landed cell to each loop row (a `· <N> ago` suffix, reusing the existing `ago`/`lastTickCell` relative-time formatter so the last-tick and last-landed columns cannot drift on what "ago" means); a loop that has never landed shows the same dash `lastTickCell` uses for a never-ticked loop.
+- `src/ui/gui/gui-client-fleet.ts` (and the role drawer where it lists `lastTickEndedAt`): render "landed <N> ago" from the payload field with the GUI's own `fmtAgo`, matching the `ago` rule client-side.
+- Tests: extend the status-payload/status-render loop-row tests and the tick-apply landing tests — a `changed` landing sets `lastLandedAt`; a rejection/merge-conflict leaves the prior value; a fresh loop carries none; the rendered age matches the relative-time format.
+
+**Files touched.** `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, src/ui/status-payload.ts, `src/ui/status-render.ts`, `src/ui/gui/gui-client-fleet.ts` (and the drawer site if it lists the last tick), and the matching `test/` suites (tick-apply, status, gui-fleet). No `src/cli`, `src/doctor`, `src/review`, or `src/loop` scheduler change.
+
+**Acceptance criteria.**
+- A loop whose change lands shows a last-landed age in `tumwater status`, the TUI fleet table, and the dashboard Fleet rows; a loop that has never landed shows the same dash as a never-ticked loop; the age is unchanged by a `rejected`/`merge_conflict`/`no_change` outcome.
+- `lastLandedAt` is set only in `applyLandingOutcome`'s `changed` branch, pinned by the tick-apply test; it rides the persisted `LoopState` like `lastError`/`lastTickEndedAt`, so a restart keeps it.
+- The status table and the dashboard render the age with the same relative-time formatter as the last-tick column (no drift), and `tumwater status --json` carries the `lastLandedAt` epoch ms.
+- `npm run test` passes.
+
 ## Done
 ### A doctor check names checks the review gate kept recognizing as flakes: a "flaky checks" check surfaces the gate's flake memory (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `src/tick`, `src/loop`, `src/ui/status-*`, and `src/cli/`, and this touches none of them: only `src/doctor/` and the one exported window constant in `src/review/known-flakes.ts`, so it lands on any feature run alongside them) — done 2026-10-16
 
@@ -98,6 +119,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `--count` composes with `--since`, `-n`, `--type`, and `--grep`, and `--count --json` emits a sorted `type → count` object; `--count` with `-f`/`--follow`, `--role`, or `--prompt` fails naming both flags.
 - An empty tally prints the same no-events/no-match prose the plain view prints (never silent in prose), and `--count` never prints the sparse-window note.
 - `tumwater help logs` lists `--count`, existing logs goldens are unchanged without the flag, and `npm run test` passes.
+
 
 ### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series) — done 2026-10-16
 
