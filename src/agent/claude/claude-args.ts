@@ -106,7 +106,7 @@ export function claudeArgs(opts: ClaudeArgOptions): { args: string[]; stdin: str
     // Own-property test, not a bare index: a level like `constructor` or `toString` would
     // otherwise inherit a function from Object.prototype and bypass the rejection below.
     if (!Object.hasOwn(EFFORT_BY_THINKING, opts.thinking)) {
-      throw new Error(`claudeArgs: unknown thinking level ${JSON.stringify(opts.thinking)}`);
+      throw new Error(`claudeArgs: unknown thinking level ${JSON.stringify(opts.thinking)} (known: ${Object.keys(EFFORT_BY_THINKING).join(", ")})`);
     }
     args.push("--effort", EFFORT_BY_THINKING[opts.thinking] as string);
   }
