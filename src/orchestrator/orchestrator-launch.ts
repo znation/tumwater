@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The orchestrator's launch pass: the half of the per-poll runner sweep that admits due
  * roles to their ticks. The decision half (isEligible, the pause/backoff/deferral gates,
  * once-mode settling) stays in runOrchestrator (src/orchestrator/orchestrator.ts) — it reads
@@ -278,7 +279,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     void task
       .catch((err: unknown) => {
         runner.state.running = false;
-        warnEventBestEffort(root, runner.role, `tick task rejected: ${errorMessage(err)}`);
+        warnEventBestEffort(root, runner.role, `run task rejected: ${errorMessage(err)}`);
       })
       .finally(() => {
         bucket.delete(task);

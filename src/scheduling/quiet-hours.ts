@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Quiet hours (plans: "Quiet hours … part 1/2, the gate"): a config-driven daily local-time
  * window — `"23:00-07:00"` — during which role loops start no new ticks, so an operator can
  * put the fleet on a nightly schedule once instead of typing `tumwater pause` every evening.
@@ -117,7 +118,7 @@ export function pollQuietHoursGate(
   if (inNow !== state.prevIn) {
     state.prevIn = inNow;
     logEventBestEffort(root, {
-      loop: "harness",
+      loop: "harness", // vocabulary-ok: event source
       type: inNow ? "quiet_hours_started" : "quiet_hours_ended",
       window: typeof quietHours === "string" ? quietHours : undefined,
     });

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The poll loop's per-runner scheduling pass (src/orchestrator/orchestrator.ts): decide, for each
  * runner, whether this poll admits a tick and why — the pause/quiet/cost-cap/failure-hold
  * gates, the merge-queue interlock, need-based deferral, and once-mode settlement —
@@ -196,7 +197,7 @@ export async function pollRunnerReasons(
         warnEventBestEffort(
           root,
           r.role,
-          `released a stale claim on "${title}" after ${Math.round(CLAIM_IDLE_MAX_MS / 3_600_000)}h idle`,
+          `released "${title}", which a stopped instance was working on (idle ${Math.round(CLAIM_IDLE_MAX_MS / 3_600_000)}h)`,
         );
       }
     }

@@ -19,7 +19,7 @@ const HOUR = 60 * MINUTE;
 /** The sustained-pin warning, identified by its message so the per-head block/cooldown/refusal
  * warnings around it never confuse the count. */
 const escalations = (events: HarnessEventInput[]) =>
-  events.filter((e) => e.type === "warning" && String(e.message ?? "").includes("stayed stale"));
+  events.filter((e) => e.type === "warning" && String(e.message ?? "").includes("has waited"));
 
 test("the incident shape — a failing compile verdict on every head while main churns every 5 minutes — escalates once at 6 h, then daily", async () => {
   // Every head's compile produces a real verdict: the build is bad. Main moves every 5 minutes,
@@ -39,9 +39,9 @@ test("the incident shape — a failing compile verdict on every head while main 
   }
   const es = escalations(events);
   assert.equal(es.length, 2, `expected 2 escalations over 31 h, got ${es.length}`);
-  assert.match(String(es[0]?.message), /stayed stale for ~6 h/);
-  assert.match(String(es[1]?.message), /stayed stale for ~30 h/);
-  assert.match(String(es[0]?.message), /the sustained pin itself is the problem/);
+  assert.match(String(es[0]?.message), /waited ~6 h/);
+  assert.match(String(es[1]?.message), /waited ~30 h/);
+  assert.match(String(es[0]?.message), /the stuck version itself is the problem/);
   // The escalation does not replace the per-head warnings; it sums them up beside them.
   assert.ok(warningEvents(events).length > 300, "the churn kept warning per head");
 });
@@ -62,13 +62,13 @@ test("a blocked head on a frozen main escalates the pin once at 6 h, then daily 
   assert.equal(escalations(events).length, 0, "quiet below the threshold");
   assert.equal(await r.poll(HEAD_B, IDLE, true, (t = 6 * HOUR + 2 * MINUTE)), "none");
   assert.equal(escalations(events).length, 1, "one escalation past 6 h");
-  assert.match(String(escalations(events)[0]?.message), /stayed stale for ~6 h/);
+  assert.match(String(escalations(events)[0]?.message), /waited ~6 h/);
   const first = t;
   assert.equal(await r.poll(HEAD_B, IDLE, true, (t = first + 24 * HOUR - MINUTE)), "none");
   assert.equal(escalations(events).length, 1, "daily cadence, not per poll");
   assert.equal(await r.poll(HEAD_B, IDLE, true, (t = first + 24 * HOUR + MINUTE)), "none");
   assert.equal(escalations(events).length, 2, "the repeat fires a day later");
-  assert.match(String(escalations(events)[1]?.message), /stayed stale for ~30 h/);
+  assert.match(String(escalations(events)[1]?.message), /waited ~30 h/);
 });
 
 test("a red main is a correct deferral, not a failure: it never escalates the pin", async () => {
@@ -117,5 +117,5 @@ test("a pin sustained purely at the boot gate escalates too — both gate asks s
   assert.equal(events.filter((e) => e.type === "restart_refused").length, 1, "one refusal reason, warned once");
   const es = escalations(events);
   assert.equal(es.length, 1, "the refusals feed the pin clock");
-  assert.match(String(es[0]?.message), /stayed stale for ~6 h/);
+  assert.match(String(es[0]?.message), /waited ~6 h/);
 });

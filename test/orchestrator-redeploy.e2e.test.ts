@@ -177,7 +177,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
     sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under a running tick");
     await waitFor(() => readOrchestratorInfo(repo)?.build?.restartPending === true, "the restart hold");
     fs.writeFileSync(go, "");
-    const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && String(e.message).includes('is red');
+    const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && String(e.message).includes('fails its check');
     await waitFor(() => readEvents(repo).some(isRed), "the red verdict that lifts the hold", 20_000);
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "tick_start" && e.loop === parked),
@@ -234,7 +234,7 @@ test("a failed compile leaves the fleet running the old build", async () => {
   const { stop } = startRedeployRun(repo, redeployer);
   try {
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "warning" && /rebuild of .* failed/.test(String(e.message))),
+      () => readEvents(repo).some((e) => e.type === "warning" && /the update to .* failed to build/.test(String(e.message))),
       "compile-failure warning",
     );
     // Still running: ticks keep coming after the failure was recorded. clean is deferrable

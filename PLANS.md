@@ -502,54 +502,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
 - `npm run test` passes.
 
-### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests)
-
-**Goal.** stderr and warning text from the gates, the self-update redeployer, the orchestrator and the supervisor say tumwater, update, version, restart, your checkout and the team.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/gates/:
-  - bootstrap-gates.ts: "tumwater: could not write bootstrap latch: …". Drop the `tumwater: harness:` prefix wherever it appears in this part's modules.
-  - readiness.ts: "your checkout is detached; check out your main branch first".
-  - startup-gate.ts: "pi" → "the agent" where the text is generic.
-  - The other gate modules' hits are `"harness"` event sources only. Leave them unheaded.
-- src/redeploy/redeployer.ts and redeploy.ts:
-  - "the running version's own commit fails its check — …", and "the update could not start: …".
-  - "the running version …", and "staying on version <sha>".
-  - "swapping the update into place failed", and "an update has waited ~N …".
-  - "tumwater: could not record …".
-  - "deferred — cooldown until …" stays.
-- src/orchestrator/:
-  - orchestrator.ts: "your checkout moved to <branch> — the team keeps merging into <base>".
-  - orchestrator-launch.ts: "run task rejected: …".
-  - orchestrator-scheduling.ts: "released <title>, which a stopped instance was working on". The skip-reason codes are marked.
-  - retention.ts: name the session files of both backends plainly.
-- The remaining modules:
-  - src/fleet/fleet-polls.ts and orchestrator-info.ts hold sources only; leave them unheaded unless they carry prose.
-  - src/scheduling/claims.ts, backoff.ts and quiet-hours.ts: their prose follows the rules.
-  - src/concurrency/lock.ts: "stale lock" stays, because it is not about a build.
-  - src/process/supervisor.ts and launch-services.ts: "tumwater" replaces "harness" in messages.
-  - src/baseline/main-red.ts and main-baseline.ts: the "main's check is failing" wording.
-  - src/budget/fallback-breaker.ts: "over-cap model".
-
-**Files touched.**
-- src: src/gates/bootstrap-gates.ts, readiness.ts, startup-gate.ts; src/redeploy/redeployer.ts, redeploy.ts; src/orchestrator/orchestrator.ts, orchestrator-launch.ts, orchestrator-scheduling.ts, retention.ts; src/scheduling/claims.ts, backoff.ts, quiet-hours.ts; src/process/supervisor.ts, launch-services.ts; src/baseline/main-red.ts, main-baseline.ts; src/budget/fallback-breaker.ts.
-- Tests:
-  - test/redeployer.test.ts, test/redeploy-*.test.ts, test/orchestrator*.test.ts.
-  - test/bootstrap-gates.test.ts, test/startup-gate.test.ts, test/supervisor.test.ts, test/launch-services.test.ts.
-  - test/main-red.test.ts, test/main-baseline*.test.ts, test/claims.test.ts, test/backoff.test.ts, test/quiet-hours.test.ts, test/retention.test.ts.
-
-**Acceptance criteria.**
-- The redeployer's warnings speak of the update, the version and the restart. None says "build <sha>" or "generation".
-- No `tumwater: harness:` prefix remains in src.
-- The orchestrator's branch-moved warning says "your checkout".
-- `npm run test` passes.
-
 ### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
 
 **Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
@@ -3273,6 +3225,55 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests) (done 2026-10-16)
+
+**Goal.** stderr and warning text from the gates, the self-update redeployer, the orchestrator and the supervisor say tumwater, update, version, restart, your checkout and the team.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/gates/:
+  - bootstrap-gates.ts: "tumwater: could not write bootstrap latch: …". Drop the `tumwater: harness:` prefix wherever it appears in this part's modules.
+  - readiness.ts: "your checkout is detached; check out your main branch first".
+  - startup-gate.ts: "pi" → "the agent" where the text is generic.
+  - The other gate modules' hits are `"harness"` event sources only. Leave them unheaded.
+- src/redeploy/redeployer.ts and redeploy.ts:
+  - "the running version's own commit fails its check — …", and "the update could not start: …".
+  - "the running version …", and "staying on version <sha>".
+  - "swapping the update into place failed", and "an update has waited ~N …".
+  - "tumwater: could not record …".
+  - "deferred — cooldown until …" stays.
+- src/orchestrator/:
+  - orchestrator.ts: "your checkout moved to <branch> — the team keeps merging into <base>".
+  - orchestrator-launch.ts: "run task rejected: …".
+  - orchestrator-scheduling.ts: "released <title>, which a stopped instance was working on". The skip-reason codes are marked.
+  - retention.ts: name the session files of both backends plainly.
+- The remaining modules:
+  - src/fleet/fleet-polls.ts and orchestrator-info.ts hold sources only; leave them unheaded unless they carry prose.
+  - src/scheduling/claims.ts, backoff.ts and quiet-hours.ts: their prose follows the rules.
+  - src/concurrency/lock.ts: "stale lock" stays, because it is not about a build.
+  - src/process/supervisor.ts and launch-services.ts: "tumwater" replaces "harness" in messages.
+  - src/baseline/main-red.ts and main-baseline.ts: the "main's check is failing" wording.
+  - src/budget/fallback-breaker.ts: "over-cap model".
+
+**Files touched.**
+- src: src/gates/bootstrap-gates.ts, readiness.ts, startup-gate.ts; src/redeploy/redeployer.ts, redeploy.ts; src/orchestrator/orchestrator.ts, orchestrator-launch.ts, orchestrator-scheduling.ts, retention.ts; src/scheduling/claims.ts, backoff.ts, quiet-hours.ts; src/process/supervisor.ts, launch-services.ts; src/baseline/main-red.ts, main-baseline.ts; src/budget/fallback-breaker.ts.
+- Tests:
+  - test/redeployer.test.ts, test/redeploy-*.test.ts, test/orchestrator*.test.ts.
+  - test/bootstrap-gates.test.ts, test/startup-gate.test.ts, test/supervisor.test.ts, test/launch-services.test.ts.
+  - test/main-red.test.ts, test/main-baseline*.test.ts, test/claims.test.ts, test/backoff.test.ts, test/quiet-hours.test.ts, test/retention.test.ts.
+
+**Acceptance criteria.**
+- The redeployer's warnings speak of the update, the version and the restart. None says "build <sha>" or "generation".
+- No `tumwater: harness:` prefix remains in src.
+- The orchestrator's branch-moved warning says "your checkout".
+- `npm run test` passes.
+
 
 ### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (done 2026-10-16; planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
 

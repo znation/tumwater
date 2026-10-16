@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { baselineBlocked } from "../roles/roles.js";
 import { isCustomRole, liveConfig } from "../config/config.js";
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
@@ -48,7 +49,7 @@ function warnMainRedOnce(root: string, red: { sha: string; script?: string; outp
   if (lastMainRedSha === red.sha) return;
   lastMainRedSha = red.sha;
   logEventBestEffort(root, {
-    loop: "harness",
+    loop: "harness", // vocabulary-ok: event source
     type: "main_red_hold",
     sha: red.sha,
     script: red.script,

@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** New-project bootstrap (plans/work-ratio.md, "New-project bootstrap"; part 2/2): a fresh
  * project seeds `bootstrap.untilPlansDone` in tumwater.json (part 1/2), and this gate holds
  * every maintenance loop until that many plans have moved to PLANS.md's `## Done`. Only plan,
@@ -100,11 +101,11 @@ export function pollBootstrapGate(
         // A terminal boundary: the error can name a path carrying control characters. Sanitize
         // like cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
         process.stderr.write(
-          `tumwater: harness: could not write bootstrap latch: ${stripTerminalControls(errorMessage(err))}\n`,
+          `tumwater: could not write bootstrap latch: ${stripTerminalControls(errorMessage(err))}\n`,
         );
       }
       logEventBestEffort(root, {
-        loop: "harness",
+        loop: "harness", // vocabulary-ok: event source
         type: "bootstrap_complete",
         plansDone: status.plansDone,
         untilPlansDone: status.untilPlansDone,

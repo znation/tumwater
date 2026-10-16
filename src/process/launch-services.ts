@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** launchservicesd's Mach-port budget on macOS: the running fleet's warning, driven by a watch
  * stepped from the orchestrator's poll. The daemon keeps a port for every process that ever
  * checked in with LaunchServices and never releases it, and the kernel kills it near
@@ -79,7 +80,7 @@ export class LaunchServicesWatch {
       if (ports === null) return;
       const next = nextLaunchServicesWarning(this.lastWarned, ports);
       this.lastWarned = next.lastWarned;
-      if (next.warn) warnEvent(this.root, "harness", launchServicesWarning(ports));
+      if (next.warn) warnEvent(this.root, "harness", launchServicesWarning(ports)); // vocabulary-ok: event source
     } catch {
       // The probe never rejects; an events log that cannot be written leaves nothing to do.
     } finally {

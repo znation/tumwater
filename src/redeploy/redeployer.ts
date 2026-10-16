@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { BuildInfo, BuildStaleness, BuildStatus } from "../build/build-info.js";
 import type { CompileResult } from "../build/build-stage.js";
 import type { HarnessEventInput } from "../events/events.js";
@@ -45,7 +46,7 @@ export function bestEffortLog(log: (event: RedeployEvent) => void): (event: Rede
       // A terminal boundary: the error text can carry control characters. Sanitize like
       // cli-output's say()/fail(), so the fallback line cannot drive the operator's shell.
       process.stderr.write(
-        `tumwater: harness: could not record ${event.type} event: ${stripTerminalControls(errorMessage(err))}\n`,
+        `tumwater: could not record ${event.type} event: ${stripTerminalControls(errorMessage(err))}\n`,
       );
     }
   };
@@ -205,8 +206,8 @@ export class Redeployer {
         if (now < until)
           s.restartBlocked =
             `cooldown until ${new Date(until).toISOString()}` +
-            (urgent ? ` (the running build's own commit is red — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
-        else if (this.refusedReason !== null) s.restartBlocked = `the new build could not start: ${this.refusedReason}`;
+            (urgent ? ` (the running version's own commit fails its check — cut to ${RESTART_URGENT_COOLDOWN_MIN} min)` : "");
+        else if (this.refusedReason !== null) s.restartBlocked = `the update could not start: ${this.refusedReason}`;
       }
     }
     return s;
@@ -226,7 +227,7 @@ export class Redeployer {
    * why an episode started mid-cooldown. */
   forceRestart(): void {
     this.forcedRestart = true;
-    this.log({ loop: "harness", type: "restart_forced", build: this.build.sha });
+    this.log({ loop: "harness", type: "restart_forced", build: this.build.sha }); // vocabulary-ok: event source
   }
 
   /** Read and clear the forced flag — one-shot: the poll that consumes it acts on it. */
@@ -285,7 +286,7 @@ export class Redeployer {
       const stale = this.staleness?.stale ?? false;
       if (stale && !wasStale) {
         this.log({
-          loop: "harness",
+          loop: "harness", // vocabulary-ok: event source
           type: "build_stale",
           build: this.build.sha,
           head: mainHead,
@@ -342,7 +343,7 @@ export class Redeployer {
         this.warn(
           `auto-restart of ${shortSha(mainHead)} deferred — cooldown until ${new Date(cooldownUntil).toISOString()}` +
             (urgent
-              ? ` (the running build ${shortSha(this.build.sha)} is red — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MIN} min)`
+              ? ` (the running version ${shortSha(this.build.sha)} fails its check — the cooldown is cut to ${RESTART_URGENT_COOLDOWN_MIN} min)`
               : " (at most one completed restart per 12 h)"),
         );
       }
@@ -360,7 +361,7 @@ export class Redeployer {
     if (urgent && this.urgentLapseWarnedFor !== this.cooldownUntil()) {
       this.urgentLapseWarnedFor = this.cooldownUntil();
       this.warn(
-        `auto-restart of ${shortSha(mainHead)} proceeding early — the running build ${shortSha(this.build.sha)} is red, ` +
+        `auto-restart of ${shortSha(mainHead)} proceeding early — the running version ${shortSha(this.build.sha)} fails its check, ` +
           `the cooldown was cut to ${RESTART_URGENT_COOLDOWN_MIN} min and that deadline has already passed`,
       );
     }
@@ -416,7 +417,7 @@ export class Redeployer {
       if (this.pendingLoggedHead !== mainHead) {
         this.pendingLoggedHead = mainHead;
         this.log({
-          loop: "harness",
+          loop: "harness", // vocabulary-ok: event source
           type: "restart_pending",
           build: this.build.sha,
           head: mainHead,
@@ -445,18 +446,18 @@ export class Redeployer {
           this.compileFailedHead = mainHead;
           this.warn(
             c === undefined
-              ? `rebuild of ${shortSha(mainHead)} could not run: ${detail} — retrying on the next poll`
-              : `could not start the rebuild of ${shortSha(mainHead)}: ${detail} — retrying on the next poll`,
+              ? `the update to ${shortSha(mainHead)} could not be built: ${detail} — retrying on the next poll`
+              : `the update could not start: ${detail} — retrying on the next poll`,
           );
         }
         this.clearPending();
         return this.endDrain();
       }
-      const reason = `rebuild of ${shortSha(mainHead)} failed`;
+      const reason = `the update to ${shortSha(mainHead)} failed to build`;
       this.block(
         mainHead,
         reason,
-        `${reason} — staying on build ${shortSha(this.build.sha)}: ${detail}`,
+        `${reason} — staying on version ${shortSha(this.build.sha)}: ${detail}`,
       );
       return this.endDrain();
     }
@@ -480,7 +481,7 @@ export class Redeployer {
       this.deps.swap(mainHead);
     } catch (err) {
       this.noteFailure(now);
-      const reason = "swapping the new build into place failed";
+      const reason = "swapping the update into place failed";
       this.block(mainHead, reason, `${reason}: ${errorMessage(err)}`);
       return this.endDrain();
     }
@@ -503,7 +504,7 @@ export class Redeployer {
     // only those holding a permit (see InFlightCounts). A director-extended hold reports
     // drainedMs past the window: correct and informative.
     this.log({
-      loop: "harness",
+      loop: "harness", // vocabulary-ok: event source
       type: "restart",
       from: this.build.sha,
       to: mainHead,
@@ -540,7 +541,7 @@ export class Redeployer {
     this.noteFailure(now);
     if (reason !== this.refusedReason) {
       this.refusedReason = reason;
-      this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason });
+      this.log({ loop: "harness", type: "restart_refused", from: this.build.sha, to: head, reason }); // vocabulary-ok: event source
     }
     // The state stream left "compiling" via the refusal event; a later episode for the same
     // head — the gate re-asked after the environment was repaired — is a new transition.
@@ -565,7 +566,7 @@ export class Redeployer {
     // — its two other endings (restart, restart_refused) each have an event, so the third does
     // too (BUGS.md 2026-09-28). Logged before the warning, so the warning is never the state
     // stream's only trace of the episode's end.
-    this.log({ loop: "harness", type: "restart_blocked", from: this.build.sha, to: head, reason });
+    this.log({ loop: "harness", type: "restart_blocked", from: this.build.sha, to: head, reason }); // vocabulary-ok: event source
     this.warn(message);
   }
 
@@ -591,12 +592,12 @@ export class Redeployer {
     this.lastEscalationAt = now;
     const hours = Math.max(1, Math.round((now - since) / 3_600_000));
     this.warn(
-      `build ${shortSha(this.build.sha)} has stayed stale for ~${hours} h (${this.staleness?.aheadCommits ?? 0} commits behind main) while rebuild attempts keep failing — the sustained pin itself is the problem, not any one head`,
+      `an update has waited ~${hours} h to install (running ${shortSha(this.build.sha)}, ${this.staleness?.aheadCommits ?? 0} commits behind main) while update attempts keep failing — the stuck version itself is the problem, not any one commit`,
     );
   }
 
   /** Log one warning event for the harness loop — the shape the class's warn sites share. */
   private warn(message: string): void {
-    this.log({ loop: "harness", type: "warning", message });
+    this.log({ loop: "harness", type: "warning", message }); // vocabulary-ok: event source
   }
 }

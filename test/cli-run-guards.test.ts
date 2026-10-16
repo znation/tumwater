@@ -29,7 +29,7 @@ test("run refuses a detached primary checkout", async () => {
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run");
     assert.equal(r.code, 1);
-    assert.match(r.stderr, /primary checkout is detached/);
+    assert.match(r.stderr, /your checkout is detached/);
   });
 });
 

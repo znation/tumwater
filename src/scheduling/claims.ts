@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Work-instance claims (plans/parallel-work-instances.md "Claims", part 4/7): which backlog
  * entry each runner of a multi-instance base role may take, whether it must drop the entry, and
  * which entry a staged diff moved. The pure policies live here — assignment is the first free

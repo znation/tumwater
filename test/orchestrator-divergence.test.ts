@@ -23,7 +23,7 @@ function divergenceWarnings(repo: string): { message: string }[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as { loop: string; type: string; message: string })
-    .filter((e) => e.type === "warning" && e.loop === "harness" && e.message.includes("primary checkout moved to"));
+    .filter((e) => e.type === "warning" && e.loop === "harness" && e.message.includes("your checkout moved to"));
 }
 
 /** A settled tick on the configured role gates the baseline: the orchestrator has polled at
@@ -52,7 +52,7 @@ test("branch divergence: warns once per episode and re-arms when main returns", 
     execFileSync("git", ["-C", repo, "checkout", "-b", "wander"]);
     await waitFor(() => divergenceWarnings(repo).length >= 1, "the divergence warning");
     const first = divergenceWarnings(repo)[0]!.message;
-    assert.match(first, /primary checkout moved to wander — the fleet keeps merging into main/);
+    assert.match(first, /your checkout moved to wander — the team keeps merging into main/);
     await sleep(3 * FAST_POLL_MS);
     assert.equal(divergenceWarnings(repo).length, 1, "one warning per divergence episode, not one per poll");
 

@@ -25,7 +25,7 @@ test("a successor that could not boot is refused before any hold, once per reaso
   assert.deepEqual(events[1], { loop: "harness", type: "restart_refused", from: BUILD.sha, to: HEAD_B, reason: NOT_INITIALIZED_MESSAGE });
   assert.deepEqual(f.calls.green, [], "nothing past the gate ran: no green check, no compile, no drain");
   assert.equal(r.status(t).restartPending, undefined);
-  assert.equal(r.status(t).restartBlocked, `the new build could not start: ${NOT_INITIALIZED_MESSAGE}`);
+  assert.equal(r.status(t).restartBlocked, `the update could not start: ${NOT_INITIALIZED_MESSAGE}`);
 
   // Main moving mid-refusal adds nothing (the gate is head-independent); a different reason is
   // news.

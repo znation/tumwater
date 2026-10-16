@@ -24,7 +24,7 @@ test("a compile that never ran is a rejection, not a verdict: retried instead of
   await settle();
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
   assert.deepEqual(types(), ["build_stale", "restart_pending", "warning"]);
-  assert.match(String(events.at(-1)!.message), /could not start the rebuild of bbbbbbbb/);
+  assert.match(String(events.at(-1)!.message), /the update could not start: /);
   assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");
   f.green(true);
@@ -60,7 +60,7 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1);
   assert.equal(pending(HEAD_B), 1);
-  assert.match(String(warnings()[0]!.message), /could not start the rebuild of bbbbbbbb/);
+  assert.match(String(warnings()[0]!.message), /the update could not start: /);
   await rejectOnce(HEAD_B);
   assert.equal(warnings().length, 1, "the same head's repeated rejection warns once, not per attempt");
   assert.equal(pending(HEAD_B), 1, "and its in-progress state event is logged once, not once per doomed retry");
@@ -68,7 +68,7 @@ test("a rejected compile warns once per head, not once per retry", async () => {
   await rejectOnce(HEAD_C);
   assert.equal(warnings().length, 2, "a different head is a new episode and warns again");
   assert.equal(pending(HEAD_C), 1, "the new head's compile start is a fresh state event");
-  assert.match(String(warnings().at(-1)!.message), /could not start the rebuild of cccccccc/);
+  assert.match(String(warnings().at(-1)!.message), /the update could not start: /);
 });
 
 test("a swap failure is reported and blocks like a compile failure", async () => {
@@ -85,8 +85,8 @@ test("a swap failure is reported and blocks like a compile failure", async () =>
   f.compiled(true);
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
-  assert.match(String(events.at(-1)!.message), /swapping the new build into place failed: EACCES/);
-  assert.equal(r.status().restartBlocked, "swapping the new build into place failed");
+  assert.match(String(events.at(-1)!.message), /swapping the update into place failed: EACCES/);
+  assert.equal(r.status().restartBlocked, "swapping the update into place failed");
 });
 
 // The tracked background promises are documented to never reject (mainIsGreen and compileStaged
@@ -167,7 +167,7 @@ test("a thrown compile is a rejection, not a verdict: its error text rides the w
   await settle(); // the rejection lands in the tracked slot
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "dropped, not blocked: nothing was verified about the tree");
   assert.deepEqual(events.map((e) => e.type), ["build_stale", "restart_pending", "warning"]);
-  assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb could not run: tsc exploded — retrying on the next poll/);
+  assert.match(String(events.at(-1)!.message), /the update to bbbbbbbb could not be built: tsc exploded — retrying on the next poll/);
   assert.equal(r.status().restartBlocked, undefined, "no latch: repairing the environment must be enough");
   assert.equal(await r.poll(HEAD_B, IDLE, true), "hold", "the next poll re-attempts without main moving");
 });

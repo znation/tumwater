@@ -228,8 +228,8 @@ test("a failed compile keeps the old build running and warns once", async () => 
   await settle();
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none");
   assert.deepEqual(types(), ["build_stale", "restart_pending", "restart_blocked", "warning"]);
-  assert.match(String(events.at(-1)!.message), /rebuild of bbbbbbbb failed — staying on build aaaaaaaa: tsc exited 2/);
-  assert.equal(r.status().restartBlocked, "rebuild of bbbbbbbb failed");
+  assert.match(String(events.at(-1)!.message), /the update to bbbbbbbb failed to build — staying on version aaaaaaaa: tsc exited 2/);
+  assert.equal(r.status().restartBlocked, "the update to bbbbbbbb failed to build");
   assert.deepEqual(f.calls.swap, []);
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 0, directorInFlight: 0 }, true), "none", "and stays blocked for this head");
 });
@@ -255,7 +255,7 @@ test("a blocked restart leaves the state stream: a restart_blocked event beside 
     type: "restart_blocked",
     from: BUILD.sha,
     to: HEAD_B,
-    reason: "rebuild of bbbbbbbb failed",
+    reason: "the update to bbbbbbbb failed to build",
   });
   assert.equal(await r.poll(HEAD_B, IDLE, true), "none", "stays blocked for this head");
   assert.equal(events.filter((e) => e.type === "restart_blocked").length, 1, "the latch means no poll re-emits it");
@@ -326,7 +326,7 @@ test("a forced restart still refuses on a blocked head: a red main blocks the fo
   f.green(false);
   await settle();
   assert.equal(await r.poll(HEAD_C, IDLE, true, swappedAt + 60 * 60_000 + 2), "none");
-  assert.match(String(r.status(swappedAt + 60 * 60_000 + 2).restartBlocked), /is red/);
+  assert.match(String(r.status(swappedAt + 60 * 60_000 + 2).restartBlocked), /is red|fails its check/);
   assert.deepEqual(types().filter((t) => t === "restart_blocked"), ["restart_blocked"], "the forced episode blocks through the ordinary path");
   assert.deepEqual(f.calls.swap, [HEAD_B], "no swap happened for the red head");
 });
@@ -391,7 +391,7 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   );
   assert.equal(
     r.status(swappedAt + 90_000).restartBlocked,
-    `cooldown until ${new Date(swappedAt + RESTART_URGENT_COOLDOWN_MS).toISOString()} (the running build's own commit is red — cut to 15 min)`,
+    `cooldown until ${new Date(swappedAt + RESTART_URGENT_COOLDOWN_MS).toISOString()} (the running version's own commit fails its check — cut to 15 min)`,
     "the dashboard publishes the earlier deadline once the red is known",
   );
   f.green(true); // the prewarmed check resolves; the lapse adopts it
@@ -414,8 +414,8 @@ test("a red RUNNING build cuts the cooldown to the urgent window: the episode st
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 3, "one warning per distinct deadline: ordinary, urgent, then the urgent lapse");
   assert.match(String(warnings[0]!.message), /per 12 h/);
-  assert.match(String(warnings[1]!.message), /is red — the cooldown is cut to 15 min/);
-  assert.match(String(warnings[2]!.message), /is red, the cooldown was cut to 15 min and that deadline has already passed/);
+  assert.match(String(warnings[1]!.message), /fails its check — the cooldown is cut to 15 min/);
+  assert.match(String(warnings[2]!.message), /fails its check, the cooldown was cut to 15 min and that deadline has already passed/);
 });
 
 test("the urgency onset mid-cooldown warns once more with the earlier deadline", async () => {
@@ -438,13 +438,13 @@ test("the urgency onset mid-cooldown warns once more with the earlier deadline",
   const urgentUntil = swappedAt + RESTART_URGENT_COOLDOWN_MS;
   assert.equal(
     r.status(swappedAt + 2 * 60_000).restartBlocked,
-    `cooldown until ${new Date(urgentUntil).toISOString()} (the running build's own commit is red — cut to 15 min)`,
+    `cooldown until ${new Date(urgentUntil).toISOString()} (the running version's own commit fails its check — cut to 15 min)`,
     "the earlier deadline is what the dashboard publishes once the red is known",
   );
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 2, "one warning per distinct deadline: the ordinary one, then the urgent one");
   assert.match(String(warnings[0]!.message), /per 12 h/);
-  assert.match(String(warnings[1]!.message), /is red — the cooldown is cut to 15 min/);
+  assert.match(String(warnings[1]!.message), /fails its check — the cooldown is cut to 15 min/);
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + 3 * 60_000),
     "none",
@@ -510,7 +510,7 @@ test("a red RUNNING build whose cut deadline already passed proceeds early with 
   );
   const warnings = warningEvents(events);
   assert.equal(warnings.length, 2, "the ordinary cooldown warning, then the early-lapse one");
-  assert.match(String(warnings[1]!.message), /is red/);
+  assert.match(String(warnings[1]!.message), /fails its check/);
   assert.match(String(warnings[1]!.message), /already passed/);
   assert.equal(
     await r.poll(HEAD_C, IDLE, true, swappedAt + RESTART_URGENT_COOLDOWN_MS + 120_000),

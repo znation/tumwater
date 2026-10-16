@@ -1,3 +1,4 @@
+// vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { publishInfoFields, writeOrchestratorInfo, type OrchestratorInfo } from "../fleet/orchestrator-info.js";
 import { loopEnabled, loopIds } from "../roles/loop-ids.js";
@@ -190,7 +191,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // into one that refuses to start; logEventBestEffort reports the write failure on stderr so
   // it stays visible, and startup proceeds to the poll loop, which is already best-effort.
   logEventBestEffort(root, {
-    loop: "harness",
+    loop: "harness", // vocabulary-ok: event source
     type: "orchestrator_start",
     pid: process.pid,
     roles: enabled,
@@ -349,7 +350,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       if (liveBranch !== null && liveBranch !== mainBranch) {
         if (!warnedBranchDivergence) {
           warnedBranchDivergence = true;
-          warn(`primary checkout moved to ${liveBranch} — the fleet keeps merging into ${mainBranch}`);
+          warn(`your checkout moved to ${liveBranch} — the team keeps merging into ${mainBranch}`);
         }
       } else {
         warnedBranchDivergence = false;
@@ -594,7 +595,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       });
       semaphore.setReserve(reserve);
       if ((lastReserve === 0) !== (reserve === 0)) {
-        emit({ loop: "harness", type: "permit_reserve", reserve });
+        emit({ loop: "harness", type: "permit_reserve", reserve }); // vocabulary-ok: event source
       }
       lastReserve = reserve;
 
@@ -629,7 +630,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
       () => internalStop.abort(),
     );
-    emit({ loop: "harness", type: "orchestrator_stop" });
+    emit({ loop: "harness", type: "orchestrator_stop" }); // vocabulary-ok: event source
     notifier.dispose();
     removeQuiet(infoFile);
   }

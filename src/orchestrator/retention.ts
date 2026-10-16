@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Session retention (the `sessionRetentionDays` setting): the once-per-day gate and the prune
  * itself, split out of orchestrator.ts — the poll-loop runtime carried both a startup prune and
  * a near-identical in-poll prune plus the last-applied-window bookkeeping, and scheduling.ts
@@ -48,7 +49,7 @@ export class RetentionPruner {
       // only for a positive window.
       if (retentionDays !== this.lastRetention) {
         logEventBestEffort(root, {
-          loop: "harness",
+          loop: "harness", // vocabulary-ok: event source
           type: "retention_changed",
           from: this.lastRetention,
           to: retentionDays,
@@ -70,9 +71,9 @@ export class RetentionPruner {
     // bounds it, and each warning must name the unit it pruned.
     const pruned = pruneOldFiles(sessions, days) + pruneOldFiles(toolOutputDir(root), days);
     if (pruned > 0)
-      warnEventBestEffort(root, "harness", `pruned ${pruned} old pi session/tool-output file(s)`);
+      warnEventBestEffort(root, "harness", `pruned ${pruned} old agent session/tool-output file(s)`); // vocabulary-ok: event source
     const prunedLines = pruneSessionLedgers(sessions, days);
     if (prunedLines > 0)
-      warnEventBestEffort(root, "harness", `pruned ${prunedLines} stale session ledger line(s)`);
+      warnEventBestEffort(root, "harness", `pruned ${prunedLines} stale session ledger line(s)`); // vocabulary-ok: event source
   }
 }

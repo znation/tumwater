@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { type BuildInfo, buildStaleness, distDir, isSelfHosted, readBuildInfo } from "../build/build-info.js";
 import { baselineCheckEventLogger } from "../build/build-check-events.js";
 import { liveConfig } from "../config/config.js";
@@ -57,7 +58,7 @@ export function redeployDeps(
       mainIsGreen(
         await mirror(mainHead),
         liveConfig(root),
-        baselineCheckEventLogger("harness", safeLog),
+        baselineCheckEventLogger("harness", safeLog), // vocabulary-ok: event source
       ),
     compile: async (mainHead) => compileStaged(root, await mirror(mainHead), mainHead),
     swap: (mainHead) => swapDist(root, dist, mainHead),
@@ -74,7 +75,7 @@ export function redeployDeps(
       const cached = cachedBaselineVerdict(buildSha);
       if (cached !== undefined) return cached === "red";
       const witness = await ensureDetachedWorktree(root, witnessWorktreePath(root), buildSha);
-      const onRun = baselineCheckEventLogger("harness", safeLog);
+      const onRun = baselineCheckEventLogger("harness", safeLog); // vocabulary-ok: event source
       const baseline = await checkMainBaseline(witness, liveConfig(root), onRun);
       if (baseline.baseline?.status !== "red") {
         return baseline.baseline ? false : null;
