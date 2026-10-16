@@ -191,6 +191,48 @@ test("help topics name the --list forms", async () => {
   r = await cli(repo, "help", "plan");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /tumwater plan --list \[--json\]/);
+  assert.match(r.stdout, /tumwater plan --list --done/);
+  r = await cli(repo, "help", "bug");
+  assert.match(r.stdout, /tumwater bug --list --done/);
+});
+
+test("plan --list --done lists the newest done plans, and bug --list --done an empty Fixed", async () => {
+  const repo = makeRepo();
+  const done = Array.from({ length: 12 }, (_, i) => `### Done ${i + 1} (done 2026-10-${String(i + 1).padStart(2, "0")})\n`);
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n### Still planned\n\n## Done\n\n${done.join("\n")}`,
+  );
+  let r = await cli(repo, "plan", "--list", "--done");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.trimEnd().split("\n");
+  assert.equal(lines[0], "done plans in PLANS.md, newest first:");
+  assert.equal(lines[1], "- Done 1 (done 2026-10-01)");
+  assert.equal(lines[10], "- Done 10 (done 2026-10-10)");
+  assert.equal(lines[11], "(2 older; -n 12 shows more)");
+  assert.doesNotMatch(r.stdout, /Still planned/);
+  r = await cli(repo, "plan", "--list", "--done", "-n", "12");
+  assert.doesNotMatch(r.stdout, /older/);
+  assert.match(r.stdout, /Done 12/);
+  r = await cli(repo, "plan", "--list", "--done", "--json");
+  const doc = JSON.parse(r.stdout);
+  assert.equal(doc.entries.length, 10);
+  assert.equal(doc.older, 2);
+  assert.equal(doc.entries[0].completedOn, "2026-10-01");
+  fs.writeFileSync(path.join(repo, "BUGS.md"), "# Bugs\n\n## Open\n\n## Fixed\n\n_None yet._\n");
+  assert.equal((await cli(repo, "bug", "--list", "--done")).stdout, "no fixed bugs\n");
+});
+
+test("--list -n needs --done, and --done refuses repeats and stands only with --list", async () => {
+  const repo = makeRepo();
+  let r = await cli(repo, "plan", "--list", "-n", "3");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /-n needs --done/);
+  r = await cli(repo, "plan", "--list", "--done", "--done");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /--done may only be given once/);
+  r = await cli(repo, "plan", "--done");
+  assert.equal(r.code, 1);
 });
 
 

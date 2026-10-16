@@ -192,6 +192,10 @@ Usage:
                                    --json prints the {entries} array — position, title, body,
                                    hold, inProgress — as data; \`[working on it: …]\` marks an
                                    entry a role is working on
+  tumwater bug --list --done [-n <count>] [--json]
+                                   List the newest entries in BUGS.md ## Fixed, newest first
+                                   (default 10); --json prints {entries, older}, each entry
+                                   with title, body, completedOn
   tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
@@ -229,6 +233,10 @@ Usage:
                                    mark; --json prints the {entries} array — position, title,
                                    body, hold, inProgress — as data; \`[working on it: …]\`
                                    marks an entry a role is working on
+  tumwater plan --list --done [-n <count>] [--json]
+                                   List the newest entries in PLANS.md ## Done, newest first
+                                   (default 10); --json prints {entries, older}, each entry
+                                   with title, body, completedOn
   tumwater plan --show <n> [--json]
                                    Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);

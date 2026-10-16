@@ -7,6 +7,11 @@ import {
   fenceTracker,
 } from "../src/backlog/backlog-md.js";
 import {
+  DONE_DATE_RE,
+  FIXED_DATE_RE,
+  completionDate,
+  donePlanEntries,
+  fixedBugEntries,
   openBugEntries,
   openBugs,
   openQuestions,
@@ -452,4 +457,24 @@ test("entryDates drops an epitaph whose trailing parenthetical never closes", ()
 - a healthy epitaph (fixed 2026-09-30; commit abc1234)
 `;
   assert.deepEqual(entryDates(md, "Fixed", fixedRe), ["2026-09-30"]);
+});
+
+test("completionDate reads the last completion stamp from a heading only", () => {
+  assert.equal(completionDate("X (planned 2026-10-01 by plan) (done 2026-10-03)", DONE_DATE_RE), "2026-10-03");
+  assert.equal(completionDate("Y (found by bugfix 2026-10-01) — fixed 2026-10-02", FIXED_DATE_RE), "2026-10-02");
+  assert.equal(completionDate("Z with no date", DONE_DATE_RE), null);
+});
+
+test("donePlanEntries and fixedBugEntries return only the Done / Fixed sections in file order", () => {
+  const root = tmpdir("tw-done-entries-");
+  fs.writeFileSync(
+    path.join(root, "PLANS.md"),
+    "# Plans\n\n## Planned\n\n### P0\n\n## Done\n\n### D1\n\n### D2\n\n## Verified\n\n### V1\n",
+  );
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "# Bugs\n\n## Open\n\n### B0\n\n## Fixed\n\n### F1\n\n### F2\n\n## Verified\n\n### V1\n",
+  );
+  assert.deepEqual(donePlanEntries(root).map((e) => e.title), ["D1", "D2"]);
+  assert.deepEqual(fixedBugEntries(root).map((e) => e.title), ["F1", "F2"]);
 });

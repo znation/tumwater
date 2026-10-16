@@ -14,7 +14,7 @@ import { eventDayKey, eventRole, eventUsage, parseEventLine } from "../events/ev
 import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
-import { sectionCompletionDates } from "../backlog/backlog.js";
+import { DONE_DATE_RE, FIXED_DATE_RE, sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -751,15 +751,9 @@ export function collectReport(root: string, days: number, role?: string): Report
   // Role scope leaves both tallies at zero: their dates are day-granular file metadata with no
   // role, so a scoped report cannot attribute a completion (the render states the omission).
   if (role === undefined) {
-    for (const d of sectionCompletionDates(root, "PLANS.md", "Done", /done (\d{4}-\d{2}-\d{2})/))
+    for (const d of sectionCompletionDates(root, "PLANS.md", "Done", DONE_DATE_RE))
       countOn(d, "featuresDone");
-    // The completion verbs track the phrasing the harness's own loops actually write: the
-    // bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
-    // "re-landed <date>" on an entry whose first landing was rejected in review — is a
-    // completion the report must count (a rejected landing is not a fix, the re-land is).
-    // Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
-    // stays out: headings mention sibling landings, and a sibling's date is not this entry's.
-    for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/))
+    for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", FIXED_DATE_RE))
       countOn(d, "bugsFixed");
   }
 

@@ -6,9 +6,19 @@
  * should act stays in cli.ts beside the other command bodies. */
 
 import { fail, say, sayJson, warnIfUncommitted } from "../cli/cli-output.js";
-import { parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
+import { parseCountFlag, parsePositionFlag, rejectRepeatFlag } from "../cli/cli-args.js";
 import { promptFileValue, readPromptFileArg } from "../cli/cli-command-args.js";
-import { openBugEntries, plannedPlanEntries, ageInDays, entryAgeSuffix, filingDate } from "./backlog.js";
+import {
+  DONE_DATE_RE,
+  FIXED_DATE_RE,
+  completionDate,
+  donePlanEntries,
+  fixedBugEntries,
+  openBugEntries,
+  plannedPlanEntries, ageInDays,
+  entryAgeSuffix,
+  filingDate,
+} from "./backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
 import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace } from "../text/text.js";
@@ -250,7 +260,11 @@ export async function releaseAndAnnounce(
  * command's `no …` line on an empty or missing file. Like `tumwater backlog` and `tumwater
  * questions` it is read-only: no requireReadyRepo gate and no wake. `--list` and `--json` are
  * the two booleans this shell consumes (repeats refused), `--help`/`-h` is tolerated, and any
- * positional or other flag is refused through rejectUnknownArgs. */
+ * positional or other flag is refused through rejectUnknownArgs.
+ *
+ * `--done [-n <count>]` (each once; `-n` needs `--done`) lists the newest finished entries
+ * instead (BUGS.md ## Fixed or PLANS.md ## Done, bullets, default 10) with `older` counting
+ * those left out; --json carries each entry's `completedOn` heading date. */
 export function listAndAnnounce(
   root: string,
   args: string[],
@@ -260,8 +274,21 @@ export function listAndAnnounce(
 ): void {
   let json = false;
   let list = false;
+  let done = false;
+  let count: number | null = null;
   const rest: string[] = [];
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (arg === "--done") {
+      rejectRepeatFlag(done, "--done");
+      done = true;
+      continue;
+    }
+    if (arg === "-n") {
+      rejectRepeatFlag(count !== null, "-n");
+      count = parseCountFlag("-n", args[++i]);
+      continue;
+    }
     if (arg === "--list") {
       rejectRepeatFlag(list, "--list");
       list = true;
@@ -279,8 +306,32 @@ export function listAndAnnounce(
   // valid-flag list: the vocabulary a list invocation accepts is exactly --list and --json,
   // both consumed above.
   rejectUnknownArgs(command, rest, []);
+  if (count !== null && !done) fail("-n needs --done (it limits the finished entries listed)");
   // BUGS.md's `## Open` is the one section whose noun is "bug"; every other caller is a plan.
   const bugSection = sectionTitle === "Open";
+  if (done) {
+    const all = bugSection ? fixedBugEntries(root) : donePlanEntries(root);
+    const limit = count ?? 10;
+    const shown = all.slice(0, limit);
+    const older = all.length - shown.length;
+    if (json) {
+      const dateRe = bugSection ? FIXED_DATE_RE : DONE_DATE_RE;
+      sayJson({
+        entries: shown.map((e) => ({ title: e.title, body: e.body, completedOn: completionDate(e.title, dateRe) })),
+        older,
+      });
+      return;
+    }
+    const what = bugSection ? "fixed bugs" : "done plans";
+    if (shown.length === 0) {
+      say(`no ${what}`);
+      return;
+    }
+    const lines = shown.map((e) => `- ${e.title}`);
+    if (older > 0) lines.push(`(${older} older; -n ${all.length} shows more)`);
+    say(`${what} in ${fileName}, newest first:\n${lines.join("\n")}`);
+    return;
+  }
   const entries = bugSection ? openBugEntries(root) : plannedPlanEntries(root);
   const holds = backlogHolds(root);
   const entryHolds = bugSection ? holds.bugs : holds.plans;

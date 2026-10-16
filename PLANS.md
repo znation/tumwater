@@ -2897,7 +2897,9 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater plan --list --done` and `bug --list --done` show the newest finished plans and fixed bugs, so an operator sees what the team completed lately without opening PLANS.md or BUGS.md (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/backlog/backlog-cli.ts` `listAndAnnounce`, `src/backlog/backlog.ts`, `src/backlog/backlog-md.ts`, two lines of `src/report/report-data.ts`, `src/cli/help.ts`'s bug/plan `--list` stanzas, and `docs/cli.md`'s "Steer the project" row. The `backlog --ready` plan edits `cmdBacklog`, the `backlog` help stanza, and the "Check state" row instead. Plain terms text 5/19, which is in flight, rewords `src/report/` messages but not the completion-date scan this plan touches)
+## Done
+
+### `tumwater plan --list --done` and `bug --list --done` show the newest finished plans and fixed bugs, so an operator sees what the team completed lately without opening PLANS.md or BUGS.md (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/backlog/backlog-cli.ts` `listAndAnnounce`, `src/backlog/backlog.ts`, `src/backlog/backlog-md.ts`, two lines of `src/report/report-data.ts`, `src/cli/help.ts`'s bug/plan `--list` stanzas, and `docs/cli.md`'s "Steer the project" row. The `backlog --ready` plan edits `cmdBacklog`, the `backlog` help stanza, and the "Check state" row instead. Plain terms text 5/19, which is in flight, rewords `src/report/` messages but not the completion-date scan this plan touches) (done 2026-10-16)
 
 **Goal.** `plan --list` and `bug --list` show only the actionable sections (`## Planned`, `## Open`). Nothing on the CLI answers "what did the team finish lately?" in backlog terms. `tumwater history` lists runs and commits, not the plans and bugs they closed. `tumwater report` counts `featuresDone`/`bugsFixed` per day but names no entries. Today an operator has to open PLANS.md (thousands of lines here) and read the top of `## Done`. Landings paste each finished entry first under `## Done`/`## Fixed` (`src/landing/backlog-conflicts.ts` module doc), so the newest entries are the first ones in each section.
 
@@ -2921,8 +2923,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - In `test/report*.test.ts`, the existing `featuresDone`/`bugsFixed` assertions pass unchanged.
 - The "help topics name the --list forms" test also finds `--list --done` in `tumwater help plan` and `tumwater help bug`.
 - `npm run test` passes, including `test/help.test.ts`.
-
-## Done
 
 ### Plain terms text, part 13/19: The dashboard's remaining views and team controls (planned 2026-10-16 by user; requires part 4/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-report.ts + gui-client-settings.ts + gui-client-composer.ts + gui-client-operator.ts + gui-client-sound.ts + gui-client-markdown.ts + src/gui/ messages + tests) — done 2026-10-16
 

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { cachedTextByStat, type StatKeyedValue } from "../files/stat-cache.js";
-import { entryDates, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
+import { entryDates, lastDate, parseEntryDetails, type BacklogEntry } from "./backlog-md.js";
 
 export type { BacklogEntry } from "./backlog-md.js";
 
@@ -80,6 +80,24 @@ export function filingDate(title: string): string | null {
   return m ? (m[1] as string) : null;
 }
 
+/** The completion stamp of a `## Done` plan heading. */
+export const DONE_DATE_RE = /done (\d{4}-\d{2}-\d{2})/;
+// The completion verbs track the phrasing the harness's own loops actually write: the
+// bugfix prompt pins the date, not the verb, and the re-land flow's own epitaph —
+// "re-landed <date>" on an entry whose first landing was rejected in review — is a
+// completion the report must count (a rejected landing is not a fix, the re-land is).
+// Body verbs without a date ("was fixed;") match nothing, and a bare "landed <date>"
+// stays out: headings mention sibling landings, and a sibling's date is not this entry's.
+/** The completion stamp of a `## Fixed` bug heading. */
+export const FIXED_DATE_RE = /\b(?:re-landed|fixed|closed|resolved) (\d{4}-\d{2}-\d{2})/;
+
+/** The date a finished entry's heading records for `dateRe` (DONE_DATE_RE / FIXED_DATE_RE): its
+ * LAST match. Reads only the heading line, like filingDate; a date on a wrapped continuation
+ * line or in the body yields null. */
+export function completionDate(title: string, dateRe: RegExp): string | null {
+  return lastDate(title, dateRe);
+}
+
 /** Whole days between a filing stamp and `now`, floored at 0 so a future-dated entry reads as
  * fresh (0d) rather than negative. Shared by the suffix and the `--list --json` `ageDays` field. */
 export function ageInDays(since: string, now: number = Date.now()): number {
@@ -115,6 +133,16 @@ export function plannedPlans(root: string): string[] {
  * stat-keyed cache means an unchanged PLANS.md costs one syscall per poll, not a re-read. */
 export function donePlans(root: string): string[] {
   return sectionEntries(root, "PLANS.md", "Done").map((e) => e.title);
+}
+
+/** Done plans as entries (title and body), in file order: the newest first. */
+export function donePlanEntries(root: string): BacklogEntry[] {
+  return sectionEntries(root, "PLANS.md", "Done");
+}
+
+/** Fixed bugs as entries (title and body), in file order: the newest first. */
+export function fixedBugEntries(root: string): BacklogEntry[] {
+  return sectionEntries(root, "BUGS.md", "Fixed");
 }
 
 /** Open bugs: the `### ` headings under BUGS.md's `## Open` section. Missing or unreadable →

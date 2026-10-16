@@ -312,9 +312,10 @@ export function openParenthetical(line: string): string {
  * an entry's completion is its LAST dated verb, not the first, because found-by,
  * decomposition, and sibling mentions ("decomposed from the X bug fixed <date>") all precede
  * the completion record, so first-match let a sibling's date steal the entry's count onto the
- * wrong day (BUGS.md 2026-09-29). dateRe is cloned with the g flag so matchAll sees every
+ * wrong day (BUGS.md 2026-09-29). Also read by completionDate (backlog.ts) for the finished-entry
+ * listings. dateRe is cloned with the g flag so matchAll sees every
  * date; a text with no date yields null. */
-function lastDate(text: string, dateRe: RegExp): string | null {
+export function lastDate(text: string, dateRe: RegExp): string | null {
   const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
   const all = [...text.matchAll(global)];
   return all[all.length - 1]?.[1] ?? null;
