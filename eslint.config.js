@@ -121,6 +121,12 @@ export default tseslint.config(
       // operand holds no value to discard (or is already void) — belongs on the code that
       // ships, not on fixture idioms.
       "@typescript-eslint/no-meaningless-void-operator": "error",
+      // Production code only: the no-any guard belongs on the code that ships, not on test
+      // fixtures, which deliberately type a fake pi event's shape as `any` so a test can read
+      // the fields it cares about (`unknown` there would force a narrowing cast on every read
+      // and obscure what the fixture is for). src is spotless today (0 sites), so this is a
+      // regression guard — an `any` cannot slip into shipped code unnoticed — not a migration.
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
 );
