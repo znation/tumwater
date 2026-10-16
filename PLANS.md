@@ -2510,7 +2510,7 @@ Keep the three path flags in one exported-or-local constant (e.g. `PATH_FLAGS`) 
 **Goal.** In bash and zsh, the word after `tumwater config get`, `config set`, or `config unset` completes against every key form `parseConfigKey` and `screenOperableKey` (`src/cli/config-commands.ts`) accept, including the role-scoped dotted keys of this repo's roles and custom loops.
 
 **Approach.**
-- `src/config/config-write.ts`: export `DOTTED_MAP_KEYS` (today module-private; no other change).
+- `src/config/config-keys.ts`: export `DOTTED_MAP_KEYS` (today module-private; no other change).
 - `src/cli/completion.ts`: add `export function completionConfigKeys(root: string): string[]` returning, in this order:
   1. every entry of `TOP_LEVEL_KEYS` (`src/config/config-schema.ts`);
   2. `model.<tier>` for each of `MODEL_TIERS`;
