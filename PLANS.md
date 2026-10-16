@@ -2435,6 +2435,25 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### Every relative link and backticked repo path in the current docs resolves, and a test keeps them that way (planned 2026-10-16 by plan; independent of every other Planned entry. It adds only test/docs-links.test.ts. No doc, source, payload, or event key changes)
+
+**Goal.** README.md and the current docs point readers at files in two ways: relative markdown links such as `[docs/cli.md](docs/cli.md)`, `[plans/agent-backends.md §3](plans/agent-backends.md)`, and `[backends.md](backends.md#…)`, and backticked repo paths such as `` `src/cli/help.ts` ``. Only docs/invariants.md has an existence check, and it covers only that file's register entries (`citedPaths` in test/invariants-doc.test.ts). The Plain terms code series (team, runner, run, merge, cleanup) will move whole `src/` directories, and a doc that still names the old path would go stale without anything failing. A prototype scan on 2026-10-16 found 278 links and paths. Every link, and every `#anchor` that points into a .md file, resolves. The only paths that do not resolve are in docs/glossary.md's "Code identifiers" table rows, which name the post-rename directories (`src/team/`, `src/runner/`, `src/run/`, `src/merge/`) on purpose, and the `test/...` placeholder in docs/invariants.md. So the guard lands green and catches the next stale reference.
+
+**Approach.** `test/docs-links.test.ts` (new; modelled on test/config-doc.test.ts, with `ROOT = fileURLToPath(new URL("../../", import.meta.url))` and paths joined onto it). Export nothing.
+- Docs scanned: README.md, DEVELOPMENT.md, and every `docs/*.md` (`fs.readdirSync`). Skip any file whose first five lines contain the historical banner `> Written before the 2026-10-16 plain-terms rename`, which marks the twelve dated records that stay as written. Skip lines inside fenced blocks: toggle the fence state on any line matching `/^\s*```/`.
+- Links: each match of `/\]\(([^)\s]+)\)/g`. Skip targets with a scheme (`/^[a-z]+:/i`, which covers http, https, and mailto). Split the target at `#`. A non-empty path part resolves against the linking file's directory and must exist (`fs.existsSync`). When the target has a fragment and points to a `.md` file (or is `#…` alone, meaning the same file), the fragment must be one of that file's heading anchors. To build the anchors, take every `#{1,6} ` heading outside fenced blocks, trim and lowercase it, delete each character that does not match `[\p{L}\p{N}\s_-]` (with the `u` flag), and replace each whitespace character with `-`. This is GitHub's slug rule without duplicate-heading suffixes. The prototype resolved all five current anchored links with it.
+- Paths: each inline code span matching `` /`((?:src|test|docs|plans|scripts)\/[\w./-]+)`/g ``, resolved against `ROOT`. Skip a match that contains `...`, which is a placeholder such as `test/...`. Skip docs/invariants.md for paths only, because test/invariants-doc.test.ts already checks them there. In docs/glossary.md, skip table rows (lines starting with `|`) for paths only: its "Code identifiers" table names directories that the Plain terms code series will create.
+- Test 1: collect `"<file>:<line> <target>"` for every link, anchor, or path that does not resolve, then run one `assert.deepEqual(broken, [])` so the failure names every hit.
+- Test 2, a sanity floor so that a regex or ROOT regression cannot pass vacuously: the scan checks at least one link in README.md, at least one anchored link, and at least one backticked path in DEVELOPMENT.md (65 on 2026-10-16). Collect these counts during the same scan.
+
+**Files touched.** test/docs-links.test.ts.
+
+**Acceptance criteria.**
+- Test 1 passes on the tree as it lands. Temporarily changing README.md's `(docs/cli.md)` link to `(docs/cli-missing.md)` makes it fail and name `README.md:<line> docs/cli-missing.md`. Temporarily breaking the `#…` fragment of an anchored link makes it fail and name that link. Revert both edits before landing.
+- Test 2 passes.
+- `git diff --stat` shows only test/docs-links.test.ts and PLANS.md.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/) (done 2026-10-16)
