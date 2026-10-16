@@ -32,7 +32,7 @@ import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";
-import { renderSummary } from "../history/history.js";
+import { renderSummary } from "../history/history-render.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 
 /** `tumwater init`: seed a project directory from the operator's brief (src/init/init.ts does the

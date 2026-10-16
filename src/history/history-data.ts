@@ -138,7 +138,7 @@ export interface TickRow {
 }
 
 /** The five unpadded cell strings of one tick row, the one home for the column values. The CLI
- * table (history.ts's renderRow, which pads) and the TUI History pane (tui-history.ts) both
+ * table (history-render.ts's renderRow, which pads) and the TUI History pane (tui-history.ts) both
  * build their lines from these; tickRowGrepHaystack below joins them too, so the surfaces that
  * render or search a tick row cannot disagree about what a row's fields say. `tick` is the
  * unpadded number (the caller adds the `#` prefix), and a null `durationMs` (the tick's start
@@ -163,7 +163,7 @@ export function tickRowCells(row: TickRow): TickRowCells {
 
 /** One tick row's line: its timestamp, the five tickRowCells values, then the free-text detail,
  * joined by two spaces and stripped of trailing padding. This is the one home for the row's
- * column order and separator; renderRow (history.ts) passes a per-column padding function to
+ * column order and separator; renderRow (history-render.ts) passes a per-column padding function to
  * align the CLI table, while tickRowGrepHaystack below passes none. The tick cell's "#" prefix
  * rides outside the padding, so its column width measures the number alone. */
 export function tickRowLine(

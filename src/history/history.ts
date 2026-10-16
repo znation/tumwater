@@ -1,80 +1,17 @@
-import { formatTimestamp } from "../text/datetime.js";
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
-import { displayWidth, padToWidth } from "../text/text-width.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, summarizeTickRows, type HistorySummaryRow, tickRowCells, tickRowLine, tickRowsMatchingGrep, type HistoryResultClass, type TickRow, type TickRowCells } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { renderRow, renderSummary, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
-import { compactTokens, usd } from "../text/format.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
  * every datum rides the `tick_end` events src/tick/tick-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
- * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts); this
- * module renders them and drives the CLI. */
-
-/** Each TickRowCells column's measured width in terminal display columns. A mapped type on
- * purpose: adding a column to TickRowCells cannot leave it without a width. */
-type RowWidths = { [K in keyof TickRowCells]: number };
-
-/** Each column's width from its unpadded cell. Text cells measure terminal display columns
- * (displayWidth), not UTF-16 code units: a loop name holding CJK or emoji renders two columns
- * per code point, and a code-unit padEnd lets that row's later columns drift right of its
- * ASCII neighbors. The tick cell measures before its "#" prefix is added (the prefix rides
- * outside the pad), and duration is ASCII, so both take plain length. */
-function widthsOf(cells: TickRowCells): RowWidths {
-  return {
-    loop: displayWidth(cells.loop),
-    tick: cells.tick.length,
-    result: displayWidth(cells.result),
-    duration: cells.duration.length,
-    usage: displayWidth(cells.usage),
-  };
-}
-
-/** The per-column maxima over every row the table shows — the widths derive from the rows
- * actually shown, so a single-row table has no padding gap. */
-function widestWidths(rows: TickRow[]): RowWidths {
-  const widths = { loop: 0, tick: 0, result: 0, duration: 0, usage: 0 };
-  for (const row of rows) {
-    const w = widthsOf(tickRowCells(row));
-    widths.loop = Math.max(widths.loop, w.loop);
-    widths.tick = Math.max(widths.tick, w.tick);
-    widths.result = Math.max(widths.result, w.result);
-    widths.duration = Math.max(widths.duration, w.duration);
-    widths.usage = Math.max(widths.usage, w.usage);
-  }
-  return widths;
-}
-
-/** One aligned table line: fixed-width columns over the row set, then the free-text detail.
- * Every cell is padded to its column's width even when empty — usage is the one cell that can
- * be empty (a tick with neither tokens nor cost), and dropping it would pull the detail left,
- * misaligning that row against its neighbors; tickRowLine strips only the trailing pad. The
- * row's column order rides history-data.ts's tickRowLine, shared with the grep haystack so the
- * two cannot disagree about which field sits where. */
-function renderRow(row: TickRow, widths: RowWidths): string {
-  return tickRowLine(row, (column, value) => padToWidth(value, widths[column]));
-}
-
-/** The `--summary` text: a header, one line per loop, then the total line. The loop column pads to
- * display width; each number column right-aligns under its header; the last column, `last change`,
- * is the newest change's timestamp (`—` when none) and is left-aligned, unpadded. */
-export function renderSummary(summary: { loops: HistorySummaryRow[]; total: HistorySummaryRow }): string {
-  const all = [...summary.loops, summary.total];
-  const loopWidth = Math.max(...["loop", ...all.map((r) => r.loop)].map(displayWidth));
-  const cols = ["ticks", "changes", "none", "problems", "tokens", "cost"] as const;
-  const cell = (r: HistorySummaryRow, c: (typeof cols)[number]): string =>
-    c === "tokens" ? compactTokens(r.tokens) : c === "cost" ? usd(r.costUsd) : String(r[c]);
-  const widths = cols.map((c) => Math.max(c.length, ...all.map((r) => cell(r, c).length)));
-  const line = (loop: string, cells: string[], lastChange: string): string =>
-    [padToWidth(loop, loopWidth), ...cells.map((c, i) => c.padStart(widths[i] ?? 0)), lastChange].join("  ").trimEnd();
-  return [
-    line("loop", [...cols], "last change"),
-    ...all.map((r) => line(r.loop, cols.map((c) => cell(r, c)), r.lastChangeTs === null ? "—" : formatTimestamp(r.lastChangeTs))),
-  ].join("\n");
-}
+ * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts), and
+ * the aligned table/summary text they print is rendered by history-render.ts (beside
+ * src/report/report-render.ts); this module parses the args, drives the CLI, and prints. */
 
 /** The missing-pattern error cmdHistory prints for a valueless or empty `--grep`, exported so
  * cli.ts's rejectUnknownArgs spec for --grep can fail a trailing `history --grep` with the same
