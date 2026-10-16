@@ -82,6 +82,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The status table and the dashboard render the age with the same relative-time formatter as the last-tick column (no drift), and `tumwater status --json` carries the `lastLandedAt` epoch ms.
 - `npm run test` passes.
 
+### Each loop's schedule in `tumwater role <id>`: the role view says when a loop last ticked and when it next runs (planned 2026-10-16 by plan; independent of every other Planned entry — the two eligible waiting entries touch the `run` CLI wiring (`--tui`) and the status payload/render + `gui-client-fleet` (last-landed), and this touches none of them: only `src/roles/role-view.ts`, `src/roles/role-render.ts`, and `test/role-view.test.ts`. The one file it reads, `src/loop/loop-state.ts`, is read-only here via the `loadLoopState` rolePayload already calls — no `src/loop`, `src/status`, `src/ui/status-*`, `src/cli`, or `src/tick` edit)
+
+**Goal.** `tumwater role <id>` is the one-loop inspection surface: it names the loop's model, tier, images, fallbacks, billing, min interval, queued prompts, notebook, next prompt, and recent tick outcomes — but never says when the loop WILL act next or last did. The status table and TUI/GUI already carry a `next run` column (status-render.ts's `nextRunCell`, status-payload's `nextRunAt`/`backoffSeconds`, gui-client.ts's `fmtNextRun`) and the loop's `lastTickEndedAt`; the role view is the one place those scheduling facts are absent. So `tumwater role feature` cannot answer the operator's simplest question — "when will this loop check in again, and why is it backing off?" This adds a Schedule block answering it, in the same fields and wording family as the fleet surface so the two cannot drift.
+
+**Approach.** Read-only extension of the existing payload. rolePayload already loads the loop's persisted state (`loadLoopState(root, role)` at role-view.ts, held as `state` for `modelFallbackView` and `assembleTickPrompt`) — surface three more persisted fields from it.
+- `src/roles/role-view.ts`: add `nextRunAt` (epoch ms; `state.nextRunAt`), `backoffSeconds` (`state.backoffSeconds`), and optional `lastTickEndedAt?` (`state.lastTickEndedAt`, absent when never ticked) to `RoleViewPayload`, populated in `rolePayload`'s return from the already-loaded `state`.
+- `src/roles/role-render.ts`: a `scheduleLine(p, now)` helper beside `modelLine`/`recentOutcomeLine`, appended to the `- Min tick interval: …s`/`- Queued prompts: …` block, rendering two bullets:
+  - `- Next tick: <due now | in <Ns> | not scheduled yet>` — `secondsUntil(state.nextRunAt, now) <= 0` reads `due now`, else `in ${humanSeconds(remain)}`, prefixed `backoff ` while `backoffSeconds > 0` (the wake row-action clears exactly that), matching `nextRunCell`'s vocabulary.
+  - `- Last tick: <formatTimestamp(lastTickEndedAt)> (N ago) | never` — reusing `formatTimestamp` and `secondsUntil`; a never-ticked loop renders `never`.
+  `now` is passed in (default `Date.now()`) so the renderer stays a pure function of the payload, and the test pins a fixed clock.
+- Tests (`test/role-view.test.ts`, which already uses the `freshLoopState`/`saveLoopState` fixture helper): a state with `nextRunAt` in the future and `backoffSeconds > 0` renders `Next tick: backoff in <Ns>`; a `nextRunAt` at/past now renders `due now`; a `lastTickEndedAt` set renders the timestamp and ago, unset renders `never`; a default never-scheduled state renders `not scheduled yet`/`never`; the `--json` payload carries `nextRunAt`/`backoffSeconds`/`lastTickEndedAt` additively.
+
+**Files touched.** `src/roles/role-view.ts`, `src/roles/role-render.ts`, `test/role-view.test.ts`. Reads (does not edit) `src/loop/loop-state.ts`. No `src/cli`, `src/status`, `src/ui/status-*`, `src/ui/gui/gui-client-fleet.ts`, `src/tick`, or `src/loop` edit.
+
+**Acceptance criteria.**
+- `tumwater role <id>` shows a `Next tick` line (`due now` / `in <Ns>` with the `backoff ` prefix) and a `Last tick` line (`<timestamp> (N ago)` / `never`), derived from the loop's persisted `nextRunAt`/`backoffSeconds`/`lastTickEndedAt` — the same fields and wording family the status `next run` cell uses, so the role view and the fleet table cannot drift on when a loop next acts.
+- A never-ticked, never-scheduled loop renders `not scheduled yet`/`never`; the `--json` payload gains `nextRunAt`, `backoffSeconds`, and `lastTickEndedAt` (when present) additively — no existing JSON field's meaning changes.
+- The renderer stays pure: schedule text is a function of the payload plus an injected `now`, pinned by the role-view test; the collector's one state read is the `loadLoopState` rolePayload already performs, so no new read path.
+- `npm run test` passes.
+
 ## Done
 ### A doctor check names checks the review gate kept recognizing as flakes: a "flaky checks" check surfaces the gate's flake memory (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `src/tick`, `src/loop`, `src/ui/status-*`, and `src/cli/`, and this touches none of them: only `src/doctor/` and the one exported window constant in `src/review/known-flakes.ts`, so it lands on any feature run alongside them) — done 2026-10-16
 
