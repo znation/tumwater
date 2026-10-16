@@ -105,6 +105,44 @@ README.md, and their tests.
 - The GUI loop drawer shows the same list for the opened loop.
 - `npm run test` passes with old `tumwater role` and role-view goldens unchanged for the no-outcomes case.
 
+### Add a `--tui` flag to `tumwater run`: boot the fleet and attach the observer TUI in the same terminal (requested by operator 2026-10-16; independent of every other Planned entry — it touches only the `run` CLI wiring and its docs/help, no `src/ui/tui/` renderer internals, no `src/loop`, `src/tick`, `src/status`, or `src/fleet` file)
+
+**Goal.** Today `tumwater run` boots the fleet in the current terminal and you watch it from a second terminal with `tumwater tui`; `tumwater run --gui` is the one-command form that boots the fleet and serves the browser dashboard in the same invocation. Add `tumwater run --tui`: the one-command form of the TUI — boot the fleet and attach the observer TUI in the same terminal, so an operator who wants both starts one command instead of two terminals. It mirrors `--gui`, which the request and the existing `run --gui` precedent both point at.
+
+**Approach.** Reuse the observer `runTui` exactly as-is (it already renders status + recent events from on-disk state plus typed prompts into the inbox, works alongside a running fleet, and takes seams for tests). `--tui` only adds the wiring to host it inside the run's own process tree.
+- `src/cli/cli-flag-specs.ts`: add `{ names: ["--tui"] }` to `RUN_FLAG_SPECS` beside `--gui`, with a comment naming it the TUI analog of `--gui` (its flag vocabulary stays at run's; `tumwater tui`'s flags remain none).
+- `src/cli/cli-run.ts` `cmdRun`: parse `const tui = args.includes("--tui")`, and refuse `--tui` with `--once` exactly like `--gui` (the same `failRivalShapes("--tui", "--once", "a one-round run cannot hold a TUI it is about to kill")` call, where the `--once`/`--gui` rival already lives at ~line 105). `--for` stays allowed (the window bounds the whole run, TUI included), and `--gui` + `--tui` together stay allowed (dashboard child + in-terminal TUI are orthogonal).
+- `src/cli/cli-run.ts` `guiChildPlan` (~line 419): extend it to also strip `--tui` from `orchestratorArgs` (a self-redeploy generation must not re-attach a TUI in a terminal the parent owns). Return `spawnTui: runArgs.includes("--tui")` alongside `spawnGui`, and filter both flags out of the orchestrator args. Keep the existing exported name/signature shape so `superviseRunCommand` and the pinning test change in one place (extend the test rather than add a new function).
+- `src/cli/cli-run.ts` `superviseRunCommand` (~line 451): host `runTui` beside `superviseRun`, the same way `superviseDashboard` is hosted, and tie its exit to the graceful fleet stop:
+  ```ts
+  const tui = plan.spawnTui
+    ? (await import("../ui/tui/tui.js")).runTui(root).then(() => {
+        stopping = true;            // the TUI quit = the run's Ctrl+C
+        controller.abort();
+        guiController.abort();
+      })
+    : Promise.resolve();
+  const gui = plan.spawnGui ? superviseDashboard(guiController.signal) : Promise.resolve();
+  const code = await superviseRun(/* as today */, controller.signal);
+  await tui;                        // let the TUI's promise settle / terminal restore
+  guiController.abort();
+  await gui;
+  process.exit(code);
+  ```
+  When the user quits the TUI (q, Ctrl+C handled by ink's key handler, or a reload-reexec), `runTui` resolves and the `.then` sets `stopping` and aborts the controller, so `superviseRun` drains in-flight ticks and the fleet shuts down exactly as Ctrl+C on a plain `run` does; the fleet-down teardown (dashboard abort, `repairInterruptedSwap` via `onDone`, terminal restore) is unchanged. `runTui`'s own reload watch still re-execs it onto a newer build.
+- `src/cli/help.ts` usage line for `tumwater run` (~line 15): add `[--tui]` and a one-line description.
+- `docs/cli.md`: document `run --tui` (same sentence family as the `--gui` entry); `README.md` Usage block (~line 26) adds `tumwater run --tui        # ... and attach the terminal TUI in the same window`.
+- Tests: extend the `guiChildPlan` unit test to assert `--tui` sets `spawnTui` and is stripped from `orchestratorArgs` (and cross-checks `--gui` stripping is unchanged); extend the `--once` rival test to cover `run --tui --once`; update the help golden. The `runTui` behavior itself is untouched and its existing suite passes unmodified.
+
+**Files touched.** `src/cli/cli-flag-specs.ts`, `src/cli/cli-run.ts`, `src/cli/help.ts`, `docs/cli.md`, `README.md`, and the `run`-related tests in `test/` (the cli-run/help suites). No `src/ui/tui/` internals, no `src/loop`/`src/tick`/`src/status`/`src/fleet` change.
+
+**Acceptance criteria.**
+- `tumwater run --tui` boots the fleet and shows the observer TUI in the same terminal; quitting the TUI drains in-flight ticks and stops the fleet exactly as Ctrl+C on a plain `run` does (this is the chosen lifecycle: close the TUI = end the run, mirroring run's Ctrl+C).
+- `tumwater run --tui --once` is refused with the one-round rival message; `run --tui --for 2h` runs for the window and `run --gui --tui` serves the dashboard and the TUI together.
+- A self-redeploy generation does not re-attach a TUI: `guiChildPlan` drops both `--gui` and `--tui` from the orchestrator args, pinned by its extended unit test.
+- `tumwater run` and `tumwater run --gui` behave byte-identically to before (no `--tui` in args changes nothing); old help/usage goldens unchanged apart from the added `[--tui]` line.
+- `npm run test` passes.
+
 ## Done
 ### The "looks stuck" alert says how long each loop has been stuck (planned 2026-10-16 from an operator request; independent of every other Planned entry — no other waiting plan edits the `stuck` alert's detail or threads a silence duration into the `AlertLoop` rows, though PLANS.md's image-input part 5/5 also touches `src/ui/fleet-alerts.ts` to add an `images` alert; land in either order, the harness resolves the merge) — done 2026-10-16
 
