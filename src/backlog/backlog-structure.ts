@@ -66,6 +66,24 @@ export function stripEntryStamp(title: string): string {
   return title.replace(ENTRY_STAMP_META_RE, "");
 }
 
+/** The heading of a `## Done`/`## Fixed` entry with its completion stamp removed. Cuts at the
+ * first `dateRe` match, drops a parenthetical the cut left open (`(found by … 2026-10-01; `,
+ * `(planned …; `), ignores a stray `)` (`… now under ## Fixed); fixed 2026-10-04 …)`), trims
+ * trailing separators, then strips a closed `(planned …)`/`(found …)` stamp suffix. `dateRe`
+ * matches nothing in the result. */
+export function finishedTitle(title: string, dateRe: RegExp): string {
+  const match = dateRe.exec(title);
+  let t = match ? title.slice(0, match.index) : title;
+  const open: number[] = [];
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === "(") open.push(i);
+    else if (t[i] === ")" && open.length) open.pop();
+  }
+  if (open.length) t = t.slice(0, open[0]);
+  t = t.replace(/[\s,;:—–-]+$/, "");
+  return stripEntryStamp(t).trimEnd();
+}
+
 /** A heading's parenthetical dates: `(planned YYYY-MM-DD` opens a plan entry; `done
  * YYYY-MM-DD` records its completion. Matched against the JOINED heading metadata
  * (headingMetadata), never the bare first line — many headings wrap their dates onto a

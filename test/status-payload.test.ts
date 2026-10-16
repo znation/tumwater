@@ -672,3 +672,17 @@ test("status payload lists the five newest answered questions beside the open on
   assert.deepEqual(payload.answeredQuestions.map((a) => a.title), ["Q6", "Q5", "Q4", "Q3", "Q2"]);
   assert.match(payload.answeredQuestions[0]?.decision ?? "", /d6$/);
 });
+
+test("status payload lists the newest done plans and fixed bugs beside the open ones", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload finished test");
+  let plans = "# Plans\n\n## Planned\n\n### Open plan\n\nbody\n\n## Done\n\n";
+  for (let k = 6; k >= 1; k--) plans += `### D${k} (planned 2026-09-30 by plan) — done 2026-10-0${k}\n\nbody\n\n`;
+  fs.writeFileSync(path.join(repo, "PLANS.md"), plans);
+  fs.writeFileSync(path.join(repo, "BUGS.md"), "# Bugs\n\n## Open\n\n## Fixed\n\n### B2 (found by bugfix 2026-10-01; fixed 2026-10-03 by bugfix loop)\n\nx\n\n### B1 with no stamp\n\nx\n");
+  const payload = statusPayload(repo) as { plans: string[]; donePlans: { title: string; completedOn: string | null }[]; fixedBugs: unknown[] };
+  assert.equal(payload.plans.length, 1);
+  assert.deepEqual(payload.donePlans.map((d) => d.title), ["D6", "D5", "D4", "D3", "D2"]);
+  assert.equal(payload.donePlans[0]?.completedOn, "2026-10-06");
+  assert.deepEqual(payload.fixedBugs, [{ title: "B2", completedOn: "2026-10-03" }, { title: "B1 with no stamp", completedOn: null }]);
+});

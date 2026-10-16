@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   backlogStructureReason,
+  finishedTitle,
   doubleBlockFixedEntries,
   duplicateHeadings,
   strandedPlanEntries,
@@ -14,6 +15,7 @@ import {
   groupBlockedSeries,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
+import { DONE_DATE_RE, FIXED_DATE_RE } from "../src/backlog/backlog.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -686,4 +688,23 @@ test("groupBlockedSeries groups a series' blocked parts and leaves other rows al
   assert.deepEqual(groups[1], { kind: "series", series: "S", rows: rows.slice(1, 4) });
   assert.deepEqual(groups[2], { kind: "row", row: rows[4] });
   assert.deepEqual(groups[3], { kind: "row", row: rows[5] });
+});
+
+test("finishedTitle strips the completion stamp from every heading shape", () => {
+  const cases: [string, RegExp, string][] = [
+    ["X (planned 2026-10-01 by plan; touches src/x) — done 2026-10-03", DONE_DATE_RE, "X"],
+    ["P (planned 2026-10-01 by plan; done 2026-10-02)", DONE_DATE_RE, "P"],
+    ["Y (found by bugfix 2026-10-01) — fixed 2026-10-02", FIXED_DATE_RE, "Y"],
+    ["Y2 (found by bugfix 2026-10-01; fixed 2026-10-02 by bugfix loop)", FIXED_DATE_RE, "Y2"],
+    ["Z (split 2026-10-01 from W, now under ## Fixed); fixed 2026-10-04 by bugfix loop)", FIXED_DATE_RE, "Z (split 2026-10-01 from W, now under ## Fixed)"],
+    ['V (observed 2026-10-04: status read "npm"), fixed 2026-10-04 by bugfix loop)', FIXED_DATE_RE, 'V (observed 2026-10-04: status read "npm")'],
+    ["R (found 2026-10-01) — fixed 2026-10-02, re-landed 2026-10-05", FIXED_DATE_RE, "R"],
+    ["U (planned 2026-10-01 by plan)", DONE_DATE_RE, "U"],
+    ["T with no stamp", FIXED_DATE_RE, "T with no stamp"],
+  ];
+  for (const [input, re, want] of cases) {
+    const got = finishedTitle(input, re);
+    assert.equal(got, want, input);
+    assert.equal(re.test(got), false, `dateRe matches the result for ${input}`);
+  }
 });

@@ -379,6 +379,12 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
         "<div class='list-item t-gray'><span class='li-icon'>" + icon("check") + "</span><div class='li-main'><span class='li-title'>" + esc(a.title) + "</span>" +
         (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</div></div>").join("");
     }
+    const finished = key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : [];
+    if (finished.length) {
+      html += "<div class='list-item list-divider'><span class='li-meta'>" + (key === "plans" ? "Done recently" : "Fixed recently") + "</span></div>" + finished.map((f) =>
+        "<div class='list-item t-gray'><span class='li-icon'>" + icon("check") + "</span><div class='li-main'><span class='li-title'>" + esc(f.title) + "</span>" +
+        (f.completedOn ? "<span class='li-meta'>" + esc((key === "plans" ? "done " : "fixed ") + f.completedOn) + "</span>" : "") + "</div></div>").join("");
+    }
     if (key === "plans" || key === "bugs") {
       const kind = key === "plans" ? "plan" : "bug";
       if (backlogNew && backlogNew.kind === kind) {

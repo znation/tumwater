@@ -630,3 +630,35 @@ test("the Questions tab lists answered questions under the open ones, read-only"
   plans.scope.renderBacklog({ ...base, answeredQuestions });
   assert.doesNotMatch(plans.panels["backlog"] ?? "", /Answered recently/);
 });
+
+test("the Plans and Bugs tabs list finished entries under the open ones, read-only", () => {
+  const base = { questions: [], plans: ["P (planned 2026-10-01)"], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  const donePlans = [{ title: "A <b>x</b>", completedOn: "2026-10-05" }, { title: "Old (split 2026-10-01 from W)", completedOn: null }];
+  const fixedBugs = [{ title: "Bug one", completedOn: "2026-10-06" }];
+  const plans = backlogScope("plans");
+  plans.scope.renderBacklog({ ...base, donePlans, fixedBugs });
+  const html = plans.panels["backlog"] ?? "";
+  assert.ok(html.indexOf(">P") < html.indexOf("Done recently"));
+  assert.ok(html.indexOf("Done recently") < html.indexOf("A &lt;b&gt;x&lt;/b&gt;"));
+  assert.match(html, /done 2026-10-05/);
+  assert.match(html, /Old \(split 2026-10-01 from W\)<\/span><\/div><\/div>/);
+  const rows = html.slice(html.indexOf("Done recently"));
+  assert.doesNotMatch(rows, /backloglink|data-index/);
+  assert.doesNotMatch(html, /Fixed recently|Bug one/);
+  const bugs = backlogScope("bugs");
+  bugs.scope.renderBacklog({ ...base, donePlans, fixedBugs });
+  const bhtml = bugs.panels["backlog"] ?? "";
+  assert.match(bhtml, /Fixed recently/);
+  assert.match(bhtml, /fixed 2026-10-06/);
+  assert.doesNotMatch(bhtml, /Done recently|A &lt;b&gt;/);
+  for (const extra of [{}, { donePlans: [], fixedBugs: [] }]) {
+    for (const key of ["plans", "bugs"]) {
+      const t = backlogScope(key);
+      t.scope.renderBacklog({ ...base, ...extra });
+      assert.doesNotMatch(t.panels["backlog"] ?? "", /Done recently|Fixed recently/);
+    }
+  }
+  const q = backlogScope("questions");
+  q.scope.renderBacklog({ ...base, donePlans, fixedBugs });
+  assert.doesNotMatch(q.panels["backlog"] ?? "", /Done recently|Fixed recently/);
+});

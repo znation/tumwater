@@ -1,8 +1,8 @@
 // vocabulary: plain
 import { answeredQuestionSummaries } from "../backlog/question-answer.js";
-import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
+import { completionDate, donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries, openBugs, openQuestions, plannedPlans, type BacklogEntry } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, backlogMarks } from "../backlog/backlog-eligibility.js";
-import { groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
+import { finishedTitle, groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -20,6 +20,14 @@ import { fleetAlerts } from "./fleet-alerts.js";
 const RECENT_EVENTS = 80;
 /** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
 export const DASHBOARD_ANSWERED_QUESTIONS = 5;
+
+/** How many done plans / fixed bugs the dashboard lists under the open ones (a default). */
+const DASHBOARD_RECENT_FINISHED = 5;
+
+/** The newest finished entries (sections are newest first), titles cleaned of their stamp. */
+function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {
+  return entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({ title: finishedTitle(e.title, dateRe), completedOn: completionDate(e.title, dateRe) }));
+}
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -308,6 +316,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // The newest answered questions, newest first, read fresh each poll like the other backlog
     // lists. Alerts and badges keep counting open questions only.
     answeredQuestions: answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS),
+    // The newest done plans and fixed bugs, newest first: cleaned titles only, no bodies, read
+    // fresh each poll. Badges and alerts keep counting open entries only.
+    donePlans: recentFinished(donePlanEntries(root), DONE_DATE_RE),
+    fixedBugs: recentFinished(fixedBugEntries(root), FIXED_DATE_RE),
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
     alerts: fleetAlerts(snap, questions, loops, now),
