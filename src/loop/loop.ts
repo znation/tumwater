@@ -12,6 +12,7 @@ import { LoopPi } from "./loop-pi.js";
 import {
   configForRole,
   seamHoldKey,
+  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { fallbackRoleConfig } from "../config/config-fallbacks.js";
@@ -86,6 +87,13 @@ export class LoopRunner {
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every tick start. */
   private tickPair?: { provider?: string; model?: string };
+  /** Whether the budget gate currently has the fleet on its free fallback pairs (src/gates/
+   * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
+   * image reroute may then look only among the free fallback pairs, never a priced primary
+   * (plans/image-input.md "Reroute target" "Regime"). Pure scheduler input, never whether
+   * the LOOP itself is mid-fallback; defaults false, so standalone-loop tests stay on the
+   * primary regime unless they set it. */
+  budgetFallbackActive = false;
   /** The landing failure this tick's leftover recovery is retrying, if any (a retriable lander
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
@@ -196,7 +204,28 @@ export class LoopRunner {
    * active (a due probe runs the primary), else the role's own resolved config. The hold and
    * start passes read this so a role mid-episode is keyed by the provider it will actually use.
    * Pure read of config + state + the caller's clock. */
+  /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
+   * "Regime"): the free fallback pairs while the budget gate is on fallback OR the role is
+   * in a model-fallback episode; otherwise the primary tiers. One home for the rule, shared
+   * by the target-resolution sites (the verdict's reroute arm, the attachment preflight). */
+  rerouteRegime(now: number): "primary" | "fallback" {
+    if (this.budgetFallbackActive) return "fallback";
+    if (modelFallbackActive(this.state.modelFallback, now)) return "fallback";
+    return "primary";
+  }
+
   runConfig(now: number): ResolvedModelConfig {
+    // A pending image-input reroute (plans/image-input.md part 4/5) outranks the role's own
+    // tier and its model fallback: the next tick starts on the image-capable target the
+    // blind-read tick recorded, rebuilt from the stored seam over the live config.
+    if (this.state.imageReroute) {
+      const r = this.state.imageReroute;
+      return withModelOverrides(this.config, r.tier, {
+        provider: r.provider,
+        model: r.model,
+        thinking: r.thinking,
+      });
+    }
     const fallback = fallbackRoleConfig(this.config, this.role);
     if (fallback !== null && modelFallbackActive(this.state.modelFallback, now)) return fallback;
     return configForRole(this.config, this.role);
@@ -331,6 +360,7 @@ export class LoopRunner {
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
       tickPrompt: (agent) => this.tickPrompt(agent),
+      rerouteRegime: (now) => this.rerouteRegime(now),
       get recoveryFailure() {
         return self.recoveryFailure;
       },

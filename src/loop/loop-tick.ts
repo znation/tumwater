@@ -24,9 +24,13 @@ import {
   reviewRunConfig,
   scheduleConfigForRole,
   seamHoldKey,
+  withModelOverrides,
   type ResolvedModelConfig,
 } from "../config/config-views.js";
 import { fallbackRoleConfig } from "../config/config-fallbacks.js";
+import { imageReroute, seamImageInput } from "../agent/image-input.js";
+import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -76,6 +80,10 @@ export interface LoopTickContext {
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
   runSignal(): AbortSignal;
   tickPrompt(agent?: string): string | null;
+  /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
+   * "Regime"): the free fallback pairs while the budget gate is on fallback or the role is
+   * in a model-fallback episode, else the primary tiers. Delegates to the runner's rule. */
+  rerouteRegime(now: number): "primary" | "fallback";
   /** The live value of the runner's recoveryFailure field (set by the recovery phase mid-run,
    * read at finalize time). */
   readonly recoveryFailure: string | undefined;
@@ -148,10 +156,61 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   const onFallback = fallback !== null && modelFallbackActive(s.modelFallback, now);
   // The fallback pair keeps primaryCfg's gap (they resolve the same one outside bootstrap),
   // so a plan on its model fallback during bootstrap still schedules on the global clock.
-  const cfg =
+  let cfg =
     onFallback && fallback !== null
       ? { ...fallback, minTickIntervalSeconds: primaryCfg.minTickIntervalSeconds }
       : primaryCfg;
+  // Image-input reroute (plans/image-input.md part 4/5). A pending one-shot marker means
+  // THIS tick is the blind-read reroute: start directly on the image-capable target the
+  // prior tick recorded, over the kept worktree, in a fresh session. The marker is consumed
+  // (cleared) here so it does not route a later tick; imageRerouteActive stays true for the
+  // whole tick so the verdict's one-hop guard fails a second blind read instead of
+  // rerouting again. A preflight (below) sets the same active flag without a marker.
+  s.imageRerouteActive = false;
+  let preflightBlocked = false;
+  if (s.imageReroute) {
+    const r = s.imageReroute;
+    cfg = withModelOverrides(ctx.config, r.tier, {
+      provider: r.provider,
+      model: r.model,
+      thinking: r.thinking,
+    });
+    // The marker is NOT cleared here: planTickStart reads its `from`/`path` when it builds
+    // the handoff note (and clears it then), so a tick skipped before the plan (an empty
+    // inbox) leaves the reroute pending for the next eligible tick.
+    s.imageRerouteActive = true;
+  } else {
+    // Preflight (plans/image-input.md "Attachments"): a queued prompt carrying an
+    // `[image attached: …]` line needs a model that can read images BEFORE any run starts,
+    // so a text-only tick hops straight to the target instead of spending a failed tick
+    // learning it; with no target the tick errors without spawning pi.
+    const nextPrompt =
+      ctx.role === DIRECTOR_ROLE ? peekPrompt(ctx.root) : peekRolePrompt(ctx.root, ctx.role);
+    const carriesImages = nextPrompt !== null && /^\[image attached: .+\]$/m.test(nextPrompt);
+    if (carriesImages) {
+      const providers = readPiProviders(piModelsPath());
+      if (seamImageInput(cfg, providers) !== true) {
+        const target = imageReroute(ctx.config, ctx.role, ctx.rerouteRegime(now));
+        if (target !== null) {
+          cfg = target.config;
+          s.imageRerouteActive = true;
+          logEventBestEffort(ctx.root, {
+            loop: ctx.role,
+            type: "image_reroute",
+            tick: s.ticks + 1,
+            from: primaryCfg.model,
+            to: target.config.model,
+            tier: target.tier,
+            preflight: true,
+          });
+        } else {
+          preflightBlocked = true;
+          s.lastError =
+            `queued prompt for ${ctx.role} attaches an image, but no configured tier can read it`;
+        }
+      }
+    }
+  }
   // Capture what this tick runs on (the orchestrator's budget handback matches it against
   // the fallback pair) and clear any stale handback flag: an abort request that lands while
   // the loop is idle must not name a later tick's resume.
@@ -187,12 +246,20 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
     loop: ctx.role,
     type: "tick_start",
     tick,
+    // A tick routed onto the image-capable target — a blind-read handoff or an attachment
+    // preflight — is stamped so the feed shows the reroute and the model it landed on.
+    ...(s.imageRerouteActive ? { reroute: "image" } : {}),
     ...modelSelectorField(cfg),
   });
 
   let outcome: TickOutcome;
   try {
-    outcome = await ctx.runTick(cfg, { fallback, probe: probing, primary: primaryCfg });
+    // The preflight can end the tick before any pi spawns: a text-only loop with an image
+    // attachment and no image-capable target has nothing to run, so it errors without
+    // spending a model call. Everything else runs the pipeline as usual.
+    outcome = preflightBlocked
+      ? { result: "error" }
+      : await ctx.runTick(cfg, { fallback, probe: probing, primary: primaryCfg });
   } catch (err) {
     outcome = { result: "error" };
     s.lastError = errorMessage(err);
@@ -256,6 +323,15 @@ export async function runTickPhase(
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {
+    // The image-reroute one-shot marker routes exactly ONE tick onto the image-capable
+    // target (plans/image-input.md part 4/5, INV-J2): for a role loop, planTickStart consumes
+    // it after reading its handoff-note facts. The director never resumes, so planTickStart's
+    // image-reroute branch never runs for it and the marker would otherwise linger and
+    // re-route every later director tick off its own tier. It is cleared here — after this
+    // tick is confirmed to run (an empty-inbox skip above returns before this, leaving the
+    // reroute pending for the next eligible tick) — so the rerouted director prompt is
+    // delivered exactly once and the director is back on its own tier next.
+    s.imageReroute = undefined;
     // The director keeps its dedicated worktree (it runs outside the permit, consumes its
     // config-request file at that exact path, and never resumes). Hold it from before
     // ensureWorktree — creating or resetting it is part of the use — to the tick's end
@@ -618,6 +694,11 @@ export async function handlePiResultPhase(
     wt,
     pi,
     flow,
+    // The image-reroute arm resolves its target from the live config and the current
+    // regime, and names the model this tick ran on as the handoff's `from`.
+    config: ctx.config,
+    rerouteRegime: ctx.rerouteRegime(piStartedAt),
+    runModel: cfg.model,
     warn: (message) => ctx.warn(message),
     merge: (w, sum) => mergePhase(ctx, w, sum),
     finishAbortedTick: () => ctx.finishAbortedTick(userPrompt, wt),

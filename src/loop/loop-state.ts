@@ -90,10 +90,12 @@ export interface LoopState {
    * (PLANS.md 2026-09-30); "rate-limit" when a subscription claude usage window rejected the
    * run, so the bridge names the held window rather than a restart (plans/agent-backends.md
    * part 6e); "budget-capped" when an API-billed claude run hit its per-run `--max-budget-usd`
-   * cap, so the next tick hands the kept worktree off to the fallback seam (part 7a/7).
-   * Cleared with resumePending at tick start; absent for restart/cut-off resumes, whose causes
-   * are derived. */
-  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped";
+   * cap, so the next tick hands the kept worktree off to the fallback seam (part 7a/7);
+   * "image-reroute" when an authoring run read an image its model cannot see and the next
+   * tick hands the kept worktree off to an image-capable peer tier (plans/image-input.md
+   * part 4/5). Cleared with resumePending at tick start; absent for restart/cut-off resumes,
+   * whose causes are derived. */
+  resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
   /** Queue file holding the user prompt a resume-owning tick re-queued: the interrupted pi
    * session still owns that request in its context, so the resume must reclaim exactly this
    * file as its own user prompt — the resume's fulfillment consumes it, and only its failure
@@ -202,6 +204,26 @@ export interface LoopState {
    * primary model, so existing state files read unchanged. Persisted: an episode must survive
    * a restart like the schedule does. */
   modelFallback?: ModelFallbackState;
+  /** The one-shot image-input reroute a blind-read tick left for the next tick
+   * (plans/image-input.md "Rerunning on a model that can read images"): the target tier and
+   * the resolved target seam (provider/model/thinking), plus `from` (the selector string of
+   * the model the blind run was on) and `path` (the image file it read). The next tick starts
+   * directly on the target in a FRESH session over the kept worktree, never `--continue`;
+   * the field is cleared at that tick's start. Persisted like modelFallback (healed); absent
+   * for a loop with no pending reroute, so older state files read unchanged. */
+  imageReroute?: {
+    tier: "small" | "default" | "strong";
+    provider?: string;
+    model?: string;
+    thinking?: string;
+    from?: string;
+    path?: string;
+  };
+  /** True while the CURRENT tick is an image-input reroute — it started on the image-capable
+   * target (from a blind-read handoff or an attachment preflight) instead of the loop's own
+   * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
+   * tick instead of rerouting it again. Transient: reset at every tick start. */
+  imageRerouteActive?: boolean;
   /** The pinned change a landing failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
    * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md
@@ -421,6 +443,16 @@ export function loadLoopState(root: string, role: string): LoopState {
       v.probeAt = healNumber(v.probeAt, 0);
       v.cooldownMs = healNumber(v.cooldownMs, 0);
     });
+  // The image-reroute marker is a one-shot nested record consumed by the next tick; a torn
+  // scalar is dropped (its consumers read/mutate fields), and the tier is repaired to a
+  // known tier name so a corrupt tier cannot route a rerouted tick to a phantom seam.
+  if (s.imageReroute !== undefined) {
+    const healed = healRecord(s.imageReroute, () => {});
+    s.imageReroute =
+      healed && (healed.tier === "small" || healed.tier === "default" || healed.tier === "strong")
+        ? healed
+        : undefined;
+  }
   return s;
 }
 

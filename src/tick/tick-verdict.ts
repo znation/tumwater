@@ -7,6 +7,8 @@
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
 import type { LoopState } from "../loop/loop-state.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
+import type { TumwaterConfig } from "../config/config-schema.js";
+import { imageReroute } from "../agent/image-input.js";
 import type { TickOutcome } from "./tick-outcome.js";
 import type { FlowResult } from "../verdict/reply-contract.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
@@ -35,6 +37,17 @@ interface TickVerdictContext {
   turns: number;
   /** The raw director prompt this tick is executing (null for role loops). */
   userPrompt: string | null;
+  /** The fleet config, when the caller can provide it, used to resolve an image-reroute
+   * target (plans/image-input.md part 4/5). Absent in the unit harness, so those contexts
+   * keep the part-3 behavior (a blind read errors) rather than routing to a phantom tier. */
+  config?: TumwaterConfig;
+  /** Which pair set the image reroute may look among (plans/image-input.md "Reroute target"
+   * "Regime"): the primary tiers normally, the free fallback pairs while the budget gate is
+   * on fallback or the role is in a model-fallback episode. Defaults to the primary regime. */
+  rerouteRegime?: "primary" | "fallback";
+  /** The selector string of the model this tick's runs started on — the `from` half of the
+   * image_reroute event and the handoff note (the model the blind run was on). */
+  runModel?: string;
   /** The revision round this tick holds the rejected diff for (plans/revise-rejected.md), or
    * undefined when the tick is not a revision. A per-role user-request or resume tick leaves
    * `state.revision` set by design but passes undefined here, so the drop branch can never
@@ -155,6 +168,51 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   // model that CAN see (part 4 adds the reroute arm here). The error backoff and streak apply
   // as for any error.
   if (pi.imageBlind) {
+    // One hop only (plans/image-input.md "Rerunning on a model that can read images"): a
+    // tick that ALREADY started on the image-capable target and still read blind is not
+    // rerouted a second time — it fails, so a misreadable image cannot bounce the loop
+    // between tiers forever. Set at tick start by tickPhase when it routes a tick onto the
+    // target (blind-read handoff or attachment preflight).
+    if (s.imageRerouteActive) {
+      s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
+      // No work was done (the run was killed at the first read): nothing to resume, and the
+      // prompt re-queues to run fresh later like any other error. The error backoff/streak
+      // apply as usual.
+      ctx.pending.requeueUnfulfilled(ctx.userPrompt);
+      return { result: "error" };
+    }
+    // Otherwise, when the role's tier has an image-capable reroute target, the failed work
+    // is not discarded: the next tick starts directly on that target over the kept worktree.
+    // The one-shot field carries the target seam plus the `from`/`path` facts the handoff
+    // note needs; the tick ends `aborted` with the `image-reroute` resume cause, and
+    // applyTickOutcome schedules it promptly (nextRunAt = now) while planTickStart hands the
+    // kept worktree off to a FRESH session on the target.
+    const regime = ctx.rerouteRegime ?? "primary";
+    const target =
+      ctx.config !== undefined ? imageReroute(ctx.config, ctx.role, regime) : null;
+    if (target) {
+      const from = ctx.runModel ?? target.config.model ?? "the model";
+      s.imageReroute = {
+        tier: target.tier,
+        provider: target.config.provider,
+        model: target.config.model,
+        thinking: target.config.thinking,
+        from,
+        path: pi.imageBlind.path,
+      };
+      s.lastError = `read ${pi.imageBlind.path}, but ${from} cannot read images — rerouting to ${target.tier}`;
+      ctx.pending.requeueForResume(s, ctx.userPrompt);
+      logEventBestEffort(ctx.root, {
+        loop: ctx.role,
+        type: "image_reroute",
+        tick: s.ticks,
+        from,
+        to: target.config.model,
+        tier: target.tier,
+        preflight: false,
+      });
+      return { result: "aborted", resumeCause: "image-reroute" };
+    }
     s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };

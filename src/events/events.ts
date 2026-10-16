@@ -98,6 +98,7 @@ export interface HarnessEvent {
     | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
     | "model_fallback_ended" // a probe tick on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
     | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the tick fails — carried as loop, tick, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
+    | "image_reroute" // a tick stopped for a blind image read moves its work to a tier that CAN read images (plans/image-input.md part 4/5): the next tick starts directly on the target — carried as loop, tick, from, to, tier, and preflight true when the hop happened at model choice (an attachment preflight) before any run, false when it followed a blind-read failure
     | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it

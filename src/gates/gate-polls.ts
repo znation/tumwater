@@ -206,6 +206,7 @@ export function pollFleetGates(
     roleConfig,
     spentUsd,
     capUsd,
+    onFallback,
     resumed: gateResumed,
     pairs: fallbackPairs,
     priceResolved,
@@ -242,7 +243,14 @@ export function pollFleetGates(
   // autonomous-spend cap (gateRoleConfig). Assigned every poll (not only on transitions)
   // so a runner created mid-gate, or one left behind by a broken-file poll that skipped
   // the reload, can never tick on the wrong model.
-  for (const r of runners) r.config = gateRoleConfig(r.role, liveConfig, roleConfig);
+  for (const r of runners) {
+    r.config = gateRoleConfig(r.role, liveConfig, roleConfig);
+    // An image reroute must never spend past the daily cap: while the gate has the fleet on
+    // its free fallback pairs, a reroute looks only among those pairs (plans/image-input.md
+    // "Reroute target" "Regime"). Set beside the config assignment so the scheduler's regime
+    // and the loops' never disagree.
+    r.budgetFallbackActive = onFallback;
+  }
 
   // The budget reopened: a tick that started on a fallback pair keeps it until it ends, so
   // hand those ticks back — abort them resumably (session and worktree edits kept) and

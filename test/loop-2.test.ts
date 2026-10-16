@@ -13,6 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { refSha } from "../src/git/git.js";
 import { queueDepth } from "../src/landing/landing-queue.js";
+import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
@@ -444,4 +445,157 @@ test("a tick whose agent reads an image on a blind model stops and fails", async
     assert.equal(blinds[0]!.action, "fail", "an authoring run's blind read earns the fail action");
     assert.ok(typeof blinds[0]!.tick === "number", "the event names the tick");
   });
+});
+
+// Image-input reroute (plans/image-input.md part 4/5): with a text-only default tier and a
+// vision strong tier, a blind read on a text-only loop ends the tick aborted/`image-reroute`
+// (no target-less error), and the NEXT tick runs immediately on the vision target in a fresh
+// session over the kept worktree carrying the handoff note — its tick_start stamped
+// reroute:"image" — while the tick after that is back on the loop's own tier.
+test("a blind read on a text-only loop reroutes to the vision target, then back to its own tier", async () => {
+  const repo = await initializedRepo();
+  // A text-only default tier and a vision strong tier, via a models.json in the suite's
+  // scratch pi dir (the same file run-agent's seam check and imageReroute read).
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? "";
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(agentDir, "models.json"),
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+
+  const config = defaultConfig();
+  // defaultConfig returns a ResolvedModelConfig whose `model` is narrowed to string; a map
+  // form is valid config the loaded runtime reads, so cast at the boundary.
+  (config as { model: string | Record<string, string> }).model = {
+    default: "local/text",
+    strong: "local/vision",
+  };
+
+  const promptsFile = path.join(tmpdir(), "reroute-prompts");
+  const blindScript = [
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/s.png" } })}'`,
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "r1", toolName: "read", result: { content: [{ type: "text", text: "Read image file [png]\\n[Current model does not support images. The image will be omitted from this request.]" }] }, isError: false })}'`,
+    logPromptsTo(promptsFile),
+  ].join("\n");
+  const settlePi = [
+    logPromptsTo(promptsFile),
+    `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  ].join("\n");
+  const runner = makeLoopRunner(repo, "feature", config);
+
+  // Tick 1: the blind read stops the tick; with a vision target it ends aborted/image-reroute
+  // and records the one-shot marker instead of failing.
+  await withPi(blindScript, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "aborted", "a blind read with a target ends aborted");
+    assert.equal(outcome.resumeCause, "image-reroute");
+  });
+  assert.equal(runner.state.imageReroute?.tier, "strong");
+  assert.equal(runner.state.imageReroute?.model, "vision");
+  assert.equal(runner.state.imageReroute?.path, "/x/s.png");
+
+  // Tick 2: a fresh-session run on the vision target. The handoff note names the prior model
+  // and the image, tick_start is stamped reroute:"image" on local/vision, and the one-shot
+  // marker is consumed.
+  await withPi(settlePi, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change");
+  });
+  assert.equal(runner.state.imageReroute, undefined, "the one-shot marker is consumed by the rerouted tick");
+  // The blind tick (1) is killed at the first read, so only the rerouted tick (2) reliably
+  // reaches its logPromptsTo line; take the last logged prompt as tick 2's.
+  const blocks = readRunBlocks(promptsFile);
+  const reroutedPrompt = blocks[blocks.length - 1] ?? "";
+  assert.match(reroutedPrompt, /cannot read images/);
+  assert.match(reroutedPrompt, /\/x\/s\.png/);
+  const starts = readEvents(repo).filter((e) => e.type === "tick_start");
+  const reroutedStart = starts.find((e) => e.reroute === "image");
+  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted tick");
+  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted tick runs on the target");
+
+  // Tick 3: back on the loop's own text-only tier — tick_start has no reroute stamp and names
+  // the loop's own model.
+  await withPi(settlePi, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change");
+  });
+  const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
+  const back = startsAfter[startsAfter.length - 1]!;
+  assert.equal(back.reroute, undefined, "the tick after the reroute is back on the loop's own tier");
+  assert.equal(String(back.model), "local/text");
+});
+
+// Image-input reroute for the DIRECTOR (plans/image-input.md part 4/5, INV-J2): the director
+// never resumes, so the rerouted prompt runs FRESH on the image-capable target exactly once, and
+// the one-shot marker clears (in runTickPhase) so the director's later ticks are back on its own
+// tier instead of being re-routed forever.
+test("a rerouted director prompt runs fresh on the vision target and is delivered once", async () => {
+  const repo = await initializedRepo();
+  // A text-only default tier and a vision strong tier, via a models.json in the suite's
+  // scratch pi dir (the same file run-agent's seam check and imageReroute read).
+  const agentDir = process.env.PI_CODING_AGENT_DIR ?? "";
+  fs.mkdirSync(agentDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(agentDir, "models.json"),
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+
+  const config = defaultConfig();
+  // defaultConfig returns a ResolvedModelConfig whose `model` is narrowed to string; a map
+  // form is valid config the loaded runtime reads, so cast at the boundary.
+  (config as { model: string | Record<string, string> }).model = {
+    default: "local/text",
+    strong: "local/vision",
+  };
+  // The director's seam tier is "strong" by default (roleSeamTier); to exercise a director
+  // that is itself blind and reroutes to vision, pick its tier as the text-only "default".
+  config.roles.director!.model = "default";
+
+  const promptsFile = path.join(tmpdir(), "director-reroute-prompts");
+  const blindScript = [
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/d.png" } })}'`,
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "r1", toolName: "read", result: { content: [{ type: "text", text: "Read image file [png]\\n[Current model does not support images. The image will be omitted from this request.]" }] }, isError: false })}'`,
+    logPromptsTo(promptsFile),
+  ].join("\n");
+  const settlePi = [
+    logPromptsTo(promptsFile),
+    `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+  ].join("\n");
+
+  const runner = makeLoopRunner(repo, "director", config);
+  enqueuePrompt(repo, "read the attached image");
+
+  // Tick 1: the director's blind read ends aborted/`image-reroute` and records the one-shot
+  // marker; the director never resumes, so the prompt re-queues to run fresh next tick.
+  await withPi(blindScript, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "aborted", "a director blind read with a target ends aborted");
+    assert.equal(outcome.resumeCause, "image-reroute");
+  });
+  assert.equal(runner.state.imageReroute?.tier, "strong");
+
+  // Tick 2: the rerouted director prompt runs FRESH on the vision target, and the one-shot
+  // marker is consumed so it is NOT re-routed again.
+  await withPi(settlePi, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change");
+  });
+  assert.equal(runner.state.imageReroute, undefined, "the one-shot marker clears for the director too");
+  const starts = readEvents(repo).filter((e) => e.type === "tick_start");
+  const reroutedStart = starts.find((e) => e.reroute === "image");
+  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted director tick");
+  assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted director tick runs on the target");
+
+  // Tick 3: with a NEW queued prompt and the one-shot marker cleared, the director is back on
+  // its own text-only tier — no reroute stamp, own model (without the clearing fix the marker
+  // would persist and this tick would re-route onto the vision target).
+  enqueuePrompt(repo, "a follow-up director prompt");
+  await withPi(settlePi, async () => {
+    const outcome = await runner.tick();
+    assert.equal(outcome.result, "no_change");
+  });
+  const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
+  const back = startsAfter[startsAfter.length - 1]!;
+  assert.equal(back.reroute, undefined, "the director tick after the reroute is back on its own tier");
+  assert.equal(String(back.model), "local/text");
 });

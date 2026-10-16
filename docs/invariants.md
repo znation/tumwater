@@ -434,3 +434,31 @@ inconclusive (never a provider failure or an "answered").
 that reads an image on a blind model is logged, not killed"; `test/tick-verdict.test.ts` — "a
 blind image read fails the tick with an error naming the file and the model";
 `test/loop-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
+
+### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted tick never hops twice
+
+**Guarantee.** A blind read on a role whose tier has an image-capable reroute target (a peer
+tier in the borrow order — the free fallback pairs only while the budget gate is on fallback
+or the role is in a model-fallback episode) ends the tick `aborted` with the `image-reroute`
+resume cause and records a one-shot `LoopState.imageReroute` marker naming the target seam
+and the image. The next tick starts directly on the target in a FRESH session over the kept
+worktree — never `--continue` — carrying the handoff note that names the prior model and the
+image, and its `tick_start` is stamped `reroute: "image"`. A tick that already started on the
+target (`imageRerouteActive` true, the marker consumed at its start) does not reroute again: a
+second blind read fails it. The marker is one-shot for the director too: a rerouted director
+prompt runs fresh on the target and is delivered exactly once, then the director is back on its
+own tier (its marker clears in `runTickPhase`, since the director never resumes and so never
+reaches planTickStart's image-reroute branch). A queued prompt attaching an image hops straight
+to the target at model choice when the loop's seam reads no images (`image_reroute`,
+`preflight: true`); with no target the tick errors without spawning pi.
+
+**Binds.** `src/tick/tick-verdict.ts` (the reroute arm), `src/loop/loop-tick.ts` (model choice
++ attachment preflight), `src/loop/loop.ts` (`runConfig`), `src/tick/tick-resume.ts` (the
+image-reroute handoff), `src/prompt/prompt-followup.ts` (`buildHandoffPrompt`'s image-reroute
+note), `src/events/event-format.ts` (the `image_reroute` and image-reroute resume lines).
+
+**Pinned by.** `test/tick-verdict.test.ts` — the reroute verdict tests (target + one-hop);
+`test/loop-2.test.ts` — "a blind read on a text-only loop reroutes to the vision target, then
+back to its own tier" and "a rerouted director prompt runs fresh on the vision target and is
+delivered once"; `test/prompt-followup.test.ts` — the handoff-note test;
+`test/event-format.test.ts` — the `image_reroute` and image-reroute resume rendering tests.

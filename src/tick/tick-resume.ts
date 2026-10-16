@@ -119,7 +119,12 @@ export function planTickStart(opts: {
   // survive, but the next run is a FRESH session — the fallback seam may be a different backend,
   // and claude keeps no flags across `--resume` (plans/agent-backends.md §7, part 7a/7).
   const budgetCapped = pendingResumeCause === "budget-capped";
-  const handoff = (latest !== null && !resumable) || budgetCapped;
+  // An image-blind run with an image-capable peer tier ends `aborted` with this cause
+  // (plans/image-input.md part 4/5): the next tick runs a FRESH session on the TARGET seam
+  // over the kept worktree — never `--continue` — because the old session carries pi's
+  // "image omitted" note and the target may be a different backend.
+  const imageReroute = pendingResumeCause === "image-reroute";
+  const handoff = (latest !== null && !resumable) || budgetCapped || imageReroute;
   s.resumePending = false;
   s.resumeCause = undefined;
   s.resumeMissing = undefined;
@@ -131,7 +136,7 @@ export function planTickStart(opts: {
   const resumeBlocked = s.phase === "review";
   // A budget-capped handback never resumes the session whose seam the cap moved off of, even
   // when its transcript is still resumable: it hands off instead.
-  const resuming = resumableSession && !resumeBlocked && !budgetCapped;
+  const resuming = resumableSession && !resumeBlocked && !budgetCapped && !imageReroute;
   const handingOff = handoff && !resumeBlocked;
   // Reclaim the prompt the interrupted tick re-queued for its resume (src/inbox/pending-prompt.ts):
   // the resumed session still owns that request in its context, so this tick's bookkeeping
@@ -149,18 +154,29 @@ export function planTickStart(opts: {
   const resumeCause: ResumeCause = handingOff
     ? budgetCapped
       ? "budget-capped"
-      : "handoff"
+      : imageReroute
+        ? "image-reroute"
+        : "handoff"
     : pendingResumeCause ?? ((s.cutOffStreak ?? 0) > 0 ? "cut-off" : "restart");
   let prompt: string | null;
   if (resuming) {
     prompt = buildResumePrompt(opts.role, resumeCause, agent);
   } else {
     const assembled = opts.tickPrompt(agent);
+    // The image-reroute handoff note names the model the blind run was on and the image it
+    // read; those facts ride the one-shot marker, which is consumed here. A handoff's fresh
+    // session also needs the to-be-run model named for its own side of the note, but the
+    // bridge already carries the facts that matter.
+    const rerouteFacts =
+      imageReroute && s.imageReroute
+        ? { from: s.imageReroute.from ?? "the prior model", path: s.imageReroute.path ?? "an image" }
+        : undefined;
+    if (imageReroute) s.imageReroute = undefined;
     prompt =
       assembled === null
         ? null
         : handingOff
-          ? buildHandoffPrompt(opts.role, assembled, resumeCause)
+          ? buildHandoffPrompt(opts.role, assembled, resumeCause, rerouteFacts)
           : assembled;
   }
   if (prompt === null) return null;

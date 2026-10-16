@@ -6,40 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/)
-
-**Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
-
-**Approach.**
-- In part 3's verdict branch, when a target exists:
-  - end the tick `aborted` with a new resume cause, `image-reroute`. Add it to `ResumeCause` (src/prompt/prompt-followup.ts), `TickOutcome.resumeCause` (src/tick/tick-outcome.ts) and `LoopState.resumeCause` (src/loop/loop-state.ts);
-  - set a one-shot `LoopState.imageReroute = { tier, model, from, path }` (healed like `modelFallback`);
-  - set `nextRunAt` to now and requeue the prompt via `requeueForResume`.
-- The next tick:
-  - `tickPhase` (src/loop/loop-tick.ts:139-153) picks the target's config over the primary/fallback choice, as do `LoopRunner.runConfig` (src/loop/loop.ts) and `setTickPair`;
-  - the field clears at tick start, and `tick_start` carries `reroute: "image"`;
-  - the run is always a fresh session over the kept worktree, via the `budget-capped` handoff path in src/tick/tick-resume.ts, never `--continue`. `buildHandoffPrompt` gets an `image-reroute` note: an earlier run on <model> stopped when it read <path>, because that model cannot read images; its edits are in your worktree, so review `git diff` and finish or discard them; this model can read images, so read the image again;
-  - director ticks never resume, so the requeued prompt runs fresh on the target.
-- One hop only: a blind read during a rerouted tick takes part 3's `error` path.
-- **Preflight:** at model choice, peek at the loop's next prompt (`peekPrompt` / `peekRolePrompt`).
-  - If it carries `[image attached: …]` lines and the seam reads no images, start on the target and log `image_reroute` with `preflight: true`.
-  - With no target, end the tick `error` without spawning a run.
-- New event `image_reroute {loop, tick, from, to, tier, preflight}`. The `resume` renderer in src/events/event-format.ts learns `image-reroute`; today it special-cases only `cut-off` and `handoff`.
-
-**Files touched.**
-- src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-state.ts
-- src/tick/tick-verdict.ts, src/tick/tick-outcome.ts, src/tick/tick-apply.ts, src/tick/tick-resume.ts
-- src/prompt/prompt-followup.ts
-- src/events/events.ts, src/events/event-format.ts
-- tests: loop tests with the fake pi shim, and the tick-resume, tick-apply and prompt-followup tests
-
-**Acceptance criteria.**
-- With a text-only default tier and a vision strong tier (fake pi), a blind read on a default-tier loop ends the tick `aborted`/`image-reroute`. The next tick runs immediately on the strong model in a fresh session over the kept worktree; its prompt carries the handoff note naming the path, and its `tick_start` has `reroute: "image"`. The tick after that is back on default.
-- A blind read during the rerouted tick ends it `error`, with no second reroute.
-- A queued prompt with an `[image attached: …]` line on a text-only loop starts directly on the target (`image_reroute`, `preflight: true`) with no failed tick. With no target, the tick errors without spawning pi.
-- With the budget gate on fallback, a reroute only ever lands on a free fallback pair; with none that reads images, the tick errors.
-- A rerouted director prompt runs fresh on the target and is delivered exactly once.
-
 ### Image input, part 5/5: the dashboard, the TUI, and prompt attachments say which loops cannot read images (planned 2026-10-15 by user; requires part 4/5 landed; design and decisions in plans/image-input.md "Surfaces" and "Attachments"; touches src/status/, src/ui/, src/roles/role-render.ts, src/inbox/, src/gui/gui-prompt-commands.ts, and the docs)
 
 **Goal.** An operator should know without running doctor that a loop's model cannot read images, and what happens when one of its ticks tries. An attachment no configured model can read should be refused when it is submitted, not discovered at tick time.
@@ -367,6 +333,46 @@ test/loop-fallback.test.ts, and the part 1/4 e2e harness.
   that backend's name.
 - `npm test` passes.
 
+
+### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/) — done 2026-10-16
+
+**Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
+
+**Wiring note (landed 2026-10-16).** Three deviations from the plan's literal bullets, all matching its intent:
+- The one-shot `LoopState.imageReroute` carries the resolved target seam (`tier` + `provider`/`model`/`thinking`, rebuilt via `withModelOverrides`) plus `from`/`path`. It is cleared in `planTickStart` (after the handoff note reads `from`/`path`) rather than at tickPhase start, so a tick skipped before the plan (an empty director inbox) leaves the reroute pending and the facts survive to the note. A director tick never resumes, so planTickStart's image-reroute branch never clears it for the director; the director's marker is instead cleared in `runTickPhase` (src/loop/loop-tick.ts) once its rerouted tick is confirmed to run, so the reroute stays one-shot there too.
+- The regime is plumbed through `LoopRunner.budgetFallbackActive` (set beside `config` by the orchestrator's budget poll, src/gates/gate-polls.ts) and `LoopRunner.rerouteRegime(now)`; the verdict context gains `config`/`rerouteRegime`/`runModel`. The attachment preflight's `image_reroute` event names the loop's own model as `from`.
+- The `imageBlind` verdict branch reduces to: if `state.imageRerouteActive` (this tick already started on the target) → `error` (one hop); else resolve a target and, when one exists, `aborted`/`image-reroute` + the one-shot marker; else `error`. Gate runs (reviewer/resolver) are never rerouted.
+
+**Approach.**
+- In part 3's verdict branch, when a target exists:
+  - end the tick `aborted` with a new resume cause, `image-reroute`. Add it to `ResumeCause` (src/prompt/prompt-followup.ts), `TickOutcome.resumeCause` (src/tick/tick-outcome.ts) and `LoopState.resumeCause` (src/loop/loop-state.ts);
+  - set a one-shot `LoopState.imageReroute = { tier, model, from, path }` (healed like `modelFallback`);
+  - set `nextRunAt` to now and requeue the prompt via `requeueForResume`.
+- The next tick:
+  - `tickPhase` (src/loop/loop-tick.ts) picks the target's config over the primary/fallback choice, as do `LoopRunner.runConfig` (src/loop/loop.ts) and `setTickPair`;
+  - `tick_start` carries `reroute: "image"`;
+  - the run is always a fresh session over the kept worktree, via the `budget-capped` handoff path in src/tick/tick-resume.ts, never `--continue`. `buildHandoffPrompt` gets an `image-reroute` note: an earlier run on <model> stopped when it read <path>, because that model cannot read images; its edits are in your worktree, so review `git diff` and finish or discard them; this model can read images, so read the image again;
+  - director ticks never resume, so the requeued prompt runs fresh on the target.
+- One hop only: a blind read during a rerouted tick takes part 3's `error` path.
+- **Preflight:** at model choice, peek at the loop's next prompt (`peekPrompt` / `peekRolePrompt`).
+  - If it carries `[image attached: …]` lines and the seam reads no images, start on the target and log `image_reroute` with `preflight: true`.
+  - With no target, end the tick `error` without spawning a run.
+- New event `image_reroute {loop, tick, from, to, tier, preflight}`. The `resume` renderer in src/events/event-format.ts learns `image-reroute`.
+
+**Files touched.**
+- src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-state.ts
+- src/tick/tick-verdict.ts, src/tick/tick-outcome.ts, src/tick/tick-resume.ts
+- src/prompt/prompt-followup.ts
+- src/events/events.ts, src/events/event-format.ts
+- src/gates/gate-polls.ts (regime plumbing), docs/invariants.md (INV-J2)
+- tests: test/tick-verdict.test.ts, test/loop-2.test.ts, test/prompt-followup.test.ts, test/event-format.test.ts (the tick-apply tests needed no change: the `aborted` branch already carries `resumeCause` through)
+
+**Acceptance criteria.**
+- With a text-only default tier and a vision strong tier (fake pi), a blind read on a default-tier loop ends the tick `aborted`/`image-reroute`. The next tick runs immediately on the strong model in a fresh session over the kept worktree; its prompt carries the handoff note naming the path, and its `tick_start` has `reroute: "image"`. The tick after that is back on default.
+- A blind read during the rerouted tick ends it `error`, with no second reroute.
+- A queued prompt with an `[image attached: …]` line on a text-only loop starts directly on the target (`image_reroute`, `preflight: true`) with no failed tick. With no target, the tick errors without spawning pi.
+- With the budget gate on fallback, a reroute only ever lands on a free fallback pair; with none that reads images, the tick errors.
+- A rerouted director prompt runs fresh on the target and is delivered exactly once.
 
 ### Image input, part 3/5: a tick whose agent reads an image on a model that cannot see it is stopped and fails (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Detecting a blind read" and "Failing the tick"; touches src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts, src/loop/model-fallback.ts, src/events/, a different area from part 2/5's doctor files) — done 2026-10-15
 

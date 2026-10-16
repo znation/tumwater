@@ -429,6 +429,13 @@ export function eventMessage(e: HarnessEvent): string {
             : "";
       return `blind image read: ${textOr(e.path)} on ${textOr(e.model, "the model")}${action}`;
     }
+    case "image_reroute":
+      // The tick's work moves to a model that can read the image (plans/image-input.md part
+      // 4/5). Routine-with-explanation — no warning prefix: names the hop the way the
+      // handoff reads, and whether the traits-of-attachment preflight avoided a failed tick.
+      return e.preflight === true
+        ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed tick`
+        : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next tick runs there after a blind read on ${textOr(e.from, "the prior model")}`;
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
@@ -464,7 +471,9 @@ export function eventMessage(e: HarnessEvent): string {
         ? "resuming the run cut off at the context ceiling (compacted pi session, same worktree)"
         : e.cause === "handoff"
           ? "handing the interrupted tick off to a fresh session on another agent (same worktree, uncommitted edits kept)"
-          : "resuming the tick a shutdown interrupted (same pi session and worktree)";
+          : e.cause === "image-reroute"
+            ? "handing the blind-read tick off to a fresh session on an image-capable model (same worktree, uncommitted edits kept)"
+            : "resuming the tick a shutdown interrupted (same pi session and worktree)";
     case "slot_wait": {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the pool
       // working as designed. Names the wait, the pool it waited on, and how many slots are

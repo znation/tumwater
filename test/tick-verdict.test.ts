@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { loadConfig } from "../src/config/config.js";
 import { configRequestPath } from "../src/paths.js";
+import { writeConfig } from "./fixtures/repo-fixtures.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 import { initializedWorktree } from "./fixtures/repo-fixtures.js";
@@ -165,4 +167,78 @@ test("a blind image read fails the tick with an error naming the file and the mo
   assert.match(state.lastError ?? "", /\/x\/shot\.png/, "lastError names the image file");
   assert.match(state.lastError ?? "", /cannot read images/, "lastError names the model gap");
   assert.equal(pending.get(), null, "an imageBlind run is not resume-armed (nothing to resume)");
+});
+
+// Image-input reroute (plans/image-input.md part 4/5): when the role's tier is text-only but
+// another configured tier (here strong) can read images, a blind read stops routing its work
+// to that tier instead of failing. The verdict ends `aborted` with the `image-reroute` resume
+// cause and records a one-shot marker the next tick's model choice reads. These unit tests
+// exercise the pure verdict decision with a fake pi; the loop e2e (test/loop-2.test.ts) covers
+// the next tick actually running on the target.
+
+test("a blind read on a text-only tier with a vision reroute target aborts as image-reroute", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  // The feature loop rides the default tier (text-only local/text); strong reads images
+  // (local/vision). The models.json sits in the suite's scratch pi-agent dir.
+  writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
+  const config = loadConfig(root);
+  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
+  fs.mkdirSync(path.dirname(models), { recursive: true });
+  fs.writeFileSync(
+    models,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+
+  const pi: PiRunResult = piRunResult({
+    ok: false,
+    imageBlind: { path: "/x/s.png" },
+    errorMessage: "read /x/s.png, but local/text cannot read images",
+  });
+  const { ctx, state } = makeCtx(root, wt, "feature", {
+    pi,
+    config,
+    runModel: "local/text",
+    rerouteRegime: "primary",
+  });
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "aborted");
+  assert.equal(outcome?.resumeCause, "image-reroute");
+  assert.equal(state.imageReroute?.tier, "strong");
+  assert.equal(state.imageReroute?.model, "vision");
+  assert.equal(state.imageReroute?.from, "local/text");
+  assert.equal(state.imageReroute?.path, "/x/s.png");
+  assert.match(state.lastError ?? "", /rerouting to strong/);
+  // The verdict re-queues the prompt for a prompt-driven reroute; a bare role loop has none.
+  // (applyTickOutcome, exercised in the loop e2e, arms the prompt resume + nextRunAt.)
+});
+
+test("a blind read during an already-rerouted tick fails instead of rerouting a second time", async () => {
+  const { root, wt } = await initializedWorktree("feature");
+  writeConfig(root, { model: { default: "local/text", strong: "local/vision" } });
+  const config = loadConfig(root);
+  const models = path.join(process.env.PI_CODING_AGENT_DIR ?? "", "models.json");
+  fs.mkdirSync(path.dirname(models), { recursive: true });
+  fs.writeFileSync(
+    models,
+    JSON.stringify({ providers: { local: { models: [{ id: "text" }, { id: "vision", input: ["text", "image"] }] } } }),
+  );
+
+  const pi: PiRunResult = piRunResult({
+    ok: false,
+    imageBlind: { path: "/x/s.png" },
+    errorMessage: "read /x/s.png, but local/vision cannot read images",
+  });
+  const { ctx, state } = makeCtx(root, wt, "feature", {
+    pi,
+    config,
+    runModel: "local/vision",
+  });
+  // The tick already started on the target (tickPhase set this when it routed the reroute).
+  state.imageRerouteActive = true;
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "error", "a rerouted tick's blind read fails, no second hop");
+  assert.equal(state.imageReroute, undefined, "no new reroute marker is set");
+  assert.match(state.lastError ?? "", /cannot read images/);
 });

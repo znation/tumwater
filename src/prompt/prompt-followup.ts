@@ -22,7 +22,7 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
  * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a
  * fresh session over the interrupted run's uncommitted worktree. */
-export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped";
+export type ResumeCause = "restart" | "cut-off" | "hung-tool" | "timeout" | "budget-resumed" | "handoff" | "rate-limit" | "budget-capped" | "image-reroute";
 
 /** The shared closing paragraph of the four resume bridges that hand the same task back
  * unchanged (restart, hung-tool, budget-resumed, rate-limit): finish or redo what you started
@@ -96,13 +96,21 @@ export function buildHandoffPrompt(
   roleId: string,
   tickPrompt: string,
   cause: ResumeCause = "handoff",
+  /** Named facts an image-reroute handoff note needs that the cause alone cannot carry: the
+   * model the blind run was on and the image file it read. */
+  imageReroute?: { from: string; path: string },
 ): string {
   const note =
     cause === "budget-capped"
       ? `An earlier API-billed claude run of the "${roleId}" loop hit its per-run budget cap before it
 could finish; its uncommitted edits are in your worktree — review \`git diff\`, then finish or
 discard them. This run starts on the seam the daily budget left you.`
-      : `An earlier run of the "${roleId}" loop on another model was interrupted; its
+      : cause === "image-reroute"
+        ? `An earlier run of the "${roleId}" loop on ${imageReroute?.from ?? "another model"} stopped
+when it read ${imageReroute?.path ?? "an image"}, because that model cannot read images; its
+uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them. This
+run is on a model that CAN read images, so read the image again.`
+        : `An earlier run of the "${roleId}" loop on another model was interrupted; its
 uncommitted edits are in your worktree — review \`git diff\`, then finish or discard them.`;
   return `${tickPrompt}\n\n${note}`;
 }
