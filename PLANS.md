@@ -2399,6 +2399,43 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater completion fish` prints a native fish completion script built from the same help-derived spec (planned 2026-10-16 by plan; independent of every other Planned entry. It touches src/cli/completion.ts, the `completion` case in src/cli.ts, the `completion` stanza in src/cli/help.ts, docs/cli.md, README.md, and test/completion.test.ts. It does not touch the TUI, payload keys, or event names)
+
+**Goal.** `tumwater completion` supports only bash and zsh (`SUPPORTED_SHELLS` in src/cli/completion.ts). Zsh gets a wrapper around the bash script (`autoload -U +X bashcompinit`), but fish cannot run bash `complete -F` scripts, so fish users get no completion. Add `fish` as a third shell. Generate it from the same `completionSpec(help)` and value sources the bash script uses, so fish completes the same commands, subcommands, flags, role ids, config keys, file paths, template ids, and result classes, and a new help stanza reaches all three shells at once.
+
+**Approach.**
+1. src/cli/completion.ts:
+   - Change `SUPPORTED_SHELLS` to `["bash", "zsh", "fish"] as const`.
+   - Add `function fishScript(help: string): string`. Keep it next to `bashScript` and reuse `completionSpec`, `PATH_FLAGS`, `templateIds()`, and `HISTORY_RESULT_FLAG_NAMES`. Each line it emits is one fish `complete -c tumwater` command:
+     - A header comment `# tumwater completion (generated from \`tumwater help\`)`, then `complete -c tumwater -f`, which turns off file completion except where a path flag turns it back on.
+     - A helper `function __tumwater_argc; count (commandline -opc); end`. It counts the words before the cursor, `tumwater` included. Use `-opc`, not fish 4's `-x`, so fish 3 runs it too.
+     - Commands: `complete -c tumwater -n __fish_use_subcommand -a "<spec.commands joined by spaces>"`.
+     - Subcommands, for each command with a non-empty `spec.subcommands[command]`: `complete -c tumwater -n "__fish_seen_subcommand_from <command>; and test (__tumwater_argc) -eq 2" -a "<subs>"`.
+     - Flags: for each command and each flag in `spec.flags[command]`, emit `complete -c tumwater -n "__fish_seen_subcommand_from <command>" -l <flag without -->` plus a value suffix from a small helper `fishFlagValue(flag: string): string`. That helper returns ` -x -a "(tumwater completion --roles 2>/dev/null)"` for `--role`, ` -r -F` for each `PATH_FLAGS` entry, ` -x -a "<templateIds() joined>"` for `--template`, ` -x -a "<Object.values(HISTORY_RESULT_FLAG_NAMES) joined>"` for `--result`, and `""` otherwise.
+     - Role ids as the bare argument of `role` and `history`: `complete -c tumwater -n "__fish_seen_subcommand_from role history; and test (__tumwater_argc) -eq 2" -a "(tumwater completion --roles 2>/dev/null)"`.
+     - Config keys: `complete -c tumwater -n "__fish_seen_subcommand_from config; and __fish_seen_subcommand_from get set unset; and test (__tumwater_argc) -eq 3" -a "(tumwater completion --config-keys 2>/dev/null)"`.
+   - `completionScript(shell, help)`: return `fishScript(help)` for `"fish"`, and leave the bash and zsh outputs as they are now.
+2. src/cli.ts, the `completion` case: change the failure message to `completion takes one shell: bash, zsh, or fish` (keep `gotSuffix`).
+3. src/cli/help.ts, the `completion` stanza: change the usage to `tumwater completion <bash|zsh|fish>` and the description to `Print a shell completion script (eval "$(tumwater completion zsh)" in your rc; fish: tumwater completion fish | source)`.
+4. docs/cli.md (the completion paragraph after the tables) and README.md ("`tumwater completion bash|zsh` prints shell completion"): write `bash|zsh|fish`. In cli.md, add the fish setup: `tumwater completion fish > ~/.config/fish/completions/tumwater.fish`.
+5. test/completion.test.ts:
+   - In "the completion command works outside a repo and rejects other shells": `completion fish` now exits 0 and its stdout contains `complete -c tumwater`. The rejected cases become `["completion", "tcsh"]` and `["completion"]`, and stderr matches `/bash, zsh, or fish/`. The help topic matches `/tumwater completion <bash\|zsh\|fish>/`. Update the `/bash or zsh/` assertions in the `--roles` and `--config-keys` tests to the new message.
+   - New test "the fish script names every command, subcommand, and flag from the spec". Take `completionScript("fish")` and `completionSpec()`. The `__fish_use_subcommand` line's `-a` word list equals `spec.commands`. For each command with subcommands there is a line holding `__fish_seen_subcommand_from <command>; and test (__tumwater_argc) -eq 2` and its subs. For each command and flag, some line holds both `__fish_seen_subcommand_from <command>"` and ` -l <name>`. Check by splitting the script into lines; do not compare snapshots.
+   - New test "the fish script completes values after --role, path flags, --template, and --result, and config keys at word 3". Every ` -l role` line contains `completion --roles`. Every ` -l file`, ` -l attach`, and ` -l notes-file` line contains `-r -F`. A ` -l template` line contains every `templateIds()` id. A ` -l result` line contains `problems`. One line contains `__fish_seen_subcommand_from get set unset` and `completion --config-keys`.
+   - New test "the fish script parses under fish when fish is installed": use `{ skip: !<fish found on PATH> }`, found by trying `execFile("fish", ["--version"])` once. Run `fish --no-execute -c <script>` and expect it to succeed. Fish is not installed on the planning machine, so this test skips there.
+   - Leave the bash and zsh tests as they are, except for the message regexes above.
+
+**Files touched.** src/cli/completion.ts, src/cli.ts, src/cli/help.ts, docs/cli.md, README.md, test/completion.test.ts.
+
+**Acceptance criteria.**
+- `tumwater completion fish` exits 0 outside a git repo and prints a script with no bash syntax: no `COMPREPLY`, `compgen`, or `complete -F`.
+- `tumwater completion tcsh` and bare `tumwater completion` exit nonzero, and stderr names bash, zsh, and fish.
+- `completionScript("bash")` and `completionScript("zsh")` output does not change. Check this by saving both outputs before the edit and diffing them after.
+- The new tests pass. With fish installed, `fish --no-execute` accepts the script.
+- When a line is temporarily removed from the generated flag list (for example, by skipping `--json` in `fishScript`), the spec-coverage test fails. Revert that change before landing.
+- test/cli-doc.test.ts still passes. The doc and help guards see no new or removed command or long flag.
+- `npm run test` passes.
+
 ## Done
 
 ### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it) — done 2026-10-16
