@@ -123,18 +123,10 @@ export class TickUsage {
       // a tick folds here exactly once, so the fleet's spend for the local day is complete at
       // each tick end.
       recordDailyCost(s, run.costUsd);
-      if (provider !== undefined) {
-        const e = this.providerCost.get(provider) ?? { costUsd: 0, notionalCostUsd: 0 };
-        e.costUsd += run.costUsd;
-        this.providerCost.set(provider, e);
-      }
+      this.bumpProviderCost(provider, run.costUsd, 'costUsd');
     } else {
       this.notionalCostUsd += run.costUsd;
-      if (provider !== undefined) {
-        const e = this.providerCost.get(provider) ?? { costUsd: 0, notionalCostUsd: 0 };
-        e.notionalCostUsd += run.costUsd;
-        this.providerCost.set(provider, e);
-      }
+      this.bumpProviderCost(provider, run.costUsd, 'notionalCostUsd');
     }
     if (run.billing !== undefined) this.billing = run.billing;
     if (run.rateWindows !== undefined) this.rateWindows = run.rateWindows;
@@ -160,6 +152,20 @@ export class TickUsage {
     // the text at parse time). A 429 never lands here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
       this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider };
+  }
+
+  /** Add `amount` to one field of the tick's per-provider spend ledger, initializing the
+   * provider's entry on first contact. `provider` undefined (a run that never resolved one)
+   * is a no-op, matching how fold calls it: only runs with a provider reach this. */
+  private bumpProviderCost(
+    provider: string | undefined,
+    amount: number,
+    field: 'costUsd' | 'notionalCostUsd',
+  ): void {
+    if (provider === undefined) return;
+    const e = this.providerCost.get(provider) ?? { costUsd: 0, notionalCostUsd: 0 };
+    e[field] += amount;
+    this.providerCost.set(provider, e);
   }
 
   /** Serialize the per-provider split for the tick_end payload: a `Record<provider,
