@@ -18,6 +18,7 @@ import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
+import { appendPromptNote } from "../text/format.js";
 import { ROLE_NOTES_MAX_BYTES } from "../pi-extension/role-notes.js";
 import { truncateWithNote } from "../text/text.js";
 import { renderBacklogIndexBlock, renderBacklogStructureBlock } from "../backlog/backlog-structure.js";
@@ -197,26 +198,26 @@ export function assembleTickPrompt(
   const claim = role === DIRECTOR_ROLE ? undefined : state.claim;
   if (claim && userPrompt === null) {
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
-    prompt += `\n\n${buildAssignmentNote(claim, range)}`;
+    prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range));
   }
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
-    prompt += `\n\n${buildHeldEntriesNote(state.heldElsewhere)}`;
+    prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));
   }
   // A change rejected in review is the only cross-tick memory of what was built and why it
   // failed — every tick starts a fresh session, so the full reasons ride along on the next
   // prompt until the role's next reviewed change replaces them.
   if (state.lastReview?.verdict === "reject" && !state.revision) {
-    prompt += `\n\n${buildRejectedReviewNote(state.lastReview, role)}`;
+    prompt = appendPromptNote(prompt, buildRejectedReviewNote(state.lastReview, role));
   }
   // Likewise a change leftover recovery discarded as unmergeable: named until the role queues
   // its next change (the discarding tick itself appends it after recovery — see runTick).
   const discard = state.conflictDiscard;
-  if (discard) prompt += `\n\n${buildConflictDiscardNote(discard.summary, discard.attempts)}`;
+  if (discard) prompt = appendPromptNote(prompt, buildConflictDiscardNote(discard.summary, discard.attempts));
   // A fresh tick after the previous run(s) were cut off at the context ceiling (the loop
   // stopped resuming, or never resumed — the director re-runs its prompt fresh): the only
   // memory that the last attempt was too big for the window is this note.
   if ((state.cutOffStreak ?? 0) > 0) {
-    prompt += `\n\n${buildCutOffNote(state.cutOffStreak ?? 0)}`;
+    prompt = appendPromptNote(prompt, buildCutOffNote(state.cutOffStreak ?? 0));
   }
   return { prompt, userPrompt, userPromptFile };
 }

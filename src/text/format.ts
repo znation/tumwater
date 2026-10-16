@@ -13,6 +13,16 @@ import { textOr } from "./text.js";
  * home of the token display format shared by the status table's gen/peak-ctx columns and the
  * commit trailer's ctx field — pinned here so those surfaces cannot drift even though they
  * live in different modules. */
+/** Append a section note to a running prompt, separated from what precedes it by a blank line.
+ * The tick and authoring-tick prompt assemblers (tick-prompt.ts, loop-tick.ts) build a prompt by
+ * stacking nameless sections — assignment, held-entry, rejected-review, conflict-discard,
+ * conflict-handback, revision and cut-off notes — each appended the same way. This is the single
+ * append so the `\n\n` section separator stays in one place. The note is appended unconditionally,
+ * exactly as the call sites appended the literal, so behavior is unchanged for any note. */
+export function appendPromptNote(prompt: string, note: string): string {
+  return `${prompt}\n\n${note}`;
+}
+
 export function compactTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   return n >= 10_000 ? `${(n / 1000).toFixed(1)}k` : String(n);

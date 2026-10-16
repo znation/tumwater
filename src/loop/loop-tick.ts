@@ -39,6 +39,7 @@ import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
 import { finalizeTick } from "../tick/tick-finalize.js";
 import { errorMessage } from "../text/text.js";
+import { appendPromptNote } from "../text/format.js";
 import type { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
@@ -477,7 +478,7 @@ async function tickWithWorktreePhase(
       s.mergeConflicts = undefined;
       s.conflictHandback = undefined;
       s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
-      prompt += `\n\n${buildConflictDiscardNote(recovered.summary, recovered.attempts)}`;
+      prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
     } else if (recovered) return ctx.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
     await resetWorktreeToMain(wt, ctx.mainBranch);
     // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
@@ -490,7 +491,7 @@ async function tickWithWorktreePhase(
     // blind.
     if (ctx.baseRole === "bugfix") {
       const note = await bugfixMainRedNote(ctx.root, ctx.role, wt);
-      if (note) prompt += `\n\n${note}`;
+      if (note) prompt = appendPromptNote(prompt, note);
     } else {
       const blocked = await mainRedGate(ctx.root, ctx.role, wt);
       if (blocked) {
@@ -534,7 +535,7 @@ async function tickWithWorktreePhase(
         conflicted: applied.conflicted,
       });
       const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, applied.conflicted);
-      prompt += `\n\n${buildConflictHandbackNote(hb.reason, applied.conflicted, intent)}`;
+      prompt = appendPromptNote(prompt, buildConflictHandbackNote(hb.reason, applied.conflicted, intent));
     } else {
       // The object is gone or the apply failed for a non-conflict reason: drop the hand-back
       // so the author starts fresh rather than retrying it every tick.
@@ -573,12 +574,12 @@ async function tickWithWorktreePhase(
         // tick-prompt.ts suppresses the rejected-review note whenever state.revision is set,
         // so without this the fresh run would see neither the objections nor the revision
         // instructions. A resume keeps its session context and must not see the note twice.
-        prompt += `\n\n${revisionNote}`;
+        prompt = appendPromptNote(prompt, revisionNote);
       }
     } else if (await applyRevision(wt, ctx.mainBranch, sha)) {
       revisionRound = round;
       logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "applied", round, sha });
-      prompt += `\n\n${revisionNote}`;
+      prompt = appendPromptNote(prompt, revisionNote);
     } else {
       // The clean re-apply conflicted: re-apply with the markers left in place so the author
       // resolves them rather than losing the revision (PLANS.md "Robust conflict landing, part
@@ -602,15 +603,15 @@ async function tickWithWorktreePhase(
           reason: "revision",
           conflicted: withConflicts.conflicted,
         });
-        prompt += `\n\n${revisionNote}`;
+        prompt = appendPromptNote(prompt, revisionNote);
         const intent = await handbackIntent(wt, ctx.mainBranch, sha, withConflicts.conflicted);
-        prompt += `\n\n${buildConflictHandbackNote("revision", withConflicts.conflicted, intent)}`;
+        prompt = appendPromptNote(prompt, buildConflictHandbackNote("revision", withConflicts.conflicted, intent));
       } else {
         s.revision = undefined;
         await deleteRef(ctx.root, rejectedRefName(ctx.role));
         logEventBestEffort(ctx.root, { loop: ctx.role, type: "revision", action: "conflict", round, sha });
-        prompt += `\n\n${buildRejectedReviewNote(lastReviewOrEmpty, ctx.role)}`;
-        prompt += `\n\nThe rejected diff no longer applies to current main.`;
+        prompt = appendPromptNote(prompt, buildRejectedReviewNote(lastReviewOrEmpty, ctx.role));
+        prompt = appendPromptNote(prompt, "The rejected diff no longer applies to current main.");
       }
     }
   }
@@ -625,7 +626,7 @@ async function tickWithWorktreePhase(
     const hb = s.conflictHandback;
     const conflicted = await markerBearingFiles(wt);
     const intent = await handbackIntent(wt, ctx.mainBranch, hb.sha, conflicted);
-    prompt += `\n\n${buildConflictHandbackNote(hb.reason, conflicted, intent)}`;
+    prompt = appendPromptNote(prompt, buildConflictHandbackNote(hb.reason, conflicted, intent));
   }
 
   const tickBase = await headOf(wt, "HEAD");
