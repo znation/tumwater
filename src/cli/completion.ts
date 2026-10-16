@@ -4,7 +4,7 @@
 import { customLoopNames, knownRoleIds, loadConfig } from "../config/config.js";
 import { AGENT_IDS, AGENT_KEYS, MODEL_TIERS, ROLE_ENTRY_KEYS, TOP_LEVEL_KEYS } from "../config/config-schema.js";
 import { DOTTED_MAP_KEYS } from "../config/config-keys.js";
-import { HISTORY_RESULT_CLASSES } from "../history/history-data.js";
+import { HISTORY_RESULT_FLAG_NAMES } from "../history/history-data.js";
 import { templateIds } from "../init/init-templates.js";
 import { allRoleIds } from "../roles/roles.js";
 import { HELP, helpStanzas } from "./help.js";
@@ -118,7 +118,7 @@ function bashScript(help: string): string {
     `  local cur="\${COMP_WORDS[COMP_CWORD]}"`,
     `  local prev="\${COMP_WORDS[COMP_CWORD-1]}"`,
     `  COMPREPLY=()`,
-    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == tick ]] && [[ "$cur" != -* ]]; }; then`,
+    `  if [ "$prev" = "--role" ] || { [ "$COMP_CWORD" -eq 2 ] && [[ "\${COMP_WORDS[1]}" == role || "\${COMP_WORDS[1]}" == history ]] && [[ "$cur" != -* ]]; }; then`,
     `    COMPREPLY=( $(compgen -W "$(tumwater completion --roles 2>/dev/null)" -- "$cur") )`,
     `    return 0`,
     `  fi`,
@@ -132,7 +132,7 @@ function bashScript(help: string): string {
     `    return 0`,
     `  fi`,
     `  if [ "$prev" = "--result" ]; then`,
-    `    COMPREPLY=( $(compgen -W "${HISTORY_RESULT_CLASSES.join(" ")}" -- "$cur") )`,
+    `    COMPREPLY=( $(compgen -W "${Object.values(HISTORY_RESULT_FLAG_NAMES).join(" ")}" -- "$cur") )`,
     `    return 0`,
     `  fi`,
     `  if [ "$COMP_CWORD" -eq 3 ] && [ "\${COMP_WORDS[1]}" = config ] && [[ "\${COMP_WORDS[2]}" == get || "\${COMP_WORDS[2]}" == set || "\${COMP_WORDS[2]}" == unset ]] && [[ "$cur" != -* ]]; then`,

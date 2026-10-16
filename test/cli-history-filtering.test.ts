@@ -253,6 +253,9 @@ test("history --result narrows to one outcome class and composes with --json", a
   assert.equal(changes.stdout.trim().split("\n").length, 1);
   assert.match(changes.stdout, /feature\s+#7\s+changed/);
 
+  const merged = await cli(repo, "history", "--result", "merged");
+  assert.equal(merged.stdout, changes.stdout, "--result merged filters like the hidden --result changes");
+
   const none = await cli(repo, "history", "--result", "none");
   assert.equal(none.code, 0);
   assert.equal(none.stdout.trim().split("\n").length, 1);
@@ -339,7 +342,7 @@ test("history --result fails with its own wording for a missing or unknown class
 
   const bogus = await cli(repo, "history", "--result", "bogus");
   assert.equal(bogus.code, 1);
-  assert.match(bogus.stderr, /changes, none, problems/);
+  assert.match(bogus.stderr, /merged, none, problems/);
   assert.match(bogus.stderr, /got "bogus"/);
 });
 

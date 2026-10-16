@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
+import { historyTrailForm, parseInitArgs, parsePromptArgs } from "../src/cli/cli-command-args.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 
@@ -637,4 +637,19 @@ test("parsePromptArgs --attach is refused in the read-only modes and composes wi
   // A stray token beside --list is still the stray-argument error; the guard only covers
   // the pair itself.
   assert.match(expectFail(() => parsePromptArgs(["--list", "--attach"])).stderr, /--attach only queues a prompt/);
+});
+
+test("historyTrailForm tells the one-run trail from the listing by a non-flag, non-value token", () => {
+  const cases: Array<[string[], boolean]> = [
+    [["feature", "3"], true],
+    [["feature", "--last"], true],
+    [["--json", "feature", "3"], true],
+    [["-n", "5"], false],
+    [["--grep", "feature"], false],
+    [["--grep", "-x"], false],
+    [["--role", "qa", "--since", "1h"], false],
+    [["--result", "merged", "--summary"], false],
+    [[], false],
+  ];
+  for (const [args, want] of cases) assert.equal(historyTrailForm(args), want, args.join(" "));
 });

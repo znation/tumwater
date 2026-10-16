@@ -39,6 +39,21 @@ export function peelPositionals(args: string[]): {
   return { positionals, rest };
 }
 
+/** The `history` listing flags that take a separate value token. */
+const HISTORY_LISTING_VALUED_FLAGS = ["-n", "--since", "--grep", "--result", "--role"];
+
+/** True when `history`'s args are the one-run trail form (`history <role> <n>`, `history
+ * <role> --last`): a token that is neither a flag nor the value of a listing-form valued flag.
+ * A valued flag's value is skipped by position, so `--grep -x` stays a listing. */
+export function historyTrailForm(args: string[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i] as string;
+    if (HISTORY_LISTING_VALUED_FLAGS.includes(arg)) i++;
+    else if (!arg.startsWith("-")) return true;
+  }
+  return false;
+}
+
 /** Fail when any token is not at one of the `claimed` positions — the shared "no extra tokens"
  * check for commands whose positionals are free-form prompt text (init, prompt): with their
  * flags present, every other token would be silently baked into the prompt. Names the first

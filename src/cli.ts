@@ -37,7 +37,7 @@ import {
   REPROBE_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
-import { parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
+import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
 import { requireReadyRepo } from "./cli/cli-repo-gate.js";
 import { repoToplevel } from "./git/git.js";
 
@@ -49,6 +49,20 @@ import { PACKAGE_JSON, nodeFloorProblem, packageEnginesNode, packageVersion } fr
 
 // The CLI's help text and its per-command topic parser live in help.ts — importing cli.ts
 // would run main(), so tests pin the topics against help.ts directly.
+
+/** One run's trail, shared by `history <role> <n>` and its hidden alias `tick` so the two cannot
+ * drift. Positional-first: the <role> <n> tokens peel off and the remaining flags go through
+ * rejectUnknownArgs (only --json, --last, --stat), so a listing flag such as --role is refused.
+ * Arity is gated before the ready-repo check so a malformed call fails with its usage in any
+ * directory; cmdTick owns the value validation and the --last/numbered rivals. */
+async function runTrailCommand(root: string, args: string[]): Promise<void> {
+  const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
+  const { positionals, rest } = peelPositionals(args);
+  rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG]);
+  if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
+  await requireReadyRepo(root);
+  await cmdTick(root, positionals, rest.includes("--json"), rest.includes("--last"), rest.includes("--stat"));
+}
 
 async function main(): Promise<void> {
   const [, , command, ...args] = process.argv;
@@ -193,6 +207,10 @@ async function main(): Promise<void> {
       break;
     case "history": {
       const { cmdHistory, HISTORY_GREP_VALUE_ERROR, HISTORY_RESULT_VALUE_ERROR } = await import("./history/history.js");
+      if (historyTrailForm(args)) {
+        await runTrailCommand(root, args);
+        break;
+      }
       rejectUnknownArgs("history", args, [
         N_FLAG,
         sinceFlagSpec("history --since"),
@@ -206,24 +224,9 @@ async function main(): Promise<void> {
       await cmdHistory(root, args);
       break;
     }
-    case "tick": {
-      const { cmdTick, TICK_USAGE } = await import("./tick/tick-detail.js");
-      // Positional-first command (the role command's pattern): the <role> <n> tokens peel off,
-      // the flags that remain go through rejectUnknownArgs (only --json is admitted), and
-      // cmdTick owns the arity and value validation — a missing role, an unknown id, a
-      // non-positive or non-numeric n, or a stray extra positional fails there with the usage.
-      const { positionals, rest } = peelPositionals(args);
-      rejectUnknownArgs("tick", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG]);
-      // Arity before the ready-repo gate (the config subcommands' precedent): a malformed
-      // invocation fails with its usage no matter the directory. cmdTick keeps the guard too —
-      // in-process callers reach it without this dispatcher. One positional is the --last
-      // form (<role>), two is the numbered pair (<role> <n>); cmdTick picks the arity by the
-      // flag, so the gate stays loose here and the rivals check lives there.
-      if (positionals.length < 1 || positionals.length > 2) fail(`usage: ${TICK_USAGE}`);
-      await requireReadyRepo(root);
-      await cmdTick(root, positionals, rest.includes("--json"), rest.includes("--last"), rest.includes("--stat"));
+    case "tick":
+      await runTrailCommand(root, args);
       break;
-    }
     case "diff":
       await (await import("./cli/cli-query-commands.js")).cmdDiff(root, args);
       break;

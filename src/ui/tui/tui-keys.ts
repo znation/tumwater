@@ -6,6 +6,7 @@ import { renderFailureMarkdown } from "../../failure/failure-render.js";
 import {
   HISTORY_DEFAULT_TICKS,
   HISTORY_RESULT_CLASSES,
+  HISTORY_RESULT_FLAG_NAMES,
   historyClass,
   readTickRows,
   readTickRowsSince,
@@ -105,7 +106,7 @@ function scopeCycle(roleIds: readonly string[]): Array<string | null> {
  * filter, kept first so the pane opens on today's behavior. */
 const HISTORY_RESULTS: ReadonlyArray<[HistoryResultClass | null, string]> = [
   [null, "all"],
-  ...HISTORY_RESULT_CLASSES.map((c): [HistoryResultClass, string] => [c, c]),
+  ...HISTORY_RESULT_CLASSES.map((c): [HistoryResultClass, string] => [c, HISTORY_RESULT_FLAG_NAMES[c]]),
 ];
 
 /** The History pane's body for one trailing window, one outcome class, one exact-loop scope,

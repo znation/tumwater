@@ -21,54 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms commands, part 6/6: Show one run's trail as tumwater history role n and rename the result class changes to merged (planned 2026-10-16 by user; requires part 4/6 and part 5/6 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and src/tick/tick-detail.ts and src/history/ and src/ui/tui/tui-keys.ts plus tests)
-
-**Goal.** `tumwater history <role> <n> [--last] [--stat] [--json]` prints one run's full trail. `history <role> --last` prints the newest one. The bare `history [flags]` listing is unchanged. `tumwater tick …` stays as a hidden alias. `history --result merged` replaces `--result changes`, which keeps working unlisted.
-
-**Approach.**
-- **Telling the two forms apart.** Add `historyTrailForm(args: string[]): boolean` to src/cli/cli-command-args.ts, beside `peelPositionals`.
-  - It walks the args, skips the value token after each listing-form valued flag (`-n`, `--since`, `--grep`, `--result`, `--role`), and returns true when any other token does not start with `-`.
-  - So `history feature 3`, `history feature --last` and `history --json feature 3` are the trail form.
-  - `history -n 5`, `history --grep feature`, `history --role qa --since 1h` and bare `history` are the listing.
-  - A `--grep` value that starts with `-` is still skipped by position.
-- **src/cli.ts:**
-  - In `case "history"`, when `historyTrailForm(args)` is true, run today's trail body: peelPositionals, `rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG])`, the 1–2 positional arity gate, `requireReadyRepo`, `cmdTick`. Otherwise run the listing body unchanged.
-  - `case "tick"` runs the same trail body. Factor it into one local async function in cli.ts so the two cases cannot drift. Under trail flags, a listing flag such as `--role` is refused by the trail's rejectUnknownArgs.
-- **src/tick/tick-detail.ts:**
-  - `TICK_USAGE` becomes `"tumwater history <role> [<n>] [--last] [--stat] [--json]"`. The constant's name stays until Plain terms code run.
-  - The positional's count label becomes `parseCountFlag("history <n>", …)`.
-- **src/cli/help.ts:**
-  - Replace the `tumwater tick …` stanza with a second `history` stanza: `tumwater history <role> [<n>] [--last] [--stat] [--json]`. Describe it in plain terms: one run's full event trail, a summary header (result, or in flight, with duration, tokens and cost, and the commit) and then every event of that run in time order; a run still in flight shows its events so far; a run waiting to merge shows its merge verdict once the merge finishes; `--last` shows the role's newest finished run; `--stat` appends the commit's per-file `git show --stat`; `--json` prints the collector's payload.
-  - In the listing stanza, change only `[--result <changes|none|problems>]` to `[--result <merged|none|problems>]`, and "changes (changed/queued)" to "merged (merged or waiting to merge)".
-  - Add `tick: "history"` to `HIDDEN_COMMAND_ALIASES`, so `tumwater help tick` prints the history topic, both forms.
-- **src/history/history-data.ts:** the internal class names (`HISTORY_RESULT_CLASSES`, `historyClass`, `HistorySummaryRow.changes`) stay, so `--json` summary keys and the dashboard's client-side filter do not move. Add:
-  - `HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", problems: "problems" }`;
-  - `parseHistoryResultClass(raw: string): HistoryResultClass | null`, which accepts a flag name or a class name, so `changes` is the hidden alias.
-- **src/history/history.ts:** `--result` goes through `parseHistoryResultClass`. The error lists the flag names: `history --result must be one of merged, none, problems`.
-- **src/cli/completion.ts:**
-  - `--result` completes the flag names.
-  - The bash role-id positional condition `== role || == tick` becomes `== role || == history`, so `tumwater history <TAB>` offers role ids.
-- **src/ui/tui/tui-keys.ts:** `HISTORY_RESULTS` labels each class with its flag name (`[c, HISTORY_RESULT_FLAG_NAMES[c]]`), so the TUI filter reads `merged` like the CLI.
-- **Tests:**
-  - test/cli-command-args.test.ts: a table of `historyTrailForm` cases covering every example above.
-  - test/cli-history-views.test.ts, or the suite that owns `tumwater tick` today, gains CLI cases:
-    - `history <role> <n>` and `history <role> --last` print the same trail `tick` does;
-    - `history --json feature 1` is the trail;
-    - `history feature 1 --role qa` is refused;
-    - `tick feature 1` still works;
-    - `--result merged` filters like `--result changes` did, and `--result changes` still works;
-    - a bad `--result` lists `merged, none, problems`.
-  - Update assertions on the usage text, on the TUI filter label, and in test/completion.test.ts.
-
-**Files touched.** src/cli.ts, src/cli/cli-command-args.ts, src/cli/help.ts, src/cli/completion.ts, src/tick/tick-detail.ts, src/history/history-data.ts, src/history/history.ts, src/ui/tui/tui-keys.ts; tests: test/cli-command-args.test.ts, test/cli-history-views.test.ts, test/tick-detail.test.ts, test/help.test.ts, test/completion.test.ts, test/cli-arg-strictness.test.ts and the TUI history-filter test.
-
-**Acceptance criteria.**
-- `tumwater history feature 3` and `tumwater tick feature 3` print identical output, and `tumwater history feature --last --json` prints the newest trail's payload.
-- `tumwater history -n 5`, `history --grep feature` and `history --summary` behave exactly as before.
-- `tumwater history --result merged` equals the old `--result changes` output, and `--result changes` still works. Neither help nor completion shows `changes` or `tick`.
-- `tumwater help tick` prints the history topic.
-- `npm run test` passes.
-
 ### Plain terms text, part 1/19: Event messages and the Activity tally speak the glossary (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/events/event-format.ts + src/text/phrases.ts + sayTally in src/cli/log-commands.ts + tallyChips in src/ui/gui/gui-client-fleet.ts + tests)
 
 **Goal.** Every event line that `tumwater logs`, the TUI Activity pane, the dashboard feed and the notify hook show reads in plain terms ("feature #2 run #12 merged", "team paused — roles start no new runs", "waiting: low disk"). The per-type tally (`tumwater logs --count` and the dashboard's Activity chips) shows display labels instead of raw codes like `3 × tick_end`.
@@ -3729,6 +3681,54 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
   - Two stale bugs, one fresh `(reported <today>)` bug before them, warn once. The detail names the first stale bug's position as `#2` and includes `(and 1 more: #3 "`.
   - A stale bug whose body carries a `**Refused 2026-10-10 by bugfix: …**` note, an undated heading, a fresh bug, and a stale bug under `## Fixed` only all read `{ level: "ok", detail: "no open bug has waited more than 3 days for a fix" }`. A missing BUGS.md reads `{ level: "ok", detail: "no BUGS.md — nothing to verify" }`.
 - `test/doctor.test.ts`: the expected check-name list gains `"stale bugs"` right after `"stale questions"`.
+- `npm run test` passes.
+
+### Plain terms commands, part 6/6: Show one run's trail as tumwater history role n and rename the result class changes to merged (planned 2026-10-16 by user; requires part 4/6 and part 5/6 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and src/tick/tick-detail.ts and src/history/ and src/ui/tui/tui-keys.ts plus tests, done 2026-10-16)
+
+**Goal.** `tumwater history <role> <n> [--last] [--stat] [--json]` prints one run's full trail. `history <role> --last` prints the newest one. The bare `history [flags]` listing is unchanged. `tumwater tick …` stays as a hidden alias. `history --result merged` replaces `--result changes`, which keeps working unlisted.
+
+**Approach.**
+- **Telling the two forms apart.** Add `historyTrailForm(args: string[]): boolean` to src/cli/cli-command-args.ts, beside `peelPositionals`.
+  - It walks the args, skips the value token after each listing-form valued flag (`-n`, `--since`, `--grep`, `--result`, `--role`), and returns true when any other token does not start with `-`.
+  - So `history feature 3`, `history feature --last` and `history --json feature 3` are the trail form.
+  - `history -n 5`, `history --grep feature`, `history --role qa --since 1h` and bare `history` are the listing.
+  - A `--grep` value that starts with `-` is still skipped by position.
+- **src/cli.ts:**
+  - In `case "history"`, when `historyTrailForm(args)` is true, run today's trail body: peelPositionals, `rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG])`, the 1–2 positional arity gate, `requireReadyRepo`, `cmdTick`. Otherwise run the listing body unchanged.
+  - `case "tick"` runs the same trail body. Factor it into one local async function in cli.ts so the two cases cannot drift. Under trail flags, a listing flag such as `--role` is refused by the trail's rejectUnknownArgs.
+- **src/tick/tick-detail.ts:**
+  - `TICK_USAGE` becomes `"tumwater history <role> [<n>] [--last] [--stat] [--json]"`. The constant's name stays until Plain terms code run.
+  - The positional's count label becomes `parseCountFlag("history <n>", …)`.
+- **src/cli/help.ts:**
+  - Replace the `tumwater tick …` stanza with a second `history` stanza: `tumwater history <role> [<n>] [--last] [--stat] [--json]`. Describe it in plain terms: one run's full event trail, a summary header (result, or in flight, with duration, tokens and cost, and the commit) and then every event of that run in time order; a run still in flight shows its events so far; a run waiting to merge shows its merge verdict once the merge finishes; `--last` shows the role's newest finished run; `--stat` appends the commit's per-file `git show --stat`; `--json` prints the collector's payload.
+  - In the listing stanza, change only `[--result <changes|none|problems>]` to `[--result <merged|none|problems>]`, and "changes (changed/queued)" to "merged (merged or waiting to merge)".
+  - Add `tick: "history"` to `HIDDEN_COMMAND_ALIASES`, so `tumwater help tick` prints the history topic, both forms.
+- **src/history/history-data.ts:** the internal class names (`HISTORY_RESULT_CLASSES`, `historyClass`, `HistorySummaryRow.changes`) stay, so `--json` summary keys and the dashboard's client-side filter do not move. Add:
+  - `HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", problems: "problems" }`;
+  - `parseHistoryResultClass(raw: string): HistoryResultClass | null`, which accepts a flag name or a class name, so `changes` is the hidden alias.
+- **src/history/history.ts:** `--result` goes through `parseHistoryResultClass`. The error lists the flag names: `history --result must be one of merged, none, problems`.
+- **src/cli/completion.ts:**
+  - `--result` completes the flag names.
+  - The bash role-id positional condition `== role || == tick` becomes `== role || == history`, so `tumwater history <TAB>` offers role ids.
+- **src/ui/tui/tui-keys.ts:** `HISTORY_RESULTS` labels each class with its flag name (`[c, HISTORY_RESULT_FLAG_NAMES[c]]`), so the TUI filter reads `merged` like the CLI.
+- **Tests:**
+  - test/cli-command-args.test.ts: a table of `historyTrailForm` cases covering every example above.
+  - test/cli-history-views.test.ts, or the suite that owns `tumwater tick` today, gains CLI cases:
+    - `history <role> <n>` and `history <role> --last` print the same trail `tick` does;
+    - `history --json feature 1` is the trail;
+    - `history feature 1 --role qa` is refused;
+    - `tick feature 1` still works;
+    - `--result merged` filters like `--result changes` did, and `--result changes` still works;
+    - a bad `--result` lists `merged, none, problems`.
+  - Update assertions on the usage text, on the TUI filter label, and in test/completion.test.ts.
+
+**Files touched.** src/cli.ts, src/cli/cli-command-args.ts, src/cli/help.ts, src/cli/completion.ts, src/tick/tick-detail.ts, src/history/history-data.ts, src/history/history.ts, src/ui/tui/tui-keys.ts; tests: test/cli-command-args.test.ts, test/cli-history-views.test.ts, test/tick-detail.test.ts, test/help.test.ts, test/completion.test.ts, test/cli-arg-strictness.test.ts and the TUI history-filter test.
+
+**Acceptance criteria.**
+- `tumwater history feature 3` and `tumwater tick feature 3` print identical output, and `tumwater history feature --last --json` prints the newest trail's payload.
+- `tumwater history -n 5`, `history --grep feature` and `history --summary` behave exactly as before.
+- `tumwater history --result merged` equals the old `--result changes` output, and `--result changes` still works. Neither help nor completion shows `changes` or `tick`.
+- `tumwater help tick` prints the history topic.
 - `npm run test` passes.
 
 ### `tumwater doctor` checks the plans' `requires … landed` dependencies: it names a prerequisite that matches no plan, a clause that does not parse, and a dependency cycle (planned 2026-10-16 by plan; independent of every other eligible Planned entry. The two role-page plans touch `src/roles/` + `gui-client-drawer.ts` and customRoles 3/6 touches `src/config/`; this touches only `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, and their tests. Plain terms text 4/19 later rewords the doctor's check names, and it will pick up this one too) (done 2026-10-16)

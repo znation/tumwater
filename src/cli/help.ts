@@ -104,31 +104,30 @@ Usage:
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
-                   [--result <changes|none|problems>] [--summary] [--json]
+                   [--result <merged|none|problems>] [--summary] [--json]
                                    One row per completed tick, newest first — time, loop,
                                    tick number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
                                    shows the window's ticks instead of the last N (capped at
                                    7d, like logs --since); --grep <text> keeps only rows whose
                                    line matches, case-insensitively (like logs --grep);
-                                   --result <class> narrows to one outcome class — changes
-                                   (changed/queued), none (no_change/skipped/user_aborted), or
+                                   --result <class> narrows to one outcome class — merged
+                                   (merged or waiting to merge), none (no_change/skipped/user_aborted), or
                                    problems (everything else) — composed with --role, --since,
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
                                    kept raw, the GUI's /api/history payload; --summary prints one line per loop
                                    counting its ticks by outcome class, with the time of its newest change (and a total line)
                                    instead of the rows; with --json, { loops, total }
-  tumwater tick <role> [<n>] [--last] [--stat] [--json]
-                                   One completed tick's full event trail — a summary header
-                                   (result or in-flight, duration, tokens/cost, the pinned
-                                   commit sha) then every event of that tick's block in time
-                                   order; a still-running tick shows its events so far, marked
-                                   in flight; a queued tick shows its landing's verdict and
-                                   outcome line once the landing finishes; --last shows the newest completed tick's trail
-                                   instead of numbering one; --stat appends the pinned
-                                   commit's per-file git show --stat summary; --json prints
-                                   the collector's payload as machine-readable data
+  tumwater history <role> [<n>] [--last] [--stat] [--json]
+                                   One run's full event trail — a summary header (result, or
+                                   in flight, with duration, tokens and cost, and the commit)
+                                   then every event of that run in time order; a run still in
+                                   flight shows its events so far; a run waiting to merge
+                                   shows its merge verdict once the merge finishes; --last
+                                   shows the role's newest finished run instead of numbering
+                                   one; --stat appends the commit's per-file git show --stat
+                                   summary; --json prints the collector's payload
   tumwater diff [--json]           One line per loop holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles
                                    with no worktree or nothing pending are skipped, and a
@@ -383,7 +382,7 @@ export function helpStanzas(help: string = HELP): HelpStanza[] {
 
 /** Commands that still dispatch but are not listed in help or completion: alias -> the command
  * whose topic they print. `run` is the older name of `start`. */
-export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start" };
+export const HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start", tick: "history" };
 
 /** The usage text for one command — every stanza whose command matches, then a pointer back to
  * the full list — or null when nothing in the help names that command. */

@@ -81,11 +81,11 @@ test("the completion command works outside a repo and rejects other shells", asy
   assert.match(topic.stdout, /tumwater completion <bash\|zsh>/);
 });
 
-test("the bash script completes loop ids after --role and for role/tick", async () => {
+test("the bash script completes loop ids after --role and for role/history", async () => {
   const script = completionScript("bash");
   assert.deepEqual(await complete(script, ["tumwater", "logs", "--role", "fe"], 3), ["feature", "feature-2"]);
   assert.deepEqual(await complete(script, ["tumwater", "role", "q"], 2), ["qa"]);
-  assert.deepEqual(await complete(script, ["tumwater", "tick", "q"], 2), ["qa"]);
+  assert.deepEqual(await complete(script, ["tumwater", "history", "q"], 2), ["qa"]);
 });
 
 test("completion --roles prints the repo's loop ids, or the catalog on a broken config", async () => {

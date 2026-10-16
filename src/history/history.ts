@@ -1,6 +1,6 @@
 import { fail, say, sayJson } from "../cli/cli-output.js";
 import { durationLabel, failRivalShapes, flagValue, parseCountFlag, parseGrepFlag, parseRoleScope, parseSinceFlag } from "../cli/cli-args.js";
-import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_CLASSES, historyClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
+import { HISTORY_DEFAULT_TICKS, HISTORY_MAX_TICKS, HISTORY_RESULT_FLAG_NAMES, historyClass, parseHistoryResultClass, readTickRows, readTickRowsSince, summarizeTickRows, tickRowsMatchingGrep, type HistoryResultClass, type TickRow } from "./history-data.js";
 import { renderRow, renderSummary, widestWidths } from "./history-render.js";
 import { LOGS_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../events/event-window.js";
 import { gotSuffix } from "../text/text.js";
@@ -85,9 +85,9 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   let resultClass: HistoryResultClass | null = null;
   if (resultRaw !== null) {
     if (resultRaw === undefined || resultRaw === "") fail(HISTORY_RESULT_VALUE_ERROR);
-    if (!(HISTORY_RESULT_CLASSES as readonly string[]).includes(resultRaw))
-      fail(`history --result must be one of ${HISTORY_RESULT_CLASSES.join(", ")}${gotSuffix(resultRaw)}`);
-    resultClass = resultRaw as HistoryResultClass;
+    resultClass = parseHistoryResultClass(resultRaw);
+    if (resultClass === null)
+      fail(`history --result must be one of ${Object.values(HISTORY_RESULT_FLAG_NAMES).join(", ")}${gotSuffix(resultRaw)}`);
     rows = rows.filter((r) => historyClass(r.result) === resultClass);
   }
   // --json swaps the renderer for the collector's own payload, exactly as status --json and

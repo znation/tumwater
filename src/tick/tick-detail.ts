@@ -18,7 +18,7 @@ import { gitTry } from "../git/git-run.js";
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
  * when the command's shape changes. */
-export const TICK_USAGE = "tumwater tick <role> [<n>] [--last] [--stat] [--json]";
+export const TICK_USAGE = "tumwater history <role> [<n>] [--last] [--stat] [--json]";
 
 /** The shared not-found frame both wordings complete — what the scan looked for, the loop,
  * and that the scanned window (not the world) is what came up empty. Exactly two consumers,
@@ -127,7 +127,7 @@ export async function cmdTick(
   // found by construction, so the not-found path below takes it with the last-form wording.
   const tick = last
     ? (readTickRows(root, 1, role)[0]?.tick ?? null)
-    : parseCountFlag("tick <n>", positionals[1]);
+    : parseCountFlag("history <n>", positionals[1]);
   const detail = tick === null ? null : readTickDetail(root, role, tick);
   if (tick === null) {
     // The --last scan came up empty: not found by construction, the last-form wording.

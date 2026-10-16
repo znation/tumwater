@@ -32,6 +32,14 @@ export const HISTORY_RESULT_CLASSES = ["changes", "none", "problems"] as const;
 /** One outcome class, derived from the list above so the two cannot disagree. */
 export type HistoryResultClass = (typeof HISTORY_RESULT_CLASSES)[number];
 
+/** The spelling each class has on `--result` and in the TUI filter: `changes` reads `merged`. */
+export const HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", problems: "problems" };
+
+/** Parse a `--result` value: a flag name, or a class name (so `changes` stays a hidden alias). */
+export function parseHistoryResultClass(raw: string): HistoryResultClass | null {
+  return HISTORY_RESULT_CLASSES.find((c) => raw === c || raw === HISTORY_RESULT_FLAG_NAMES[c]) ?? null;
+}
+
 /** Which outcome class a tick result falls in (the HISTORY_RESULT_CLASSES rule): `changed` and
  * `queued` are `changes`; `no_change`, `skipped`, and `user_aborted` are `none`; every other
  * result is `problems`. Pure; the canonical home the dashboard's client-side filter mirrors. */

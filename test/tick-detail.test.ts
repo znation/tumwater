@@ -222,16 +222,16 @@ test("cmdTick fails with the usage on a missing, unknown, or extra positional an
   await initProject(repo, "tick arg errors");
   // Missing role / missing n / stray extra: arity is exactly <role> <n>.
   for (const argv of [[], ["bugfix", "3", "extra"]]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater tick <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/);
+    assert.match(await expectFailAsync(() => cmdTick(repo, argv, false)), /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/);
   }
   // Unknown role: the shared unknown-role wording plus the usage.
   const role = await expectFailAsync(() => cmdTick(repo, ["nosuch", "3"], false));
   assert.match(role, /unknown role: nosuch/);
-  assert.match(role, /usage: tumwater tick <role>/);
+  assert.match(role, /usage: tumwater history <role>/);
   // A non-positive or non-numeric n: the shared count parser's wording, naming the command
   // so a bare `<n>` cannot leave the operator guessing which argument it means.
   for (const bad of ["0", "-1", "1.5", "abc"]) {
-    assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", bad], false)), /tick <n> needs a positive integer/);
+    assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", bad], false)), /history <n> needs a positive integer/);
   }
 });
 
@@ -248,6 +248,25 @@ test("tumwater tick dispatches through the real binary, flags gated", async () =
   assert.match(bad.stderr, /--rol/);
 });
 
+test("tumwater history <role> <n> prints the trail tick prints; a listing flag beside it is refused", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "history trail smoke");
+  writeEvents(repo, [start({ ts: 1000 }), end({ ts: 2000, result: "no_change" })]);
+  const viaTick = await cli(repo, "tick", "bugfix", "3");
+  const viaHistory = await cli(repo, "history", "bugfix", "3");
+  assert.equal(viaHistory.code, 0);
+  assert.equal(viaHistory.stdout, viaTick.stdout);
+  const last = await cli(repo, "history", "bugfix", "--last");
+  assert.equal(last.code, 0);
+  assert.equal(last.stdout, viaTick.stdout);
+  const json = await cli(repo, "history", "--json", "bugfix", "3");
+  assert.equal(json.code, 0);
+  assert.doesNotThrow(() => JSON.parse(json.stdout));
+  const bad = await cli(repo, "history", "bugfix", "3", "--role", "qa");
+  assert.equal(bad.code, 1);
+  assert.match(bad.stderr, /--role/);
+});
+
 test("tick's dispatcher fails a wrong positional count with its usage, before the ready-repo gate", async () => {
   // The dispatcher repeats cmdTick's arity guard (cli.ts's tick case), so a malformed
   // invocation fails with the usage no matter the directory — including one that is not
@@ -257,7 +276,7 @@ test("tick's dispatcher fails a wrong positional count with its usage, before th
   for (const args of [["tick"], ["tick", "bugfix", "3", "extra"]]) {
     const r = await cli(empty, ...args);
     assert.equal(r.code, 1, `tumwater ${args.join(" ")}`);
-    assert.match(r.stderr, /usage: tumwater tick <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/, `tumwater ${args.join(" ")}`);
+    assert.match(r.stderr, /usage: tumwater history <role> \[<n>\] \[--last\] \[--stat\] \[--json\]/, `tumwater ${args.join(" ")}`);
     assert.doesNotMatch(r.stderr, /not a git repository/, `tumwater ${args.join(" ")}`);
   }
 });
@@ -299,10 +318,10 @@ test("cmdTick --last with a numeric n is refused with the usage, and an unknown 
   const repo = makeRepo();
   await initProject(repo, "tick last rivals");
   // --last and a numeric <n> are rivals: either order, the usage.
-  assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", "3"], false, true)), /usage: tumwater tick <role>/);
+  assert.match(await expectFailAsync(() => cmdTick(repo, ["bugfix", "3"], false, true)), /usage: tumwater history <role>/);
   const unknown = await expectFailAsync(() => cmdTick(repo, ["nosuch"], false, true));
   assert.match(unknown, /unknown role: nosuch/);
-  assert.match(unknown, /usage: tumwater tick <role>/);
+  assert.match(unknown, /usage: tumwater history <role>/);
 });
 
 test("tick --stat appends the pinned commit's per-file summary, text and JSON", async () => {

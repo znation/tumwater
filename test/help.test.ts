@@ -15,7 +15,6 @@ const ALL_COMMANDS = [
   "logs",
   "notify",
   "history",
-  "tick",
   "diff",
   "queue",
   "backlog",
@@ -143,7 +142,7 @@ test("helpTopicForArgs returns null when there is no help request or no topic", 
 });
 
 test("run is a hidden alias of start: same topic, no listing", () => {
-  assert.deepEqual(HIDDEN_COMMAND_ALIASES, { run: "start" });
+  assert.deepEqual(HIDDEN_COMMAND_ALIASES, { run: "start", tick: "history" });
   assert.equal(helpTopic("run"), helpTopic("start"));
   assert.doesNotMatch(HELP, /tumwater run\b/);
   assert.equal(suggestCommand("run"), null);
