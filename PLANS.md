@@ -3756,6 +3756,32 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `test/backlog-write-list.test.ts`: `plan --list` on a root with a saved `feature-2` claim prints `1. <title> [working on it: feature #2]` (plus the age suffix the existing tests expect). `plan --list --json` entries carry `inProgress: "feature-2"` on the claimed entry and `inProgress: null` on the other.
 - `npm run test` passes.
 
+### `tumwater doctor` names an open bug that has gone unfixed for days: a "stale bugs" check (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It adds one check beside the in-flight plan-dependencies check in `src/doctor/doctor-backlog.ts`, so whichever lands second extends the same `doctor.ts` list and `test/doctor.test.ts` name list)
+
+**Goal.** The bugfix role fixes an open bug within hours. A bug still in BUGS.md `## Open` days after its `(found by … YYYY-MM-DD)` or `(reported … YYYY-MM-DD)` stamp means no loop is fixing it: the bugfix role is disabled, paused, or failing on it, or keeps passing it over. Doctor already warns about open questions that wait too long (`checkStaleQuestions`) and about refused bugs (`checkRefusedEntries`). Nothing names an unrefused bug that has simply sat. `bug --list` shows each bug's age, but only to an operator who runs it.
+
+**Approach.**
+- `src/doctor/doctor-backlog.ts`: add `const STALE_BUG_DAYS = 3;` beside `STALE_QUESTION_DAYS`. Its doc comment says it is an opinionated default with no knob, the `STALE_QUESTION_DAYS` precedent. Three days is long enough that a bug filed late one evening and fixed the next day never warns.
+- Same module: add `export function checkStaleBugs(root: string): CheckOutcome` after `checkStaleQuestions`, in its shape:
+  - `readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify")`; return its outcome when the file is missing.
+  - Walk `openBugEntries(root)` with its 1-based position `index + 1` (the `bug --list` numbering `checkRefusedEntries` uses). Skip an entry whose `refusalNote(entry.body)` is non-null, because the refusals check already names it. Skip an entry whose `filingDate(entry.title)` (import it from `../backlog/backlog.js`) is null. Keep the entries whose `ageInDays(stamp) >= STALE_BUG_DAYS`.
+  - None kept: `okOutcome("no open bug has waited more than 3 days for a fix")`.
+  - Otherwise warn on the first kept entry: `BUGS.md bug #<position> "<title truncated to FIX_CLAIM_HEADING_MAX>" has waited <days> d for a fix<more> — no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel <position>\``. `<more>` is `andMore(rest, (b) => \`#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"\`)`.
+  - A warn, never a fail, like every check in the module.
+- Update the module's header doc comment, which lists its checks, to include stale bugs.
+- `src/doctor/doctor.ts`: import `checkStaleBugs` and add `{ name: "stale bugs", ...checkStaleBugs(root) }` right after the `"stale questions"` entry.
+- `docs/cli.md`, the "Audit" row's `tumwater doctor` parenthetical: after the Refused-note clause ("…flagging one whose prerequisites are no longer planned"), add ", open bugs unfixed 3 days or more after their filing stamp". `src/cli/help.ts` stays unchanged, because its doctor stanza does not list the backlog checks.
+
+**Files touched.** `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, `docs/cli.md`, `test/doctor-backlog.test.ts`, `test/doctor.test.ts`.
+
+**Acceptance criteria.**
+- `test/doctor-backlog.test.ts`, beside the `checkStaleQuestions` tests, reusing its `daysAgoStamp` and `stampAge` helpers:
+  - A BUGS.md whose `## Open` holds one bug stamped `(found by bugfix <4 days ago>)` warns. The detail starts with `BUGS.md bug #1 "` and includes `has waited <stampAge> d for a fix` and `tumwater bug --cancel 1`.
+  - Two stale bugs, one fresh `(reported <today>)` bug before them, warn once. The detail names the first stale bug's position as `#2` and includes `(and 1 more: #3 "`.
+  - A stale bug whose body carries a `**Refused 2026-10-10 by bugfix: …**` note, an undated heading, a fresh bug, and a stale bug under `## Fixed` only all read `{ level: "ok", detail: "no open bug has waited more than 3 days for a fix" }`. A missing BUGS.md reads `{ level: "ok", detail: "no BUGS.md — nothing to verify" }`.
+- `test/doctor.test.ts`: the expected check-name list gains `"stale bugs"` right after `"stale questions"`.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` checks the plans' `requires … landed` dependencies: it names a prerequisite that matches no plan, a clause that does not parse, and a dependency cycle (planned 2026-10-16 by plan; independent of every other eligible Planned entry. The two role-page plans touch `src/roles/` + `gui-client-drawer.ts` and customRoles 3/6 touches `src/config/`; this touches only `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, and their tests. Plain terms text 4/19 later rewords the doctor's check names, and it will pick up this one too) (done 2026-10-16)
