@@ -44,6 +44,7 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     [loopPhase(at({ running: true, parkedSince: now - 5_000 }), true), "awaiting", false],
     [loopPhase(at({}, "director"), true), "waiting", false],
     [loopPhase(at({}), true, undefined, false, null, true), "paused", false],
+    [loopPhase(at({}), true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now + 120_000), "paused", false],
     [loopPhase(at({}), true, undefined, true), "budget", false],
     [loopPhase(at({}), true, undefined, true, null, false, undefined, undefined, true), "cap", false],
     [loopPhase(at({}), true, undefined, false, null, false, undefined, undefined, true), "cap", false],
@@ -91,6 +92,15 @@ test("every phase label loopPhase renders maps to a known status on the page", (
     ["Maintenance hold", "amber", false, "32/32"],
     "held: maintenance quota reads like a hold",
   );
+  // The timed per-role pause (`paused · resumes in <s>`) reads as a paused pill, not an idle
+  // "other" — otherwise the GUI would group it under Idle and its phaseDetail countdown guard
+  // (info.key === "paused") would go dead.
+  const timed = model.phaseInfo("paused · resumes in 2m");
+  assert.deepEqual(
+    [timed.key, timed.label, timed.tone, timed.live],
+    ["paused", "Paused", "amber", false],
+    "paused · resumes in <s> reads as a paused pill",
+  );
   // An unknown label still renders — as itself, neutrally.
   assert.deepEqual([model.phaseInfo("molting").key, model.phaseInfo("molting").label, model.phaseInfo("molting").tone], ["other", "molting", "gray"]);
 });
@@ -110,6 +120,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     { role: "main-red", phase: "main red", lastTickEndedAt: t(0) },
     { role: "broken", phase: "failing", lastTickEndedAt: t(2) },
     { role: "held", phase: "paused", lastTickEndedAt: t(9) },
+    { role: "timed", phase: "paused · resumes in 2m", lastTickEndedAt: t(8) },
     { role: "broke", phase: "budget paused", lastTickEndedAt: t(1) },
     { role: "capped", phase: "cap paused", lastTickEndedAt: t(2) },
     { role: "bootstrapped", phase: "held: bootstrap", lastTickEndedAt: t(0) },
@@ -120,7 +131,7 @@ test("the page's loop order is status-model's, rank by rank", () => {
     "working-b", "landing-x", "reviewing-a", // live work, newest tick first, never-ticked last
     "parked-p", "vetted-v", // waiting in the pipeline
     "broken", "main-red", // needs attention
-    "held", "capped", "broke", "bootstrapped", // paused, newest tick first
+    "held", "timed", "capped", "broke", "bootstrapped", // paused, newest tick first
     "queued-z", "sleepy", "never-ticked", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.

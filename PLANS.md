@@ -3,7 +3,6 @@
 Planned features, written by the plan loop and implemented by the feature loop.
 Each plan: goal, approach, files touched, acceptance criteria. Move finished plans to Done.
 
-
 ## Planned
 
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
@@ -21,23 +20,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - No behavior change: the same keypresses do the same things; each editor's saved-draft mutual-exclusion invariant (now owned by `tui-editors`) still holds.
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
-
-### The CLI `tumwater status` per-loop row shows when an individually timed-paused loop resumes, mirroring the GUI loop-list's `· resumes in <time>` (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `gui-endpoints.ts`'s `handleHistory` + `gui-client-history.ts` (history summary), `gui-client-fleet.ts` (fleet tally), and `gui-client-drawer.ts` (drawer configuration), and this touches none of them: only `src/ui/status-model.ts` and `test/status-model.test.ts`. The GUI twin it mirrors, `gui-client-loops.ts`'s `phaseDetail`, is read, not edited; no `src/gui`, `src/cli`, `src/ui/gui/*`, `src/loop`, `src/tick`, `src/ui/status-*`'s render/payload, or `src/ui/tui` edit)
-
-**Goal.** `tumwater pause --role <id> --for <duration>` individually pauses one loop; the loop's CLI status row reads `paused` and nothing else. Meanwhile the fleet header (`pauseBadge` in src/ui/badges.ts) says a timed FLEET pause auto-resumes in `<time>`, and the GUI loop list — `phaseDetail` in src/ui/gui/gui-client-loops.ts:112 — reads that same individually-paused loop as `paused · resumes in <humanSeconds>` from the snapshot's `pausedRolesUntil`. The CLI status row is the only one of the three surfaces that hides when an individually timed-paused loop comes back: an operator who `pause --role feature --for 30m` then runs `tumwater status` sees `paused` and cannot tell whether it resumes in five minutes or is still open-ended, while the GUI and the fleet header both say. This adds the countdown to every phase-driven surface (CLI table, `status --json` `phase`, and TUI, which share `loopPhase`) in the GUI loop-list's wording family so the surfaces cannot drift.
-
-**Approach.** Thread the per-role pause deadline through the shared phase derivation; the CLI/TUI/`status --json` all consume `loopPhase` in `src/ui/status-model.ts` (it has exactly one caller, `loopRowCells`, which already holds the snapshot), so the countdown lands on all three from one place.
-- `src/ui/status-model.ts` `loopPhase`: add one optional trailing param `pausedUntilMs?: number`. In the `userPaused` branch, when `pausedUntilMs !== undefined` return `paused · resumes in ${humanSeconds(Math.max(0, Math.round((pausedUntilMs - Date.now()) / 1000)))}` — the exact `· resumes in <s>` shape and rounding `phaseDetail` in gui-client-loops.ts:112 builds (read-only, `humanSeconds` is already imported here). An absent/`undefined` deadline (an indefinite per-role pause, or the fleet pause) keeps today's bare `paused`, so `Math.round`/`humanSeconds` make the countdown a live label exactly as the fleet header's already is.
-- Its caller `loopRowCells` (same file, which has `snap`): pass `pausedUntilMs` as `snap.paused && !snap.pausedRoles.includes(s.role) ? undefined : snap.pausedRolesUntil` — the same guard `phaseDetail` uses (`pausedRolesUntil && !d.paused && pausedRoles.includes(role)`), so a fleet-wide pause (whose countdown already rides the header badge) never double-appends, and a role outside `pausedRoles` gets no deadline even if the marker shares one.
-- No `src/ui/status-render.ts`, `src/ui/status-payload.ts`, or `src/ui/tui` edit: they already render whatever `loopPhase` returns, so the countdown reaches the CLI table, `status --json`'s `phase`, and the TUI unchanged at their boundaries.
-- Tests: `test/status-model.test.ts` — a new case in the existing `loopPhase` `paused`-family suite: `loopPhase(s, true, undefined, false, null, true /* userPaused */, undefined, undefined, false, undefined, false, false, false, undefined, undefined, pausedUntilMs)` returns `paused · resumes in <m>` for a future deadline (pinned via an injected `pausedUntilMs = now + 90_000` → `paused · resumes in 1m`), and `paused` (no suffix) when `pausedUntilMs` is `undefined` (an indefinite per-role pause) or `0`/past (an expired marker, which fleet-state's read already treats as unpaused — the guard keeps it from rendering a stale `resumes in 0s`). The existing `status --json` and row-render suites pass unchanged, since the phase string only gains the suffix under a set per-role deadline.
-
-**Files touched.** `src/ui/status-model.ts` (`loopPhase` signature and `userPaused` branch, `loopRowCells` caller), `test/status-model.test.ts`. Reads (does not edit) `src/ui/gui/gui-client-loops.ts` for the `pausedRolesUntil && !d.paused && pausedRoles.includes` guard and the `· resumes in <s>` wording, and `src/text/datetime.ts`'s `humanSeconds`. No `src/gui`, `src/cli`, `src/ui/gui/*`, `src/ui/status-render.ts`, `src/ui/status-payload.ts`, `src/loop`, `src/fleet`, or `src/ui/tui` edit.
-
-**Acceptance criteria.**
-- A loop individually paused for a duration (`pause --role <id> --for …`) reads `paused · resumes in <s>` (e.g. `paused · resumes in 1m`) in its `loopPhase`-driven phase, mirroring the GUI loop-list's `phaseDetail` wording so the CLI status table, `tumwater status --json`'s `phase`, and the TUI cannot drift from the GUI on when the loop resumes.
-- An indefinite per-role pause, a role outside `pausedRoles` even when the marker carries a deadline, and a fleet-wide pause each keep the bare `paused` — the countdown is appended only under `pausedRoles.includes(role) && !snap.paused && pausedRolesUntil !== undefined` (the GUI's exact guard, one read-only referent), so the existing `status --json` phase and row-render tests pass unmodified.
-- `loopPhase`'s new `pausedUntilMs` param is optional and trailing with a single caller (`loopRowCells` passes `snap.pausedRolesUntil`); `npm run test` passes.
 
 ### `tumwater status` renders the fleet attention banners the dashboard and TUI already show, so a spent budget, a red main, loops failing, a stale build and an open question are spelled out at the terminal, not just badge-terse (planned 2026-10-16 by plan; independent of every other eligible Planned entry — the paused-resumes plan touches `src/ui/status-model.ts`/`test/status-model.test.ts` and the director-inbox plan touches `src/status/status-inbox.ts`, and this touches neither: only `src/ui/status-render.ts`, `src/ui/tui/tui-frame.ts` (a pure move), and `test/status-render.test.ts`. The alert source and banner renderer it reuses — `fleetAlerts` and `alertLines` — are read, and only `alertLines` is relocated, not rewritten)
 
@@ -58,6 +40,23 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test in `test/status-render.test.ts`: a fixture snapshot with a spent budget and an open question renders the corresponding banner line(s), and the alert-free fixture keeps the old output; `npm run test` passes.
 
 ## Done
+### The CLI `tumwater status` per-loop row shows when an individually timed-paused loop resumes, mirroring the GUI loop-list's `· resumes in <time>` (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `gui-endpoints.ts`'s `handleHistory` + `gui-client-history.ts` (history summary), `gui-client-fleet.ts` (fleet tally), and `gui-client-drawer.ts` (drawer configuration), and this touches none of them: only `src/ui/status-model.ts` and `test/status-model.test.ts`. The GUI twin it mirrors, `gui-client-loops.ts`'s `phaseDetail`, is read, not edited; the browser view-model `gui-client-model.ts`'s `phaseInfo` lands in the same change (a review finding — without it the new phase string reclassified to an idle "other" and the GUI's countdown guard went dead), with their tests; no `src/gui`, `src/cli`, `src/loop`, `src/tick`, `src/ui/status-*`'s render/payload, or `src/ui/tui` edit) — done 2026-10-16
+
+**Goal.** `tumwater pause --role <id> --for <duration>` individually pauses one loop; the loop's CLI status row reads `paused` and nothing else. Meanwhile the fleet header (`pauseBadge` in src/ui/badges.ts) says a timed FLEET pause auto-resumes in `<time>`, and the GUI loop list — `phaseDetail` in src/ui/gui/gui-client-loops.ts:112 — reads that same individually-paused loop as `paused · resumes in <humanSeconds>` from the snapshot's `pausedRolesUntil`. The CLI status row is the only one of the three surfaces that hides when an individually timed-paused loop comes back: an operator who `pause --role feature --for 30m` then runs `tumwater status` sees `paused` and cannot tell whether it resumes in five minutes or is still open-ended, while the GUI and the fleet header both say. This adds the countdown to every phase-driven surface (CLI table, `status --json` `phase`, and TUI, which share `loopPhase`) in the GUI loop-list's wording family so the surfaces cannot drift.
+
+**Approach.** Thread the per-role pause deadline through the shared phase derivation; the CLI/TUI/`status --json` all consume `loopPhase` in `src/ui/status-model.ts` (it has exactly one caller, `loopRowCells`, which already holds the snapshot), so the countdown lands on all three from one place.
+- `src/ui/status-model.ts` `loopPhase`: add one optional trailing param `pausedUntilMs?: number`. In the `userPaused` branch, when `pausedUntilMs !== undefined` return `paused · resumes in ${humanSeconds(Math.max(0, Math.round((pausedUntilMs - Date.now()) / 1000)))}` — the exact `· resumes in <s>` shape and rounding `phaseDetail` in gui-client-loops.ts:112 builds (read-only, `humanSeconds` is already imported here). An absent/`undefined` deadline (an indefinite per-role pause, or the fleet pause) keeps today's bare `paused`, so `Math.round`/`humanSeconds` make the countdown a live label exactly as the fleet header's already is.
+- Its caller `loopRowCells` (same file, which has `snap`): pass `pausedUntilMs` as `snap.paused && !snap.pausedRoles.includes(s.role) ? undefined : snap.pausedRolesUntil` — the same guard `phaseDetail` uses (`pausedRolesUntil && !d.paused && pausedRoles.includes(role)`), so a fleet-wide pause (whose countdown already rides the header badge) never double-appends, and a role outside `pausedRoles` gets no deadline even if the marker shares one.
+- No `src/ui/status-render.ts`, `src/ui/status-payload.ts`, or `src/ui/tui` edit: they already render whatever `loopPhase` returns, so the countdown reaches the CLI table, `status --json`'s `phase`, and the TUI unchanged at their boundaries.
+- Tests: `test/status-model.test.ts` — a new case in the existing `loopPhase` `paused`-family suite: `loopPhase(s, true, undefined, false, null, true /* userPaused */, undefined, undefined, false, undefined, false, false, false, undefined, undefined, pausedUntilMs)` returns `paused · resumes in <m>` for a future deadline (pinned via an injected `pausedUntilMs = now + 90_000` → `paused · resumes in 1m`), and `paused` (no suffix) when `pausedUntilMs` is `undefined` (an indefinite per-role pause) or `0`/past (an expired marker, which fleet-state's read already treats as unpaused — the guard keeps it from rendering a stale `resumes in 0s`). The existing `status --json` and row-render suites pass unchanged, since the phase string only gains the suffix under a set per-role deadline.
+
+**Files touched.** `src/ui/status-model.ts` (`loopPhase` signature and `userPaused` branch, `loopRowCells` caller; `LOOP_RANK_RULES` gains a `paused` prefix so the timed phase ranks with the paused states, keeping `loopRank`/`phaseTone`'s rank-3 yellow on the CLI, TUI, and dashboard tables), `src/ui/gui/gui-client-model.ts` (`phaseInfo` matches the timed phase as a paused pill, so the GUI keeps its amber Paused grouping and its `info.key === "paused"` countdown guard live rather than regressing to an idle "other"), `test/status-model.test.ts` and `test/gui-client.test.ts`. Reads (does not edit) `src/ui/gui/gui-client-loops.ts` for the `pausedRolesUntil && !d.paused && pausedRoles.includes` guard and the `· resumes in <s>` wording, and `src/text/datetime.ts`'s `humanSeconds`. No `src/gui`, `src/cli`, `src/ui/status-render.ts`, `src/ui/status-payload.ts`, `src/loop`, `src/fleet`, or `src/ui/tui` edit.
+
+**Acceptance criteria.**
+- A loop individually paused for a duration (`pause --role <id> --for …`) reads `paused · resumes in <s>` (e.g. `paused · resumes in 1m`) in its `loopPhase`-driven phase, mirroring the GUI loop-list's `phaseDetail` wording so the CLI status table, `tumwater status --json`'s `phase`, and the TUI cannot drift from the GUI on when the loop resumes.
+- An indefinite per-role pause, a role outside `pausedRoles` even when the marker carries a deadline, and a fleet-wide pause each keep the bare `paused` — the countdown is appended only under `pausedRoles.includes(role) && !snap.paused && pausedRolesUntil !== undefined` (the GUI's exact guard, one read-only referent), so the existing `status --json` phase and row-render tests pass unmodified.
+- `loopPhase`'s new `pausedUntilMs` param is optional and trailing with a single caller (`loopRowCells` passes `snap.pausedRolesUntil`); `npm run test` passes.
+
 ### The director's queued-prompt count follows the same deliverable rule as per-role queues, so a deferred `prompt --at` to the director stops inflating the header/composer badge (planned 2026-10-16 by plan; independent of every other Planned entry — the paused-resumes plan touches `src/ui/status-model.ts`/`test/status-model.test.ts`, and this touches neither that nor any `src/ui`, `src/gui`, `src/cli`, or `src/loop` file: only `src/status/status-inbox.ts` and two `src/status`-adjacent test files) — done 2026-10-16
 
 **Goal.** `collectInboxes` (`src/status/status-inbox.ts`) counts the director's shared queue with `inbox: inboxPrompts.length` — every queued director prompt, deferred (`tumwater prompt --at`, the not-before marker still in the future) prompts included — while the same pass counts each per-role queue with `roleInbox[r] = entries.filter(deliverableAt).length`, deferred role prompts excluded. The header badge (`snap.inbox`), the GUI composer's total (`(d.inbox || 0) + sum(roleInbox)`), and the per-role `p:N` markers therefore disagree on whether a deferred prompt counts, and the split is by whom the prompt targets: a deferred director prompt inflates the header/composer badge while the identical prompt queued to a role is invisible in the count (though still listed in the Queued tab either way). The role rule is already pinned by the suite's "snapshot's roleInbox deliverability advances with its pinned clock"; the director queue just never got the same filter, so two surfaces of one fact ("how many queued prompts are actionable now") drift by the deferred prompts targeting the director. This makes the director queue count by the one rule, mirroring the per-role queues.
@@ -70,6 +69,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A director prompt deferred via `tumwater prompt --at` (its `notBeforeMs` in the future) does not increment `StatusSnapshot.inbox` (the header `inbox: N` badge and the GUI composer total), mirroring how `roleInbox` already excludes a deferred role prompt, while it still appears in `inboxPrompts`/`inboxFiles`/`inboxQueuedAt`/`inboxNotBefore` so the Queued tab lists and cancels it. At/after its not-before time it counts.
 - The director and per-role queues count queued prompts by the one rule (`deliverableAt`); a deferred prompt's count visibility no longer depends on whether it targets the director or a role, so the header/composer badge and the per-role markers read the same "actionable now" fact.
 - New clock-seam test in `test/status-data-inbox.test.ts` mirroring the existing roleInbox one: `submitPrompt(repo, text, undefined, now + 30m)` → `snapshot(repo, undefined, now).inbox === 0` while `inboxPrompts.length === 1` (still listed), and `snapshot(repo, undefined, now + 30m).inbox === 1`. It fails before the change (inbox stays 1) and passes after; the pinned roleInbox test and the existing all-deliverable `inbox === 2`/`inbox === 0` assertions pass unchanged; `npm run test` passes.
+
 ### The loop drawer gains a `tumwater role` Configuration section: model/provider/images/budget/fallback, rendered from the `/api/role` payload it already fetches (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch the `run` CLI wiring (`--tui`), `gui-endpoints.ts`'s `handleHistory` + `gui-client-history.ts` (history summary), and `gui-client-fleet.ts` (fleet tally), and this touches none of them: only `src/ui/gui/gui-client-drawer.ts` and `test/gui-client-drawer.test.ts`. The CLI surface it mirrors, `renderRoleMarkdown` in `src/roles/role-render.ts`, is read, not edited; no `src/gui/gui-endpoints.ts`, `src/ui/status-*`, `src/loop`, `src/tick`, or `src/ui/tui` edit) — done 2026-10-16
 
 **Goal.** `tumwater role <id>` (`renderRoleMarkdown` in `src/roles/role-render.ts`, fed by `rolePayload` in `src/roles/role-view.ts`) prints what a loop RUNS ON and CARRIES: its resolved model tier, the per-provider concurrency cap, whether its model reads images (and where a blind read reroutes), the active model-failure fallback, the budget fallback pair, the claude billing window, the min tick interval, the queued-prompt count, the instructions override, and the find text. The dashboard's loop drawer — the browser twin of that command — consumes the same `/api/role` payload (`rolePayload`; `drawerRoleSection` in `gui-client-drawer.ts` already prints Notebook, Next tick prompt, and Recent outcomes from `drawerRole.view`) but shows none of the configuration facts: an operator diagnosing a loop from the page cannot see why it is on `fallback`, whether it reads images, or which provider cap bounds it without dropping to the terminal. This adds a compact Configuration section to the drawer, mirroring `tumwater role`'s field labels and wording family so the two cannot drift.
@@ -233,7 +233,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `--count` composes with `--since`, `-n`, `--type`, and `--grep`, and `--count --json` emits a sorted `type → count` object; `--count` with `-f`/`--follow`, `--role`, or `--prompt` fails naming both flags.
 - An empty tally prints the same no-events/no-match prose the plain view prints (never silent in prose), and `--count` never prints the sparse-window note.
 - `tumwater help logs` lists `--count`, existing logs goldens are unchanged without the flag, and `npm run test` passes.
-
 
 ### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series) — done 2026-10-16
 
@@ -419,7 +418,6 @@ test/orchestrator-permits.e2e.test.ts.
   at admission, the slot-waiting tick drops its key while it waits and both ticks finish: the
   slot-drop is unit-pinned, and the both-finish case is e2e (orchestrator-permits.e2e.test.ts).
 - `npm test` passes.
-
 
 ### The day/`--since` report breaks landing-slot outcomes down by role: a `Landed by role` line naming which roles' changes reach main and which bounce off the landing gate (planned 2026-10-15 by plan; independent of every other entry — the one eligible waiting entry is the per-stage-elapsed landing plan, which changes `src/landing/landing-slot.ts`, `src/landing/landing-queue-render.ts`, and `src/ui/status-model.ts` and touches no `src/report/` file; this touches only `src/report/report-data.ts`, `src/report/report-render.ts`, and `test/report.test.ts`, so the two land in either order on separate feature runs) — done 2026-10-16
 
@@ -641,7 +639,6 @@ test/loop-fallback.test.ts, and the part 1/4 e2e harness.
   that backend's name.
 - `npm test` passes.
 
-
 ### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/) — done 2026-10-16
 
 **Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
@@ -712,7 +709,6 @@ test/loop-fallback.test.ts, and the part 1/4 e2e harness.
 - A gate run's blind read is logged (`action: "logged"`) and not killed.
 - `modelFallbackVerdict` scores a blind run `"inconclusive"`.
 
-
 ### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow) — done 2026-10-15
 
 Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
@@ -768,7 +764,6 @@ test/orchestrator-resize.e2e.test.ts.
   `config set maxConcurrentPerProvider.omlx 3` and `config unset maxConcurrentPerProvider.omlx`
   round-trip.
 - `npm test` passes.
-
 
 ### Image input, part 2/5: `tumwater doctor` probes every model that claims image input with a real image (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Doctor"; touches src/doctor/, src/cli.ts, src/cli/help.ts, src/paths.ts, src/agent/image-input.ts, and the two doctor callers in src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts, a different area from part 3/5's stream and verdict files) — done 2026-10-15
 
@@ -982,7 +977,6 @@ new e2e case.
 - No behavior change elsewhere: `Ticks by role` still counts every `tick_end` (the failed count is a separate parallel tally, never subtracted); a window with no failing ticks renders no `Failed ticks by role` line in either shape, and the report `--json` omits `failedTicksByRole` when no role failed (the zero-means-absent convention), so old golden reports with no failures render unchanged.
 - `npm run test` passes.
 
-
 ### Split the dashboard's POST command adapter `src/gui/gui-endpoint-commands.ts` (the tree's largest production module) into per-domain command modules behind a `src/gui/gui-endpoint-commands.ts` barrel (planned 2026-10-14 by organize; independent of every other entry — the waiting series touches `src/ui/tui/` (TUI split), `src/report/` (revisions by role), and `src/failure/` (refusal loss cause), and this touches only `src/gui/` plus the doc comments that name the module; no file the other entries touch) — done 2026-10-14
 
 **Goal.** `src/gui/gui-endpoint-commands.ts` is the largest production module in the tree (719 lines; the next-dozen largest are all under 670 and each is a single coherent concern). It is not one large function but ~30 small handlers bundled only by transport (every POST `/api` endpoint) across five distinct domains — prompt queueing/cancel/edit, backlog entry file/cancel/edit + question-answer, config set/unset + budget, fleet pause/role-pause/wake, and operator lifecycle (restart/reclaim/abort/reset-counters/stop-schedule/role-notes/brief-edit). Each handler already delegates to a domain module one layer down (`inbox/*`, `backlog/backlog-write` + `backlog/question-answer`, `config/config-write`, `fleet/fleet-state`, `operator/operator-intent`, `brief/brief-edit`), so this module only adapts HTTP — but it adapts every domain in one growing file, and its own header already reads as a prose list of domains. The codebase's CLI command layer proves the per-domain split as its established pattern: `src/cli/` ships `config-commands.ts`, `question-commands.ts`, `log-commands.ts`, `cli-query-commands.ts`, `cli-marker-commands.ts`, `brief-command.ts`, `notify-command.ts` — one command module per domain. A new GUI POST endpoint has to append to the monolith instead of to its domain's module.
@@ -1034,10 +1028,7 @@ new e2e case.
 - `landingRuns` is unchanged — a window with two `landed` and one `land_failed` still reports `3 runs` with `(1 failed)` — and the landing share's tokens/cost totals are untouched.
 - The diff is confined to the three files above; `foldUsageEvent`'s other branches (`revision`, `review_rejected`, `merged`, `tick_end`), the failure digest (`OUTCOME_CLASS`), and the TUI are untouched; `npm run test` passes.
 
-
-
 ### Report a `Revisions by role` line in both the day report and the `--since` window, counting `revision` rework rounds per role (planned 2026-10-14 by plan; independent of every other entry — the waiting series touches `src/ui/tui/` (TUI split) and `src/failure/` (refusal loss cause), and this touches only `src/report/report-data.ts`, `src/report/report-render.ts`, and `test/report.test.ts`, the same three files the now-done `report --since` plan landed — and no file or code the TUI-split or refusal plans touch) — done 2026-10-14
-
 
 **Goal.** The report already tells an operator how often the review gate turns a role's work back — `**Rejections by role:**`, folded from `review_rejected` events — but it says nothing about the rework that follows: a rejected change is re-applied onto current main in `revision` rounds (src/loop/loop-tick.ts logs `type: "revision"`, `action: "applied"|"conflict"|"dropped"|"exhausted"`, `round`, `sha`; src/events/events.ts:58; src/events/event-format.ts:244–248 renders it only in the raw feed). A role that iterates a rejected change through several rounds is a distinct thrash signal — a reviewer's objection can be cheap while the author's repeated rework is not — and today it has no aggregate anywhere: a grep for `revision` under `src/report/` and `src/failure/` finds nothing, and no Planned or Done entry covers a revisions-by-role surface (the report `--since` Done entry covers Commits/Notional by role, not revisions). These `revision` events carry the author role in their `loop` field, so they fold the same way rejections do, and the event is already the day/since collector's source.
 
@@ -1081,7 +1072,6 @@ new e2e case.
 - A fixture carrying `commitsByRole: { feature: 3, clean: 1 }` and `notionalByRole: { feature: 0.4, plan: 0.5 }` renders `**Commits by role:** feature — 3 · clean — 1` and `**Notional by role:** plan — $0.50 · feature — $0.40` — the same ranked-by-count desc / ranked-by-spend desc, name-asc ordering and `usd` formatting as the day render's lines, so the window and the day speak one shape.
 - A runCli `tumwater report --since 6h` on a fixture window that landed commits and spent notional prints both lines; `--since --json` carries `commitsByRole` always and `notionalByRole` only when nonzero (both additive — old consumers ignoring extra fields are unaffected), consistent with how the day JSON's `commitsByRole`/`notionalByRole` are surfaced.
 - The diff is confined to the three files above; `ReportDay`, the day collector, and `renderReportMarkdown` are untouched; `npm run test` passes.
-
 
 ### `tumwater logs --type <eventType>` filters the event feed by exact event type, on the `-n` view, the `--since` window, and the follow (planned 2026-10-14 by plan; independent of every other entry — touches `src/cli.ts`, `src/cli/log-commands.ts`, `src/cli/cli-args.ts`, `test/cli-logs-filtering.test.ts`, and the `logs` description in docs/cli.md, none of which the waiting TUI-split (`src/ui/tui/`) or report-`--since` (`src/report/`) plans touch) — done 2026-10-14
 
@@ -1128,7 +1118,6 @@ new e2e case.
 - The outcome is a warn (the doctor report still exits 0), carrying the question heading and its `(N d)` age, matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `questionFilingDate`, `questionAgeSuffix`, `openQuestionEntries`, or any listing surface; the `"stale questions"` row appears in `tumwater doctor`; `npm run test` passes.
 
-
 ### `tumwater history --summary` and `history --json --summary` name each loop's tokens and cost across the window: per-loop totals join the outcome tally (planned 2026-10-14 by plan; independent of every other entry — touches only `src/history/history-data.ts`, `src/history/history.ts`, and `test/history-data.test.ts`, and no code or file the waiting questions-age / checkStalledPlans / tokens-by-role plans touch) — done 2026-10-14
 
 **Goal.** `tumwater history --summary` tallies each loop's ticks into `changes`/`none`/`problems` buckets — `HistorySummaryRow` (src/history/history-data.ts) carries only `ticks`, `changes`, `none`, `problems`, and `lastChangeTs` — yet the very tick rows it folds — each `TickRow` carries `tokens`/`costUsd` from `eventUsage`, rendered by the per-tick `usage` cell — already hold the usage numbers. So an operator who wants each loop-instance's token/cost burn over the recent or `--since` window has no one-line answer: the daily report (`tumwater report`) folds to base role by calendar day, and the history table's per-tick `usage` cells are per row, so a busy `feature-2` vs `feature` split takes hand-summing (the report's `report-data.ts`/`report-render.ts` and the doctor `checkStalledPlans` do brown-bag per-base-role or nothing). A grep for `tokens`/`costUsd` on `HistorySummaryRow` finds none. Small, render+collector only: the per-tick data is already read.
@@ -1146,7 +1135,6 @@ new e2e case.
 - `--json --summary` carries `tokens` and `costUsd` on each loop row and on `total`; the `cli-run.ts` window summary picks the new columns up through the shared `renderSummary` without a code change there, and old `--json` consumers that ignore extra fields are unaffected; `npm run test` passes.
 ### `tumwater report` breaks output tokens down by role: a "Tokens by role" line in the day and `--since` renders (planned 2026-10-14 by plan; touches `src/report/report-render.ts`, `src/report/report-data.ts`, and `test/report.test.ts` only — no `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, or GUI file) — done 2026-10-14
 
-
 **Goal.** `tumwater report`'s per-role lines are `Ticks by role`, `Cost by role`, `Rejections by role` (and `Commits by role`, `Notional by role` in the day render), never `Tokens by role`. Output tokens are the resource the budget charges, so an operator who sees a cost or token spike can point at the offending role for cost but cannot tell which role's prompt loop burned the tokens without opening the raw event log. A grep for `Tokens by role` under `src/` and `test/` finds nothing. Plan note corrected on landing: the plan's premise — that `report-data.ts` already carries `tokensByRole` and the change was render-only — was wrong. `SinceReport` did not declare or return `tokensByRole` at all, and `ReportDay` retained only the aggregate `tokensOut` (the per-role map was folded and discarded). So the landing adds `tokensByRole` to both interfaces and populates it in the collectors; the `/api/report` JSON gains an additive optional field (backward compatible, existing consumers unaffected).
 
 **Approach.** `rankedRoleMap`/`rankedRoleTotals`/`rankedRoleLine` and the `compactTokens` formatter already exist, so each render addition is one line right after the corresponding `Ticks by role` line, zero-token roles omitted the way `Cost by role` omits zero-spend ones (an all-zero window renders `-` like the siblings). Corrections from plan text: `rankedRoleTotals` folds per-day maps by raw loop id — exactly what the `Ticks by role`/`Cost by role` lines already do — so the tokens line does **not** base-role-join instances; it matches its siblings.
@@ -1161,9 +1149,7 @@ new e2e case.
 - A role with more tokens but equal or lower cost appears in the tokens line where the cost line omits it, showing the line is its own data and not a re-render of `Cost by role`.
 - The diff is confined to the three files above; `report.ts`, `src/status`, `src/events`, `src/backlog`, `src/doctor`, `src/ui`, `src/cli`, and the GUI are untouched; the `/api/report` JSON gains only an additive optional `tokensByRole` per day; `npm run test` passes.
 
-
 ### A doctor check surfaces plans held by a Needs-review or Needs-replan note: `checkStalledPlans` joins the backlog checks (planned 2026-10-14 by plan; independent — touches `src/doctor/doctor-backlog.ts` plus its one-line registration in `src/doctor/doctor.ts` and tests in `test/doctor-backlog.test.ts`, and only as a read-only doctor warn: it does not change how landings, eligibility, or any listing behave, and touches no code or file the waiting backlog-age / questions-age / comment-width / provider-hold plans do — done 2026-10-14)
-
 
 **Goal.** When a feature run finds a plan too large for one run it appends **Needs review <YYYY-MM-DD> by feature: too large for one run**, and when its landing is rejected it appends **Needs replan <date> by feature: rejected after <N> review rounds**; both outrank new plans for the plan role, and the fleet's claim gate refuses them (`scheduling/claims.ts` rejects a plan whose `backlogHolds(root).plans` entry is `needs-review` or `needs-replan`). Yet no doctor check names them: `checkRefusedEntries` (`src/doctor/doctor-backlog.ts`) surfaces `**Refused …**` notes but stops there, so a stalled plan is only glance-visible as the `[needs review]`/`[needs replan]` mark in `tumwater backlog`, and the operator gets no single-line health signal — and no doctor warn from `tumwater doctor` — that a plan is parked awaiting split or replan. `entryHold` in `src/backlog/backlog-eligibility.ts` already classifies a held entry: a body line starting `NEEDS_REVIEW_PREFIX` (resp. `NEEDS_REPLAN_PREFIX`, both in `src/roles/role-guidance.ts`) yields `"needs-review"` / `"needs-replan"`, so the new check needs no fresh parsing.
 
@@ -1178,7 +1164,6 @@ new e2e case.
 - New tests in `test/doctor-backlog.test.ts`: a temp PLANS.md whose `## Planned` holds an entry with a `**Needs review 2026-10-14 by feature: too large for one run**` line in its body warns naming that plan; a `**Needs replan 2026-10-14 by feature: rejected after 2 review rounds**` line warns the same; both kinds present warn once naming the first and the rest via `andMore`; no such note (including notes only under `## Done`, or only `**Refused …**` notes, or a heading with no body) reads ok; an absent PLANS.md reads ok with the check's own "nothing to verify" detail rather than throwing — each mirroring the `checkRefusedEntries` counterpart.
 - The warn carries the plan heading and its note text, and the outcome is a warn (doctor stays exit 0), matching `checkRefusedEntries`.
 - The diff is confined to the three files above; no change to `entryHold`, `holdMark`, `backlogHolds`, or any eligibility or listing surface; `npm run test` passes.
-
 
 ### `tumwater questions --list` names how long each open question has waited since its `(asked by <who> YYYY-MM-DD)` clause, and the JSON carries it (planned 2026-10-14 by plan; independent — a different command and file (`src/backlog/question-answer.ts`, `tumwater questions`) than the sibling entry that ages `plan|bug --list`; touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, `src/cli`, or test-suite-wide file, and no code the waiting comment-width / provider-hold plans touch) — done 2026-10-14
 
@@ -1198,7 +1183,6 @@ new e2e case.
 - With a temp root holding one dated and one undated open question, `tumwater questions`' numbered line carries a ` · since <stamp> (<n>d)` suffix (body preview still trailing after it), and the `--json` object carries `since`/`ageDays` for the dated entry and neither field for the undated one — the expected `<n>` computed from the same `Date.now() - Date.parse(stamp) / 86400000` whole-day formula the feature uses, not a hard-coded count, since the exact value drifts with the time of day and timezone.
 - The diff is confined to the two files above; no QUESTIONS.md content or other surface changes; `npm run test` passes.
 ### A suite test holds every comment line in `src/` and `test/` to 100 columns, part 2/2: `src/cli`, `src/gui`, `src/ui` (planned 2026-10-14 by plan; follows the landed part 1/2, which adds the test and its `EXEMPT_DIRS`) — done 2026-10-14
-
 
 **Goal.** Finish what part 1/2 started: fix the over-100-column comment lines that part 1/2's
 `EXEMPT_DIRS` still skips (31 on 2026-10-14: 12 in `src/cli`, 8 in `src/gui`, 11 in `src/ui`,
@@ -1327,7 +1311,6 @@ rules out. So this is a node:test file, like `test/exports.test.ts`.
 - The diff changes no non-comment line, apart from the new test, the role-catalog text, and
   DEVELOPMENT.md.
 - `grep -n 'over 100 columns' src/roles/role-catalog.ts` finds nothing. `npm run test` passes.
-
 
 ### Waiting backlog entries name how long they have been open: a "since <date>" age on `plan|bug --list` and its JSON (planned 2026-10-14 by plan; independent of every other entry — touches no `src/status`, `src/events`, `src/ui`, `src/doctor`, or test-suite file, and no code the waiting comment-width / loop-model / provider-hold plans touch) — done 2026-10-14
 
@@ -1874,7 +1857,6 @@ Do not edit docs/code-metrics.md (a dated measurement) or PRINCIPLES.md (directo
 - A new test in `test/prompt-roles.test.ts`, beside "organize, dry, and clean each end with a whole-tree sweep for what they changed", asserts the first two points against `oneLine(roleById("organize")!.find)`. That existing test passes unchanged.
 - `npm run test` passes.
 
-
 ### The clean loop flattens deeply nested branching: "a function too branchy to follow" becomes one of its sweep kinds, with an indentation grep as its detector (planned 2026-10-13 by plan; independent of every other entry. It touches only the `clean` entry of `ROLES` in `src/roles/role-catalog.ts` and `test/prompt-roles.test.ts`, none of the open BUGS.md entry's call sites; done 2026-10-13)
 
 **Goal.** docs/code-metrics.md's summary item 7 says "Nothing optimizes function complexity": the coverage, dry and organize loops each have a measurable target, but no loop is ever told to reduce branching. Item 3 puts tumwater's production code at 212 branch points per 1,000 lines against an OSS median of 113, with 5.3% of functions over McCabe 10 and a worst function scoring 78. The clean role ("Make the code cleaner" in the initial prompt) is the natural owner. Its `find` text lists the kinds it sweeps (dead code, misleading names, commented-out blocks, overly clever constructs, doc comments, style) and gives a grep detector for some of them. Deep nesting has neither a kind nor a detector, so the clean loop never chooses it. On 2026-10-13, `grep -rE '^ {10,}(if|for|while|switch) \(' src` matched 76 lines, 20 of them in `src/ui/tui/tui-keys.ts`.
@@ -2081,7 +2063,6 @@ truncation; the summary of a review follow-up (`src/review/review-followup.ts`).
   `test/loop.test.ts` ones) pass unchanged.
 - `npm run test` passes.
 
-
 ### A reviewer run that moves HEAD cannot change what lands: the gate restores the head it reviewed (planned 2026-10-12 by plan; independent of every other entry, including the done "harness folds commits the agent made during a tick" plan, which covers authoring and stage-fix runs and names vet-slot review runs out of scope) (done 2026-10-12)
 
 **Goal.** `reviewAheadOfMain` (`src/review/review.ts`) reads `head = headOf(wt, "HEAD")`, then
@@ -2161,7 +2142,6 @@ covers.
 - The rejection test "gate rejects a bad diff: branch reset to main, reasons recorded" passes
   unchanged.
 - `npm run test` passes, and the new invariant cites both new test names.
-
 
 ### The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
@@ -2315,7 +2295,6 @@ commit directly and never pass the gate, so they are unaffected.
 - `readInitialPrompt` and `readBrief` return what they did before. Their existing tests pass
   unchanged.
 - `npm run test` passes.
-
 
 ### Bare `tumwater questions answer <n>` opens the question in `$VISUAL`/`$EDITOR` and records the saved decision (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
@@ -2507,7 +2486,6 @@ node-script `stub` pattern from `test/backlog-write-edit-editor.test.ts` via `cl
   `{file, changed, committed}`.
 - `npm run test` passes.
 
-
 ### `plan|bug --edit <n>` with no text opens the entry in `$VISUAL`/`$EDITOR` (planned by plan 2026-10-12) (done 2026-10-12)
 
 **Goal.** Revising a multi-line plan from the CLI today takes three steps: `tumwater plan --show 2 > f.md`,
@@ -2554,7 +2532,6 @@ no working invocation changes meaning.
   - An out-of-range `--edit 9` fails with the existing `no planned feature at position 9` message, and the stub never runs (it would write a marker file; assert the marker is absent).
 - The existing `--edit <n> "<text>"` and `--edit <n> --file` tests pass unchanged.
 - `npm run test` is green.
-
 
 ### `tumwater plan|bug --show <n>` prints one entry as an editable markdown file that `--edit <n> --file` takes back unchanged (planned 2026-10-12 by plan; independent of every other entry) (done 2026-10-12)
 
@@ -2704,7 +2681,6 @@ Keep the three path flags in one exported-or-local constant (e.g. `PATH_FLAGS`) 
 - `chartCostByRole` still renders as before on a day whose `costByRole` is absent: no throw, no segments.
 - A render test in the pattern of "the Usage sparse-window note is the shared SPARSE_WINDOW_NOTE, verbatim" (running `fetchReport` with injected stand-ins): with `totals.notionalCostUsd: 12.5` and a day carrying `notionalByRole`, `usagebody` contains `Notional spend by loop`, `API-equivalent, not in the cap`, and `$12.50 notional`. With the same report minus every notional field, it contains none of the three.
 - The project's check (`npm run test`) passes.
-
 
 ### `tumwater completion <bash|zsh>` prints a shell completion script derived from the help text (planned 2026-10-12 by plan; independent of every other entry. It touches no `src/backlog`, `src/landing`, `src/orchestrator`, or UI file. The help lists 31 commands and 37 distinct long flags, spread over per-command usage forms, and the operator types every one by hand: a grep for `complete -F`, `compdef`, or `bashcompinit` under `src/` finds nothing, and no Planned or Done entry covers shell completion; done 2026-10-12 by feature)
 
@@ -3036,7 +3012,6 @@ runs; and that a `run --once` round settles a skipped runner as `no free entry`)
   an empty backlog is adjusted to seed an eligible plan, and the entry names each such test in
   its Done note.
 
-
 **Done 2026-10-12.** Landed as planned. The e2e test adjusted to seed an eligible plan: `ticks on the engaged fallback feed the breaker` in `test/orchestrator-fallback.test.ts`.
 
 ### Defer the plan loop's due ticks while PLANS.md already holds its eligible-plan target (planned 2026-10-12 by plan; independent of the backlog-writes series; done 2026-10-12)
@@ -3166,7 +3141,6 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 - `formatEvent({ ts: 0, loop: "perf", type: "prompt_taken", tick: 7, preview: "fix x" })` returns a line containing `user prompt taken by tick #7: fix x`. If `test/event-format.test.ts` has a list that renders every type, it includes `prompt_taken`.
 - The project's check (`npm run test`) passes.
 
-
 ### A landed refusal note pages the operator: a new `entry_refused` event joins the notify allowlist (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above; done 2026-10-12)
 
 **Goal.** When a tick's **Refused** note lands on main, the operator hears about it the same way they hear about a posted question. Only a human or the director can lift a refusal (`tumwater plan|bug --release <n>`). Until then the entry is held, and a fully refused backlog leaves feature or bugfix with nothing to do. Today the only trace is a `tick_end` with result `refused`, which is not a notify type. So a refusal nobody reads holds an entry until someone happens to run `tumwater doctor`, as the refused part 2/2 above shows.
@@ -3187,7 +3161,6 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 - `test/notify.test.ts`: the pinned `NOTIFY_EVENT_TYPES` list includes `"entry_refused"`.
 - `test/gui-client.test.ts`: `kind("entry_refused")` is `"attention"`, and `eventKind("entry_refused")` from `src/ui/tone.ts` agrees.
 - `npm run test` passes.
-
 
 ### `tumwater plan|bug --release <n>` lifts a stale **Refused** note and commits the release on main (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above. It touches `src/backlog/backlog-write.ts` and `src/cli.ts`, which that plan also touches, but in different functions and `case` arms. Today a Refused note can only be cleared by hand-editing the file, or by rewriting the whole entry with `--edit <n> --file`. Both leave an uncommitted edit in the primary checkout. `checkRefusedEntries`' remedy says "answer the objection and delete the note" but names no command for it. The part 2/2 entry above is stuck this way right now: its refusal cites a missing `src/backlog/backlog-commit.ts`, and that file has since landed. A grep for `--release` or `unrefuse` under `src/` finds nothing, and the `reopen` hits there are about the budget gate and drawers, not backlog entries) — done 2026-10-12
 
@@ -3383,7 +3356,6 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 - With a running fleet whose info has no `stopsAt` and a stop marker 30 minutes ahead, the status snapshot's `runStopsAt` equals the marker's `until`. When both are present, `runStopsAt` is the earlier one. With no running fleet, `runStopsAt` is absent.
 - Existing `cmdStop` tests and `test/cli-run-window.test.ts` pass unchanged.
 
-
 ### A `run --for` fleet shows when it stops: `tumwater status`, the TUI header, and the dashboard sidebar carry a `stops in <duration>` countdown (planned 2026-10-12 by plan; follows the landed "`tumwater run --for` keeps one window across self-redeploys" plan; independent of the refused "Operator backlog writes land on main" part 2/2 — it touches no `src/backlog` file) (done 2026-10-12)
 
 **Goal.** A fleet started with `tumwater run --for 8h` stops itself at a deadline that only the starting terminal knows: its banner prints `for 8h` once, and every observer (`tumwater status`, `status --json`, the TUI, the dashboard) shows it as a plain running fleet. An operator who checks in from another terminal cannot tell whether the fleet will still be running tonight. After this change, every observer shows the deadline while a windowed fleet runs, the way they show a timed pause's countdown.
@@ -3531,7 +3503,6 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 - **CLI JSON.** In the same test, `payload.total` deep-equals `{ loop: "total", ticks: 3, changes: 1, none: 1, problems: 1, lastChangeTs: 1787222695956 }`. `history --summary --result problems` shows `—` on its total line.
 - **Unchanged output.** Without `--summary`, `history`'s output is unchanged, and "history --summary keeps the empty-state output on an empty log" passes unmodified.
 - **Check.** `npm run test` passes.
-
 
 ### `tumwater history --summary` tallies each loop's tick outcomes (ticks, changes, none, problems) over the same rows the table would print (planned 2026-10-12 by plan; independent of the refused "Operator backlog writes land on main" part 2/2 above) — done 2026-10-12
 
@@ -3968,7 +3939,6 @@ Second half of the split of the BUGS.md open entry "The dashboard says "Queued �
 - The BUGS.md entry has moved to `## Fixed` with today's Fixed date.
 - `npm run test` passes.
 
-
 ### Idle loops say why they are idle, part 1/2: the scheduling poll records why it skipped a due loop (planned 2026-10-12 by plan; done 2026-10-12 by feature)
 
 Split from the BUGS.md open entry "The dashboard says "Queued · due — waiting for a free slot" for loops that are not waiting for a slot…", which needs review as too large for one run. Part 2/2 ("…part 2/2: the status phase names the skip") reads what this part records. This part changes no rendered output.
@@ -4053,7 +4023,6 @@ Split from the BUGS.md open entry "The dashboard says "Queued · due — waiting
 - The verdict is unchanged by this row (warn, not fail).
 - The check is read-only: it calls no `saveLoopState`, `pauseRole`, or event write. The existing read-only assertion in the runDoctor full-report test still passes.
 - The updated row-order test and the new `checkErrorStreaks` tests pass under `npm run test`.
-
 
 ### `tumwater doctor` names the claude subscription window: a "claude window" check that warns while a rejected window holds the subscription claude seams (planned 2026-10-12 by plan; the subscription sibling of the landed "budget" check (`checkBudget` in `src/doctor/doctor-holds.ts`) and the last fleet hold doctor does not report, after "pause", "quiet hours", "budget", and "maintenance quota". On a subscription-only claude fleet a run is exempt from the dollar cap, so "budget" reads ok while `pollFleetHold` in `src/fleet/fleet-polls.ts` holds every subscription claude seam until the rejected window's `resetsAt`, which can be hours away. Today grep finds no `claudeWindow`/`claude window` in `src/doctor`. So doctor prints "ready to run" over a fleet that starts no claude tick, and the operator has to read the status header's `Claude 5h · rejected` badge to learn why. Independent of the landed "A failing notify hook says so" plan: no `src/events` file. Stands alone: no scheduler, snapshot, GUI, or TUI change. The dashboard's Health check card and the TUI Health tab render `runDoctor`'s rows, so they show the new row with no extra work; done 2026-10-12)
 
@@ -4504,7 +4473,6 @@ sentence: add "and the maintenance allowance's rolling-24 h use").
 - `test/gui-client-drawer.test.ts`: the scope stub that mirrors `scheduledWakeFor` gains a `scheduledWakesFor` mirror, or the test loads the real helper. "an idle loop's drawer offers Cancel scheduled wake only while a future wake names it" gains two cases: the button shows for a loop named only by the SECOND entry of `scheduledWakes`, and it shows for an instance row (`instanceOf: "base"`) when one wake names `base` and a later one names the instance id.
 - `npm run test` passes.
 
-
 ### List every pending scheduled wake: `tumwater wake --list [--role <id>] [--json]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --cancel` and dashboard wake-cancel; independent of the TUI Ctrl+P plan); done 2026-10-12 by feature
 
 **Goal.** Each `wake --in` writes its own file under `scheduledWakeDir`, and several can be pending at once, but `tumwater status` and the dashboard show only the earliest (`fleet-state.ts` returns `pendingScheduledWakes(root, now)[0]`). So an operator can't see what `wake --cancel` would drop. `wake --list` prints every pending scheduled wake, earliest first. With `--role <id>` it prints only the wakes naming that loop, and with `--json` it prints them as JSON for scripts. It is a read-only view: it writes, deletes, and wakes nothing.
@@ -4569,7 +4537,6 @@ sentence: add "and the maintenance allowance's rolling-24 h use").
 - `test/gui-client-drawer.test.ts`: an idle loop's drawer shows `data-action='wake-cancel'` when the status's `scheduledWake` names the loop with a future `atMs`. It shows no such button when `scheduledWake` is absent, names another loop, or is past due.
 - `test/gui-client-loops.test.ts`'s `phaseDetail` assertions ("operator wake in 1h") pass unchanged after the helper is extracted.
 - `npm run test` passes.
-
 
 ### Cancel pending scheduled wakes with `tumwater wake --cancel [--role <id>]` (planned 2026-10-12 by plan; sibling of the landed `tumwater wake --in` (`requestWake` in `src/operator/operator-intent.ts` writes one file per scheduled wake under `scheduledWakeDir`, `.tumwater/wakes/`), the landed per-file consumer (`consumeWakeRequest` in `src/operator/operator-requests.ts`), and the landed status display (`pendingScheduledWakes`, `scheduledWake` in `src/fleet/fleet-state.ts`, `wakeBadge`). Independent of the waiting TUI Ctrl+F pause plan: this plan touches no `src/ui` file. A dashboard "cancel scheduled wake" control is a separate, later sibling that reuses this plan's core; done 2026-10-12)
 
@@ -4878,7 +4845,6 @@ which already exports `saveRoleNote`.
 - `test/prompt-commands.test.ts` adds a test modeled on "prompt --edit --role rewrites the entry in place and keeps its list position and stamp". It queues two bugfix prompts, then runs `cmdPrompt(root, ["--role", "bugfix", "--edit", "1", "--file", f])` with `f` holding `first\n\nsecond paragraph\n`. The first queue file still exists, and its content (marker stripped) is `first\n\nsecond paragraph`, with the inner blank line kept. `--list` still shows it at position 1 and the other prompt at position 2. Exactly one `prompt_edited` event is logged. A missing file path exits non-zero, and the queue files are byte-identical to before.
 - The help test that matches the prompt `--edit` stanza (find it with grep for `prompt --edit` under `test/`) also matches `tumwater prompt --edit <n> --file <path>`. If no such test exists, add an assertion to the help-stanza test file that covers `tumwater help prompt`.
 - `npm run test` passes.
-
 
 ### Answer an open question from the TUI backlog pane, matching `tumwater questions answer <n>` and the dashboard's answer form (planned 2026-10-12 by plan; sibling of the landed CLI `tumwater questions answer` (`answerQuestion` in `src/cli/question-commands.ts`) and the landed dashboard answer form (`POST /api/question-answer`, `handleQuestionAnswer` in `src/gui/gui-endpoint-commands.ts`). Independent of the waiting "Edit a planned feature or open bug from the dashboard's entry drawer" plan: it touches neither `backlog-write.ts` nor the GUI) (done 2026-10-12 by feature)
 
@@ -5334,7 +5300,6 @@ Out of scope: the marker holds one wake, so a later `wake` request overwrites a 
 - `test/gui-client-boot.test.ts`: `answer-record` with text posts exactly `{ position: index + 1, title: <status title>, decision: <trimmed text> }` to `/api/question-answer`, and with an empty textarea posts nothing and flashes the hint.
 - `test/gui-client-fleet.test.ts`: the Questions-tab Answer button carries `data-file='questions' data-index='<i>'` rather than `data-act='answer'`.
 - `npm run test` is green.
-
 
 ### Show the Claude window's usage as a meter in the dashboard, and say when usage is unreported (planned 2026-10-12 by director from a user request; the TUI header already prints `Claude 5h · 64%` through `claudeWindowBadge` in `src/ui/badges.ts` whenever `utilization` is reported, so this is a `src/ui/gui` change only) — done 2026-10-12
 
@@ -6240,7 +6205,6 @@ read and edit to the API — `GET /api/prompt-text` returns a prompt's editable 
   text are 400; an absent file answers `{ ok: true, status: "gone" }`; a missing `file` is 400.
 - `npm run test` is green.
 
-
 ### Search the TUI History pane with `tumwater history --grep`'s rule (planned 2026-10-11 by plan; sibling of the landed `tumwater history --grep`, the landed dashboard History search, and the landed TUI History `Ctrl+S`/`Ctrl+O`/`Ctrl+G` filters; completes the last `history` filter without a TUI surface; independent of the waiting TUI Pending land-queue plan — it shares `src/ui/tui/tui-keys.ts` and `tui-frame.ts` but edits the History pane's branches, the prompt-line modes, and the history view shape, not the Pending branch, so a landing conflict is possible and the resolver handles it; done 2026-10-11 by feature)
 
 **Goal.** The History pane filters by trailing window (`Ctrl+S`), outcome class (`Ctrl+O`), and exact loop (`Ctrl+G`), but a free-text search has no TUI surface: `tumwater history --grep <text>` and the dashboard's History search field both filter the rows through `history-data.ts`'s `tickRowGrepHaystack` case-insensitive substring rule. Add that search to the TUI, reading the same haystack so the three surfaces cannot disagree.
@@ -6708,6 +6672,3 @@ single formatter would add parameters without removing a computation.
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
-
-
-

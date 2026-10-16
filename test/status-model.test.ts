@@ -11,6 +11,7 @@ import fs from "node:fs";
 import { backdate } from "./helpers/backdate.js";
 import { parseProgress, stalledToolLabel } from "../src/ui/progress-data.js";
 import { idleClaimText, isActivePhase, loopPhase, loopRank, loopRowCells, sortLoopsByState } from "../src/ui/status-model.js";
+import { phaseTone } from "../src/ui/tone.js";
 import { workingDetail } from "../src/ui/tick-progress-model.js";
 import { fleetAlerts } from "../src/ui/fleet-alerts.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
@@ -502,6 +503,40 @@ test("loopPhase reads paused for idle role loops while the fleet is user-paused"
 
   // A stopped orchestrator still reads stopped (nothing is ticking at all).
   assert.equal(loopPhase(s, false, undefined, false, undefined, true), "stopped");
+});
+
+// The timed per-role pause countdown (PLANS.md 2026-10-16): `pause --role <id> --for` writes a
+// deadline that the CLI/TUI/`status --json` phase — all derived through loopPhase — shows as
+// `paused · resumes in <s>`, mirroring the GUI loop-list's phaseDetail so the operator can tell
+// when the loop comes back without dropping to the browser.
+test("loopPhase appends the per-role pause resume countdown only for a live deadline", () => {
+  const s = freshLoopState("feature");
+  const now = Date.now();
+
+  // A future deadline renders the countdown in the fleet-header wording family.
+  const future = now + 120_000; // ~120s → humanSeconds → "2m" (mid-bucket, deterministic)
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, future),
+    "paused · resumes in 2m",
+  );
+
+  // An indefinite per-role pause (no deadline) keeps the bare `paused`.
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, undefined),
+    "paused",
+  );
+
+  // An expired marker never renders a stale `resumes in 0s` — the guard drops it.
+  assert.equal(
+    loopPhase(s, true, undefined, false, null, true, undefined, undefined, false, undefined, false, false, undefined, undefined, now - 1_000),
+    "paused",
+  );
+
+  // The timed phase stays grouped with the other paused states on every surface: it must not
+  // fall through LOOP_RANK_RULES to idle rank 4 (which would reorder the CLI/TUI/dashboard
+  // tables) or lose the paused yellow tone that phaseTone derives from that rank.
+  assert.equal(loopRank("paused · resumes in 2m"), 3, "the timed pause ranks with the paused states");
+  assert.equal(phaseTone("paused · resumes in 2m"), "yellow", "the timed pause keeps the paused yellow tone");
 });
 
 test("loopPhase prefers paused over budget paused and main red", () => {

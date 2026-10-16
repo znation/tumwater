@@ -124,6 +124,7 @@ export function loopPhase(
   bootstrapHeld = false,
   maintenanceQuotaHold?: string,
   permits?: PermitSnapshot,
+  pausedUntilMs?: number,
 ): string {
   if (!orchestratorRunning) return "stopped";
   // Merge queue 4/5 — the marker-driven landing label: only a role whose change record was
@@ -186,7 +187,19 @@ export function loopPhase(
     return root ? workingDetail(root, s, live) : "working";
   }
   if (s.role === DIRECTOR_ROLE) return "waiting for prompts"; // exempt from both gates
-  if (userPaused) return "paused";
+  if (userPaused) {
+    // A timed per-role pause (`pause --role <id> --for`): the marker's `until` gives the
+    // operator a countdown, mirroring the fleet header badge and the GUI loop-list's
+    // `· resumes in <s>` — an indefinite per-role pause or a fleet-wide pause (deadline
+    // absent) keeps today's bare `paused`, so the surfaces cannot drift.
+    if (pausedUntilMs !== undefined && pausedUntilMs > Date.now()) {
+      return `paused · resumes in ${humanSeconds(Math.max(0, Math.round((pausedUntilMs - Date.now()) / 1000)))}`;
+    }
+    // An absent deadline (indefinite per-role pause, fleet-wide pause) or an expired one
+    // (the marker fleet-state already reads as unpaused) keeps today's bare `paused` — never
+    // a stale `resumes in 0s`.
+    return "paused";
+  }
   // The loop's OWN daily cap: the more specific spend
   // state, so it names itself ahead of the fleet's budget pause — the ladder's existing
   // "user intent is more specific than spend state" argument extended one level down.
@@ -340,6 +353,10 @@ export function loopRowCells(
     // The permit pool's live state (plans/provider-concurrency.md §8): names the parked
     // waiter's provider key in `awaiting <key> slot` when that key is at its cap.
     snap.permits,
+    // A timed per-role pause's deadline — only when the loop itself is individually paused
+    // (in `pausedRoles`) and not under a fleet-wide pause, matching the GUI's phaseDetail
+    // guard, so the fleet pause (whose countdown rides the header badge) never double-appends.
+    snap.paused || !snap.pausedRoles.includes(s.role) ? undefined : snap.pausedRolesUntil,
   );
   return { live, generated: m.generated, peakCtx: m.peakCtx, phase };
 }
@@ -400,7 +417,7 @@ export const LOOP_RANK_RULES: ReadonlyArray<{
   { rank: 1, prefixes: ["vetted", "awaiting slot"] },
   { rank: 2, phases: ["failing", "main red"] },
   { rank: 3, phases: ["paused", "budget paused", "cap paused", "disk hold", "held: bootstrap"] },
-  { rank: 3, prefixes: ["held: maintenance quota"] },
+  { rank: 3, prefixes: ["paused", "held: maintenance quota"] },
 ];
 
 /** The rank LOOP_RANK_RULES assigns `phase`: -1 for director working, 4 for idle, otherwise the

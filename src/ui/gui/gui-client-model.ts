@@ -44,7 +44,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     }
     if (p === "failing") return { key: "failing", label: "Failing", tone: "red", live: false, detail: "failed ticks in a row" };
     if (p === "main red") return { key: "mainred", label: "Main red", tone: "red", live: false, detail: "blocked until main's suite passes" };
-    if (p === "paused") return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
+    if (p.startsWith("paused")) return { key: "paused", label: "Paused", tone: "amber", live: false, detail: "starts no new ticks" };
     if (p === "budget paused") return { key: "budget", label: "Budget paused", tone: "amber", live: false, detail: "today's cap is spent" };
     if (p === "cap paused") return { key: "cap", label: "Cap paused", tone: "amber", live: false, detail: "its own daily cap is spent" };
     if (p === "disk hold") return { key: "disk", label: "Disk hold", tone: "amber", live: false, detail: "free space is below the floor" };
