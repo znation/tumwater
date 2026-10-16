@@ -80,6 +80,7 @@ export default tseslint.config(
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/consistent-type-imports": "error",  // inline-only-type imports use top-level `import type`
+      "@typescript-eslint/consistent-type-exports": "error",  // a type-only export spells `export type { A }`, so a module's type exports never look like runtime ones (the export twin of consistent-type-imports)
       "@typescript-eslint/prefer-readonly": "error",
       "@typescript-eslint/no-inferrable-types": "error",
       "@typescript-eslint/consistent-indexed-object-style": "error",
@@ -114,6 +115,12 @@ export default tseslint.config(
       // shape changes — belongs on the code that ships, not on fixtures whose casts are the
       // point.
       "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      // Production code only: tests spell fixtures as concise `() => void counter++`
+      // arrows — the unit `void` disposes the value there so the fixture stays one line —
+      // which the rule reads as a meaningless operator, so its signal — a `void` whose
+      // operand holds no value to discard (or is already void) — belongs on the code that
+      // ships, not on fixture idioms.
+      "@typescript-eslint/no-meaningless-void-operator": "error",
     },
   },
 );
