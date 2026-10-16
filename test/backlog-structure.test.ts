@@ -444,7 +444,7 @@ test("renderBacklogIndexBlock marks an entry carrying a Needs-replan note", () =
   const block = renderBacklogIndexBlock(dir);
   assert.ok(block);
   assert.match(block, /- 3-4: One\n/);
-  assert.match(block, /- 5-6: Two \[needs replan\]/);
+  assert.match(block, /- 5-6: Two \[blocked: needs replan\]/);
 });
 
 test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing review", () => {
@@ -469,8 +469,8 @@ test("renderBacklogIndexBlock marks a held entry as blocked, refused or needing 
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /- 3-4: Base, part 1\/2: x\n/);
   assert.match(block, /- 5-6: Later, part 2\/2: y \[blocked: requires Base 1\/2\]/);
-  assert.match(block, /- 7-8: Refused one \[refused\]/);
-  assert.match(block, /- 9-10: Review one \[needs review\]/);
+  assert.match(block, /- 7-8: Refused one \[blocked: refused\]/);
+  assert.match(block, /- 9-10: Review one \[blocked: needs review\]/);
 });
 
 test("renderBacklogIndexBlock blocks a BUGS.md entry whose prerequisite plan is unlanded", () => {
@@ -630,7 +630,7 @@ test("renderBacklogIndexBlock keeps a refused and a claimed blocked part out of 
   const block = renderBacklogIndexBlock(dir) ?? "";
   assert.match(block, /- 3-4: T, part 1\/6: a\n/);
   // The refused part and the claimed part keep their own lines and are not counted.
-  assert.match(block, /- 5-6: T, part 2\/6: b \[refused\]/);
+  assert.match(block, /- 5-6: T, part 2\/6: b \[blocked: refused\]/);
   assert.match(block, /- 7-8: T, part 3\/6: c \[blocked: requires T 2\/6\] \[in flight by feature\]/);
   assert.match(block, /- 9-14: T, 3 blocked parts \(4\/6–6\/6\) \[blocked: each waits on an earlier part\]/);
 });

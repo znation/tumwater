@@ -165,7 +165,7 @@ test("backlogMarks carries each plan's and bug's hold parallel to its entry, emp
     { heading: "## Fixed" },
   ]);
   assert.deepEqual(backlogMarks(dir), {
-    plans: ["", " [blocked: requires Base 1/2]", " [refused]"],
+    plans: ["", " [blocked: requires Base 1/2]", " [blocked: refused]"],
     bugs: [""],
   });
 });
@@ -189,7 +189,7 @@ test("backlogMarks and labeledBacklogEntries append the working-on-it mark after
   saveLoopState(dir, { ...loadLoopState(dir, "feature"), claim: claim("PLANS.md", "refused one", "Refused one") });
   saveLoopState(dir, { ...loadLoopState(dir, "bugfix"), claim: claim("BUGS.md", "live bug", "Live bug") });
   const expected = {
-    plans: [" [working on it: feature #2]", " [refused] [working on it: feature]"],
+    plans: [" [working on it: feature #2]", " [blocked: refused] [working on it: feature]"],
     bugs: [" [working on it: bugfix]"],
   };
   assert.deepEqual(backlogMarks(dir), expected);

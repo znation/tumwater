@@ -417,7 +417,7 @@ test("every role prompt ends with the reply contract: plain text last, no announ
 
 test("the readme role syncs from the git delta since its own last commit", () => {
   const find = oneLine(roleById("readme")!.find);
-  assert.match(find, /`git log --oneline <last readme commit>\.\.main` names everything that landed/);
+  assert.match(find, /`git log --oneline <last readme commit>\.\.main` names everything that merged/);
   assert.match(find, /read only what those commits touched/i);
 });
 

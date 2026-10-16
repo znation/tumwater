@@ -173,8 +173,8 @@ test("renderBacklogMarkdown appends holds to headings; no holds leaves the docum
     holds: { plans: [{ blockedBy: ["Prereq 1/2"] }, "needs-review"], bugs: ["refused"] },
   });
   assert.match(held, /^### Show open bugs in the TUI \(planned 2026-09-25\) \[blocked: requires Prereq 1\/2\]$/m);
-  assert.match(held, /^### Timestamp of last result \(planned 2026-09-24\) \[needs review\]$/m);
-  assert.match(held, /^### Logs rotate too often \(reported 2026-09-25\) \[refused\]$/m);
+  assert.match(held, /^### Timestamp of last result \(planned 2026-09-24\) \[blocked: needs review\]$/m);
+  assert.match(held, /^### Logs rotate too often \(reported 2026-09-25\) \[blocked: refused\]$/m);
   // The payload alone (no holds) renders the same document as a view whose holds are absent.
   const plain = renderBacklogMarkdown(payload);
   assert.equal(plain, renderBacklogMarkdown({ ...payload }));
@@ -221,8 +221,8 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
     human.out,
     /^### Later, part 2\/2: x \(planned 2026-10-02; requires Prereq 1\/2 landed\) \[blocked: requires Prereq 1\/2\]$/m,
   );
-  assert.match(human.out, /^### Refused plan \(planned 2026-10-03\) \[refused\]$/m);
-  assert.match(human.out, /^### Refused bug \(reported 2026-10-02\) \[refused\]$/m);
+  assert.match(human.out, /^### Refused plan \(planned 2026-10-03\) \[blocked: refused\]$/m);
+  assert.match(human.out, /^### Refused bug \(reported 2026-10-02\) \[blocked: refused\]$/m);
   assert.match(human.out, /^### Ready \(planned 2026-10-04\)$/m);
   assert.match(human.out, /^### Real bug \(reported 2026-10-02\)$/m);
 
@@ -258,7 +258,7 @@ test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", ()
     holds: { plans: [null, "needs-review"], bugs: [null] },
     inProgress: { plans: [null, "feature-2"], bugs: [null] },
   });
-  assert.match(md, /^### Timestamp of last result \(planned 2026-09-24\) \[needs review\] \[working on it: feature #2\]$/m);
+  assert.match(md, /^### Timestamp of last result \(planned 2026-09-24\) \[blocked: needs review\] \[working on it: feature #2\]$/m);
   assert.match(md, /^### Show open bugs in the TUI \(planned 2026-09-25\)$/m);
 });
 

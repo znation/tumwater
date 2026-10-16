@@ -276,12 +276,12 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.deepEqual(payload.planHolds, [
     "",
     " [blocked: requires Worktree pool 2/5]",
-    " [refused]",
+    " [blocked: refused]",
     "",
   ]);
   assert.deepEqual(payload.bugs, ["Live bug (reported 2026-10-01)", "Dead bug (reported 2026-10-01)"]);
   assert.equal(payload.bugHolds.length, payload.bugs.length, "one hold per bug");
-  assert.deepEqual(payload.bugHolds, ["", " [refused]"]);
+  assert.deepEqual(payload.bugHolds, ["", " [blocked: refused]"]);
   assert.deepEqual(payload.planBlocked, [false, true, true, false]);
   assert.deepEqual(payload.bugBlocked, [false, true]);
 });

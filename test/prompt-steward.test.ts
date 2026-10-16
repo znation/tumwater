@@ -26,7 +26,7 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
   const find = oneLine(steward!.find);
   // It re-reads the durable state first — QUESTIONS.md only conditionally (init seeds it,
   // but older repos may not have it).
-  assert.match(find, /Re-read the initial prompt, PRINCIPLES\.md, PLANS\.md, BUGS\.md/);
+  assert.match(find, /Re-read the brief, PRINCIPLES\.md, PLANS\.md, BUGS\.md/);
   assert.match(find, /and QUESTIONS\.md if it exists/);
   assert.match(find, /skim the codebase's shape \(sizes, module list, test count\)/);
   // One move per tick, and the five planned moves: prune plans (with an epitaph), flag
@@ -37,7 +37,7 @@ test("the steward prompt makes ONE curation move from the planned list", () => {
     find,
     /delete or merge stale\/duplicative\/superseded PLANS\.md entries \(with a one-line epitaph in the entry's place or in Done\)/,
   );
-  assert.match(find, /flag drift between what is being built and the initial prompt as a PLANS\.md note/);
+  assert.match(find, /flag drift between what is being built and the brief as a PLANS\.md note/);
   assert.match(find, /tighten or update a principle or complexity budget in PRINCIPLES\.md/);
   assert.match(find, /record a structural risk in BUGS\.md/);
   assert.match(
@@ -83,8 +83,8 @@ test("the steward prompt compresses older Done entries to one-line epitaphs with
 
 test("the steward prompt sources epitaph hashes from landing citations or git log, never verification references", () => {
   const find = oneLine(steward!.find);
-  // Priority: an explicit landing citation in the body, else git log on main.
-  assert.match(find, /an explicit landing citation in the entry body/);
+  // Priority: an explicit merge citation in the body, else git log on main.
+  assert.match(find, /an explicit merge citation in the entry body/);
   assert.match(find, /else git log on main/);
   // A Done note's "against main <sha>" is a base reference — never the record's hash; when no
   // landing commit exists, omit the field rather than guess.
@@ -159,25 +159,25 @@ test("the steward prompt sources Fixed-record commits from landing citations or 
   const find = oneLine(steward!.find);
   assert.match(
     find,
-    /The commit is the entry's LANDING commit — the one that merged the fix to main/,
+    /The commit is the entry's MERGE commit — the one that merged the fix to main/,
   );
-  // Priority: an explicit landing citation in the body (the "tick N (`sha`)" form naming the
+  // Priority: an explicit merge citation in the body (the "tick N (`sha`)" form naming the
   // fix commit itself), else git log on main.
   assert.match(
     find,
-    /an explicit landing citation in the entry body \(the "tick N \(`<sha>`\)" form naming the fix commit itself\), else git log on main/,
+    /an explicit merge citation in the entry body \(the "run N \(`<sha>`\)" form naming the fix commit itself\), else git log on main/,
   );
   // A verification reference is main's state at check time, not the fix; bodies citing several
-  // shas need the one cited as having landed the fix.
+  // shas need the one cited as having merged the fix.
   assert.match(
     find,
     /never use a verification reference \("Verified … on main `<sha>`", "at HEAD `<sha>`"\) as the record's hash/,
   );
-  assert.match(find, /bodies citing several shas need the one cited as having landed the fix/);
+  assert.match(find, /bodies citing several shas need the one cited as having merged the fix/);
   // Entries closed without code change have no landing commit — omit rather than guess.
   assert.match(
     find,
-    /when no landing commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/i,
+    /when no merge commit exists \(an entry closed without code change says so in its \*\*Resolution:\*\* note\) omit the `commit` field rather than guess/i,
   );
   // The gap tag survives even without a landing commit, and `none` still costs nothing.
   assert.match(
@@ -202,7 +202,7 @@ test("the steward prompt carries the shared curation rules over to Fixed compres
   const shared = find.slice(find.indexOf("Rules for both compressions:"));
   assert.ok(find.indexOf("Rules for both compressions:") > find.indexOf("Compressing BUGS.md ## Fixed"), "stated after both policies");
   assert.match(shared, /Compression is lossy on purpose: pre-compression text stays in git history/);
-  assert.match(shared, /One curation move per tick still holds/);
+  assert.match(shared, /One curation move per run still holds/);
 });
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {

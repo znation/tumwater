@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Shared instruction fragments role prompts and prompt assembly embed verbatim. Pure
  * data: this module imports nothing, so prompt assembly can depend on it without a cycle.
  * Split from roles.ts, whose catalog (now role-catalog.ts) find texts embed these fragments
@@ -10,7 +11,7 @@
  * and the catalog → here. */
 export const DECOMPOSITION_GUIDANCE = `Before recording a plan or bug, check whether it decomposes
 into independent subparts (separate features, or separate bugs). If it does, record each part as
-its own PLANS.md/BUGS.md entry that cross-references its siblings, so loops can pick them up
+its own PLANS.md/BUGS.md entry that cross-references its siblings, so roles can pick them up
 independently; if the parts are not truly independent, keep a single entry.`;
 
 /** Shared instruction for closing a backlog entry (the feature loop moving a plan to Done,
@@ -32,6 +33,10 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
       same headings before and after the edit.`;
 }
 
+/** The heading clause requiredParts parses, spelled as the parser reads it. Interpolated because
+ * a comment inside the template would become prompt text. */
+const REQUIRES_PART_FORM = "requires part N/M landed"; // vocabulary-ok: requiredParts parses this heading syntax
+
 /** Shared sizing rule for anyone writing a plan (the plan role and the director): the feature
  * loop is one mid-sized local model working alone in one run, and the review gate rejects a
  * change that lands less than its entry promises — so a plan must fit that run. Oversized plans
@@ -41,17 +46,17 @@ export function backlogMoveGuidance(file: string, openSection: string, resolvedS
  * and its own fast-forward deleted the config. */
 export const PLAN_SIZING = `Size every plan to ONE implementation run by a mid-sized model working
 alone: a handful of files, at most a few hundred lines of change including tests, and no design
-question left open for the implementer. Anything larger is split into independently landable
+question left open for the implementer. Anything larger is split into independently mergeable
 sub-plans that cross-reference each other, each with its own acceptance criteria. A sub-plan that
-depends on a sibling spells that dependency as requires part N/M landed, in quotes, in its
+depends on a sibling spells that dependency as ${REQUIRES_PART_FORM}, in quotes, in its
 heading's trailing parenthetical; it is the only form the claim allocator reads, so a dependency
 worded any other way (such as blocked by part 1/2, after part 1/2, or follows part 1/2) does not
 hold the part until its prerequisite leaves ## Planned. Anchor plans on
 file paths and symbol names — functions, types, constants, test names — never on line numbers or
-ranges, because line anchors go stale with every landing. When the project is the harness running
-the fleet, every commit lands under the build that predates it, so a
-change to how landings behave and any step that depends on it are separate sub-plans, the second
-landing only once the first is the running build.`;
+ranges, because line anchors go stale with every merge. When tumwater is building itself,
+every commit merges under the build that predates it, so a
+change to how merges behave and any step that depends on it are separate sub-plans, the second
+merge only once the first is the running build.`;
 
 /** The closed vocabulary for the validation-gap trace (plans/repair-traces.md): what made a bug
  * hard to *confirm*, which is the only evidence of where this project's test infrastructure is
@@ -92,7 +97,7 @@ export const VALIDATION_GAP_TALLY = `One query counts both the verbatim line and
 \`gap: <tag>\` suffix: \`grep -oE 'gap:[*]{0,2} ?[a-z-]+' BUGS.md | sed -E 's/^gap:[*]{0,2} ?//' | sort | uniq -c\`.`;
 
 /** The literal prefix every Needs-review note starts with. Exported so a reader that only has
- * to recognize one (the backlog index's ` [needs review]` mark) can match on it instead of
+ * to recognize one (the backlog index's ` [blocked: needs review]` mark) can match on it instead of
  * parsing the date or the wording out of the full template — the same split as
  * NEEDS_REPLAN_PREFIX. */
 export const NEEDS_REVIEW_PREFIX = `**Needs review `;
@@ -104,8 +109,8 @@ export const NEEDS_REVIEW_PREFIX = `**Needs review `;
 export const NEEDS_REVIEW_NOTE = `${NEEDS_REVIEW_PREFIX}<YYYY-MM-DD> by feature: too large for one run**`;
 
 /** The literal prefix every Needs-replan note starts with. Exported so a reader that only has to
- * recognize one (the backlog index's ` [needs replan]` mark) can match on it instead of parsing
- * the date or the round count out of the full template. */
+ * recognize one (the backlog index's ` [blocked: needs replan]` mark) can match on it instead of
+ * parsing the date or the round count out of the full template. */
 export const NEEDS_REPLAN_PREFIX = `**Needs replan `;
 
 /** The markdown note the feature loop appends under a plan whose change was rejected after its
@@ -130,9 +135,9 @@ the run and rarely finds anything a targeted look would not.
       \`wc -l\` over the source files (size outliers), and \`grep -rn\` for the specific pattern
       you are after.
    2. Skip what your own role handled lately: \`git log --oneline -15 --grep="tumwater(${roleId})"\`
-      lists it — the harness's commit subjects say what each loop did.
+      lists it — tumwater's commit subjects say what each role did.
    3. Vary the slice you look at across runs (a different directory, module, or recency window)
-      so successive ticks do not all converge on the same files.
+      so successive runs do not all converge on the same files.
    4. Shortlist at most five candidate files and inspect them with \`grep -n\` and ranged reads;
       open a file whole only when it is under ~300 lines.
    5. Decide within ~15 tool calls, in a handful of turns: if no candidate clearly clears the bar

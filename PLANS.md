@@ -21,63 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
-
-**Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- The find texts in `ROLES` (src/roles/role-catalog.ts) and the guidance constants in src/roles/role-guidance.ts: `PLAN_SIZING`, `backlogMoveGuidance`, `VALIDATION_GAP_GUIDANCE`, and the shared latent-bug and other texts.
-
-  | Today | New |
-  | --- | --- |
-  | loop | role |
-  | tick | run |
-  | "this tick's ONE task" | "this run's ONE task" |
-  | land, landing, landed (the pipeline) | merge, merged |
-  | fleet | team |
-  | harness | tumwater |
-  | operator | the user |
-  | initial prompt | brief |
-  | notebook | notes |
-  | backoff | sleep |
-  | primary checkout | the user's checkout |
-
-  The text is addressed to an agent, so "your checkout" would mean the agent's own; that is why it says "the user's checkout".
-- Machine strings that code or git still parse stay verbatim. Interpolate each from a named constant declared on a line ending `// vocabulary-ok: <reason>`, because a trailing comment inside these multi-line templates would become prompt text. They are:
-  - the readme role's `Tick: readme #N` trailer and its `git log --grep='^Tick: readme #'` (the state series adds `Run:`);
-  - the `requires part N/M landed` heading syntax that `requiredParts` parses.
-- The role ids `dry` and `telemetry`, `git log --grep="tumwater(telemetry)"` and the role `title`s stay as they are for the role ids series; the guard does not flag them yet.
-- The steward's citation form becomes: the "run N (`<sha>`)" form, or "tick N (`<sha>`)" in older entries.
-- `holdMark` (src/backlog/backlog-eligibility.ts):
-
-  | Today | New |
-  | --- | --- |
-  | ` [refused]` | ` [blocked: refused]` |
-  | ` [needs review]` | ` [blocked: needs review]` |
-  | ` [needs replan]` | ` [blocked: needs replan]` |
-  | ` [blocked: requires …]` | unchanged |
-
-  Only these display marks change. The persisted **Refused …**, Needs-review and Needs-replan notes stay, and so does `entryHold`. Update the feature, bugfix, plan and steward instructions that name the old marks.
-- Add the header to role-catalog.ts, role-guidance.ts and backlog-eligibility.ts. Mark backlog-eligibility.ts's `requires … landed` regex line.
-
-**Files touched.**
-- src: src/roles/role-catalog.ts, src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts.
-- Tests:
-  - test/prompt-roles.test.ts, test/prompt-steward.test.ts, test/role-guidance.test.ts, test/tick-prompt.test.ts.
-  - test/backlog-eligibility.test.ts, test/backlog-render.test.ts, test/backlog-structure.test.ts, test/backlog-write-list.test.ts.
-  - The mark cases in test/tui-backlog.test.ts, test/gui-client-fleet.test.ts and test/status-payload.test.ts.
-
-**Acceptance criteria.**
-- `tumwater backlog` and the prompt's backlog index mark held entries `[blocked: refused]`, `[blocked: needs review]`, `[blocked: needs replan]` or `[blocked: requires …]`. Every role told to skip held entries names the `[blocked: …]` marks.
-- A test renders each built-in role's find text, removes the interpolated constants, and finds none of the guard's retired words.
-- The readme role's trailer grep and the plan role's `requires … landed` instruction still name the exact strings the code parses. Their existing tests pass unchanged.
-- `npm run test` passes.
 
 ### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests)
 
@@ -2858,6 +2801,64 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Completion still offers every visible command and flag.
 - `npm run test` passes.
 
+
+### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests; done 2026-10-16)
+
+**Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The find texts in `ROLES` (src/roles/role-catalog.ts) and the guidance constants in src/roles/role-guidance.ts: `PLAN_SIZING`, `backlogMoveGuidance`, `VALIDATION_GAP_GUIDANCE`, and the shared latent-bug and other texts.
+
+  | Today | New |
+  | --- | --- |
+  | loop | role |
+  | tick | run |
+  | "this tick's ONE task" | "this run's ONE task" |
+  | land, landing, landed (the pipeline) | merge, merged |
+  | fleet | team |
+  | harness | tumwater |
+  | operator | the user |
+  | initial prompt | brief |
+  | notebook | notes |
+  | backoff | sleep |
+  | primary checkout | the user's checkout |
+
+  The text is addressed to an agent, so "your checkout" would mean the agent's own; that is why it says "the user's checkout".
+- Machine strings that code or git still parse stay verbatim. Interpolate each from a named constant declared on a line ending `// vocabulary-ok: <reason>`, because a trailing comment inside these multi-line templates would become prompt text. They are:
+  - the readme role's `Tick: readme #N` trailer and its `git log --grep='^Tick: readme #'` (the state series adds `Run:`);
+  - the `requires part N/M landed` heading syntax that `requiredParts` parses.
+- The role ids `dry` and `telemetry`, `git log --grep="tumwater(telemetry)"` and the role `title`s stay as they are for the role ids series; the guard does not flag them yet.
+- The steward's citation form becomes: the "run N (`<sha>`)" form, or "tick N (`<sha>`)" in older entries.
+- `holdMark` (src/backlog/backlog-eligibility.ts):
+
+  | Today | New |
+  | --- | --- |
+  | ` [refused]` | ` [blocked: refused]` |
+  | ` [needs review]` | ` [blocked: needs review]` |
+  | ` [needs replan]` | ` [blocked: needs replan]` |
+  | ` [blocked: requires …]` | unchanged |
+
+  Only these display marks change. The persisted **Refused …**, Needs-review and Needs-replan notes stay, and so does `entryHold`. Update the feature, bugfix, plan and steward instructions that name the old marks.
+- Add the header to role-catalog.ts, role-guidance.ts and backlog-eligibility.ts. Mark backlog-eligibility.ts's `requires … landed` regex line.
+
+**Files touched.**
+- src: src/roles/role-catalog.ts, src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts.
+- Tests:
+  - test/prompt-roles.test.ts, test/prompt-steward.test.ts, test/role-guidance.test.ts, test/tick-prompt.test.ts.
+  - test/backlog-eligibility.test.ts, test/backlog-render.test.ts, test/backlog-structure.test.ts, test/backlog-write-list.test.ts.
+  - The mark cases in test/tui-backlog.test.ts, test/gui-client-fleet.test.ts and test/status-payload.test.ts.
+
+**Acceptance criteria.**
+- `tumwater backlog` and the prompt's backlog index mark held entries `[blocked: refused]`, `[blocked: needs review]`, `[blocked: needs replan]` or `[blocked: requires …]`. Every role told to skip held entries names the `[blocked: …]` marks.
+- A test renders each built-in role's find text, removes the interpolated constants, and finds none of the guard's retired words.
+- The readme role's trailer grep and the plan role's `requires … landed` instruction still name the exact strings the code parses. Their existing tests pass unchanged.
+- `npm run test` passes.
 
 ### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused; done 2026-10-16)
 

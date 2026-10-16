@@ -49,7 +49,7 @@ test("the security role traces a reachable source-to-sink path and proves it wit
   assert.match(prompt, /Find ONE real, reachable security weakness/);
   assert.match(prompt, /Start from the trust boundaries, not from a file listing/);
   assert.match(prompt, /name the input an attacker controls, the path it travels, and the missing check/);
-  assert.match(prompt, /a sink fed only by constants or the operator's own trusted config is not a finding/);
+  assert.match(prompt, /a sink fed only by constants or the user's own trusted config is not a finding/);
   assert.match(prompt, /a test that feeds the hostile input .* fails before your fix/);
   assert.match(prompt, /Put the source, the sink, and the path between them in your WHY/);
   assert.match(prompt, /Never paste a discovered secret's value anywhere/);
@@ -95,7 +95,7 @@ test("the bugfix find text refuses harmful fixes and skips refused bugs", () => 
   assert.ok(role);
   const prompt = oneLine(buildTickPrompt({ role, initialPrompt: "" }));
   assert.match(prompt, /A "bug" whose fix would harm the project is refused, not force-fixed/);
-  assert.match(prompt, /Skip BUGS\.md entries carrying a Refused note/);
+  assert.match(prompt, /Skip BUGS\.md entries the index block marks/);
 });
 test("the director routes refusal decisions by clearing the Refused note", () => {
   const prompt = oneLine(buildDirectorPrompt("clear the refusal on plan X", "a project"));
@@ -169,7 +169,7 @@ test("the qa prompt carries the safety rails for launched processes", () => {
   const find = qa!.find;
   assert.match(find, /every process gets a hard time limit and an explicit kill/i);
   assert.match(find, /ephemeral high ports, never the product's documented default port/);
-  assert.match(find, /no listening process may outlive your tick/);
+  assert.match(find, /no listening process may outlive your run/);
 });
 test("the qa prompt keeps servers on loopback and tracks background processes by their own pid", () => {
   const find = qa!.find;
@@ -184,11 +184,11 @@ test("the qa prompt picks one flow per tick from the README usage menu, cheap fi
   const find = qa!.find;
   assert.match(find, /README's usage section is your menu of flows/);
   assert.match(find, /cheapest-first/);
-  assert.match(find, /pick ONE per tick/);
+  assert.match(find, /pick ONE per run/);
 });
 test("the qa prompt rotates through the coverage block and carries the FLOW contract", () => {
   const find = qa!.find;
-  assert.match(find, /Flow coverage block from the fleet's own record/);
+  assert.match(find, /Flow coverage block from the team's own record/);
   assert.match(find, /exercise the flow at the top of that list/);
   assert.match(find, /leaves NO record in the repo — declare nothing-to-do/);
   assert.match(find, /FLOW: <name> — <passed\|bug>/);
@@ -212,7 +212,7 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
   // The once-per-day guard is self-enforcing across fresh sessions through the Verified note.
   assert.match(find, /only when the newest Verified note for the flow is older than a day/);
   assert.match(find, /## Verified section at the end of BUGS\.md/);
-  assert.match(find, /- 2026-08-28 run \(real\): init \+ one tick landed; status\/logs confirm/);
+  assert.match(find, /- 2026-08-28 run \(real\): init \+ one run merged; status\/logs confirm/);
 });
 test("buildTickPrompt for qa carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: qa!, initialPrompt: "" });
@@ -242,8 +242,8 @@ test("the telemetry role exists after qa in catalog order", () => {
 });
 test("the telemetry find text carries the harness-response rule, one bug, and the dedup check", () => {
   const find = oneLine(telemetry!.find);
-  assert.match(find, /File ONE bug in BUGS\.md's ## Open section per tick/);
-  assert.match(find, /ONLY when the harness's RESPONSE to it is wrong/);
+  assert.match(find, /File ONE bug in BUGS\.md's ## Open section per run/);
+  assert.match(find, /ONLY when tumwater's RESPONSE to it is wrong/);
   assert.match(find, /A mere infrastructure failure .* is weather, not a bug/);
   assert.match(find, /cite the cluster's normalized key plus the correlated .* commit/);
   assert.match(find, /BUGS\.md is your only write; never edit source, tests, or docs/);
@@ -297,14 +297,14 @@ test("the readme prompt works from the delta since its own last commit", () => {
   // sha in the brief — the stamp was the only thing that made the old anchor resolvable.
   assert.match(find, /git log --oneline <last readme commit>\.\.main/);
   assert.match(find, /Tick: readme #N/);
-  // Sync is need-based now: a landing that touched no user-facing surface needs no sync.
-  assert.match(find, /a landing that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
+  // Sync is need-based now: a merge that touched no user-facing surface needs no sync.
+  assert.match(find, /a merge that touched no user-facing surface \(commands, flags, config keys, docs\) needs no sync/);
 });
 test("the readme prompt forbids per-tick landing narrative; landings belong in PLANS.md/BUGS.md and git log", () => {
   const find = oneLine(readme!.find);
   // Listed under "Keep these out of the status section" — the heading states the ban once.
-  assert.match(find, /Keep these out of the status section: .* - Per-tick landing narrative: landings are recorded/);
-  assert.match(find, /landings are recorded by their owning loops in PLANS\.md\/BUGS\.md and git log/);
+  assert.match(find, /Keep these out of the status section: .* - Per-run merge narrative: merges are recorded/);
+  assert.match(find, /merges are recorded by their owning roles in PLANS\.md\/BUGS\.md and git log/);
   // Deleting stale narrative is part of the update — the one-off collapse at 1f70a95 must not
   // read as loss.
   assert.match(find, /stale narrative found in the section is deleted as part of updating it/);
@@ -331,7 +331,7 @@ test("the clean role names the suite's unused-export check instead of hunting in
   assert.ok(role);
   const find = oneLine(role.find);
   assert.match(find, /test\/exports\.test\.ts/);
-  assert.match(find, /do not spend a tick/);
+  assert.match(find, /do not spend a run/);
 });
 test("the coverage role locates gaps from evidence, not by reading every module", () => {
   const find = oneLine(roleById("coverage")!.find);
@@ -404,11 +404,11 @@ test("the plan role prioritizes a Needs review plan, clears the note after split
   assert.ok(find.includes(NEEDS_REVIEW_NOTE), "plan embeds the marker");
   assert.ok(find.includes(NEEDS_REPLAN_NOTE), "plan embeds the replan marker");
   assert.match(find, /outranks adding another plan/);
-  assert.match(find, /split it into independently landable sub-plans that cross-reference each other/);
+  assert.match(find, /split it into independently mergeable sub-plans that cross-reference each other/);
   assert.match(find, /then remove the note/);
   assert.ok(!find.includes('refining the weakest'), "the refine-the-weakest clause is gone");
   assert.match(find, /holds one more eligible plan than there are feature instances/);
-  assert.match(find, /not blocked, refused, needs-review or needs-replan/);
+  assert.match(find, /the index block does not mark `\[blocked: …\]`/);
   assert.match(find, /prefer a plan independent of the waiting series/);
   assert.ok(!find.includes("{{"), "the plan charter carries no unresolved placeholder");
   assert.ok(find.includes(NOTHING_TO_DO), "plan embeds the nothing-to-do sentinel");
@@ -476,7 +476,7 @@ test("clean sweeps one kind of drift across the tree, not one site", () => {
   const find = oneLine(roleById("clean")!.find);
   assert.ok(!find.includes("clean that one thing"), "the one-site rule is gone");
   assert.match(find, /pick ONE kind of uncleanliness .* and sweep every instance of that kind across the tree/);
-  assert.match(find, /One theme applied everywhere it holds is one focused change, not one site per tick/);
+  assert.match(find, /One theme applied everywhere it holds is one focused change, not one site per run/);
   assert.match(find, /Keep the diff under about 300 changed lines/);
 });
 test("clean sweeps deeply nested branching, found by an indentation grep", () => {
@@ -508,7 +508,7 @@ test("feature and bugfix verify last, after their backlog edits", () => {
 });
 test("bugfix treats an all-refused Open section as nothing to do, and only an empty one as the hunt", () => {
   const find = oneLine(roleById("bugfix")!.find);
-  assert.match(find, /when every open entry carries one, there is nothing to do/);
+  assert.match(find, /when every open entry is marked, there is nothing to do/);
   assert.match(find, /When `## Open` holds no entries at all, skip to the latent-bug hunt at the end instead/);
 });
 test("the steward's tally query stands as its own sentence, not inside a parenthetical", () => {

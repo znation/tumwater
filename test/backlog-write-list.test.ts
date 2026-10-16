@@ -89,7 +89,7 @@ test("bug --list prints the Open entries numbered with their eligibility marks a
     r.stdout,
     [
       "open bugs in BUGS.md:",
-      `1. ${b1} [refused]${entryAgeSuffix(b1)}`,
+      `1. ${b1} [blocked: refused]${entryAgeSuffix(b1)}`,
       `2. ${b2}${entryAgeSuffix(b2)}`,
       "",
     ].join("\n"),

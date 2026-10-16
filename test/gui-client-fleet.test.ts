@@ -150,9 +150,9 @@ test("the Plans and Bugs tabs append each held entry's eligibility tag beside it
   assert.match(plansHtml, /data-file='plans' data-index='0'/);
 
   const bugs = backlogScope("bugs");
-  bugs.scope.renderBacklog({ ...base, bugs: ["A dead bug (reported 2026-10-01)"], bugHolds: [" [refused]"] });
+  bugs.scope.renderBacklog({ ...base, bugs: ["A dead bug (reported 2026-10-01)"], bugHolds: [" [blocked: refused]"] });
   const bugsHtml = bugs.panels["backlog"] ?? "";
-  assert.match(bugsHtml, /li-title'>A dead bug<\/span><span class='li-meta'>reported 2026-10-01<\/span><span class='li-meta'>\[refused\]<\/span>/);
+  assert.match(bugsHtml, /li-title'>A dead bug<\/span><span class='li-meta'>reported 2026-10-01<\/span><span class='li-meta'>\[blocked: refused\]<\/span>/);
 });
 
 test("an eligible Plans row is byte-identical whether or not the payload carries holds", () => {
@@ -173,7 +173,7 @@ test("the Plans tab lists pickable rows first and blocked rows under a Blocked d
   plans.scope.renderBacklog({
     ...base,
     plans: ["Alpha", "Bravo", "Charlie", "Delta"],
-    planHolds: [" [refused]", "", " [refused]", ""],
+    planHolds: [" [blocked: refused]", "", " [blocked: refused]", ""],
     planBlocked: [true, false, true, false],
   });
   const html = plans.panels["backlog"] ?? "";
@@ -186,7 +186,7 @@ test("the Plans tab lists pickable rows first and blocked rows under a Blocked d
   assert.match(html, /data-file='plans' data-index='2'><span class='li-title'>Charlie/);
 
   const bugs = backlogScope("bugs");
-  bugs.scope.renderBacklog({ ...base, bugs: ["Dead", "Live"], bugHolds: [" [refused]", ""], bugBlocked: [true, false] });
+  bugs.scope.renderBacklog({ ...base, bugs: ["Dead", "Live"], bugHolds: [" [blocked: refused]", ""], bugBlocked: [true, false] });
   const bugsHtml = bugs.panels["backlog"] ?? "";
   assert.ok(bugsHtml.indexOf("Live") < bugsHtml.indexOf("Blocked (1)"));
   assert.ok(bugsHtml.indexOf("Blocked (1)") < bugsHtml.indexOf("Dead"));

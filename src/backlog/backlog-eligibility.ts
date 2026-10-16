@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work loop may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
  * **Needs review …** or **Needs replan …** note, or when its heading's trailing parenthetical
@@ -189,7 +190,7 @@ function requiresClause(title: string): string | null {
   let meta = trailingParenthetical(title);
   if (meta === "") meta = openParenthetical(title);
   if (meta === "") return null;
-  const m = /requires\s+(.+?)\s+landed\b/i.exec(meta);
+  const m = /requires\s+(.+?)\s+landed\b/i.exec(meta); // vocabulary-ok: parses the requires … landed heading syntax
   return m === null ? null : m[1]!;
 }
 
@@ -297,9 +298,9 @@ export function entryHoldAgainst(
  * surfaces word a hold identically. */
 export function holdMark(hold: EntryHold): string {
   if (hold === null) return "";
-  if (hold === "refused") return " [refused]";
-  if (hold === "needs-review") return " [needs review]";
-  if (hold === "needs-replan") return " [needs replan]";
+  if (hold === "refused") return " [blocked: refused]";
+  if (hold === "needs-review") return " [blocked: needs review]";
+  if (hold === "needs-replan") return " [blocked: needs replan]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 

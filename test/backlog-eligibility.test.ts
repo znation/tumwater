@@ -164,9 +164,9 @@ test("eligibleEntries drops held entries, keeps file order, and attaches the ind
 
 test("holdMark renders each hold as its bracket tag and the empty string when eligible", () => {
   assert.equal(holdMark(null), "");
-  assert.equal(holdMark("refused"), " [refused]");
-  assert.equal(holdMark("needs-review"), " [needs review]");
-  assert.equal(holdMark("needs-replan"), " [needs replan]");
+  assert.equal(holdMark("refused"), " [blocked: refused]");
+  assert.equal(holdMark("needs-review"), " [blocked: needs review]");
+  assert.equal(holdMark("needs-replan"), " [blocked: needs replan]");
   assert.equal(holdMark({ blockedBy: ["Prereq 1/2", "Disk floor 2/4"] }), " [blocked: requires Prereq 1/2, Disk floor 2/4]");
 });
 
