@@ -407,6 +407,17 @@ export interface LandingUsage {
  * reviewPinnedChange), not inside LoopPi — loop-pi.ts stamps the retried first attempt; this
  * stamps the final run, which ends on a different seam when the reviewer runs on a
  * non-pi backend. */
+/** Fetch-or-create a provider's accumulator entry in `usage.providerCost` and add `amount`
+ * to one of its two fields — the single home of the real/notional provider bump both
+ * branches of foldUsage do, so a future change to the entry shape (or the
+ * noUncheckedIndexedAccess seed) lands once instead of twice. */
+function addProviderCost(usage: LandingUsage, provider: string, amount: number, notional: boolean): void {
+  const e = usage.providerCost[provider] ?? { costUsd: 0, notionalCostUsd: 0 };
+  if (notional) e.notionalCostUsd += amount;
+  else e.costUsd += amount;
+  usage.providerCost[provider] = e;
+}
+
 export function landingUsage(author: LoopRunner, root: string): {
   usage: LandingUsage;
   foldUsage: (run: PiRunResult) => void;
@@ -435,16 +446,12 @@ export function landingUsage(author: LoopRunner, root: string): {
         // Only a resolved reviewer seam bears a provider: a pi reviewer whose provider was
         // never pinned (reviewProvider undefined) attributes nothing, like the author side.
         if (reviewProvider !== undefined) {
-          const e = usage.providerCost[reviewProvider] ?? { costUsd: 0, notionalCostUsd: 0 };
-          e.costUsd += run.costUsd;
-          usage.providerCost[reviewProvider] = e;
+          addProviderCost(usage, reviewProvider, run.costUsd, false);
         }
       } else {
         usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;
         if (reviewProvider !== undefined) {
-          const e = usage.providerCost[reviewProvider] ?? { costUsd: 0, notionalCostUsd: 0 };
-          e.notionalCostUsd += run.costUsd;
-          usage.providerCost[reviewProvider] = e;
+          addProviderCost(usage, reviewProvider, run.costUsd, true);
         }
       }
     },
