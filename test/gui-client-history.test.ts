@@ -54,15 +54,15 @@ test("the History table renders tick rows, escapes them, and filters by outcome"
   const problems = historyTableHtml(rows, "problems", new Set());
   assert.equal((problems.match(/<tr>/g) ?? []).length, 2, "the header row and the one error row");
   assert.match(historyTableHtml(rows, "changes", new Set()), /bumped coverage/);
-  assert.match(historyTableHtml([], "all", new Set()), /No ticks yet/);
+  assert.match(historyTableHtml([], "all", new Set()), /No runs yet/);
   // A server-side grep that matched nothing names the search, never the empty log.
-  assert.match(historyTableHtml([], "all", new Set(), "widget"), /No ticks match this search/);
-  assert.doesNotMatch(historyTableHtml([], "all", new Set(), "widget"), /No ticks yet/);
-  assert.match(historyTableHtml(null, "all", new Set(), "widget"), /No ticks match this search/, "a response without rows under a search reads as no match, not an empty log");
-  assert.match(historyTableHtml([], "all", new Set(), undefined, "1d"), /No ticks in the last day/, "an empty selected window is named, not read as an empty log");
-  assert.match(historyTableHtml([], "all", new Set(), undefined, "nonsense"), /No ticks yet/, "a stale window key falls back to the plain empty state");
-  assert.match(historyTableHtml(rows.slice(1, 2), "changes", new Set()), /No ticks match this filter/);
-  assert.match(historyTableHtml(null, "all", new Set()), /No ticks yet/, "a response without rows reads as none");
+  assert.match(historyTableHtml([], "all", new Set(), "widget"), /No runs match this search/);
+  assert.doesNotMatch(historyTableHtml([], "all", new Set(), "widget"), /No runs yet/);
+  assert.match(historyTableHtml(null, "all", new Set(), "widget"), /No runs match this search/, "a response without rows under a search reads as no match, not an empty log");
+  assert.match(historyTableHtml([], "all", new Set(), undefined, "1d"), /No runs in the last day/, "an empty selected window is named, not read as an empty log");
+  assert.match(historyTableHtml([], "all", new Set(), undefined, "nonsense"), /No runs yet/, "a stale window key falls back to the plain empty state");
+  assert.match(historyTableHtml(rows.slice(1, 2), "changes", new Set()), /No runs match this filter/);
+  assert.match(historyTableHtml(null, "all", new Set()), /No runs yet/, "a response without rows reads as none");
 });
 
 test("the History toolbar carries the search field, recalled and persisted", () => {
@@ -179,12 +179,12 @@ test("histDetailCardHtml branches on the entry's state: loading, error, then the
   );
   // Absent and loading entries render the placeholder — a truthy-but-loading entry can never
   // fall into the fetched path and read as an empty trail.
-  assert.match(histDetailCardHtml(undefined), /Loading tick detail…/);
-  assert.match(histDetailCardHtml({ state: "loading" }), /Loading tick detail…/);
+  assert.match(histDetailCardHtml(undefined), /Loading run detail…/);
+  assert.match(histDetailCardHtml({ state: "loading" }), /Loading run detail…/);
   assert.doesNotMatch(histDetailCardHtml({ state: "loading" }), /No events/);
   // An errored fetch shows the server's message, escaped.
   assert.match(histDetailCardHtml({ state: "error", message: "no tick #9 for clean <b>" }), /no tick #9 for clean &lt;b&gt;/);
-  assert.match(histDetailCardHtml({ state: "error" }), /Tick detail unavailable/, "a message-less failure still reads as one");
+  assert.match(histDetailCardHtml({ state: "error" }), /Run detail unavailable/, "a message-less failure still reads as one");
   // A fetched entry: the first line is the summary header, the rest the events, escaped.
   const card = histDetailCardHtml({ state: "ok", text: "clean tick #9 — changed · 46s\nevent one\nevent <two>" });
   assert.match(card, /hist-detail-head/);
@@ -192,7 +192,7 @@ test("histDetailCardHtml branches on the entry's state: loading, error, then the
   assert.match(card, /event one/);
   assert.match(card, /event &lt;two&gt;/);
   // A text with only the header line (an event-less block) says so instead of an empty pre.
-  assert.match(histDetailCardHtml({ state: "ok", text: "clean tick #1 — unpaired" }), /No events in this tick's block/);
+  assert.match(histDetailCardHtml({ state: "ok", text: "clean tick #1 — unpaired" }), /No events in this run's block/);
   // The commit stat shows under the trail when present, and is absent otherwise.
   assert.match(histDetailCardHtml({ state: "ok", text: "h\ne", stat: " a.ts | 2 +-" }), /hist-detail-stat.*a\.ts \| 2 \+-/);
   assert.doesNotMatch(histDetailCardHtml({ state: "ok", text: "h\ne", stat: "" }), /hist-detail-stat/);
@@ -223,7 +223,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   // Expanding installs the loading entry synchronously and paints it before the fetch answers.
   toggleHistDetail("clean", "9");
   assert.equal(histDetails.get("clean#9")?.state, "loading", "the loading entry is the fetch's synchronous prefix");
-  assert.match(htmlWith(), /<tr class='detail-row'><td colspan='8'><div class='empty'>Loading tick detail…<\/div>/);
+  assert.match(htmlWith(), /<tr class='detail-row'><td colspan='8'><div class='empty'>Loading run detail…<\/div>/);
   assert.match(htmlWith(), /aria-expanded='true'/, "the open row's toggle says so");
 
   // The fetch answers into the cache; the card then shows the pre-rendered trail.
@@ -233,7 +233,7 @@ test("the drill-down toggle expands one row's card, caches it, and collapses on 
   const card = htmlWith();
   assert.match(card, /clean tick #9 — changed · 46s/);
   assert.match(card, /event one/);
-  assert.doesNotMatch(card, /Loading tick detail…/);
+  assert.doesNotMatch(card, /Loading run detail…/);
 
   // Collapsing closes the card; re-expanding reuses the cached one without refetching.
   toggleHistDetail("clean", "9");
@@ -267,7 +267,7 @@ test("a failed detail fetch renders the server's message in the card, not a stuc
   assert.equal(histDetails.get("clean#9")?.state, "error");
   const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
   assert.match(html, /no tick #9 for clean in the scanned window/);
-  assert.doesNotMatch(html, /Loading tick detail…/);
+  assert.doesNotMatch(html, /Loading run detail…/);
   // And the errored entry is cached: re-expanding reuses it without a second request.
   toggleHistDetail("clean", "9");
   toggleHistDetail("clean", "9");
@@ -309,8 +309,8 @@ test("a malformed tick-detail payload errors naming the endpoint, the tick, and 
   await sleep(0);
   assert.equal(histDetails.get("clean#9")?.state, "error");
   const html = historyTableHtml([{ ts: 0, time: "t", loop: "clean", tick: 9, result: "changed", durationMs: null, usage: "", detail: "d" }], "all", new Set(["clean"]));
-  assert.match(html, /\/api\/tick answered clean tick 9 without a text field/);
-  assert.match(html, /server&#39;s build may not match/, "the card's esc() escapes the message's apostrophe");
+  assert.match(html, /\/api\/tick answered clean run 9 without a text field/);
+  assert.match(html, /tumwater may not match/, "the card's esc() escapes the message's apostrophe");
 });
 
 test("fetchHistory drops and re-persists a loop scope the fleet no longer lists", async () => {
@@ -344,7 +344,7 @@ test("fetchHistory drops and re-persists a loop scope the fleet no longer lists"
 
 test("histSummaryHtml paints one row per loop plus the total, with the report formatters and a dash for a never-changed loop", () => {
   const { histSummaryHtml } = clientScope<{ histSummaryHtml(summary: unknown): string }>(
-    ["format", "history-summary"],
+    ["format", "labels", "history-summary"],
     ["histSummaryHtml"],
     { icon: iconStub },
   );
@@ -360,7 +360,7 @@ test("histSummaryHtml paints one row per loop plus the total, with the report fo
   const html = histSummaryHtml(summary);
   // The column set mirrors history --summary: loop, ticks, changes, none, problems, tokens,
   // cost, last change, so the dashboard and the CLI cannot drift column for column.
-  for (const h of ["Loop", "Ticks", "Changes", "None", "Problems", "Tokens", "Cost", "Last change"]) {
+  for (const h of ["Role", "Runs", "Merged", "None", "Problems", "Tokens", "Cost", "Last change"]) {
     assert.match(html, new RegExp("<th[^>]*>" + h + "</th>"), "the " + h + " header");
   }
   // One row per loop plus the total, the total row marked.

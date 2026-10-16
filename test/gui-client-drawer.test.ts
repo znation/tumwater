@@ -180,7 +180,7 @@ test("the loop drawer for a role the fleet no longer has says so, paints no acti
     responses: { "/api/diff?role=gone": { state: "ready", branch: "tumwater/gone", mainBranch: "main", ahead: 1, commits: [{ sha: "deadbee", subject: "unlanded" }], diff: "diff --git a/x b/x\n", dirtyFiles: [] } },
   });
   t.scope.toggleLoop("gone");
-  assert.match(t.paintedFor("drawerhead"), /no longer part of the fleet/);
+  assert.match(t.paintedFor("drawerhead"), /no longer part of the team/);
   assert.equal(t.paintedFor("draweractions"), "");
   // The change section renders for a role absent from statusPayload.loops, so a disabled
   // loop's unlanded patch is still visible in its drawer.
@@ -256,7 +256,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   const actions = t.paintedFor("draweractions");
   assert.match(actions, /data-action='prompt'/);
   assert.match(actions, /data-action='abort'/);
-  assert.match(actions, /Abort this tick/);
+  assert.match(actions, /Stop this run/);
   assert.match(actions, /btn-danger/);
   assert.match(actions, /data-action='pause'/);
   assert.match(actions, /data-action='pause-for'/);
@@ -274,12 +274,12 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(meta, /Working on/);
   assert.match(meta, /Adding drawer tests/);
   assert.match(meta, /Merged<\/span> — did the thing/);
-  assert.match(meta, /Tokens, this tick<\/dt><dd title='12\.3k'>12\.3k</);
-  assert.match(meta, /Peak context, this tick<\/dt><dd title='90\.0k'>90\.0k</);
+  assert.match(meta, /Tokens, this run<\/dt><dd title='12\.3k'>12\.3k</);
+  assert.match(meta, /Peak context, this run<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
   assert.match(meta, /1m ago/); // the last tick's age, through the real fmtAgo
-  // A loop with no lastLandedAt reports never landed in its drawer kv.
-  assert.match(meta, /Last landed<\/dt><dd title='never'>never</);
+  // A loop with no lastLandedAt reports never merged in its drawer kv.
+  assert.match(meta, /Last merged<\/dt><dd title='never'>never</);
   // The fetched tick rows render with the real result/age/span formatters.
   assert.match(meta, /#3 · /);
   assert.match(meta, /tidied the drawer/);
@@ -401,7 +401,7 @@ test("drawerChangeHtml renders the full patch for a ready view and degrades the 
   assert.match(html, /Uncommitted: x/);
   assert.match(html, /diff --git a\/y b\/y/);
   // Degraded states name their situation; a malformed payload never renders a half-view.
-  assert.match(t.scope.drawerChangeHtml({ state: "absent" }), /No worktree yet/);
+  assert.match(t.scope.drawerChangeHtml({ state: "absent" }), /No workspace yet/);
   assert.match(t.scope.drawerChangeHtml({ state: "no-base", mainBranch: "ghost" }), /Main branch ghost/);
   assert.match(t.scope.drawerChangeHtml({ state: "ready", ahead: 0, commits: [], dirtyFiles: [] }), /No unlanded work/);
   assert.match(t.scope.drawerChangeHtml(null), /unavailable/);
@@ -427,9 +427,9 @@ test("a loop with no notebook or queued prompt shows the placeholder lines", asy
   t.scope.toggleLoop("clean");
   await flush();
   const role = t.paintedFor("drawerrole");
-  assert.match(role, /<h3>Notebook<\/h3>/);
-  assert.match(role, /No notebook yet\./);
-  assert.match(role, /<summary>Next tick prompt<\/summary>/);
+  assert.match(role, /<h3>Notes<\/h3>/);
+  assert.match(role, /No notes yet\./);
+  assert.match(role, /<summary>Next run's prompt<\/summary>/);
   assert.match(role, /Nothing to run \(empty inbox\)\./);
 });
 
@@ -453,7 +453,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   assert.match(first, /the clean next prompt/);
 
   // A status poll rewrites drawermeta (its tick-age text changes) but must not repaint
-  // drawerrole: an innerHTML rewrite would collapse an opened Next tick prompt.
+  // drawerrole: an innerHTML rewrite would collapse an opened Next run's prompt.
   const rolePaints = t.painted.filter(([id]) => id === "drawerrole").length;
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
   const older = loop("clean");
@@ -581,7 +581,7 @@ test("the loop drawer renders the Configuration section from the role payload", 
   assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
   assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
   assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
-  assert.match(role, /<dt>Min tick interval<\/dt><dd[^>]*>30s<\/dd>/);
+  assert.match(role, /<dt>Min run interval<\/dt><dd[^>]*>30s<\/dd>/);
   assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
   // Instructions and find text clamp to one line with the verbatim text in the tooltip.
   assert.match(role, /<dt>Instructions override<\/dt><dd title='say the version on every reply\nkeep it short'>say the version on every reply keep it short<\/dd>/);
@@ -601,7 +601,7 @@ test("the Configuration section paints a Quiet hours row per window, worded like
   await flush();
   const role = t.paintedFor("drawerrole");
   assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>23:00-07:00 \(own window; holding now — quiet until 07:00\)<\/dd>/);
-  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(fleet window; not holding now\)<\/dd>/);
+  assert.match(role, /<dt>Quiet hours<\/dt><dd[^>]*>12:00-13:00 \(team window; not holding now\)<\/dd>/);
   const none = mk({});
   none.scope.toggleLoop("clean");
   await flush();
@@ -624,7 +624,7 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
   assert.doesNotMatch(role, /Model fallback/);
   assert.doesNotMatch(role, /Budget fallback/);
   assert.doesNotMatch(role, /<dt>Billing<\/dt>/);
-  assert.doesNotMatch(role, /Min tick interval/);
+  assert.doesNotMatch(role, /Min run interval/);
 
   // A notes-only payload renders no Configuration section at all.
   const minimal = openDrawer(["toggleLoop"], {
@@ -689,7 +689,7 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
   await flush();
   assert.match(
     withCap.paintedFor("drawerrole"),
-    /<dt>Daily cap<\/dt><dd[^>]*>\$1\.20 of \$1\.00 spent today \(holding now — no new ticks until local midnight\) · shared by clean, clean-2<\/dd>/,
+    /<dt>Daily cap<\/dt><dd[^>]*>\$1\.20 of \$1\.00 spent today \(holding now — no new runs until local midnight\) · shared by clean, clean-2<\/dd>/,
   );
   const none = openDrawer(["toggleLoop"], {
     status: workingStatus(),

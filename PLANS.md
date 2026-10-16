@@ -249,54 +249,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
 - `npm run test` passes.
 
-### Plain terms text, part 12/19: Dashboard role drawer and History view (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-drawer.ts + gui-client-history.ts + tests)
-
-**Goal.** The role drawer and the History view speak of roles, runs, merges and notes.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- src/ui/gui/gui-client-drawer.ts:
-  - Header: the kicker "Loop" → "Role", with the title through `roleLabel`. "This role is no longer part of the team."
-  - Buttons: "Message this role", and "Stop this run".
-  - Sections and labels:
-    - The in-flight section → "Merging", and "No completed runs yet.".
-    - Backoff → "sleeping".
-    - "this run" and "last run", "Runs", "Last run ended", "Last merged", and "Recent runs".
-    - "No workspace yet — this role has not run.".
-  - Notes:
-    - "Notes", "No notes yet.", and "Notes and prompt unavailable".
-    - "Next run's prompt", and "… once this role's next run starts".
-  - These stay, marked: the drawer kind `"loop"`, the `#loop/` hash, the `note-*` act names and the `ticks` class.
-- `renderHistory` and the run-detail loader (src/ui/gui/gui-client-history.ts):
-  - The heading: "Every completed run, newest first.".
-  - Pickers: "Role" and "All roles", "Search runs…", and "Runs to show".
-  - Run detail: "Loading run detail…", "Run detail unavailable", "No events in this run's block.", and "Show/Hide run detail".
-  - Empty states:
-    - "No runs match this filter" and "Try another outcome or role.".
-    - "The window may have had nothing to do, or …".
-    - "Completed runs show up here as the roles work.".
-  - Tables:
-    - Headers "Role" and "Run".
-    - Summary columns "Role", "Runs" and "Merged".
-    - Results go through the `eventTypeLabel` twin, and roles through `roleLabel`.
-  - These stay, marked, for the scripting and code series: the `/api/tick` route, its `tick=` parameter, and the `c-tick` and `data-tick` names.
-  - Its endpoint error: "… the running tumwater may not match this dashboard".
-- Add the header to both modules.
-
-**Files touched.**
-- src: src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-history.ts.
-- Tests: test/gui-client-drawer.test.ts, test/gui-client-history.test.ts.
-
-**Acceptance criteria.**
-- The drawer for `feature-2` is titled `feature #2`, has the sections "Notes", "Next run's prompt" and "Recent runs", and its stop button reads "Stop this run".
-- The History table's headers read "Role" and "Run", and its summary columns read "Role", "Runs" and "Merged". Result cells show labels.
-- `npm run test` passes.
-
 ### Plain terms text, part 13/19: The dashboard's remaining views and team controls (planned 2026-10-16 by user; requires part 4/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-report.ts + gui-client-settings.ts + gui-client-composer.ts + gui-client-operator.ts + gui-client-sound.ts + gui-client-markdown.ts + src/gui/ messages + tests)
 
 **Goal.** The remaining dashboard views use the TUI's names: the "Health check" card becomes "Health", and "Initial prompt" becomes "Brief". The pause and stop controls, the report charts and the server's dashboard responses speak of the team, roles and runs.
@@ -3074,6 +3026,54 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes, including `test/help.test.ts`.
 
 ## Done
+
+### Plain terms text, part 12/19: Dashboard role drawer and History view (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-drawer.ts + gui-client-history.ts + tests) (done 2026-10-16)
+
+**Goal.** The role drawer and the History view speak of roles, runs, merges and notes.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/ui/gui/gui-client-drawer.ts:
+  - Header: the kicker "Loop" → "Role", with the title through `roleLabel`. "This role is no longer part of the team."
+  - Buttons: "Message this role", and "Stop this run".
+  - Sections and labels:
+    - The in-flight section → "Merging", and "No completed runs yet.".
+    - Backoff → "sleeping".
+    - "this run" and "last run", "Runs", "Last run ended", "Last merged", and "Recent runs".
+    - "No workspace yet — this role has not run.".
+  - Notes:
+    - "Notes", "No notes yet.", and "Notes and prompt unavailable".
+    - "Next run's prompt", and "… once this role's next run starts".
+  - These stay, marked: the drawer kind `"loop"`, the `#loop/` hash, the `note-*` act names and the `ticks` class.
+- `renderHistory` and the run-detail loader (src/ui/gui/gui-client-history.ts):
+  - The heading: "Every completed run, newest first.".
+  - Pickers: "Role" and "All roles", "Search runs…", and "Runs to show".
+  - Run detail: "Loading run detail…", "Run detail unavailable", "No events in this run's block.", and "Show/Hide run detail".
+  - Empty states:
+    - "No runs match this filter" and "Try another outcome or role.".
+    - "The window may have had nothing to do, or …".
+    - "Completed runs show up here as the roles work.".
+  - Tables:
+    - Headers "Role" and "Run".
+    - Summary columns "Role", "Runs" and "Merged".
+    - Results go through the `eventTypeLabel` twin, and roles through `roleLabel`.
+  - These stay, marked, for the scripting and code series: the `/api/tick` route, its `tick=` parameter, and the `c-tick` and `data-tick` names.
+  - Its endpoint error: "… the running tumwater may not match this dashboard".
+- Add the header to both modules.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-history.ts.
+- Tests: test/gui-client-drawer.test.ts, test/gui-client-history.test.ts.
+
+**Acceptance criteria.**
+- The drawer for `feature-2` is titled `feature #2`, has the sections "Notes", "Next run's prompt" and "Recent runs", and its stop button reads "Stop this run".
+- The History table's headers read "Role" and "Run", and its summary columns read "Role", "Runs" and "Merged". Result cells show labels.
+- `npm run test` passes.
 
 ### Plain terms text, part 11/19: Dashboard Roles card and view model and Merge queue card (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-loops.ts + gui-client-model.ts + gui-client-pending.ts + tests) — done 2026-10-16
 

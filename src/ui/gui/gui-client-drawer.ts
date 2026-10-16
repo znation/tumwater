@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's detail drawer, browser-side: a sheet on the right that opens over the page
  * without losing it. For a loop it shows the state, the loop's controls (prompt, wake now or later,
  * pause/resume, abort), what it is working on, its last result, the metrics the fleet table
@@ -15,7 +16,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let drawerChange = null; // the open loop's unlanded change: { role, state: "loading"|"ok"|"error", view, message }
   let drawerRole = null; // the open loop's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
-  const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null);
+  const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null); // vocabulary-ok: the drawer kind stays "loop"
   // One key/value row builder shared by the loop-metrics table (renderLoopDrawer) and the
   // Configuration section (drawerConfigHtml): identical markup, formerly copy-pasted into two
   // local consts (kv and row) so the row shape could drift between the two sections.
@@ -34,7 +35,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     entryEditing = null;
     noteEditing = null;
     disarmNoteClear();
-    if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView);
+    if (wasLoop && location.hash.startsWith("#loop/")) history.replaceState(null, "", "#" + activeView); // vocabulary-ok: the #loop/ hash stays
     drawerTicks = null;
     drawerChange = null;
     drawerRole = null;
@@ -47,8 +48,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
 
   function openLoop(role) {
-    drawer = { kind: "loop", role };
-    const hash = "#loop/" + encodeURIComponent(role);
+    drawer = { kind: "loop", role }; // vocabulary-ok: the drawer kind stays "loop"
+    const hash = "#loop/" + encodeURIComponent(role); // vocabulary-ok: the #loop/ hash stays
     if (location.hash !== hash) history.replaceState(null, "", hash);
     drawerTicks = null;
     drawerTicksAt = 0;
@@ -94,8 +95,8 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (!role) return;
     const l = (d.loops || []).find((x) => x.role === role);
     if (!l) {
-      paintPanel("drawerhead", "<div class='kicker'>Loop</div><h2 id='drawertitle' class='mono'>" + esc(role) +
-        "</h2><span class='muted'>This loop is no longer part of the fleet.</span>");
+      paintPanel("drawerhead", "<div class='kicker'>Role</div><h2 id='drawertitle' class='mono'>" + esc(roleLabel(role)) +
+        "</h2><span class='muted'>This role is no longer part of the team.</span>");
       paintPanel("draweractions", "");
       paintPanel("drawermeta", drawerChangeSection());
       paintPanel("drawerrole", drawerRoleSection());
@@ -104,16 +105,16 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const info = phaseInfo(l.phase);
     const paused = (d.pausedRoles || []).includes(l.role);
     const detail = phaseDetail(l, info, d);
-    paintPanel("drawerhead", "<div class='kicker'>Loop" + (l.custom ? " · user-defined" : "") + "</div>" +
-      "<h2 id='drawertitle' class='mono'>" + esc(l.role) + "</h2><div class='chips'>" + pill(info) +
+    paintPanel("drawerhead", "<div class='kicker'>Role" + (l.custom ? " · user-defined" : "") + "</div>" +
+      "<h2 id='drawertitle' class='mono'>" + esc(roleLabel(l.role)) + "</h2><div class='chips'>" + pill(info) +
       (detail ? "<span class='muted'>" + esc(detail) + "</span>" : "") + "</div>");
 
     const btn = (action, ic, label, cls) => "<button type='button' class='btn btn-sm rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +
       "' data-role='" + esc(l.role) + "'>" + icon(ic) + esc(label) + "</button>";
-    let actions = btn("prompt", "chat", "Prompt this loop");
+    let actions = btn("prompt", "chat", "Message this role");
     // The running set (info.live), not the permit-holder inFlight: the exempt running director
     // has an abortable tick without holding a maxConcurrent permit (BUGS.md 2026-10-06).
-    if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to abort", "btn-danger confirming") : btn("abort", "stop", "Abort this tick", "btn-danger");
+    if (info.live) actions += abortConfirming(l.role) ? btn("abort", "stop", "Click again to stop", "btn-danger confirming") : btn("abort", "stop", "Stop this run", "btn-danger");
     else {
       actions += btn("wake", "bolt", "Wake now");
       if (roleWakeMenuOpen(l.role)) {
@@ -131,43 +132,43 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     } else actions += btn("pause", "pause", "Pause") + btn("pause-for", "clock", "Pause for…");
     actions += btn("reset-counters", "refresh", "Reset counters");
 
-    const working = info.live || info.key === "vetted";
+    const working = info.live || info.key === "vetted"; // vocabulary-ok: the persisted phase key
     const now = working
-      ? "<section><div class='sec-head'><h3>" + (info.key === "working" ? "Working on" : info.key === "reviewing" ? "Under review" : "Landing") +
+      ? "<section><div class='sec-head'><h3>" + (info.key === "working" ? "Working on" : info.key === "reviewing" ? "Under review" : "Merging") +
         "</h3></div><div class='note'>" + esc(l.currentWork || landingSummary(d, l.role) || (info.key === "working" ? "Starting up…" : "Waiting for its first words…")) + "</div></section>"
       : "";
     const r = l.lastResult ? resultInfo(l.lastResult) : null;
     const why = resultWhy(l);
     const last = "<section><div class='sec-head'><h3>Last result</h3>" + (l.lastTickEndedAt ? "<span class='muted' style='font-size:13px'>" + esc(fmtAgo(l.lastTickEndedAt)) + "</span>" : "") +
-      "</div><div class='note'>" + (r ? "<span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" + (why ? " — " + esc(why) : "") : "<span class='muted'>No completed ticks yet.</span>") + "</div></section>";
+      "</div><div class='note'>" + (r ? "<span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" + (why ? " — " + esc(why) : "") : "<span class='muted'>No completed runs yet.</span>") + "</div></section>";
     const next = fmtNextRun(l, d.running);
     // fmtNextRun's shapes: "-", "now" (possibly with a " ×N" yield suffix), and a bare or
     // "backoff "-prefixed countdown. A backoff countdown keeps the label but as a suffix;
     // a suffixed "now" passes through as-is — it is due now, not a future time.
     const nextNote = next === "-" ? "—"
       : next === "now" || next.startsWith("now ") ? next
-      : next.startsWith("sleeping ") ? "in " + next.slice(9) + " (backoff)"
+      : next.startsWith("sleeping ") ? "in " + next.slice(9) + " (sleeping)"
       : "in " + next;
-    const tickWord = info.live ? "this tick" : "last tick";
-    const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Ticks", String(l.ticks)) +
+    const tickWord = info.live ? "this run" : "last run";
+    const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Runs", String(l.ticks)) +
       kvRow("Tokens, " + tickWord, fmtTokens(l.generated)) + kvRow("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
       kvRow("Spent today", fmtUsd(l.todayUsd)) + kvRow("Spent in total", fmtUsd(l.costUsd)) +
-      kvRow("Last tick ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
-      kvRow("Last landed", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
+      kvRow("Last run ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
+      kvRow("Last merged", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
       kvRow("Next run", nextNote) + "</dl>";
     const ticks = drawerTicks === null
       ? "<p class='muted'>Loading…</p>"
       : drawerTicks.length
-        ? "<ul class='ticks'>" + drawerTicks.map((t) => {
+        ? "<ul class='ticks'>" + drawerTicks.map((t) => { // vocabulary-ok: the ticks class stays
           const res = resultInfo(t.result);
           return "<li><span class='when' title='" + esc(t.time) + "'>#" + esc(t.tick) + " · " + esc(fmtAgo(t.ts)) + "</span>" +
             "<span class='clamp1' title='" + esc(t.detail) + "'><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span> " + esc(t.detail) + "</span>" +
             "<span class='when'>" + (t.durationMs === null ? "" : esc(fmtSpan(Number(t.durationMs)))) + "</span></li>";
         }).join("") + "</ul>"
-        : "<p class='muted'>No completed ticks in the log yet.</p>";
+        : "<p class='muted'>No completed runs in the log yet.</p>";
     paintPanel("draweractions", actions);
     paintPanel("drawermeta", now + last + stats +
-      "<section><div class='sec-head'><h3>Recent ticks</h3></div>" + ticks + "</section>" + drawerChangeSection());
+      "<section><div class='sec-head'><h3>Recent runs</h3></div>" + ticks + "</section>" + drawerChangeSection());
     // The notebook/prompt live in their own panel, outside drawermeta: the poll rewrites
     // drawermeta whenever its countdown or tick-age text changes, and an innerHTML rewrite
     // would collapse an opened Next tick prompt. This panel's markup is stable while its
@@ -183,7 +184,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     if (!view || typeof view !== "object") return "<p class='muted'>Pending change unavailable.</p>";
     const commits = Array.isArray(view.commits) ? view.commits : [];
     const dirty = Array.isArray(view.dirtyFiles) ? view.dirtyFiles : [];
-    if (view.state === "absent") return "<p class='muted'>No worktree yet — this loop has not run.</p>";
+    if (view.state === "absent") return "<p class='muted'>No workspace yet — this role has not run.</p>";
     if (view.state === "no-base") return "<p class='muted'>Main branch " + esc(view.mainBranch) + " does not exist.</p>";
     if (view.state !== "ready" || (view.ahead === 0 && dirty.length === 0)) return "<p class='muted'>No unlanded work.</p>";
     let html = "<p class='note'>" + esc(view.branch) + " · " + esc(plural(view.ahead, "commit")) +
@@ -240,7 +241,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const r = drawerRole;
     let body;
     if (!r || r.state === "loading") body = "<p class='muted'>Loading…</p>";
-    else if (r.state === "error") body = "<p class='muted'>" + esc(r.message || "Notebook and prompt unavailable") + "</p>";
+    else if (r.state === "error") body = "<p class='muted'>" + esc(r.message || "Notes and prompt unavailable") + "</p>";
     else {
       const view = r.view && typeof r.view === "object" ? r.view : {};
       const note = typeof view.note === "string" && view.note.trim() !== "" ? view.note : null;
@@ -254,9 +255,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         ? "<textarea id='noteedittext' rows='12' class='mono' style='width:100%'>" + esc(noteEditing.text) + "</textarea>" +
           "<div><button type='button' class='btn btn-sm btn-primary' data-act='note-save' data-arg='" + esc(r.role) + "'>Save</button> " +
           "<button type='button' class='btn btn-sm' data-act='note-discard' data-arg='" + esc(r.role) + "'>Discard</button></div>"
-        : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notebook yet.</p>";
-      body = "<div class='sec-head'><h3>Notebook</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
-        "<details><summary>Next tick prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
+        : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notes yet.</p>";
+      body = "<div class='sec-head'><h3>Notes</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
+        "<details><summary>Next run's prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
         // The loop's recent tick outcomes (rolePayload's recentOutcomes, read from the event
         // log), rendered like the Recent ticks list above: each with its relative age, result
         // label, summary, and duration. Mirrors the Recent tick outcomes section of
@@ -264,7 +265,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         // String.raw template), so the page and the CLI read one loop's outcomes identically.
         (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
           "<span class='muted' style='font-size:13px'>· " + outcomes.length + "</span></h3></div>" +
-          "<ul class='ticks'>" + outcomes.map((o) => {
+          "<ul class='ticks'>" + outcomes.map((o) => { // vocabulary-ok: the ticks class stays
             const info = resultInfo(o.result);
             const detail = typeof o.summary === "string" && o.summary.trim() !== "" ? o.summary : "";
             return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +
@@ -323,14 +324,14 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
       rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
-    if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min tick interval", view.minTickIntervalSeconds + "s"));
+    if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min run interval", view.minTickIntervalSeconds + "s"));
     // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
     // mirrors quietWindowEnd (browser code cannot import it).
     if (Array.isArray(view.quietHours)) view.quietHours.forEach(function (w) {
       if (!w || typeof w.window !== "string") return;
       const end = String(w.window).split("-")[1];
       const state = w.inWindow ? "holding now — quiet until " + (end ? end.trim() : "") : "not holding now";
-      rows.push(kvRow("Quiet hours", w.window + " (" + (w.scope === "role" ? "own window" : "fleet window") + "; " + state + ")"));
+      rows.push(kvRow("Quiet hours", w.window + " (" + (w.scope === "role" ? "own window" : "team window") + "; " + state + ")"));
     });
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
     // The loop's own spend over its retained event window (rolePayload's usage, summed from the
@@ -351,7 +352,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // The per-role daily cap (rolePayload's dailyCap), worded like role-render.ts's Daily cap line.
     if (view.dailyCap && typeof view.dailyCap === "object") {
       const dc = view.dailyCap;
-      let cap = fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new ticks until local midnight" : "not holding") + ")";
+      let cap = fmtUsd(Number(dc.spentUsd) || 0) + " of " + fmtUsd(Number(dc.capUsd) || 0) + " spent today (" + (dc.over ? "holding now — no new runs until local midnight" : "not holding") + ")";
       if (Array.isArray(dc.roleIds) && dc.roleIds.length > 1) cap += " · shared by " + dc.roleIds.join(", ");
       rows.push(kvRow("Daily cap", cap));
     }
@@ -376,7 +377,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // The notebook fetch shares loadDrawerSection; closing the drawer clears drawerRole, so
   // reopening refetches.
   function loadDrawerRole(role) {
-    return loadDrawerSection(role, "/api/role?role=", "Notebook and prompt unavailable", (v) => { drawerRole = v; });
+    return loadDrawerSection(role, "/api/role?role=", "Notes and prompt unavailable", (v) => { drawerRole = v; });
   }
 
   async function loadLoopTicks(force) {
@@ -413,7 +414,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const pre = $("transcript");
     if (openLoopRole() !== role || !pre) return;
     const lines = Array.isArray(d.lines) ? d.lines : [];
-    const html = lines.length ? transcriptHtml(lines) : "<span class='muted'>No transcript yet — it fills in once this loop's next tick starts.</span>";
+    const html = lines.length ? transcriptHtml(lines) : "<span class='muted'>No transcript yet — it fills in once this role's next run starts.</span>";
     // Stay pinned to the newest line while the reader is at the bottom; leave them be if they
     // scrolled up to read.
     const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 12;
@@ -477,7 +478,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
 
   async function refreshDrawer() {
     if (!drawer) return;
-    if (drawer.kind === "loop") {
+    if (drawer.kind === "loop") { // vocabulary-ok: the drawer kind stays "loop"
       if (lastStatus) renderLoopDrawer(lastStatus);
       await refreshTranscript(false);
     } else {

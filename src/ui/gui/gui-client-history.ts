@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The dashboard's History view, browser-side: every completed tick, newest first, as
  * /api/history serves them (the rows `tumwater history` prints). A toolbar narrows it to one
  * loop (server-side, so a quiet loop still gets its full count), searches the rendered row text
@@ -23,13 +24,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   const HIST_FILTERS = [["all", "All"], ["changes", "Changes"], ["none", "No change"], ["problems", "Problems"]];
   const HIST_MODES = [["table", "Table"], ["summary", "Summary"]];
   function buildHistoryView() {
-    if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed tick, newest first.</p></div>" +
+    if (!buildOnce("history", "<div class='view-head'><div><h1>History</h1><p>Every completed run, newest first.</p></div>" +
       "<div class='toolbar'>" +
-      "<label><span class='sr-only'>Loop</span><select class='field' id='histrole'><option value=''>All loops</option></select></label>" +
+      "<label><span class='sr-only'>Role</span><select class='field' id='histrole'><option value=''>All roles</option></select></label>" +
       "<div class='seg' id='histfilter'>" + HIST_FILTERS.map((f) => "<button type='button' data-hist='" + f[0] + "'>" + f[1] + "</button>").join("") + "</div>" +
       "<div class='seg' id='histsum'>" + HIST_MODES.map((m) => "<button type='button' data-histsum='" + m[0] + "'>" + m[1] + "</button>").join("") + "</div>" +
-      "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search ticks…' autocomplete='off'></label>" +
-      "<label><span class='sr-only'>Ticks to show</span><select class='field' id='histcount'>" +
+      "<label><span class='sr-only'>Search</span><input class='field' id='histgrep' type='search' placeholder='Search runs…' autocomplete='off'></label>" +
+      "<label><span class='sr-only'>Runs to show</span><select class='field' id='histcount'>" +
       HIST_COUNTS.map((n) => "<option value='" + n + "'>Last " + n + "</option>").join("") +
       histWindowOptions() + "</select></label>" +
       "<button type='button' class='btn btn-sm' id='histrefresh'>" + icon("refresh") + "Refresh</button>" +
@@ -99,13 +100,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
   // the tumwater tick rendering).
   function histDetailCardHtml(entry) {
     const state = entry && entry.state;
-    if (!state || state === "loading") return "<div class='empty'>Loading tick detail…</div>";
-    if (state === "error") return "<div class='empty'><strong>" + esc(entry.message || "Tick detail unavailable") + "</strong></div>";
+    if (!state || state === "loading") return "<div class='empty'>Loading run detail…</div>";
+    if (state === "error") return "<div class='empty'><strong>" + esc(entry.message || "Run detail unavailable") + "</strong></div>";
     const lines = String(entry.text || "").split("\n");
     const head = lines.shift() || "";
     const trail = lines.join("\n");
     return "<div class='hist-detail'><div class='hist-detail-head mono'>" + esc(head) + "</div>" +
-      (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this tick's block.</div>") +
+      (trail ? "<pre class='mono'>" + esc(trail) + "</pre>" : "<div class='empty'>No events in this run's block.</div>") +
       (entry.stat ? "<pre class='mono hist-detail-stat'>" + esc(entry.stat) + "</pre>" : "") +
       "</div>";
   }
@@ -128,17 +129,17 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     // (and a re-expand during flight sees it and lets the first fetch finish).
     histDetails.set(key, { state: "loading" });
     try {
-      const d = await getJson("/api/tick?role=" + encodeURIComponent(role) + "&tick=" + encodeURIComponent(String(tick)));
+      const d = await getJson("/api/tick?role=" + encodeURIComponent(role) + "&tick=" + encodeURIComponent(String(tick))); // vocabulary-ok: the /api/tick route and tick= parameter stay
       // Name the endpoint, the tick it answered for, and the likely cause: a 200 without
       // text is a server too old (or too new) for this dashboard's client, not a lost tick —
       // a 404 already answers that shape with the CLI's own not-found wording.
       if (!d || typeof d.text !== "string")
         throw new Error(
-          "/api/tick answered " + role + " tick " + tick + " without a text field — the running server's build may not match this dashboard",
+          "/api/tick answered " + role + " run " + tick + " without a text field — the running tumwater may not match this dashboard", // vocabulary-ok: the /api/tick route stays
         );
       histDetails.set(key, { state: "ok", text: d.text, stat: typeof d.stat === "string" ? d.stat : "" });
     } catch (err) {
-      histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Tick detail unavailable" });
+      histDetails.set(key, { state: "error", message: err && err.message ? err.message : "Run detail unavailable" });
     }
     renderHistory();
   }
@@ -215,15 +216,15 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     if (!shown.length) {
       const hasRows = Boolean(rows && rows.length);
       if (hasRows)
-        return "<div class='empty'><strong>No ticks match this filter</strong>Try another outcome or loop.</div>";
+        return "<div class='empty'><strong>No runs match this filter</strong>Try another outcome or role.</div>";
       if (grep)
-        return "<div class='empty'><strong>No ticks match this search</strong>Try another search.</div>";
+        return "<div class='empty'><strong>No runs match this search</strong>Try another search.</div>";
       const w = HIST_WINDOWS[sinceKey];
       return w
-        ? "<div class='empty'><strong>No ticks in " + w[1] + "</strong>The window may be quiet, or its older events may have rotated out.</div>"
-        : "<div class='empty'><strong>No ticks yet</strong>Completed ticks show up here as the loops work.</div>";
+        ? "<div class='empty'><strong>No runs in " + w[1] + "</strong>The window may have had nothing to do, or its older events may have rotated out.</div>"
+        : "<div class='empty'><strong>No runs yet</strong>Completed runs show up here as the roles work.</div>";
     }
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Loop</th><th class='c-tick num'>Tick</th>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th class='c-x'></th><th>When</th><th>Role</th><th class='c-tick num'>Run</th>" + // vocabulary-ok: the c-tick class stays
       "<th>Result</th><th class='c-detail'>Detail</th><th class='num c-dur'>Took</th><th class='num c-usage'>Usage</th></tr></thead><tbody>" +
       shown.map((r) => {
         const res = resultInfo(r.result);
@@ -235,13 +236,13 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
         const open = histDetailOpen === key;
         const toggle = known.has(r.loop)
           ? "<button type='button' class='btn btn-sm hist-x' data-tickdetail='1' data-role='" + esc(r.loop) +
-            "' data-tick='" + esc(r.tick) + "' aria-expanded='" + open + "' title='" + (open ? "Hide tick detail" : "Show tick detail") + "'>" + icon("chev") + "</button>"
+            "' data-tick='" + esc(r.tick) + "' aria-expanded='" + open + "' title='" + (open ? "Hide run detail" : "Show run detail") + "'>" + icon("chev") + "</button>" // vocabulary-ok: the data-tick name stays
           : "";
         const row = "<tr" + (known.has(r.loop) ? " class='clickable' data-open='" + esc(r.loop) + "'" : "") + ">" +
           "<td class='c-x'>" + toggle + "</td>" +
           "<td title='" + esc(r.time) + "'><span class='clamp1'>" + esc(fmtAgo(r.ts)) + "</span></td>" +
-          "<td class='mono'>" + esc(r.loop) + "</td>" +
-          "<td class='c-tick num muted'>#" + esc(r.tick) + "</td>" +
+          "<td class='mono'>" + esc(roleLabel(r.loop)) + "</td>" +
+          "<td class='c-tick num muted'>#" + esc(r.tick) + "</td>" + // vocabulary-ok: the c-tick class stays
           "<td><span class='res t-" + res.tone + "'>" + esc(res.label) + "</span></td>" +
           "<td class='c-detail'><span class='clamp2' title='" + esc(r.detail) + "'>" + (r.detail ? esc(r.detail) : "<span class='muted'>—</span>") + "</span></td>" +
           "<td class='num c-dur'>" + (r.durationMs === null || r.durationMs === undefined ? "—" : esc(fmtSpan(Number(r.durationMs)))) + "</td>" +
@@ -264,11 +265,11 @@ export const GUI_CLIENT_HISTORY_JS = String.raw`  // The counts the "Ticks to sh
     const cell = (r, key, fmt) => "<td class='num'>" + esc(fmt ? fmt(r[key]) : r[key]) + "</td>";
     const rowsHtml = all.map((r) =>
       "<tr" + (r.loop === "total" ? " class='hist-total'" : "") + ">" +
-      "<td class='mono'>" + esc(r.loop) + "</td>" +
-      cell(r, "ticks") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") +
+      "<td class='mono'>" + esc(r.loop === "total" ? r.loop : roleLabel(r.loop)) + "</td>" +
+      cell(r, "ticks") + cell(r, "changes") + cell(r, "none") + cell(r, "problems") + // vocabulary-ok: the summary's ticks key stays
       cell(r, "tokens", (n) => fmtTokens(Number(n))) + cell(r, "costUsd", (n) => fmtUsd(Number(n))) +
       "<td>" + esc(r.lastChangeTs === null || r.lastChangeTs === undefined ? "—" : fmtAgo(Number(r.lastChangeTs))) + "</td></tr>").join("");
-    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Loop</th><th class='num'>Ticks</th><th class='num'>Changes</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th>Last change</th></tr></thead><tbody>" +
+    return "<div class='table-wrap'><table class='table history'><thead><tr><th>Role</th><th class='num'>Runs</th><th class='num'>Merged</th><th class='num'>None</th><th class='num'>Problems</th><th class='num'>Tokens</th><th class='num'>Cost</th><th>Last change</th></tr></thead><tbody>" +
       rowsHtml + "</tbody></table></div>";
   }
   // history-summary:end
