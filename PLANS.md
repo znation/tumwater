@@ -137,7 +137,10 @@ README.md, and their tests.
 - `npm test` passes.
 
 
-### The day/`--since` report breaks landing-slot outcomes down by role: a `Landed by role` line naming which roles' changes reach main and which bounce off the landing gate (planned 2026-10-15 by plan; independent of every other entry — the one eligible waiting entry is the per-stage-elapsed landing plan, which changes `src/landing/landing-slot.ts`, `src/landing/landing-queue-render.ts`, and `src/ui/status-model.ts` and touches no `src/report/` file; this touches only `src/report/report-data.ts`, `src/report/report-render.ts`, and `test/report.test.ts`, so the two land in either order on separate feature runs)
+
+## Done
+
+### The day/`--since` report breaks landing-slot outcomes down by role: a `Landed by role` line naming which roles' changes reach main and which bounce off the landing gate (planned 2026-10-15 by plan; independent of every other entry — the one eligible waiting entry is the per-stage-elapsed landing plan, which changes `src/landing/landing-slot.ts`, `src/landing/landing-queue-render.ts`, and `src/ui/status-model.ts` and touches no `src/report/` file; this touches only `src/report/report-data.ts`, `src/report/report-render.ts`, and `test/report.test.ts`, so the two land in either order on separate feature runs) — done 2026-10-16
 
 **Goal.** The report's landing line (`landingShareLine`'s `of which landing runs … (N failed)`) folds the `landed`/`land_failed` branch into **fleet-global** `landingRuns`/`landingFailed`, and `Commits by role` counts `merged` events (pure success, commit granularity). Nothing names which AUTHORING role's changes reach main through the landing slot — and, the genuinely new signal, which roles' changes bounce off the gate (`land_failed`: review rejection, under-cap review, a conflict, a blocked fast-forward, a shutdown abort). An operator watching the fleet cannot tell whether gate failures are concentrated in one role's changes or spread evenly, so a role whose every change dies in a merge conflict reads as healthy next to a role that mostly lands. The events already carry the authoring role (`writeLandingOutcome` in `src/landing/landing-slot.ts` logs `loop: entry.role`), so the attribution is free — the fold just discards it. This adds one per-role landing line to both the day and `--since` renders, folded from that same branch.
 
@@ -153,11 +156,6 @@ README.md, and their tests.
 - No behavior change elsewhere: `landingRuns`/`landingFailed`/`landingShareLine` keep their exact current totals (the per-role maps are a parallel tally, never subtracted), a role-scoped report prints no landing line (its `ROLE_SCOPE_NOTE` is unchanged), and `report --json` omits `landedByRole`/`landingFailedByRole` when no role has either (the zero-means-absent convention).
 - `npm run test` passes.
 
-
-
-
-
-## Done
 ### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow) — done 2026-10-16
 
 Design: plans/provider-concurrency.md §4 "Who holds a lease" and §6 "Priority headroom and the

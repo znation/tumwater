@@ -62,6 +62,15 @@ interface UsageFold {
   landingTokens?: number;
   landingCostUsd?: number;
   landingFailed?: number; // of those runs, the land_failed events (absent when none)
+  /** The landed outcomes keyed by base authoring role, so a report can name which roles'
+   * changes reach main through the landing slot (the same base-role keying as commitsByRole,
+   * so `feature-2` aggregates into `feature`). A parallel tally, never subtracted from the
+   * fleet totals. */
+  landedByRole: Record<string, number>;
+  /** The land_failed outcomes keyed by base authoring role — the changes that bounced off
+   * the landing gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
+   * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
+  landingFailedByRole: Record<string, number>;
 }
 
 /** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
@@ -108,6 +117,13 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   } else if (ev.type === "landed" || ev.type === "land_failed") {
     target.landingRuns = (target.landingRuns ?? 0) + 1;
     if (ev.type === "land_failed") target.landingFailed = (target.landingFailed ?? 0) + 1;
+    // Attribute the outcome to the authoring role (writeLandingOutcome logs loop: entry.role)
+    // folded to base role, the same normalization the merged branch uses, so `feature-2`
+    // aggregates into `feature`. A parallel tally beside the fleet run counts, never
+    // subtracted from landingRuns/landingFailed.
+    const role = baseRoleOf(eventRole(ev));
+    if (ev.type === "landed") addTo(target.landedByRole, role, 1);
+    else addTo(target.landingFailedByRole, role, 1);
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.landingTokens = (target.landingTokens ?? 0) + tokens;
     target.landingCostUsd = (target.landingCostUsd ?? 0) + costUsd;
@@ -140,6 +156,8 @@ interface DayFold {
   landingTokens: number;
   landingCostUsd: number;
   landingFailed?: number; // of those runs, the land_failed events (absent when none)
+  landedByRole: Record<string, number>;
+  landingFailedByRole: Record<string, number>;
 }
 
 /** The event-log half of a windowed report, memoized per (root, fromKey). `offset` is how
@@ -236,6 +254,8 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       costByRole: {},
       notionalByRole: {},
       ...zeroLandingCounts(),
+      landedByRole: {},
+      landingFailedByRole: {},
     };
     entry.days.set(dayKey, fold);
   }
@@ -367,6 +387,10 @@ export interface ReportDay {
   landingTokens?: number; // their output tokens, also included in tokensOut above
   landingCostUsd?: number; // their cost, also included in costUsd above
   landingFailed?: number; // of those runs, the land_failed events (absent when none)
+  /** landed outcomes by base role; absent when the day has none (zero means absent). */
+  landedByRole?: Record<string, number>;
+  /** land_failed outcomes by base role; absent when the day has none (zero means absent). */
+  landingFailedByRole?: Record<string, number>;
   notionalCostUsd?: number; // subscription spend, on its own notional line, never in costUsd
   /** Subscription spend by loop id, never in costByRole; absent when the day has none. */
   notionalByRole?: Record<string, number>;
@@ -440,6 +464,12 @@ export interface SinceReport {
    * `Commits by role` line; always present (the collector's accumulator is pre-filled by
    * zeroCommitCounts, so a commit-free window carries an empty map — the `-` render). */
   commitsByRole: Record<string, number>;
+  /** landed outcomes by base role; always present (the collector pre-fills the empty map, so
+   * a landing-free window renders `-` like the other lines). */
+  landedByRole: Record<string, number>;
+  /** land_failed outcomes by base role; always present (empty map when none), so the render
+   * can gate its new failure line on the window's own land_failed events. */
+  landingFailedByRole: Record<string, number>;
   /** Subscription spend per loop id, never in costByRole; absent when the window has none —
    * the same conditional the day collector applies to ReportDay.notionalByRole, so a
    * --since JSON carries it only when nonzero. */
@@ -484,6 +514,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     notionalCostUsd: 0,
     notionalByRole: {},
     ...zeroLandingCounts(),
+    landedByRole: {},
+    landingFailedByRole: {},
   };
   for (const ev of raw.events) {
     if (typeof ev.ts !== "number" || ev.ts < cutoff || ev.ts > now) continue;
@@ -542,6 +574,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     failedTicksByRole: base === undefined ? acc.failedTicksByRole : narrowToRole(acc.failedTicksByRole, base),
     tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
     commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
+    landedByRole: base === undefined ? acc.landedByRole : narrowToRole(acc.landedByRole, base),
+    landingFailedByRole: base === undefined ? acc.landingFailedByRole : narrowToRole(acc.landingFailedByRole, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
     coversFullWindow,
   };
@@ -600,6 +634,11 @@ export function collectReport(root: string, days: number, role?: string): Report
       day.landingCostUsd = fold.landingCostUsd;
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if ((fold.landingFailed ?? 0) > 0) day.landingFailed = fold.landingFailed;
+      // Only set when a role actually landed/failed that day (zero means absent), so a
+      // landing-free day keeps its exact pre-feature shape.
+      if (Object.keys(fold.landedByRole).length > 0) day.landedByRole = fold.landedByRole;
+      if (Object.keys(fold.landingFailedByRole).length > 0)
+        day.landingFailedByRole = fold.landingFailedByRole;
     } else {
       // Role scope: derive this day from the fold's per-role maps, so the series carries only
       // the named role's ticks/tokens/cost and (base-role-keyed) commits. The scope is the
@@ -630,6 +669,13 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.notionalCostUsd = notional;
         day.notionalByRole = narrowToRole(fold.notionalByRole, base);
       }
+      // Landing runs belong to the landing slot, not this role, so the role-scoped series
+      // keeps them unset (matching the landing-share fields) — the render omits the landing
+      // line for a scoped report, so these are carried only for shape consistency.
+      const landed = narrowToRole(fold.landedByRole, base);
+      if (Object.keys(landed).length > 0) day.landedByRole = landed;
+      const landedFailed = narrowToRole(fold.landingFailedByRole, base);
+      if (Object.keys(landedFailed).length > 0) day.landingFailedByRole = landedFailed;
     }
   }
 

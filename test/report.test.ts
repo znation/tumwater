@@ -382,6 +382,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   assert.match(zero, /^# tumwater usage report/);
@@ -406,6 +408,8 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
     // own ranked data) while the cost line omits it, proving the lines differ.
     tokensByRole: { clean: 12000, feature: 5000, bugfix: 800 },
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /window: last 90m \(since /);
@@ -430,6 +434,8 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   assert.ok(!zero.includes("landing runs"), "zero landing runs omit the line entirely");
@@ -445,6 +451,8 @@ test("renderSinceReportMarkdown shows the landing line under Totals only when la
     failedTicksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 1 runs · 900 tokens · \$0\.40 \(reviewer \+ conflict resolution\)/);
@@ -462,6 +470,8 @@ test("renderSinceReportMarkdown shows (N failed) on the landing line when a land
     failedTicksByRole: {},
     tokensByRole: { feature: 900 },
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   assert.match(data, /of which landing runs: 2 runs \(1 failed\) · 1200 tokens · \$0\.50 \(reviewer \+ conflict resolution\)/);
@@ -481,6 +491,8 @@ test("renderSinceReportMarkdown prints Commits by role and Notional by role matc
     // The same ranking (count desc / spend desc, then name asc) and `usd` formatting the
     // day render applies to its Commits/Notional by role lines — window and day speak one shape.
     commitsByRole: { feature: 3, clean: 1 },
+    landedByRole: {},
+    landingFailedByRole: {},
     notionalByRole: { feature: 0.4, plan: 0.5 },
     coversFullWindow: true,
   });
@@ -500,6 +512,8 @@ test("renderSinceReportMarkdown renders an empty window's Commits by role and om
     failedTicksByRole: {},
     tokensByRole: {},
     commitsByRole: {},
+    landedByRole: {},
+    landingFailedByRole: {},
     coversFullWindow: true,
   });
   // The now-required commitsByRole renders "-" when empty; a window with no notional spend
@@ -764,6 +778,96 @@ test("report --json --since carries landingFailed when a landing fails and omits
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--since", "6h")).out);
   assert.equal(cleanParsed.totals.landingRuns, 1);
   assert.ok(!("landingFailed" in cleanParsed.totals), "a failure-free --since window omits landingFailed");
+});
+
+test("fleet day report breaks landing outcomes down by role, folding instances into their base", async () => {
+  const root = makeRepo();
+  // feature-2's destination event must aggregate under feature (the same base-role keying as
+  // Commits by role); bufixes' land_failed bounces off the gate under bugfix.
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature-2", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+  ]);
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Landed by role:\*\* feature — 1/, "landed outcome folds feature-2 into feature");
+  assert.match(md.out, /\*\*Landing failures by role:\*\* bugfix — 1/, "the gate's land_failed names its authoring role");
+  // The fleet totals stay exactly what they were: the per-role maps are a parallel tally.
+  assert.match(md.out, /of which landing runs: 2 runs \(1 failed\)/);
+
+  // The collector's day series and window totals carry the per-role maps too (zero-means-absent).
+  const direct = collectReport(root, 2);
+  const today = direct.series[direct.series.length - 1]!;
+  assert.deepEqual(today.landedByRole, { feature: 1 });
+  assert.deepEqual(today.landingFailedByRole, { bugfix: 1 });
+  assert.equal(direct.totals.landingRuns, 2);
+  assert.equal(direct.totals.landingFailed, 1);
+});
+
+test("fleet day report omits Landing failures by role when none fail; a landing-free window omits both", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const md = await runCli(root, "report", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Landed by role:\*\* feature — 1/);
+  assert.ok(!md.out.includes("**Landing failures by role:"), "no land_failed omits the failure line entirely");
+});
+
+test("role-scoped day report omits the landing lines (landing runs are the landing slot's)", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const md = await runCli(root, "report", "--role", "feature", "--days", "2");
+  assert.equal(md.code, 0);
+  assert.ok(!md.out.includes("**Landed by role:"), "a scoped report omits the landed line");
+  assert.ok(!md.out.includes("**Landing failures by role:"), "a scoped report omits the failures line");
+  assert.match(md.out, /role scope: landing runs and backlog tallies \(features done \/ bugs fixed\) are fleet-wide and omitted/);
+});
+
+test("fleet report --since breaks landing outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "bugfix", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+  ]);
+  const md = await runCli(root, "report", "--since", "6h");
+  assert.equal(md.code, 0);
+  assert.match(md.out, /\*\*Landed by role:\*\* feature — 1/, "--since folds feature-2 into feature");
+  assert.match(md.out, /\*\*Landing failures by role:\*\* bugfix — 1/);
+
+  const json = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
+  assert.deepEqual(json.landedByRole, { feature: 1 });
+  assert.deepEqual(json.landingFailedByRole, { bugfix: 1 });
+
+  const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
+  assert.equal(scoped.code, 0);
+  assert.ok(!scoped.out.includes("**Landed by role:"), "a scoped --since omits the landed line");
+  assert.ok(!scoped.out.includes("**Landing failures by role:"), "a scoped --since omits the failures line");
+});
+
+test("report --json omits landedByRole/landingFailedByRole when no role has either; carries them when one does", async () => {
+  const clean = makeRepo();
+  const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--days", "2")).out);
+  assert.ok(!("landedByRole" in cleanParsed.series[cleanParsed.series.length - 1]), "a landing-free day omits landedByRole");
+
+  const root = makeRepo();
+  writeEvents(root, [
+    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
+  assert.deepEqual(parsed.series[parsed.series.length - 1].landedByRole, { feature: 1 });
+  // The --since payload always carries both maps, like commitsByRole: a within-window landing
+  // fills landedByRole, and a failure-free window's landingFailedByRole stays empty.
+  const sinceRoot = makeRepo();
+  writeEvents(sinceRoot, [
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+  ]);
+  const since = JSON.parse((await runCli(sinceRoot, "report", "--json", "--since", "6h")).out);
+  assert.deepEqual(since.landedByRole, { feature: 1 });
+  assert.deepEqual(since.landingFailedByRole, {});
 });
 
 test("report --failures --json prints the digest's collected data; --since --json stays legal", async () => {

@@ -131,6 +131,17 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // The landed-commits split by base role, matching the day render's unfiltered line: the
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
+  // The landed-outcomes split by base role, mirroring the day render's line: which roles'
+  // changes reach main and which bounce off the gate (land_failed). Gated to the fleet
+  // report — a role-scoped window omits landing (ROLE_SCOPE_NOTE), so the per-role
+  // attribution would contradict it. Zero-means-absent: the failures line prints only when
+  // some role has one; a landing-free window renders `-` like the other lines.
+  if (data.role === undefined) {
+    lines.push(rankedRoleLine("Landed by role", rankedRoleMap(data.landedByRole), String));
+    const landingFailures = rankedRoleMap(data.landingFailedByRole).filter(([, n]) => n > 0);
+    if (landingFailures.length > 0)
+      lines.push(rankedRoleLine("Landing failures by role", landingFailures, String));
+  }
   // Subscription spend is notional: its own line, only when the window has any — the same
   // conditional/filtered `usd` form the day render's "Notional by role" uses.
   if (data.notionalByRole !== undefined) {
@@ -241,6 +252,20 @@ export function renderReportMarkdown(data: ReportData): string {
   // Work ratio 4/4: the landed commits split by base role and by tier. The totals line's
   // `commits` carries the count; these lines say who made it and how much of it was work.
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
+  // The landed-outcomes split by base role: which authoring roles' changes reach main through
+  // the landing slot, and — the new signal — which roles' changes bounce off the gate (a
+  // land_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
+  // shutdown abort). Gated to the fleet report — a role-scoped report omits landing runs
+  // (they are the landing slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
+  // contradict that stance. Zero-means-absent: a window with landings renders Landed by role;
+  // the failures line prints only when some role actually has one.
+  if (data.role === undefined) {
+    const landed = rankedRoleTotals(data.series, (d) => d.landedByRole ?? {});
+    lines.push(rankedRoleLine("Landed by role", landed, String));
+    const landingFailures = rankedRoleTotals(data.series, (d) => d.landingFailedByRole ?? {}).filter(([, n]) => n > 0);
+    if (landingFailures.length > 0)
+      lines.push(rankedRoleLine("Landing failures by role", landingFailures, String));
+  }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.
   if ((t.notionalCostUsd ?? 0) > 0) {
