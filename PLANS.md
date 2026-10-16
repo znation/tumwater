@@ -57,6 +57,4086 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The GUI loop drawer shows the same `Spend` row for the opened loop.
 - The sum is derived from the same single `readEvents` call `recentOutcomes` uses (one event-log read per `rolePayload`), so the two per-loop facts cover the same window; a torn `tick_end` line contributes nothing. `npm run test` passes with old role-view/role-render goldens unchanged for the no-usage case.
 
+### Compact backlog index, part 1/1: Show the blocked parts of a series as one line in the backlog index (planned 2026-10-16 by user; must land before the Plain terms series, whose first parts require it; touches src/backlog/backlog-structure.ts and test/backlog-structure.test.ts)
+
+**Goal.** Every role's prompt carries the `<backlog-index>` block (`renderBacklogIndexBlock` in src/backlog/backlog-structure.ts, rendered by src/tick/tick-prompt.ts). Today it lists every `## Planned` entry on its own line, including entries held by an unlanded prerequisite. A long multi-part series therefore fills every prompt with lines no role can act on. The Plain terms series filed on 2026-10-16 has 116 parts, which grows the block from about 600 to about 22,000 characters. Each model turn re-reads that. After this change, a series' blocked parts render as one line per series, and the block stays roughly as large as the number of series plus the takeable entries.
+
+**Approach.** Render only. Nothing changes about which entries are eligible: `eligibleEntries`, `entryHoldAgainst`, `holdMark` and the claim allocator are untouched.
+- In `renderBacklogIndexBlock`, while rendering the PLANS.md `## Planned` section, collapse an entry when all three hold:
+  - its hold is `{ blockedBy }`, meaning an unlanded prerequisite;
+  - its heading is a series part (`seriesPart(e.title)` from src/backlog/backlog-eligibility.ts is non-null);
+  - no live claim names it (the `claimed.get(key)` lookup the loop already does).
+- Group the collapsed entries by series, keyed by the lowercased series name as `seriesPart` returns it. Only a series with **two or more** such entries collapses; a series with one keeps its ordinary line, so a single blocked part still shows its exact `requires` detail.
+- A collapsed series renders one line, at the position of its first collapsed entry:
+  `- <firstStart>-<lastEnd>: <Series>, <N> blocked parts (<parts>) [blocked: each waits on an earlier part]`
+  - `<firstStart>-<lastEnd>` spans from the first collapsed entry's start to the last one's end, so a role that wants the series' text can read it by range.
+  - `<parts>` lists the collapsed part tokens in order, joining consecutive numeric parts into an en-dash range: `2/5–5/5`, `2/5, 4/5–5/5`. Lettered parts such as `2a` are listed singly.
+  - The mark keeps the `[blocked: …]` prefix the feature role's charter already tells it to skip (src/roles/role-catalog.ts: "Skip entries the index block marks `[blocked: …]`"), so no prompt text changes.
+- Never collapse an entry that:
+  - is eligible;
+  - carries a `[refused]`, `[needs review]` or `[needs replan]` mark (roles act on those);
+  - is claimed (`[in flight by …]`);
+  - lives in BUGS.md or QUESTIONS.md.
+  These keep their lines exactly as today.
+- Add one sentence to the block's lead-in text: blocked parts of a multi-part series are shown as one line per series, spanning the line range of their entries. The existing lead-in otherwise stays.
+- Put the grouping in a small pure helper in the same module, for example `collapseBlockedSeries(rows)`, over the already-computed `{ start, end, title, mark, claimer, hold }` rows. Keep it unexported so test/exports.test.ts needs no change. Its doc comment names this plan.
+
+**Files touched.** src/backlog/backlog-structure.ts, test/backlog-structure.test.ts. Reads (does not edit): src/backlog/backlog-eligibility.ts (`seriesPart`, `holdMark`), src/roles/role-catalog.ts (the feature role's skip rule).
+
+**Acceptance criteria.**
+- New tests in test/backlog-structure.test.ts:
+  - Series `S` with part 1/4 eligible and parts 2/4–4/4 each requiring the previous part renders `- <a>-<b>: S, part 1/4: …` followed by one line `- <c>-<d>: S, 3 blocked parts (2/4–4/4) [blocked: each waits on an earlier part]`, where `<c>` is part 2's start and `<d>` is part 4's end.
+  - Non-contiguous blocked parts render as `(2/5, 4/5–5/5)`.
+  - A blocked part carrying a Refused note keeps its own `[refused]` line, and a claimed blocked part keeps its `[in flight by …]` line. Neither is counted in the collapsed line.
+  - A BUGS.md entry blocked by a plan keeps its own line.
+- The existing test "renderBacklogIndexBlock marks a held entry as blocked, refused or needing review" passes unchanged: its series has a single blocked part.
+- Rendered over this repo's PLANS.md as filed on 2026-10-16 (116 Plain terms parts), the block is under 4,000 characters. Check this by hand; it is not a committed test.
+- `npm run test` passes.
+
+### Plain terms groundwork, part 1/4: Write docs/glossary.md with every older name mapped to its plain term (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Glossary"; touches docs/glossary.md)
+
+**Goal.** One page a newcomer, a reviewer and an agent can all check user-visible text against: the plain terms with their meanings, the internal words the code keeps, and a translation table from every older word and machine name to its new one, so readers of history, old logs and old scripts can follow.
+
+**Approach.**
+- Create `docs/glossary.md`. Prose only: no code, no test, no other file changes. Write it in the plain terms it defines.
+- Section **Terms**: a table `Term | Meaning | Older names`, one row per term of plans/terminology.md's "Glossary" table, with the one-line meaning and its "Replaces" words in the last column. Keep the `feature #2` (id `feature-2`) example on **role** and **instance**.
+- Section **Status words**: a table `Word | Meaning`, built from the "Write instead" column of the "Wording rules" table: due, waiting to merge, waiting: <reason>, blocked (with its `[blocked: …]` forms), sleeping, stalled, paused (only a pause you set), update available, restart N, priority, over-cap model, fallback, model jobs, model id, workspace, running N of M, waiting to start, finishing up, repeated-failure pause, stopped by you, interrupted, your checkout, estimated spend, main's check is failing, send later, TUI. One line each; this is the vocabulary the dashboards and CLI output will use.
+- Section **In the code**: one line each for the words listed under "Kept in code" in "Code names" (seam, operator, harness, slot, hold, backoff, drain, reclaim, director, orchestrator) saying what each means internally, plus **runner** (one instance of a role, the code word for `feature-2`). Close with one sentence on how identifiers follow the glossary: fleet → team, loop → runner, tick → run, landing/land/lander/vet → merge, notebook → notes, initialPrompt → brief, customLoop → customRole, the config `agent` → backend.
+- Section **Older names**, one sub-table per family, columns `Older name | Current name | Old name still accepted?`. Copy the rows from plans/terminology.md; do not invent new ones:
+  - **Words** — every "Replaces" word from "Glossary" and every "Today" phrase from "Wording rules".
+  - **Commands** — the "Commands and config" command table (`run` → `start`, `tick <role> <n>` → `history <role> <n>`, `--result changes` → `--result merged`); accepted: yes, as hidden aliases.
+  - **Config keys** — the "Commands and config" key table, plus `agentBin`/`piArgs` → `backends.pi.bin`/`.args`; accepted: yes, and `tumwater doctor` names the rename.
+  - **Role ids and titles** — the "Role names" table; old ids accepted on read.
+  - **Event log** — every row of "Event log" (types, the `loop` → `source` field, payload fields and values, `TUMWATER_EVENT_LOOP` → `TUMWATER_EVENT_SOURCE`); old lines are read as new ones.
+  - **Script interfaces** — every row of "Script interfaces" (`--json` keys, `/api` routes and payload keys, dashboard hashes, alert `act`); accepted: no, except the old dashboard hashes.
+  - **State and git** — every row of "State and git" (state fields, `.tumwater/land-queue/`, `state/landing.json` and its statuses, `slots.json` purpose, the `refs/tumwater/landing/` refs, the `Tick:` trailer); old data is read and migrated.
+  - **Code identifiers** — the "Code names" family rules and file moves, for readers of old commits; accepted: no.
+- Close with one short paragraph naming what keeps the older words on purpose (plans/terminology.md "Out of scope": PLANS.md `## Done`, BUGS.md, QUESTIONS.md answers, `plans/*.md`, git history and commit subjects, the `tumwater(operator):` prefix, `tumwater/<id>` branches) and that this table translates them.
+- The PRINCIPLES.md line from "Guards" ("User-visible text uses the terms in docs/glossary.md.") is a manual step for the user after this series lands. Do not edit PRINCIPLES.md.
+
+**Files touched.** docs/glossary.md (new). Reads (does not edit): plans/terminology.md.
+
+**Acceptance criteria.**
+- docs/glossary.md has the sections Terms, Status words, In the code and Older names, in that order.
+- Every term of the "Glossary" table and every word in its "Replaces" column appears in the file.
+- Every old name in the "Commands and config", "Role names", "Event log", "Script interfaces" and "State and git" tables appears in an Older names row beside its new name.
+- No file other than docs/glossary.md changes.
+- `npm run test` passes.
+
+### Plain terms groundwork, part 2/4: Add the vocabulary guard test for modules that opt in to plain terms (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts)
+
+**Goal.** A deterministic test that fails when user-visible text in an opted-in `src/` module uses a retired word, so the text series can convert modules one group at a time and keep them converted. With no module opted in yet it passes. Its own self-tests prove what it flags and what it ignores.
+
+**Approach.**
+- New file `test/vocabulary.test.ts`. Import the compiler API as `import ts from "typescript";`. `typescript` is already a devDependency (package.json) and resolves under the NodeNext build. Tests never ship (package.json `files` is `dist/src`), so this adds no runtime dependency. The test is offline and pure.
+- Locate the repo root the way test/layering.test.ts's `findRepoRoot` does: walk up to the directory holding package.json and src/, so the scan works from dist/test. test/affected-tests.ts's `SCANS_TREE` rule then runs it on any code change with no edit there.
+- **The retired-word list** lives at the top of this file as `RETIRED_WORDS: readonly string[]`, regex sources with a doc comment saying "later series append here". This is the only list, and later series extend it by editing this constant. Start it with: `fleet`, `loop`, `tick`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `backed off`, `drain`.
+  - The role ids `dry` and `telemetry` are NOT in the starting list. They stay valid ids until Plain terms role ids switches them, and each switch part appends its old id: `dedupe` appends `dry(?![- ]run)`, so `--dry-run` and "dry run" stay legal, and `selfcheck` appends `telemetry`.
+  - Say this in the doc comment.
+- **Matching:** compile each entry as `(?<![a-z0-9_])(?:<entry>)(?:s|es|ed|ing)?(?![a-z0-9_])` with flags `gi`.
+  - Letters, digits and `_` count as word characters. So snake_case machine names such as `tick_end`, `land_queued` and `fleet_paused` are never flagged: they are code until Plain terms event log renames them, and flagging them would force a temporary exemption on every `case "tick_end":` in an opted-in module.
+  - Prose is flagged: `fleet-wide`, `tumwater(operator):`, `Fleet`, and inflections such as ticks, loops, landings and drained.
+  - camelCase like `lastTickEndedAt` is not flagged, and neither are `ticket`, `seamless` and `loophole`.
+- **Opting in:** a module is scanned when one of its lines, trimmed, is exactly `// vocabulary: plain`. Put that test in one function, `optedIn(text)`, so Plain terms code cleanup can flip the guard to all of `src/` in one line, and say so in its doc comment.
+- **What is scanned**, by `ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true, kind)` with `ts.ScriptKind.TSX` for `.tsx` files:
+  - the text of `StringLiteral` and `NoSubstitutionTemplateLiteral` nodes;
+  - the literal text of `TemplateHead`, `TemplateMiddle` and `TemplateTail`, never the `${…}` expressions between them;
+  - `JsxText`;
+  - identifiers and comments are never scanned.
+- **Skipped literals** are machine names by position:
+  - module specifiers of import and export declarations, `import()` and `require()` arguments, and `ImportTypeNode` arguments;
+  - property-name literals (`PropertyAssignment.name`, `{ "tick_end": … }`);
+  - literals inside type positions (`LiteralTypeNode`).
+- **Browser code:** a `String.raw` tagged template bound to a `const` whose name ends in `_JS` (the `GUI_CLIENT_*_JS`, `CORE_JS`, `FORMAT_JS` and `DOM_JS` blobs in src/ui/gui/) is JavaScript source, not text.
+  - Build its source from the file text between the backticks, replacing each `${…}` substitution, from `$` to its closing `}`, with a run of the same length: a `0` and then spaces, keeping any newline inside it. Parse that as `ts.ScriptKind.JS` and scan its literals by the rules above.
+  - Because lengths are kept, embedded line N is file line (template start line + N), so findings and exemptions use real file lines.
+  - Every other template, CSS and HTML included, is scanned as text.
+- **Exemption:** a finding is dropped when the file line it sits on ends with `// vocabulary-ok: <reason>`, with a non-empty reason.
+  - A word inside multi-line template text cannot carry the comment, because the comment would be part of the text.
+  - So the doc comment tells authors to move such a machine name into a constant on its own exempted line and interpolate it, for example a trailer prefix.
+- **Shape:** export nothing. Use one pure function `vocabularyFindings(fileName: string, text: string): string[]`, returning `"<file>:<line>: <word> in <excerpt>"`, shared by the real scan and the self-tests, as layering.test.ts shares `scanUiImports`.
+- **Tests:**
+  - "opted-in src modules use only plain terms": walk `src/` for `.ts` and `.tsx` files, keep those where `optedIn` is true, and assert no findings. Zero opted-in modules passes.
+  - Self-tests on inline fixture source, each a separate `test(…)`:
+    - flags a retired word in a string literal and in template text, including inflections, and does not flag `tick_end` or `land_queued`;
+    - ignores the same words in identifiers, comments and `${fleet.loop}` expressions;
+    - honors `// vocabulary-ok: event type` and refuses an empty reason;
+    - skips import specifiers, property-name literals and type literals;
+    - flags `JsxText` in a `.tsx` fixture;
+    - in a `const X_JS = String.raw\`…\`` fixture, flags a word inside a browser string literal on the right file line, ignores browser identifiers, and ignores a `${JSON.stringify(x)}` substitution;
+    - does not flag `ticket`, `seamless` or `lastTickEndedAt`;
+    - ignores a module without the header.
+
+**Files touched.** test/vocabulary.test.ts (new). Reads (does not edit): test/layering.test.ts, test/affected-tests.ts, src/ui/gui/gui-client.ts.
+
+**Acceptance criteria.**
+- With no `// vocabulary: plain` header anywhere in src/, the guard passes.
+- On a header-carrying fixture whose string literal contains "fleet", `vocabularyFindings` returns one finding that names the file, the line and the word.
+- The self-tests above all pass, each in its own named test.
+- `RETIRED_WORDS` holds exactly the starting list above, and its doc comment says the role-ids series appends `dry` and `telemetry`.
+- `npm run test` passes.
+
+### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests)
+
+**Goal.** One server-side home for three display rules every surface will use: `feature-2` shown as `feature #2`, a role's title, and an event type or run result code shown in words ("run finished", "no change"). They land with tests and no callers. The text series adopts them.
+
+**Approach.**
+- New module `src/roles/role-labels.ts`, carrying the `// vocabulary: plain` header line:
+  - `roleLabel(runnerId: string): string` — for an instance id, where `baseRoleOf(id) !== id` (src/roles/loop-ids.ts), return `` `${baseRoleOf(id)} #${instanceIndex(id)}` ``. Return any other id unchanged: a bare role, `director`, a custom role, `feature-1`.
+  - `ROLE_TITLES: Readonly<Record<string, string>>` — built from `ROLES` (src/roles/role-catalog.ts) as id → `title`, plus `DIRECTOR_ROLE` → `"runs your messages first"`.
+  - `CUSTOM_ROLE_TITLE = "custom role"`.
+  - `roleTitle(id: string): string` — `ROLE_TITLES[baseRoleOf(id)]` when that is an own property (use `Object.hasOwn`: a custom role may be named `constructor`, see the comment in config.ts `overlayDefaults`), else `CUSTOM_ROLE_TITLE`. Instance ids resolve through their base.
+  - The catalog titles themselves do not change here. Plain terms role ids changes them.
+- New module `src/events/event-labels.ts`, carrying the header:
+  - `EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>>` (src/events/events.ts). The `Record` type makes the compiler demand a label for every one of the 75 types in the union, so a new event type cannot ship without one, and a later rename of a type (Plain terms event log) renames its key here with the label unchanged. Say both in the doc comment.
+  - `RUN_RESULT_LABELS: Readonly<Record<TickResult, string>>` (src/tick/tick-outcome.ts, 14 codes), exactly:
+    - `changed` "merged"; `queued` "waiting to merge"; `no_change` "no change"; `skipped` "skipped"
+    - `refused` "refused"; `rejected` "rejected in review"; `review_error` "review failed"
+    - `merge_conflict` "merge conflict"; `merge_blocked` "merge blocked"; `error` "error"
+    - `aborted` "interrupted"; `quiet_killed` "stalled, resumed"; `user_aborted` "stopped by you"
+    - `main_red` "main's check is failing"
+  - `eventTypeLabel(code: string): string` — the own-property label from `EVENT_TYPE_LABELS`, else from `RUN_RESULT_LABELS`, else `code.replace(/_/g, " ")`. Event types and result codes are disjoint today, which a test pins, so one lookup serves the activity chips (`tick_end`) and the result cells (`no_change`).
+  - **Label rule** for event types: a lowercase phrase of a few words, in the "Glossary" and "Wording rules" terms, never the code itself. These labels are fixed:
+    - `tick_start` "run started"; `tick_end` "run finished"; `tick_deferred` "run deferred"; `tick_aborted` "run stopped by you"; `resume` "run resumed"
+    - `land_queued` "waiting to merge"; `landed` "merge finished"; `land_failed` "merge failed"; `merged` "merged"
+    - `fleet_paused` "team paused"; `fleet_resumed` "team resumed"; `role_streak_paused` "repeated-failure pause"
+    - `main_red_hold` "main's check is failing"
+    - `maintenance_quota_hold` "waiting: maintenance allowance used"
+    - `disk_low` "waiting: low disk"; `rate_limit_hold` "waiting: provider limit"; `claude_window_limited` "waiting: claude usage window"
+    - `budget_fallback` "over-cap model"; `slot_wait` "waited to start"
+    - `build_stale` "update available"; `restart_pending` "update waits for idle"; `restart` "restarted onto update"
+    - `conflict_handback` "sent back to resolve"; `build_check` "check ran"
+    - `prompt_enqueued` "message queued"; `prompt_taken` "message picked up"
+    - `orchestrator_start` "tumwater started"; `orchestrator_stop` "tumwater stopped"; `supervisor_exit` "tumwater exited"
+  - Label every other type by the same rule.
+- Both modules are pure, with no I/O. Neither is under src/ui/, so core modules (event-format.ts, report, notify) may import them per test/layering.test.ts.
+- New tests:
+  - `test/role-labels.test.ts`: `roleLabel` for `feature-2` → `feature #2` and `bugfix-10` → `bugfix #10`, and unchanged for `feature`, `feature-1`, `director` and `nightly-2` (a custom name). `roleTitle` for `feature-3` equals feature's catalog title, `director` → "runs your messages first", and `nightly` and `constructor` → "custom role". Every `ROLES` id has a non-empty title.
+  - `test/event-labels.test.ts`:
+    - every label is non-empty, starts with a lowercase letter and contains no `_`;
+    - no key appears in both maps;
+    - `eventTypeLabel("tick_end") === "run finished"` and `eventTypeLabel("no_change") === "no change"`;
+    - an unknown `some_new_type` falls back to `some new type`.
+- The vocabulary guard (part 2/4) scans both modules through their headers, so a retired word in a label fails the suite.
+
+**Files touched.** src/roles/role-labels.ts (new), src/events/event-labels.ts (new), test/role-labels.test.ts (new), test/event-labels.test.ts (new). Reads (does not edit): src/roles/loop-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/events/events.ts, src/tick/tick-outcome.ts, src/ui/gui/gui-client-model.ts (its `RESULTS` map shows today's result wording).
+
+**Acceptance criteria.**
+- `roleLabel("feature-2")` is `feature #2`, and `roleTitle("bugfix-3")` is bugfix's catalog title.
+- Deleting one entry from `EVENT_TYPE_LABELS` or `RUN_RESULT_LABELS` fails `tsc`.
+- The guard scans both new modules, which carry the header, and passes.
+- test/exports.test.ts passes: every new export has a test user.
+- `npm run test` passes.
+
+### Plain terms groundwork, part 4/4: Give the dashboard client browser twins of the label helpers (planned 2026-10-16 by user; requires part 1/4 and part 3/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/loop-ids.ts and src/ui/gui/gui-client-labels.ts and src/ui/gui/gui-client.ts plus a test)
+
+**Goal.** The browser dashboard gets `roleLabel`, `roleTitle` and `eventTypeLabel` under the same names, with exactly the server's answers, so the dashboard text parts can call them from any client module.
+
+**Approach.**
+- **Mechanism.** It follows the codebase's two existing patterns:
+  - The dashboard script is String.raw text and cannot import server modules (src/ui/gui/gui-client.ts's header comment). Data is interpolated at module build with `${JSON.stringify(X)}`, as `STALL_SOURCE`, `PROBLEM_RESULTS`, `LOOP_RANK_RULES` and `ENTRY_STAMP_META_SOURCE` are in gui-client-model.ts.
+  - The few lines of logic are hand-kept browser twins, pinned against their TypeScript originals by a test, like `humanSeconds` and `fmtNextRun`.
+  - Nothing new goes into the `/api/status` payload.
+- In `src/roles/loop-ids.ts`, export `INSTANCE_ID_SOURCE = "^(feature|bugfix)-([2-9]|[1-9][0-9]+)$"` and build `INSTANCE_RE` from it. Behavior is unchanged.
+- New module `src/ui/gui/gui-client-labels.ts`, carrying the `// vocabulary: plain` header. It exports `GUI_CLIENT_LABELS_JS`, a String.raw template with one marked region, `// labels:start` … `// labels:end`, holding:
+  - `const ROLE_TITLES = ${JSON.stringify(ROLE_TITLES)};`
+  - `const CUSTOM_ROLE_TITLE = ${JSON.stringify(CUSTOM_ROLE_TITLE)};`
+  - `const INSTANCE_ID = new RegExp(${JSON.stringify(INSTANCE_ID_SOURCE)});`
+  - `const EVENT_TYPE_LABELS = ${…};` and `const RUN_RESULT_LABELS = ${…};`
+  - `function roleLabel(id)`, the instance regex's base + `" #"` + index, else the id;
+  - `function roleTitle(id)`, the base through the regex, then an own-property lookup with `Object.prototype.hasOwnProperty.call`, else `CUSTOM_ROLE_TITLE`;
+  - `function eventTypeLabel(code)`, with the same lookup order and underscore fallback as the server.
+- Splice it into `GUI_CLIENT_JS` in src/ui/gui/gui-client.ts right after `FORMAT_JS`, before `GUI_CLIENT_MODEL_JS`, so every later module can call the three functions. No existing client code changes.
+- The vocabulary guard parses `GUI_CLIENT_LABELS_JS` as browser code (its name ends in `_JS`), so the module's header is enforced on the browser literals too.
+- New `test/gui-client-labels.test.ts`, using `clientScope(["labels"], ["roleLabel", "roleTitle", "eventTypeLabel"])` from test/helpers/gui-client-scope.ts. It asserts the browser and server functions agree on:
+  - every `ROLES` id, `director`, `feature-2`, `bugfix-10`, `feature-1`, `nightly`, `nightly-2` and `constructor`;
+  - every key of `EVENT_TYPE_LABELS` and `RUN_RESULT_LABELS`, plus one unknown code.
+- Docs: no change. docs/glossary.md from part 1/4 already names the terms these produce.
+
+**Files touched.** src/roles/loop-ids.ts, src/ui/gui/gui-client-labels.ts (new), src/ui/gui/gui-client.ts, test/gui-client-labels.test.ts (new). Reads (does not edit): src/roles/role-labels.ts, src/events/event-labels.ts, test/helpers/gui-client-scope.ts.
+
+**Acceptance criteria.**
+- The served dashboard script defines `roleLabel`, `roleTitle` and `eventTypeLabel` before the view-model region.
+- For every id and code listed above, the browser and server functions return identical strings.
+- Changing a title in the role catalog, or a label in event-labels.ts, changes the browser's answer with no edit to the client module, because the data is interpolated.
+- test/loop-ids.test.ts still passes, so the instance regex is unchanged in behavior.
+- `npm run test` passes.
+
+### Plain terms commands, part 1/6: Accept renamed config keys through one alias table starting with mergeBatchMax and maintenancePerWorkMerge (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/cli/config-commands.ts and src/doctor/ plus the two keys' readers and tumwater.example.json)
+
+**Goal.** tumwater.json may spell a renamed key either way: load reads both, a file setting both is refused naming the pair, every writer writes only the new name, and `tumwater doctor` names each old key with its exact rename. This part builds the machinery and moves the two smallest keys: `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge`. Parts 2/6–4/6 only add rows.
+
+**Approach.**
+- New module `src/config/config-aliases.ts`:
+  - `interface ConfigKeyRename { from: string; to: string; scope: "top" | "role" }`. `"top"` is a top-level key. `"role"` is a field of every `roles.<id>` entry.
+  - `CONFIG_KEY_RENAMES: readonly ConfigKeyRename[]`, with this part's two `"top"` rows.
+  - `normalizeConfigKeys(raw: unknown): { raw: unknown; renamed: string[]; problems: string[] }`. It is pure and never mutates its input; a non-object passes through unchanged.
+    - A `from` present with its `to` absent moves the value to `to` and records `"<from> → <to>"` in `renamed`. Role rows use dotted paths: `roles.<id>.<from> → roles.<id>.<to>`.
+    - Both present records the problem `sets both <from> and <to> — keep <to> (<from> is its old name)`.
+    - A non-object `roles` or role entry is left for validateConfig to report.
+  - `canonicalConfigKey(key: string): string` maps a key a person typed to its current spelling:
+    - a top-level `from` → its `to`;
+    - a dotted key whose first segment is a top-level `from` gets that segment replaced, so part 4/6's `agents.<id>.<field>` works with no new code;
+    - `roles.<id>.<from>` → `roles.<id>.<to>`;
+    - anything else passes through unchanged.
+- **Readers.** `parseJsonConfig` in src/config/config.ts runs `normalizeConfigKeys` after `JSON.parse`:
+  - On problems it returns `{ problem: "<basename>: " + problems.join("; ") }`; otherwise `{ raw, renamed }`.
+  - Every file reader goes through it, so all of them see only new names:
+    - `loadPresentConfig`;
+    - config-write.ts's `rawConfigObject`, which feeds `preserveFileRoles` and every `unsetConfigKey` presence check;
+    - config-example.ts's `parseExampleTemplate` and both sides of `exampleDrift`, so an old-key local file shows no false drift against the new-key template.
+- **Writers.** `loadConfig` now returns only new names, so every whole-config write (`writeConfigMutation`, `saveConfig`, `applyConfigRequest`, `init`'s seed through `seedConfig`) emits only new names, and the first write migrates the file.
+  - `setConfigKey` and `unsetConfigKey` (src/config/config-write.ts) and `cmdConfig`'s get, set and unset (src/cli/config-commands.ts, including `screenOperableKey`) apply `canonicalConfigKey` first.
+  - The CLI confirmation names the canonical key: `set mergeBatchMax to 4`.
+  - The dashboard's `/api/config-set` reaches the same path through `setConfigKey`.
+- **The director's request.** `applyConfigRequest` runs the parsed request object through `normalizeConfigKeys` before its allowed-key screen. A request that sets both spellings fails with the problem text, and an old spelling never lands in `ignored`. This part's rows do not reach the request; part 3/6 relies on the wiring.
+- **The two keys.** Rename the `TumwaterConfig` fields `landBatchMax` → `mergeBatchMax` and `maintenancePerWorkLanding` → `maintenancePerWorkMerge` (src/config/config-schema.ts). That covers:
+  - their `TOP_LEVEL_KEYS` entries, so completion and the unknown-key list follow;
+  - `defaultConfig`, and the `checkNumber` lines in config-validation.ts;
+  - the readers: src/landing/landing-drain.ts, src/gates/gate-polls.ts, src/doctor/doctor-holds.ts, src/status/status-data.ts;
+  - comments that name the key, and tumwater.example.json;
+  - test code that builds a `TumwaterConfig` in TypeScript (typecheck finds every one). JSON fixtures written to tumwater.json may keep old keys, because the alias reads them.
+  - Function and variable names keep their old words until Plain terms code merge.
+- **Doctor.** Add `checkConfigKeyNames(root)` in src/doctor/doctor-checks.ts:
+  - It reads `parseJsonConfig(configPath(root), CONFIG_BASENAME)`. It is ok when the file is absent, broken (checkInit reports that) or has nothing renamed.
+  - Otherwise it warns: `old key names: landBatchMax → mergeBatchMax, … — rename them in tumwater.json; both spellings work until then`.
+  - Register it in src/doctor/doctor.ts right after `init` as `{ name: "config key names", ... }`.
+- The help text names neither key; nothing to change there.
+
+**Files touched.** src/config/config-aliases.ts (new), src/config/config.ts, src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-write.ts, src/config/config-example.ts, src/cli/config-commands.ts, src/landing/landing-drain.ts, src/landing/landing-pipeline.ts (comment), src/gates/gate-polls.ts, src/gates/maintenance-quota.ts (comment), src/doctor/doctor-holds.ts, src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/status/status-data.ts, tumwater.example.json. Tests: test/config-aliases.test.ts (new), test/config.test.ts, test/config-validation.test.ts, test/config-validation-model.test.ts, test/config-write.test.ts, test/config-unset-key.test.ts, test/doctor-checks.test.ts, test/doctor-holds.test.ts, test/landing-drain-vetting.test.ts.
+
+**Acceptance criteria.**
+- A tumwater.json holding `"landBatchMax": 5` loads with `mergeBatchMax` 5. `tumwater config get landBatchMax` and `config get mergeBatchMax` both print `5`. `config set landBatchMax 4` prints `set mergeBatchMax to 4` and leaves the file with `mergeBatchMax: 4` and no `landBatchMax`.
+- A file setting both `maintenancePerWorkLanding` and `maintenancePerWorkMerge` fails to load with a message naming both and saying to keep `maintenancePerWorkMerge`, and doctor's `init` check fails with it.
+- Doctor's `config key names` check warns with the exact rename for an old-key file, and is ok for a new-key file.
+- `defaultConfig()`, `TOP_LEVEL_KEYS`, tumwater.example.json and `tumwater completion --config-keys` name only the new keys.
+- `npm run test` passes.
+
+### Plain terms commands, part 2/6: Rename tickTimeoutSeconds and minTickIntervalSeconds to runTimeoutSeconds and minRunIntervalSeconds (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and the timeout and interval readers and tumwater.example.json plus tests)
+
+**Goal.** Mechanical. The run timeout and the minimum gap between runs get their plain names: top-level `runTimeoutSeconds`, and `minRunIntervalSeconds` both at the top level and in `roles.<id>`. Old spellings still load through part 1/6's alias table.
+
+**Approach.**
+- Add three rows to `CONFIG_KEY_RENAMES` (src/config/config-aliases.ts):
+  - `tickTimeoutSeconds` → `runTimeoutSeconds`, scope `"top"`;
+  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"top"`;
+  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"role"`. The both-set refusal and doctor's `config key names` check then cover `roles.<id>` with no further code.
+- Rename the fields in src/config/config-schema.ts: `TumwaterConfig.tickTimeoutSeconds`, `TumwaterConfig.minTickIntervalSeconds` and `RoleConfig.minTickIntervalSeconds`. Update the `TOP_LEVEL_KEYS` and `ROLE_ENTRY_KEYS` entries, `defaultConfig` and its seeded `roles.*` entries (src/config/config.ts), and the `checkNumber` calls in src/config/config-validation.ts, including the `roles.<id>.` one. Also update any message naming the key, such as the review `timeoutSeconds` cap.
+- Update every reader, which typecheck finds:
+  - src/scheduling/scheduling.ts and src/scheduling/backoff.ts;
+  - src/config/config-views.ts, config-fallbacks.ts and config-write.ts;
+  - src/loop/loop-tick.ts and src/tick/tick-apply.ts;
+  - src/request-timeouts.ts (its `Pick<TumwaterConfig, …>`), src/agent/run-agent.ts and src/pi/pi-watchdogs.ts;
+  - src/fleet/error-storm.ts, src/fleet/fleet-polls.ts and src/failure/failure-cluster.ts (comment);
+  - src/roles/role-view.ts.
+- Keep the `role --json` payload's key `minTickIntervalSeconds` in role-view.ts's `RolePayload`, now filled from the renamed field: payload keys belong to Plain terms scripting. Leave role-render.ts's "Min tick interval" wording to Plain terms text.
+- tumwater.example.json: rename the top-level key and the five `roles.*` entries.
+- Tests: rename the TypeScript field uses (test/fixtures/orchestrator-fixtures.ts, scheduling, backoff, config, config-views, config-write, config-unset-key, loop, pi-watchdogs, error-storm, review-followup and the rest that typecheck names). Leave tumwater.json JSON fixtures on the old keys only where a test is about the alias.
+- New cases in test/config-aliases.test.ts:
+  - `roles.qa.minTickIntervalSeconds` loads as `roles.qa.minRunIntervalSeconds`;
+  - a role entry with both is refused, naming `roles.qa.minTickIntervalSeconds` and `roles.qa.minRunIntervalSeconds`;
+  - `config set roles.qa.minTickIntervalSeconds 60` writes `roles.qa.minRunIntervalSeconds`;
+  - `config unset tickTimeoutSeconds` removes a file's old-spelled key.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-views.ts, config-fallbacks.ts, config-write.ts; src/scheduling/scheduling.ts, backoff.ts; src/loop/loop-tick.ts; src/tick/tick-apply.ts; src/request-timeouts.ts; src/agent/run-agent.ts; src/pi/pi-watchdogs.ts; src/fleet/error-storm.ts, fleet-polls.ts; src/roles/role-view.ts, roles.ts (comment); tumwater.example.json. Tests: the suites typecheck names, plus test/config-aliases.test.ts.
+
+**Acceptance criteria.**
+- A file holding `"tickTimeoutSeconds": 600` and `"roles": {"qa": {"minTickIntervalSeconds": 60}}` loads with `runTimeoutSeconds` 600 and `roles.qa.minRunIntervalSeconds` 60. Doctor names both renames.
+- Setting both spellings at either level is refused, naming the pair.
+- `grep -rn "tickTimeoutSeconds\|minTickIntervalSeconds" src` finds only the alias rows, role-view.ts's payload key, and comments that name the old spelling as old.
+- `defaultConfig()` and tumwater.example.json use only the new names.
+- `npm run test` passes.
+
+### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests)
+
+**Goal.** Custom roles are declared under `customRoles`. Old files, and the director's `.tumwater-config-request.json`, may still say `customLoops`. A file or request that says both is refused.
+
+**Approach.**
+- Add the row `customLoops` → `customRoles`, scope `"top"`, to `CONFIG_KEY_RENAMES`.
+- Rename `TumwaterConfig.customLoops` → `customRoles` (src/config/config-schema.ts; the `CustomLoop` interface name stays until Plain terms code cleanup) and its `TOP_LEVEL_KEYS` entry. Update the uses:
+  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `customLoopNames`, `isCustomRole`, and the stableJson comment;
+  - src/config/config-validation.ts: messages now name `customRoles[0].name`;
+  - src/config/config-field-checks.ts, src/roles/role-view.ts, src/tick/tick-prompt.ts;
+  - comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts and src/gui/gui-args.ts;
+  - the `EDITABLE_CONFIG_KEYS` comment in src/config/config-editable-keys.ts.
+- `applyConfigRequest` (src/config/config-write.ts), using the normalization part 1/6 wired:
+  - The request may say `customRoles` or `customLoops`.
+  - Both at once fail with the problem text, and nothing is written; the request file is still deleted.
+  - The allowed-key screen compares against `customRoles`, so `customLoops` never shows up as ignored.
+  - Update the docstring's request shape.
+- The key named in text the director reads: the request example and rules in src/prompt/prompt.ts (the `{ "customLoops": … }` lines and "applies only its customLoops array"), and the ignored-keys warning in src/tick/tick-verdict.ts ("only customRoles is accepted"). These are key names, so they move with the key. The rest of the prompt's wording belongs to Plain terms text.
+- tumwater.example.json: `"customRoles": []`.
+- Tests:
+  - test/config-request.test.ts: the request with `customRoles`; the request with old `customLoops` still applies; both together are refused with nothing written; error text now names `customRoles[0].name`.
+  - test/config.test.ts, config-validation-limits, config-unset-key, role-view, tick-prompt, tick-verdict, gui, gui-endpoints, cli-operators-fleet, status-data, orchestrator-probe, loop-ids, main-red and the rest: TypeScript `cfg.customLoops` → `cfg.customRoles`.
+  - test/prompt-roles.test.ts and test/prompt.test.ts assertions on the prompt's key name.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-field-checks.ts, config-write.ts, config-editable-keys.ts (comment); src/roles/role-view.ts; src/tick/tick-prompt.ts, tick-verdict.ts; src/prompt/prompt.ts; comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts, src/gui/gui-args.ts, src/cli/config-commands.ts; tumwater.example.json. Tests as listed.
+
+**Acceptance criteria.**
+- A tumwater.json with `customLoops: [{name:"docs",task:"…"}]` runs a `docs` role. `tumwater config` prints it under `customRoles`.
+- A director request `{ "customLoops": [...] }` applies and `{ "customRoles": [...] }` applies. A request with both is refused, the request file is deleted, and tumwater.json is unchanged.
+- Doctor's `config key names` check names `customLoops → customRoles`.
+- The director's prompt shows the request as `{ "customRoles": [ … ] }`.
+- `npm run test` passes.
+
+### Plain terms commands, part 4/6: Rename the agent and agents config keys to backend and backends (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/pi/pi-bin.ts and src/agent/agent-backend.ts and src/cli/ and src/ui/gui/gui-client-settings.ts plus tests)
+
+**Goal.** The config names the agent backend `backend` (default for bare model ids) and `backends` (per-backend `bin`/`args`). Old files keep working. The legacy `agentBin`/`piArgs` now chain to `backends.pi.bin`/`.args`.
+
+**Approach.**
+- Add the rows `agent` → `backend` and `agents` → `backends`, scope `"top"`, to `CONFIG_KEY_RENAMES`. `canonicalConfigKey` already maps `agents.<id>.<field>` → `backends.<id>.<field>` by its first segment (part 1/6).
+- Schema (src/config/config-schema.ts):
+  - `TumwaterConfig.agent` → `backend` and `agents` → `backends`, with their `TOP_LEVEL_KEYS` entries.
+  - `AgentConfig`, `AGENT_KEYS` and `AGENT_IDS` keep their names until Plain terms code cleanup.
+- `ResolvedModelConfig` (src/config/config-views.ts): today it is `Omit<TumwaterConfig, "model" | "agent"> & {…, agent?}`. Make it `Omit<TumwaterConfig, "model"> & {…, agent?}`.
+  - A resolved seam's own `agent` is the backend that seam runs on. It is an internal field and keeps its name.
+  - The configured default is now `backend`.
+  - `defaultConfig()` (typed as the resolved view) sets `backend: "pi"` and `backends: {}`, and no longer sets `agent`. Every reader already defaults a missing seam `agent` to pi.
+  - This matters: whole-config writes serialize the merged defaults. A default `agent` key would put both `agent` and `backend` on disk, and the next load would refuse the file.
+- Readers of the configured default and section:
+  - src/config/config-views.ts: `routeModel(…, config.backend ?? "pi", …)` in both places, and `resolvedAgentConfig` reading `config.backends?.[id]`;
+  - src/config/config-fallbacks.ts: the `config.agent` read;
+  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `collapseAgentAliases` reading `backends.pi`;
+  - src/agent/agent-backend.ts: its config view type's `agents?` field;
+  - src/pi/pi-bin.ts: the config-key wording becomes `` `backends.${agent}.bin` ``, while pi's is still `agentBin`.
+  - Seam-level `.agent` reads (run-agent.ts, review.ts, loop-pi.ts, doctor) are the resolved field and do not change. Let typecheck separate the two.
+- Validation (src/config/config-validation.ts):
+  - `checkString(r, "", "backend", …)`, the `backends` section check, and the prefix `backends.<id>`;
+  - the legacy-alias rule reads `r.backends.pi`, and its messages say `agentBin and backends.pi.bin set the same value — keep one (backends.pi.bin is the current spelling; agentBin is its old name)`, and the same for `piArgs`/`backends.pi.args`.
+  - Chaining needs no new code: normalization moves a file's `agents` to `backends` first, so `agentBin` together with `agents.pi.bin` is refused too.
+- Keys and writes:
+  - src/config/config-keys.ts: `parseConfigKey`'s dotted head becomes `backends`; `DOTTED_KEY_HEADS`; the error reads `unknown backend field "x" for backends.<id> (valid fields: bin, args)`. The parsed kind may stay `"agent"`.
+  - src/config/config-write.ts: the set and unset agent branches read and write `backends`.
+  - src/cli/config-commands.ts: `config get` reads `record.backends`.
+  - src/cli/completion.ts: emits `backends.<id>.<field>`.
+- Dashboard: `EDITABLE_CONFIG_KEYS` (src/config/config-editable-keys.ts) `"agents"` → `"backends"`, and the browser copy in src/ui/gui/gui-client-settings.ts's `SETTINGS_KEYS` gets the same key change. Its label text belongs to Plain terms text.
+- Out of scope: the status payload's `budget.agent` and `role --json`'s `agent` are script keys owned by Plain terms scripting.
+- Tests:
+  - TypeScript configs that set the top-level `agent`/`agents` (config-views, config-validation, config-write, config-unset-key, config, pi-bin, claude-run, startup-gate, doctor-checks, gui-client-settings, gui-endpoints, completion and the rest typecheck names). Seam/`ResolvedModelConfig` `agent:` values stay.
+  - New cases in test/config-aliases.test.ts:
+    - `{"agent":"claude"}` loads as `backend`;
+    - `agents.pi.bin` loads as `backends.pi.bin`;
+    - `agentBin` together with `agents.pi.bin` is refused naming `backends.pi.bin`;
+    - `config set agents.claude.args '["--x"]'` writes `backends.claude.args`.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-views.ts, config-fallbacks.ts, config-validation.ts, config-keys.ts, config-write.ts, config-editable-keys.ts; src/agent/agent-backend.ts; src/pi/pi-bin.ts; src/cli/config-commands.ts, completion.ts; src/ui/gui/gui-client-settings.ts; comments in src/agent/claude/claude-args.ts, claude-backend.ts, src/agent/run-agent.ts. Tests as listed.
+
+**Acceptance criteria.**
+- A file with `"agent": "claude"` and `"agents": {"claude": {"args": ["--x"]}}` loads as `backend`/`backends` and runs claude seams with `--x`. Doctor names both renames.
+- `tumwater config set agents.pi.bin /opt/pi` writes `backends.pi.bin`. A file with `agentBin` and `backends.pi.bin` is refused naming both.
+- `tumwater config set maxDailyCostUsd 5` on a file holding `"agent": "claude"` writes a file with `backend` and no `agent`, and that file loads again.
+- The dashboard Settings view edits `backends`, and `/api/config` serves it. `tumwater completion --config-keys` lists `backend`, `backends.pi.bin` and `backends.claude.args`, and no `agents.` key.
+- `npm run test` passes.
+
+### Plain terms commands, part 5/6: Make tumwater start the command that runs the team with run as a hidden alias (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and the strings that say tumwater run plus scripts/live-checkout-guard.mjs)
+
+**Goal.** `tumwater start` starts the team and pairs with `tumwater stop`, with the same flags. `tumwater run` keeps working forever but is not shown in help or completion. Every message that tells you to run `tumwater run` says `tumwater start`.
+
+**Approach.**
+- src/cli.ts: `case "start": case "run":` share one body, `rejectUnknownArgs("start", args, RUN_FLAG_SPECS)` then `cmdRun`. Errors name `start` for either spelling. test/affected-tests.ts reads fallthrough case labels, so it maps `start` to cli-run.ts with no edit.
+- src/cli/help.ts:
+  - Replace the `tumwater run …` stanza with `tumwater start [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]`. Rewrite its description in plain terms ("Glossary" and "Wording rules": roles, runs, merges, "finishes current work, then stops", exit 3 when a run ended in error, review failed, merge conflict, merge blocked or main's check failing).
+  - The `tui` stanza says it observes a running `tumwater start`.
+  - Add `HIDDEN_COMMAND_ALIASES: Readonly<Record<string, string>> = { run: "start" }`. `helpTopic` resolves an own-property alias first, so `tumwater help run` and `tumwater run --help` print the start topic.
+  - `suggestCommand` and completion read only the stanzas, so `run` drops out of both.
+- Flag labels: src/cli/cli-flag-specs.ts `durationFlagSpec("start --for")` and src/cli/cli-run.ts `parseDurationFlag("start --for", …)`. Update the RUN_FLAG_SPECS doc comment.
+- Change every user-visible string that names the command. Find them with `grep -rn "tumwater run\b\|\brun --\(for\|once\|gui\|tui\)" src scripts`, ignoring comments:
+  - src/ui/fleet-alerts.ts: the stale-build detail, the stopped alert's detail, and its copy action `arg`;
+  - src/ui/status-render.ts: "not running — start with `tumwater start`";
+  - src/ui/gui/gui-client-fleet.ts: "Start it with tumwater start", and "started with start --for";
+  - src/init/init.ts: the `--branch` hint;
+  - src/cli/cli-run.ts: the `next:` line after init;
+  - src/doctor/doctor-checks.ts: the rebuild hint;
+  - src/events/event-format.ts: the supervisor_exit line;
+  - src/operator/operator-intent.ts: `NO_HARNESS_ERROR` and the three "next `tumwater run`" tails;
+  - scripts/live-checkout-guard.mjs: the refusal text.
+  - Change only the command name in each string. Plain terms text rewrites the rest of their wording.
+- The supervisor keeps spawning its child generations as `run` in src/process/supervisor.ts `spawnRunChild`. Add a comment explaining why:
+  - The supervisor runs the build it started on, but each child loads dist/src/cli.js, which a redeploy replaces with main's newest build.
+  - Every build from this part on accepts `run`, and older builds accept only `run`. So spawning `run` works against whatever build the child meets, even after a rollback, while spawning `start` would make an updated supervisor's respawn fail with "unknown command" on a reverted build.
+  - Do not "fix" this to `start`.
+- Comments elsewhere that say `tumwater run` may stay. Plain terms code run renames `cmdRun`/cli-run.ts and their comments.
+- Tests:
+  - New cases in test/cli-help.test.ts or test/help.test.ts: `tumwater start --bogus` fails naming `valid flags for tumwater start`; `tumwater run --bogus` fails the same way (alias); `helpTopic("run") === helpTopic("start")`; `HELP` has no `tumwater run` line; `completionSpec().commands` has `start` and not `run`.
+  - Update the assertions on the changed strings: test/cli-arg-strictness, cli-args, cli, cli-operators, cli-operators-fleet, event-format, operator-intent, init, live-checkout-guard, tui-frame, fleet-alerts, gui-operator, orchestrator-once.e2e.
+  - Existing tests that spawn the CLI as `run` stay as they are and keep covering the alias.
+
+**Files touched.** src/cli.ts, src/cli/help.ts, src/cli/cli-flag-specs.ts, src/cli/cli-run.ts, src/process/supervisor.ts (comment only), src/ui/fleet-alerts.ts, src/ui/status-render.ts, src/ui/gui/gui-client-fleet.ts, src/init/init.ts, src/doctor/doctor-checks.ts, src/events/event-format.ts, src/operator/operator-intent.ts, scripts/live-checkout-guard.mjs, and the tests listed.
+
+**Acceptance criteria.**
+- `tumwater start --once` behaves exactly as `tumwater run --once` did, and `tumwater run --once` still works.
+- `tumwater help` lists `tumwater start` and no `tumwater run`. `tumwater help run` prints the start topic. Bash completion offers `start` and not `run`.
+- `grep -rn "tumwater run" src scripts` matches only comments.
+- `spawnRunChild` still passes `run`, with the comment above.
+- `npm run test` passes.
+
+### Plain terms commands, part 6/6: Show one run's trail as tumwater history role n and rename the result class changes to merged (planned 2026-10-16 by user; requires part 4/6 and part 5/6 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and src/tick/tick-detail.ts and src/history/ and src/ui/tui/tui-keys.ts plus tests)
+
+**Goal.** `tumwater history <role> <n> [--last] [--stat] [--json]` prints one run's full trail. `history <role> --last` prints the newest one. The bare `history [flags]` listing is unchanged. `tumwater tick …` stays as a hidden alias. `history --result merged` replaces `--result changes`, which keeps working unlisted.
+
+**Approach.**
+- **Telling the two forms apart.** Add `historyTrailForm(args: string[]): boolean` to src/cli/cli-command-args.ts, beside `peelPositionals`.
+  - It walks the args, skips the value token after each listing-form valued flag (`-n`, `--since`, `--grep`, `--result`, `--role`), and returns true when any other token does not start with `-`.
+  - So `history feature 3`, `history feature --last` and `history --json feature 3` are the trail form.
+  - `history -n 5`, `history --grep feature`, `history --role qa --since 1h` and bare `history` are the listing.
+  - A `--grep` value that starts with `-` is still skipped by position.
+- **src/cli.ts:**
+  - In `case "history"`, when `historyTrailForm(args)` is true, run today's trail body: peelPositionals, `rejectUnknownArgs("history", rest, [JSON_FLAG, LAST_FLAG, STAT_FLAG])`, the 1–2 positional arity gate, `requireReadyRepo`, `cmdTick`. Otherwise run the listing body unchanged.
+  - `case "tick"` runs the same trail body. Factor it into one local async function in cli.ts so the two cases cannot drift. Under trail flags, a listing flag such as `--role` is refused by the trail's rejectUnknownArgs.
+- **src/tick/tick-detail.ts:**
+  - `TICK_USAGE` becomes `"tumwater history <role> [<n>] [--last] [--stat] [--json]"`. The constant's name stays until Plain terms code run.
+  - The positional's count label becomes `parseCountFlag("history <n>", …)`.
+- **src/cli/help.ts:**
+  - Replace the `tumwater tick …` stanza with a second `history` stanza: `tumwater history <role> [<n>] [--last] [--stat] [--json]`. Describe it in plain terms: one run's full event trail, a summary header (result, or in flight, with duration, tokens and cost, and the commit) and then every event of that run in time order; a run still in flight shows its events so far; a run waiting to merge shows its merge verdict once the merge finishes; `--last` shows the role's newest finished run; `--stat` appends the commit's per-file `git show --stat`; `--json` prints the collector's payload.
+  - In the listing stanza, change only `[--result <changes|none|problems>]` to `[--result <merged|none|problems>]`, and "changes (changed/queued)" to "merged (merged or waiting to merge)".
+  - Add `tick: "history"` to `HIDDEN_COMMAND_ALIASES`, so `tumwater help tick` prints the history topic, both forms.
+- **src/history/history-data.ts:** the internal class names (`HISTORY_RESULT_CLASSES`, `historyClass`, `HistorySummaryRow.changes`) stay, so `--json` summary keys and the dashboard's client-side filter do not move. Add:
+  - `HISTORY_RESULT_FLAG_NAMES: Readonly<Record<HistoryResultClass, string>> = { changes: "merged", none: "none", problems: "problems" }`;
+  - `parseHistoryResultClass(raw: string): HistoryResultClass | null`, which accepts a flag name or a class name, so `changes` is the hidden alias.
+- **src/history/history.ts:** `--result` goes through `parseHistoryResultClass`. The error lists the flag names: `history --result must be one of merged, none, problems`.
+- **src/cli/completion.ts:**
+  - `--result` completes the flag names.
+  - The bash role-id positional condition `== role || == tick` becomes `== role || == history`, so `tumwater history <TAB>` offers role ids.
+- **src/ui/tui/tui-keys.ts:** `HISTORY_RESULTS` labels each class with its flag name (`[c, HISTORY_RESULT_FLAG_NAMES[c]]`), so the TUI filter reads `merged` like the CLI.
+- **Tests:**
+  - test/cli-command-args.test.ts: a table of `historyTrailForm` cases covering every example above.
+  - test/cli-history-views.test.ts, or the suite that owns `tumwater tick` today, gains CLI cases:
+    - `history <role> <n>` and `history <role> --last` print the same trail `tick` does;
+    - `history --json feature 1` is the trail;
+    - `history feature 1 --role qa` is refused;
+    - `tick feature 1` still works;
+    - `--result merged` filters like `--result changes` did, and `--result changes` still works;
+    - a bad `--result` lists `merged, none, problems`.
+  - Update assertions on the usage text, on the TUI filter label, and in test/completion.test.ts.
+
+**Files touched.** src/cli.ts, src/cli/cli-command-args.ts, src/cli/help.ts, src/cli/completion.ts, src/tick/tick-detail.ts, src/history/history-data.ts, src/history/history.ts, src/ui/tui/tui-keys.ts; tests: test/cli-command-args.test.ts, test/cli-history-views.test.ts, test/tick-detail.test.ts, test/help.test.ts, test/completion.test.ts, test/cli-arg-strictness.test.ts and the TUI history-filter test.
+
+**Acceptance criteria.**
+- `tumwater history feature 3` and `tumwater tick feature 3` print identical output, and `tumwater history feature --last --json` prints the newest trail's payload.
+- `tumwater history -n 5`, `history --grep feature` and `history --summary` behave exactly as before.
+- `tumwater history --result merged` equals the old `--result changes` output, and `--result changes` still works. Neither help nor completion shows `changes` or `tick`.
+- `tumwater help tick` prints the history topic.
+- `npm run test` passes.
+
+### Plain terms text, part 1/19: Event messages and the Activity tally speak the glossary (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/events/event-format.ts + src/text/phrases.ts + sayTally in src/cli/log-commands.ts + tallyChips in src/ui/gui/gui-client-fleet.ts + tests)
+
+**Goal.** Every event line that `tumwater logs`, the TUI Activity pane, the dashboard feed and the notify hook show reads in plain terms ("feature #2 run #12 merged", "team paused — roles start no new runs", "waiting: low disk"). The per-type tally (`tumwater logs --count` and the dashboard's Activity chips) shows display labels instead of raw codes like `3 × tick_end`.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel` (the groundwork helpers).
+  - Strings that name a renamed command or config key use its new name ("Commands and config").
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `eventMessage` (src/events/event-format.ts): rewrite every case. Examples of the target wording:
+  - Runs: `tick_start` → `run #N started on <model>`. `tick_end` → `run #N <eventTypeLabel(result)> — <summary>`, so `no_change` reads "no change", `changed` reads "merged" and `queued` reads "waiting to merge". `tick_aborted` → "run stopped by you".
+  - Merges: `land_queued` → "waiting to merge <sha> — <summary>". `landed` → "merge of <sha> done". `land_failed` → "merge of <sha> failed (<label>)".
+  - Pauses: `fleet_paused`, `fleet_resumed` and `role_paused` say "team", "roles" and "runs". `role_streak_paused` → "… N runs failed in a row …".
+  - Waits: `disk_low`, `maintenance_quota_hold`, `bootstrap_complete`, `rate_limit_hold` and `claude_window_*` use the Wording rules' "waiting" forms ("waiting: low disk — …", "the maintenance roles wait until the window rolls over"). "claude seams" becomes "claude model jobs".
+  - Budget: `budget_fallback` and the fallback clause of `budget_paused` say "over-cap model".
+  - Updates and restarts:
+    - `build_stale` → "update available (N commits behind) — restarts when idle".
+    - `restart_pending` → "… finishing current runs (no new runs start)".
+    - `restart` → "restarting onto update <sha> (finished current work in Nm; N run(s) resume after the restart)".
+    - `restart_refused` and `restart_blocked` → "staying on version <sha>".
+    - `supervisor_exit` → "tumwater is down — restart N …; start it again with `tumwater start`".
+    - `orchestrator_start` → "tumwater started (pid N, version <sha>)", and `ORCHESTRATOR_STOPPED` → "tumwater stopped".
+  - Waiting to start: `slot_wait` → "waited 3m to start (<role> run; 5 workspaces, 2 pinned)", with purpose `vet` read as "check". `permit_reserve` → "… reserved for work roles that have work to take".
+  - Inbox: `prompt_enqueued`, `prompt_cancelled`, `prompt_edited` and `prompt_taken` → "message added to the inbox: …", "… taken by run #N: …".
+  - `resume` causes say "run" and "agent". Only the cut-off cause, which only pi produces, keeps "pi session".
+- `deferredReasonText`: "no work landed since last tick" → "nothing merged since the last run".
+- `formatEvent`: print the source column as `roleLabel(eventRole(e))`, and as "tumwater" for the `"harness"` source (the event log series renames the stored value later). Widen the padded column from 9 to 10 so `feature #2` fits. `eventFeedItem` keeps shipping the raw id, because it is a JSON value.
+- src/text/phrases.ts: reword the text of `PREFILL_REASON`, `consecutiveFailuresWarning`, `fleetPausePhrase`, `fleetResumePhrase`, `rolePausePhrase`, `roleResumePhrase` and `ORCHESTRATOR_STOPPED` ("team paused — roles start no new runs", "team resumed — roles run again", "… it starts no new runs"). Function names stay for the code series.
+- `sayTally` (src/cli/log-commands.ts): each prose line becomes `N × <label> (<type>)`, so the code a user passes to `logs --type` stays visible. `--count --json` keeps the raw types. Change nothing else in log-commands.ts and add no header to it; part 6/19 converts the rest.
+- `tallyChips` (src/ui/gui/gui-client-fleet.ts): chip text becomes `N × <label>` from the browser twin of `eventTypeLabel`, with the raw type as the chip's `title`. Only this function changes there; part 10/19 converts the rest of the file and adds its header.
+- Event-type `case` labels (`case "tick_end":` …) stay. If the guard flags one, end its line with `// vocabulary-ok: event type`.
+- The notify hook's `TUMWATER_EVENT_MESSAGE` is `formatEvent`'s line, so it changes with this part. src/events/notify.ts holds only machine strings (the event log series owns them) and is not converted here.
+
+**Files touched.**
+- src: src/events/event-format.ts, src/text/phrases.ts, src/cli/log-commands.ts (`sayTally` only), src/ui/gui/gui-client-fleet.ts (`tallyChips` only).
+- Tests:
+  - test/event-format.test.ts, test/event-format-fleet.test.ts, test/phrases.test.ts, test/log-commands.test.ts, test/log-commands-views.test.ts.
+  - test/cli-logs-filtering.test.ts, for its `--grep` patterns that match message text.
+  - The tally cases in test/gui-client-fleet.test.ts.
+  - Any e2e or TUI suite that asserts a rendered event line. Find them by grepping for `tick #`, `for landing`, `role loops` and `fleet paused`.
+- Reads (does not edit): src/events/notify.ts.
+
+**Acceptance criteria.**
+- `formatEvent` of a `tick_end` from `feature-2` with result `no_change` reads `<time> feature #2  run #N no change …`, and a `"harness"` event's source column reads `tumwater`.
+- event-format.ts and phrases.ts carry the header, and the vocabulary guard passes. No `eventMessage` output asserted in test/event-format*.test.ts contains a retired word.
+- `tumwater logs --count` prints lines like `3 × run finished (tick_end)`, and `--count --json` is unchanged. The dashboard tally chips show labels, with the raw type as their title.
+- `npm run test` passes.
+
+### Plain terms text, part 2/19: Role state labels say due and merging and approved and waiting (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/status-model.ts + LANDING_STAGE_LABELS in src/landing/landing-slot.ts + src/landing/landing-queue-render.ts + the phase matchers in src/ui/fleet-alerts.ts and src/ui/gui/gui-client.ts and src/ui/gui/gui-client-model.ts + tests)
+
+**Goal.** Every surface shows a role's state with the Wording rules' labels: `tumwater status`, the TUI, the dashboard pill and `tumwater queue`. For example, `due` replaces `queued`, `merging` replaces `landing`, `approved, waiting to merge` replaces `vetted, awaiting merge`, `waiting to start` replaces `awaiting slot`, and every hold reads `waiting: <reason>`. The work is mostly mechanical. A few modules match these labels by string, and all of them change together in this part.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- Labels returned by `loopPhase` (src/ui/status-model.ts):
+
+  | Today | New |
+  | --- | --- |
+  | `queued` | `due` |
+  | `vetted, awaiting merge` | `approved, waiting to merge` |
+  | `landing <t> · <stage> <t>` | `merging <t> · <stage> <t>` |
+  | `awaiting slot <t>` | `waiting to start <t>` |
+  | `awaiting <key> slot <t>` | `waiting for <key> <t>` |
+  | `main red` | `main's check is failing` |
+  | `budget paused` | `waiting: budget spent` |
+  | `cap paused` | `waiting: daily cap spent` |
+  | `disk hold` | `waiting: low disk` |
+  | `held: bootstrap` | `waiting: bootstrap` |
+  | `held: maintenance quota a/b` (built by `loopRowCells`) | `waiting: maintenance allowance used a/b` |
+  | `idle: sibling mid-entry` | `idle: another <base role> instance is working on it` |
+  | `waiting for prompts` (idle director) | `ready for messages` |
+
+  These stay: working, reviewing, director working, paused, quiet until, sleeping (for …), failing, stopped, deferred (…), idle: no unclaimed …, and the ` · no change ×N` suffix.
+- Update `LOOP_RANK_RULES` and `ACTIVE_PHASE_PREFIXES` so each state keeps its rank:
+  - Rank 0 (active): `working`, `reviewing` and `merging`.
+  - Rank 1: the prefixes `approved`, `waiting to start` and `waiting for `. The last covers a waiter parked on a provider key. It is also why the idle director's label moves away from "waiting for …".
+  - Rank 2: the phases `failing` and `main's check is failing`.
+  - Rank 3: the phase `paused` and the prefix `waiting:`.
+- `LANDING_STAGE_LABELS` (src/landing/landing-slot.ts): change only this constant there; part 15/19 converts the rest of that file.
+  - `check-wait` → "waiting to check".
+  - `build-check` → "checking".
+  - `provider-wait` → "waiting for the provider".
+  - `merging` → "finishing the merge", so no row reads "merging · merging".
+  - The other stages stay.
+- src/landing/landing-queue-render.ts, the whole module:
+  - `queueEntryLandingLabel` uses the labels above.
+  - `renderLandingQueue` prints `merge queue empty`, `merge queue (N):` and `<roleLabel> run #N`.
+- The dashboard client parses these labels, so every client parser changes in this part, not later. Tests feed literal strings, so a server-only change would pass while the dashboard silently broke.
+  - `ACTIVE_PHASE_PREFIXES` and `LOOP_RANK_RULES` reach the browser by interpolation: gui-client.ts's `isActivePhase` and gui-client-model.ts's loop sort. Their new values reach the client automatically, but check both.
+  - `phaseInfo` and the gui-client.ts active check hold their own literals. Rewrite them as below.
+- Code that matches these labels, changed in the same part so nothing goes stale:
+  - The red-main filter in `fleetAlerts` (`l.phase === "main red"`, src/ui/fleet-alerts.ts). Change only that line; part 3/19 converts the rest of the file.
+  - The active check in src/ui/gui/gui-client.ts's next-run cell (`phase.startsWith("awaiting slot")`).
+  - `phaseInfo` (src/ui/gui/gui-client-model.ts):
+    - Match the new labels, keep each `after(n)` offset equal to the new prefix's length, and rewrite the provider-key regex for `waiting for <key> <t>`.
+    - Update the pill words: "Merging"; "Approved" with "waiting to merge"; "Waiting to start"; "Main's check failing" with "blocked until main's check passes"; "Due" with "starts on the next poll"; "Waiting" with the reason "budget", "daily cap", "low disk", "bootstrap" or "maintenance"; "Ready" with "runs when you send it a message"; "failed runs in a row"; "starts no new runs".
+    - Keep every `key` value, because they are internal state keys owned by the code series.
+  - Add no header to the gui files in this part.
+- `status --json` and `/api/status` ship the rendered label as `phase`, so the payload values change here. This delivers the "Script interfaces" row's `phase` value `landing` → `merging`.
+- Add the header to status-model.ts and landing-queue-render.ts.
+
+**Files touched.**
+- src: src/ui/status-model.ts, src/landing/landing-queue-render.ts, src/landing/landing-slot.ts (`LANDING_STAGE_LABELS` only), src/ui/fleet-alerts.ts (one matcher), src/ui/gui/gui-client.ts (one matcher), src/ui/gui/gui-client-model.ts (`phaseInfo` only).
+- Tests, where most hits are the same substitution:
+  - test/status-model.test.ts, test/status-render.test.ts, test/status-render-cells.test.ts, test/status-payload.test.ts.
+  - test/gui-client.test.ts (it pins the `phaseInfo` twin), test/gui-client-loops.test.ts, test/gui.test.ts, test/gui-operator.test.ts.
+  - test/fleet-alerts.test.ts, test/landing-queue.test.ts, test/cli-queue.test.ts.
+  - The loop and e2e fixtures that assert a phase. Find them by grepping for `awaiting slot`, `vetted, awaiting merge`, `main red`, `disk hold`, `held: ` and `"queued"` phases.
+
+**Acceptance criteria.**
+- The `loopPhase` fixtures yield `due`, `approved, waiting to merge`, `merging 2m · checking 10s`, `waiting to start 3m`, `waiting for omlx 3m`, `main's check is failing`, `waiting: low disk` and `ready for messages`. `loopRank` gives each the rank its old label had.
+- A new test in test/gui-client.test.ts builds each label with the server's `loopPhase` rather than writing it by hand. It passes each label through the browser `phaseInfo`, `isActivePhase` and loop sort taken from `GUI_CLIENT_JS`, and asserts the same key, tone, live flag and rank as before.
+- The red-main alert still fires, and a parked waiter still shows no next-run time.
+- `tumwater queue` prints `merge queue (N):` lines tagged `[merging 2m · reviewing]` or `[approved, waiting to merge]`.
+- `npm run test` passes.
+
+### Plain terms text, part 3/19: The status table and header badges and alerts use the glossary (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/ui/status-render.ts + src/ui/badges.ts + src/ui/fleet-alerts.ts + src/ui/tone.ts + src/ui/tick-progress-model.ts + src/status/ + nextRunPhrase in src/text/datetime.ts + tests)
+
+**Goal.** `tumwater status`, the TUI's table and header, and the alerts that the dashboard banner and the TUI's attention lines share all read in plain terms:
+- The columns become `role · state · runs · commits · output · peak ctx · cost · today · last run · last merged · last result · next run`.
+- An update badge replaces STALE, and `running 5 of 8` replaces `slots 5/8`.
+- Raw results show as labels.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderStatusSpans` (src/ui/status-render.ts):
+  - Column headers: `loop` → `role`, `ticks` → `runs`, `last tick` → `last run`, `last landed` → `last merged`.
+  - `gen` → `output`. The column counts the tokens the last run generated, not restarts, and "generation" is now a retired word for restarts, so `gen` would read wrong.
+  - `peak ctx`, `commits`, `cost`, `today`, `last result` and `next run` stay.
+  - The role cell prints `roleLabel(id)`, and the last-result cell prints `eventTypeLabel(result)`. "user-defined loop" → "custom role".
+  - Helper names (`lastTickCell`, `lastLandedCell`) stay for the code series.
+- `nextRunPhrase` (src/text/datetime.ts): the `backoff ` prefix → `sleeping `. The status cell and `tumwater role`'s schedule line share it, so update both suites.
+- src/ui/badges.ts:
+  - `buildBadge` → "update available (N commits behind) — restarts when idle", keeping "restart blocked".
+  - `landingBadge` → " · merge queue: N".
+  - `permitsBadge` → " · running 5 of 8".
+  - The claude window fragment "claude seams held until HH:MM" → "claude model jobs wait until HH:MM".
+  - `budgetBadge`'s "fallback:" → "over-cap model:".
+  - `bootstrapBadge`, `diskBadge`, `pauseBadge`, `quietBadge` and `wakeBadge` follow the rules.
+- `fleetAlerts` (src/ui/fleet-alerts.ts), every title and detail:
+  - Use the team, roles and runs.
+  - Main red → "main's check is failing", and "Code roles stop authoring until main's check passes".
+  - Budget → "over-cap model". The build alert → "Update available (N commits behind) — restarts when idle". Disk → "waiting: low disk".
+  - Quiet hours and pause follow the rules. Not running → "tumwater is not running — start it with `tumwater start`".
+  - The image alerts say "A run that reads an image …".
+  - Keep the `act` values and `AlertLoop` field names; the scripting series owns them.
+- `inFlightDetail` and `STALL_SOURCE` (src/ui/tick-progress-model.ts): "no pi output for 9m" → "no agent output for 9m", in both the emitted text and the regex. The dashboard model and the stuck alert interpolate that regex, so they follow. Add a test that feeds `inFlightDetail`'s actual output, not a literal, to the browser stall check.
+- src/ui/tone.ts has no visible text. Add the header, and mark the event-type and result lists and the `EventKind` value `"landing"` where the guard flags them.
+- Add the header alone to src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts and src/ui/transcript-tail.ts, which have no hits today.
+- Convert the prose in src/status/status-budget.ts, status-polls.ts and status-roles.ts and add the header. "pi default" stays, because it names pi's own default model.
+
+**Files touched.**
+- src: src/ui/status-render.ts, src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/tone.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts, src/status/status-budget.ts, src/status/status-polls.ts, src/status/status-roles.ts, src/text/datetime.ts.
+- Tests:
+  - test/status-render.test.ts, test/status-render-cells.test.ts, test/status-header.test.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/progress.test.ts.
+  - test/tui-frame.test.ts (the table rows), test/status-payload.test.ts (the preformatted badges), test/role-view.test.ts (the `sleeping` next run), test/gui-client.test.ts (the stall regex).
+
+**Acceptance criteria.**
+- The `tumwater status` header row reads `role state runs commits output peak ctx cost today last run last merged last result next run`.
+- A `feature-2` row starts `feature #2`, a `no_change` result reads `no change`, and the next run of a role sleeping after a failure reads `sleeping 12m`.
+- A build behind main shows `update available (3 commits behind) — restarts when idle` in both the header and the alert. A non-empty merge queue shows `merge queue: 2`, and permits show `running 5 of 8`.
+- A silent run's state reads `no agent output for 9m` and still raises the "looks stuck" alert.
+- `npm run test` passes.
+
+### Plain terms text, part 4/19: `tumwater doctor` names its checks plainly (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/doctor/ + tests)
+
+**Goal.** Doctor's check titles, details, header and routing block use the glossary, so a newcomer can read the health report. For example, "claimed bugs" replaces "fix claims", "macOS port leak" replaces "mach ports", and a `job · model · backend` routing table replaces "seam selector backend".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- Check names in `runDoctor` (src/doctor/doctor.ts):
+  - From the Wording rules table:
+
+    | Today | New |
+    | --- | --- |
+    | `fix claims` | `claimed bugs` |
+    | `stranded plans` | `plans stuck in Planned` |
+    | `mach ports` | `macOS port leak` |
+    | `tier models` | `models for each tier` |
+    | `work instances` | `parallel instances` |
+    | `worktree pool` | `workspaces` |
+    | `stale queued landings` | `stale merge-queue entries` |
+    | `merge lock` | unchanged |
+
+  - The same rules applied to the remaining names:
+
+    | Today | New |
+    | --- | --- |
+    | `main red` | `main's check` |
+    | `project check` | `check` |
+    | `build` | `update` |
+    | `error streaks` | `repeated failures` |
+    | `provider hold` | `provider waits` |
+    | `maintenance quota` | `maintenance allowance` |
+    | `fallback` | `over-cap model` |
+    | `agent binary` | `backend binary` |
+
+  - The other names stay.
+  - The names are also values in `doctor --json` and `/api/doctor`. The `seams` key belongs to the scripting series.
+- Header line:
+  - Running: "tumwater doctor — harness running (pid N, build abc — STALE)" → "tumwater doctor — running (pid N, version abc — update available)".
+  - Not running: "tumwater doctor — harness not running" → "tumwater doctor — not running".
+- `renderDoctor` (src/doctor/doctor-render.ts): `routing: seam  selector  backend` → `routing: job · model · backend`, with the label column's minimum width taken from "job".
+- Details in doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts:
+  - "no claude seams configured" → "no model jobs run on claude".
+  - "every seam uses pi's own default" → "every model job uses pi's own default".
+  - "selector" → "model id". "primary checkout" → "your checkout". "slot wait" → "wait to start". "claim(s) held" → "claimed bugs".
+  - "error-streak breaker" → "repeated-failure pause".
+  - "queued landing" → "merge-queue entry", and "the drain has stalled" → "the merge queue has stopped moving".
+  - fleet, loop, tick, landing, harness and operator follow the Glossary, and `tumwater run` becomes `tumwater start`.
+  - Text that is only about pi (pi's models.json) stays.
+- Add the header to every src/doctor module with user-visible text: doctor.ts, doctor-render.ts, doctor-checks.ts, doctor-holds.ts, doctor-model-checks.ts, doctor-backlog.ts and doctor-orphans.ts.
+
+**Files touched.**
+- src: src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/doctor/doctor-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor-orphans.ts.
+- Tests: test/doctor*.test.ts; the health rows in test/tui-keys.test.ts; test/gui-endpoints.test.ts and test/gui-client-settings.test.ts where they assert a check name.
+
+**Acceptance criteria.**
+- `tumwater doctor` lists `claimed bugs`, `plans stuck in Planned`, `macOS port leak`, `models for each tier`, `parallel instances`, `workspaces`, `merge lock` and `stale merge-queue entries`. Its routing block starts `routing: job · model · backend`.
+- The header reads `tumwater doctor — running (pid …)` or `tumwater doctor — not running`.
+- No check name or detail asserted in test/doctor*.test.ts contains a retired word, and the guard passes on the headed doctor modules.
+- `npm run test` passes.
+
+### Plain terms text, part 5/19: Report and failure digest and history and the run drill-down say runs and merges (planned 2026-10-16 by user; requires part 1/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/report/ + src/failure/ + src/history/ + src/tick/tick-detail.ts + src/tick/tick-detail-data.ts + tests)
+
+**Goal.** These views read in runs, merges, roles and the team, and their outcome columns show labels:
+- `tumwater report` and `tumwater failures`.
+- `tumwater history` and its drill-down, `tumwater history <role> <n>`.
+- The TUI and dashboard views that reuse their markdown.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "Ticks by role" | "Runs by role" |
+  | "Failed ticks by role" | "Failed runs by role" |
+  | "Landed by role" | "Merged by role" |
+  | "Landing failures by role" | "Merge failures by role" |
+  | "of which landing runs" | "of which merge runs" |
+  | "Notional by role", "by provider", "per commit" | "Estimated by role", "by provider", "per commit" |
+  | "N ticks" | "N runs" |
+  | "fleet-wide" | "team-wide" |
+
+- src/report/report-data.ts has only machine strings: its fold keys and the `re-landed|fixed|closed|resolved` regex that parses BUGS.md history. Mark them.
+- `renderFailureMarkdown` (src/failure/failure-render.ts):
+  - "## Fleet state changes" → "## Team state changes", and "## Landed in the window" → "## Merged in the window".
+  - "tick errors" → "run errors", "quiet kills" → "stalls", "per tick" → "per run", and "_no ticks in either window_" → "_no runs in either window_".
+- src/failure/time-spend.ts:
+  - The `OUTCOME_CLASS` values stay, because the code series owns that union. Render them as "merged", "no change" and "error" where the table is drawn.
+  - "the harness's own timeout" → "tumwater's own timeout".
+- `describeStateChange` (src/failure/failure-state-change.ts): reuse part 1/19's wording for the same events: "over-cap model", the waiting forms, "roles run again", "update available", "restarting onto update …" and "tumwater down — restart N". The `STATE_CHANGE_TYPES` codes stay.
+- History:
+  - `renderRow` and `renderSummary` (src/history/history-render.ts): headers `loop` → `role` and `ticks` → `runs`, with cells through `roleLabel` and `eventTypeLabel`.
+  - `cmdHistory`'s empty-result messages (src/history/history.ts): "no ticks …" → "no runs …".
+  - The column keys in history-data.ts (`pad("loop", …)`) stay, marked.
+- Drill-down, in `renderTickDetail` and `tickNotFoundMessage` (src/tick/tick-detail.ts):
+  - "tick #N" → "run #N", "completed tick" → "completed run" and "landed" → "merged".
+  - "(no commit: this tick queued no landing)" → "(no commit: this run sent nothing to merge)".
+  - Leave `TICK_USAGE` as the commands series left it, and convert the prose in tick-detail-data.ts.
+
+**Files touched.**
+- src: src/report/report-render.ts, src/report/report-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/failure/time-spend.ts, src/history/history-render.ts, src/history/history.ts, src/history/history-data.ts, src/tick/tick-detail.ts, src/tick/tick-detail-data.ts.
+- Tests:
+  - test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts.
+  - test/failure-render.test.ts, test/failure-state-change.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts.
+  - test/cli-history*.test.ts, test/history-data.test.ts, test/tick-detail*.test.ts, test/tui-history.test.ts, the drill-down cases in test/tui-keys.test.ts, and the run-detail cases in test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- `tumwater report` and `report --since` print `Runs by role`, `Failed runs by role`, `Merged by role`, `Merge failures by role` and `Estimated by role`.
+- The `tumwater failures` digest has `## Team state changes` and `## Merged in the window`. Its state-change line for a `budget_fallback` uses the same words as part 1/19's event line.
+- `tumwater history`'s header row names `role` and `run`, its rows show `feature #2` and `no change`, and `tumwater history feature 12` opens with `run #12`.
+- `npm run test` passes.
+
+### Plain terms text, part 6/19: Run control and operator command output (planned 2026-10-16 by user; requires part 5/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/cli/cli-run.ts + src/operator/ + src/brief/ + src/cli/brief-command.ts + src/cli/cli-query-commands.ts + src/cli/cli-command-args.ts + the rest of src/cli/log-commands.ts + src/cli.ts + src/fleet/reclaim.ts + tests)
+
+**Goal.** The output of `tumwater start`, `stop`, `pause`, `resume`, `wake`, `abort`, `retire`, `reclaim`, `reset-counters`, `brief` and `logs --role` speaks the glossary. Examples: "team paused — roles start no new runs", "tumwater is not running — start it with `tumwater start` first", "brief updated in README.md".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/cli/cli-run.ts:
+  - "stopping — finishing current runs (Ctrl+C again to force)".
+  - "roles:", and "0 runs — nothing ran".
+  - "restarting onto the update (restart N)".
+  - "tumwater restarted itself too many times in a minute — giving up".
+  - "maintenance roles wait until …".
+- src/operator/operator-commands.ts:
+  - `cmdPause` → "team paused — roles start no new runs (current runs finish; the director keeps running your messages)".
+  - `cmdStop` → "stop requested — the team finishes current work, then stops (the same path as Ctrl+C)".
+  - The `pause --reason` error says "the whole team". `cmdRetire` and `cmdReclaim` messages follow the rules.
+- src/operator/operator-intent.ts:
+  - `NO_HARNESS_ERROR` → "tumwater is not running — start it with `tumwater start` first". The constant name stays.
+  - `markerApplyNote` and `requestScheduledStop` follow the rules.
+  - `requestRestart` → "no update is waiting — tumwater is current with main".
+  - `rolePauseMessage` → "… it starts no new runs (current runs finish; the rest of the team is unaffected)".
+  - `roleResumeMessage` → "the team pause is still active".
+- Other operator modules:
+  - src/operator/operator-requests.ts: messages only; event sources stay, marked.
+  - src/operator/retire.ts: "unmerged commit(s) — merge or discard them first", "a run is in progress for this role", "the merge ref".
+- The brief:
+  - `readmeTemplate` and `briefTemplate` (src/brief/brief.ts): the heading "## Initial prompt" → "## Brief", and "The readme loop keeps this section up to date." → "The readme role keeps this section up to date." The read-error text follows the rules. The `tumwater:prompt` markers stay, because they are parsed.
+  - src/brief/brief-edit.ts: "the new brief is empty", "the new brief contains a tumwater:prompt marker …". The commit subject keeps the `tumwater(operator):` prefix and becomes "Edit brief".
+  - src/cli/brief-command.ts: "brief unchanged", "brief updated in <file>".
+- Other CLI output:
+  - src/cli/cli-query-commands.ts: "the team roster prints no patch", "--json does not apply to a notes write", "the director has no notes".
+  - src/cli/cli-command-args.ts: "… aim it at one role".
+  - The rest of src/cli/log-commands.ts: `logs --role` shows "the role's agent transcript", because the claude backend writes one too.
+  - src/cli.ts: "the running tumwater install looks broken".
+  - src/cli/config-commands.ts and src/fleet/reclaim.ts: their messages.
+
+**Files touched.**
+- src: src/cli/cli-run.ts, src/cli.ts, src/cli/cli-query-commands.ts, src/cli/cli-command-args.ts, src/cli/log-commands.ts, src/cli/config-commands.ts, src/cli/brief-command.ts, src/brief/brief.ts, src/brief/brief-edit.ts, src/operator/operator-commands.ts, src/operator/operator-intent.ts, src/operator/operator-requests.ts, src/operator/retire.ts, src/fleet/reclaim.ts.
+- Tests:
+  - test/operator-commands.test.ts, test/operator-intent.test.ts, test/operator-requests.test.ts, test/retire.test.ts.
+  - test/cli-run*.test.ts, test/cli-operators.test.ts, test/cli-operators-fleet.test.ts, test/scheduled-stop.test.ts, test/cli.test.ts.
+  - test/tui-operator-keys.test.ts and test/gui-operator.test.ts, which surface the same operator-intent messages.
+  - test/brief-command.test.ts, test/brief.test.ts, test/init.test.ts (the brief template), test/fleet-state.test.ts, test/reclaim.test.ts.
+
+**Acceptance criteria.**
+- `tumwater pause` prints `team paused — roles start no new runs …`, and `tumwater stop` prints `… the team finishes current work, then stops …`. Any operator command run while nothing is running prints ``tumwater is not running — start it with `tumwater start` first``.
+- `tumwater brief --set f.md` prints `brief updated in …`, and a new project's README template has `## Brief`.
+- `tumwater retire` refusals say "unmerged commit(s)" and "a run is in progress for this role".
+- `npm run test` passes.
+
+### Plain terms text, part 7/19: Inbox and backlog command output and the role page (planned 2026-10-16 by user; requires part 3/19, part 6/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/inbox/ + src/backlog/backlog-write.ts + backlog-cli.ts + question-answer.ts + backlog-structure.ts + src/roles/role-render.ts + role-view.ts + roles.ts + tests)
+
+**Goal.** These commands speak of the inbox, notes, runs and custom roles:
+- `tumwater prompt` with `--list`, `--cancel` and `--edit`.
+- `tumwater bug`, `tumwater plan` and `tumwater questions --answer`.
+- `tumwater role <id>`.
+
+The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the user" instead of "the operator".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `cmdPrompt` (src/inbox/prompt-commands.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "queued for the <role> loop" | "added to <role>'s inbox" |
+  | "queued for the director loop" | "added to the director's inbox" |
+  | "nothing queued for X" | "X's inbox is empty" |
+  | "nothing queued" | "every inbox is empty" |
+  | "is no longer queued" | "is no longer in the inbox" |
+  | "is queued for more than one loop" | "is in more than one role's inbox" |
+
+  "— delivers in …" stays, and role names go through `roleLabel`. Part 9/19 copies these exact phrases into the TUI.
+- The other inbox modules:
+  - src/inbox/inbox-cancel.ts: "… must name an inbox message's .md file".
+  - src/inbox/inbox-submit.ts: "run's prefill", and the image refusal follows the rules.
+  - src/inbox/pending-prompt.ts: "re-queued" → "returned to the inbox".
+  - src/inbox/inbox.ts and inbox-attachments.ts: their messages follow the rules.
+- The backlog writers:
+  - src/backlog/backlog-write.ts: `operatorStamp` "reported by the operator <date>" → "reported by the user <date>". `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the leading word `reported`, so parsing is unchanged.
+  - `bugWakeText` → "The user filed a new bug with `tumwater bug`: …", and `planWakeText` → "The user requested a plan with `tumwater plan`: …".
+  - src/backlog/question-answer.ts: the answer stamp becomes `**Answered <date> by the user:**`.
+  - src/backlog/backlog-cli.ts: its `operator` author strings are machine strings; mark them.
+  - The stranded-heading block in src/backlog/backlog-structure.ts: "no role sees them as backlog work".
+- `renderRoleMarkdown` and `inspectMarkdownLines` (src/roles/role-render.ts):
+
+  | Today | New |
+  | --- | --- |
+  | "Notebook" | "Notes" |
+  | "none yet — the role's own earlier ticks write it, and the director has none" | "none yet — the role's own earlier runs write them, and the director has none" |
+  | "Next tick prompt" | "Next run's prompt" |
+  | "nothing to run this tick" | "nothing to do this run" |
+  | the note on the oldest queued prompt | "embeds the oldest inbox message — one is taken per run" |
+  | "- Next tick:" / "- Last tick:" | "- Next run:" / "- Last run:" |
+  | "- Loop: … — user-defined loop" | "- Custom role: …" |
+  | "- Scheduling tier: N (work)" | "- Priority: work" (or maintenance, observer) |
+  | "- Budget fallback:" | "- Over-cap model:" |
+  | "- Min tick interval:" | "- Min run interval:" |
+  | "- Queued prompts:" | "- Inbox:" |
+  | "## Recent tick outcomes" | "## Recent runs" |
+
+  The director's line says it is driven by its inbox, not by instructions.
+- src/roles/role-view.ts: its prose follows the rules. src/roles/roles.ts: "user-defined loop" → "custom role"; the role ids `dry` and `telemetry` stay for the role ids series. The `role --json` keys stay for the scripting series.
+
+**Files touched.**
+- src:
+  - src/inbox/prompt-commands.ts, src/inbox/inbox.ts, src/inbox/inbox-cancel.ts, src/inbox/inbox-submit.ts, src/inbox/inbox-attachments.ts, src/inbox/pending-prompt.ts.
+  - src/backlog/backlog-write.ts, src/backlog/question-answer.ts, src/backlog/backlog-cli.ts, src/backlog/backlog-structure.ts.
+  - src/roles/role-render.ts, src/roles/role-view.ts, src/roles/roles.ts.
+- Tests:
+  - test/prompt-commands.test.ts, test/cli-prompt-queue.test.ts, test/cli-prompt-strictness.test.ts, test/inbox*.test.ts.
+  - test/backlog-write*.test.ts, test/question-commands.test.ts, test/questions-answer-editor.test.ts.
+  - test/role-view.test.ts, test/roles.test.ts, test/tui-role-prompt.test.ts, test/status-data-inbox.test.ts, and the role-payload cases in test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- `tumwater prompt --role bugfix "x"` prints `added to bugfix's inbox`, and `prompt --list` with nothing pending says every inbox is empty.
+- `tumwater bug "x"` writes a heading ending `(reported by the user <date>)`, and `bug --list` still shows its age.
+- `tumwater role feature` shows `Notes`, `Next run's prompt`, `- Priority: work`, `- Over-cap model:`, `- Inbox:` and `## Recent runs`.
+- `npm run test` passes.
+
+### Plain terms text, part 8/19: Help and completion prose use the glossary (planned 2026-10-16 by user; requires part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches src/cli/help.ts + src/cli/completion.ts + tests)
+
+**Goal.** `tumwater help`, every `tumwater help <command>` topic, the did-you-mean suggestion and the shell completion derived from HELP read in plain terms. They match the output that parts 1/19–7/19 now produce.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `HELP` (src/cli/help.ts):
+  - The first line "tumwater — autonomous development harness built on pi" → "tumwater — an autonomous development team, built on pi".
+  - Every stanza follows the Glossary and Wording rules:
+
+    | Today | New |
+    | --- | --- |
+    | loop | role |
+    | tick | run |
+    | landing | merge |
+    | fleet | team |
+    | land queue | merge queue |
+    | operator | you |
+    | observer TUI | TUI |
+    | initial prompt | brief |
+    | notebook | notes |
+    | standing prompt | instructions |
+    | drains | finishes current work |
+    | mach ports | macOS port leak |
+
+  - The output samples it quotes match what parts 2/19–7/19 print: `[merging 2m · reviewing]`, `[approved, waiting to merge]`, `merge queue empty`, and the result classes.
+- The commands series already rewrote the lines for `start`, `history <role> <n>`, `--result merged` and the renamed config keys. Keep those lines, and keep the hidden aliases out of help.
+- HELP is one template literal, so a trailing `// vocabulary-ok:` comment cannot sit inside it; it would become help text. Interpolate each machine name that must stay verbatim from a named constant declared on its own line ending `// vocabulary-ok: <reason>`. These are `--json` key lists such as `{ loops, total }` until the scripting series, event-type codes, and the `tumwater(operator):` prefix.
+- Re-wrap to the existing two-column layout: descriptions start at the same column and stanzas keep their shape. `helpStanzas`, `helpTopic`, `suggestCommand` and src/cli/completion.ts all parse it.
+- Add the header to help.ts and completion.ts. Completion's one flagged literal is a shell snippet naming the hidden `tick` alias: mark it, or drop `tick` if the commands series already did.
+
+**Files touched.**
+- src: src/cli/help.ts, src/cli/completion.ts.
+- Tests: test/help.test.ts, test/cli-help.test.ts, test/completion.test.ts, and any suite that snapshots a help topic (grep `helpTopic(`).
+
+**Acceptance criteria.**
+- The guard passes on help.ts with its header. Apart from the interpolated machine names, `tumwater help` and every topic contain no retired word.
+- `tumwater help queue` describes the merge queue and its `[merging …]` and `[approved, waiting to merge]` tags. `tumwater help doctor` lists part 4/19's check names.
+- Completion still offers every visible command and flag.
+- `npm run test` passes.
+
+### Plain terms text, part 9/19: The TUI's tabs and hints and editors use the glossary (planned 2026-10-16 by user; requires part 3/19, part 4/19, part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/tui/ + tests)
+
+**Goal.** The terminal UI names its views and keys the way the dashboard does: Inbox (not Queued), Notes, "scope: team", "pause team", and "send later" for Ctrl+L.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `tabStrip` (src/ui/tui/tui-frame.ts):
+  - "Queued" → "Inbox".
+  - The transcript tab's "Notebook: <role>" → "Notes: <role>".
+  - The history trail's "Tick: <role>" → "Run: <role>".
+  - Role names go through `roleLabel`.
+- `hintLine`:
+  - "scope: fleet" → "scope: team", in all three views.
+  - "pause fleet" → "pause team", and "tick trail" → "run trail".
+  - "notebook" → "notes", and "clear notebook" → "clear notes".
+  - Ctrl+A "abort" → "stop run".
+  - Ctrl+L "defer" → "send later", and "defer: 45m" → "send later: 45m".
+  - "interrupt director" stays.
+- `promptPrefix`: the editor's "defer" prefix → "send later", and "director (defer 45m) › " → "director (in 45m) › ".
+- `createTuiEditors` (src/ui/tui/tui-editors.ts):
+  - The send-later editor's prompt: "send later: a duration like 45m (empty sends now) — Enter to save, Esc to cancel".
+  - "defer cleared" → "send later cleared".
+  - The pause and stop editors: "pause the team: …", "stop the team later: … current runs finish, then the team stops".
+  - "fleet was not paused" and "fleet is already paused" say "team".
+  - Inbox messages match part 7/19's phrases: "added to <role>'s inbox — delivers in …", "edited inbox message for …", "the inbox message was already gone".
+  - "search ticks: …" → "search runs: …".
+- src/ui/tui/tui-input.ts:
+  - `parseDeferInput`'s error → "send later needs a duration like …".
+  - `parseRolePauseInput` → "a role pause takes only a duration … — reasons are team-wide, use Ctrl+F".
+  - `parseRoleWakeInput` → "a role wake …".
+- src/ui/tui/tui-keys.ts:
+  - "no runs with result …" and "no completed runs to inspect".
+  - "'s notes — any other key keeps them".
+  - "cancelled inbox message #N".
+- `paneBody` (src/ui/tui/tui-pane.ts): "(no run trail)", "(no runs yet)", "(inbox empty)", "<role>'s inbox".
+- `TuiView` kinds (`"queued"`, …) and other internal keys stay, marked. Add the header to every src/ui/tui module.
+
+**Files touched.**
+- src: src/ui/tui/tui-frame.ts, tui-editors.ts, tui-input.ts, tui-keys.ts, tui-pane.ts, tui.tsx, tui-app.tsx, tui-backlog.ts, tui-history.ts, tui-keymap.ts and tui-prompt-history.ts (the last five take the header only).
+- Tests: test/tui.test.ts, test/tui-frame.test.ts, test/tui-keys.test.ts, test/tui-input.test.ts, test/tui-notebook.test.ts, test/tui-operator-keys.test.ts, test/tui-backlog.test.ts, test/tui-history.test.ts, test/tui-role-prompt.test.ts, test/tui-budget.test.ts.
+
+**Acceptance criteria.**
+- The tab strip reads `Activity  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief`, and a role's notes view is labeled `Notes: feature #2 (…)`.
+- The footer shows `Ctrl+L send later`, or `send later: 45m` once a delay is set. The prompt prefix then reads `director (in 45m) › `.
+- The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
+- `npm run test` passes.
+
+### Plain terms text, part 10/19: Dashboard shell and the Team view (planned 2026-10-16 by user; requires part 1/19, part 3/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules" and "Guards"; touches src/ui/gui/gui-page.ts + gui-client.ts + gui-client-boot.ts + gui-client-fleet.ts + test/vocabulary.test.ts + tests)
+
+**Goal.** The dashboard's navigation and first view use the Wording rules' names. "Fleet" becomes "Team", the "Loops" card becomes "Roles", the "Queued" tab becomes "Inbox", and tiles count merges and runs. The vocabulary guard can also check the browser modules' visible strings.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The guard already parses each `*_JS` `String.raw` template as browser JavaScript (Plain terms groundwork part 2/4), so a headed gui-client module is checked on its browser string literals only, and a browser line ending `// vocabulary-ok: …` is exempt.
+- `GUI_PAGE` (src/ui/gui/gui-page.ts), visible text only:
+  - The sidebar's `aria-label` "Fleet" → "Team", and the brand label "tumwater fleet" → "tumwater team".
+  - The nav tab and the view title "Fleet" → "Team".
+  - The composer placeholder → "Tell the team what to do next…".
+  - The card title "Loops" → "Roles", and the table header "Loop" → "Role".
+  - The feed picker "Loop" → "Role", and "All loops" → "All roles".
+  - Button titles → "Zero every role's runs, commits, tokens, and cost …" and "Wake every role now, skipping any sleep".
+  - Every id, class and href hash stays: `#fleet`, `tab-fleet`, `fleet-view`, `loops-title`, `loopstable`. Later series rename them, and old hashes keep routing.
+  - gui-page.ts gets no `// vocabulary: plain` header in this series. About nine of its ids, classes and hashes contain retired words (`fleet-view`, `tab-fleet`, `fleet-title`, `fleetsub`, `#fleet`, `loops-title`, `loopstable`, `loops`, `c-loop`), and the page is one template literal, so no line can carry `// vocabulary-ok`. These are identifiers, so this part does not rename them and the guard does not learn to skip HTML attributes.
+    - The code series rename them together with their CSS rules in gui-styles.ts and their client selectors: Plain terms code team takes the `fleet` names, and Plain terms code runner takes the `loop` names. The scripting series renames the `#fleet` hash.
+    - Plain terms code cleanup's guard flip then scans the file.
+    - gui-styles.ts holds no user-visible text and gets no header either.
+- src/ui/gui/gui-client.ts: in the next-run cell, "backoff " → "sleeping ". Mark `activeView = "fleet"` and the other view ids.
+- src/ui/gui/gui-client-boot.ts: "Restart requested — tumwater applies it within one poll", and "Notes updated". Mark the view ids, the hashes (`loop/`, `#loops`) and the data-act names.
+- src/ui/gui/gui-client-fleet.ts:
+  - `renderSidebar`:
+    - The version card: "Version <sha>" and "Running version". The restart icon's title: "Restart onto the update now".
+    - The disk tile follows the rules. The slots tile: "Roles running at once out of the team limit, then each capped provider's …".
+    - The scheduled stop: "the team finishes current work, then stops".
+    - The `--for` note: "tumwater was started with `start --for`; at the deadline it finishes current work, prints a per-role summary, and stops".
+    - Quiet hours follow the rules. Bootstrap: "maintenance roles wait until enough plans are done; plan, feature and director keep running".
+  - `renderStats`:
+    - "N of M roles", with the in-flight breakdown printed from `phaseInfo` labels, not keys.
+    - "every role is between runs", and "the team is stopped".
+    - "Merged today", "See every run in History", "Runs today", and "per role".
+  - `renderBacklog`:
+    - The tab "Queued" → "Inbox", "Inbox empty", and "Messages you send wait here until their role's next run."
+    - "Roles post here when they need a decision from you.", and "The plan role files features in PLANS.md."
+    - "No longer in the inbox — …".
+  - `renderFeed`:
+    - Source chips go through the `roleLabel` twin, and the `harness` source shows as "tumwater".
+    - The empty states: "Merges, failures, and questions show up here. All events has every run start and check.", "Events appear here as the roles work.", "Widen the Search or Role picker …", and "Clear the Role or Search box …".
+  - `renderAlerts`: the banner icons' titles follow the rules.
+  - Keep `backlogTab = "queued"` and the other internal keys, marked.
+- Add the header to gui-client.ts, gui-client-boot.ts and gui-client-fleet.ts.
+- After the four dashboard parts land, regenerate docs/gui.png by hand (plans/terminology.md "Manual steps").
+
+**Files touched.**
+- src: src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-fleet.ts.
+- Tests: test/gui.test.ts, test/gui-client.test.ts (the shell cases), test/gui-client-boot.test.ts, test/gui-client-fleet.test.ts, test/gui-client-sidebar.test.ts.
+
+**Acceptance criteria.**
+- The served page shows the nav tab "Team", a "Roles" card with a "Role" column, and the placeholder "Tell the team what to do next…". `#fleet` and `#loop/<id>` still open their views.
+- The Team view shows "Merged today", "Runs today", "N of M roles" and an "Inbox" tab, and its feed chips read "feature #2" and "tumwater".
+- The guard's browser-mode fixture test passes, and the three headed modules pass the guard.
+- `npm run test` passes.
+
+### Plain terms text, part 11/19: Dashboard Roles card and view model and Merge queue card (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-loops.ts + gui-client-model.ts + gui-client-pending.ts + tests)
+
+**Goal.** The Roles card's rows, result pills and actions use the glossary and the shared labels. The "Land queue" card becomes the "Merge queue" card.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `renderLoops` and its row helpers (src/ui/gui/gui-client-loops.ts):
+  - Status text:
+    - "paused — it starts no new runs", and "your wake in …".
+    - A sleeping role: "sleeping — next check in …".
+    - ", nothing merged lately", " in this role's inbox", and "run N · merged <age>".
+    - "Merging the change…", and "No runs yet".
+  - Tag titles: "A custom role from tumwater.json", and "The model tier this role resolves at".
+  - Actions: "Click again to stop this run", "Wake every role", and the toast "every role woken".
+  - The empty state: "No roles are enabled in tumwater.json".
+  - Role names go through the `roleLabel` twin. Mark the class names `loop-name`, `c-loop` and `loop clickable`.
+- src/ui/gui/gui-client-model.ts:
+  - `resultInfo` takes its words from the browser twin of `eventTypeLabel`, capitalizing the first letter: "Merged", "Waiting to merge", "Interrupted", "Stopped by you", "Main's check failing", "No change", "Merge blocked", "Stalled". Its tone table stays.
+  - Mark the `key` literals in `phaseInfo`; part 2/19 already converted its labels.
+  - The alert-icon keys stay.
+- src/ui/gui/gui-client-pending.ts:
+  - The card title "Land queue" → "Merge queue". The empty states: "Merge queue empty", and "merge queue: N waiting".
+  - The Pending roster's text follows the rules.
+  - `pendingFleet` and the other identifiers stay.
+- Add the header to all three modules.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts.
+- Tests: test/gui-client-loops.test.ts, test/gui-client.test.ts (the view-model twin pins), test/gui-client-pending.test.ts, test/gui.test.ts.
+
+**Acceptance criteria.**
+- A role whose last run merged shows a green "Merged" pill. `queued` reads "Waiting to merge" and `user_aborted` reads "Stopped by you". A row with a merge in flight reads "Merging the change…".
+- The pending card is titled "Merge queue", and its empty state says "Merge queue empty".
+- The three modules carry the header and pass the guard.
+- `npm run test` passes.
+
+### Plain terms text, part 12/19: Dashboard role drawer and History view (planned 2026-10-16 by user; requires part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-drawer.ts + gui-client-history.ts + tests)
+
+**Goal.** The role drawer and the History view speak of roles, runs, merges and notes.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/ui/gui/gui-client-drawer.ts:
+  - Header: the kicker "Loop" → "Role", with the title through `roleLabel`. "This role is no longer part of the team."
+  - Buttons: "Message this role", and "Stop this run".
+  - Sections and labels:
+    - The in-flight section → "Merging", and "No completed runs yet.".
+    - Backoff → "sleeping".
+    - "this run" and "last run", "Runs", "Last run ended", "Last merged", and "Recent runs".
+    - "No workspace yet — this role has not run.".
+  - Notes:
+    - "Notes", "No notes yet.", and "Notes and prompt unavailable".
+    - "Next run's prompt", and "… once this role's next run starts".
+  - These stay, marked: the drawer kind `"loop"`, the `#loop/` hash, the `note-*` act names and the `ticks` class.
+- `renderHistory` and the run-detail loader (src/ui/gui/gui-client-history.ts):
+  - The heading: "Every completed run, newest first.".
+  - Pickers: "Role" and "All roles", "Search runs…", and "Runs to show".
+  - Run detail: "Loading run detail…", "Run detail unavailable", "No events in this run's block.", and "Show/Hide run detail".
+  - Empty states:
+    - "No runs match this filter" and "Try another outcome or role.".
+    - "The window may have had nothing to do, or …".
+    - "Completed runs show up here as the roles work.".
+  - Tables:
+    - Headers "Role" and "Run".
+    - Summary columns "Role", "Runs" and "Merged".
+    - Results go through the `eventTypeLabel` twin, and roles through `roleLabel`.
+  - These stay, marked, for the scripting and code series: the `/api/tick` route, its `tick=` parameter, and the `c-tick` and `data-tick` names.
+  - Its endpoint error: "… the running tumwater may not match this dashboard".
+- Add the header to both modules.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-history.ts.
+- Tests: test/gui-client-drawer.test.ts, test/gui-client-history.test.ts.
+
+**Acceptance criteria.**
+- The drawer for `feature-2` is titled `feature #2`, has the sections "Notes", "Next run's prompt" and "Recent runs", and its stop button reads "Stop this run".
+- The History table's headers read "Role" and "Run", and its summary columns read "Role", "Runs" and "Merged". Result cells show labels.
+- `npm run test` passes.
+
+### Plain terms text, part 13/19: The dashboard's remaining views and team controls (planned 2026-10-16 by user; requires part 4/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/gui/gui-client-report.ts + gui-client-settings.ts + gui-client-composer.ts + gui-client-operator.ts + gui-client-sound.ts + gui-client-markdown.ts + src/gui/ messages + tests)
+
+**Goal.** The remaining dashboard views use the TUI's names: the "Health check" card becomes "Health", and "Initial prompt" becomes "Brief". The pause and stop controls, the report charts and the server's dashboard responses speak of the team, roles and runs.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`. In browser code, use the browser twins the groundwork series provides.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/ui/gui/gui-client-report.ts:
+  - Labels: "Commits merged", "Runs", "estimated", "All roles" and "Role".
+  - The intro: "What the team produced and what it cost, per day and per role."
+  - Charts: "Merged commits", "Runs by role", "Spend by role", "Rejections by role", "Estimated spend by role".
+  - The scope note: "Role scope: … merge runs and backlog tallies … are team-wide and omitted."
+  - The failures intro: "the digest the telemetry role reads". The id stays for the role ids series and needs no marker.
+- `renderDoctorReport` and the settings cards (src/ui/gui/gui-client-settings.ts):
+  - "Health check" → "Health", and "Health checks could not run".
+  - "Initial prompt" → "Brief", with "Brief unchanged", "Brief saved (committed to main)", "Brief saved" and "Brief could not load".
+  - The editable-key help text follows the rules.
+- src/ui/gui/gui-client-composer.ts: the target and notice text say "inbox" and "role". Mark the `queued` data-act.
+- src/ui/gui/gui-client-operator.ts:
+  - The claude window title: "a rejected window pauses claude model jobs until it resets".
+  - The cost note: "Every model the team can use is cost n/a …".
+  - The budget popover: "At the cap the roles …".
+  - Pause:
+    - "The team is paused — click to resume it", and "Resume the team".
+    - "Pause the team — roles start no new runs".
+    - "Current runs finish, and the director keeps running your messages."
+    - The toasts "Team paused — current runs finish" and "Team resumed".
+  - Stop: "Stop the team later — current runs finish, then it stops", and "Stop the team later".
+- gui-client-sound.ts and gui-client-markdown.ts have no visible text. Add the header only.
+- The dashboard's server modules in src/gui/:
+  - src/gui/gui-operator-commands.ts: "the director has no notes", and `"prompt" must be a string — the full replacement brief`.
+  - src/gui/gui-backlog-commands.ts and gui-prompt-commands.ts: add the header and mark their machine strings: the `operator` author, and the `defer` body key the messages name.
+  - Modules in src/gui/ with only machine strings, such as routes and event sources, take no header.
+
+**Files touched.**
+- src: src/ui/gui/gui-client-report.ts, gui-client-settings.ts, gui-client-composer.ts, gui-client-operator.ts, gui-client-sound.ts, gui-client-markdown.ts; src/gui/gui-operator-commands.ts, src/gui/gui-backlog-commands.ts, src/gui/gui-prompt-commands.ts.
+- Tests: test/gui-client-report.test.ts, test/gui-report.test.ts, test/gui-client-settings.test.ts, test/gui-client-composer.test.ts, test/gui-operator.test.ts, test/gui-endpoints.test.ts.
+
+**Acceptance criteria.**
+- The settings view's cards are titled "Health" and "Brief". The report view's charts read "Runs by role" and "Estimated spend by role".
+- The pause control reads "Pause the team", and while paused it reads "The team is paused — click to resume it".
+- Every src/ui/gui/gui-client*.ts module now carries the header and passes the guard.
+- `npm run test` passes.
+
+### Plain terms text, part 14/19: Config validation and init and version messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/config/ + src/init/ + src/version.ts + tests)
+
+**Goal.** Errors from loading, validating and editing tumwater.json, `tumwater init`'s messages, and the backlog skeletons init writes into a new project all use the glossary. That means "model id" instead of "selector", "tumwater" instead of "the harness", "role" instead of "loop", and "brief" instead of "initial prompt".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The commands series already rewrote the messages that name renamed keys. This part converts the rest of src/config/:
+  - config-field-checks.ts and config-validation.ts:
+    - Model values: "must be a non-empty model id", "a model id or a map by tier (small, default, strong)", and "tier names are valid only as …".
+    - "fallback and fallbackModel both name the over-cap model".
+    - Role names: "not a valid role name", and "role's instance ids".
+    - "it is managed by tumwater", and "duplicates a flag tumwater sets".
+  - config-schema.ts's reasons for reserved pi arguments: "tumwater already runs pi non-interactively", and the rest in the same form.
+  - config-live.ts: "disabled — no new runs", and "enabled — starting runs". Event sources stay, marked.
+  - config-write.ts and config-keys.ts say "model id". "tier" stays, because it names model tiers.
+  - config-views.ts, config-fallbacks.ts, config.ts and model-selector.ts: their prose follows the rules. Text that is only about pi stays.
+  - Validation kind tags such as `"tier-map"` are internal; mark any the guard flags.
+- src/init/init.ts:
+  - "a brief is required: tumwater init <prompt | --file prompt.md>".
+  - "… without a brief between the tumwater:prompt markers …", "already carries a different brief …", and "the brief with the …".
+  - The commit subject becomes "tumwater: init files".
+- src/init/init-templates.ts, the skeleton prose for PLANS.md, BUGS.md, QUESTIONS.md, PRINCIPLES.md and README:
+  - "written by the plan role and implemented by the feature role".
+  - "recorded by any role and fixed by the bugfix role".
+  - "Open questions roles have posted …", and "they check here at the start of each run".
+  - "one focused change per run", and "a review and a merge on each".
+  - "the team keeps a README …", and "the team plans itself from your brief".
+  - These templates are multi-line. Interpolate any machine name kept inside one from a constant declared on a line ending `// vocabulary-ok:`.
+- src/version.ts: "the running tumwater install looks broken".
+
+**Files touched.**
+- src: src/config/config-field-checks.ts, config-validation.ts, config-schema.ts, config-live.ts, config-write.ts, config-keys.ts, config-views.ts, config-fallbacks.ts, config.ts, model-selector.ts; src/init/init.ts, src/init/init-templates.ts; src/version.ts.
+- Tests: test/config-validation*.test.ts, test/config-write.test.ts, test/config-live.test.ts, test/config-views.test.ts, test/config.test.ts, test/config-request.test.ts, test/init.test.ts, test/init-templates.test.ts, test/version.test.ts.
+
+**Acceptance criteria.**
+- The validation fixture for an empty model value says "model id". No config validation, write or live message asserted in tests contains "selector", "harness" or "loop".
+- `tumwater init` without a prompt says "a brief is required", and a newly initialized project's PLANS.md, BUGS.md and QUESTIONS.md speak of roles and runs.
+- `npm run test` passes.
+
+### Plain terms text, part 15/19: Merge pipeline and review and check messages (planned 2026-10-16 by user; requires part 2/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/landing/ + src/review/ + src/verdict/ + src/build/ + tests)
+
+**Goal.** Warnings and verdict reasons from the merge pipeline, the review gate and the check runner say merge, run, check and tumwater. These reach the feed, `tumwater history <role> <n>`, the failure digest and the authoring role's next prompt.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/landing/:
+  - landing-check-failures.ts: "merge check failed (kept for one retry): …" and "merge blocked: …". The display label `"batch check" | "landing check"` becomes "merge check".
+  - landing-merge.ts: "merge blocked: …".
+  - landing-drain.ts: "the stopped merge for <role> …".
+  - landing-vetting.ts: "merge queue head … is unreadable (torn or foreign) — dropped so the queue keeps moving".
+  - landing-pipeline.ts: "merge task for …".
+  - landing-batch.ts, landing-stack.ts, landing-core.ts and landing-slot.ts: their messages follow the rules. Part 2/19 already converted `LANDING_STAGE_LABELS`.
+  - These machine strings stay, marked:
+    - the `LandingChangeStatus` values `"landing"` and `"vetted"` (state series);
+    - the `build_check` scope `"landing"` (event log series);
+    - the `"harness"` source and the stage keys.
+- src/review/:
+  - review.ts: the suite-repeat explanations say "… the merge re-reviews it …".
+  - review-precheck.ts: "keeping the commit for another merge attempt", and "known-flaky failure, merge kept: …".
+  - protected-edits.ts rejection reasons: "changes the brief between the tumwater:prompt markers — only you edit it (tumwater brief); restore the block", and "… role — only the director and steward roles may edit it".
+  - suite-rerun.ts: "tumwater's pre-check already verified".
+  - review-followup.ts and secret-leaks.ts: "pi" → "the agent" where either backend reaches the text.
+- src/verdict/:
+  - fix-claim.ts: "include the fix in the same commit", and the other reasons in the same form.
+  - no-change.ts: its text is only about pi and stays.
+  - Part 19/19 converts reply-contract.ts with the prompts.
+- src/build/:
+  - build-check-events.ts: "merge check", "batch check", and "no host sleep measured: the host was starved or tumwater stalled".
+  - build-check-report.ts: "check failed (…)".
+  - build-stage.ts: tumwater's own build swap is the update, so "could not stamp the compiled update", "no staged update for …", and "an interrupted update swap left dist/ missing — restored it …".
+  - dep-install.ts: "until a later merge re-syncs it".
+  - build-check-detect.ts and build-info.ts: their prose follows the rules.
+
+**Files touched.**
+- src: the modules named above in src/landing/, src/review/, src/verdict/fix-claim.ts, and src/build/.
+- Tests:
+  - test/landing-*.test.ts, test/lander*.test.ts, test/review*.test.ts, test/protected-edits.test.ts, test/suite-rerun.test.ts, test/fix-claim.test.ts.
+  - test/build-*.test.ts, test/dep-install.test.ts.
+  - Any e2e suite that asserts these warnings.
+
+**Acceptance criteria.**
+- A merge whose post-rebase check fails logs `merge check failed …` and `merge blocked: …`.
+- The protected-edit rejection names "the brief" and says "only you edit it".
+- The `build_check` warnings say "merge check" or "batch check", and the build-swap warnings say "update".
+- `npm run test` passes.
+
+### Plain terms text, part 16/19: Run and runner and workspace and agent messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/tick/ + src/loop/ + src/git/ + src/agent/ + tests)
+
+**Goal.** Warnings and rejection reasons from a run's lifecycle say run, merge, workspace, agent and tumwater: stage checks, timeouts, resumes, retries, workspace leases and agent exits. Messages that both backends can produce no longer say "pi".
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/tick/, except tick-detail*.ts (part 5/19) and tick-prompt.ts and qa-coverage.ts (part 19/19):
+  - stage-check.ts: "this run is assigned one backlog entry but moved a different one …", and "… an entry another instance of this role is working on …".
+  - tick-stage.ts: "folded into tumwater's commit", "nothing to merge", "high-friction run:", and "failed to pin the merge ref; left for the next run's recovery".
+  - tick-timing.ts, the restart and shutdown hand-offs: "restart waiting on <role>'s merge in progress", and "… survive for the next restart".
+  - tick-resume.ts: "merge failed: …".
+  - tick-finalize.ts: "consecutive stalls (no progress)".
+  - tick-verdict.ts: "the agent failed", and "the agent finished without changes and without declaring nothing-to-do".
+  - tick-apply.ts and tick-outcome.ts hold only result codes; they take the header only.
+- src/loop/:
+  - loop-pi.ts, transient retries: "retrying the agent run once", and "the team-wide wait watches for a storm". Text about pi's own crash stays "pi".
+  - loop-recovery.ts: "by its merge ref — leaving the commit on the branch for the next run's recovery".
+  - loop-tick.ts: "an inbox message for <role> attaches an image, but no configured tier can read it".
+  - leftover.ts: "into its merge ref", and "merges ended in unresolved conflicts with main, even after sending it back to the role to resolve".
+  - loop-state.ts: its skip-reason codes and the `"landing"` phase value are state values; mark them.
+- src/git/:
+  - worktree-pool.ts: "could not remove idle workspace <name>", and "the workspace request was stopped before one was free". The `"tick" | "vet"` purposes stay for the state series, marked.
+  - slots-state.ts: its purposes are marked.
+  - commit-message.ts: the `Tick:` trailer and its parser stay for the state series, marked. Convert any prose.
+  - worktree-use.ts: its event source is marked.
+- src/agent/:
+  - run-agent.ts: "stopped by tumwater shutdown", "killed as hung: no agent progress for over …", and "the agent exited N".
+  - claude/claude-args.ts: "repeats a flag tumwater sets".
+  - The backend ids (`"pi"`) in agent-backend.ts and image-input.ts are values and stay.
+  - role-notes-write.ts and mcp/role-notes-server.ts are agent-facing; part 19/19 converts them.
+- Add the header to each module whose prose changed, and to modules that have no flagged literal at all. A module whose only hits are event sources or state values that later series rename stays unheaded.
+
+**Files touched.**
+- src: src/tick/stage-check.ts, tick-stage.ts, tick-timing.ts, tick-resume.ts, tick-finalize.ts, tick-verdict.ts, tick-apply.ts, tick-outcome.ts; src/loop/loop-pi.ts, loop-recovery.ts, loop-tick.ts, leftover.ts, loop-state.ts; src/git/worktree-pool.ts, slots-state.ts, commit-message.ts; src/agent/run-agent.ts, src/agent/claude/claude-args.ts.
+- Tests:
+  - test/stage-check.test.ts, test/tick-stage.test.ts, test/tick-timing.test.ts, test/tick-resume.test.ts, test/tick-finalize.test.ts, test/tick-verdict.test.ts.
+  - test/loop*.test.ts, test/worktree-pool.test.ts, test/commit-message.test.ts, test/claude-args.test.ts, test/claude-run.test.ts.
+  - The e2e suites that assert these warnings.
+
+**Acceptance criteria.**
+- run-agent's hang message reads "no agent progress", and tick-verdict's message for a run that changed nothing names no backend.
+- worktree-pool's warnings say "workspace". The restart hand-off warnings say "merge" and "restart".
+- The headed modules pass the guard.
+- `npm run test` passes.
+
+### Plain terms text, part 17/19: Gate and wait and restart and orchestrator messages (planned 2026-10-16 by user; requires Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/gates/ + src/redeploy/ + src/orchestrator/ + src/fleet/ + src/scheduling/ + src/concurrency/ + src/process/ + src/baseline/ + src/budget/ + tests)
+
+**Goal.** stderr and warning text from the gates, the self-update redeployer, the orchestrator and the supervisor say tumwater, update, version, restart, your checkout and the team.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/gates/:
+  - bootstrap-gates.ts: "tumwater: could not write bootstrap latch: …". Drop the `tumwater: harness:` prefix wherever it appears in this part's modules.
+  - readiness.ts: "your checkout is detached; check out your main branch first".
+  - startup-gate.ts: "pi" → "the agent" where the text is generic.
+  - The other gate modules' hits are `"harness"` event sources only. Leave them unheaded.
+- src/redeploy/redeployer.ts and redeploy.ts:
+  - "the running version's own commit fails its check — …", and "the update could not start: …".
+  - "the running version …", and "staying on version <sha>".
+  - "swapping the update into place failed", and "an update has waited ~N …".
+  - "tumwater: could not record …".
+  - "deferred — cooldown until …" stays.
+- src/orchestrator/:
+  - orchestrator.ts: "your checkout moved to <branch> — the team keeps merging into <base>".
+  - orchestrator-launch.ts: "run task rejected: …".
+  - orchestrator-scheduling.ts: "released <title>, which a stopped instance was working on". The skip-reason codes are marked.
+  - retention.ts: name the session files of both backends plainly.
+- The remaining modules:
+  - src/fleet/fleet-polls.ts and orchestrator-info.ts hold sources only; leave them unheaded unless they carry prose.
+  - src/scheduling/claims.ts, backoff.ts and quiet-hours.ts: their prose follows the rules.
+  - src/concurrency/lock.ts: "stale lock" stays, because it is not about a build.
+  - src/process/supervisor.ts and launch-services.ts: "tumwater" replaces "harness" in messages.
+  - src/baseline/main-red.ts and main-baseline.ts: the "main's check is failing" wording.
+  - src/budget/fallback-breaker.ts: "over-cap model".
+
+**Files touched.**
+- src: src/gates/bootstrap-gates.ts, readiness.ts, startup-gate.ts; src/redeploy/redeployer.ts, redeploy.ts; src/orchestrator/orchestrator.ts, orchestrator-launch.ts, orchestrator-scheduling.ts, retention.ts; src/scheduling/claims.ts, backoff.ts, quiet-hours.ts; src/process/supervisor.ts, launch-services.ts; src/baseline/main-red.ts, main-baseline.ts; src/budget/fallback-breaker.ts.
+- Tests:
+  - test/redeployer.test.ts, test/redeploy-*.test.ts, test/orchestrator*.test.ts.
+  - test/bootstrap-gates.test.ts, test/startup-gate.test.ts, test/supervisor.test.ts, test/launch-services.test.ts.
+  - test/main-red.test.ts, test/main-baseline*.test.ts, test/claims.test.ts, test/backoff.test.ts, test/quiet-hours.test.ts, test/retention.test.ts.
+
+**Acceptance criteria.**
+- The redeployer's warnings speak of the update, the version and the restart. None says "build <sha>" or "generation".
+- No `tumwater: harness:` prefix remains in src.
+- The orchestrator's branch-moved warning says "your checkout".
+- `npm run test` passes.
+
+### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
+
+**Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- The find texts in `ROLES` (src/roles/role-catalog.ts) and the guidance constants in src/roles/role-guidance.ts: `PLAN_SIZING`, `backlogMoveGuidance`, `VALIDATION_GAP_GUIDANCE`, and the shared latent-bug and other texts.
+
+  | Today | New |
+  | --- | --- |
+  | loop | role |
+  | tick | run |
+  | "this tick's ONE task" | "this run's ONE task" |
+  | land, landing, landed (the pipeline) | merge, merged |
+  | fleet | team |
+  | harness | tumwater |
+  | operator | the user |
+  | initial prompt | brief |
+  | notebook | notes |
+  | backoff | sleep |
+  | primary checkout | the user's checkout |
+
+  The text is addressed to an agent, so "your checkout" would mean the agent's own; that is why it says "the user's checkout".
+- Machine strings that code or git still parse stay verbatim. Interpolate each from a named constant declared on a line ending `// vocabulary-ok: <reason>`, because a trailing comment inside these multi-line templates would become prompt text. They are:
+  - the readme role's `Tick: readme #N` trailer and its `git log --grep='^Tick: readme #'` (the state series adds `Run:`);
+  - the `requires part N/M landed` heading syntax that `requiredParts` parses.
+- The role ids `dry` and `telemetry`, `git log --grep="tumwater(telemetry)"` and the role `title`s stay as they are for the role ids series; the guard does not flag them yet.
+- The steward's citation form becomes: the "run N (`<sha>`)" form, or "tick N (`<sha>`)" in older entries.
+- `holdMark` (src/backlog/backlog-eligibility.ts):
+
+  | Today | New |
+  | --- | --- |
+  | ` [refused]` | ` [blocked: refused]` |
+  | ` [needs review]` | ` [blocked: needs review]` |
+  | ` [needs replan]` | ` [blocked: needs replan]` |
+  | ` [blocked: requires …]` | unchanged |
+
+  Only these display marks change. The persisted **Refused …**, Needs-review and Needs-replan notes stay, and so does `entryHold`. Update the feature, bugfix, plan and steward instructions that name the old marks.
+- Add the header to role-catalog.ts, role-guidance.ts and backlog-eligibility.ts. Mark backlog-eligibility.ts's `requires … landed` regex line.
+
+**Files touched.**
+- src: src/roles/role-catalog.ts, src/roles/role-guidance.ts, src/backlog/backlog-eligibility.ts.
+- Tests:
+  - test/prompt-roles.test.ts, test/prompt-steward.test.ts, test/role-guidance.test.ts, test/tick-prompt.test.ts.
+  - test/backlog-eligibility.test.ts, test/backlog-render.test.ts, test/backlog-structure.test.ts, test/backlog-write-list.test.ts.
+  - The mark cases in test/tui-backlog.test.ts, test/gui-client-fleet.test.ts and test/status-payload.test.ts.
+
+**Acceptance criteria.**
+- `tumwater backlog` and the prompt's backlog index mark held entries `[blocked: refused]`, `[blocked: needs review]`, `[blocked: needs replan]` or `[blocked: requires …]`. Every role told to skip held entries names the `[blocked: …]` marks.
+- A test renders each built-in role's find text, removes the interpolated constants, and finds none of the guard's retired words.
+- The readme role's trailer grep and the plan role's `requires … landed` instruction still name the exact strings the code parses. Their existing tests pass unchanged.
+- `npm run test` passes.
+
+### Plain terms text, part 19/19: Assembled prompts and gate prompts and the older-names pointer (planned 2026-10-16 by user; requires part 8/19, parts 11/19–18/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches src/prompt/ + src/tick/tick-prompt.ts + src/tick/qa-coverage.ts + src/verdict/reply-contract.ts + the role-notes tool text + tests)
+
+**Goal.** Every prompt tumwater assembles opens with `You are the "<id>" role` and speaks the glossary: each role's run prompt, the director's, the reviewer's, the conflict resolver's and every follow-up. Each prompt also maps the older names the model will still meet in code, git history and logs. The shared preamble spells the attribution stamps that roles copy into BUGS.md and PLANS.md. As the series' last part, it lands only after every other text part.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- src/prompt/prompt.ts:
+  - The role opener `You are the "<id>" loop (<title>) of tumwater, an autonomous development harness.` → `You are the "<id>" role (<title>) on this project's tumwater team — tumwater runs a team of AI roles that develop the project.`
+  - `sharedPreamble`: "committed and merged to main by tumwater".
+  - The stamp sentence in `sharedPreamble` spells each stamp:
+    - a new BUGS.md heading ends "(found by the <role> role YYYY-MM-DD)";
+    - a closing date reads "— fixed YYYY-MM-DD by the <role> role";
+    - a new PLANS.md heading reads "(planned YYYY-MM-DD by the <role> role …)".
+
+    Today no prompt spells these stamps, so agents copy "found by bugfix …" and "by bugfix loop" from older entries. `STAMP_DATE_RE` and `ENTRY_STAMP_META_SOURCE` key on the stamp's leading word, so parsing is unchanged.
+  - The rules block:
+    - "the user's checkout", and "tumwater merges main into".
+    - "the code the running team executes", and "until tumwater stops your run as hung".
+    - "tumwater handles all git", and "when a merge adds or changes a guarantee".
+    - "the start of each run", and "How to end your reply — tumwater parses it".
+  - The failure-digest wrapper: "tumwater's own event log".
+  - The notes blocks: "Notes your role wrote in earlier runs", and "your role's next run".
+  - The user-request block: "aimed at this role. Treat it as this run's steering; … the merge gate still apply".
+  - The director prompt:
+    - `You are the "director" role …`, "Other specialist roles", and "so the feature role implements it".
+    - Custom-role requests name `customRoles`, the commands series' key; the request file still accepts the old one.
+    - "the roles start on their own".
+- Older names, in every assembled prompt. tumwater runs on any codebase, so the pointer cannot rely on docs/glossary.md alone, which other projects' worktrees do not contain.
+  - Add one sentence to `sharedPreamble` and to the reviewer and resolver openers: "Older tumwater names still appear in code, git history and logs: <map>; docs/glossary.md in tumwater's repository lists them all."
+  - <map> is interpolated from one constant, declared on a line ending `// vocabulary-ok: maps retired names`. It reads: "loop = role, tick = run, fleet = team, landing/landed = merge/merged, vetted = approved, notebook = notes, initial prompt = brief".
+- The reviewer and resolver prompts in src/prompt/gate-prompts.ts:
+  - `You are the "<id>" role …`.
+  - "an adversarial code reviewer for tumwater, which runs a team of AI roles on this project".
+  - landing → merge, and tick → run.
+- src/prompt/prompt-followup.ts and src/prompt/dialect.ts follow the rules. src/prompt/principles.ts takes the header only.
+- src/tick/tick-prompt.ts: "role notes", and "This run's stop target …". The `telemetry` id stays for the role ids series.
+- src/tick/qa-coverage.ts: "from this team's own record".
+- src/verdict/reply-contract.ts: "When the merge gate runs the project's check, tumwater attests the numbers itself", and "or tumwater treats the whole run as a refusal".
+- Agent-facing tool text. Tool names stay.
+  - src/agent/role-notes-write.ts: "Replace this role's notes: the short note the role's own earlier runs left for the next run …", "notes cleared", and "notes saved".
+  - src/agent/mcp/role-notes-server.ts: "no notes path is configured for this run".
+  - src/pi-extension/role-notes.ts: "role notes".
+- Kept machine strings inside these templates (trailer greps, commit prefixes) come from constants with `// vocabulary-ok:`.
+
+**Files touched.**
+- src: src/prompt/prompt.ts, prompt-followup.ts, gate-prompts.ts, dialect.ts, principles.ts; src/tick/tick-prompt.ts, src/tick/qa-coverage.ts; src/verdict/reply-contract.ts; src/agent/role-notes-write.ts, src/agent/mcp/role-notes-server.ts, src/pi-extension/role-notes.ts.
+- Tests:
+  - test/prompt.test.ts, test/prompt-roles.test.ts, test/prompt-followup.test.ts, test/prompt-resume.test.ts, test/prompt-dialect.test.ts.
+  - test/gate-prompts.test.ts, test/review-verdict.test.ts, test/reply-contract.test.ts.
+  - test/tick-prompt.test.ts, test/qa-coverage.test.ts, test/role-notes.test.ts, test/role-notes-mcp.test.ts.
+  - test/loop-pi-followups.test.ts, test/revision.test.ts, test/tick-stage.test.ts.
+
+**Acceptance criteria.**
+- A test renders every assembled prompt and finds the older-names sentence exactly once in each. With the interpolated constants removed, no prompt contains a guard word. The prompts covered are each catalog role, a custom role, the director, the reviewer, the conflict resolver and each follow-up.
+- The role opener reads `You are the "feature" role (feature implementer) …`. The shared preamble spells "(found by the <role> role YYYY-MM-DD)" and "fixed YYYY-MM-DD by the <role> role".
+- The director prompt's instructions for custom roles name `customRoles`.
+- `npm run test` passes.
+
+### Plain terms docs, part 1/5: Rewrite the README and the command and settings references in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches README.md and docs/cli.md and docs/config.md)
+
+**Goal.** README.md, docs/cli.md and docs/config.md use the glossary's words (team, role, run, merge, notes, brief, inbox, you) and document the commands and config keys under their new names (`tumwater start`, `tumwater history <role> <n>`, `--result merged`, `customRoles`, `backend`/`backends`, `minRunIntervalSeconds`, `runTimeoutSeconds`, `mergeBatchMax`, `maintenancePerWorkMerge`), matching what `tumwater help` prints now.
+
+**Approach.**
+- Apply the "Glossary" and "Wording rules" tables to every prose line, list item and code-block comment. Common cases: fleet → team; loop → role (an instance is `feature #2`); tick → run; landing/land → merge; land queue → merge queue; vetted → approved; operator → you; harness → tumwater; notebook → notes; initial prompt → brief; standing prompt/find text → instructions; queued prompts → inbox; observer TUI → TUI; seam → the job by name ("the reviewer and the conflict resolver") or "model jobs"; selector → model id; primary checkout → your checkout; notional → estimated; self-redeploy/stale build → update; backoff → sleeping; drain → "finish current work, then stop"; quiet kill → stall; error-streak breaker → repeated-failure pause; "main red" → "main's check is failing"; slots → "running N of M"/workspaces; defer → send later; a held backlog entry → `[blocked: …]`.
+- Apply "Commands and config": `tumwater run …` → `tumwater start …` (README's Usage block, docs/cli.md's opening block, and every inline mention); `tumwater tick <role> <n> [--last] [--stat] [--json]` → `tumwater history <role> <n> …`, with `history <role> --last` for the newest run's trail; `--result <changes|none|problems>` → `<merged|none|problems>`; the seven config keys in the "Old key → New key" table. Do not mention the old spellings (they are hidden aliases); config.md gets one sentence instead: config files written before the rename still load, and `tumwater doctor` names each older key with its new name.
+- Every dashboard or TUI label these files quote (the Fleet view, Loops card, loop drawer, Notebook, Queued tab, Health check card, Initial prompt card, Brief tab, "Stop the fleet later", "Wake later…", doctor check names such as `mach ports`) must be the string the code renders now: grep src/ui/gui/, src/ui/tui/ and src/doctor/ for it before writing it. Copy command and flag wording from src/cli/help.ts so docs/cli.md and `tumwater help` agree.
+- Leave these names exactly as they are; other series rename them and part 5/5 updates the docs after them: event types and fields (`tick_end`, `land_failed`, `slot_wait`, `TUMWATER_EVENT_LOOP`), `--json` keys and `/api/*` routes, dashboard hashes, state paths and refs (`.tumwater/land-queue/`, `state/landing.json`, `refs/tumwater/landing/`), the `Tick:` trailer, the role ids `dry` and `telemetry` (`roles.telemetry.enabled` included; Plain terms role ids renames them in README.md and docs/invariants.md), source paths and identifiers, the `tumwater(operator):` commit prefix, `director`, and config keys outside the rename table (`worktreeSlots`, `quietTimeoutSeconds`, `maxConcurrent*`, `check.*`, `review.*`).
+- README.md:
+  - The block between `<!-- tumwater:prompt:start -->` and `<!-- tumwater:prompt:end -->` stays byte-for-byte: `protectedEditReason` in src/review/protected-edits.ts rejects any change inside it from every role. The heading above it (`## Appendix: initial prompt`) becomes `## Appendix: the brief`, and the sentence under it says tumwater reads the brief between the markers on every run.
+  - The block between the `tumwater:status` markers has no generator: the readme role writes it by hand (its instructions in src/roles/role-catalog.ts) and rewrites it whole on each sync. Fix its wording here ("working harness"), and keep `telemetry` and `roles.telemetry.enabled`; Plain terms role ids renames them.
+  - Rewrite the `docs/gui.png` alt text to describe the dashboard as it now renders (the Team view, its roles, runs and merges), in one sentence. Do not touch `docs/gui.png`; it is regenerated by hand (plans/terminology.md "Manual steps").
+  - In the "Mixing providers" paragraph, `agent: "pi"`/`agent: "claude"` become `backend: …`, "bare selectors" becomes "bare model ids", and "the strong seams (the reviewer and the conflict resolver)" becomes "the strong model jobs (the reviewer and the conflict resolver)".
+  - Add one line near the top linking [docs/glossary.md](docs/glossary.md) if none exists.
+- docs/cli.md: its table cells are very long single lines. Edit them in place and keep the two-column table shape; do not split or reflow rows. Rename the headings "Start the fleet" → "Start the team" and the rows "Watch the fleet" → "Watch the team", "Watch per-tick history" → "Watch run history", "See a loop's pending change" → "See a role's pending change", and "Control the loops" → "Control the roles". The completion sentence completes role ids after `--role`.
+- docs/config.md: `maintenancePerWorkLanding` → `maintenancePerWorkMerge`, `customLoops` → `customRoles`, `agent: "pi"` → `backend: "pi"`, "the `claude` agent" → "the `claude` backend", and the `worktreeSlots` sentence describes workspaces shared by role runs and merge checks. Keep the notify paragraph's environment variable names as they are.
+- Keep the files' ~100-column wrap; re-wrap only the paragraph you changed.
+
+**Files touched.** README.md, docs/cli.md, docs/config.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/cli/help.ts, src/review/protected-edits.ts, src/roles/role-catalog.ts.
+
+**Acceptance criteria.**
+- `git diff` shows no change between README.md's `tumwater:prompt` markers.
+- `tumwater run`, `tumwater tick` and `--result changes` appear nowhere in the three files, and neither does any old config key from the rename table used as a key (`customLoops`, `minTickIntervalSeconds`, `tickTimeoutSeconds`, `landBatchMax`, `maintenancePerWorkLanding`, `agent:`/`"agent"`, `agents.`).
+- A case-insensitive whole-word grep of the three files for the vocabulary guard's retired words (`fleet`, `loop`, `loops`, `tick`, `ticks`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `seams`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `drain`) finds only the prompt block, `tumwater(operator):`, and the names listed above as left for part 5/5.
+- Every command and flag docs/cli.md names is printed by `tumwater help` under that name, and every dashboard or TUI label it quotes appears in src/ui/.
+- `npm run test` passes.
+
+### Plain terms docs, part 2/5: Rewrite docs/how-it-works.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches docs/how-it-works.md)
+
+**Goal.** docs/how-it-works.md explains tumwater in the glossary's words: a team of roles, each run finds one thing to do, and its commit goes through the merge (rebase, check, review, fast-forward). It names the renamed commands and config keys.
+
+**Approach.**
+- Apply the "Glossary" and "Wording rules" tables to every prose line and list item (same substitutions as part 1/5: fleet → team, loop → role, tick → run, landing → merge, land queue → merge queue, vetted → approved, operator → you, harness → tumwater, notebook → notes, initial prompt → brief, queues of prompts → inbox, seam → the job by name, selector → model id, backoff → sleeping, drain → finish current work, quiet kill → stall, error-streak circuit breaker → repeated-failure pause, "main red" → "main's check is failing", slots → running at once/workspaces, self-redeploy/stale/generation → update/restart, primary checkout → your checkout, claim/sibling → "another feature instance is working on it").
+- Rename the headings: "A loop tick" → "A run", "The landing gate" → "The merge pipeline", "Self-redeploy" → "Updates", "Operator notes" → "More controls". No file links to these anchors (checked with `git grep "how-it-works.md#"`).
+- Commands and config keys under their new names: `tumwater start` (with `--once`, `--for`), `tumwater history <role> --last` and `history <role> <n> --stat` for the old `tumwater tick --last`/`--stat`, `--result merged`, `landBatchMax` → `mergeBatchMax`, `tickTimeoutSeconds` → `runTimeoutSeconds`, `customLoops` → `customRoles` (and "add a loop named X" → "add a role named X"), `agents.<id>.bin` → `backends.<id>.bin`. "Agent binary" becomes "Backend binary".
+- Result codes in backticks (`error`, `review_error`, `merge_conflict`, `merge_blocked`, `main_red`, `no_change`, `changed`, `queued`) stay: codes stay in `--json` and `logs --type`. Prose around them uses the display words.
+- Every UI string this file quotes must be what the code renders now. Grep src/ui/, src/ui/tui/, src/ui/badges.ts and src/landing/landing-queue-render.ts for each before writing it: `STALE: main +N`, `restart BLOCKED: <reason>`, the TUI tab names (Activity, Queued, Health, Brief, Notebook, Tick, Change), hint-line text (`scope: fleet`, `no ticks with result "<class>"`, `(loading pending change…)`), queue labels (`[landing 2m · reviewing]`, `[vetted, awaiting merge]`), the `Ctrl+O` classes, and dashboard names (Fleet, the Loops card, the Queued tab, the Health check card, the Loop picker). Keep the old string where the code still renders it.
+- TUI keys: `Ctrl+L` is "send later", `Ctrl+N` on a role's transcript cycles to its notes, and `Ctrl+X` twice clears the notes.
+- Leave for part 5/5 or the code series: event types (`slot_wait`, `budget_handback`, `config_changed`, …), `/api/logs`, the `#loop/<name>` hash, `.tumwater/` paths (`_slot-<n>`, `_merge`, `_gate-main`, `state/notes/<role>.md`), and identifiers (`readTickDetail`, `renderTickDetail`, `eventRole`, `eventMatchesGrep`, `tickRowGrepHaystack`, `historyClass`, `readLandingQueue`, `cancelRolePrompt`, `collectRoleChange`, `role_notes`, `pauseRole`).
+- Re-wrap only the paragraphs you change, at ~100 columns.
+
+**Files touched.** docs/how-it-works.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/cli/help.ts, src/ui/, src/ui/tui/.
+
+**Acceptance criteria.**
+- A case-insensitive whole-word grep of docs/how-it-works.md for the vocabulary guard's retired words (`fleet`, `loop`, `loops`, `tick`, `ticks`, `landing`, `landed`, `land queue`, `vetted`, `seam`, `seams`, `notebook`, `initial prompt`, `harness`, `operator`, `backoff`, `drain`) finds only names in the leave-alone list above and UI strings the code still renders.
+- `tumwater run`, `tumwater tick`, `landBatchMax`, `tickTimeoutSeconds`, `customLoops` and `agents.` appear nowhere in the file.
+- Each backticked UI string in the file appears verbatim in src/.
+- `npm run test` passes.
+
+### Plain terms docs, part 3/5: Rewrite the backends guide and DEVELOPMENT.md in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches docs/backends.md and DEVELOPMENT.md)
+
+**Goal.** docs/backends.md and DEVELOPMENT.md use the glossary's words and the renamed config keys (`backend`, `backends.<id>.bin`/`.args`, `runTimeoutSeconds`). Seams are named as the jobs they are.
+
+**Approach.**
+- Apply the "Glossary" and "Wording rules" tables to prose and list items, as in part 1/5. The wording rules that matter most here: seam → "role runs, the reviewer and the conflict resolver" or "model jobs" ("claude seams" → "Claude model jobs", "a seam's tier" → "a job's tier"); selector → model id; notional spend → estimated spend; harness → tumwater; "pi" in a message the claude backend also reaches → agent; quiet watchdog → stall watchdog (the `quietTimeoutSeconds` key keeps its name); fleet → team; loop rows → role rows; tick → run.
+- docs/backends.md config: `agent` → `backend`, `agents` → `backends` (with `backends.claude.bin` and `backends.claude.args`), `tickTimeoutSeconds` → `runTimeoutSeconds`. The heading "Claude Code (`agent: "claude"`)" becomes "Claude Code (`backend: "claude"`)", so update the intro's in-page link from `#claude-code-agent-claude` to `#claude-code-backend-claude`.
+- docs/backends.md's "Worked example: one machine's measurements, 2026-09" section keeps every number and date; only its words change.
+- Doctor check names quoted in backends.md (`tier models`, "claude transcripts") must match what src/doctor/ prints now; grep before writing.
+- DEVELOPMENT.md: prose terms (the landing gate → the merge, a fleet → the team, harness → tumwater). In "Layout", keep every path and identifier exactly as written (`src/loop/loop.ts`, `src/tick/`, `src/landing/landing-merge.ts`, `src/fleet/`, `LoopRunner`-style names): the Plain terms code series moves those files and updates this list in the same part. Only the prose around them changes ("the per-tick pipeline" → "the per-run pipeline", "admitting due runners to their ticks" → "admitting due roles to their runs"). The `npm test 'loop#resume'` example names a real test file and stays. The doctor line it cites (`mach ports`) uses the title src/doctor/ prints now.
+- Leave alone, for part 5/5 or the code series: event types, `--json` keys, state paths, source paths, identifiers (`fleetModelsFree()`, `seamImageInput`, `agentsInUse`, `withoutLaunchServicesCheckIn`) and test titles.
+- Re-wrap only the paragraphs you change, at ~100 columns.
+
+**Files touched.** docs/backends.md, DEVELOPMENT.md. Reads (does not edit): plans/terminology.md, docs/glossary.md, src/doctor/, src/config/config-schema.ts.
+
+**Acceptance criteria.**
+- `agent:`, `agents.`, `tickTimeoutSeconds`, `#claude-code-agent-claude` and the words seam/seams, selector and harness no longer appear in docs/backends.md outside backticked identifiers.
+- The in-page link in docs/backends.md's intro resolves to the renamed heading's anchor.
+- Every `src/` path in DEVELOPMENT.md's Layout section still exists.
+- A case-insensitive whole-word grep of both files for the vocabulary guard's retired words finds only backticked paths, identifiers, test names and the names left for part 5/5.
+- `npm run test` passes.
+
+### Plain terms docs, part 4/5: Rewrite the invariants register in plain terms and mark the dated design docs as pre-rename (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches docs/invariants.md and docs/feature-*.md and docs/implementation-*.md and docs/code-metrics.md and docs/commit-history-analysis.md)
+
+**Goal.** docs/invariants.md states its guarantees in the glossary's words. The dated design records and reports under docs/ stay as written, each with one line that says so and points to docs/glossary.md.
+
+**Approach.**
+- docs/invariants.md: apply the "Glossary" and "Wording rules" tables to the intro, to the "Keep it honest" paragraph ("A landing that adds or changes a guarantee" → "A merge that …"), to each entry's title text after `### INV-…:` (for example "one rule decides which agent binaries the fleet needs" → "one rule decides which backend binaries the team needs"), and to the Guarantee, Binds and Pinned-by prose.
+- Keep verbatim everything test/invariants-doc.test.ts checks or that names code: each `### INV-…:` id, the `**Guarantee.**`/`**Binds.**`/`**Pinned by.**` labels, every backticked `src/…`, `test/…`, `docs/…` or `plans/…` path (the test requires each to exist), every identifier (`agentsInUse`, `checkAgentBinary`, `eventFeedItem`, …), and every quoted test title (they must match the test files, which the Plain terms code series renames). Also keep `slots.json`, `landedTotal` and `tick_start` for part 5/5, and the role id in "the telemetry role" for Plain terms role ids.
+- Historical documents stay as written (plans/terminology.md "Out of scope", the same rule as `plans/*.md`). The five docs/feature-*.md and five docs/implementation-*.md files are design records: the 2026-09-30 organize commit added them as implementation plans, and only plans/model-tiers.md and two source comments link to them. docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Under each of these twelve files' H1, add this one blockquote line and change nothing else:
+
+  > Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+- Do not touch docs/code-metrics/ (scripts) or docs/gui.png.
+
+**Files touched.** docs/invariants.md, docs/feature-custom-roles.md, docs/feature-gui-audio-sound-effects.md, docs/feature-model-fallback.md, docs/feature-per-role-spending.md, docs/feature-project-templates.md, docs/implementation-custom-roles.md, docs/implementation-gui-audio-sound-effects.md, docs/implementation-model-fallback.md, docs/implementation-per-role-spending.md, docs/implementation-project-templates.md, docs/code-metrics.md, docs/commit-history-analysis.md. Reads (does not edit): test/invariants-doc.test.ts, docs/glossary.md.
+
+**Acceptance criteria.**
+- test/invariants-doc.test.ts passes unchanged: the same ids in the same order, all three labels per entry, and every cited path resolving.
+- Outside backticks and quoted test titles, docs/invariants.md has no whole-word hit for the vocabulary guard's retired words.
+- Each of the twelve historical files differs from main by exactly the added banner line (and the blank line after it).
+- `npm run test` passes.
+
+### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
+
+**Goal.** The last old names in the current docs, the ones that name machine interfaces, now match the code: event types and fields, the notify environment, `--json` keys, `/api` routes, dashboard hashes, state paths and refs, and the `Run:` trailer. Role ids are not this part's: Plain terms role ids updates README.md and docs/invariants.md when it renames them.
+
+**Approach.**
+- Build the old-name list from three tables in plans/terminology.md: "Script interfaces", "Event log" and "State and git". Then `git grep -nw` each old name across README.md, DEVELOPMENT.md and docs/*.md, excluding the twelve historical files part 4/5 bannered and docs/glossary.md's older-names column.
+- Before replacing a hit, confirm the new name in src/ (for example `grep -rn "run_start" src/events/`), and write the name the code uses.
+- Known hits when this part was planned: `TUMWATER_EVENT_LOOP` in docs/config.md → `TUMWATER_EVENT_SOURCE`; `#loop/<name>` in docs/how-it-works.md → `#role/<name>`; `tick_start` and `landedTotal` in docs/invariants.md → `run_start` and `mergedTotal`. Parts 1/5–4/5 may have left more backticked names, such as `.tumwater/land-queue/`, `state/landing.json`, `refs/tumwater/landing/<id>`, `Tick:`, `slot_wait` purposes, `/api/tick` and `status --json`'s `loops`. Find them with the grep.
+- In docs/invariants.md, change a backticked event, key or path only when the new one exists in the code. Its source paths and test titles belong to the code series.
+- Re-check the identifiers parts 1/5–3/5 kept. If the code series has already renamed one (for example a moved `src/…` path), update it too.
+
+**Files touched.** README.md, DEVELOPMENT.md, docs/cli.md, docs/config.md, docs/how-it-works.md, docs/backends.md, docs/invariants.md (only those with hits). Reads (does not edit): plans/terminology.md, src/events/, src/paths.ts.
+
+**Acceptance criteria.**
+- None of the old names in the three tables appears in README.md, DEVELOPMENT.md or docs/*.md, except in the twelve bannered historical files and docs/glossary.md.
+- Every event type, `--json` key, route, hash and state path the current docs name exists under that name in src/.
+- README.md's `tumwater:prompt` block is unchanged.
+- `npm run test` passes.
+
+### Plain terms scripting, part 1/5: Rename the doctor and retire and role and failure-digest JSON keys (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Script interfaces"; touches src/doctor and src/operator/retire.ts and src/roles and src/failure and the dashboard drawer)
+
+**Goal.** `doctor --json` and `/api/doctor` carry `routing` instead of `seams`. `retire --json` names the `mergeRef` artifact. `role --json` and `/api/role` carry `backend`, `minRunIntervalSeconds`, `notes` and `lastRunEndedAt`. `report --failures --json` counts `runs` and `merged`. The old keys are gone, with no alias (plans/terminology.md decision 3).
+
+**Approach.**
+- Doctor: rename `DoctorReport.seams` to `routing` in src/doctor/doctor-checks.ts, in `runDoctor` (src/doctor/doctor.ts) where it is built, and in `renderDoctor` (src/doctor/doctor-render.ts) where it is read. The `SeamRow` fields (`label`, `selector`, `backend`) keep their names. The rendered header text belongs to the text series.
+- Retire (src/operator/retire.ts): the `ARTIFACTS` entry `"landingRef"` becomes `"mergeRef"`, together with its key in `previewRetire`'s `there` map and its `artifactPhrase` case. `RetireStatus.landingRefPresent` becomes `mergeRefPresent`, and `midTick` becomes `midRun`. `landingRefName` and the ref path keep their names, because Plain terms state moves the ref.
+- Role (`RoleViewPayload` and `rolePayload` in src/roles/role-view.ts, `inspectMarkdownLines` and `renderRoleMarkdown` in src/roles/role-render.ts): `agent` becomes `backend`, `minTickIntervalSeconds` becomes `minRunIntervalSeconds`, `note` becomes `notes`, and `lastTickEndedAt` becomes `lastRunEndedAt`. `ModelFallbackView.agent` (src/config/config-fallbacks.ts) also becomes `backend`. That view rides both `role --json`'s `modelFallback` and the status rows' `fallback`. The config field these values are read from is not a payload key, so leave it as Plain terms commands left it.
+- The dashboard reads `/api/role` as `view.note` in two places: `drawerRoleSection` (src/ui/gui/gui-client-drawer.ts) and the `note-edit` action (src/ui/gui/gui-client-boot.ts). Change both to `view.notes`. The `note` that `/api/history` returns is a different key (the sparse-window notice) and stays.
+- Failure digest: these renames apply in `FailureReportData`, `DeltaRow` and `PromptStatRow` (src/failure/failure-data.ts), in `SpendCell`, `LossCause`, `LossDraft`, `TimeSpendRow` and `OUTCOME_CLASS` (src/failure/time-spend.ts), and in the reader `renderFailureMarkdown` (src/failure/failure-render.ts):
+  - `ticks` → `runs`
+  - `prevTicks` → `prevRuns`
+  - `landed` → `merged`
+  - `landedTotal` → `mergedTotal`
+  - the outcome-class key `"landed"` → `"merged"`, in `TimeSpendRow.classes`, in `OUTCOME_CLASS`'s values and in `timeAndSpend`'s accumulator; rename `LANDED_TOP` to `MERGED_TOP` with them.
+  `OUTCOME_CLASS` is also read by src/report/report-data.ts. That module compares only to `"error"`, so it needs no change. Result codes in `OutcomeRow.counts` stay, because codes stay in `--json`.
+- Event-type comparisons (`e.type === "landed"`, `"land_failed"`, `"tick_end"`) belong to Plain terms event log. Leave them.
+- On each line you change, delete any `// vocabulary-ok:` marker whose reason was the old key name.
+- Tests:
+  - doctor: test/doctor.test.ts, test/tui-keys.test.ts and test/gui-endpoints.test.ts (their `DoctorReport` literals)
+  - retire: test/retire.test.ts
+  - role: test/role-view.test.ts, test/gui-endpoints.test.ts (`/api/role`), and the `/api/role` fixtures in test/gui-client-drawer.test.ts and test/gui-client-boot.test.ts (`{ note: … }` → `{ notes: … }`)
+  - failure digest: test/failure-render.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts, test/failure-state-change.test.ts
+
+**Files touched.** Source: src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/operator/retire.ts, src/roles/role-view.ts, src/roles/role-render.ts, src/config/config-fallbacks.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, src/failure/failure-data.ts, src/failure/time-spend.ts, src/failure/failure-render.ts. Tests: those listed above. Reads (does not edit): plans/terminology.md "Script interfaces".
+
+**Acceptance criteria.**
+- `tumwater doctor --json` prints the top-level keys `header`, `checks`, `routing` and `verdict` (test/doctor.test.ts).
+- `tumwater retire --role <id> --dry-run --json` lists `mergeRef` in `wouldRemove` or `skipped`, and never `landingRef` (test/retire.test.ts).
+- `rolePayload` returns `backend`, `minRunIntervalSeconds` and `notes`, plus `lastRunEndedAt` once the role has run. It returns none of `agent`, `minTickIntervalSeconds`, `note` or `lastTickEndedAt`. During a model-fallback episode, `modelFallback.backend` is set (test/role-view.test.ts).
+- The dashboard drawer still shows, edits and clears a role's notes from `/api/role` (test/gui-client-drawer.test.ts).
+- `collectFailureReport`'s JSON carries `runs`, `merged` and `mergedTotal`, each delta row's `prevRuns`/`runs`, and the time-spend classes `merged`, `no_change` and `error`. No key `ticks`, `prevTicks`, `landed` or `landedTotal` remains at any depth (test/failure-render.test.ts walks the keys).
+- `npm run test` passes.
+
+### Plain terms scripting, part 2/5: Rename the report --json keys and add the script-keys guard (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "Script interfaces"; touches src/report and the dashboard Usage and Team views and test/script-keys.test.ts)
+
+**Goal.** Mechanical: `report --json`, `report --since <d> --json` and `/api/report` count runs and merges. A new test, test/script-keys.test.ts, fails if the dashboard script still reads a retired payload key.
+
+**Approach.**
+- Rename these fields in src/report/report-data.ts, in every type that carries them: `UsageFold`, `DayFold`, `ReportDay`, `ReportTotals` (and so `ReportData.totals`) and `SinceReport`. That way the module uses one set of names:
+  - `ticks` → `runs`
+  - `ticksByRole` → `runsByRole`
+  - `failedTicksByRole` → `failedRunsByRole`
+  - `landingRuns` → `mergeRuns`
+  - `landingTokens` → `mergeTokens`
+  - `landingCostUsd` → `mergeCostUsd`
+  - `landingFailed` → `mergeFailed`
+  - `landedByRole` → `mergedByRole`
+  - `landingFailedByRole` → `mergeFailedByRole`
+  
+  Let `tsc` find the readers in `renderReportMarkdown` and `renderSinceReportMarkdown` (src/report/report-render.ts).
+- The dashboard script reads these keys untyped, so find its readers by grep:
+  - src/ui/gui/gui-client-report.ts: `d.ticksByRole`, the string key in `roleStackChart(data, "ticksByRole", …)`, and the totals tiles' `t.ticks`
+  - src/ui/gui/gui-client-fleet.ts: `renderStats`'s `today.totals.ticks`
+- Leave alone:
+  - event-type comparisons (`ev.type === "landed"`, `"land_failed"`), which Plain terms event log renames
+  - `commitsByRole`, `notionalCostUsd` and `notionalByRole`, which contain no retired word ("estimated" is a display word only)
+- New test/script-keys.test.ts, the dashboard half of "Script interfaces" (each producer's own test is the server half):
+  - It holds a `RETIRED_CLIENT_READS` list of old payload key names.
+  - One test asserts that `GUI_CLIENT_JS` (src/ui/gui/gui-client.ts) contains, for no listed key, a property read `.<key>` (followed by a non-identifier character) or a quoted string key `"<key>"`/`'<key>'`. On failure it names each key and the line it was found on.
+  - A self-test runs the same matcher on a synthetic string, so the guard itself is proven to catch a hit.
+  - Seed the list with this part's names: `ticksByRole`, `failedTicksByRole`, `landingRuns`, `landingTokens`, `landingCostUsd`, `landingFailed`, `landedByRole`, `landingFailedByRole`. Parts 3/5–5/5 append theirs. Generic names (`tick`, `loop`) never go in the list, because the DOM attribute `data-tick` and drawer kinds legitimately keep them.
+- Tests: test/report.test.ts, test/report-data.test.ts, test/gui-report.test.ts, test/gui-client-report.test.ts, test/report-fold-cache.test.ts, test/event-window.test.ts, and test/gui-client-fleet.test.ts (its `today.totals` fixtures).
+
+**Files touched.** Source: src/report/report-data.ts, src/report/report-render.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client-fleet.ts. New: test/script-keys.test.ts. Tests: those listed above.
+
+**Acceptance criteria.**
+- The JSON from `tumwater report --json` and from `report --since 1h --json` carries the new keys. None of the nine old names appears at any depth (the test walks the parsed document).
+- `GET /api/report` serves the same keys (test/gui-report.test.ts).
+- The dashboard's Usage charts and the Team view's "today" tiles render from fixtures that use the new keys.
+- test/script-keys.test.ts passes, and its self-test proves the matcher flags a `.ticksByRole` read.
+- `npm run test` passes.
+
+### Plain terms scripting, part 3/5: Rename the history and run-trail JSON keys and move GET /api/tick to /api/run (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Script interfaces"; touches src/history and src/tick/tick-detail-data.ts and src/gui and the dashboard History view)
+
+**Goal.** These script-facing names change:
+- `history --json` rows and `/api/history` rows carry `role` and `run`.
+- The summary (`history --summary --json`, and `/api/history?summary`) has the shape `{roles: [{role, runs, changes, none, problems, tokens, costUsd, lastChangeTs}], total}`.
+- The run trail (`history <role> <n> --json`) carries `run` and `merge`.
+- `GET /api/tick?role=<id>&tick=N` becomes `GET /api/run?role=<id>&run=N`, and the old route is not kept.
+
+**Approach.**
+- History rows and summary (src/history/history-data.ts):
+  - `TickRow.loop` → `role`, `TickRow.tick` → `run`.
+  - `HistorySummaryRow.loop` → `role`, `.ticks` → `runs`.
+  - `summarizeTickRows` returns `{ roles, total }`, and the total row's `role` is `"total"`.
+  - The class counts (`changes`, `none`, `problems`) and `lastChangeTs` keep their names. Plain terms commands kept `HISTORY_RESULT_CLASSES` internal and maps `--result merged` to the `changes` class, so the summary's class keys and the dashboard's History filter values stay as they are.
+  - `TickRowCells` holds the text table's column keys, not payload keys. Leave it.
+  - Let `tsc` drive the typed readers: `renderSummary` and `renderRow` (src/history/history-render.ts), `windowSummary` (src/cli/cli-run.ts), src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts and src/tick/tick-detail.ts.
+- Run trail (src/tick/tick-detail-data.ts): `TickDetail.tick` → `run`, `TickDetail.landing` → `merge`. The readers are `renderTickDetail` and `tickDetailStat` in src/tick/tick-detail.ts, and the TUI trail pane. `TickDetail.events` holds raw events, whose fields belong to Plain terms event log.
+- Route:
+  - In `guiRoutes` (src/gui/gui-server.ts), `"GET /api/tick"` becomes `"GET /api/run"`.
+  - `handleTick` (src/gui/gui-endpoints.ts) reads the query parameter `run` instead of `tick`, as `intQuery(q, res, "run", "positive")`. Update its doc comment and every other comment in src/gui/ that names `/api/tick`.
+  - Handler and function names stay; Plain terms code run renames them.
+- Dashboard script, src/ui/gui/gui-client-history.ts:
+  - The drill-down fetch becomes `"/api/run?role=…&run=…"`.
+  - Row reads `r.loop`/`r.tick` become `r.role`/`r.run`.
+  - `d.summary.loops` (and its `Array.isArray` probe) becomes `d.summary.roles`, with `r.loop === "total"` becoming `r.role === "total"`.
+  - `cell(r, "ticks")` becomes `cell(r, "runs")`. `cell(r, "changes")` and `r.lastChangeTs` stay.
+- Dashboard script, src/ui/gui/gui-client-drawer.ts: the recent-runs list's `t.tick` becomes `t.run`.
+- The DOM attribute `data-tick` (and `dataset.tick`) belongs to the code, not the payload. Leave it.
+- In test/script-keys.test.ts, add an assertion that `GUI_CLIENT_JS` does not contain `/api/tick`.
+- In these test files, the event fixtures (`{ loop: …, type: "tick_end", tick: 1 }`) are event-log lines, not payload rows. Leave them for Plain terms event log. Change only row, summary and trail assertions:
+  - test/history-data.test.ts, test/cli-history.test.ts, test/cli-history-filtering.test.ts, test/cli-history-views.test.ts
+  - test/gui-server-api.test.ts (the route and rows), test/gui-endpoints.test.ts (the summary)
+  - test/gui-client-history.test.ts, test/gui-client-drawer.test.ts
+  - test/tick-detail.test.ts, test/tick-detail-data.test.ts
+  - test/tui-history.test.ts, test/tui-keys.test.ts, test/cli-run.test.ts
+
+**Files touched.** Source: src/history/history-data.ts, src/history/history-render.ts, src/cli/cli-run.ts, src/tick/tick-detail-data.ts, src/tick/tick-detail.ts, src/ui/tui/tui-history.ts, src/ui/tui/tui-keys.ts, src/gui/gui-server.ts, src/gui/gui-endpoints.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-drawer.ts. Tests: test/script-keys.test.ts and those listed above.
+
+**Acceptance criteria.**
+- `tumwater history --json` rows have `role` and `run`, with no `loop` or `tick`. `history --summary --json` is `{roles, total}`, with rows keyed `role`, `runs`, `changes`, `none`, `problems`, `tokens`, `costUsd` and `lastChangeTs`.
+- `tumwater history <role> <n> --json` has `run` and `merge`, with no `tick` or `landing` key.
+- `GET /api/run?role=clean&run=9` serves the trail. `GET /api/tick` answers 404, and `run=0` or a missing `run` answers 400 (test/gui-server-api.test.ts).
+- The dashboard's History drill-down, its Summary table and the drawer's recent runs render from fixtures that use the new keys, and test/script-keys.test.ts passes.
+- `npm run test` passes.
+
+### Plain terms scripting, part 4/5: Rename the status payload's loops to roles and the alert action and the dashboard hashes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Script interfaces" and "Decisions"; touches src/ui/status-payload.ts and src/ui/fleet-alerts.ts and src/ui/gui and scripts/diff-check.mjs)
+
+**Goal.** These script-facing names change, and old bookmarks keep working:
+- `status --json` and `/api/status` list `roles[]` instead of `loops[]`.
+- Alert buttons that open a role use `act: "role"`.
+- The dashboard's addresses are `#team` and `#role/<id>`. `#fleet` and `#loop/<id>` still route.
+
+**Approach.**
+- Status payload (`statusPayload`, src/ui/status-payload.ts): publish the per-row array as `roles` and rename its local variable to match. `fleetAlerts(snap, questions, roles, now)` keeps its signature. Row fields are part 5/5's.
+- Alert action:
+  - src/ui/fleet-alerts.ts: the `act: "loop"` actions on the failing, stuck and images alerts become `act: "role"`.
+  - src/ui/gui/gui-client-boot.ts, `runAct`: `act === "loop"` becomes `act === "role"`, with no `"loop"` branch kept, because the payload and the page ship together.
+- The dashboard script reads the status payload's `loops` untyped. Grep `\bloops\b` in src/ui/gui/ and change each read that comes from the payload:
+  - gui-client-composer.ts: `composerData.loops`, `d.loops`
+  - gui-client-drawer.ts: `d.loops`
+  - gui-client-fleet.ts: `renderStats`, the feed role picker and feed, and the Team view's subtitle
+  - gui-client-history.ts: the role picker and the known-role set from `lastStatus.loops`
+  - gui-client-loops.ts: `sortLoops(d.loops …)`
+  - gui-client-report.ts: `syncRoles`'s `reportBaseRoles(d.loops)`
+- Hashes (`switchView` and `route` in src/ui/gui/gui-client-boot.ts, plus src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-page.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-client-composer.ts and src/ui/gui/gui-client-fleet.ts):
+  - The `VIEWS` key `fleet` becomes `team`. The element id it maps to, `fleet-view`, belongs to the code and stays.
+  - `activeView`'s initial value and every `activeView === "fleet"` or `location.hash = "fleet"` become `"team"`.
+  - In gui-page.ts, the brand link and the first tab link to `#team`, and that tab's id becomes `tab-team`, because `switchView` builds `"tab-" + key`.
+  - The drawer writes `#role/<id>`, and `route()` opens the drawer from both `role/` and the legacy `loop/`.
+  - `route()` sends a legacy `fleet` to `team`.
+  - Mark the two legacy literals `// vocabulary-ok: legacy dashboard hash, still routed`.
+- scripts/diff-check.mjs reads `roles`, and falls back to `loops` for a baseline built before this part.
+- Append `loops` to `RETIRED_CLIENT_READS`.
+- Tests. `snapshot(...).loops` is internal and stays; change only the payload uses:
+  - status payload: test/status-payload.test.ts; the `statusPayload` uses in test/status-data-models.test.ts, test/status-data.test.ts and test/status-data-fleet.test.ts; test/cli.test.ts (the `status --json` field list)
+  - tabs and hashes: test/gui.test.ts (the tab id and href pairs)
+  - server: test/gui-endpoints.test.ts, test/gui-server-api.test.ts, test/gui-operator.test.ts, test/gui-report.test.ts
+  - client fixtures in the test/gui-client-*.test.ts files: `{ loops: […] }` → `{ roles: […] }`, `activeView: "fleet"` → `"team"`, `tab-fleet` → `tab-team`, `#loop/` → `#role/`
+  - alert actions: test/fleet-alerts.test.ts
+  - e2e: test/orchestrator-2.e2e.test.ts
+
+**Files touched.** Source: src/ui/status-payload.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-boot.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-history.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-report.ts, src/ui/gui/gui-client.ts, src/ui/gui/gui-page.ts, scripts/diff-check.mjs. Tests: test/script-keys.test.ts and those listed above.
+
+**Acceptance criteria.**
+- `tumwater status --json` has a top-level `roles` array and no `loops` key (test/cli.test.ts, test/status-payload.test.ts).
+- The failing, stuck and images alerts carry `act: "role"`, and the dashboard opens that role's drawer from it (test/fleet-alerts.test.ts, test/gui-client-boot.test.ts).
+- Opening a role's drawer sets `#role/<id>`, and loading `#loop/<id>` opens the same drawer.
+- `#team` and `#fleet` both show the Team view, and the first tab links to `#team` (test/gui-client-boot.test.ts, test/gui-client-drawer.test.ts, test/gui.test.ts).
+- test/script-keys.test.ts passes with `loops` listed.
+- `npm run test` passes.
+
+### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui)
+
+**Goal.** The last script interfaces lose their retired keys:
+- `status --json` and `/api/status` rows carry `runs`, `lastRunEndedAt` and `lastMergedAt`.
+- The merge queue is published as `mergeQueue` (its entries carry `run`), next to `mergeBadge` and `mergeQueueLabels`.
+- The budget block carries `backend`.
+- Activity-feed items (`eventItems` and `GET /api/logs`) carry `source`.
+- `tumwater queue --json` entries carry `run`.
+
+**Approach.**
+- Rows in `statusPayload` (src/ui/status-payload.ts):
+  - `ticks: s.ticks` → `runs: s.ticks`. The right-hand side reads the persisted state field, which Plain terms state renames.
+  - `lastTickEndedAt` → `lastRunEndedAt`.
+  - `lastLandedAt` → `lastMergedAt`.
+- Top level of `statusPayload`: `landQueue` → `mergeQueue`, `landingBadge` → `mergeBadge`, `landQueueLabels` → `mergeQueueLabels`.
+- Merge-queue entries:
+  - src/status/status-data.ts copies each queued entry into the snapshot. Write `run: e.tick` there, and rename `StatusSnapshot.landQueue.entries[].tick` to `run`. The dashboard reads it as `e.tick` in `pendingQueueHtml` (src/ui/gui/gui-client-pending.ts).
+  - `cmdQueue` (src/cli/cli-query-commands.ts) maps its `--json` document's entries' `tick` to `run` the same way. Its human render keeps reading `LandingEntry`.
+  - The persisted `LandingEntry.tick` and `.tumwater/land-queue/` stay until Plain terms state, which drops both projections when it renames the stored field. `inFlight`'s shape and its status values (`landing`, `vetted`) are the merging marker's, which Plain terms state renames.
+- Budget: `StatusSnapshot.budget.agent` becomes `backend`. It is declared in src/status/status-data.ts, written in src/status/status-budget.ts and read by `budgetBadge` in src/ui/badges.ts.
+- Feed items: `eventFeedItem` (src/events/event-format.ts) returns `source` instead of `loop`. The value is still `eventRole(e)`, and the name matches the event log's own `source` field (plans/terminology.md "Event log"). The dashboard reads it in two places: the feed filter and render in src/ui/gui/gui-client-fleet.ts (`it.loop`), and the poll's new-event key in src/ui/gui/gui-client-boot.ts (`last.loop`).
+- Dashboard script readers of the row fields:
+  - src/ui/gui/gui-client-drawer.ts: the stats list (`l.ticks`, `l.lastTickEndedAt`, `l.lastLandedAt`) and `landingSummary`'s `d.landQueue`
+  - src/ui/gui/gui-client-loops.ts: the sub line and the idle cell
+  - src/ui/gui/gui-client-model.ts: the sort on `lastTickEndedAt`
+  - src/ui/gui/gui-client-pending.ts: `status.landQueue` and `status.landQueueLabels`
+- The rows' `phase` text (for example `landing 2m · reviewing`) is a display label. It belongs to the text part that converted `loopPhase` together with its parser in gui-client-model.ts. Leave it.
+- Append to `RETIRED_CLIENT_READS`: `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landQueueLabels`, `landingBadge` and `ticks`. In test/status-payload.test.ts, add a test that walks the whole `statusPayload` object and fails on any key named `loops`, `ticks`, `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landingBadge` or `landQueueLabels`, or on a `budget.agent`, `eventItems[].loop` or `mergeQueue.entries[].tick` key.
+- Tests:
+  - status payload: test/status-payload.test.ts, test/status-data-models.test.ts
+  - budget: the `budget` deepEquals in test/gui-operator.test.ts, plus test/badges.test.ts, test/status-data-budget.test.ts, test/fleet-alerts.test.ts and test/fixtures/status-fixtures.ts
+  - queue: test/cli-queue.test.ts
+  - feed items: test/gui-endpoints.test.ts (`/api/logs`)
+  - dashboard fixtures in test/gui-client-*.test.ts: drawer, loops, the model sort in gui-client.test.ts, pending, and the fleet feed items' `loop:` → `source:`
+  - Leave alone the `LoopState` objects tests write to `state/<id>.json` (`ticks`, `lastTickEndedAt`, `lastLandedAt`). They are persisted state, which Plain terms state renames.
+
+**Files touched.** Source: src/ui/status-payload.ts, src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/events/event-format.ts, src/cli/cli-query-commands.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-boot.ts. Tests: test/script-keys.test.ts and those listed above.
+
+**Acceptance criteria.**
+- A `status --json` row carries `runs`, `lastRunEndedAt` and `lastMergedAt`, and none of `ticks`, `lastTickEndedAt` or `lastLandedAt`.
+- The top level carries `mergeQueue` (whose entries carry `run`), `mergeBadge`, `mergeQueueLabels` and `budget.backend`. The new key-walking test in test/status-payload.test.ts finds no old name.
+- `tumwater queue --json` entries carry `run`, not `tick` (test/cli-queue.test.ts).
+- `eventItems[]` and the `GET /api/logs` items carry `source`, and the dashboard feed's role filter and role chips still work (test/gui-client-fleet.test.ts).
+- test/script-keys.test.ts passes with this part's keys listed.
+- `npm run test` passes.
+
+### Plain terms event log, part 1/9: Normalize old event lines on read and rename the fleet pause events (planned 2026-10-16 by user; requires Plain terms text 19/19 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/log-commands.ts src/cli/help.ts src/gates/pause-gates.ts src/failure/failure-state-change.ts docs/cli.md test/)
+
+**Goal.** Every reader of `.tumwater/log/events.jsonl`, and of its rotated `events.jsonl.1`, sees old lines under today's names through one function, `normalizeLegacyEvent`. `tumwater logs --type` also accepts an old type name. This part maps one family, `fleet_paused`/`fleet_resumed` → `team_paused`/`team_resumed`, so every place the normalizer is wired in is tested against a real old line.
+
+**Approach.**
+- New module `src/events/event-legacy.ts`:
+  - `LEGACY_EVENT_TYPES` maps an old type name to its `HarnessEvent["type"]`. This part adds `fleet_paused → team_paused` and `fleet_resumed → team_resumed`.
+  - An ordered rewrite list, with entries `{ name, apply(ev) }`, starts empty. Later parts append field rewrites to it, and each rewrite runs in list order after the type rename.
+  - `normalizeLegacyEvent(ev)` rewrites the freshly parsed object in place and returns it: first the type rename, then each rewrite.
+    - It never throws. A field is rewritten only when it has the expected JS type, and a current line comes back untouched.
+    - Per line, it costs one map lookup plus each rewrite's own guard (`history` scans ~26k lines).
+  - `canonicalEventType(name)` returns the new name for an old one and any other string unchanged.
+  - The module's doc comment says that role ids (`dry`, `telemetry`) are deliberately not mapped here. The Plain terms role ids series aliases an event's `source` id through its own legacy-id table when it switches each id, so mapping them here would show `dedupe` while the role is still `dry`.
+  - If the vocabulary guard flags a line that holds an old name, end it with `// vocabulary-ok: legacy event name read from old logs`.
+- Wire it in at the two choke points:
+  - `parseEventLine` (src/events/event-read.ts) returns the normalized object. Every file read already goes through it:
+    - `readEvents`/`readEventsTailWithEnd`;
+    - event-window.ts's `scanEventsFile` (live log and archive) and `classifyLogText`;
+    - the `followFile` callback in `cmdLogs` (`logs -f`);
+    - report-data.ts's `foldLineInto` (the report fold cache's append path);
+    - maintenance-quota.ts's `foldLine`.
+
+    Grep src for any other `JSON.parse`/`parseJsonObject` of an event line and route it through `parseEventLine`.
+  - `logEvent` (src/events/events.ts) normalizes the `{ ts, ...event }` object it builds before appending it and before notifying `subscribeEvents` listeners. The written line and what notify and the `run` narration receive then match what readers see. Parts 6/9–9/9 rely on this to accept the deprecated `loop` input.
+- `cmdLogs` (src/cli/log-commands.ts): compare `e.type` against `canonicalEventType(type)` in the `--since` path, the `-n` path and the follow path. The empty-match prose still names the value the user typed. Add one clause to the `--type` help line in src/cli/help.ts and to docs/cli.md's `logs --type` mention: an older event name matches its current one.
+- Rename the family:
+  - the `HarnessEvent["type"]` union members and their comments in events.ts;
+  - the writer in `pollPauseGates` (src/gates/pause-gates.ts);
+  - `STATE_CHANGE_TYPES` and its switch in src/failure/failure-state-change.ts;
+  - the cases in event-format.ts;
+  - the keys of the groundwork's event-type label map behind `eventTypeLabel`, in both its server and browser forms.
+- Tests: add test/event-legacy.test.ts, and update what typecheck or the suite flags (test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, …). Leave event lines that tests write straight to disk (`writeEvents`, `writeLogLines`, `JSON.stringify` into events.jsonl) under their old names. They now exercise the normalizer. The same rule holds for every later part of this series.
+- **Self-hosting:** safe in one part. The running build writes `fleet_*` until it restarts, and the new build reads those lines as `team_*`. The old build reads no `team_*` line. The one exception is a standalone dashboard still on the old build, which shows the type raw until it restarts (display only).
+
+**Files touched.** src/events/event-legacy.ts (new), src/events/event-read.ts, src/events/events.ts, src/events/event-format.ts, src/cli/log-commands.ts, src/cli/help.ts, src/gates/pause-gates.ts, src/failure/failure-state-change.ts, the groundwork label-map module(s), docs/cli.md; test/event-legacy.test.ts (new), test/pause-gates.test.ts, test/orchestrator-pause.e2e.test.ts, test/failure-state-change.test.ts, test/event-format-fleet.test.ts, test/log-commands*.test.ts. Reads (does not edit): src/report/report-data.ts, src/gates/maintenance-quota.ts, src/events/event-window.ts.
+
+**Acceptance criteria.**
+- A `fleet_paused` line in events.jsonl, or in events.jsonl.1 reached through `readWindowEvents`, reads back as `team_paused` from `readEvents`, `readWindowEvents` and `parseEventLine`, and a current line is returned unchanged.
+- `tumwater logs --type fleet_paused` and `--type team_paused` both print that line, and `logs --json` prints it with `"type":"team_paused"`.
+- `logEvent` given an old type, through a cast, appends a line and hands subscribers an event that both carry the new type.
+- The pause gate logs `team_paused`/`team_resumed`, and the failure digest still lists them as state changes.
+- `npm run test` passes.
+
+### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)
+
+**Goal.** Mechanical. The two busiest event types are written and read as `run_start` and `run_end`, and old `tick_start`/`tick_end` lines read as the new names. Every hunk is the same substitution, checked by typecheck and the suite.
+
+**Approach.**
+- Add `tick_start → run_start` and `tick_end → run_end` to `LEGACY_EVENT_TYPES` (src/events/event-legacy.ts).
+- Rename both union members in `HarnessEvent` (src/events/events.ts). Then fix every hit of `"tick_start"`/`"tick_end"` in src, comments included:
+  - writers: `tickPhase` (src/loop/loop-tick.ts) and `finalizeTick` (src/tick/tick-finalize.ts);
+  - readers: `tickStartMap` (event-read.ts), event-format.ts, `eventKind` and `ROUTINE_EVENTS` (src/ui/tone.ts), src/ui/tui/tui-frame.ts, `readTickDetail` (src/tick/tick-detail-data.ts), history-data.ts, failure-data.ts, failure-state-change.ts, `foldUsageEvent` (report-data.ts), role-view.ts;
+  - user-visible strings that print the code itself, such as failure-render.ts's `_no tick_end events in the window_`.
+- Browser code is not typechecked, so grep it: the `eventKind` twin in src/ui/gui/gui-client-model.ts and the activity row in gui-client-fleet.ts compare `"tick_end"`.
+- Rename the two keys in the groundwork's `eventTypeLabel` map, in its server and browser forms.
+- docs/invariants.md names `tick_start` once, so update it. Leave docs/commit-history-analysis.md alone: it is a dated snapshot.
+- Do not rename identifiers that contain "tick" (`tickStartMap`, `tickSpanMs`, `TickResult`, test/fakes/log.ts's `tickEnd()`/`tickStart()`). The Plain terms code run series renames those. Do change the `type` the fake builders return.
+- Tests: tsc flags ~133 typed sites in ~33 files. The suite flags assertions on printed output, such as `--count` tallies, `--json` lines and `--grep tick_end` filters. Fix both, and leave on-disk fixtures as they are (see part 1/9).
+- **Self-hosting:** safe in one part. The new build reads the old build's `tick_*` lines as `run_*`, and the old build reads no new line.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/ui/tone.ts, src/ui/tui/tui-frame.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, src/loop/loop-tick.ts, src/tick/tick-finalize.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/report/report-data.ts, src/roles/role-view.ts, the groundwork label-map module(s), docs/invariants.md; test/fakes/log.ts and the test files typecheck or the suite flags (event-format, event-read, history-data, cli-history*, log-commands*, gui-server-api, tick-finalize, orchestrator*.e2e, loop*, …).
+
+**Acceptance criteria.**
+- A real tick logs `run_start` and `run_end`. `history`, the run trail (`history <role> <n>`), the usage report and the failure digest count them.
+- An events.jsonl holding only old `tick_start`/`tick_end` lines yields the same `history` rows and report totals as before this part.
+- `tumwater logs --type tick_end` matches `run_end` lines.
+- `grep -rnE 'tick_(start|end)' src` finds only event-legacy.ts.
+- `npm run test` passes.
+
+### Plain terms event log, part 3/9: Rename the other tick events and the tick payload field to run (planned 2026-10-16 by user; requires part 2/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/orchestrator/orchestrator-scheduling.ts src/operator/operator-requests.ts src/loop/ src/tick/ src/review/ src/history/history-data.ts src/ui/tone.ts test/)
+
+**Goal.** `tick_deferred` and `tick_aborted` become `run_deferred` and `run_aborted`. The `tick` number on every event becomes `run`, and old lines read back renamed.
+
+**Approach.**
+- Types:
+  - Add `tick_deferred → run_deferred` and `tick_aborted → run_aborted` to `LEGACY_EVENT_TYPES`, and rename both union members.
+  - Writers: the deferral in the scheduling poll (src/orchestrator/orchestrator-scheduling.ts) and the abort handling in src/operator/operator-requests.ts.
+  - Readers: event-format.ts, failure-state-change.ts, tone.ts `ROUTINE_EVENTS`, and the label map in its server and browser forms.
+- Payload field `tick` → `run`, on every event that carries it. Today those are `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute`.
+  - Normalizer: append a rewrite that moves `tick` to `run` when a line has `tick` and no `run`. No event carries a `run` field today; confirm with a grep before relying on that.
+  - Writers:
+    - `tickPhase`'s `run_start` and its `image_reroute` (src/loop/loop-tick.ts);
+    - `finalizeTick` (tick-finalize.ts);
+    - `prompt_taken` in `LoopRunner` (src/loop/loop.ts);
+    - the `onBlindRead` `image_blind` loggers in src/loop/loop-pi.ts, src/review/review.ts and src/review/review-followup.ts;
+    - `image_reroute` in src/tick/tick-verdict.ts.
+  - Readers. tsc cannot see these, because `HarnessEvent`'s index signature types the field `unknown`, so grep for `.tick` on events:
+    - `eventTick`, `tickStartMap` and `tickSpanMs` (event-read.ts) build and read the `#run` key;
+    - `readTickDetail`'s `e.tick === tick` (tick-detail-data.ts);
+    - `resolveQueuedResult`'s `end.tick` (history-data.ts);
+    - the "carries tick" notes in the `HarnessEvent` union comments.
+- Not in scope:
+  - the merge-queue entry's `tick` (`LandingEntry`, Plain terms state);
+  - `LandRequest.tick`, `ctx.tick` and other identifiers (Plain terms code run);
+  - `--json` row keys, already renamed by Plain terms scripting.
+- Tests: fix what typecheck and the suite flag, including assertions that read `.tick` on read-back events and `"tick":` in `logs --json` expectations.
+- **Self-hosting:** safe in one part. Every reader reads `run`, and old lines and the old build's lines are rewritten on read.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-requests.ts, src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-pi.ts, src/review/review.ts, src/review/review-followup.ts, src/tick/tick-finalize.ts, src/tick/tick-verdict.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-state-change.ts, src/ui/tone.ts, the label-map module(s); test/event-legacy.test.ts, test/event-read.test.ts, test/event-window.test.ts, test/orchestrator-defer.test.ts, test/operator-requests.test.ts, test/orchestrator*.e2e.test.ts, test/loop-2.test.ts and the other files the suite flags.
+
+**Acceptance criteria.**
+- A deferred maintenance role logs `run_deferred`, and `tumwater abort` logs `run_aborted`.
+- `run_start`, `run_end`, `prompt_taken`, `image_blind` and `image_reroute` lines carry `run`, not `tick`.
+- An old pair of `tick_start` and `tick_end` lines carrying `tick: 4` still pairs into one `history` row for run 4 with its duration. `history <role> 4` still finds that trail.
+- `npm run test` passes.
+
+### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/)
+
+**Goal.** `land_queued`, `landed` and `land_failed` become `merge_queued`, `merge_done` and `merge_failed`. The existing `merged` (the fast-forward onto main) is unchanged. The notify hook pages on `merge_failed` and receives `TUMWATER_EVENT_SOURCE` instead of `TUMWATER_EVENT_LOOP`.
+
+**Approach.**
+- Add the three pairs to `LEGACY_EVENT_TYPES` and rename the union members and their comments.
+  - Writers: `stageTickLanding` (src/tick/tick-stage.ts), `recoverLeftover` (src/loop/leftover.ts) and `writeLandingOutcome` (src/landing/landing-slot.ts).
+  - Readers: `bucketLandingEvents` and `resolveQueuedResult` (history-data.ts), `foldUsageEvent` (report-data.ts), `scanMainCheck` (status-polls.ts), tick-detail.ts, event-format.ts, tone.ts `ROUTINE_EVENTS`/`PROBLEM_EVENTS` (they reach the dashboard through gui-client-model.ts's JSON injection), and the label map in its server and browser forms.
+- Collision: `"landed"` also names things that are not event types. Leave `OUTCOME_CLASS`'s `landed` class (time-spend.ts, failure-render.ts) and landing-stack.ts's `{ kind: "landed" }`. The text, scripting and code series own those. Rename only the event type.
+- Notify:
+  - `NOTIFY_EVENT_TYPES` lists `merge_failed`.
+  - `NOTIFY_TEST_TYPE` (src/cli/notify-command.ts) becomes `"merge_failed"`.
+  - `notifyCommandEnv(type, source, message)` sets `TUMWATER_EVENT_SOURCE`. Its value is still the event's `loop` field until part 6/9.
+  - Update the variable names in notify.ts's module comment, the `notify` doc comment in src/config/config-schema.ts and docs/config.md.
+  - No alias is kept (decision 3): a hook script that matched `land_failed` or read `TUMWATER_EVENT_LOOP` has to change. This repo's own tumwater.json sets no `notify`.
+- Tests: fix what typecheck and the suite flag (~93 typed sites, plus `--grep land_failed` filters and printed output). Notify tests and the `cli-run-shutdown` hook assert on the new variable. Add one report test in which a legacy `landed` line, appended after a first `collectReport`, is folded by the fold cache's append path as `merge_done`.
+- **Self-hosting:** safe in one part. The new build reads the old build's `land*` lines through the normalizer, and the old build reads no `merge_*` line.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/cli/notify-command.ts, src/config/config-schema.ts, src/tick/tick-stage.ts, src/tick/tick-detail.ts, src/loop/leftover.ts, src/landing/landing-slot.ts, src/history/history-data.ts, src/report/report-data.ts, src/status/status-polls.ts, src/ui/tone.ts, the label-map module(s), docs/config.md; test/notify.test.ts, test/notify-command.test.ts, test/cli-run-shutdown.test.ts, test/report-fold-cache.test.ts, test/landing-pipeline.test.ts, test/time-spend.test.ts, test/tick-detail*.test.ts, test/orchestrator-3.e2e.test.ts and the other files the suite flags.
+
+**Acceptance criteria.**
+- A queued change logs `merge_queued`, then `merge_done` or `merge_failed`. `history` resolves a queued row from either the new or the old event names.
+- `tumwater notify --test` runs the hook with `TUMWATER_EVENT_TYPE=merge_failed` and a `TUMWATER_EVENT_SOURCE` variable, and the environment no longer has `TUMWATER_EVENT_LOOP`.
+- A `merge_failed` event pages the configured hook.
+- `tumwater logs --type land_failed` matches `merge_failed` lines.
+- `npm run test` passes.
+
+### Plain terms event log, part 5/9: Rename the landing and drain payload values (planned 2026-10-16 by user; requires part 4/9 landed; design in plans/terminology.md "Event log"; touches src/build/build-check-events.ts src/landing/landing-merge.ts src/loop/ src/prompt/gate-prompts.ts src/redeploy/redeployer.ts src/events/ src/status/status-polls.ts src/failure/time-spend.ts test/)
+
+**Goal.** The remaining old words inside event payloads change, and old lines read with the new values:
+- `build_check.scope` `"landing"` → `"merge"`;
+- `conflict_handback.reason` `"landing"` → `"merge"`;
+- the `restart` fields `drainedMs`, `abortedTicks` and `drainWindowMs` → `finishedMs`, `abortedRuns` and `finishWindowMs`.
+
+**Approach.**
+- Scope:
+  - `BuildCheckScope` becomes `"gate" | "merge" | "batch"`, along with the `SCOPE_WORDS` key and `MERGE_SCOPES` (src/build/build-check-events.ts).
+  - The writer is `verifyLanding` (src/landing/landing-merge.ts), which passes the scope.
+  - Readers: `scanMainCheck` (status-polls.ts) and `timeAndSpend` (time-spend.ts).
+  - The normalizer rewrites a `build_check` line's `scope: "landing"`.
+- Reason:
+  - The event value and the persisted `LoopState.conflictHandback.reason` share one type, so both change here: `"merge" | "revision"` in src/loop/loop-state.ts.
+  - Writers: the hand-back paths in `tickWithWorktreePhase` (src/loop/loop-tick.ts).
+  - `buildConflictHandbackNote` (src/prompt/gate-prompts.ts) takes `"merge"`.
+  - `loadLoopState` maps a persisted `"landing"` reason to `"merge"` inside its `conflictHandback` heal. A hand-back saved by the old build must keep its merge wording.
+  - The normalizer rewrites a `conflict_handback` line's reason.
+- Restart:
+  - `Redeployer.poll` (src/redeploy/redeployer.ts) writes the three new keys.
+  - The class's own `drainWindowMs`/`drainSince` stay: "drain" is kept in code.
+  - The `restart` case in event-format.ts reads the new keys.
+  - The normalizer renames the three fields on a `restart` line.
+- If the vocabulary guard flags an old value or key literal, end its line with `// vocabulary-ok: legacy event value read from old logs`.
+- Tests: update what typecheck and the suite flag (build-check-events, check-permit, landing-pipeline, gate-prompts, loop-leftover-recovery, event-format, redeployer, orchestrator-redeploy.e2e). Add normalizer cases for all three, and a `loadLoopState` case for the old reason.
+- **Self-hosting:** safe in one part. The new build maps the old build's event values on read and the persisted hand-back reason on load, and the old build reads no new value.
+
+**Files touched.** src/build/build-check-events.ts, src/landing/landing-merge.ts, src/status/status-polls.ts, src/failure/time-spend.ts, src/loop/loop-state.ts, src/loop/loop-tick.ts, src/prompt/gate-prompts.ts, src/redeploy/redeployer.ts, src/events/event-format.ts, src/events/event-legacy.ts; test/build-check-events.test.ts, test/check-permit.test.ts, test/landing-pipeline.test.ts, test/gate-prompts.test.ts, test/loop-leftover-recovery.test.ts, test/loop-state.test.ts, test/event-format.test.ts, test/event-legacy.test.ts, test/redeployer.test.ts, test/orchestrator-redeploy.e2e.test.ts.
+
+**Acceptance criteria.**
+- The in-lock re-check logs `build_check` with `scope: "merge"`. An old `scope: "landing"` line still counts as main's newest merge-scope check in `scanMainCheck`.
+- A state file holding `conflictHandback.reason: "landing"` loads as `"merge"`, and the hand-back note keeps its merge wording.
+- A restart event carries `finishedMs`, `abortedRuns` and `finishWindowMs`, and an old `restart` line formats the same way.
+- `npm run test` passes.
+
+### Plain terms event log, part 6/9: Write the source field and read it everywhere (planned 2026-10-16 by user; requires part 5/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/history/history-data.ts src/failure/time-spend.ts src/tick/ src/config/config-validation.ts test/)
+
+**Goal.** Stage 1 of "Widely used fields":
+- Every event is written with `source`: the runner id, or `"tumwater"` for tumwater's own events, which were formerly `"harness"`.
+- Every reader reads `source`.
+- `HarnessEventInput` still accepts the deprecated `loop`, so call sites can switch in parts 7/9 and 8/9.
+
+**Approach.**
+- src/events/events.ts:
+  - `HarnessEvent.source: string` replaces `loop`.
+  - Export `TUMWATER_SOURCE = "tumwater"`.
+  - `HarnessEventInput` takes exactly one of `source` or a `/** @deprecated use source */ loop`, written as a union of the two shapes beside the index signature.
+  - `warnEvent` and `warnEventBestEffort` name their parameter `source`.
+  - `logEventBestEffort`'s stderr fallback names `event.source ?? event.loop`.
+  - `bestEffortEventLogger().warn` uses `TUMWATER_SOURCE`.
+  - Nothing else in `logEvent` changes: part 1/9's write-side normalization turns `loop` into `source` and `"harness"` into `"tumwater"`.
+- Normalizer (src/events/event-legacy.ts): append a `source` rewrite for a line with a string `loop`.
+  1. A staged-claim `claim` line also carries a payload `source: "staged"`. Move that value to `origin` first.
+  2. Move `loop` to `source` and delete `loop`.
+  3. Map `source: "harness"` to `TUMWATER_SOURCE`.
+
+  Role ids are not touched; the role-ids series aliases them elsewhere (see part 1/9).
+- Collision: the staged-claim event in `stageTickLanding` (src/tick/tick-stage.ts) writes its payload as `origin: "staged"`. Nothing reads that field.
+- Readers. tsc misses most of these because the index signature is `unknown`, so grep for `.loop` on events:
+  - `eventRole`, `tickStartMap` and `tickSpanMs` (event-read.ts);
+  - `isNotifyFailure`, which compares against `TUMWATER_SOURCE`, and `spawnNotifyCommand`'s env value `event.source` (notify.ts);
+  - history-data.ts's `bucketLandingEvents`, `resolveQueuedResult` and `tickRows` role filter;
+  - `timeAndSpend`'s group keys (time-spend.ts);
+  - `readTickDetail`'s filter (tick-detail-data.ts).
+
+  Ignore `.loop` on objects that are not events: history rows, gui-styles.ts CSS names, and the API feed item key, which Plain terms scripting owns.
+- src/events/ writers switch here: notify.ts's `warnEventBestEffort` calls. In src/cli/notify-command.ts, `NOTIFY_TEST_LOOP` becomes `NOTIFY_TEST_SOURCE = TUMWATER_SOURCE`.
+- Edge: refuse a custom role named `tumwater` in src/config/config-validation.ts, because its events would be indistinguishable from tumwater's own. Name the reason in the message.
+- Tests:
+  - Read-back events' `.loop` becomes `.source`, and `"harness"` expectations become `"tumwater"`.
+  - `HarnessEvent`-typed literals use `source`.
+  - Update test/fakes/log.ts's builders and test/fixtures/log-fixtures.ts's helpers, for example `harnessWarnings`.
+  - Calls that still pass `loop:` to `logEvent` stay until part 9/9.
+- **Self-hosting:** safe in one part. The new build reads `loop` lines, which come from old logs, from the old build until it restarts, and from the long-lived supervisor process, which keeps the build it started on and writes `supervisor_exit` with `loop: "harness"`. That is why this rewrite is permanent. The old build reads no `source` line.
+
+**Files touched.** src/events/events.ts, src/events/event-legacy.ts, src/events/event-read.ts, src/events/notify.ts, src/cli/notify-command.ts, src/history/history-data.ts, src/failure/time-spend.ts, src/tick/tick-detail-data.ts, src/tick/tick-stage.ts, src/config/config-validation.ts; test/fakes/log.ts, test/fixtures/log-fixtures.ts, test/event-legacy.test.ts, test/notify.test.ts, test/history-data.test.ts, test/gui-server-api.test.ts, test/tick-detail.test.ts, test/event-format.test.ts, test/known-flakes.test.ts, test/config-validation*.test.ts, and the e2e/landing tests that read `.loop` on events.
+
+**Acceptance criteria.**
+- Every newly written event line has `source` and no `loop`. A role event carries the runner id, and tumwater's own events carry `"tumwater"`, even when the caller still passes `loop: "harness"`.
+- An old `{"loop":"harness",…}` line and an old staged-claim line read back as `source: "tumwater"`, and as `source: "<role>"` with `origin: "staged"`.
+- `logs --json` prints `source`. A notify failure warning is still recognized by `isNotifyFailure` and reported by `doctor`.
+- `customRoles` with a role named `tumwater` is refused with a message.
+- `npm run test` passes.
+
+### Plain terms event log, part 7/9: Switch the run and merge path's event call sites to source (planned 2026-10-16 by user; requires part 6/9 landed; design in plans/terminology.md "Event log"; touches src/loop/ src/tick/ src/landing/ src/review/ src/verdict/ src/inbox/ src/git/ src/build/ src/baseline/ test/)
+
+**Goal.** Mechanical. Stage 2 of "Widely used fields", first directory group. Every event this group logs names its logger with `source:` and uses `TUMWATER_SOURCE` instead of `"harness"`. Nothing a reader sees changes.
+
+**Approach.**
+- In src/loop/, src/tick/, src/landing/, src/review/, src/verdict/, src/inbox/, src/git/, src/build/ and src/baseline/:
+  - every event-object key `loop:` passed to `logEvent`/`logEventBestEffort`, or built as a `HarnessEventInput`, becomes `source:`;
+  - every `"harness"` given as an event source becomes `TUMWATER_SOURCE`, whether it is an object value or the positional source argument of `warnEvent`, `warnEventBestEffort`, `buildCheckEvent` or `baselineCheckEventLogger`.
+- In src/build/build-check-events.ts, rename `buildCheckEvent`'s and `baselineCheckEventLogger`'s `loop` parameter to `source`.
+- Find the sites with a temporary local edit that makes `source` required in `HarnessEventInput`, scoped to these directories, then revert it. tsc lists every object. Grep `"harness"` for the positional ones.
+- Do not rename `loop` that is not an event field: `ctx.role`, LoopRunner and similar are code-series names.
+- Tests that capture this group's events through an injected seam, rather than reading the log, read `source`.
+- **Self-hosting:** safe. The written lines are byte-identical to part 6/9's, because the normalization already produced `source`/`"tumwater"`.
+
+**Files touched.** The modules above that log events (about 55 one-line sites: loop/ ~15, landing/ ~10, tick/ ~9, review/ ~7, git/ ~5, build/ ~5, inbox/ ~4, verdict/ ~2, baseline/ ~1), plus any test the suite flags.
+
+**Acceptance criteria.**
+- `grep -rnE '\bloop: ' src/{loop,tick,landing,review,verdict,inbox,git,build,baseline}` finds no event-object key.
+- `grep -rn '"harness"'` over the same directories finds no event source.
+- The events.jsonl lines produced by the loop and landing tests are unchanged from part 6/9's.
+- `npm run test` passes.
+
+### Plain terms event log, part 8/9: Switch the remaining event call sites to source (planned 2026-10-16 by user; requires part 7/9 landed; design in plans/terminology.md "Event log"; touches src/gates/ src/orchestrator/ src/fleet/ src/redeploy/ src/operator/ src/config/ src/scheduling/ src/process/ src/gui/ src/cli/ test/)
+
+**Goal.** Mechanical. Stage 2 of "Widely used fields", second directory group. After this part, no src module passes `loop` or `"harness"` as an event source.
+
+**Approach.**
+- Make the same substitution as part 7/9 (`loop:` → `source:`, and `"harness"` → `TUMWATER_SOURCE`) in src/gates/, src/orchestrator/, src/fleet/, src/redeploy/, src/operator/, src/config/, src/scheduling/, src/process/, src/gui/ and src/cli/. Examples:
+  - src/process/supervisor.ts's `fleetDownEvent`;
+  - redeployer.ts's `restart` and escalation events;
+  - redeploy.ts's `baselineCheckEventLogger("harness", …)`;
+  - the gate family's emits;
+  - config-live.ts's reload events;
+  - gui-server.ts's server-error warning.
+- Use the same temporary-required-`source` trick to list the objects, and grep `"harness"` for the positional ones.
+- Tests that capture these modules' events through an injected `emit`/`log` seam and read `.loop` read `.source` (test/redeploy-wiring.test.ts, test/config-live.test.ts, …).
+- **Self-hosting:** safe, for the same reason as part 7/9. The supervisor process keeps writing `loop: "harness"` until it is restarted, and the normalizer covers it.
+
+**Files touched.** About 60 one-line sites (gates/ ~15, orchestrator/ ~10, fleet/ ~9, redeploy/ ~9, operator/ ~8, config/ ~5, process/ ~2, scheduling/ ~1, gui/ ~1, cli/ ~1), plus the seam-capturing tests the suite flags.
+
+**Acceptance criteria.**
+- `grep -rnE '\bloop: ' src` finds no event-object key.
+- `grep -rn '"harness"' src` finds only the normalizer's legacy mapping and non-event text.
+- `tumwater run --once`, through the e2e tests, writes only `source` fields.
+- `npm run test` passes.
+
+### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)
+
+**Goal.** Stage 3 of "Widely used fields". `HarnessEventInput` requires `source`, and `loop` is gone from every TypeScript type, so a new call site cannot reintroduce it. Old lines still read through the normalizer.
+
+**Approach.**
+- In `HarnessEventInput` (src/events/events.ts), replace the source-or-loop union with a required `source: string`. Remove the `event.loop` arm of `logEventBestEffort`'s stderr fallback.
+- Keep the normalizer's `loop` → `source` and `"harness"` → `"tumwater"` rewrite, and `logEvent`'s write-side normalization. Old logs and a still-running old supervisor need them permanently. Say so in the rewrite's comment.
+- tsc then lists the remaining callers, nearly all tests:
+  - the `logEvent(root, { loop: … })` seeds in test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/status-payload.test.ts and a few more (~85 lines);
+  - the `HarnessEventInput[]` captures in test/fixtures/redeploy-fixtures.ts and test/redeploy-*.test.ts;
+  - `warnEvent(root, "harness", …)` in test/doctor-notify.test.ts.
+
+  Switch them to `source:` and `TUMWATER_SOURCE`. Untyped on-disk fixtures stay as they are.
+- Add one regression test: an old `loop` line, both from the live log and from events.jsonl.1, still reads as `source`.
+- **Self-hosting:** safe. Only the input type changes, and the write path's output and the read path are unchanged from part 8/9.
+
+**Files touched.** src/events/events.ts; test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/doctor-notify.test.ts, test/status-payload.test.ts, test/fixtures/redeploy-fixtures.ts, test/redeploy-escalation.test.ts, test/redeploy-wiring.test.ts, test/event-legacy.test.ts and the few others tsc lists.
+
+**Acceptance criteria.**
+- `HarnessEventInput` has no `loop` member, and `logEvent(root, { loop: "x", type: "warning" })` fails typecheck.
+- An old `loop`-keyed line, in the live log or the archive, reads back with `source`.
+- `grep -rnE '\bloop: ' test/*.ts` finds no `logEvent` input.
+- `npm run test` passes.
+
+### Plain terms state, part 1/5: Rename LoopState ticks to runs (planned 2026-10-16 by user; requires Plain terms event log 9/9 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/verdict/ src/cli/cli-run.ts src/scheduling/ src/ui/ test/)
+
+**Goal.** Mechanical. The per-role state file `.tumwater/state/<id>.json` stores its run counter as `runs`. A file the old build wrote, with `ticks`, loads unchanged and is saved back as `runs`. The JSON key equals the TypeScript property, with no alias.
+
+**Approach.**
+- src/loop/loop-state.ts:
+  - `LoopState.runs` replaces `ticks`, including in `freshLoopState`, `zeroCounters` and `loadLoopState`'s heal.
+  - Add a `LEGACY_STATE_KEYS` table (old key → new key).
+  - `loadLoopState` applies the table to the parsed object before the spread onto the fresh state. Copy the old key's value to the new key when the new key is absent, then delete the old key in every case, so a file holding both keeps the new value and `saveLoopState` writes only new keys.
+  - This part adds `ticks → runs`.
+  - If the vocabulary guard flags a legacy key literal, end its line with `// vocabulary-ok: legacy state key read from old files`.
+- Every reader goes through `loadLoopState`: `loopStateForPoll` (status-polls.ts), retire.ts and `LoopRunner`'s constructor. Nothing else needs a fallback.
+- Consumers: tsc lists ~28 src sites in ~11 files, among them:
+  - loop.ts and loop-tick.ts (`s.ticks + 1`);
+  - tick-stage.ts and refusal.ts (the trailer's number);
+  - cli-run.ts's `ticksBefore`/`ticksThisRound`;
+  - once-round.ts;
+  - scheduling.ts and tick-verdict.ts;
+  - status-payload.ts, where the `--json` key is already `runs` from Plain terms scripting and only the right-hand side changes;
+  - status-render.ts.
+
+  Keep other identifiers that contain "tick" (`ticksBefore`, `ticksRun`, `tickNumber`); Plain terms code run renames them.
+- Tests: ~221 typed sites in ~39 files, mostly `.ticks` on a `LoopState` and `ticks:` in `LoopState` literals. JSON state fixtures written straight to `state/<id>.json` keep `ticks` and now exercise the loader. Add loader cases to test/loop-state.test.ts.
+- **Self-hosting:** safe in one part. The old build saves `ticks` until it exits, and the new build's loader maps it before any use. The old build never loads a file the new build saved, because the CLI and the orchestrator share one dist. The exception is a standalone dashboard still on the old build, which shows 0 runs until it restarts (display only).
+
+**Files touched.** src/loop/loop-state.ts, src/loop/loop.ts, src/loop/loop-tick.ts, src/tick/tick-stage.ts, src/tick/tick-verdict.ts, src/verdict/refusal.ts, src/cli/cli-run.ts, src/scheduling/once-round.ts, src/scheduling/scheduling.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the ~39 test files tsc lists.
+
+**Acceptance criteria.**
+- `{ "role": "qa", "ticks": 7 }` loads as `runs: 7`, and the next save writes `runs` with no `ticks` key.
+- A file holding both `ticks: 3` and `runs: 9` loads `runs: 9` and drops `ticks`.
+- The next run of a role whose state the old build wrote is numbered from the old counter: run 8 after `ticks: 7`.
+- `npm run test` passes.
+
+### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/)
+
+**Goal.** The state file's other old keys follow the "State and git" table, and old files load through the same legacy-key table:
+- `lastTickStartedAt` → `lastRunStartedAt`
+- `lastTickEndedAt` → `lastRunEndedAt`
+- `landingReviewError` → `mergeReviewError`
+- `landingCheckFailures` → `mergeCheckFailures`
+- `lastLandedAt` → `lastMergedAt`
+
+**Approach.**
+- Add the five pairs to `LEGACY_STATE_KEYS` (src/loop/loop-state.ts) and rename the `LoopState` properties and their doc comments.
+- In `loadLoopState`, the `healOptionalNumber` calls and `landingCheckFailures`' `healRecord` follow the new names. The legacy keys are mapped before healing, so an old value is healed exactly as before.
+- Consumers: tsc lists ~46 src sites in 13 files:
+  - the `applyTickOutcome`/`applyLandingOutcome` writers (tick-apply.ts);
+  - the interval, wake and backoff arithmetic (scheduling.ts, backoff.ts, orchestrator-scheduling.ts);
+  - the review-error pin hold (landing-core.ts, leftover.ts, loop-tick.ts);
+  - the check-failure counter (landing-check-failures.ts);
+  - the live-progress clock (src/ui/tick-progress-model.ts);
+  - role-view.ts and status-polls.ts;
+  - status-payload.ts and status-render.ts, where the `--json` keys are already renamed and only the right-hand sides change.
+- Keep `landing-check-failures.ts`'s file name and `LANDING_CHECK_FAILURE_LIMIT`; Plain terms code merge renames them.
+- Tests: ~123 typed sites in ~25 files. On-disk JSON fixtures keep old keys. Add loader cases.
+- **Self-hosting:** safe in one part. The new build maps the old build's keys on load, and the old build never loads the new build's file (see part 1/5).
+
+**Files touched.** src/loop/loop-state.ts, src/loop/loop-tick.ts, src/loop/leftover.ts, src/tick/tick-apply.ts, src/scheduling/scheduling.ts, src/scheduling/backoff.ts, src/orchestrator/orchestrator-scheduling.ts, src/landing/landing-core.ts, src/landing/landing-check-failures.ts, src/roles/role-view.ts, src/status/status-polls.ts, src/ui/tick-progress-model.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the test files tsc lists.
+
+**Acceptance criteria.**
+- A state file with all five old keys loads them under the new names, each healed as before (a negative `lastLandedAt` reads 0, and a scalar `landingCheckFailures` is dropped). The next save holds only the new keys.
+- A role whose old state carries `landingReviewError` still holds its pin until the reviewer selector changes, read through `mergeReviewError`.
+- The sleeping-roles wake rule still compares the wake against `lastRunEndedAt`.
+- `npm run test` passes.
+
+### Plain terms state, part 3/5: Add the startup migration hook and move the land queue to merge-queue (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "State and git"; touches src/orchestrator/ src/paths.ts src/landing/ src/loop/leftover.ts src/tick/tick-stage.ts src/status/status-data.ts src/events/ test/)
+
+**Goal.** tumwater gets one reusable registry of idempotent startup-migration steps. The orchestrator runs it before its first per-runner state read, and a CLI reader can run it safely too. Its first step moves `.tumwater/land-queue/` to `.tumwater/merge-queue/`. Queue entries carry `run` instead of `tick`, and older entries still read.
+
+**Approach.**
+- New module src/orchestrator/startup-migrations.ts holds the registry:
+  - `interface StartupMigration { name: string; run(root: string): Promise<string[]> }`. A step returns one short note per thing it moved, and nothing when there was nothing to do. Each step must be idempotent and must tolerate a concurrent run: a source that vanished mid-step is skipped, not an error.
+  - `registerStartupMigration(step)` appends to the registry; a duplicate `name` throws.
+  - `runStartupMigrations(root)` runs the registered steps in registration order.
+    - A step that moved something logs one `state_migrated` event (`source: TUMWATER_SOURCE`, `step`, `moved`, `detail`).
+    - A step that throws logs one warning, the remaining steps still run, and the failed step retries at the next start.
+    - A second call moves and logs nothing.
+  - `runStartupMigrationsIfIdle(root)` is the CLI-reader form. It runs the same steps only when no orchestrator is alive for `root` (`orchestratorAlive`, src/fleet/orchestrator-info.ts), so a CLI process never moves files under a running fleet, which may still be the old build. A live fleet has already migrated at its own start.
+- New module src/orchestrator/startup-migration-steps.ts is the one place that fixes step order. It imports `registerStartupMigration`, calls it once per step at top level in order, and re-exports `runStartupMigrations`/`runStartupMigrationsIfIdle`. Callers import from this file, so the steps are registered before anything can run. This also avoids an import cycle: startup-migrations.ts never imports the steps. A step's implementation may live in the module that owns the data. Later parts, and the Plain terms role ids series, add a step by appending one `registerStartupMigration(...)` call at the end of this file.
+- Call `runStartupMigrations` once, from `runOrchestrator` (src/orchestrator/orchestrator.ts), awaited before the `LoopRunner`s are constructed. Each `LoopRunner` constructor's `loadLoopState` is the first per-runner state read, and the merge pipeline's first queue read comes later. In-process callers, tests and `--once` rounds included, get the same call.
+- No CLI command in this series calls the Idle form: the observers read both layouts (below). It exists so the role ids series can migrate from a CLI read path when no fleet is running.
+- Add `state_migrated` to the `HarnessEvent` union, an event-format.ts case (`state migrated — <detail>`) and the label map, in its server and browser forms, with a routine tone.
+- First step, `mergeQueueDir`:
+  - Move every `*.json` in `legacyLandQueueDir(root)` into `landQueueDir(root)` with `fs.renameSync`, keeping the basename, because the queue order lives in the filename.
+  - If the basename already exists in the new directory, leave the file in place and note it.
+  - Remove the old directory once it is empty.
+  - Leave the files' contents as they are.
+- src/paths.ts: `landQueueDir` returns `.tumwater/merge-queue`. Plain terms code merge renames the function. Add `legacyLandQueueDir`, which returns `.tumwater/land-queue`.
+- src/landing/landing-queue.ts:
+  - `LandingEntry.run` replaces `tick`.
+  - `isLandingEntry`/`readEntry` accept an entry that carries `tick` instead and map it to `run`.
+  - `queueFiles` lists the new directory plus any files still in the legacy one, sorted by basename. `tumwater queue`, `status`, doctor and the dashboard, running in another process before the new orchestrator's first start, therefore show the full queue.
+  - `dropLanding` removes by full path, so either directory works.
+  - If the vocabulary guard flags a legacy path literal, end its line with `// vocabulary-ok: legacy path read from old layouts`.
+- Callers (tsc): `stageTickLanding` (tick-stage.ts), `recoverLeftover` (leftover.ts), landing-vetting.ts, landing-drain.ts, landing-queue-render.ts and status-data.ts. In status-data.ts the `--json`/API key is already `run`. The in-memory `LandRequest.tick` stays; Plain terms code run renames it.
+- **Self-hosting:** safe in one part.
+  - The old orchestrator enqueues into `land-queue/` until it exits.
+  - The new one moves those entries before its first read.
+  - Observers on the new build read both directories.
+  - The old build never reads `merge-queue/`.
+  - A crash mid-migration leaves each file whole in one directory or the other, both are read, and the next start finishes the move.
+
+**Files touched.** src/orchestrator/startup-migrations.ts (new), src/orchestrator/startup-migration-steps.ts (new), src/orchestrator/orchestrator.ts, src/paths.ts, src/landing/landing-queue.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/loop/leftover.ts, src/tick/tick-stage.ts, src/status/status-data.ts, src/events/events.ts, src/events/event-format.ts, the label-map module(s); test/startup-migrations.test.ts (new), test/landing-queue.test.ts, test/landing-slot.test.ts, test/doctor-backlog.test.ts, test/cli-queue.test.ts and the others tsc lists (~48 typed sites).
+
+**Acceptance criteria.**
+- Fixture: a repo whose `.tumwater/land-queue/` holds two entries with `tick` and a torn file. `runStartupMigrations` moves all three into `merge-queue/`, removes `land-queue/` and logs one `state_migrated`. `readLandingQueue` then returns the two entries in their original order with `run` set, and counts the torn file as unreadable. A second call changes nothing and logs nothing.
+- `runStartupMigrationsIfIdle` moves nothing while a live orchestrator info file names a running pid, and migrates when none does. Registering a duplicate step name throws.
+- Before any migration, `readLandingQueue` on the old layout returns both entries with `run` set.
+- After `runOrchestrator` starts on the old-layout fixture, the queued entries are vetted and dropped as before.
+- `npm run test` passes.
+
+### Plain terms state, part 4/5: Rename the merging marker and the workspace lease purposes (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/landing/ src/ui/status-model.ts src/git/ src/loop/loop-tick.ts src/orchestrator/startup-migration-steps.ts src/events/ src/doctor/doctor-checks.ts test/)
+
+**Goal.** Two renames of persisted values:
+- The in-flight marker `state/landing.json`, with statuses `landing | vetted | done`, becomes `state/merging.json` with statuses `merging | approved | done`.
+- In `slots.json`, the lease `purpose` changes from `tick | vet` to `run | verify`. The `slot_wait` event's `purpose` follows, since it is the same value.
+
+**Approach.**
+- Marker:
+  - src/paths.ts: `landingStatePath` returns `state/merging.json`. Add `legacyLandingStatePath`, used only by the migration step.
+  - src/landing/landing-slot.ts: `LandingChangeStatus = "merging" | "approved" | "done"`, plus `isLandingChange`, `setLandingChangeStatus`, `addLandingChange` and `landingChanges`. In `landingChanges`, the old single-change top-level shape reads as `merging`.
+  - Callers (tsc): landing-batch.ts, landing-vetting.ts and landing-drain.ts (`"vetted"` → `"approved"`, `"landing"` → `"merging"`), landing-queue-render.ts, and `loopPhase` (src/ui/status-model.ts). Only the status comparison changes; the phase text belongs to the text series.
+  - Migration step `mergingMarker`, registered in startup-migration-steps.ts after `mergeQueueDir`, deletes a leftover `state/landing.json`. The marker is display-only, and a previous generation's marker is stale by definition: `addLandingChange` already drops records whose role is not live. There is no reader fallback.
+- Leases:
+  - src/git/slots-state.ts: `SlotLease.purpose` is `"run" | "verify"`. `isSlotLease` also accepts the legacy `"tick"`/`"vet"`, and `readSlotRecord` maps them, so a lease the old build wrote reads correctly and the next write stores the new value.
+  - src/git/worktree-pool.ts: the purpose type of `claim`, `chooseSlot`, `logSlotWait`, `tryClaim`, `acquire` and the pooled-checkout options.
+  - Callers: `tickWithWorktreePhase` (src/loop/loop-tick.ts) passes `"run"`, landing-batch.ts passes `"verify"`, plus any other `purpose:` that tsc lists.
+- `slot_wait` event: append a normalizer rewrite in src/events/event-legacy.ts that maps a `slot_wait` line's purpose `tick` → `run` and `vet` → `verify`. Readers: the slot-wait line in src/doctor/doctor-checks.ts and the `slot_wait` case in event-format.ts compare against `"verify"`.
+- If the vocabulary guard flags a legacy value literal, end its line with `// vocabulary-ok: legacy value read from old files`.
+- **Self-hosting:** safe in one part.
+  - The new build deletes the old marker at startup and maps old lease purposes and old `slot_wait` lines on read.
+  - The old build never reads `merging.json` or a new purpose, because the CLI and the orchestrator share one dist.
+  - A standalone dashboard still on the old build shows no merge in flight until it restarts (display only).
+
+**Files touched.** src/paths.ts, src/landing/landing-slot.ts, src/landing/landing-batch.ts, src/landing/landing-vetting.ts, src/landing/landing-drain.ts, src/landing/landing-queue-render.ts, src/ui/status-model.ts, src/git/slots-state.ts, src/git/worktree-pool.ts, src/loop/loop-tick.ts, src/orchestrator/startup-migration-steps.ts, src/events/event-legacy.ts, src/events/event-format.ts, src/doctor/doctor-checks.ts; test/status-model.test.ts, test/landing-slot.test.ts, test/landing-queue.test.ts, test/gui-client.test.ts, test/doctor-backlog.test.ts, test/worktree-pool.test.ts, test/startup-migrations.test.ts, test/event-legacy.test.ts, test/doctor-checks.test.ts.
+
+**Acceptance criteria.**
+- During a landing, `state/merging.json` holds `merging`, then `approved` records. `status` renders the same phases as before.
+- A startup with a fixture `state/landing.json` removes it, logs `state_migrated`, and a second start logs nothing.
+- A fixture `slots.json` lease with `purpose: "vet"` reads as `"verify"`, and the next pool write persists `"verify"`. An old `slot_wait` line with `purpose: "tick"` reads as `"run"`.
+- `npm run test` passes.
+
+### Plain terms state, part 5/5: Move landing refs to refs/tumwater/merge and write the Run trailer (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "State and git"; touches src/paths.ts src/git/ src/orchestrator/startup-migration-steps.ts src/operator/retire.ts src/roles/role-catalog.ts test/)
+
+**Goal.** Two git-side renames:
+- The pin for a committed but unmerged change moves from `refs/tumwater/landing/<id>` to `refs/tumwater/merge/<id>`, and startup moves existing pins with `update-ref`. `refs/tumwater/rejected/<id>` is unchanged.
+- New commits carry a `Run: <id> #N · turns … · ctx …` trailer, and every prompt that greps for the trailer matches both `Run:` and `Tick:`.
+
+**Approach.**
+- src/paths.ts: `landingRefName(role)` returns `refs/tumwater/merge/<role>`. Plain terms code merge renames the function. Add `legacyLandingRefName(role)`, which returns `refs/tumwater/landing/<role>`.
+- src/git/git.ts: add `refsUnder(root, prefix)`, returning `{ ref, sha }[]` from `git for-each-ref --format='%(refname) %(objectname)' <prefix>`. Follow the existing `gitTry`/`gitLines` pattern.
+- Migration step `mergeRefs`, registered last in startup-migration-steps.ts, runs for each ref under `refs/tumwater/landing/`:
+  - When the new ref is absent: `setRef(new, sha)`, then `git update-ref -d <legacy> <sha>`, guarded by the old value. The legacy ref is never deleted before its copy exists.
+  - When the new ref names the same sha: delete the legacy ref.
+  - When the new ref names a different sha: keep both and note it. Never overwrite a pin the new build wrote.
+- src/operator/retire.ts:
+  - `collectRetire` reads `landingRefName(role)` and falls back to `legacyLandingRefName(role)`.
+  - `retireRole` deletes both, because a fleet stopped before its first start on this build still holds legacy pins.
+  - Every other reader and writer (landing-core.ts, leftover.ts, loop-recovery.ts, loop-tick.ts, tick-timing.ts, landing-stack.ts, landing-pipeline.ts, landing-check-failures.ts) goes through `landingRefName` inside the orchestrator, after the step has run.
+- Tests: test/loop-2.test.ts builds the ref's file path by hand, so update it. test/git.test.ts and test/git-ref-files.test.ts use the name only as an arbitrary ref and may stay.
+- Trailer:
+  - `commitTrailer` (src/git/commit-message.ts) writes `Run:`.
+  - The readme role's instructions in src/roles/role-catalog.ts say new commits carry `Run: readme #N` and older ones `Tick: readme #N`, and use `git log -E --grep='^(Run|Tick): readme #' -1 --format=%H`.
+  - No src code parses the `Tick:` line today: `hasFrictionTrailer` and `revisionRoundOf` read only the Friction and Revision lines. Grep to confirm; any parser found must accept both forms.
+  - Tests that assert the trailer: test/loop-2.test.ts, loop-leftover-recovery, loop-merge-conflicts, loop-transient-retry, tick-stage, refusal, loop-ids and prompt-roles.
+- If the vocabulary guard flags a legacy literal, end its line with `// vocabulary-ok: legacy name read from old refs or commits`.
+- **Self-hosting:** safe in one part.
+  - The old build pins under `landing/` until it exits.
+  - The new build moves the pins before its first reader, leftover recovery, runs.
+  - A crash between the two `update-ref` calls leaves the commit reachable under both names, and the next start finishes the move.
+  - The trailer has no code parser, and the prompt matches both forms. History keeps `Tick:`.
+
+**Files touched.** src/paths.ts, src/git/git.ts, src/git/commit-message.ts, src/orchestrator/startup-migration-steps.ts, src/operator/retire.ts, src/roles/role-catalog.ts; test/startup-migrations.test.ts, test/retire.test.ts, test/loop-2.test.ts, test/loop-leftover-recovery.test.ts, test/loop-merge-conflicts.test.ts, test/loop-transient-retry.test.ts, test/tick-stage.test.ts, test/refusal.test.ts, test/loop-ids.test.ts, test/prompt-roles.test.ts.
+
+**Acceptance criteria.**
+- Fixture: a repo with `refs/tumwater/landing/improve` at an unmerged sha. Startup leaves `refs/tumwater/merge/improve` at that sha and no legacy ref, and leftover recovery re-queues the change. A second start changes nothing. A legacy and a new ref at different shas are both kept and noted.
+- `tumwater retire` on a repo that still has only the legacy pin counts it as unmerged work and deletes it with `--force`.
+- New commits end with `Run: <id> #N · turns … · ctx …`. The readme instructions' grep finds the newest commit carrying either form.
+- `npm run test` passes.
+
+### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers)
+
+**Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
+
+**Approach.**
+- New module `src/roles/legacy-role-ids.ts`. Each function takes an optional `legacy` map so tests can pass fixture ids.
+  - `LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {}`, old id → new id. Its doc comment says rows are added by the switch parts and never removed.
+  - `canonicalRoleId(id: string, legacy = LEGACY_ROLE_IDS): string` — the own-property mapping, else `id`.
+  - `legacyRoleIdsOf(id: string, legacy = LEGACY_ROLE_IDS): string[]` — the old ids that map to `id`.
+  - `roleCommitGrep(id: string, legacy = LEGACY_ROLE_IDS): string` — `--grep="tumwater(<id>)"` followed by one more `--grep="tumwater(<old>)"` per legacy id. git ORs repeated `--grep`s, so a prompt's history search sees a role's commits under both ids.
+- **Typed ids:** canonicalize before validating, so `--role <old>` behaves exactly like `--role <new>`.
+  - `parseRoleFlag` (src/cli/cli-args.ts). This covers `parseRoleScope`, the operator commands, `start --role` and `cmdDiff`.
+  - `cmdRole`'s id read in src/cli/cli-query-commands.ts, its positional or its direct `flagValue(rest, "--role")`.
+  - The prompt command's `--role` check in src/inbox/prompt-commands.ts.
+  - `tumwater role <id>` in src/roles/role-view.ts `rolePayload`.
+  - The `history <role> <n>` positional in src/tick/tick-detail.ts `cmdTick`.
+  - The dashboard needs none: it sends ids from its own status payload.
+- **Config:** extend `normalizeConfigKeys` and `canonicalConfigKey` in src/config/config-aliases.ts (Plain terms commands) with a role-id pass driven by `LEGACY_ROLE_IDS`, taking an optional `legacy` map.
+  - An old id as a key of `roles`, `maxDailyCostUsdPerRole` or `quietHoursPerRole` moves to the new id.
+  - Both present records the problem `sets both roles.<old> and roles.<new> — keep roles.<new> (<old> is its old id)`.
+  - Each move is added to `renamed`, so doctor's `config key names` check reports it with no new code.
+  - `canonicalConfigKey` maps `roles.<old>.<field>` and `<map>.<old>`, so `config get|set|unset` accept the old id.
+- **Events:** in `normalizeLegacyEvent` (Plain terms event log), pass `source`, and the `role` field of role events, through `canonicalRoleId`. History, the report, the failure digest and the feeds then fold an old id's events into the new id.
+- **Persisted state:** each reader canonicalizes the role ids it returns. Writers already write the id they are given.
+  - `readPausedRoles` and `scheduledWakes` in src/fleet/fleet-state.ts.
+  - The merge-queue entry reader's `role`: `queuedLandingFiles` in src/landing/landing-queue.ts, or its Plain terms state successor.
+  - The merging marker's role reader.
+  - `readSlotsState`'s pinned role in src/git/slots-state.ts.
+- **Prompts:** `searchGuidance(roleId)` in src/roles/role-guidance.ts uses `roleCommitGrep(roleId)` in place of its single `--grep`.
+- New `test/legacy-role-ids.test.ts`, using a fixture map `{ oldy: "newy" }`:
+  - `canonicalRoleId`, `legacyRoleIdsOf` and `roleCommitGrep`;
+  - `normalizeConfigKeys` moves `roles.oldy`, `maxDailyCostUsdPerRole.oldy` and `quietHoursPerRole.oldy`, refuses a file with both ids, and lists each move;
+  - `canonicalConfigKey("roles.oldy.model")`;
+  - with the real, empty map, every function is the identity.
+
+**Files touched.** src/roles/legacy-role-ids.ts (new), src/roles/role-guidance.ts, src/roles/role-view.ts, src/config/config-aliases.ts, src/cli/cli-args.ts, src/cli/cli-query-commands.ts, src/inbox/prompt-commands.ts, src/tick/tick-detail.ts, the `normalizeLegacyEvent` module in src/events/, src/fleet/fleet-state.ts, src/landing/landing-queue.ts or its successor, src/git/slots-state.ts, the merging-marker reader; test/legacy-role-ids.test.ts (new).
+
+**Acceptance criteria.**
+- With `LEGACY_ROLE_IDS` empty, no existing test changes and no command output changes.
+- With the fixture map, a config holding `roles.oldy` normalizes to `roles.newy` and reports `roles.oldy → roles.newy`, and one holding both is refused naming both.
+- `roleCommitGrep("newy", { oldy: "newy" })` holds both `--grep` arguments, and `searchGuidance` uses it.
+- Every site listed under typed ids, events and persisted state calls `canonicalRoleId`, which grep confirms.
+- `npm run test` passes.
+
+### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test)
+
+**Goal.** When a role's id changes, the first startup on the new build moves that role's on-disk artifacts to the new id before anything reads them. The role keeps its branch, pending merge, notes, inbox and sessions. The step is idempotent and does nothing while `LEGACY_ROLE_IDS` is empty.
+
+**Approach.**
+- New module `src/roles/legacy-role-migration.ts` with `migrateLegacyRoleIds(root: string, legacy = LEGACY_ROLE_IDS): Promise<string[]>`. It returns one line per artifact moved or skipped. For each `[old, new]`:
+  - **Branch:** when `branchName(old)` exists and `branchName(new)` does not, run `git branch -m tumwater/<old> tumwater/<new>`. git also repoints any worktree that has it checked out. When the new branch exists, leave both and report the skip.
+  - **Refs:** the merge ref (`refs/tumwater/merge/<id>`, through the name helper Plain terms state left in src/paths.ts) and `rejectedRefName(id)`. When the old ref exists and the new one does not, run `git update-ref <new> <sha>` and then `git update-ref -d <old> <sha>`.
+  - **Paths:** `statePath`, `roleNotesPath`, `roleInboxDir`, `sessionDir` and `reviewSessionDir` (src/paths.ts). When the old path exists and the new one does not, `fs.renameSync`. When both exist, leave both and report.
+  - **Not moved:** pi and native logs stay where they are, because they are history.
+  - Each artifact is its own try/catch. A failure is reported and never aborts startup or the other moves. Use the git helpers the codebase already has (`gitTry` and `runGit` from src/git/).
+- Register the step by appending one line at the end of src/orchestrator/startup-migration-steps.ts (the hook Plain terms state part 3/5 added): `registerStartupMigration({ name: "legacyRoleIds", run: (root) => migrateLegacyRoleIds(root) })`. It goes after `mergeRefs`, so its ref rename sees `refs/tumwater/merge/<old>` and never a legacy `landing/` ref. Its returned lines become the step's `state_migrated` detail, the hook's logging convention.
+- `cmdRun`'s once-mode path (src/cli/cli-run.ts) reads `loadLoopState` for its `ticksBefore` snapshot before `runOrchestrator` starts. Call `runStartupMigrations(root)` there first, so the snapshot reads the migrated `state/<new>.json`. The hook is idempotent, so the orchestrator's own call then moves nothing.
+- New `test/legacy-role-migration.test.ts` on a fixture repo (test/fixtures/repo-fixtures.ts), with the map `{ oldy: "newy" }`. Build:
+  - branch `tumwater/oldy` and both refs;
+  - `state/oldy.json`, `state/notes/oldy.md` and `inbox/oldy/x.md`;
+  - `sessions/oldy/` and `sessions/_review/oldy/`;
+  - a pi log.
+  - Then assert:
+    - after one run each artifact is under `newy` with its content intact, and the log has not moved;
+    - a second run moves nothing;
+    - with `tumwater/newy` already present, `tumwater/oldy` stays and the skip is reported;
+    - with the real, empty map, nothing happens.
+
+**Files touched.** src/roles/legacy-role-migration.ts (new), src/orchestrator/startup-migration-steps.ts, src/cli/cli-run.ts, test/legacy-role-migration.test.ts (new). Reads (does not edit): src/paths.ts, src/roles/legacy-role-ids.ts.
+
+**Acceptance criteria.**
+- On the fixture, every listed artifact moves to the new id, and nothing that already exists under the new id is overwritten.
+- A second run is a no-op.
+- The step is registered in the startup hook and runs before the first per-runner state read, which the hook's own test pattern pins.
+- With `LEGACY_ROLE_IDS` empty, startup does no new git or file work beyond the empty loop.
+- `npm run test` passes.
+
+### Plain terms role ids, part 3/5: Rename the dry role to dedupe (planned 2026-10-16 by user; requires part 2/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and test/vocabulary.test.ts plus the tests that use dry as a role id)
+
+**Goal.** Mechanical. The duplication remover's id becomes `dedupe` and its title "duplication remover". Configs that say `roles.dry`, `--role dry`, old events, and the role's branch, refs, state, notes, inbox and sessions all carry over through parts 1/5 and 2/5.
+
+**Approach.**
+- `LEGACY_ROLE_IDS` (src/roles/legacy-role-ids.ts) gains `dry: "dedupe"`.
+- src/roles/role-catalog.ts: the entry's `id: "dedupe"`, `title: "duplication remover"`, and `searchGuidance("dedupe")`. Through `roleCommitGrep`, that greps both `tumwater(dedupe)` and `tumwater(dry)`.
+- src/roles/roles.ts: `CODE_MAINTENANCE_ROLES` lists `"dedupe"`. Fix the role list in the `searchGuidance` doc comment in src/roles/role-guidance.ts.
+- New commits say `tumwater(dedupe):`, because subjects use the runner id. Old subjects stay as history.
+- test/vocabulary.test.ts: append `dry(?![- ]run)` to `RETIRED_WORDS`. Fix any literal it now flags in an opted-in module; grep first, none is expected.
+- docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Leave their text as written: Plain terms docs part 4/5 gives them a pre-rename banner, and docs/glossary.md maps the id.
+- A custom role a user already named `dedupe` now collides with the catalog id, and validateConfig's existing collision rule refuses the load and names it. That is intended; no code.
+- **Tests, mechanical:** replace the role id `"dry"` with `"dedupe"` in every test that uses it as a role id. That is about 230 lines across about 47 files: the orchestrator e2e suites, status-render, fleet-state, fleet-hold, error-storm, operator-commands, worktree, failure-*, and the rest `grep -rn '"dry"' test` lists. Never touch `--dry-run`, `dryRun` or "dry run".
+- **New end-to-end cases** for the real alias, in test/legacy-role-ids.test.ts:
+  - `tumwater role dry` shows dedupe;
+  - `tumwater history --role dry` lists dedupe's runs;
+  - a tumwater.json with `roles.dry.enabled: false` disables dedupe, and doctor names `roles.dry → roles.dedupe`;
+  - an events.jsonl line whose source is `dry` reads as dedupe in `history` rows;
+  - `migrateLegacyRoleIds` with the real map moves `state/dry.json` and branch `tumwater/dry` on a fixture repo.
+
+**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/roles/role-guidance.ts (comment), test/vocabulary.test.ts, test/legacy-role-ids.test.ts, and the tests that use `"dry"` as a role id.
+
+**Acceptance criteria.**
+- `tumwater role dedupe` shows "duplication remover", and `tumwater role dry` shows the same role.
+- An existing project's `state/dry.json`, `tumwater/dry` branch and `roles.dry` settings carry over to dedupe on the first start of this build.
+- `grep -rn '"dry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
+- The vocabulary guard flags "dry" in an opted-in fixture string, and does not flag "--dry-run".
+- `npm run test` passes.
+
+### Plain terms role ids, part 4/5: Rename the telemetry role to selfcheck (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config.ts and src/tick/tick-prompt.ts and tumwater.example.json and README.md plus tests)
+
+**Goal.** The opt-in role that files tumwater bugs from its own failure log is `selfcheck`, titled "self-check: files tumwater bugs from its own failure log". It is still opt-in, through `roles.selfcheck.enabled`. A config that enables `roles.telemetry` keeps it running under the new id, and its state, branch and history carry over.
+
+**Approach.**
+- `LEGACY_ROLE_IDS` gains `telemetry: "selfcheck"`.
+- src/roles/role-catalog.ts: `id: "selfcheck"`, the new title. In its `find` text, the duplicate-filing check `git log --grep="tumwater(telemetry)"` becomes `git log ${roleCommitGrep("selfcheck")}`, so it sees filings under both ids.
+- src/roles/roles.ts: `OBSERVER_ROLES` is `["qa", "selfcheck"]`. Fix the comments that name the role id there and in `BASELINE_BLOCKED_ROLES`'s doc.
+- src/config/config.ts `defaultConfig`: `roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 }`. Keep the opt-in rationale comment and update its role name.
+- src/tick/tick-prompt.ts: the digest injection tests `base === "selfcheck"`.
+- tumwater.example.json: `roles.selfcheck`.
+- README.md: the status line naming the opt-in role says `selfcheck` and `roles.selfcheck.enabled`. Update docs/invariants.md's mention too.
+- test/vocabulary.test.ts: append `telemetry` to `RETIRED_WORDS`. Fix every opted-in literal it now flags, for example the Report view blurb in src/ui/gui/gui-client-report.ts ("the digest the telemetry loop reads") if Plain terms text left the id there.
+- Not renamed here: src/tick/telemetry-digest.ts, `telemetryDigest` and `TELEMETRY_DIGEST_DAYS`, which Plain terms code cleanup renames; plans/telemetry-role.md, which is history; the word "telemetry" in comments that do not mean the role id.
+- This repo's own tumwater.json likely enables `roles.telemetry`. The alias keeps it running, doctor names the rename, and part 2/5's step moves its artifacts at startup. The user renames the key when convenient (plans/terminology.md "Out of scope").
+- Tests:
+  - Update the id and title in test/telemetry-digest, prompt-roles, tick-prompt, roles, config, role-view, status-data, report-data, inbox, gui-report, failure-render, tick-finalize and pi-parser, and in test/fixtures/orchestrator-fixtures.ts.
+  - New cases: a tumwater.json with `roles.telemetry.enabled: true` enables selfcheck, and doctor names `roles.telemetry → roles.selfcheck`; selfcheck's tick prompt holds both `--grep` arguments and the failure digest.
+
+**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/config/config.ts, src/tick/tick-prompt.ts, src/ui/gui/gui-client-report.ts (only if flagged), tumwater.example.json, README.md, docs/invariants.md, test/vocabulary.test.ts, and the tests listed.
+
+**Acceptance criteria.**
+- `defaultConfig().roles.selfcheck.enabled` is false, and no `telemetry` role exists.
+- A tumwater.json enabling `roles.telemetry` runs selfcheck, and doctor's `config key names` check names the rename.
+- Selfcheck's tick prompt carries the failure digest, and the role's duplicate check greps both `tumwater(selfcheck)` and `tumwater(telemetry)`.
+- `grep -rn '"telemetry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
+- `npm run test` passes.
+
+### Plain terms role ids, part 5/5: Retitle steward and readme and show each role's title beside its id on the dashboard and TUI (planned 2026-10-16 by user; requires part 4/5 and Plain terms groundwork 4/4 landed; design in plans/terminology.md "Role names"; touches src/roles/role-catalog.ts and src/ui/status-render.ts and src/ui/gui/ plus tests)
+
+**Goal.** Every role is listed with its title beside its id, so a newcomer reads "dedupe — duplication remover" instead of guessing. The steward is titled "backlog curator" and readme "brief and README keeper".
+
+**Approach.**
+- src/roles/role-catalog.ts: steward's `title: "backlog curator"`, readme's `title: "brief and README keeper"`. No other title changes; parts 3/5 and 4/5 set dedupe's and selfcheck's.
+- **TUI and `tumwater status`:** both render `renderStatusSpans` in src/ui/status-render.ts.
+  - Append a last column headed `title`, whose cell is `roleTitle(s.role)` (src/roles/role-labels.ts, groundwork) in the `dim` tone. The totals row leaves it blank.
+  - Make `{ index: <the new column's index>, minWidth: 0 }` the first `FLEXIBLE_COLUMNS` entry, so a narrow terminal gives up the title before any other column shrinks.
+  - The new column is appended last, so the existing positional indices do not move. A cell clipped to zero width trims away with the trailing padding.
+- **Dashboard**, using the browser `roleTitle` twin from groundwork:
+  - The Roles table name cell, `loopCells` in src/ui/gui/gui-client-loops.ts, adds `<span class='muted role-title'>` + `esc(roleTitle(l.role))` + `</span>` after the role button.
+  - The drawer header, both `drawerhead` paints in src/ui/gui/gui-client-drawer.ts, shows the title under the id.
+  - The composer's target options in src/ui/gui/gui-client-composer.ts read `<id> — <title>`.
+  - Add a `.role-title` rule in src/ui/gui/gui-styles.ts: small, muted, no wrap.
+- `tumwater role <id>` already prints the title (src/roles/role-render.ts). Leave it.
+- A custom role shows "custom role", and `feature-2` shows feature's title, because `roleTitle` resolves instances through the base role.
+- Tests:
+  - test/status-render.test.ts: rows end with their titles; at a `maxWidth` too narrow for everything, the title column goes first and the other columns keep their widths.
+  - The gui-client-loops, gui-client-drawer and gui-client-composer suites: the title appears beside the id.
+  - test/prompt-steward.test.ts and test/prompt-roles.test.ts: the new titles in the prompt self-description.
+
+**Files touched.** src/roles/role-catalog.ts, src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-styles.ts; tests: test/status-render.test.ts, test/gui-client-loops.test.ts, test/gui-client-drawer.test.ts, test/gui-client-composer.test.ts, test/prompt-steward.test.ts, test/prompt-roles.test.ts.
+
+**Acceptance criteria.**
+- `tumwater status` at full width shows each role's title in a last column, and at a narrow width drops the title before clipping anything else.
+- The dashboard's Roles table, drawer header and composer target list show the title beside the id, including "custom role" for a custom role.
+- The steward's and readme's prompts describe them as "backlog curator" and "brief and README keeper".
+- `npm run test` passes.
+
+### Plain terms code team, part 1/6: Move src/fleet/ to src/team/ and give the fleet-named files team names (planned 2026-10-16 by user; requires Plain terms role ids 5/5 and Plain terms scripting 5/5 landed; design in plans/terminology.md "Code names"; touches src/fleet/ and the fleet-named files and their importers)
+
+**Goal.** A mechanical file move with no identifier changes. The fleet-named directory and files take team names, and every import path and path mention follows them. Behavior is unchanged.
+
+**Approach.**
+- `git mv`, so history follows the files:
+  - `src/fleet/` → `src/team/`. Inside it, `fleet-hold.ts` → `team-hold.ts`, `fleet-polls.ts` → `team-polls.ts` and `fleet-state.ts` → `team-state.ts`. `error-storm.ts`, `failure-spread.ts`, `orchestrator-info.ts` and `reclaim.ts` keep their names.
+  - `src/ui/fleet-alerts.ts` → `src/ui/team-alerts.ts`, `src/gui/gui-fleet-commands.ts` → `src/gui/gui-team-commands.ts`, and `src/ui/gui/gui-client-fleet.ts` → `src/ui/gui/gui-client-team.ts`.
+  - Tests: `test/fleet-alerts.test.ts`, `test/fleet-hold.test.ts`, `test/fleet-polls.test.ts` and `test/fleet-state.test.ts` → `test/team-*.test.ts`. `test/gui-client-fleet.test.ts` → `test/gui-client-team.test.ts`, `test/status-data-fleet.test.ts` → `test/status-data-team.test.ts`, `test/event-format-fleet.test.ts` → `test/event-format-team.test.ts`, and `test/cli-operators-fleet.test.ts` → `test/cli-operators-team.test.ts`.
+- Update every import specifier that names a moved file: `from "…"`, `import("…")` and the tests' `../src/fleet/…` (about 100 lines). Also update every path mention of a moved file in comments and strings, such as `src/fleet/fleet-state.ts`, `gui-client-fleet.ts's …` or `fleet-hold.test.ts`. Find them with `git grep -nE 'src/fleet|/fleet/|\./fleet-|fleet-(hold|polls|state|alerts)\.|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet'`. Change only the path on those lines. Identifiers such as `pauseFleet` stay for parts 2–6.
+- Update the docs and scripts that name a moved path, in this same part:
+  - docs/invariants.md: test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. At planning time, the Binds path `src/fleet/fleet-state.ts` was the only one. Re-grep the file for every moved source and test path, because earlier series may have added citations.
+  - DEVELOPMENT.md's `src/fleet/` layout bullet (the path and file names only), and any other docs/*.md that cites a moved path as a current file;
+  - the comment in scripts/live-checkout-guard.mjs.
+- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md, plans/*.md, docs/commit-history-analysis.md and the docs/code-metrics.md snapshot.
+
+**Files touched.** The 7 moved source files and 8 moved tests (`git mv`); the roughly 60 src/ and test/ files whose imports or path mentions name them; DEVELOPMENT.md; docs/invariants.md; scripts/live-checkout-guard.mjs.
+
+**Acceptance criteria.**
+- `git ls-files src test | grep -i fleet` prints nothing.
+- `git grep -nE 'src/fleet|/fleet/|fleet-(hold|polls|state|alerts)\.(ts|js)|gui-client-fleet|gui-fleet-commands|(status-data|event-format|cli-operators)-fleet' -- src test scripts DEVELOPMENT.md docs/invariants.md docs/how-it-works.md` prints nothing, and test/invariants-doc.test.ts passes.
+- No identifier changes: every edited line differs only in a path or file name, and `git diff -M --stat` shows the moves as renames.
+- `npm run test` passes.
+
+### Plain terms code team, part 2/6: Rename the fleet identifiers in src/team/ and its tests (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Code names"; touches src/team/ and its seven test files)
+
+**Goal.** Every identifier, comment and test name in `src/team/` and its tests says team. The module's exports take their new names. The old names stay as deprecated aliases until the parts that own their callers move them over. A mechanical rename with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"):
+  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
+  - in comments, "fleet" → "team" ("fleet-wide" → "team-wide");
+  - the same in test names (the first argument of `test(...)`), test temp-dir prefixes (`tmpdir("tumwater-fleet-polls-")`) and assertion messages.
+- **Exports, renamed at their declarations:**
+  - team-state.ts: `pauseFleet` → `pauseTeam`, `resumeFleet` → `resumeTeam`, `isFleetPaused` → `isTeamPaused`, `standingFleetPause` → `standingTeamPause`;
+  - team-hold.ts: `FLEET_OPEN` → `TEAM_OPEN`, `fleetHold` → `teamHold`, `FleetHold` → `TeamHold`;
+  - team-polls.ts: `pollFleetHold` → `pollTeamHold`.
+- **Aliases for later callers.** Parts 3–5 own these exports' callers in src/gates, src/orchestrator, src/doctor, src/status, src/ui, src/gui, src/operator, src/cli, src/events, src/cli.ts and src/collections.ts. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use pauseTeam. */` on one line, then `export const pauseFleet = pauseTeam;` (for the type, `export type FleetHold = TeamHold;`). Use the two-line form so test/exports.test.ts keeps tracking the alias.
+- **test/exports.test.ts.** It requires every exported name to have a user outside its own file. The module's tests switch to the new names, which gives each new name that user. Do not edit the callers in other directories.
+- **Leave alone:**
+  - user-visible strings and expected-output literals (the text series already converted them);
+  - event type names;
+  - any line that names an old spelling on purpose (legacy normalizer maps and their tests);
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim. test/plan-citations.test.ts fails on a changed PLANS.md citation, such as `PLANS.md "Mixed claude + pi fleets, part 2/4"` in team-polls.ts.
+- Comment lines wrap at 100 columns (test/comment-width.test.ts).
+
+**Files touched.** `src/team/` (team-state.ts, team-hold.ts, team-polls.ts, error-storm.ts, failure-spread.ts, orchestrator-info.ts, reclaim.ts); `test/team-state.test.ts`, `test/team-hold.test.ts`, `test/team-polls.test.ts`, `test/error-storm.test.ts`, `test/failure-spread.test.ts`, `test/orchestrator-info.test.ts`, `test/reclaim.test.ts`.
+
+**Acceptance criteria.**
+- `src/team/` exports `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. Each old name is a `@deprecated` alias of its new name.
+- In the listed files, `git grep -niE 'fleet'` finds only the eight aliases, quoted PLANS.md/BUGS.md titles, user-visible strings and legacy names kept on purpose.
+- No file outside the listed ones changes.
+- `npm run test` passes, test/exports.test.ts included.
+
+### Plain terms code team, part 3/6: Rename the fleet identifiers in the gates and orchestrator and doctor and status modules (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/orchestrator/ src/doctor/ src/status/ src/concurrency/ src/baseline/ and their tests)
+
+**Goal.** Identifiers, comments and test names in these directories say team, and they stop using the part 2/6 aliases. A mechanical rename of about 500 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"):
+  - in identifiers, `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM`;
+  - in comments, "fleet" → "team";
+  - the same in test names, temp-dir prefixes and assertion messages.
+- **Exports and members, renamed at their declarations together with every use** (no other part uses them, so no alias is needed):
+  - src/gates/gate-polls.ts: `pollFleetGates` → `pollTeamGates`, `newFleetGateStates` → `newTeamGateStates`, `FleetGateStates` → `TeamGateStates`, plus the local types `FleetGatePoll` → `TeamGatePoll` and `FleetGatePollCtx` → `TeamGatePollCtx`;
+  - the gate-state member `fleetHold` → `teamHold`.
+- **Locals follow the rule.** Examples: `fleet` → `team` in doctor-holds.ts and `aliveFleet` → `aliveTeam`, along with `fleetHeldNow`, `fleetHeldProviders`, `fleetOnly` and `fleetPause`.
+- **Move off the part 2/6 aliases.** In these files, use `pauseTeam`, `resumeTeam`, `isTeamPaused`, `standingTeamPause`, `TEAM_OPEN`, `teamHold`, `TeamHold` and `pollTeamHold`. When test/exports.test.ts reports an alias as unused, delete it in this part.
+- **Leave for their own parts.** Do not rename `fleetAlerts` (part 4/6) or `fleetDailyCost` and `fleetModelsFree` (part 5/6), even where these files call them. Those parts rename every caller.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Comment lines wrap at 100 columns.
+
+**Files touched.** `src/gates/`, `src/orchestrator/`, `src/doctor/`, `src/status/`, `src/concurrency/`, `src/baseline/`. Tests: `test/gate-polls.test.ts`, `test/pause-gates.test.ts`, `test/budget-gates.test.ts`, `test/disk-gate.test.ts`, `test/streak-gate.test.ts`, `test/gate-event-best-effort.test.ts`, `test/orchestrator-*.test.ts` (the `.e2e` ones too), `test/doctor-*.test.ts`, `test/status-data*.test.ts` (with `status-data-team.test.ts`), `test/status-budget.test.ts`, `test/status-header.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/check-permit.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`.
+
+**Acceptance criteria.**
+- `pollFleetGates`, `newFleetGateStates` and `FleetGateStates` no longer appear anywhere in src/ or test/.
+- In the listed files, the only fleet identifiers left are calls to `fleetAlerts`, `fleetDailyCost` and `fleetModelsFree`, and no comment or test name says fleet, apart from quoted backlog titles.
+- None of the listed files uses a part 2/6 alias.
+- `npm run test` passes.
+
+### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)
+
+**Goal.** The UI layers' identifiers, comments, test names and the dashboard's internal DOM ids say team. That includes the browser code the dashboard ships as `String.raw` templates. A mechanical rename of about 500 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes and assertion messages.
+- **Exports, renamed at their declarations:**
+  - src/ui/team-alerts.ts: `fleetAlerts` → `teamAlerts` and `FleetAlert` → `TeamAlert`. Also move src/doctor's call to `teamAlerts`, since part 3/6 left it.
+  - `GUI_CLIENT_FLEET_JS` → `GUI_CLIENT_TEAM_JS`.
+  - src/change/change-data.ts: `collectFleetChanges` → `collectTeamChanges`, `FleetChangeView` → `TeamChangeView`, `FleetRoleChange` → `TeamRoleChange`.
+  - src/change/change-render.ts: `renderFleetChange` → `renderTeamChange`.
+  - src/text/phrases.ts: `fleetPausePhrase` → `teamPausePhrase` and `fleetResumePhrase` → `teamResumePhrase`.
+- **Aliases.** src/cli, src/events, src/operator and src/failure call `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase` and `fleetResumePhrase`, and parts 5–6 own those files. Keep each of these four old names as a two-line `/** @deprecated Use …. */` alias.
+- **Browser code.** The dashboard's browser code in the `String.raw` templates of src/ui/gui/gui-client-*.ts is not typechecked, so grep each renamed name across src/ui/gui/ and test/:
+  - rename `renderFleet` → `renderTeam`, `pendingFleet` → `pendingTeam`, `setFleetPause` → `setTeamPause`, `fleetRunning`, `fleetBudgetGate` and `fleetMarker`;
+  - update the tests that reach these names as strings: scope stubs like `renderFleet: () => …` in test/gui-client-boot.test.ts and test/gui-client-drawer.test.ts, expected call logs like `"renderFleet"`, and the `renderFleetChange's` test name in test/tui-keys.test.ts.
+- **Internal DOM ids.** In src/ui/gui/gui-page.ts, the client modules and their tests, `fleet-view` → `team-view`, `fleet-title` → `team-title` and `fleetsub` → `teamsub`. If the scripting series left the internal view key `fleet` (the `VIEWS` map in gui-client-boot.ts, `activeView`), rename it to `team`. Keep the old-hash route that series added.
+- Drop any `// vocabulary-ok:` marker whose only reason was a fleet-named id or identifier renamed here.
+- **Move off the aliases.** In these directories, move every remaining part 2/6 alias use to the new names. Delete each alias that test/exports.test.ts then reports as unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+
+**Files touched.** `src/ui/` (team-alerts.ts, badges.ts, status-*.ts, tone.ts, gui/*.ts, tui/*.ts), `src/gui/`, `src/change/`, `src/text/`, `src/doctor/` (one call). Tests: `test/team-alerts.test.ts`, `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status-model.test.ts`, `test/status-render*.test.ts`, `test/status-payload.test.ts`, `test/badges.test.ts`, `test/change-data.test.ts`, `test/change-render.test.ts`, `test/phrases.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'renderFleet|pendingFleet|setFleetPause|fleet-view|fleet-title|fleetsub|GUI_CLIENT_FLEET_JS|fleetAlerts|FleetAlert' -- src test` prints nothing.
+- In the listed directories, no identifier, comment or test name says fleet, apart from the four aliases, quoted backlog titles and legacy names.
+- The dashboard still boots in test/gui-client-boot.test.ts, and the views switch with the renamed ids.
+- `npm run test` passes.
+
+### Plain terms code team, part 5/6: Rename the fleet identifiers in the budget and pi and config and events and process and CLI layers (planned 2026-10-16 by user; requires part 4/6 landed; design in plans/terminology.md "Code names"; touches src/budget/ src/pi/ src/config/ src/events/ src/process/ src/cli/ src/operator/ src/loop/ src/report/ the src/ root files and test/helpers/)
+
+**Goal.** These directories' identifiers, comments and test names say team, and the remaining fleet exports take their team names. A mechanical rename of about 490 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes (`tmpdir("notify-fleet-down-")`) and assertion messages.
+- **Exports, renamed at their declarations together with every caller.** No later part uses them, so no aliases are needed. Earlier parts' callers move now too.
+  - budget/budget.ts: `fleetDailyCost` → `teamDailyCost`. Callers remain in src/doctor, src/status and src/ui.
+  - pi/pi-models.ts: `fleetModelsFree` → `teamModelsFree`. Callers remain in src/status and src/doctor, plus a comment in test/fixtures/models-fixtures.ts.
+  - config/config-views.ts: `fleetModelLabel` → `teamModelLabel`.
+  - events/notify.ts: `notifyFleetDown` → `notifyTeamDown`.
+  - process/supervisor.ts: `FleetDown` → `TeamDown` and `fleetDownEvent` → `teamDownEvent`.
+  - cli/cli-run.ts: the `onFleetDown` member → `onTeamDown`.
+  - test/helpers/run-live-harness.ts: `withRunningFleet` → `withRunningTeam`.
+- **Move off the aliases.** These directories still call `pauseFleet`, `resumeFleet`, `isFleetPaused`, `pollFleetHold` (from part 2/6) and `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase`, `fleetResumePhrase` (from part 4/6). Move those calls to the new names. Delete each alias that test/exports.test.ts then reports as unused.
+- **Docs that name these identifiers:**
+  - docs/backends.md: `fleetModelsFree()`, twice;
+  - docs/invariants.md: `notifyFleetDown` and `onFleetDown`, plus the quoted test name "a fleet that goes down unasked runs the notify hook once" when this part renames that test in test/cli-run-shutdown.test.ts.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names (notify's allowlist already uses `team_paused`);
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim, such as "Mixed claude + pi fleets, part 3/4" in config-fallbacks.ts (test/plan-citations.test.ts).
+
+**Files touched.** `src/budget/`, `src/pi/`, `src/config/`, `src/events/`, `src/process/`, `src/cli/`, `src/operator/`, `src/loop/`, `src/report/`, `src/cli.ts`, `src/collections.ts`, `src/paths.ts`, `test/helpers/`, `test/fakes/`, `test/fixtures/models-fixtures.ts`. Calls in `src/doctor/`, `src/status/` and `src/ui/`. The matching tests: `test/budget.test.ts`, `test/pi-*.test.ts`, `test/config*.test.ts`, `test/event*.test.ts` (with `event-format-team.test.ts`), `test/notify.test.ts`, `test/supervisor.test.ts`, `test/process.test.ts`, `test/launch-services*.test.ts`, `test/cli*.test.ts` (with `cli-operators-team.test.ts`), `test/collections.test.ts`, `test/operator*.test.ts`, `test/loop*.test.ts`, `test/report*.test.ts`, `test/fake*.test.ts`. Docs: docs/backends.md, docs/invariants.md.
+
+**Acceptance criteria.**
+- `git grep -nE 'fleetDailyCost|fleetModelsFree|fleetModelLabel|notifyFleetDown|FleetDown|fleetDownEvent|onFleetDown|withRunningFleet' -- src test docs` prints nothing.
+- In the listed directories, no identifier, comment or test name says fleet, apart from quoted backlog titles and legacy names.
+- Only aliases whose callers sit in part 6/6's directories remain (`fleetPausePhrase` and `fleetResumePhrase`, used by src/failure).
+- `npm run test` passes.
+
+### Plain terms code team, part 6/6: Finish the fleet rename and add the retired-names guard (planned 2026-10-16 by user; requires part 5/6 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and scripts/ and the new test/retired-names.test.ts)
+
+**Goal.** No identifier, file name, comment or test name in src/ or test/ says fleet. A new guard, test/retired-names.test.ts, fails the suite if a retired identifier or file-name stem comes back. Later Code-names series append their own families to it.
+
+**Approach.**
+- **Finish the rename.** Apply the fleet row of "Code names" (`fleet` → `team` in identifiers, comments, test names, temp-dir prefixes and assertion messages) to every remaining file. That covers `src/tick/`, `src/scheduling/`, `src/landing/`, `src/failure/`, `src/history/`, `src/build/`, `src/redeploy/`, `src/roles/`, `src/prompt/`, `src/review/`, `src/verdict/`, `src/agent/`, `src/git/`, `src/files/`, `src/inbox/`, `src/init/`, `src/pi-extension/` and `src/backlog/`, their tests, `test/fixtures/*`, `test/affected-tests.ts`, `test/test-runner.ts`, and the comments in `scripts/*.mjs`. Find the leftovers with `git grep -niE 'fleet' -- src test scripts`.
+- **Retire the aliases.** Move src/failure's calls to `teamPausePhrase` and `teamResumePhrase`. Then delete every remaining fleet `@deprecated` alias: `git grep -n '@deprecated Use' -- src test` must list no team name.
+- **New guard, `test/retired-names.test.ts`.** It is offline: no git and no network.
+  - Data: `interface RetiredFamily { family: string; words: readonly string[]; fileWords: readonly string[]; allow: readonly string[] }`, seeded as `const RETIRED: readonly RetiredFamily[] = [{ family: "fleet → team", words: ["fleet", "fleets"], fileWords: ["fleet"], allow: [] }]`. A one-line comment says that each later Code-names series appends its family.
+  - Walk `src/` and `test/` from the repo root, found the way test/exports.test.ts finds it (walk up to the directory holding package.json and src/), so the test works from test/ and from dist/test/.
+  - File check: split each repo-relative path on `/`, `-`, `_` and `.` into lowercase words. A word in `fileWords` fails.
+  - Identifier check: parse each `.ts`/`.tsx` with the TypeScript compiler API, the way test/vocabulary.test.ts loads it, and collect every Identifier and PrivateIdentifier. For each `String.raw`-tagged template (the dashboard's browser code), parse the template text as JavaScript with each `${…}` replaced by `0`, and collect its identifiers too.
+  - Split each identifier into lowercase words at camelCase and PascalCase boundaries, `_`, `$` and digits: `GUI_CLIENT_FLEET_JS` → gui, client, fleet, js. A word in `words` fails, unless one of the exemptions below applies.
+  - Never check string literals or comments. The vocabulary guard owns literals, and legacy readers mostly name old forms as strings.
+  - **Exemptions.** Code that names the old forms on purpose stays legal, and each exemption is visible where it applies:
+    - `LEGACY_FILES: readonly string[]`: repo-relative files whose identifiers the guard skips entirely. They still get the file-name check. Seed it with the files that exist to name old forms: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts` (`CONFIG_KEY_RENAMES`) and `src/roles/legacy-role-ids.ts`, plus each one's own test file. List only files that exist (`git ls-files`), and add a one-line reason comment per entry. A test asserts every listed file exists, so the list cannot rot.
+    - **Identifiers whose first word is `legacy`** are skipped, for example the state series' `legacyLand*` path helpers for the old `land-queue/` dir and `refs/tumwater/landing/` refs, or a `LEGACY_…` table.
+    - **A line ending in `// retired-name-ok: <reason>`** is skipped, and so is every line between `// retired-name-ok:start <reason>` and `// retired-name-ok:end`. Use these inside mixed files: the legacy-name table in `normalizeLegacyEvent`'s module (src/events/), the state loaders' legacy-key maps, and test fixtures that deliberately write old event names or old state keys as object-literal keys. Add the markers in this part wherever the scan flags such a line.
+    - `allow` on a family: exact identifiers the family keeps everywhere, each with a reason comment.
+  - Any other hit is a missed rename: rename it, never exempt it.
+  - The failure message lists `path:line identifier (family)` for every hit.
+  - Self-test on in-memory fixtures:
+    - flagged: `pauseFleet`, and a `renderFleet` defined inside a `String.raw` template;
+    - not flagged: fleet inside a string and inside a comment, `fleetingly` (a single word), `legacyFleetMarker`, a line ending in `// retired-name-ok: legacy reader`, and a line inside a `retired-name-ok:start`/`end` region;
+    - an identifier on the line right after the region's `end` is flagged again;
+    - the file check flags `src/fleet/x.ts` and `test/gui-client-fleet.test.ts`, but not `src/team/team-hold.ts`;
+    - a path in `LEGACY_FILES` skips its identifiers.
+- **Leave alone:**
+  - user-visible strings, including scripts' messages, which the text series owns;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+
+**Files touched.** The remaining src/ and test/ files listed above; `scripts/*.mjs` (comments only); the new `test/retired-names.test.ts`; src/text/phrases.ts and src/change/ (the alias deletions). Possibly a `// retired-name-ok:` marker in the events normalizer's module and the state loaders' legacy maps, if the scan flags them. Read but not edited: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts`, `src/roles/legacy-role-ids.ts` (named in `LEGACY_FILES`).
+
+**Acceptance criteria.**
+- `git grep -niE 'fleet' -- src test` finds only user-visible strings, expected-output literals, legacy names on purpose and quoted backlog titles. No identifier, comment or test name says fleet.
+- No `@deprecated` alias of a fleet name remains.
+- test/retired-names.test.ts passes on the tree and its self-test passes. Planting `const pauseFleet = 1;` in any src/ file outside `LEGACY_FILES`, or creating `src/fleet-x.ts`, makes it fail.
+- Every `LEGACY_FILES` entry exists, and every exemption marker carries a reason.
+- `npm run test` passes.
+
+### Plain terms code merge, part 1/11: Move src/landing/ to src/merge/ and give the landing-named files merge names (planned 2026-10-16 by user; requires Plain terms code team 6/6 landed; design in plans/terminology.md "Code names"; touches src/landing/ and src/scheduling/work-landed-cache.ts and the landing-named tests and their importers)
+
+**Goal.** A mechanical file move with no identifier changes. The landing-named directory, modules, tests and fixtures take merge names, and every import path and path mention follows them. Behavior is unchanged.
+
+**Approach.**
+- `git mv` `src/landing/` → `src/merge/`, renaming each module:
+
+  | Old | New |
+  | --- | --- |
+  | `landing-batch.ts` | `merge-batch.ts` |
+  | `landing-check-failures.ts` | `merge-check-failures.ts` |
+  | `landing-core.ts` | `merge-core.ts` |
+  | `landing-diff.ts` | `merge-diff.ts` |
+  | `landing-drain.ts` | `merge-drain.ts` |
+  | `landing-git.ts` | `merge-git.ts` |
+  | `landing-merge.ts` | `merge-to-main.ts` |
+  | `landing-pipeline.ts` | `merge-pipeline.ts` |
+  | `landing-questions.ts` | `merge-questions.ts` |
+  | `landing-queue-render.ts` | `merge-queue-render.ts` |
+  | `landing-queue.ts` | `merge-queue.ts` |
+  | `landing-slot.ts` | `merge-slot.ts` |
+  | `landing-stack.ts` | `merge-stack.ts` |
+  | `landing-vetting.ts` | `merge-verify.ts` |
+
+  `backlog-conflicts.ts` keeps its name.
+- `src/scheduling/work-landed-cache.ts` → `src/scheduling/work-merged-cache.ts`.
+- Tests follow the same map:
+  - `test/landing-<x>.test.ts` → `test/merge-<x>.test.ts` for config, diff, drain, git, pipeline, pipeline-seams, queue, slot and stack;
+  - `test/landing-merge.test.ts` → `test/merge-to-main.test.ts`, `test/landing-merge-recheck.test.ts` → `test/merge-to-main-recheck.test.ts`, `test/landing-drain-vetting.test.ts` → `test/merge-drain-verify.test.ts`;
+  - `test/lander.test.ts`, `lander-bisect`, `lander-errors` and `lander-restack` → `test/merger*.test.ts`;
+  - `test/work-landed-cache.test.ts` → `test/work-merged-cache.test.ts`.
+- Fixtures: `test/fixtures/landing-fixtures.ts` → `merge-fixtures.ts`, `lander-fixtures.ts` → `merger-fixtures.ts`, `landing-merge-fixtures.ts` → `merge-to-main-fixtures.ts`.
+- Confirm no target exists first. None did when this was planned: there was no `src/merge/` and no `test/merge-*`.
+- Update import specifiers, including the merge-to-main test's dynamic `import("../src/landing/landing-git.js")`. Update path mentions in comments and strings too:
+  - `landing-slot.ts's …`;
+  - test/test-runner.ts's doc example (`npm test merge` → `landing-merge.test.ts`, now `merge-to-main.test.ts`);
+  - the `landing-git.js exports` assertion message.
+
+  Find them with `git grep -nE 'src/landing|\.\./landing/|\./landing-|landing-[a-z-]+\.(test\.)?(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache'`. Change only paths.
+- In the same part, update every doc and test that pins a moved path:
+  - docs/invariants.md. test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. No moved path was cited when this was planned, but re-grep, because earlier series may have added citations.
+  - DEVELOPMENT.md's two `src/landing/` bullets;
+  - the comment in eslint.config.js that names `landing-slot.ts`;
+  - any docs/*.md that cites a moved file as current.
+- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md and plans/*.md. The state series already renamed `refs/tumwater/merge/` and `.tumwater/merge-queue/`. The legacy `_land-<role>` worktree name stays.
+
+**Files touched.** The 14 renamed modules (`backlog-conflicts.ts` moves too) and `work-merged-cache.ts`; 17 tests and 3 fixtures (`git mv`); every src/ and test/ file importing them; docs/invariants.md; DEVELOPMENT.md; eslint.config.js.
+
+**Acceptance criteria.**
+- `git ls-files src test | grep -E 'landing|lander|landed|vetting'` prints nothing.
+- `git grep -nE 'src/landing|/landing/|landing-[a-z-]+\.(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache' -- src test DEVELOPMENT.md docs eslint.config.js` prints nothing (history docs are excluded by path).
+- test/invariants-doc.test.ts passes. Every edited line differs only in a path or file name, and `git diff -M --stat` shows renames.
+- `npm run test` passes.
+
+### Plain terms code merge, part 2/11: Rename the merge queue and merge-to-main and paths identifiers to merge (planned 2026-10-16 by user; requires part 1/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-queue*.ts src/merge/merge-to-main.ts and its helpers src/paths.ts and their tests)
+
+**Goal.** The merge queue, merge-to-main and check-failure modules, src/paths.ts' merge helpers and three test-fixture helpers take merge names in identifiers, comments and test names. Later parts' callers keep compiling through deprecated aliases. A mechanical rename of about 410 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the merge row of "Code names"):
+  - in identifiers, `landing`/`Landing`/`LANDING` and `land`/`Land`/`LAND` → `merge`/`Merge`/`MERGE`, and `landings`/`lands` → `merges`;
+  - `lander` → `merger`, `vet`/`vetting` → `verify` and `vetted` → `approved`;
+  - a bare `landed` → `mergeDone`, because `merged` already names the fast-forward;
+  - in comments, "landing" → "merge", "land/lands/landed" → "merge/merges/merged", "land queue" → "merge queue", "vetted" → "approved", "unlanded" → "not yet merged" (not "unmerged", which means git's conflicted paths), and old event names → `merge_queued`/`merge_done`/`merge_failed`. Where "land" means something other than reaching main, use a plain verb;
+  - the same in test names, temp-dir prefixes and assertion messages. Comment lines wrap at 100 columns (test/comment-width.test.ts), and `land` → `merge` lengthens them.
+- **Renames:**
+  - merge-queue.ts: `enqueueLanding` → `enqueueMerge`, `LandingEntry` → `MergeEntry`, `queuedLandings` → `queuedMerges`, `readLandingQueue` → `readMergeQueue`, `queuedLandingFiles` → `queuedMergeFiles`, `headLanding` → `headMerge`, `queuedLandingRoles` → `queuedMergeRoles`, `dropLanding` → `dropMerge`, `LandingQueueView` → `MergeQueueView`, `isLandingEntry` → `isMergeEntry`;
+  - merge-queue-render.ts: `renderLandingQueue` → `renderMergeQueue`, `queueEntryLandingLabel` → `queueEntryMergeLabel`;
+  - src/paths.ts: `landingRefName` → `mergeRefName`, `landQueueDir` → `mergeQueueDir`, `landingStatePath` → `mergeStatePath`;
+  - merge-check-failures.ts: `LANDING_CHECK_FAILURE_LIMIT` → `MERGE_CHECK_FAILURE_LIMIT`, `landingCheckRed` → `mergeCheckRed`, `landingBlocked` → `mergeBlocked`;
+  - merge-to-main.ts: the local `verifyLanding` → `verifyMerge`. The `MergeContext` members `onLandingBlocked` → `onMergeBlocked` and `onLandingCheckRed` → `onMergeCheckRed` are members, so rename them at every use, src/merge/merge-core.ts included;
+  - test helpers, renamed here so every later part can call the new names: `landHead` → `mergeHead` and `landingRefExists` → `mergeRefExists` in test/fixtures/orchestrator-fixtures.ts, and `landWork` → `mergeWork` in test/fixtures/repo-fixtures.ts. Change only these three declarations and their doc comments; part 8/11 owns the rest of those files.
+  - Locals follow the rule (`landed` → `mergeDone`, `landingChecks` → `mergeChecks`, `landingGit` → `mergeGit`).
+- **Aliases.** Every export above except `LandingQueueView` and `isLandingEntry` has callers in files a later part owns. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use mergeRefName. */`, then `export const landingRefName = mergeRefName;` (use `export type` for types). This part's own files and tests use only the new names, which gives each new name the outside user that test/exports.test.ts requires.
+- **Leave for their parts** the names these files use but other parts declare: `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` (part 3/11), and `LanderContext` and `LandRequest` (part 5/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - helpers and fixtures the state series added to read the old `land-queue/`, `landing.json` and `refs/tumwater/landing/` layout. These are the `legacyLand*` path helpers in src/paths.ts and anything in `src/orchestrator/startup-migrations.ts` and `startup-migration-steps.ts`, and their names keep the `legacy` prefix;
+  - the `_land-<role>` legacy worktree name;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts), such as "Robust conflict landing, part 2/2" in merge-git.ts.
+- Names that an earlier series already renamed are not listed. Skip a listed name that is already gone.
+- docs/how-it-works.md: `readLandingQueue`/`renderLandingQueue` → the new names.
+
+**Files touched.** `src/merge/merge-queue.ts`, `merge-queue-render.ts`, `merge-to-main.ts`, `merge-check-failures.ts`, `merge-git.ts`, `merge-diff.ts`, `merge-questions.ts`, `backlog-conflicts.ts`; `src/merge/merge-core.ts` (member uses only); `src/paths.ts`; `test/fixtures/orchestrator-fixtures.ts` and `test/fixtures/repo-fixtures.ts` (three helpers); `test/fixtures/merge-to-main-fixtures.ts`. Tests: `test/merge-queue.test.ts`, `test/cli-queue.test.ts`, `test/paths.test.ts`, `test/git-ref-files.test.ts`, `test/merge-to-main.test.ts`, `test/merge-to-main-recheck.test.ts`, `test/merge-config.test.ts`, `test/merge-git.test.ts`, `test/merge-diff.test.ts`, `test/backlog-conflicts.test.ts`. Docs: docs/how-it-works.md.
+
+**Acceptance criteria.**
+- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
+- In the listed files, no identifier, comment or test name uses a retired merge word, except the aliases, the part 3/11 and 5/11 names listed above, quoted backlog titles and legacy-layout names.
+- `onLandingBlocked` and `onLandingCheckRed` no longer appear anywhere.
+- `npm run test` passes, test/exports.test.ts included.
+
+### Plain terms code merge, part 3/11: Rename the merge slot identifiers to merge (planned 2026-10-16 by user; requires part 2/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-slot.ts and test/merge-slot.test.ts)
+
+**Goal.** The merge slot module, which holds the in-flight marker, the changes, the usage and the outcome writers, takes merge names in identifiers, comments and test names. A mechanical rename of about 355 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone` (as in test/merge-slot.test.ts);
+  - comments and test names follow the Glossary ("unlanded" → "not yet merged");
+  - comment lines wrap at 100 columns.
+- **Renames in merge-slot.ts:**
+  - functions: `readLandingMarker` → `readMergeMarker`, `writeLandingMarker` → `writeMergeMarker`, `writeLandingOutcome` → `writeMergeOutcome`, `setLandingStage` → `setMergeStage`, `landingChanges` → `mergeChanges`, `landingUsage` → `mergeUsage`, `setLandingChangeStatus` → `setMergeChangeStatus`, `addLandingChange` → `addMergeChange`, `removeLandingChange` → `removeMergeChange`, `isLandingChange` → `isMergeChange`, `updateLandingChange` → `updateMergeChange`;
+  - types and constants: `LandingInFlight` → `MergeInFlight`, `LANDING_STAGE_LABELS` → `MERGE_STAGE_LABELS`, `LandingChange` → `MergeChange`, `LandingChangeStatus` → `MergeChangeStatus`, `LandingUsage` → `MergeUsage`, `LandingStage` → `MergeStage`.
+- **Near-collision.** `MergeInFlight` (this marker) and part 4's `InFlightMerge` (a pipeline task) differ only in word order, as their old names did. Keep both, and start each doc comment by saying which one it is.
+- **Earlier callers move now.** `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` are called in part 2/11's files.
+- **Aliases.** Keep two-line `/** @deprecated Use …. */` aliases for every export that later parts still call: all of the names above except `LandingStage` and `updateLandingChange`. Move this part's files off part 2/11's aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave for their parts:** `foldLandingUsage` (part 7/11) and `applyLandingOutcome` (part 6/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the state series' readers of the old `landing.json`;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any listed name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-slot.ts`; `test/merge-slot.test.ts`; the part 2/11 files that call the four early names (`src/merge/merge-to-main.ts` and its neighbours).
+
+**Acceptance criteria.**
+- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
+- In merge-slot.ts and its test, no identifier, comment or test name uses a retired merge word, except the aliases, `foldLandingUsage`, `applyLandingOutcome` and quoted backlog titles.
+- Part 2/11's files no longer use the four early names.
+- `npm run test` passes.
+
+### Plain terms code merge, part 4/11: Rename the merge pipeline and drain and verify identifiers (planned 2026-10-16 by user; requires part 3/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-pipeline.ts merge-drain.ts merge-verify.ts and their tests)
+
+**Goal.** The pipeline, the merge-queue drain and the verify stage take merge, verify and approved names in identifiers, comments and test names. Two names that would collide take explicit alternatives. A mechanical rename of about 480 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet`/`vetting` → `verify` and `vetted` → `approved`; a bare `landed` → `mergeDone`;
+  - in comments, "vet" → "verify" (as a noun, "verification"), "vetted" → "approved", "landing" → "merge";
+  - test names and assertion messages follow the same rule. Comment lines wrap at 100 columns, and `vet` → `verify` adds three characters.
+- **merge-pipeline.ts:**
+  - `LandingPipeline` → `MergePipeline`, `LandingPipelineContext` → `MergePipelineContext`, `InFlightLanding` → `InFlightMerge`, `VettedLanding` → `ApprovedMerge`;
+  - `landingTasks` → `mergeTasks`, `abortableLandings` → `abortableMerges`, `settleLandingOutcome` → `settleMergeOutcome`, `newLandingPipeline` → `newMergePipeline`, `guardLandingTask` → `guardMergeTask`;
+  - the pipeline's members `vetting` → `verifying` (it holds the in-flight verifications) and `vetted` → `approved`. They are members, so rename them at every use, in the orchestrator and the tests too.
+- **merge-drain.ts:**
+  - `drainLandings` → `drainMergeQueue`, not `drainMerges`: the same file already has `drainMerge`, which starts the fast-forward.
+  - `settleAbortedVetted` → `settleAbortedApproved`.
+  - `drainMerge`, `startMerge` and `MERGE_TIER` keep their names.
+- **merge-verify.ts:**
+  - `LANDING_TIER` → `VERIFY_TIER`, not `MERGE_TIER`: merge-drain.ts already defines `const MERGE_TIER = LANDING_TIER - 1` for the fast-forward's conflict runs, which becomes `VERIFY_TIER - 1`.
+  - `vetLimit` → `verifyLimit`, `drainVetting` → `drainVerify`, `startVet` → `startVerify`.
+  - Locals: `vet` → `verify`, `vets` → `verifies`, `vetted` → `approved`, and the test's `alphaVet` → `alphaVerify`.
+- **Earlier callers move now.** `VettedLanding` and `settleLandingOutcome` are called in part 3/11's files.
+- **Aliases.** Keep two-line `@deprecated` aliases for the exports later parts call: `drainLandings`, `settleAbortedVetted`, `InFlightLanding`, `VettedLanding`, `LandingPipeline`, `LandingPipelineContext`, `newLandingPipeline`, `landingTasks`, `abortableLandings`, `settleLandingOutcome`, `LANDING_TIER`, `vetLimit` and `startVet`. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave for their parts:** `runLandingPi` (part 7/11), `AbortableLanding` (part 9/11), and `VetVerdict`, `landVetted` and `vetRequest` (part 5/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names, including `slot_wait.purpose: "verify"`, which the events series set;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-pipeline.ts`, `merge-drain.ts`, `merge-verify.ts`; `test/fixtures/merge-fixtures.ts`; `test/merge-pipeline.test.ts`, `test/merge-drain.test.ts`, `test/merge-drain-verify.test.ts`, `test/merge-pipeline-seams.test.ts`; member and earlier-caller lines in `src/merge/merge-slot.ts`, `src/orchestrator/orchestrator.ts` and tests.
+
+**Acceptance criteria.**
+- `drainMergeQueue`, `VERIFY_TIER`, `MergePipeline`, `ApprovedMerge` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
+- `git grep -nE '\.vetting\b|\.vetted\b|\bvetting:|\bvetted:' -- src test` prints nothing.
+- `MERGE_TIER` in merge-drain.ts is defined as `VERIFY_TIER - 1`. Neither `drainMerges` nor a second `MERGE_TIER` exists.
+- `npm run test` passes.
+
+### Plain terms code merge, part 5/11: Rename the merger core and batch and stack identifiers (planned 2026-10-16 by user; requires part 4/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-core.ts merge-batch.ts merge-stack.ts and the merger tests)
+
+**Goal.** The merger (the old lander), the batch verify-and-merge and the stack take merge, merger, verify and approved names in identifiers, comments, test names and fixtures. A mechanical rename of about 450 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `lander` → `merger`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names, temp-dir prefixes (`"lander-rec-"`, `"lander-rereview-rej-"` → `"merger-…"`) and assertion messages follow the same rule;
+  - comment lines wrap at 100 columns.
+- **merge-core.ts:**
+  - `LanderContext` → `MergerContext`. merge-to-main.ts already has `MergeContext`, a different shape. Keep both, and start each doc comment by saying which one it is.
+  - `LandRequest` → `MergeRequest`, `LandingScopeContext` → `MergeScopeContext`, `RETRIABLE_LANDING_RESULTS` → `RETRIABLE_MERGE_RESULTS`, `landApprovedChange` → `mergeApprovedChange`, `landApprovedChangeIn` → `mergeApprovedChangeIn`.
+- **merge-batch.ts:** `landVetted` → `mergeApproved`, `vetRequest` → `verifyRequest`, `vetRequestIn` → `verifyRequestIn`, `VetVerdict` → `VerifyVerdict`, `landOne` → `mergeOne`, `landedCount` → `mergeDoneCount`, and the parameter `vetted` → `approved`.
+- **merge-stack.ts:** `landStack` → `mergeStack`, `landStackIn` → `mergeStackIn`, local `landed` → `mergeDone`.
+- **Fixtures and tests:** `vetAndLand` → `verifyAndMerge`, `vetThenMerge` → `verifyThenMerge`, `landerCtx` → `mergerCtx`, and `landWt` → `mergeWt`. If `mergeWt` is already bound in the same scope, use `mergeWorktree`.
+- **Earlier callers move now:** `VetVerdict`, `vetRequest`, `landVetted` and `landApprovedChange` in part 4/11's files, and `LandRequest` and `LanderContext` in part 2/11's files.
+- **Aliases.** Keep two-line `@deprecated` aliases for `vetRequest`, `landVetted`, `LanderContext`, `RETRIABLE_LANDING_RESULTS`, `landStack` and `vetAndLand`, which later parts call. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the `_land-<role>` legacy worktree name;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/merge/merge-core.ts`, `merge-batch.ts`, `merge-stack.ts`; `test/fixtures/merger-fixtures.ts`; `test/merger.test.ts`, `test/merger-bisect.test.ts`, `test/merger-errors.test.ts`, `test/merger-restack.test.ts`, `test/merge-stack.test.ts`; earlier-caller lines in the part 2/11 and 4/11 modules.
+
+**Acceptance criteria.**
+- `MergerContext`, `MergeRequest`, `mergeApproved`, `verifyRequest`, `VerifyVerdict`, `mergeStack` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
+- `MergeContext` (merge-to-main.ts) and `MergerContext` (merge-core.ts) both exist, and each doc comment names its role.
+- After this part, no file under `src/merge/` has an identifier, comment or test name with a retired merge word, except aliases, `runLandingPi`/`foldLandingUsage`/`AbortableLanding`/`applyLandingOutcome` (parts 6, 7 and 9), quoted backlog titles and legacy-layout names.
+- `npm run test` passes.
+
+### Plain terms code merge, part 6/11: Rename the merge identifiers in the tick modules (planned 2026-10-16 by user; requires part 5/11 landed; design in plans/terminology.md "Code names"; touches src/tick/ and test/tick-*.test.ts and test/agent-commit-fold.test.ts)
+
+**Goal.** The tick modules' merge-related identifiers, comments and test names say merge. The later code-run series turns tick into run. A mechanical rename of about 315 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+  - Leave the word tick alone (the code-run series renames it).
+- **Renames:**
+  - tick-apply.ts: `applyLandingOutcome` → `applyMergeOutcome`. Move src/merge/merge-slot.ts's call now.
+  - tick-stage.ts: `stageTickLanding` → `stageTickMerge`.
+  - tick-timing.ts: `awaitLandingForHandoff` → `awaitMergeForHandoff`, `HANDOFF_LANDING_WINDOW_MS` → `HANDOFF_MERGE_WINDOW_MS`, `HandoffLandingOutcome` → `HandoffMergeOutcome`, local `landing` → `merge`.
+  - tick-detail-data.ts and tick-detail.ts: local `landing` → `merge`.
+  - Tests: `releaseLanding` → `releaseMerge`, `tickAndLand` → `tickAndMerge`.
+- **Aliases.** Keep two-line `@deprecated` aliases for `applyLandingOutcome`, `stageTickLanding`, `HANDOFF_LANDING_WINDOW_MS` and `awaitLandingForHandoff`, which src/loop, src/orchestrator and later parts call. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
+- **Leave for their parts:** `priorLandingFailure`, `runLandingPi` and `foldLandingUsage` (part 7/11), and `bucketLandingEvents` and `landQueuedByLoop` (part 10/11).
+- **docs/invariants.md** quotes the test name "an agent commit beside uncommitted edits lands as one harness commit". "Lands" there means "ends up as", not a merge. If you reword the test, use a plain verb ("becomes one harness commit") and update the quote.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the `Run:`/`Tick:` trailer parsing;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/tick/` (tick-apply.ts, tick-stage.ts, tick-timing.ts, tick-detail-data.ts, tick-detail.ts, tick-outcome.ts, tick-finalize.ts, tick-resume.ts, tick-usage.ts, tick-verdict.ts, stage-check.ts); `test/tick-*.test.ts`; `test/agent-commit-fold.test.ts`; `src/merge/merge-slot.ts` (one call); docs/invariants.md (only if that test is renamed).
+
+**Acceptance criteria.**
+- `applyMergeOutcome`, `stageTickMerge`, `awaitMergeForHandoff` and `HANDOFF_MERGE_WINDOW_MS` are exported. Each old name is either gone or a `@deprecated` alias of it.
+- In src/tick/ and these tests, no identifier, comment or test name uses a retired merge word, except aliases, the part 7/11 and 10/11 names above and quoted backlog titles.
+- `npm run test` passes.
+
+### Plain terms code merge, part 7/11: Rename the merge identifiers in the loop modules (planned 2026-10-16 by user; requires part 6/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ and test/loop*.test.ts and their fixtures)
+
+**Goal.** The runner modules' merge-related identifiers, comments and test names say merge, including the pi-wiring methods the merge pipeline calls. The later code-runner series turns loop into runner. A mechanical rename of about 490 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+  - Leave loop and tick alone (later series).
+- **Methods and members, renamed at every use.** They are members, so they cannot be aliased.
+  - `runLandingPi` → `runMergePi` and `foldLandingUsage` → `foldMergeUsage`: the runner's methods in loop.ts, the pi host in loop-pi.ts (including the `foldLandingUsage` wiring member), and their callers in src/merge/merge-drain.ts, merge-verify.ts, merge-slot.ts and src/tick/, which earlier parts left.
+  - The parameter `priorLandingFailure` → `priorMergeFailure`: loop-recovery.ts, loop-tick.ts, src/tick/tick-resume.ts and its test.
+- **Fixtures and tests:** `runAbortedDirectorLanding` → `runAbortedDirectorMerge` (test/fixtures/loop-fixtures.ts), `landingFoldProviders` → `mergeFoldProviders` (test/fixtures/loop-pi-fixtures.ts), `aLanded` → `aMergeDone`, `aLandEndAt` → `aMergeEndAt`, `landed` → `mergeDone`.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `enqueueMerge`, `queuedMerges`, `mergeRefName`, `stageTickMerge`, `applyMergeOutcome`, `MERGE_CHECK_FAILURE_LIMIT`, `verifyRequest`, `MergerContext` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy readers;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/loop/` (loop.ts, loop-pi.ts, loop-tick.ts, loop-recovery.ts, loop-state.ts, leftover.ts, revision.ts); `test/fixtures/loop-fixtures.ts`, `test/fixtures/loop-pi-fixtures.ts`; `test/loop*.test.ts`, `test/leftover.test.ts`, `test/revision.test.ts`; the method-call lines in `src/merge/merge-drain.ts`, `merge-verify.ts`, `merge-slot.ts`, `src/tick/tick-stage.ts`, `tick-timing.ts`, `tick-resume.ts`, `test/tick-resume.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'runLandingPi|foldLandingUsage|priorLandingFailure|runAbortedDirectorLanding|landingFoldProviders' -- src test` prints nothing.
+- In src/loop/ and its tests, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
+- `npm run test` passes.
+
+### Plain terms code merge, part 8/11: Rename the merge identifiers in the orchestrator and scheduling modules (planned 2026-10-16 by user; requires part 7/11 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ src/scheduling/ and their tests and fixtures)
+
+**Goal.** The orchestrator's and the scheduler's merge-related identifiers, comments and test names say merge. A mechanical rename of about 420 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `landings` → `merges`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+- **"On main" names take `Merged`.** These mean "qualifying work is on main", so they take `Merged` rather than `MergeDone`:
+  - src/scheduling/work-merged-cache.ts: `WorkLandedCache` → `WorkMergedCache`, `workLandedHeads` → `workMergedHeads`;
+  - scheduling.ts: `workLanded` → `workMerged`, `workLandedSinceLast` → `workMergedSinceLast`;
+  - the orchestrator-scheduling member `workLandedSince` → `workMergedSince`.
+- **Other renames:**
+  - the orchestrator option `handoffLandingWindowMs` → `handoffMergeWindowMs` (orchestrator.ts, test/fixtures/orchestrator-fixtures.ts and the tests);
+  - backoff.ts: `YIELD_LAND` → `YIELD_MERGE`;
+  - test: `seedLandQueue` → `seedMergeQueue`;
+  - locals: `landings` → `merges` (orchestrator.ts's pipeline instance, once-round.ts).
+- **Keep calls to `removeLegacyLandWorktrees` as they are.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps recognizing.
+- **Fixtures.** The rest of test/fixtures/orchestrator-fixtures.ts and test/fixtures/repo-fixtures.ts belongs to this part (comments, locals and test-only names). Part 2/11 already renamed their three exported helpers.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `drainMergeQueue`, `settleAbortedApproved`, `MergePipeline`, `newMergePipeline`, `mergeTasks`, `abortableMerges`, `VERIFY_TIER`, `verifyLimit`, `startVerify`, `mergeApproved`, `HANDOFF_MERGE_WINDOW_MS`, `awaitMergeForHandoff`, `queuedMergeFiles`, `mergeHead`, `mergeWork` and `mergeRefExists`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the state series' startup migration of the old layout (`src/orchestrator/startup-migrations.ts`, `startup-migration-steps.ts` and their tests): these name the old forms on purpose, so leave their identifiers and comments as they are;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/orchestrator/` (not the startup-migration files); `src/scheduling/` (work-merged-cache.ts, scheduling.ts, backoff.ts, claims.ts, once-round.ts); `test/fixtures/orchestrator-fixtures.ts`, `test/fixtures/repo-fixtures.ts`; `test/orchestrator*.test.ts` (the `.e2e` ones too), `test/scheduling.test.ts`, `test/once-round.test.ts`, `test/claims.test.ts`, `test/backoff.test.ts`, `test/work-merged-cache.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'WorkLandedCache|workLanded|handoffLandingWindowMs|YIELD_LAND|seedLandQueue' -- src test` prints nothing.
+- In the listed files, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, quoted backlog titles and legacy-layout names.
+- `npm run test` passes.
+
+### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
+
+**Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary ("unlanded" → "not yet merged");
+  - comment lines wrap at 100 columns.
+- **Renames:**
+  - doctor-backlog.ts: `checkStaleQueuedLandings` → `checkStaleQueuedMerges`, `LAND_QUEUE_STALE_MS` → `MERGE_QUEUE_STALE_MS`, local `landed` → `mergeDone`.
+  - backlog-eligibility.ts: `prerequisitesLanded` → `prerequisitesMerged`. The heading keyword stays: `requiredParts`' `/requires\s+(.+?)\s+landed\b/` and the "requires … landed" prose are backlog grammar that every PLANS.md heading uses, not identifiers.
+  - operator-requests.ts: `AbortableLanding` → `AbortableMerge`, including its uses in src/merge/merge-pipeline.ts. Locals `landing`/`landings` → `merge`/`merges`.
+  - retire.ts: the member `landingRefPresent` → `mergeRefPresent`, local `landing` → `mergeRef`.
+  - maintenance-quota.ts: `perWorkLanding` → `perWorkMerge`, and the member `hasQueuedLanding` → `hasQueuedMerge` (in src/gates/gate-polls.ts too).
+  - Tests: `pinnedUnlanded` → `pinnedNotMerged`, and `vetA`/`vetB`/`vetGranted` → `verifyA`/`verifyB`/`verifyGranted`.
+  - Comments that list tiers (src/concurrency/semaphore.ts: "LANDING_TIER, MERGE_TIER") → `VERIFY_TIER`, `MERGE_TIER`.
+  - src/baseline/ and src/build/ (the main check and the build checks): mostly comments and test names. src/baseline's `landStack` call becomes `mergeStack`, and the comments' `verifyLanding` mentions become `verifyMerge`.
+- **git/worktree.ts's `removeLegacyLandWorktrees` keeps its name.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps.
+- **Collisions.** test/operator-requests.test.ts and test/check-permit.test.ts already bind a local `merge` near the `landing` locals. If a renamed local would share a scope with it (tsc reports the clash), use `inFlightMerge` or `mergeCheck` instead.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `queuedMergeRoles`, `readMergeQueue`, `readMergeMarker`, `mergeChanges`, `mergeRefName`, `VERIFY_TIER` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals (doctor check titles were set by the text series);
+  - event type names;
+  - legacy readers;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/gates/`, `src/doctor/`, `src/backlog/`, `src/git/`, `src/operator/`, `src/concurrency/`, `src/baseline/`, `src/build/`; `src/merge/merge-pipeline.ts` (`AbortableMerge` uses). Tests: `test/maintenance-quota.test.ts`, `test/*gate*.test.ts`, `test/doctor-*.test.ts`, `test/backlog-*.test.ts`, `test/git*.test.ts`, `test/worktree*.test.ts`, `test/operator-*.test.ts`, `test/retire.test.ts`, `test/check-permit.test.ts`, `test/semaphore.test.ts`, `test/provider-lease.test.ts`, `test/main-baseline*.test.ts`, `test/main-red.test.ts`, `test/attribute-red-check.test.ts`, `test/build-*.test.ts`, `test/dep-install.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'checkStaleQueuedLandings|LAND_QUEUE_STALE_MS|prerequisitesLanded|AbortableLanding|landingRefPresent|perWorkLanding|hasQueuedLanding' -- src test` prints nothing.
+- test/backlog-eligibility.test.ts still parses `requires part 2/5 landed` headings unchanged.
+- In the listed directories, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, the grammar keyword and quoted backlog titles.
+- `npm run test` passes.
+
+### Plain terms code merge, part 10/11: Rename the merge identifiers in the status and dashboard and TUI and report and history and failure modules (planned 2026-10-16 by user; requires part 9/11 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/status/ src/report/ src/history/ src/failure/ src/gui/ and their tests)
+
+**Goal.** The presentation and reporting modules' merge-related identifiers say merge, including the dashboard's browser code. So do their comments and test names. A mechanical rename of about 540 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`;
+  - a bare `landed` → `mergeDone`, and `Landed` inside a name that counts or carries the old `landed` event → `MergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+- **Renames:**
+  - ui/status-model.ts: `landingForRole` → `mergeForRole`, `LandingCell` → `MergeCell`, local `landing` → `merge`.
+  - ui/status-render.ts: `lastLandedCell` → `lastMergedCell` (it renders `lastMergedAt`, so `Merged`).
+  - status/status-polls.ts: `liveLandingMarker` → `liveMergeMarker`, local `landed` → `mergeDone`.
+  - history/history-data.ts: `bucketLandingEvents` → `bucketMergeEvents`, and the member `landQueuedByLoop` → `mergeQueuedByLoop`. Rename both at every use, including src/tick/tick-detail-data.ts, src/failure/time-spend.ts and src/cli.ts.
+  - failure/failure-data.ts: `LANDED_TOP` → `MERGE_DONE_TOP`, `LandedCommit` → `MergeDoneCommit`, `allLanded` → `allMergeDone`.
+  - failure/time-spend.ts: `ResolvedLanding` → `ResolvedMerge`.
+  - report/report-data.ts: `zeroLandingCounts` → `zeroMergeCounts`.
+  - report/report-render.ts: `landingShareLine` → `mergeShareLine`, `landingFailures` → `mergeFailures`.
+  - ui/badges.ts: `landingBadge` → `mergeBadge`, if the scripting series left the function's name.
+  - Test locals: `landedRow`, `landedBefore`, `landedAfter`, `landedBeforeCommit`, `landedAfterCommit` and `landedFailed` → `mergeDone…`.
+- **Browser code.** The dashboard's browser code in `String.raw` templates is not typechecked: `landingSummary` → `mergeSummary` (gui-client-drawer.ts and gui-client-loops.ts) and the test scope stub `landingTitle` → `mergeTitle`. Grep src/ui/gui/ and test/ for each one, scope stubs and expected call logs included.
+- **Serialized fields.** `report --failures --json` and `/api/failures` serialize `landed`, `landedTotal` and the `landed` time class, so they belong to the scripting series. If any is still present, rename it by "Script interfaces" (`landed` → `merged`, `landedTotal` → `mergedTotal`; decision 3 allows the break) and say so in the commit body.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `readMergeQueue`, `renderMergeQueue`, `queueEntryMergeLabel`, `MergeInFlight`, `MERGE_STAGE_LABELS`, `isMergeChange`, `MergeChange`, `mergeStatePath`, `RETRIABLE_MERGE_RESULTS` and `applyMergeOutcome`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **docs/invariants.md:** `LANDED_TOP` and `landedTotal`. Also update the quoted test names "… price into error-class, not landed" and "a landed list over the newest-10 cap …" when this part renames those tests.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/ui/` (status-model.ts, status-render.ts, status-payload.ts, badges.ts, progress-data.ts, tone.ts, gui/*.ts, tui/*.ts), `src/status/`, `src/report/`, `src/history/`, `src/failure/`, `src/gui/`; the `landQueuedByLoop` uses in `src/tick/tick-detail-data.ts` and `src/cli.ts`. Tests: `test/gui*.test.ts`, `test/tui*.test.ts`, `test/status*.test.ts`, `test/report*.test.ts`, `test/history*.test.ts`, `test/failure*.test.ts`, `test/time-spend.test.ts`, `test/badges.test.ts`, `test/progress.test.ts`. Docs: docs/invariants.md.
+
+**Acceptance criteria.**
+- `git grep -nE 'landingForRole|lastLandedCell|liveLandingMarker|bucketLandingEvents|landQueuedByLoop|LANDED_TOP|LandedCommit|ResolvedLanding|landingSummary|landingTitle' -- src test docs` prints nothing.
+- In the listed directories, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
+- The dashboard client tests that exercise the drawer and the roles table pass with `mergeSummary`.
+- `npm run test` passes.
+
+### Plain terms code merge, part 11/11: Finish the merge rename and add the merge family to the retired-names guard (planned 2026-10-16 by user; requires part 10/11 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and test/retired-names.test.ts)
+
+**Goal.** No identifier, file name, comment or test name in src/ or test/ uses landing, land, lander or vet. No deprecated alias of the family remains, and test/retired-names.test.ts fails if one comes back.
+
+**Approach.**
+- **Finish the rename.** Apply the series' rename rule to the remaining files:
+  - `src/config/`, `src/cli/`, `src/events/`, `src/prompt/`, `src/review/`, `src/verdict/`, `src/pi/`, `src/roles/`, `src/files/`, `src/inbox/`, `src/redeploy/`, `src/budget/`, `src/change/`, `src/text/`, `src/init/`, `src/agent/`, `src/pi-extension/`, `src/team/` and the `src/*.ts` root files;
+  - their tests, `test/helpers/`, `test/fakes/` and the remaining `test/fixtures/*`.
+
+  Find the leftovers with `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src test`.
+- **One rename that is not a merge.** src/cli/cli-query-commands.ts's `landedDecision` holds the decision as written to QUESTIONS.md, so it becomes `writtenDecision`, and its comment's "that landed text" becomes "that written text".
+- Comments that name event types use the current names (`merge_queued`, `merge_done`, `merge_failed`), except where they describe a legacy name on purpose.
+- **Retire the aliases.** Move the last alias users, such as the tests' `vetAndLand`, to the new names. Then delete every remaining alias of this family: `git grep -n '@deprecated Use' -- src test` lists no merge, merger or verify name.
+- **Extend test/retired-names.test.ts.** Code-team part 6/6 created it. Append one `RETIRED` entry:
+  - `family: "landing/land/lander/vet → merge"`;
+  - `words: ["land", "lands", "landed", "landing", "landings", "lander", "landers", "unlanded", "vet", "vets", "vetted", "vetting"]`;
+  - `fileWords: ["landing", "lander", "landed", "vetting"]`;
+  - `allow: ["removeLegacyLandWorktrees"]`, with a comment that it removes the legacy `_land-<role>` worktrees "State and git" keeps.
+- **Legacy names the guard flags.** Code that names old forms on purpose stays exempt through the mechanisms code-team part 6/6 built:
+  - `LEGACY_FILES`, which already lists `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts` and `src/roles/legacy-role-ids.ts`;
+  - the `legacy`-first-word rule, which covers the state series' `legacyLand*` helpers for the old `land-queue/` dir and `refs/tumwater/landing/` refs;
+  - `// retired-name-ok: legacy reader` lines and `retired-name-ok:start`/`end` regions.
+
+  Where the merge words appear for the first time in a legacy-key map, add a marker. Examples are `land_failed`/`land_queued` keys in `normalizeLegacyEvent`'s table, `lastLandedAt`/`landingCheckFailures`/`landingReviewError` in the state loaders' legacy-key maps, and test fixtures that deliberately write old event names or old state keys as object-literal keys. Any other hit is a missed rename: rename it, never exempt it.
+- **Self-test.** Extend the guard's in-memory fixtures:
+  - flagged: `landingRefName` and `vetted`;
+  - not flagged: `userland`, `landmarks` and `Helvetica`;
+  - allowed: `removeLegacyLandWorktrees`;
+  - the file check flags `src/landing/x.ts`, `test/lander.test.ts` and `src/scheduling/work-landed-cache.ts`, but not `src/merge/merge-to-main.ts`.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the `requires … landed` backlog grammar;
+  - the `_land-<role>` legacy worktree name;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+
+**Files touched.** The remaining src/ and test/ files listed above; `src/cli/cli-query-commands.ts`; the declaring modules of any aliases still present (`src/paths.ts`, `src/merge/*.ts`, `src/tick/*.ts`, `test/fixtures/merger-fixtures.ts`); `test/retired-names.test.ts`; marker lines in the events normalizer's module, the state loaders' legacy-key maps and the legacy-writing test fixtures, if flagged. Read but not edited: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts`, `src/roles/legacy-role-ids.ts`.
+
+**Acceptance criteria.**
+- In src/ and test/, no identifier, comment or test name uses a retired merge word, except the guard's `allow` entries, the backlog grammar keyword, quoted backlog titles, user-visible strings and legacy names on purpose.
+- No `@deprecated` alias of this family remains.
+- test/retired-names.test.ts passes, including its extended self-test. Planting `const enqueueLanding = 1;` in any src/ file, or creating `src/merge/landing-x.ts`, makes it fail.
+- `npm run test` passes.
+
+### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
+
+**Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
+
+**Approach.**
+- `git mv` only (keeps history), then fix paths. No identifier, comment wording or test title changes beyond the paths themselves.
+- Source moves: `src/loop/` → `src/runner/`; inside it `loop.ts` → `runner.ts`, `loop-state.ts` → `runner-state.ts`, `loop-pi.ts` → `runner-pi.ts`, `loop-fallback.ts` → `runner-fallback.ts`, `loop-recovery.ts` → `runner-recovery.ts`, and `loop-tick.ts` → `runner-run.ts` (its final name: it holds the run pipeline phases, so Plain terms code run does not move it again); `leftover.ts`, `model-fallback.ts` and `revision.ts` keep their names. `src/roles/loop-ids.ts` → `src/roles/runner-ids.ts`. `src/ui/gui/gui-client-loops.ts` → `src/ui/gui/gui-client-roles.ts` (it renders the Roles card).
+- Test moves: every `test/loop*.test.ts` → `test/runner*.test.ts` with the same suffix (`loop.test.ts` → `runner.test.ts`, `loop-2.test.ts` → `runner-2.test.ts`, `loop-pi-retry.test.ts` → `runner-pi-retry.test.ts`, `loop-ids.test.ts` → `runner-ids.test.ts`, …); `test/gui-client-loops.test.ts` → `test/gui-client-roles.test.ts`; `test/fixtures/loop-fixtures.ts` → `test/fixtures/runner-fixtures.ts`; `test/fixtures/loop-pi-fixtures.ts` → `test/fixtures/runner-pi-fixtures.ts`.
+- Update every import specifier in `src/` and `test/` (static, `import type`, dynamic `import()`), every `new URL("…src/loop/…")` string (test/runner-state.test.ts reads `../src/loop/loop-state.js`), and every path citation in comments and strings: `src/loop/…`, `loop-state.ts`, `loop-tick.ts`, `loop-ids.ts`, `gui-client-loops.ts`, `loop.test.ts`, `loop-2.test.ts`, … in `src/`, `test/` and `scripts/`.
+- docs/invariants.md cites `src/loop/loop.ts`, `src/loop/loop-tick.ts`, `src/loop/model-fallback.ts` and `test/loop-2.test.ts`; test/invariants-doc.test.ts fails on a cited path that does not exist, so update them here. Update the path mentions in DEVELOPMENT.md's Layout section and in any other docs/*.md that cites a moved file as current the same way (docs/code-metrics.md and docs/commit-history-analysis.md are dated history; leave them), and DEVELOPMENT.md's `npm test 'loop#resume'` example → `'runner#resume'`.
+- test/test-runner.ts uses `loop` as its filter example (`loop#resume` in comments and the "#" error message); switch them to `runner`, and switch the synthetic file names in test/test-runner.test.ts and test/test-durations-reporter.test.ts (`loop.test.js`, `loop-2.test.js`, `loop.e2e.test.js`) to `runner…` names, keeping each assertion's shape.
+- Finish with `git grep -nE 'src/loop/|loop-(state|pi|tick|fallback|recovery|ids|fixtures|pi-fixtures)[."]|gui-client-loops|[/ `"]loop(-[0-9])?\.(test|e2e)' src test scripts docs DEVELOPMENT.md ':!docs/code-metrics.md' ':!docs/commit-history-analysis.md'` (as `git grep`), which must print nothing.
+
+**Files touched.** The moved files above; every module and test that imports them (about 280 import lines); test/test-runner.ts; test/test-runner.test.ts; test/test-durations-reporter.test.ts; docs/invariants.md; DEVELOPMENT.md. Reads (does not edit): test/invariants-doc.test.ts, scripts/stamp-build.mjs (prunes the stale dist/ outputs of the old names).
+
+**Acceptance criteria.**
+- `src/loop/` no longer exists; `src/runner/` holds `runner.ts`, `runner-state.ts`, `runner-pi.ts`, `runner-fallback.ts`, `runner-recovery.ts`, `runner-run.ts`, `leftover.ts`, `model-fallback.ts` and `revision.ts`; `git log --follow` traces each to its old name.
+- The grep in the last Approach bullet prints nothing.
+- No identifier changed: `git diff -M --stat` shows only renames plus import and path-citation lines, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 2/14: Rename runner state and instance ids and the runner pi wrapper (planned 2026-10-16 by user; requires part 1/14 landed; design in plans/terminology.md "Code names"; touches src/runner/runner-state.ts + src/runner/runner-pi.ts + src/roles/runner-ids.ts + test/runner-state.test.ts + test/runner-ids.test.ts + test/runner-pi*.test.ts + test/fixtures/runner-*.ts)
+
+**Goal.** The most widely used runner exports take their new names, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `runnerIds`, `runnerEnabled` and `RunnerPi`, behind deprecated aliases, so later parts migrate callers one directory at a time.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show (rows, cells, rank, phase, drawer).
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier (Plain terms code cleanup renames them), and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names are out of scope: state-file fields, event fields, `--json` and `/api` keys, config keys and env vars were renamed by earlier series with legacy readers. If one still says "loop", leave it and name it in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners`, or `role`/`roles` when it holds role ids or display rows. If that name is already bound in an enclosing scope of the same file, pick a distinct one (`roleRunner`, `runnerId`): never shadow.
+  - Comments and test titles: "loop" → "role" ("the feature role", "per-role", "custom role"), or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Never edit a quoted PLANS.md or BUGS.md title, a `plans/*.md` name or a quoted commit subject (test/plan-citations.test.ts checks cited titles). Rewrap any comment line pushed past 100 columns (test/comment-width.test.ts). If docs/invariants.md quotes a test title you change, update the quote.
+  - An export used by files outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. A member (method, property, interface field) gets no alias: rename all its uses in this part. Migrate every use, in this part's files, of a name an earlier part renamed (`grep -rn '@deprecated Use' src test` lists the live aliases). Delete any alias whose old name no other file mentions any more, because test/exports.test.ts fails an export nothing else names.
+- src/runner/runner-state.ts: `LoopState` → `RunnerState`, `freshLoopState` → `freshRunnerState`, `loadLoopState` → `loadRunnerState`, `saveLoopState` → `saveRunnerState`, each with a two-line alias (`/** @deprecated Use RunnerState. */` then `export type LoopState = RunnerState;`; `/** @deprecated Use freshRunnerState. */` then `export const freshLoopState = freshRunnerState;`; …). The private `liveClaimLoopIds` → `liveClaimRunnerIds`. Do not touch the persisted field names inside `RunnerState`.
+- src/roles/runner-ids.ts: `loopIds` → `runnerIds`, `loopEnabled` → `runnerEnabled`, with aliases.
+- src/runner/runner-pi.ts: `LoopPi` → `RunnerPi` (alias), `LoopPiHost` → `RunnerPiHost`.
+- test/fixtures/runner-fixtures.ts: `makeLoopRunner` → `makeRoleRunner`, `spentLoopState` → `spentRunnerState`, with aliases (25 and 8 test files use them). test/fixtures/runner-pi-fixtures.ts and the runner-pi tests: `loopPi` → `runnerPi`, `loopPiOpts` → `runnerPiOpts`.
+- Comments and test titles in all files of this part, per the series rules.
+
+**Files touched.** src/runner/runner-state.ts, src/runner/runner-pi.ts, src/roles/runner-ids.ts, test/runner-state.test.ts, test/runner-ids.test.ts, test/runner-pi.test.ts, test/runner-pi-claude.test.ts, test/runner-pi-followups.test.ts, test/runner-pi-retry.test.ts, test/fixtures/runner-fixtures.ts, test/fixtures/runner-pi-fixtures.ts.
+
+**Acceptance criteria.**
+- `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `runnerIds`, `runnerEnabled`, `RunnerPi`, `makeRoleRunner` and `spentRunnerState` are the declared names; each old name exists only as a `@deprecated` alias.
+- `grep -nE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' ` over this part's files lists only the aliases.
+- No behavior change: the suite's test count is unchanged and no assertion changed except renamed identifiers and test titles.
+- `npm run test` passes.
+
+### Plain terms code runner, part 3/14: Rename RoleRunner and the run pipeline context (planned 2026-10-16 by user; requires part 2/14 landed; design in plans/terminology.md "Code names"; touches src/runner/ + test/runner*.test.ts + test/revision.test.ts + test/leftover.test.ts + test/model-fallback.test.ts)
+
+**Goal.** `LoopRunner` becomes `RoleRunner` and `LoopTickContext` becomes `RunnerRunContext`; the rest of src/runner/ and its tests read "runner" and "role" instead of "loop".
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/runner/runner.ts: `class LoopRunner` → `class RoleRunner`, with the two-line aliases `/** @deprecated Use RoleRunner. */` + `export const LoopRunner = RoleRunner;` and `/** @deprecated Use RoleRunner. */` + `export type LoopRunner = RoleRunner;` (26 src and 18 test files name it). Its comments ("this role loop", "the loop's …") follow the series rules.
+- src/runner/runner-run.ts: `LoopTickContext` → `RunnerRunContext` (used only by runner.ts and runner-run.ts, so no alias). It takes its final name here; the tick-named members inside it are Plain terms code run's.
+- Comments in src/runner/leftover.ts, model-fallback.ts, revision.ts, runner-fallback.ts and runner-recovery.ts.
+- Tests: test/runner.test.ts, test/runner-2.test.ts through test/runner-5.test.ts, and test/runner-{counters,fallback,interrupted,leftover-recovery,merge-conflicts,prompt-requeue,quiet-watchdog,recovery,red-main,refusal,transient-retry}.test.ts, test/revision.test.ts, test/leftover.test.ts, test/model-fallback.test.ts: migrate `makeLoopRunner`, `LoopRunner`, `LoopState`, `freshLoopState`, `loadLoopState`, `saveLoopState` and `LoopPi` to the new names, and convert comments and test titles.
+
+**Files touched.** All of src/runner/ except runner-state.ts and runner-pi.ts (done in part 2/14), plus the test files listed above.
+
+**Acceptance criteria.**
+- `RoleRunner` and `RunnerRunContext` are the declared names; `LoopRunner` exists only as the deprecated alias pair in src/runner/runner.ts.
+- `grep -rnwiE 'loops?' src/runner test/runner*.test.ts test/revision.test.ts test/leftover.test.ts test/model-fallback.test.ts` lists only kept senses: JavaScript, poll, event, retry or crash loops.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 4/14: Rename the status model's role phase and rank (planned 2026-10-16 by user; requires part 3/14 landed; design in plans/terminology.md "Code names"; touches src/ui/status-model.ts + src/ui/tone.ts + src/ui/badges.ts + test/status-model.test.ts + test/badges.test.ts)
+
+**Goal.** The shared display model names what it describes, a role's row: `rolePhase`, `roleRank`, `ROLE_RANK_RULES`, `sortRolesByState`, `roleRowCells` and `roleWakeMarker`.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/ui/status-model.ts: `loopPhase` → `rolePhase`, `loopRank` → `roleRank`, `LOOP_RANK_RULES` → `ROLE_RANK_RULES`, `sortLoopsByState` → `sortRolesByState`, `LoopSortRow` → `RoleSortRow`, `loopRowCells` → `roleRowCells`. Each export used outside this part keeps an alias: `loopPhase` is named in src/merge/, src/runner/, src/tick/, src/ui/ and src/ui/gui/; `LOOP_RANK_RULES` is interpolated by src/ui/gui/gui-client-model.ts.
+- src/ui/badges.ts: `loopWakeMarker` → `roleWakeMarker` (alias; src/ui/status-render.ts uses it). src/ui/tone.ts: migrate its `loopRank` import and comments.
+- test/status-model.test.ts (about 130 `loopPhase` calls and 69 `freshLoopState` calls) and test/badges.test.ts: migrate to the new names, including `freshRunnerState`, and convert comments and test titles.
+- The browser twin of the rank (`loopRank` inside gui-client-model.ts's template) is part 7/14's; only the server export's name changes here.
+
+**Files touched.** src/ui/status-model.ts, src/ui/tone.ts, src/ui/badges.ts, test/status-model.test.ts, test/badges.test.ts.
+
+**Acceptance criteria.**
+- `rolePhase`, `roleRank`, `ROLE_RANK_RULES`, `sortRolesByState`, `roleRowCells` and `roleWakeMarker` are the declared names; old names exist only as deprecated aliases, and only while another file still uses them.
+- `grep -nE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_|\bloops?\b'` over this part's five files lists only aliases and kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 5/14: Convert the status renderer and payload and the team alerts (planned 2026-10-16 by user; requires part 4/14 landed; design in plans/terminology.md "Code names"; touches src/ui/status-render.ts + src/ui/status-payload.ts + src/ui/team-alerts.ts + their tests)
+
+**Goal.** The status table renderer, the status payload builder and the team alerts use role and runner names, and `AlertLoop` becomes `AlertRole`.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/ui/team-alerts.ts: `AlertLoop` → `AlertRole` (its test is the only other user, so no alias). The `loops` parameter of the alert builders → `roles`.
+- src/ui/status-render.ts and src/ui/status-payload.ts: migrate to `rolePhase`, `roleRank`, `sortRolesByState`, `roleRowCells`, `roleWakeMarker`, `RunnerState` and `freshRunnerState`; rename the local `loops` arrays of display rows → `roles` (check each scope for an existing `roles` binding first); convert comments.
+- `StatusLoopRow` is declared in src/status/ (part 9/14); leave its uses here for that part.
+- Tests: test/status-render.test.ts, test/status-render-cells.test.ts, test/status-payload.test.ts, test/team-alerts.test.ts: migrate names, comments and titles. test/status-render.test.ts's local `dryRow` is Plain terms code cleanup's.
+
+**Files touched.** src/ui/status-render.ts, src/ui/status-payload.ts, src/ui/team-alerts.ts, test/status-render.test.ts, test/status-render-cells.test.ts, test/status-payload.test.ts, test/team-alerts.test.ts.
+
+**Acceptance criteria.**
+- `AlertRole` is declared and `AlertLoop` appears nowhere in src/ or test/.
+- `grep -nE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_|\bloops?\b'` over this part's files lists only `StatusLoopRow` uses and kept senses.
+- No behavior change: status table output in the tests is byte-identical and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 6/14: Convert the TUI and the merge and review modules (planned 2026-10-16 by user; requires part 5/14 landed; design in plans/terminology.md "Code names"; touches src/ui/tui/ + the other src/ui/*.ts + src/merge/ + src/review/ + src/verdict/ + their tests)
+
+**Goal.** The TUI, the remaining src/ui/ modules, and the merge, review and verdict modules use role and runner names in identifiers, comments and test titles.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- This part declares nothing new. It migrates uses of `RoleRunner`, `RunnerState`, `freshRunnerState`, `loadRunnerState`, `saveRunnerState`, `RunnerPi`, `makeRoleRunner` and `rolePhase`, and converts comments. Most hits are comments: src/ui/tui/tui-keys.ts (about 45 lines), tui-editors.ts, tui.tsx, tui-pane.ts and tui-input.ts.
+- src/ui/tick-progress-model.ts, progress-data.ts, transcript.ts and transcript-tail.ts: comments and `LoopState` uses. The tick words in tick-progress-model.ts are Plain terms code run's; leave them.
+- src/merge/, src/review/ and src/verdict/: `LoopState`/`saveLoopState`/`LoopRunner`/`LoopPi`/`loopPhase` uses and comments ("the authoring loop" → "the authoring role").
+- Tests: test/tui*.test.ts, test/progress.test.ts, test/fixtures/tui-fixtures.ts, the merge tests and fixtures (test/merge-*.test.ts, test/merge-to-main*.test.ts, test/merge-drain-verify.test.ts, test/merger*.test.ts, test/work-merged-cache.test.ts, test/fixtures/merge-fixtures.ts, merger-fixtures.ts and merge-to-main-fixtures.ts), test/review*.test.ts, test/refusal.test.ts, test/reply-contract.test.ts, test/no-change.test.ts and test/attribute-red-check.test.ts. Leave test/tui-notebook.test.ts's file name to Plain terms code cleanup; convert only its loop words.
+
+**Files touched.** src/ui/tui/*.ts(x), src/ui/tick-progress-model.ts, src/ui/progress-data.ts, src/ui/transcript.ts, src/ui/transcript-tail.ts, src/merge/*.ts, src/review/*.ts, src/verdict/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*` identifiers.
+- `grep -rnwiE 'loops?'` over the same files lists only kept senses and serialized names.
+- No behavior change: TUI frames and merge outcomes in the tests are unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 7/14: Rename the dashboard's role card and drawer code (planned 2026-10-16 by user; requires part 6/14 landed; design in plans/terminology.md "Code names"; touches src/ui/gui/ + src/gui/ + test/gui*.test.ts + test/cli-gui.test.ts + test/helpers/gui-client-scope.ts)
+
+**Goal.** The dashboard's browser code and server glue name the Roles card, drawer and rank by role, including `GUI_CLIENT_ROLES_JS` and the DOM ids and CSS classes the card uses.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message. Dashboard hashes were renamed by Plain terms scripting, and the legacy `#loop/<id>` route must keep working.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- The gui-client modules are browser code inside `String.raw` templates, which tsc does not check, so rename by hand and verify by test. The client modules are concatenated into one script (`GUI_CLIENT_JS` in src/ui/gui/gui-client.ts), so a new name must not collide across them; `grep` all of src/ui/gui/ before each rename.
+- Server-side exports: `GUI_CLIENT_LOOPS_JS` → `GUI_CLIENT_ROLES_JS` (src/ui/gui/gui-client-roles.ts and its use in gui-client.ts).
+- Browser functions and constants: `openLoop` → `openRole`, `openLoopRole` → `openRoleId`, `toggleLoop` → `toggleRole`, `renderLoopDrawer` → `renderRoleDrawer`, `renderLoops` → `renderRoles`, `patchLoops` → `patchRoles`, `sortLoops` → `sortRoles`, `loopRank` → `roleRank` (the browser twin in gui-client-model.ts, which interpolates `ROLE_RANK_RULES`), `loopPhase` → `rolePhase`, `loopCells` → `roleCells`, `loopKeys` → `roleKeys`, `LOOP_TDS` → `ROLE_TDS`, `LOOP_GROUPS` → `ROLE_GROUPS`, `wasLoop` → `wasRole`, and `loadLoopTicks` → `loadRoleRuns` (its final name, so Plain terms code run does not touch it again).
+- DOM and CSS names in gui-page.ts, gui-styles.ts and the client modules: id `loops` → `roles`, `loopstable` → `rolestable`, `loops-title` → `roles-title`; classes `loops` → `roles` and `c-loop` → `c-role`; the drawer kind `"loop"` → `"role"`. First confirm `.roles` and `.c-role` are not already used as selectors in gui-styles.ts.
+- test/helpers/gui-client-scope.ts and the gui tests reach browser functions by name: update them. In test/gui-client-boot.test.ts the local `let openRole` would collide with the renamed `openRole` hook, so rename the local `openedRole`.
+- src/gui/ (gui-endpoints.ts, gui-prompt-commands.ts, gui-args.ts, gui-backlog-commands.ts, http-body.ts, gui-operator-commands.ts, gui-team-commands.ts): comments and any `LoopState`/`loadLoopState` uses.
+- If a String.raw line carries `// vocabulary-ok: …` only because of a word renamed here, drop the marker.
+
+**Files touched.** src/ui/gui/*.ts, src/gui/*.ts, test/gui*.test.ts, test/cli-gui.test.ts, test/fixtures/gui-fixtures.ts, test/helpers/gui-client-scope.ts.
+
+**Acceptance criteria.**
+- `GUI_CLIENT_ROLES_JS` is declared and `GUI_CLIENT_LOOPS_JS` appears nowhere.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_|c-loop|loopstable|"loops?"|#loops\b|\.loops\b' src/ui/gui src/gui` lists only payload keys that are not this series' and kept senses.
+- The dashboard tests that open a role drawer by `#role/<id>` and by the legacy `#loop/<id>` hash both pass, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 8/14: Convert the orchestrator and its tests (planned 2026-10-16 by user; requires part 7/14 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ + test/orchestrator*.test.ts + test/fixtures/orchestrator-fixtures.ts)
+
+**Goal.** The orchestrator and its unit and e2e tests use `RoleRunner`, `RunnerState` and runner/role wording.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/orchestrator/orchestrator.ts, orchestrator-scheduling.ts, orchestrator-launch.ts and retention.ts: migrate `LoopRunner` → `RoleRunner`, `loopEnabled` → `runnerEnabled`, `loopIds` → `runnerIds`, `saveLoopState` → `saveRunnerState` and `LoopState` → `RunnerState`, and convert comments ("the LoopRunners above" → "the RoleRunners above"). The poll loop stays the poll loop.
+- Tests: every test/orchestrator*.test.ts and test/orchestrator*.e2e.test.ts (`loadLoopState` alone is about 170 lines here), plus test/fixtures/orchestrator-fixtures.ts. Rename test locals per the series rules; test/orchestrator-2.e2e.test.ts's `loopOrder` → `roleOrder`.
+- Locals such as `dryTicks` and `dryFailedAt` carry role-id and tick words, which belong to later series; leave them.
+
+**Files touched.** src/orchestrator/*.ts, test/orchestrator*.test.ts, test/orchestrator*.e2e.test.ts, test/fixtures/orchestrator-fixtures.ts.
+
+**Acceptance criteria.**
+- `grep -rnE 'LoopRunner|LoopState|[a-z]LoopState|loopIds|loopEnabled'` over this part's files prints nothing.
+- `grep -rnwiE 'loops?'` over the same files lists only the poll loop and other kept senses.
+- No behavior change: the suite's test count is unchanged, including the e2e tier (`npm run test:e2e` passes).
+- `npm run test` passes.
+
+### Plain terms code runner, part 9/14: Convert status data and scheduling (planned 2026-10-16 by user; requires part 8/14 landed; design in plans/terminology.md "Code names"; touches src/status/ + src/scheduling/ + their tests + test/fixtures/status-fixtures.ts)
+
+**Goal.** The status collectors and the scheduler use runner and role names: `StatusLoopRow` becomes `StatusRoleRow`, and `loopStateForPoll` becomes `runnerStateForPoll`.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/status/: `StatusLoopRow` → `StatusRoleRow`. It is also used by src/ui/status-payload.ts, so migrate that use here rather than leaving an alias. Also `loopStateForPoll` → `runnerStateForPoll` and `loopStateCache` → `runnerStateCache`. The `for (const loop of loops)` in status-polls.ts → `for (const runner of runners)` (check the scope first). Migrate `LoopState`, `freshLoopState`, `loadLoopState` and `loopIds`, and convert comments (status-data.ts has about 35 comment lines).
+- src/scheduling/ (scheduling.ts, backoff.ts, claims.ts, once-round.ts, quiet-hours.ts and the work-merged cache module): migrate `LoopState`/`LoopRunner`/`loopEnabled`, and convert comments.
+- Tests: test/status-data*.test.ts, test/status-roles.test.ts, test/status-budget.test.ts, test/status-header.test.ts, test/status-inbox.test.ts, test/fixtures/status-fixtures.ts, test/scheduling.test.ts, test/backoff.test.ts, test/claims.test.ts, test/once-round.test.ts, test/quiet-hours.test.ts and the work-merged-cache test. Migrate `makeRoleRunner`, `freshRunnerState` and `spentRunnerState`, and convert comments and titles.
+
+**Files touched.** src/status/*.ts, src/scheduling/*.ts, src/ui/status-payload.ts (the `StatusRoleRow` use only), and the tests listed above.
+
+**Acceptance criteria.**
+- `StatusRoleRow` and `runnerStateForPoll` are declared; `StatusLoopRow` and `loopStateForPoll` appear nowhere.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files prints nothing.
+- No behavior change: status payloads in the tests are unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 10/14: Convert config and roles and init (planned 2026-10-16 by user; requires part 9/14 landed; design in plans/terminology.md "Code names"; touches src/config/ + src/roles/ + src/init/ + their tests)
+
+**Goal.** The config, role-catalog and init modules use runner and role wording; this part is mostly comments.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/config/ (config-schema.ts has about 25 comment lines, plus config.ts, config-write.ts, config-validation.ts, config-live.ts, config-fallbacks.ts, config-views.ts and config-field-checks.ts): migrate `LoopRunner`, `LoopState`, `loopIds` and `loopEnabled`, and convert comments. In comments, "custom loop" and "user-defined loop" → "custom role"; the `customLoop*` identifiers and the legacy `customLoops` config key stay for Plain terms code cleanup or for good.
+- src/roles/ (role-view.ts, role-render.ts, roles.ts, role-guidance.ts and role-catalog.ts; runner-ids.ts was part 2/14's): comments and any uses. Prompt text inside role-catalog.ts and role-guidance.ts string literals was converted by Plain terms text; do not touch strings.
+- src/init/init.ts: comments.
+- Tests: test/config*.test.ts, test/role-view.test.ts, test/roles.test.ts, test/role-guidance.test.ts, test/prompt-roles.test.ts and test/init*.test.ts.
+
+**Files touched.** src/config/*.ts, src/roles/*.ts except runner-ids.ts, src/init/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*`/`CUSTOM_LOOP_*` identifiers and the legacy `customLoops` key handling.
+- `grep -rnwiE 'loops?'` over this part's comments lists only kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 11/14: Convert the inbox and operator and prompt and CLI modules (planned 2026-10-16 by user; requires part 10/14 landed; design in plans/terminology.md "Code names"; touches src/inbox/ + src/operator/ + src/prompt/ + src/cli/ + their tests)
+
+**Goal.** The inbox, operator, prompt and CLI command modules and their tests use runner and role names.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/inbox/ (prompt-commands.ts, inbox.ts, inbox-cancel.ts, inbox-edit.ts, inbox-submit.ts, pending-prompt.ts, inbox-attachments.ts, prompt-not-before.ts): comments and `LoopState`/`LoopRunner` uses. In prompt-commands.ts, the two locals `const loop = …` holding a role id → `const targetRole` (check the scope).
+- src/operator/ (operator-commands.ts, operator-requests.ts, operator-intent.ts, retire.ts): migrate `loadLoopState`/`saveLoopState`/`LoopRunner`/`loopEnabled` and convert comments.
+- src/prompt/ (prompt.ts, gate-prompts.ts, prompt-followup.ts): comments only. Prompt string literals were converted by Plain terms text.
+- src/cli/ (cli-run.ts, cli-flag-specs.ts, cli-query-commands.ts, cli-command-args.ts, cli-args.ts, log-commands.ts, config-commands.ts, completion.ts, notify-command.ts): uses and comments. The `run`→`start` names in cli-run.ts are Plain terms code run's.
+- Tests: test/inbox*.test.ts, test/prompt*.test.ts (not prompt-roles, part 10/14's), test/pending-prompt.test.ts, test/gate-prompts.test.ts, test/operator*.test.ts, test/retire.test.ts, and test/cli-*.test.ts except cli-history*, cli-logs* and cli-gui (parts 13/14 and 7/14). test/prompt.test.ts's `loopPrompts` → `rolePrompts`.
+
+**Files touched.** src/inbox/*.ts, src/operator/*.ts, src/prompt/*.ts, src/cli/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files lists only `customLoop*` identifiers.
+- `grep -rnwiE 'loops?'` over this part's comments and test titles lists only kept senses.
+- No behavior change: CLI output asserted by the tests is unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 12/14: Convert the run pipeline modules and the baseline and build modules (planned 2026-10-16 by user; requires part 11/14 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/baseline/ + src/build/ + test/tick-*.test.ts + their other tests)
+
+**Goal.** The run pipeline modules under src/tick/, which Plain terms code run renames next, and the baseline and build modules use `RunnerState`, `RoleRunner` and role wording, so the run series only handles tick words.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/tick/ (tick-apply.ts, tick-verdict.ts, tick-prompt.ts, tick-stage.ts, tick-resume.ts, tick-usage.ts, tick-finalize.ts, tick-detail-data.ts, tick-outcome.ts, tick-timing.ts, tick-detail.ts, stage-check.ts, qa-coverage.ts): migrate `LoopState` → `RunnerState` (about 24 lines), `LoopRunner`, `saveLoopState`, `loadLoopState` and `loopPhase`, and convert "loop" in comments. Leave every tick word: Plain terms code run renames the directory and its names.
+- `mergeQueuedByLoop` and `outcomeByLoop`, the members of `bucketMergeEvents`' result that join merge-queue and outcome events by runner, are declared in src/history/ (part 13/14); leave them.
+- src/baseline/ (main-red.ts, main-baseline.ts) and src/build/ (build-check-events.ts, build-check.ts, dep-install.ts): comments and uses.
+- Tests: test/tick-*.test.ts (tick-apply.test.ts alone has about 66 lines, mostly `freshLoopState`), test/main-*.test.ts, test/build*.test.ts, test/stage-check.test.ts, test/qa-coverage.test.ts, test/dep-install.test.ts and test/check-permit.test.ts.
+
+**Files touched.** src/tick/*.ts, src/baseline/*.ts, src/build/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE 'LoopState|LoopRunner|[a-z]LoopState|loopPhase'` over this part's files prints nothing.
+- `grep -rnwiE 'loops?'` over this part's comments and test titles lists only kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 13/14: Convert gates and budget and the event history failure and report modules (planned 2026-10-16 by user; requires part 12/14 landed; design in plans/terminology.md "Code names"; touches src/gates/ + src/budget/ + src/events/ + src/history/ + src/failure/ + src/report/ + src/files/ + src/text/ + their tests)
+
+**Goal.** The gate, budget, event, history, failure, report, file and text helpers use runner and role names, including the per-runner event maps in history and failure.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Exports used outside this part get a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen; members get none. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names (test/exports.test.ts).
+- src/history/history-data.ts: the maps keyed by the event `source` (a runner id): `outcomeByLoop` → `outcomeByRunner`, `mergeQueuedByLoop` → `mergeQueuedByRunner`, and `byLoop` → `byRole` (keyed by the row's role). The first two are members of the object `bucketMergeEvents` returns, so also rename their uses in src/failure/time-spend.ts, src/tick/tick-detail-data.ts and src/cli.ts (no alias). The `blank(loop)` parameter → `role`. src/history/history-render.ts: `loopWidth` → `roleWidth`; the `line(loop, …)` parameter → `role`.
+- src/failure/time-spend.ts: `eventsByLoop`, `rejectedByLoop`, `reviewFailedByLoop` and `deadlineKilledByLoop` → `…ByRunner`.
+- src/events/ (events.ts has about 27 comment lines, plus event-format.ts, notify.ts, event-read.ts, event-window.ts): comments. event-format.ts's `const loop = padToWidth(eventRole(e), 9)` → `const source = …` (check the scope). If `NOTIFY_TEST_LOOP` still exists in the notify tests, → `NOTIFY_TEST_SOURCE`.
+- src/gates/ (gate-polls.ts, budget-gates.ts, role-cap-gates.ts, maintenance-quota.ts, streak-gate.ts, bootstrap-gates.ts, pause-gates.ts, startup-gate.ts), src/budget/ (budget.ts, fallback-breaker.ts), src/report/, src/files/ and src/text/: migrate uses and convert comments.
+- Tests: test/budget*.test.ts, test/gate*.test.ts, test/role-cap-gates.test.ts, test/streak-gate.test.ts, test/pause-gates.test.ts, test/bootstrap-gates.test.ts, test/disk-gate.test.ts, test/event*.test.ts, test/notify*.test.ts, test/history*.test.ts, test/cli-history*.test.ts, test/cli-logs*.test.ts, test/failure*.test.ts, test/report*.test.ts, test/files.test.ts, test/json-files.test.ts, test/fixtures/history-fixtures.ts and test/fixtures/log-fixtures.ts. `spentLoopState` (about 46 uses here) → `spentRunnerState`.
+
+**Files touched.** src/gates/*.ts, src/budget/*.ts, src/events/*.ts, src/history/*.ts, src/failure/*.ts, src/report/*.ts, src/files/*.ts, src/text/*.ts, the `…ByLoop` uses in src/tick/ and src/cli.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[A-Za-z]ByLoop\b|\bbyLoop\b|loopWidth'` over src/ and test/ prints nothing.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_'` over this part's files prints nothing.
+- No behavior change: history, report and failure output in the tests is unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code runner, part 14/14: Sweep the remaining loop names and retire the old runner names (planned 2026-10-16 by user; requires part 13/14 landed; design in plans/terminology.md "Code names" and "Guards"; touches every remaining src/ and test/ file with a loop name + test/retired-names.test.ts)
+
+**Goal.** No identifier, file name, comment or test title in src/ or test/ uses "loop" for a role or its worker. Every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old runner name comes back.
+
+**Approach.**
+- Series rules (every code-runner part):
+  - Identifier words follow plans/terminology.md "Code names", row "loop": `runner` for the worker object, its state and an instance id; `role` for what the status table, dashboard and TUI show.
+  - Keep `loopback*`, `pollLoop`, `crashLoop`, `onCrashLoop`, every `customLoop*`/`CUSTOM_LOOP_*` identifier, and "loop" meaning a JavaScript loop, the poll loop, the event loop, or a retry, crash or feedback loop.
+  - Serialized names (state-file fields, event fields, `--json`/`/api` keys, config keys, env vars) are out of scope; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - A bare `loop`/`loops` binding becomes `runner`/`runners` (or `role`/`roles` for ids or display rows), never shadowing a name already bound in an enclosing scope.
+  - Comments and test titles: "loop" → "role", or "runner" when the sentence is about the `RoleRunner` object or one instance's state. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+- Sweep the files earlier parts did not own: src/doctor/ (doctor-holds.ts's `const loops = loopIds(config)` → `runners`), src/backlog/, src/change/, src/concurrency/, src/git/, src/agent/, src/pi/, src/pi-extension/, src/process/ (supervisor.ts comments; `crashLoop` stays), src/redeploy/, src/team/, src/brief/, the root modules (src/paths.ts has about 12 comment lines, plus src/collections.ts and src/request-timeouts.ts), and their tests: test/doctor*.test.ts, test/backlog*.test.ts, test/pi.test.ts, test/supervisor.test.ts, test/worktree*.test.ts, test/cli.test.ts, test/completion.test.ts, test/test-runner.ts, test/fakes/*.ts, test/helpers/*.ts and test/fixtures/{repo,gate,victim}-fixtures.ts. Also include any file that gained a loop name from a feature that landed during this series: run `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` and `grep -rnwiE 'loops?' src test` and convert every role-or-worker sense.
+- Delete every remaining `@deprecated` alias this series added (`grep -rn '@deprecated Use' src test`: `LoopRunner`, `LoopState`, `freshLoopState`, `loadLoopState`, `saveLoopState`, `loopIds`, `loopEnabled`, `LoopPi`, `makeLoopRunner`, `spentLoopState`, `loopPhase`, `loopRank`, `LOOP_RANK_RULES`, `sortLoopsByState`, `loopRowCells`, `loopWakeMarker`, whichever remain), after migrating their last users.
+- Append a `runner` family to the guard in test/retired-names.test.ts. Plain terms code team 6/6 gave each family the shape `{ family, words, fileWords, allow }`, and the guard splits identifiers into words, including those in dashboard browser code. Use `words: ["loop", "loops"]` and `fileWords: ["loop", "loops"]`. Put in `allow`, each with its reason comment, the kept identifiers `pollLoop`, `crashLoop` and `onCrashLoop`, the live legacy config key `customLoops`, and, until Plain terms code cleanup renames them, `CustomLoop`, `customLoopNames` and `CUSTOM_LOOP_KEYS`. Rename a leftover JavaScript-loop variable called `loop` to say what it holds instead of allowing it. Legacy readers use the guard's existing exemptions: `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, and `retired-name-ok:start`/`end` regions. Add no new mechanism.
+- Run the retired-names guard and fix what it reports, for example a temp-dir prefix such as `tmpdir("loop-ids-cap-")` → `tmpdir("runner-ids-cap-")`. A hit inside a legacy reader that must keep an old name, such as an old-format event fixture with a `loop` field, gets one of the guard's exemptions, not a rename.
+
+**Files touched.** The remaining files listed above; the alias declarations in src/runner/, src/roles/runner-ids.ts, src/ui/status-model.ts, src/ui/badges.ts and test/fixtures/runner-fixtures.ts; test/retired-names.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn '@deprecated Use' src test` lists none of this series' old names.
+- `grep -rnE '[Ll]oop[A-Z]|[a-z0-9]Loop|LOOP_' src test` lists only `loopback*`, `pollLoop`, `crashLoop`/`onCrashLoop`, `customLoop*`/`CUSTOM_LOOP_*`, and sites the retired-names guard exempts (the legacy readers).
+- test/retired-names.test.ts holds the `runner` family and passes; adding `const loopState = 1;` to any src/ module makes it fail (check locally, do not commit).
+- `npm run test` passes.
+
+### Plain terms code run, part 1/20: Move src/tick to src/run and the run command module to cli-start (planned 2026-10-16 by user; requires Plain terms code runner 14/14 landed; design in plans/terminology.md "Code names"; touches src/tick/ + src/ui/tick-progress-model.ts + src/cli/cli-run.ts + test/tick-*.test.ts + test/cli-run*.test.ts + test/helpers/run-live-harness.ts + every importer + docs/invariants.md + DEVELOPMENT.md + test/invariants-doc.test.ts)
+
+**Goal.** Mechanical. The run pipeline's modules, the run-progress model, the `tumwater start` command module and their tests move to their final names, with every import path and path citation updated and no identifier changed.
+
+**Approach.**
+- `git mv` only, then fix paths. Do not change any identifier, comment wording or test title beyond the paths themselves.
+- Source moves: `src/tick/` → `src/run/`, and inside it `tick-<x>.ts` → `run-<x>.ts` for apply, detail, detail-data, finalize, outcome, prompt, resume, stage, timing, usage and verdict. `qa-coverage.ts`, `stage-check.ts` and `telemetry-digest.ts` move unchanged (Plain terms code cleanup renames the last one). `src/ui/tick-progress-model.ts` → `src/ui/run-progress-model.ts`. `src/cli/cli-run.ts` → `src/cli/cli-start.ts`. `src/runner/runner-run.ts` already has its final name.
+- Test moves: `test/tick-<x>.test.ts` → `test/run-<x>.test.ts` (same suffixes); `test/cli-run.test.ts` and `test/cli-run-<x>.test.ts` → `test/cli-start.test.ts` and `test/cli-start-<x>.test.ts` (force-exit, guards, once, shutdown, sigint, window); `test/helpers/run-live-harness.ts` → `test/helpers/start-live-harness.ts`. No existing `test/run-*.test.ts` name collides (`test/run-marker.test.ts` covers src/process/run-marker.ts, which keeps its name).
+- Update every import specifier (static, `import type`, dynamic `import()`, including src/cli.ts's per-command dynamic import of cli-run.js), every `new URL(…)` path (test/build-stage.test.ts reads `../../src/cli/cli-run.ts`), and every path citation in comments and strings in `src/`, `test/` and `scripts/`.
+- Paths pinned outside the moved files must change in this part, or the suite fails: docs/invariants.md cites `src/tick/tick-verdict.ts`, `src/tick/stage-check.ts`, `src/tick/tick-stage.ts`, `src/tick/tick-resume.ts`, `src/cli/cli-run.ts`, `test/tick-stage.test.ts`, `test/tick-verdict.test.ts` and `test/cli-run-shutdown.test.ts`, and test/invariants-doc.test.ts fails on a cited path that does not exist. test/invariants-doc.test.ts's own `HERMETIC_ALLOWLIST` is keyed `"test/cli-run-window.test.ts"`; rename that key to `test/cli-start-window.test.ts`, or the gating-tier listener check fails. Also update DEVELOPMENT.md's Layout path mentions (`src/tick/…`, `tick-*.ts`, `cli-run.ts`) and any other docs/*.md that cites a moved file as current.
+- Only paths change: src/cli.ts's `case "run":` dispatch and the supervisor's `["run", …]` spawn argv stay exactly as they are (`run` remains a hidden alias of `tumwater start`, so an older build can still respawn its child).
+- Finish with `grep -rnE 'src/tick/|tick-(apply|detail|detail-data|finalize|outcome|prompt|resume|stage|timing|usage|verdict|progress-model)[."]|cli-run[.-]|run-live-harness' src test scripts docs/invariants.md DEVELOPMENT.md`, which must print nothing. docs/code-metrics.md is a dated snapshot; leave it.
+
+**Files touched.** The moved files above, every importer (about 115 import lines), test/build-stage.test.ts, test/invariants-doc.test.ts, docs/invariants.md, DEVELOPMENT.md. Reads (does not edit): scripts/stamp-build.mjs (prunes stale dist/ outputs of the old names).
+
+**Acceptance criteria.**
+- `src/tick/` does not exist; `src/run/` holds the eleven `run-*.ts` modules plus `qa-coverage.ts`, `stage-check.ts` and `telemetry-digest.ts`; `src/ui/run-progress-model.ts` and `src/cli/cli-start.ts` exist; `git log --follow` traces each to its old name.
+- The grep in the last Approach bullet prints nothing, and test/invariants-doc.test.ts passes.
+- No identifier changed: the diff is renames plus path lines only, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 2/20: Rename RoleRunner's run methods and run-context members (planned 2026-10-16 by user; requires part 1/20 landed; design in plans/terminology.md "Code names"; touches src/runner/runner.ts + src/runner/runner-run.ts + src/runner/runner-pi.ts + every caller and stub of those members)
+
+**Goal.** Mechanical. `RoleRunner.tick()` becomes `run()`, and every other tick-named member of `RoleRunner`, `RunnerRunContext` and `RunnerPiHost` takes its run name, with all callers, stubs and test overrides moved in the same part. Members cannot carry aliases.
+
+**Approach.**
+- Renames (members, so no aliases; rename every use in src/ and test/ here):
+  - `RoleRunner`: `tick()` → `run()`, `abortTick()` → `abortRun()`, `handBackTick()` → `handBackRun()`, `tickModel()` → `runModelPair()` (not `runModel`, which is `RunVerdictContext`'s field for the agent run's model), private `runTick` → `runOnce`, `tickContext()` → `runContext()`, `tickPrompt()` → `runPrompt()`, fields `tickAbort` → `runAbort` and `tickPair` → `runPair`, `finishAbortedTick` → `finishAbortedRun`, `finishRecoveryTick` → `finishRecoveryRun`.
+  - `RunnerRunContext` (src/runner/runner-run.ts): `tickPrompt` → `runPrompt`, `setTickPair` → `setRunPair`, `resetTickAbort` → `resetRunAbort`, `runTick` → `runOnce`, `finishAbortedTick` → `finishAbortedRun`, `finishRecoveryTick` → `finishRecoveryRun`.
+  - `RunnerPiHost` (src/runner/runner-pi.ts): `tickNumber` → `runNumber`.
+- Callers: src/orchestrator/orchestrator-launch.ts, src/gates/gate-polls.ts, src/gates/budget-gates.ts (`tickModel` parameter → `runModelPair`), src/operator/operator-requests.ts, and src/run/run-stage.ts, run-verdict.ts, run-resume.ts and run-timing.ts where they call these members.
+- Test overrides and fakes are not type-checked, because they use casts (`as unknown as RoleRunner`) or monkeypatching, so find them by grep, not tsc. Search test/ for `runTick`, `.tick(`, `tick:`, `tickModel`, `handBackTick`, `abortTick` and `stubRunTick`. Known sites: test/runner.test.ts (`(runner as unknown as { runTick … }).runTick = …`), test/orchestrator-launch.test.ts's `fakeRunner(role, tick)` (property `tick` → `run`), test/gate-polls.test.ts and test/gate-event-best-effort.test.ts (`tickModel:`, `handBackTick:`), test/operator-requests.test.ts (`bad.abortTick = …`), test/orchestrator-seams.test.ts, test/orchestrator-permits.e2e.test.ts, test/agent-commit-fold.test.ts, test/pi.test.ts, and every test/runner*.test.ts and test/revision.test.ts call of `.tick()`. Also `stubRunTick` → `stubRunOnce`. A missed override fails at runtime, never at compile time.
+- Leave node:test mock clocks alone: `t.mock.timers.tick(ms)` and test/inbox.test.ts's `clock.tick(…)` are not runner methods.
+- Update comment mentions of exactly these member names in the touched files. Wider comment wording waits for each file's own part.
+
+**Files touched.** src/runner/runner.ts, src/runner/runner-run.ts, src/runner/runner-pi.ts, src/orchestrator/orchestrator-launch.ts, src/gates/gate-polls.ts, src/gates/budget-gates.ts, src/operator/operator-requests.ts, src/run/run-stage.ts, src/run/run-verdict.ts, src/run/run-resume.ts, src/run/run-timing.ts, the test files named above, test/fixtures/runner-fixtures.ts, test/fixtures/runner-pi-fixtures.ts and test/fixtures/orchestrator-fixtures.ts.
+
+**Acceptance criteria.**
+- `grep -rnE '\.(tick|abortTick|handBackTick|tickModel|runTick)\(|\b(stubRunTick|setTickPair|resetTickAbort|tickAbort|tickPair|tickContext)\b|\btick(Model|Prompt)?:\s*(async|\()' src test` prints nothing, apart from `mock.timers.tick` and test/inbox.test.ts's clock helper.
+- `RoleRunner` declares `run()`, `abortRun()`, `handBackRun()` and `runModelPair()`, and no tick-named member.
+- No behavior change: the suite's test count is unchanged, including `npm run test:e2e`.
+- `npm run test` passes.
+
+### Plain terms code run, part 3/20: Rename the run outcome and outcome application and usage types (planned 2026-10-16 by user; requires part 2/20 landed; design in plans/terminology.md "Code names"; touches src/run/run-outcome.ts + src/run/run-apply.ts + src/run/run-usage.ts + test/run-outcome.test.ts + test/run-apply.test.ts + test/run-usage.test.ts)
+
+**Goal.** The pipeline's core types take run names: `RunResult`, `RunOutcome`, `applyRunOutcome` and `RunUsage`, behind deprecated aliases for the directories that migrate later.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Collisions are settled: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`. Each part names any others it owns.
+  - A bare `tick` binding or in-process field that holds a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is already bound in scope. `run` is a common local (`const run = await runPi(…)`): never shadow it or any other existing binding.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and the helpers that wrap them, and serialized names (event types and fields, state fields, `--json`/`/api` keys, config keys). Earlier series renamed those with legacy readers; name any leftover in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run", "ticks" → "runs", "ticked" → "ran", "mid-tick"/"per-tick" → "mid-run"/"per-run", `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. In the same files, a bare noun "run" meaning one agent (pi or claude) invocation becomes "agent run", so "a run's agent runs" stays unambiguous; "pi run", "review run" and "check run" are already qualified. Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone (test/plan-citations.test.ts); rewrap comment lines past 100 columns (test/comment-width.test.ts); update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part's files keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. If it has only a handful of outside uses (about five lines or fewer), migrate them instead. Members (methods, properties, interface fields) get no alias: rename every use in this part. Migrate this part's uses of names earlier parts renamed (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names any more (test/exports.test.ts fails an export nothing else mentions).
+- src/run/run-outcome.ts: `TickResult` → `RunResult`, `TickOutcome` → `RunOutcome`, both aliased (used across about 15 directories). Check that no `RunResult` is imported alongside `PiRunResult` under a clashing local name.
+- src/run/run-apply.ts: `applyTickOutcome` → `applyRunOutcome`, aliased (about 150 uses, mostly tests). Convert comments.
+- src/run/run-usage.ts: `TickUsage` → `RunUsage`, aliased. Its comments use "run" for an agent invocation often; apply the "agent run" rule carefully (for example "a merge or review run's usage" stays, "the tick's pre-edit counter" → "the run's pre-edit counter").
+- Tests test/run-outcome.test.ts, test/run-apply.test.ts (about 150 lines) and test/run-usage.test.ts: new names, comments and titles.
+
+**Files touched.** src/run/run-outcome.ts, src/run/run-apply.ts, src/run/run-usage.ts, test/run-outcome.test.ts, test/run-apply.test.ts, test/run-usage.test.ts.
+
+**Acceptance criteria.**
+- `RunResult`, `RunOutcome`, `applyRunOutcome` and `RunUsage` are declared; the old names exist only as deprecated aliases.
+- `grep -nE '[Tt]ick|TICK'` over this part's six files lists only the aliases and kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 4/20: Rename the run prompt and resume and finalize and timing modules (planned 2026-10-16 by user; requires part 3/20 landed; design in plans/terminology.md "Code names"; touches src/run/run-prompt.ts + src/run/run-resume.ts + src/run/run-finalize.ts + src/run/run-timing.ts + their tests)
+
+**Goal.** The pipeline's start, prompt, finalize and timing helpers take run names, including `runTimedRoleRun` and `p75RunDurationMs`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/run/run-prompt.ts: `assembleTickPrompt` → `assembleRunPrompt` (aliased) and `TickPromptInput` → `RunPromptInput`. The `initialPrompt` local and `readInitialPrompt` mentions belong to Plain terms code cleanup.
+- src/run/run-resume.ts: `planTickStart` → `planRunStart` and `TickStartPlan` → `RunStartPlan`; member `tickPrompt` → `runPrompt`.
+- src/run/run-finalize.ts: `finalizeTick` → `finalizeRun` and `FinalizeTickDeps` → `FinalizeRunDeps`; members `tick` → `runNumber` and `tickStartedAt` → `runStartedAt`.
+- src/run/run-timing.ts: `runTimedRoleTick` → `runTimedRoleRun` (aliased; src/orchestrator and src/redeploy use it), `p75TickDurationMs` → `p75RunDurationMs`, and locals such as `releaseTick` → `releaseRun` and `tickDurationMs` → `runDurationMs`. `drainInFlightWork` keeps its name (drain is a kept code word).
+- Tests: test/run-prompt.test.ts, test/run-resume.test.ts, test/run-finalize.test.ts and test/run-timing.test.ts.
+
+**Files touched.** The four modules and four tests above, plus migrated outside uses of names with five or fewer outside lines.
+
+**Acceptance criteria.**
+- `assembleRunPrompt`, `RunPromptInput`, `planRunStart`, `RunStartPlan`, `finalizeRun`, `FinalizeRunDeps`, `runTimedRoleRun` and `p75RunDurationMs` are declared; old names survive only as aliases still used elsewhere.
+- `grep -nE '[Tt]ick|TICK'` over this part's eight files lists only aliases and kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 5/20: Rename the run verdict and staging modules and convert the git and process plumbing (planned 2026-10-16 by user; requires part 4/20 landed; design in plans/terminology.md "Code names"; touches src/run/run-verdict.ts + src/run/run-stage.ts + src/run/stage-check.ts + src/run/qa-coverage.ts + src/run/telemetry-digest.ts + src/git/ + src/concurrency/ + src/process/ + src/build/ + their tests)
+
+**Goal.** The verdict and staging half of the pipeline takes run names: `resolveRunVerdict` and `stageRunMerge`. The git, concurrency, process and build modules lose their tick wording, which is almost all in comments.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/run/run-verdict.ts: `resolveTickVerdict` → `resolveRunVerdict` (aliased) and `TickVerdictContext` → `RunVerdictContext`. Its `runModel` field already means the agent run's model and stays.
+- src/run/run-stage.ts: `stageTickMerge` → `stageRunMerge` (aliased), `TickStageContext` → `RunStageContext`, `TickFlow` → `RunFlow`, member `tickTurns` → `runTurns`, and the local `movedPlansTick` → `movedPlansRun`.
+- src/run/stage-check.ts, qa-coverage.ts and telemetry-digest.ts: comments only. The `telemetry` identifiers and file name belong to Plain terms code cleanup.
+- src/git/ (commit-message.ts, worktree.ts, worktree-pool.ts, git.ts, git-diff.ts, slots-state.ts, worktree-use.ts, git-run.ts), src/concurrency/ (provider-lease.ts, lock.ts, semaphore.ts, check-permit.ts), src/process/ (supervisor.ts, process.ts, run-marker.ts) and src/build/ (build-check-report.ts, build-stage.ts, build-info.ts, build-check*.ts): comments, plus any tick identifier they declare. src/process/run-marker.ts and `TUMWATER_RUN` already mean one agent run and keep their names. Its comments' "pi run" stays; a bare "run" there becomes "agent run". The `tumwater run`-command names in supervisor.ts (`superviseRun`, `spawnRunChild`) are part 19/20's.
+- Tests: test/run-verdict.test.ts, test/run-stage.test.ts, test/stage-check.test.ts, test/qa-coverage.test.ts, test/telemetry-digest.test.ts, test/commit-message.test.ts, test/worktree*.test.ts, test/git*.test.ts, test/lock.test.ts, test/semaphore.test.ts, test/provider-lease.test.ts, test/process.test.ts, test/supervisor.test.ts, test/run-marker.test.ts, test/build*.test.ts and test/launch-services.e2e.test.ts. Leave their `t.mock.timers.tick` calls.
+
+**Files touched.** The src/run/ modules above, src/git/*.ts, src/concurrency/*.ts, src/process/*.ts, src/build/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `resolveRunVerdict`, `RunVerdictContext`, `stageRunMerge`, `RunStageContext` and `RunFlow` are declared; old names survive only as aliases still used elsewhere.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b'` over this part's files lists only mock-clock calls, aliases and serialized names.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 6/20: Rename the run detail reader and the history rows (planned 2026-10-16 by user; requires part 5/20 landed; design in plans/terminology.md "Code names"; touches src/run/run-detail.ts + src/run/run-detail-data.ts + src/history/history-data.ts + test/run-detail.test.ts + test/run-detail-data.test.ts + test/history-data.test.ts)
+
+**Goal.** The `tumwater history <role> <n>` reader and the history row model take run names: `cmdRunDetail`, `RunDetail`, `readRunDetail`, `RunRow`, `readRunRows` and `summarizeRunRows`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/run/run-detail.ts: `cmdTick` → `cmdRunDetail` (src/cli.ts and src/history/ call it; aliased or migrated), `TICK_USAGE` → `RUN_DETAIL_USAGE`, `tickNotFoundMessage` → `runNotFoundMessage`, `tickNotFoundPhrase` → `runNotFoundPhrase`, `tickNotFoundLastMessage` → `runNotFoundLastMessage`, `renderTickDetail` → `renderRunDetail`, `tickDetailStat` → `runDetailStat`, and the locals `tickCommitSha` and `tickCommitStat` → `runCommitSha` and `runCommitStat`. Plain terms commands may already have pointed `TICK_USAGE`'s text at `history <role> <n>`; only the name changes here.
+- src/run/run-detail-data.ts: `TickDetail` → `RunDetail` and `readTickDetail` → `readRunDetail`, both aliased (the GUI and TUI use them).
+- src/history/history-data.ts: `TickRow` → `RunRow`, `readTickRows` → `readRunRows`, `readTickRowsSince` → `readRunRowsSince`, `summarizeTickRows` → `summarizeRunRows`, `tickRowsMatchingGrep` → `runRowsMatchingGrep`, `tickRowGrepHaystack` → `runRowGrepHaystack` (all aliased where used outside), `HISTORY_MAX_TICKS` → `HISTORY_MAX_RUNS`, `HISTORY_DEFAULT_TICKS` → `HISTORY_DEFAULT_RUNS`, `TickRowJoin` → `RunRowJoin`, and `TICK_ROW_JOIN_BACKSLACK_MS`, `TICK_ROW_JOIN_BACK` and `TICK_ROW_WINDOW_MEMO_MAX` → `RUN_ROW_…`. Locals: `tickRows`, `tickRowWindowMemo` and `inTickEvent` → run forms. `RunRow`'s serialized `run` field was renamed by Plain terms scripting; do not touch it.
+- Tests: test/run-detail.test.ts (its `cli(repo, "tick", …)` calls exercise the hidden alias on purpose; leave those argv strings), test/run-detail-data.test.ts and test/history-data.test.ts.
+
+**Files touched.** src/run/run-detail.ts, src/run/run-detail-data.ts, src/history/history-data.ts, their three tests, and migrated outside uses with five or fewer lines each (for example src/cli.ts for `cmdRunDetail`).
+
+**Acceptance criteria.**
+- The new names are declared; old names survive only as aliases still used elsewhere.
+- `grep -nE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_'` over this part's six files lists only aliases, and every bare "tick" left is a hidden-alias argv string.
+- No behavior change: `tumwater history <role> <n>` output in the tests is unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 7/20: Convert the dashboard and the rest of history (planned 2026-10-16 by user; requires part 6/20 landed; design in plans/terminology.md "Code names"; touches src/ui/gui/ + src/gui/ + src/history/history.ts + src/history/history-render.ts + test/gui*.test.ts + test/cli-gui.test.ts + test/history*.test.ts + test/cli-history*.test.ts + test/fixtures/history-fixtures.ts)
+
+**Goal.** The dashboard's browser code, the GUI server's run endpoint and the history command and renderer use run names, including the drawer's run list and the run-detail DOM attribute.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/gui/gui-endpoints.ts: `handleTick` → `handleRun` and `serveTick` → `serveRun`. The `/api/run` route and its legacy `/api/tick` handling are Plain terms scripting's; keep both routes working.
+- Browser code in src/ui/gui/ (inside String.raw templates, which tsc does not check; grep all of src/ui/gui/ before each rename so names stay unique across the concatenated modules): `drawerTicks` → `drawerRuns`, `drawerTicksAt` → `drawerRunsAt`, `fmtLastTick` → `fmtLastRun`, `chartTicksByRole` → `chartRunsByRole`, `tickWord` → `runWord`, `todayTick` → `todayRun`, the DOM attribute `data-tickdetail` → `data-rundetail` (with its `dataset.tickdetail` reads and the `[data-tickdetail]` selector in gui-client-boot.ts), and uses of `lastTickCell` and `TickResult` → the new names. test/helpers/gui-client-scope.ts reaches browser functions by name; update it.
+- src/history/history.ts and history-render.ts: `TickRowCells` → `RunRowCells`, `tickRowCells` → `runRowCells` and `tickRowLine` → `runRowLine` (aliased if src/ui/tui still uses them), and migrate `RunRow`, `readRunRows`, `summarizeRunRows` and the other names part 6/20 introduced.
+- Tests: test/gui*.test.ts, test/cli-gui.test.ts, test/history*.test.ts except history-data (part 6/20's), test/cli-history*.test.ts, and test/fixtures/history-fixtures.ts (`repoWithTicks` → `repoWithRuns`).
+
+**Files touched.** src/ui/gui/*.ts, src/gui/*.ts, src/history/history.ts, src/history/history-render.ts, test/helpers/gui-client-scope.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|tickdetail'` over this part's files lists only aliases and serialized names.
+- The dashboard tests that open a run's detail from the drawer pass, and `GET /api/run` and the legacy `GET /api/tick` both still answer.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 8/20: Rename the runner's run pipeline phases (planned 2026-10-16 by user; requires part 7/20 landed; design in plans/terminology.md "Code names"; touches src/runner/runner.ts + src/runner/runner-run.ts + test/runner.test.ts + test/runner-2.test.ts through test/runner-5.test.ts)
+
+**Goal.** The runner's run pipeline (`runPhase`, `runOncePhase`, `runOnceInLeasePhase`, `runWithWorktreePhase`) and the runner's comments and core tests use run wording throughout.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/runner/runner-run.ts: `tickPhase` → `runPhase`, `runTickPhase` → `runOncePhase` (it pairs with `RoleRunner.runOnce`), `runTickInLeasePhase` → `runOnceInLeasePhase`, `tickWithWorktreePhase` → `runWithWorktreePhase`, and the locals `quietKilledTick`, `tickBase`, `nTick` and `tickOutcome` → run forms. This file has about 150 tick lines; most are comments describing the pipeline, and most of its "run" nouns mean the agent run, so apply the "agent run" rule here with care.
+- src/runner/runner.ts: comments ("one full tick of this role" → "one full run of this role"), and uses of `RunOutcome`, `RunUsage`, `runPhase` and `runOncePhase`.
+- Tests test/runner.test.ts and test/runner-2.test.ts through test/runner-5.test.ts: migrate names, comments and titles. docs/invariants.md quotes test/runner-2.test.ts titles ("a tick whose agent reads an image on a blind model stops and fails", "a blind read on a text-only …"); update the quotes to the renamed titles.
+
+**Files touched.** src/runner/runner.ts, src/runner/runner-run.ts, test/runner.test.ts, test/runner-2.test.ts, test/runner-3.test.ts, test/runner-4.test.ts, test/runner-5.test.ts, docs/invariants.md (quotes only).
+
+**Acceptance criteria.**
+- `runPhase`, `runOncePhase`, `runOnceInLeasePhase` and `runWithWorktreePhase` are declared, and no tick-named function remains in src/runner/runner-run.ts.
+- `grep -nE '[Tt]ick|TICK'` over this part's seven code files prints nothing except kept senses.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 9/20: Convert the rest of the runner modules and tests (planned 2026-10-16 by user; requires part 8/20 landed; design in plans/terminology.md "Code names"; touches src/runner/ except runner.ts and runner-run.ts + src/roles/runner-ids.ts + the other test/runner-*.test.ts + test/revision.test.ts + test/leftover.test.ts + test/model-fallback.test.ts + test/fixtures/runner-*.ts)
+
+**Goal.** Runner state, the agent wrapper, recovery, leftover handling and model fallback use run wording, and `finishAbortedRunPhase` and `finishRecoveryRunPhase` replace their tick names.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message. `RunnerState`'s persisted fields were renamed by Plain terms state.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/runner/runner-recovery.ts: `finishAbortedTickPhase` → `finishAbortedRunPhase` and `finishRecoveryTickPhase` → `finishRecoveryRunPhase`.
+- src/runner/runner-state.ts (about 73 tick lines, mostly comments), runner-pi.ts (the agent wrapper, where "run" is mostly the agent run: apply the "agent run" rule), leftover.ts, model-fallback.ts, runner-fallback.ts, revision.ts and src/roles/runner-ids.ts: comments and identifiers.
+- Tests: test/runner-{counters,fallback,ids,interrupted,leftover-recovery,merge-conflicts,pi,pi-claude,pi-followups,pi-retry,prompt-requeue,quiet-watchdog,recovery,red-main,refusal,state,transient-retry}.test.ts, test/revision.test.ts, test/leftover.test.ts and test/model-fallback.test.ts. Fixture locals in test/fixtures/runner-fixtures.ts and runner-pi-fixtures.ts: `abortHungImproveTick` → `abortHungImproveRun`, `afterFallbackTick` → `afterFallbackRun`, `tickEvents` → `runEvents`, `tickEnds` → `runEnds`, `tick2End` → `run2End`.
+
+**Files touched.** src/runner/runner-state.ts, runner-pi.ts, runner-recovery.ts, runner-fallback.ts, leftover.ts, model-fallback.ts, revision.ts, src/roles/runner-ids.ts, test/fixtures/runner-fixtures.ts, test/fixtures/runner-pi-fixtures.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `finishAbortedRunPhase` and `finishRecoveryRunPhase` are declared; `grep -rnE '[Tt]ick|TICK' src/runner src/roles/runner-ids.ts` prints only kept senses.
+- `grep -nE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b'` over this part's tests and fixtures lists only mock-clock calls and serialized names.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 10/20: Rename the orchestrator's run launch and timing names (planned 2026-10-16 by user; requires part 9/20 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ + the non-e2e test/orchestrator-*.test.ts + test/fixtures/orchestrator-fixtures.ts)
+
+**Goal.** The orchestrator launches and times runs by run names: `launchDueRuns`, `ROLE_RUN_DURATION_SAMPLES`, `roleRunDurationsMs` and `runsDone`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message. The `restart` event's `abortedRuns` field is Plain terms event log's.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/orchestrator/orchestrator-launch.ts: `launchDueTicks` → `launchDueRuns`, `ROLE_TICK_DURATION_SAMPLES` → `ROLE_RUN_DURATION_SAMPLES`, member `roleTickDurationsMs` → `roleRunDurationsMs`, `tickStartHeld` → `runStartHeld` and `roleTickP75Ms` → `roleRunP75Ms` (a member read by src/redeploy/; rename those uses here). Locals `tickIdx`, `tickCalls` and `roleTicksInFlight` → run forms.
+- src/orchestrator/orchestrator.ts: the exit-info member `ticksRun` → `runsDone`, renamed with its uses in src/cli/cli-start.ts (`onceSummary`/`onceFailures` parameters) and src/scheduling/once-round.ts (the `ticksRun(runner)` method → `runsDone(runner)`); `recordFallbackTickAt` and `deferTick` uses as they stand. orchestrator-scheduling.ts and retention.ts: comments.
+- test/fixtures/orchestrator-fixtures.ts: `awaitSettledTick` → `awaitSettledRun` (aliased: the e2e tests in part 11/20 use it about 38 times), `timedTickHarness` → `timedRunHarness`, `awaitFirstTick` → `awaitFirstRun`.
+- Tests test/orchestrator-{launch,seams,scheduling,probe,defer,director,redeploy,once,fallback,divergence,start-event-best-effort}.test.ts. In test/orchestrator-probe.test.ts, `ticksAt` → `runsAt` and `ticksAtTrip` → `runsByRoleAtTrip`, because a `runsAtTrip` local already exists there. `tickedFeature` → `ranFeature`.
+
+**Files touched.** src/orchestrator/*.ts, the `ticksRun`/`roleTickP75Ms` uses in src/cli/cli-start.ts, src/scheduling/once-round.ts and src/redeploy/, test/fixtures/orchestrator-fixtures.ts, and the non-e2e orchestrator tests listed above.
+
+**Acceptance criteria.**
+- `launchDueRuns`, `ROLE_RUN_DURATION_SAMPLES` and `awaitSettledRun` are declared, and `runsDone` replaces `ticksRun` everywhere in src/ and test/.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/orchestrator` prints only serialized names.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 11/20: Convert the orchestrator end-to-end tests (planned 2026-10-16 by user; requires part 10/20 landed; design in plans/terminology.md "Code names"; touches test/orchestrator*.e2e.test.ts)
+
+**Goal.** Mechanical, test-only. The orchestrator e2e suites use run names in their helpers, locals, comments and test titles.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep node:test mock-clock calls and serialized names (event types and fields in assertions, state fields), which were renamed earlier.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - Migrate every use of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias no other file names any more (test/exports.test.ts).
+- Files: test/orchestrator.e2e.test.ts, orchestrator-2, orchestrator-3, orchestrator-budget, orchestrator-permits, orchestrator-pause, orchestrator-redeploy, orchestrator-once, orchestrator-resize, orchestrator-quiet-hours and orchestrator-mixed (all `.e2e.test.ts`).
+- Helpers and locals: `awaitSettledTick` → `awaitSettledRun`, then delete its alias in test/fixtures/orchestrator-fixtures.ts if nothing else uses it. `removedTicks`, `tickQueued`, `cleanTicks` and `minTickInterval` → run forms. `dryTicks` → `dedupeRuns`, its final name, so Plain terms code cleanup does not touch it again. Migrate `runTimedRoleRun` uses; `deferTick` and `restoreMidTickWake` keep their names until part 12/20 renames them.
+
+**Files touched.** The eleven `test/orchestrator*.e2e.test.ts` files; test/fixtures/orchestrator-fixtures.ts (alias removal only).
+
+**Acceptance criteria.**
+- `grep -nE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' test/orchestrator*.e2e.test.ts` lists only serialized names and names a later part of this series owns (`deferTick`, `restoreMidTickWake`).
+- No test added or removed: the e2e test count is unchanged and `npm run test:e2e` passes.
+- `npm run test` passes.
+
+### Plain terms code run, part 12/20: Rename the scheduler's deferral and wake names and convert the gates (planned 2026-10-16 by user; requires part 11/20 landed; design in plans/terminology.md "Code names"; touches src/scheduling/ + src/gates/ + their tests + test/fixtures/gate-fixtures.ts)
+
+**Goal.** The scheduler and the gates use run names: `deferRun`, `deferRunReason`, `restoreMidRunWake` and `runOnPair`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/scheduling/: `deferTick` → `deferRun` and `deferTickReason` → `deferRunReason`, both aliased (orchestrator, roles and tests use them); `restoreMidTickWake` → `restoreMidRunWake`; the `exitReady` argument members `roleTicks` → `roleRuns` and `directorTicks` → `directorRuns` (rename the call in src/orchestrator/orchestrator.ts too); the local `tickSnapshots` → `runSnapshots`. Comments in scheduling.ts, backoff.ts, once-round.ts, claims.ts, quiet-hours.ts and the work-merged cache module ("the min-tick-interval clock" → "the min-run-interval clock").
+- src/gates/: `tickOnPair` → `runOnPair` (aliased if src/budget still uses it); comments in gate-polls.ts, budget-gates.ts, streak-gate.ts, pause-gates.ts, maintenance-quota.ts, startup-gate.ts, role-cap-gates.ts, disk-gate.ts and bootstrap-gates.ts.
+- Tests: test/scheduling.test.ts (about 90 lines), test/once-round.test.ts, test/backoff.test.ts, test/claims.test.ts, test/quiet-hours.test.ts, test/gate-polls.test.ts, test/gate-event-best-effort.test.ts, test/streak-gate.test.ts, test/maintenance-quota.test.ts, test/disk-gate.test.ts, test/role-cap-gates.test.ts, test/pause-gates.test.ts, test/bootstrap-gates.test.ts, test/startup-gate.test.ts and test/fixtures/gate-fixtures.ts.
+
+**Files touched.** src/scheduling/*.ts, src/gates/*.ts, the `exitReady` call in src/orchestrator/orchestrator.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `deferRun`, `deferRunReason`, `restoreMidRunWake` and `runOnPair` are declared; old names survive only as aliases still used elsewhere.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/scheduling src/gates` prints only aliases and serialized names.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 13/20: Convert the budget and failure modules (planned 2026-10-16 by user; requires part 12/20 landed; design in plans/terminology.md "Code names"; touches src/budget/ + src/failure/ + their tests)
+
+**Goal.** The budget breaker and the failure digest use run names: `recordFallbackRun`, `RUN_TIMEOUT_KEY` and `prevRuns`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/budget/fallback-breaker.ts and budget.ts: `recordFallbackTick` → `recordFallbackRun` and `recordFallbackTickAt` → `recordFallbackRunAt` (aliased if the orchestrator still names them, otherwise migrate its two uses). Comments.
+- src/failure/ (failure-data.ts, time-spend.ts, failure-render.ts, failure-cluster.ts, failure-state-change.ts): `TICK_TIMEOUT_KEY` → `RUN_TIMEOUT_KEY`, `TICK_TIMEOUT_PROGRESSING_KEY`, `TICK_TIMEOUT_PROGRESSING_REVIEW_KEY` and `TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY` → `RUN_TIMEOUT_…` (migrate their uses in src/team/). These are names of in-process cluster keys; if a key's string value is persisted or printed, leave the value, which Plain terms text or event log owns. The `RoleStats` member `prevTicks` → `prevRuns`; locals `tickEvents` → `runEvents` and `tickEnd` → `runEnd`. The failure digest's comments speak of "the telemetry role"; that role id is Plain terms code cleanup's.
+- Tests: test/budget*.test.ts, test/fallback-breaker.test.ts, test/failure*.test.ts and test/time-spend.test.ts.
+
+**Files touched.** src/budget/*.ts, src/failure/*.ts, the `TICK_TIMEOUT_*` uses in src/team/, and the tests listed above.
+
+**Acceptance criteria.**
+- `recordFallbackRun`, `recordFallbackRunAt` and `RUN_TIMEOUT_KEY` are declared; old names survive only as aliases still used elsewhere.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/budget src/failure` prints only aliases and serialized names.
+- No behavior change: failure digest and budget output in the tests is unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 14/20: Convert the event and report and file and text helpers (planned 2026-10-16 by user; requires part 13/20 landed; design in plans/terminology.md "Code names"; touches src/events/ + src/report/ + src/files/ + src/text/ + their tests + test/fakes/log.ts + test/fixtures/log-fixtures.ts)
+
+**Goal.** The event readers, report fold, file helpers and text helpers use run names: `eventRun`, `runSpanMs`, `runStartMap`, `runStart` and `runEnd`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message. `normalizeLegacyEvent`'s map from `tick_*` types to `run_*` types is a legacy reader: its old names stay.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/events/ and src/files/: `eventTick` → `eventRun`, `tickSpanMs` → `runSpanMs`, `tickStartMap` → `runStartMap`, the helpers `tickStart`/`tickEnd` → `runStart`/`runEnd`, and `tickDurationMs` → `runDurationMs`, each aliased where src/history/, src/roles/ or src/ui/ still use it. Check each new name with `grep -rnw` first, because `runStart` must not collide with a local in the same module. Comments in events.ts, event-format.ts, event-read.ts, event-window.ts and notify.ts.
+- src/report/ (report-data.ts, report-render.ts): locals such as `totalTicks` → `totalRuns`, and comments. The report JSON keys are Plain terms scripting's.
+- src/text/ (phrases.ts, datetime.ts, text.ts, format.ts): comments.
+- Tests: test/event*.test.ts, test/events.test.ts, test/notify*.test.ts, test/report*.test.ts, test/cli-logs*.test.ts, test/log-commands*.test.ts, test/datetime.test.ts, test/fakes/log.ts (`seedTickEvents` → `seedRunEvents`) and test/fixtures/log-fixtures.ts.
+
+**Files touched.** src/events/*.ts, src/report/*.ts, src/files/*.ts, src/text/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `eventRun`, `runSpanMs`, `runStartMap`, `runStart` and `runEnd` are declared; old names survive only as aliases still used elsewhere.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/events src/report src/files src/text` lists only the legacy event-type map, aliases and serialized names.
+- No behavior change: `logs` and `report` output in the tests is unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 15/20: Convert the status display and the TUI (planned 2026-10-16 by user; requires part 14/20 landed; design in plans/terminology.md "Code names"; touches src/ui/*.ts + src/ui/tui/ + their tests)
+
+**Goal.** The status model and renderer, the run-progress model and the TUI use run names: `lastRunCell`, `runProgress`, `progressOfRun` and `runStat`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/ui/status-render.ts: `lastTickCell` → `lastRunCell` (aliased if src/text/ or src/budget/ still use it). src/ui/run-progress-model.ts: `tickProgress` → `runProgress` and comments ("a tick with no recorded start time" → "a run with …"); its `ProgressRunKind` already says run. src/ui/progress-data.ts: `progressOfTick` → `progressOfRun`, and its many "run" nouns that mean the agent run get the "agent run" rule. Comments in status-model.ts (about 50 lines), status-payload.ts, team-alerts.ts, tone.ts, badges.ts and transcript.ts.
+- src/ui/tui/ (tui-keys.ts has about 54 lines, plus tui-history.ts, tui-pane.ts, tui.tsx, tui-editors.ts and tui-frame.ts): the local `tickStat` → `runStat`; migrate `renderRunDetail`, `readRunRows`, `readRunDetail`, `RunRow`, `RunDetail`, `runRowCells`, `HISTORY_DEFAULT_RUNS`, `runRowsMatchingGrep`, `runDetailStat` and `runRowGrepHaystack`; then delete each of those aliases that no other file still names. Comments.
+- Tests: test/status-model.test.ts, test/status-render*.test.ts, test/status-payload.test.ts, test/team-alerts.test.ts, test/progress.test.ts, test/tui*.test.ts and test/fixtures/tui-fixtures.ts.
+
+**Files touched.** src/ui/*.ts, src/ui/tui/*.ts(x), alias deletions in src/run/ and src/history/, and the tests listed above.
+
+**Acceptance criteria.**
+- `lastRunCell`, `runProgress` and `progressOfRun` are declared, and `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/ui --include=*.ts --include=*.tsx` (excluding src/ui/gui/) prints only serialized names.
+- The run-detail and history aliases this part's files were the last users of are gone (`grep -rn '@deprecated Use' src test`).
+- No behavior change: TUI frames and status output in the tests are unchanged, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 16/20: Convert the prompt builders and the inbox and operator modules (planned 2026-10-16 by user; requires part 15/20 landed; design in plans/terminology.md "Code names"; touches src/prompt/ + src/inbox/ + src/operator/ + their tests)
+
+**Goal.** The prompt builders take run names, `buildRunPrompt` and `RUN_PROMPT`, and the inbox and operator modules lose their tick wording.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message. Prompt text and `Run:`/`Tick:` trailer patterns inside string literals were handled by Plain terms text and state; do not touch strings.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/prompt/prompt.ts: `buildTickPrompt` → `buildRunPrompt`, aliased because test/prompt-roles.test.ts (part 17/20) calls it about 21 times. `TICK_PROMPT` → `RUN_PROMPT`; check whether it is only a test-local name. src/prompt/prompt-followup.ts: the parameter `tickPrompt` → `runPrompt`. Comments in prompt.ts, gate-prompts.ts and principles.ts.
+- src/inbox/ (pending-prompt.ts, inbox.ts, inbox-submit.ts, inbox-edit.ts, inbox-attachments.ts, prompt-commands.ts, prompt-not-before.ts, inbox-cancel.ts) and src/operator/ (operator-commands.ts, operator-requests.ts, operator-intent.ts, retire.ts): comments, plus uses of `abortRun` and `finishAbortedRun`.
+- Tests: test/prompt.test.ts (about 77 lines), test/prompt-steward.test.ts, test/prompt-resume.test.ts, test/prompt-dialect.test.ts, test/prompt-followup.test.ts, test/prompt-commands.test.ts, test/pending-prompt.test.ts, test/gate-prompts.test.ts, test/inbox*.test.ts (keep test/inbox.test.ts's `clock.tick`), test/operator*.test.ts and test/retire.test.ts.
+
+**Files touched.** src/prompt/*.ts, src/inbox/*.ts, src/operator/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `buildRunPrompt` is declared and `buildTickPrompt` survives only as an alias.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/prompt src/inbox src/operator` prints only serialized names and string literals.
+- No behavior change: the assembled prompts in the tests are byte-identical, and the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 17/20: Convert config and roles and init (planned 2026-10-16 by user; requires part 16/20 landed; design in plans/terminology.md "Code names"; touches src/config/ + src/roles/ + src/init/ + their tests)
+
+**Goal.** The config, role and init modules and their tests use run wording and the new prompt-builder name.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names. The legacy config keys `minTickIntervalSeconds` and `tickTimeoutSeconds` stay in the alias tables, and test/config-validation.test.ts's near-miss `tickTimeoutSecondss`-style fixtures belong to Plain terms commands. Name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/roles/: `LONGEST_LEGITIMATE_TICK_S` → `LONGEST_LEGITIMATE_RUN_S` and the local `tickInterval` → `runInterval`; migrate `deferRun`, `eventRun`, `runStartMap` and `assembleRunPrompt` uses; convert comments in role-view.ts, roles.ts, role-render.ts, role-catalog.ts and role-guidance.ts. Comments only; strings are not this series'.
+- src/config/ (config-schema.ts has about 29 comment lines, plus config.ts, config-views.ts, config-validation.ts, config-fallbacks.ts, config-write.ts, config-live.ts and config-field-checks.ts) and src/init/ (init.ts, init-templates.ts): comments and uses.
+- Tests: test/prompt-roles.test.ts (migrate `buildRunPrompt`, then delete the `buildTickPrompt` alias if nothing else names it), test/role*.test.ts, test/config*.test.ts and test/init*.test.ts.
+
+**Files touched.** src/config/*.ts, src/roles/*.ts, src/init/*.ts, the `buildTickPrompt` alias in src/prompt/prompt.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `LONGEST_LEGITIMATE_RUN_S` is declared, and `buildTickPrompt` appears nowhere unless another file still names it.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/config src/roles src/init` prints only the legacy config-key aliases and serialized names.
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 18/20: Convert the merge and review and verdict and baseline modules (planned 2026-10-16 by user; requires part 17/20 landed; design in plans/terminology.md "Code names"; touches src/merge/ + src/review/ + src/verdict/ + src/baseline/ + their tests)
+
+**Goal.** The merge pipeline, the reviewer, the verdict parsers and the main-baseline modules use run wording and `RunResult`/`RunOutcome`.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names. Merge-queue entry fields and the `Run:`/`Tick:` trailer parsers are Plain terms state's: both trailer spellings must still parse. Name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run": the reviewer's runs are "review runs"; a bare "the run" there that means the reviewer's agent invocation → "the agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- src/merge/ (merge-core.ts, merge-to-main.ts, merge-queue.ts, merge-check-failures.ts, merge-batch.ts, merge-slot.ts, merge-pipeline.ts, merge-drain.ts, merge-git.ts, merge-verify.ts, merge-queue-render.ts; names as Plain terms code merge left them): migrate `TickResult` → `RunResult` (about 29 lines) and `runTimedRoleRun`, `runOnce` and `finalizeRun` uses, and convert comments.
+- src/review/ (review.ts, review-precheck.ts, review-verdict.ts), src/verdict/ (refusal.ts, no-change.ts, reply-contract.ts, fix-claim.ts) and src/baseline/ (main-red.ts, main-baseline.ts; its "run" nouns are mostly check runs, which stay): uses and comments.
+- Tests: the merge tests and fixtures (test/merge*.test.ts, test/merger*.test.ts, test/fixtures/merge*-fixtures.ts and test/fixtures/merger-fixtures.ts), test/review*.test.ts, test/reply-contract.test.ts, test/refusal.test.ts, test/main-*.test.ts, test/fix-claim.test.ts and test/exemptions.test.ts.
+
+**Files touched.** src/merge/*.ts, src/review/*.ts, src/verdict/*.ts, src/baseline/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b' src/merge src/review src/verdict src/baseline` prints only the legacy `Tick:` trailer pattern and serialized names.
+- Both `Run:` and `Tick:` trailers still parse (their existing tests pass unchanged apart from titles).
+- No behavior change: the suite's test count is unchanged.
+- `npm run test` passes.
+
+### Plain terms code run, part 19/20: Rename the start command code and convert CLI and team and doctor and status modules (planned 2026-10-16 by user; requires part 18/20 landed; design in plans/terminology.md "Code names" and "Commands and config"; touches src/cli/ + src/cli.ts + src/process/supervisor.ts + src/build/build-stage.ts + src/team/ + src/doctor/ + src/status/ + src/backlog/ + src/brief/ + src/change/ + src/redeploy/ + root modules + their tests)
+
+**Goal.** The `tumwater start` command's code is named for it (`cmdStart`, `START_FLAG_SPECS`, `superviseStart`, `spawnStartChild`). The CLI, team, doctor, status, backlog, brief, change and redeploy modules lose their tick wording.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, and serialized names; name any leftover serialized name in the commit message.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run"; in src/cli/cli-start.ts, "this run" meaning the whole `tumwater start` process → "this session". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+  - An export used outside this part keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, unless it has about five or fewer outside use lines, which you migrate instead. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members get no alias. Migrate this part's uses of earlier renames (`grep -rn '@deprecated Use' src test`), and delete any alias nothing else names (test/exports.test.ts).
+- Start-command names: in src/cli/cli-start.ts, `cmdRun` → `cmdStart` and `superviseRunCommand` → `superviseStartCommand`; in src/cli/cli-flag-specs.ts, `RUN_FLAG_SPECS` → `START_FLAG_SPECS`; in src/process/supervisor.ts, `superviseRun` → `superviseStart` and `spawnRunChild` → `spawnStartChild`, with their uses in src/cli.ts, src/cli/cli-start.ts and src/build/build-stage.ts and their tests. Plain terms commands may already have renamed some of these; rename whichever remain.
+- Do not change any argv. The supervisor spawns its child as `["run", …extraArgs]` (in `spawnStartChild`), and that literal `run` must stay. `run` stays a hidden alias of `tumwater start`, so a rollback to an older build, whose CLI only knows `run`, can still respawn the child. Add a one-line comment at the spawn site saying so. Likewise keep src/cli.ts's `case "run":` dispatch (the hidden alias), and keep every `cli(…, "run", …)` and `spawnCli(…, ["run"])` call in tests that deliberately exercises the alias.
+- Other src/cli/ renames: `ticksBefore` → `runsBefore` and `ticksThisRound` → `runsThisRound` (parameters and locals in cli-start.ts), and the local `tickRow` → `runRow`. Migrate `cmdRunDetail`, `RUN_DETAIL_USAGE`, `summarizeRunRows` and `readRunRowsSince` uses, and delete those aliases if this was their last user. Convert comments in cli-start.ts (about 37 lines), cli-flag-specs.ts, cli-command-args.ts, help.ts, config-commands.ts and cli-query-commands.ts; help text strings are not this series'.
+- Root modules: src/request-timeouts.ts `tickCapS` → `runCapS`; comments in src/cli.ts, src/paths.ts and src/collections.ts.
+- src/team/, src/doctor/, src/status/, src/backlog/, src/brief/, src/change/ and src/redeploy/ (redeploy-policy.ts and redeployer.ts have about 32 lines): comments and uses (`roleRunP75Ms`, `RUN_TIMEOUT_KEY`, `lastRunCell`).
+- Tests: test/cli-start*.test.ts, test/cli.test.ts, test/cli-operators*.test.ts, test/cli-queue.test.ts, test/cli-command-args.test.ts, test/cli-arg-strictness.test.ts (its `cli(repo, "tick", …)` call exercises the hidden alias; keep it), test/cli-preflight.test.ts, test/cli-output.test.ts, test/cli-harness.test.ts, test/completion.test.ts, test/team*.test.ts, test/doctor*.test.ts, test/status-data*.test.ts, test/redeploy*.test.ts, test/error-storm.test.ts, test/backlog-*.test.ts, test/brief.test.ts, test/change-data.test.ts, test/paths.test.ts, test/request-timeouts.test.ts, test/build-stage.test.ts, test/supervisor.test.ts, test/helpers/start-live-harness.ts, test/helpers/wait.ts, test/helpers/oracles.ts and test/fixtures/status-fixtures.ts.
+
+**Files touched.** src/cli/*.ts, src/cli.ts, src/process/supervisor.ts, src/build/build-stage.ts, src/request-timeouts.ts, src/paths.ts, src/collections.ts, src/team/*.ts, src/doctor/*.ts, src/status/*.ts, src/backlog/*.ts, src/brief/*.ts, src/change/*.ts, src/redeploy/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- `cmdStart`, `START_FLAG_SPECS`, `superviseStart`, `superviseStartCommand` and `spawnStartChild` are declared; `cmdRun`, `RUN_FLAG_SPECS`, `superviseRun` and `spawnRunChild` appear nowhere in src/ or test/.
+- The supervisor's spawn argv is still `["run", …]` and src/cli.ts still dispatches `run`: test/supervisor.test.ts and the test/cli-start*.test.ts suites pass with their argv assertions unchanged.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_|\bticks?\b'` over this part's src directories prints only hidden-alias strings and serialized names.
+- `npm run test` passes.
+
+### Plain terms code run, part 20/20: Convert the agent backends and sweep and retire the old run names (planned 2026-10-16 by user; requires part 19/20 landed; design in plans/terminology.md "Code names" and "Guards"; touches src/pi/ + src/agent/ + src/pi-extension/ + every remaining file with a tick name + test/retired-names.test.ts)
+
+**Goal.** No identifier, file name, comment or test title in src/ or test/ says "tick" for a run, the agent backends say "agent run" where a bare "run" was ambiguous, every deprecated alias from this series is gone, and test/retired-names.test.ts fails if an old run name comes back.
+
+**Approach.**
+- Series rules (every code-run part):
+  - Identifier words follow plans/terminology.md "Code names", row "tick": `tick`/`Tick`/`TICK` → `run`/`Run`/`RUN`, `ticks` → `runs`, `ticked` → `ran`. Settled collisions: `runTick` → `runOnce`, `runTimedRoleTick` → `runTimedRoleRun`, `tickModel` → `runModelPair`, `ticksRun` → `runsDone`, `cmdTick` → `cmdRunDetail`.
+  - A bare `tick` binding or in-process field holding a run number → `runNumber`; `ticks` holding a count → `runs`, or `runCount` if `runs` is bound in scope. Never shadow an existing binding such as `run`.
+  - Keep `backtick*`, `process.nextTick`, `processTicksAndRejections`, `sticky`, node:test mock-clock `tick(ms)` calls and their helpers, hidden-alias argv strings (`"tick"`, `"run"`), legacy readers' old names, and serialized names.
+  - Legacy readers keep the old names on purpose; rename nothing inside them: the legacy-name tables in `normalizeLegacyEvent`, the state loaders' legacy-key maps, the `legacyLand*` path helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, and test fixtures that deliberately write old event names or state keys to disk. test/retired-names.test.ts exempts them through `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines and `retired-name-ok:start`/`end` regions; mark any new such site with one of those, never a new mechanism.
+  - Comments and test titles: "tick" → "run" (and "ticks", "ticked", "mid-tick", "per-tick" alike), `tumwater tick <role> <n>` → `tumwater history <role> <n>`, `tumwater run` → `tumwater start`. A bare noun "run" meaning one agent invocation → "agent run". Leave quoted PLANS.md/BUGS.md titles, `plans/*.md` names and commit subjects alone; rewrap comments past 100 columns; update docs/invariants.md quotes of test titles you change.
+- src/pi/ (pi-watchdogs.ts, pi-run-result.ts, pi-stream.ts, pi-args.ts, pi-event-line.ts, pi-bin.ts, pi-backend.ts, command-shape.ts), src/agent/ (run-agent.ts, session-ledger.ts, claude/claude-args.ts, claude/claude-account.ts) and src/pi-extension/ (role-notes.ts, full-output.ts, context-shake.ts, context-budget.ts, bounded-output.ts): the `PiWatchdogs`/run-agent member `tickTimeoutMs` → `runTimeoutMs`; "the tick deadline" → "the run deadline"; and the "agent run" rule, which matters most here because "run" in these modules almost always means one pi or claude process. "pi run" stays.
+- Sweep everything left: run `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_' src test` and `grep -rnwiE 'ticks?|ticked|ticking' src test`, and convert every run sense, including files a feature added during this series. Known stragglers: test/pi*.test.ts, test/fixtures/repo-fixtures.ts, test/test-runner.ts, test/agent-commit-fold.test.ts (`tickAndMerge` → `runAndMerge`), test/fakes-catalog.test.ts, test/fakes/fake-pi.ts, test/helpers/wait.ts and test/fixtures/pi-events.ts.
+- Delete every remaining `@deprecated` alias this series added (`grep -rn '@deprecated Use' src test`), after migrating their last users.
+- Append a `run` family to the guard in test/retired-names.test.ts, in the `{ family, words, fileWords, allow }` shape. Use `words: ["tick", "ticks", "ticked", "ticking"]`, `fileWords: ["tick", "ticks"]` and `allow: ["nextTick", "processTicksAndRejections"]` (Node's names, with that reason comment). The `tumwater run` command's old code names cannot be words, because "run" is the new word. List them exactly in an optional `identifiers` field: `cmdRun`, `RUN_FLAG_SPECS`, `superviseRun`, `superviseRunCommand`, `spawnRunChild`. Plain terms code team's design anticipates that field; if the guard has no `identifiers` yet, add it, with a guard test that an exact name fails. The node:test mock-clock calls (`t.mock.timers.tick(…)` and test/inbox.test.ts's clock helper) get `// retired-name-ok: node:test mock clock` lines. Legacy readers use the guard's existing exemptions: `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, and `retired-name-ok:start`/`end` regions. Add no new mechanism.
+- Run the retired-names guard and fix what it reports. A hit inside a legacy reader that must keep an old name (the `tick_*` event-type table, the `ticks`/`lastTickEndedAt` state-key map, the legacy `Tick:` trailer parser) gets the guard's own exemption (its allowlist or per-line marker), not a rename.
+
+**Files touched.** src/pi/*.ts, src/agent/**/*.ts, src/pi-extension/*.ts, the remaining stragglers, the alias declarations across src/run/, src/history/, src/events/, src/files/, src/scheduling/, src/budget/, src/prompt/ and test/fixtures/orchestrator-fixtures.ts, and test/retired-names.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn '@deprecated Use' src test` lists none of this series' old names.
+- `grep -rnE '[Tt]ick[A-Z]|[a-z0-9]Tick|TICK_' src test` lists only `backtick*`, `nextTick`, `processTicksAndRejections`, sites the retired-names guard exempts (the legacy readers), and the retired-names list itself.
+- test/retired-names.test.ts holds the `run` family, including the `identifiers` list, and passes; adding `type TickResult = 1;` or `const cmdRun = 1;` to any src/ module makes it fail (check locally, do not commit).
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 1/7: Rename notebook to notes and the initial prompt to the brief text in code (planned 2026-10-16 by user; requires Plain terms code run 20/20 landed; design in plans/terminology.md "Code names"; touches src/brief/ + src/init/ + src/prompt/ + src/run/run-prompt.ts + src/inbox/inbox-submit.ts + src/cli/brief-command.ts + src/ui/tui/ + comments naming the notebook + their tests)
+
+**Goal.** Code says "notes" for a role's scratch file and names the project description after the brief: `readBriefText`, `editBriefText`, `replaceBriefText`, `BRIEF_TEXT_MAX_CHARS` and `briefText`. No identifier, comment or test title says "notebook" or "initial prompt".
+
+**Approach.**
+- Rules for this part:
+  - Glossary: "notes" replaces "notebook" and "brief" replaces "initial prompt" (plans/terminology.md "Glossary" and "Code names").
+  - In code, `brief` already names the brief file's name (`const brief = briefState?.file` in src/run/run-prompt.ts, the `brief` parameter of `buildDirectorPrompt`), and `readBrief()` returns `{ file, prompt }`. So the initial prompt's text becomes `briefText`, never a bare `brief`, which would shadow or collide.
+  - Serialized names and markers stay: the `<!-- tumwater:prompt:start -->`/`end` markers and the `PROMPT_START`/`PROMPT_END` constants, the `--clear-notes` flag, `state/notes/` paths, and `role --json`'s `notes` key. User-visible strings were Plain terms text's; leave string literals alone.
+  - Legacy readers keep old names on purpose; rename nothing inside them (`normalizeLegacyEvent`'s tables, the state loaders' legacy-key maps, the `legacyLand*` helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES`, src/roles/legacy-role-ids.ts, and fixtures that write old names on purpose).
+  - Comments and test titles follow the glossary. Leave quoted PLANS.md/BUGS.md titles (for example PLANS.md "Role notebook"), `plans/*.md` names and commit subjects (`tumwater(operator): Edit initial prompt`) alone (test/plan-citations.test.ts). Rewrap comment lines past 100 columns (test/comment-width.test.ts).
+  - Exports used outside this part's files keep a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen, only while another file still names the old name. This part migrates every user, so it should end with none (test/exports.test.ts).
+- src/brief/brief.ts: `readInitialPrompt` → `readBriefText`, `replaceInitialPrompt` → `replaceBriefText`, `INITIAL_PROMPT_MAX_CHARS` → `BRIEF_TEXT_MAX_CHARS`, and the `initialPrompt` parameters of `managedSections`, `readmeTemplate` and `briefTemplate` → `briefText`. src/brief/brief-edit.ts: `editInitialPrompt` → `editBriefText`. Migrate uses in src/init/init.ts, src/inbox/inbox-submit.ts (`DIRECTOR_PROMPT_MAX_CHARS = BRIEF_TEXT_MAX_CHARS`), src/cli/brief-command.ts and src/run/run-prompt.ts.
+- src/prompt/prompt.ts: the `initialPrompt` member of the prompt-input interface, `sharedPreamble(initialPrompt, …)` and `buildDirectorPrompt`'s `initialPrompt` parameter → `briefText`, with every use, including src/run/run-prompt.ts's local `initialPrompt` → `briefText`.
+- notebook: test/role-view.test.ts's local `notebookAt` → `notesAt`. `git mv test/tui-notebook.test.ts test/tui-notes.test.ts`, then check `docs/invariants.md` and DEVELOPMENT.md for a citation of the old name. Convert "notebook" in comments and test titles across src/ and test/ ("the role's notebook" → "the role's notes"; "the notebook view" → "the notes view"): src/ui/tui/tui-keys.ts, tui-pane.ts, src/paths.ts, src/roles/role-view.ts, src/agent/role-notes-write.ts, src/agent/run-agent.ts, src/agent/agent-backend.ts, src/agent/mcp/role-notes-server.ts, src/cli/cli-query-commands.ts and the rest that `grep -rniw 'notebook' src test` lists.
+- Finish with `grep -rniE 'notebook|initial[- ]?prompt|INITIAL_PROMPT' src test`, which may list only string literals Plain terms text deliberately kept, quoted titles and commit subjects, and legacy readers.
+
+**Files touched.** src/brief/brief.ts, src/brief/brief-edit.ts, src/init/init.ts, src/inbox/inbox-submit.ts, src/cli/brief-command.ts, src/prompt/prompt.ts, src/run/run-prompt.ts, comment-only files the notebook grep lists (src/ui/tui/, src/agent/, src/paths.ts, src/roles/role-view.ts, src/cli/cli-query-commands.ts, …), test/tui-notes.test.ts (renamed), test/role-view.test.ts, test/brief*.test.ts, test/init*.test.ts, test/prompt*.test.ts.
+
+**Acceptance criteria.**
+- `readBriefText`, `editBriefText`, `replaceBriefText` and `BRIEF_TEXT_MAX_CHARS` are declared, and none of `readInitialPrompt`, `editInitialPrompt`, `replaceInitialPrompt`, `INITIAL_PROMPT_MAX_CHARS` or an `initialPrompt` identifier remains in src/ or test/.
+- test/tui-notes.test.ts exists and test/tui-notebook.test.ts does not.
+- The grep in the last Approach bullet lists only the exceptions named there.
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 2/7: Rename custom-loop and role-id names in code (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/terminology.md "Code names" and "Role names"; touches src/config/ + src/run/telemetry-digest.ts + src/run/run-prompt.ts + comments naming the dry or telemetry roles + their tests + test/retired-names.test.ts)
+
+**Goal.** Code names custom roles as custom roles (`CustomRole`, `customRoleNames`, `CUSTOM_ROLE_KEYS`) and names the renamed roles by their new ids: `selfcheck-digest.ts`, `selfcheckDigest`, `SELFCHECK_DIGEST_DAYS` and dedupe-named test locals.
+
+**Approach.**
+- Rules for this part:
+  - Glossary: plans/terminology.md "Code names" rows "customLoop(s)" and "dry, telemetry"; "Role names" for the ids.
+  - The legacy config key `customLoops` and the legacy role ids `dry` and `telemetry` stay where they are aliases: `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, src/roles/legacy-role-ids.ts, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `normalizeLegacyEvent`'s tables, and fixtures that deliberately write old ids. Rename nothing inside them; the retired-names guard exempts them through `LEGACY_FILES`, `legacy`-prefixed identifiers and `retired-name-ok` lines or regions.
+  - Keep "telemetry" in its generic sense ("prompt-token telemetry", claude's `DISABLE_TELEMETRY` env var, the `plans/telemetry-role.md` file name), "dry run"/`--dry-run`/`dryRun`/`DRY_RUN_FLAG`, and quoted PLANS.md/BUGS.md titles and commit subjects (`tumwater(telemetry)` in git history greps is a legacy reader).
+  - Rewrap comment lines past 100 columns (test/comment-width.test.ts). Exports used elsewhere need no alias: migrate every user in this part.
+- customLoop: in src/config/config-schema.ts, `interface CustomLoop` → `CustomRole`; `customLoopNames` → `customRoleNames` and `CUSTOM_LOOP_KEYS` → `CUSTOM_ROLE_KEYS` wherever declared; any remaining `customLoops` binding that is not the legacy key's alias handling → `customRoles`. Plain terms commands renamed the config field itself. The test role names `my-custom-loop`, `custom-loop` and `myloop` in config tests → `my-custom-role`, `custom-role` and `myrole`, unless a test is pinning the legacy key.
+- Role ids: `git mv src/run/telemetry-digest.ts src/run/selfcheck-digest.ts` and `test/telemetry-digest.test.ts` → `test/selfcheck-digest.test.ts`; `telemetryDigest` → `selfcheckDigest` and `TELEMETRY_DIGEST_DAYS` → `SELFCHECK_DIGEST_DAYS`, with the import in src/run/run-prompt.ts. Update any docs/invariants.md or DEVELOPMENT.md citation of the old path in this part (test/invariants-doc.test.ts fails on a missing cited path). Test locals: `dryRow` (test/status-render.test.ts) → `dedupeRow`, `dryFailedAt` (an orchestrator e2e test) → `dedupeFailedAt`, any `dryRuns`/`dryTicks` → `dedupeRuns`, and marker files such as `dry-reviewing` → `dedupe-reviewing` when the test's role is now `dedupe`.
+- Comments naming the roles (about 45 "telemetry" and 28 "dry" comment lines today): "the telemetry role" → "the selfcheck role"; role lists such as "(organize, clean, dry, perf, …)" → "dedupe"; `tumwater(telemetry)` in comments → `tumwater(selfcheck)`, except where the comment describes the legacy match.
+- In test/retired-names.test.ts, remove `CustomLoop`, `customLoopNames` and `CUSTOM_LOOP_KEYS` from the `runner` family's `allow` list (Plain terms code runner put them there until this part), keeping `customLoops`, the live legacy key. The guard then fails if they come back.
+- Finish with `grep -rnE '[Cc]ustomLoop|CUSTOM_LOOP|[Tt]elemetry[A-Z_]|TELEMETRY_' src test` and `grep -rnwE 'dry|telemetry' src test`, and check each hit against the keep list above.
+
+**Files touched.** src/config/config-schema.ts and the src/config/ files declaring or using `customLoopNames`/`CUSTOM_LOOP_KEYS`, src/run/selfcheck-digest.ts (renamed), src/run/run-prompt.ts, comment-only files the role-id grep lists, test/selfcheck-digest.test.ts (renamed), test/config*.test.ts, test/status-render.test.ts, test/orchestrator*.e2e.test.ts, test/retired-names.test.ts (`allow` entries only).
+
+**Acceptance criteria.**
+- `CustomRole`, `customRoleNames`, `CUSTOM_ROLE_KEYS`, `selfcheckDigest` and `SELFCHECK_DIGEST_DAYS` are declared; src/run/selfcheck-digest.ts and test/selfcheck-digest.test.ts exist and the telemetry-digest files do not.
+- The two greps in the last Approach bullet list only the exempt legacy readers and the generic senses named there.
+- Config files using the legacy `customLoops` key still load (their existing alias tests pass unchanged).
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 3/7: Rename the backend selector types and helpers in config and agent and pi (planned 2026-10-16 by user; requires part 2/7 landed; design in plans/terminology.md "Code names" and "Commands and config"; touches src/config/ + src/agent/ + src/pi/ + their tests)
+
+**Goal.** The code that names which backend runs a role, pi or claude, says "backend" instead of "agent": `BackendId`, `BACKEND_IDS`, `DEFAULT_BACKEND`, `resolveBackendBin` and so on. Deprecated aliases stay for the callers part 4/7 migrates.
+
+**Approach.**
+- Rules for this part:
+  - plans/terminology.md "Code names" row "agent": rename only "agent" meaning the backend selector (pi/claude). "Agent" meaning the model or process doing the work stays: `runAgent`, `AgentRunSpec`, `AgentInvocation`, `AgentExitInfo`, `AgentExitClassification`, `AgentBackend` and `registerAgentBackend` (an agent's backend), `foldAgentCommitsSince`, pi's protocol events `agent_start`/`agent_end` and `agentStart`, `PI_CODING_AGENT_DIR`, `piAgentDir`/`agentDir`/`getAgentDir`, `CLAUDE_AGENT_SDK_*`, `AGENT_WRAPPER_RAN`, `onAgentWarning`, and everything about the `AGENTS.md` file (`shouldAppendAgents`). "Agent run" (one invocation) stays.
+  - Legacy config keys stay where they are aliases: `agent`, `agents`, `agentBin` and `piArgs` in `CONFIG_KEY_RENAMES` (src/config/config-aliases.ts) and the code that drops or maps them (`dropAgentBin`, a `raw.agents` read). Rename nothing inside legacy readers; the retired-names guard exempts them through `LEGACY_FILES`, `legacy`-prefixed identifiers and `retired-name-ok` lines or regions.
+  - Serialized names were renamed by Plain terms commands and scripting (`backend`, `backends`, `budget.backend`); do not touch string literals.
+  - A bare `agent`/`agents` binding that holds a backend id → `backend`/`backends`, never shadowing an existing binding.
+  - Comments: "the role's agent (pi or claude)" → "the role's backend"; leave "agent" meaning the model at work. Rewrap comment lines past 100 columns (test/comment-width.test.ts).
+  - An export used outside this part's files keeps a two-line alias, `/** @deprecated Use NewName. */` on its own line above `export const OldName = NewName;` (`export type` for a type). Never write it on one line: test/exports.test.ts skips lines starting `/**`, so a dead one-line alias would linger unseen. A new name needs a user outside its own file in the same part (its test counts), or test/exports.test.ts fails. Members (interface fields, methods, parameters) get no alias: rename all their uses in this part, even outside these directories. Delete any alias no other file names (test/exports.test.ts).
+- Renames, with aliases where callers outside src/config, src/agent and src/pi remain:
+  - src/config/config-schema.ts: `AGENT_IDS` → `BACKEND_IDS`, `AgentId` → `BackendId`, `AgentConfig` → `BackendConfig` (if Plain terms commands did not already rename them).
+  - src/config/model-selector.ts: `isAgentId` → `isBackendId`, and `routeModel`'s `configAgent` parameter → `configBackend`.
+  - src/config/config-keys.ts: `AGENT_KEYS` → `BACKEND_KEYS`.
+  - src/config/config-views.ts: `resolvedAgentConfig` → `resolvedBackendConfig`, `agentQualifiedSelector` → `backendQualifiedSelector`, `agentDefault` → `backendDefault`.
+  - src/config/config-live.ts: `resolveAgentBin` → `resolveBackendBin`, `findAgentBinary` → `findBackendBinary`, `agentMissingMessage` → `backendMissingMessage`, and the local `prevAgents` → `prevBackends`.
+  - src/config/config.ts and config-write.ts: `collapseAgentAliases` → `collapseBackendAliases`.
+  - src/agent/agent-backend.ts: `DEFAULT_AGENT` → `DEFAULT_BACKEND`, `AgentBinConfig` → `BackendBinConfig`, `agentBackend(id)` → `backendById(id)`, `agentSessionResumable` → `backendSessionResumable`, `ResolvedAgentBin` → `ResolvedBackendBin`.
+  - src/agent/claude/claude-backend.ts and src/config/model-selector.ts: `AGENT_DEFAULT_MODELS` → `BACKEND_DEFAULT_MODELS`. src/agent/claude/claude-backend.ts and src/pi/pi-backend.ts: `agentBaseEnv` → `backendBaseEnv`.
+  - src/pi/pi-bin.ts: `agentBinSourceLabel`/`agentBinSourceLabelFor` → `backendBinSourceLabel`/`backendBinSourceLabelFor`, `AgentBinSource` → `BackendBinSource`, `agentBinConfigKey` → `backendBinConfigKey`, `agentBinEnv` → `backendBinEnv`, `agentsInUse` → `backendsInUse`.
+  - Also rename bare backend-id bindings and comments in these three directories (src/config has about 20 such declarations, src/agent 13, src/pi 11).
+- Tests: test/config*.test.ts, test/pi-bin.test.ts (about 30 lines), test/session-ledger.test.ts, test/claude-*.test.ts, test/agent-backend.test.ts and test/model-selector*.test.ts.
+
+**Files touched.** src/config/*.ts except config-aliases.ts's legacy table, src/agent/**/*.ts, src/pi/*.ts, and the tests listed above.
+
+**Acceptance criteria.**
+- The new names above are declared; each old name exists only as a deprecated alias that some file outside src/config, src/agent and src/pi still uses.
+- `grep -rnE '\b(AgentId|AGENT_IDS|isAgentId|DEFAULT_AGENT|AgentConfig|AgentBinConfig|AGENT_KEYS|resolveAgentBin|findAgentBinary|agentsInUse|collapseAgentAliases)\b' src/config src/agent src/pi` lists only the alias lines.
+- A config using the legacy `agent`/`agents`/`agentBin` keys still loads (the alias tests pass unchanged).
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 4/7: Migrate the backend selector callers and retire the cleanup names (planned 2026-10-16 by user; requires part 3/7 landed; design in plans/terminology.md "Code names" and "Guards"; touches src/doctor/ + src/gates/ + src/roles/ + src/prompt/ + src/ui/ + src/run/ + src/runner/ + src/status/ + src/cli/ + src/review/ + src/paths.ts + their tests + test/retired-names.test.ts)
+
+**Goal.** Every caller uses the backend names from part 3/7, the deprecated aliases are gone, and test/retired-names.test.ts lists the old names of all the cleanup families, so the code rename is complete.
+
+**Approach.**
+- Rules for this part:
+  - Rename only "agent" meaning the backend selector (pi/claude), as in part 3/7. Keep `runAgent`, `AgentRunSpec`, `AgentInvocation`, `AgentExit*`, `AgentBackend`, `registerAgentBackend`, `foldAgentCommitsSince`, pi protocol names, `PI_CODING_AGENT_DIR`, `AGENTS.md` handling, and "agent run".
+  - Legacy readers keep old names on purpose (`CONFIG_KEY_RENAMES`, src/roles/legacy-role-ids.ts, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `normalizeLegacyEvent`'s tables, the state loaders' legacy-key maps, the `legacyLand*` helpers, and fixtures that write old names). The retired-names guard exempts them through `LEGACY_FILES`, `legacy`-prefixed identifiers and `retired-name-ok` lines or regions; never add a second mechanism.
+  - Members (fields, methods, parameters) are renamed with all their uses. Never shadow an existing binding. Rewrap comment lines past 100 columns (test/comment-width.test.ts).
+- Callers to migrate:
+  - src/doctor/ (doctor.ts, doctor-checks.ts, doctor-model-checks.ts): `checkAgentBinary` → `checkBackendBinary`, `agentBinaryCheck` → `backendBinaryCheck`, plus uses of `agentsInUse`, `isAgentId`, `agentQualifiedSelector` and `agentBaseEnv`.
+  - src/gates/ (readiness.ts, startup-gate.ts), src/roles/ (role-render.ts's `agentDefault` function → `backendDefault`), src/ui/badges.ts's local `agentDefault` → `backendDefault`, src/status/, src/cli/, src/review/ (`agentSessionResumable`) and src/prompt/: migrate.
+  - Members holding a backend id: `RunPromptInput.agent` (src/run/run-prompt.ts) → `backend`; `RoleRunner.runPrompt(agent?)` and `RunnerRunContext.runPrompt(agent?)` parameters → `backend`; `buildDirectorPrompt`'s backend parameter; `nativeLogPath(root, role, agent)` in src/paths.ts → `backend`. Rename each with all its uses.
+- Tests: test/doctor-checks.test.ts (about 23 lines), test/doctor-model-checks.test.ts, test/run-resume.test.ts, test/gui-operator.test.ts, test/gui-client-settings.test.ts, test/status-data-budget.test.ts, test/runner-pi*.test.ts, test/review-followup.test.ts, test/provider-lease.test.ts, test/pi.test.ts and test/fakes/fake-pi.ts.
+- Delete every alias part 3/7 added (`grep -rn '@deprecated Use' src test` must list none from this series).
+- Extend the guard in test/retired-names.test.ts (shape `{ family, words, fileWords, allow }`, plus the optional exact-name `identifiers` field Plain terms code run 20/20 added):
+  - a `notes` family: `words: ["notebook", "notebooks"]`, `fileWords: ["notebook"]`;
+  - a `brief` family: `identifiers: ["initialPrompt", "readInitialPrompt", "editInitialPrompt", "replaceInitialPrompt", "INITIAL_PROMPT_MAX_CHARS"]`;
+  - a `role-ids` family: `identifiers: ["telemetryDigest", "TELEMETRY_DIGEST_DAYS", "dryRow", "dryFailedAt"]`. Not the words `dry` or `telemetry`, which still mean a dry run, generic telemetry and `DISABLE_TELEMETRY`;
+  - a `backend` family: `identifiers: ["AgentId", "AGENT_IDS", "isAgentId", "DEFAULT_AGENT", "AgentConfig", "AgentBinConfig", "AGENT_KEYS", "resolveAgentBin", "findAgentBinary", "checkAgentBinary", "agentMissingMessage", "agentsInUse", "collapseAgentAliases", "resolvedAgentConfig", "agentQualifiedSelector", "AGENT_DEFAULT_MODELS", "agentBaseEnv", "agentBinSourceLabel", "agentSessionResumable"]`.
+  Never list `customLoops`, `agent`, `agents`, `agentBin`, `dry` or `telemetry`: they are live legacy keys and ids. Legacy readers use the guard's existing exemptions: `LEGACY_FILES`, identifiers whose first word is `legacy`, `// retired-name-ok: <reason>` lines, and `retired-name-ok:start`/`end` regions. Add no new mechanism.
+- Confirm the guard now covers all five code families (team, merge, runner, run, cleanup). If an earlier family's last part missed an entry its own entry named, add it here.
+
+**Files touched.** The caller files above, the alias declarations in src/config/, src/agent/ and src/pi/, the tests listed above, and test/retired-names.test.ts.
+
+**Acceptance criteria.**
+- `grep -rn '@deprecated Use' src test` prints nothing.
+- `grep -rnE '\b(AgentId|AGENT_IDS|isAgentId|DEFAULT_AGENT|AgentConfig|AgentBinConfig|AGENT_KEYS|resolveAgentBin|findAgentBinary|checkAgentBinary|agentsInUse)\b' src test` lists only the retired-names list and exempt legacy readers.
+- test/retired-names.test.ts passes with the new families; adding `const readInitialPrompt = 1;` or `const notebookPath = 1;` to a src/ module makes it fail (check locally, do not commit).
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 5/7: Scan every module with the vocabulary guard and fix the first half of src (planned 2026-10-16 by user; requires part 4/7 landed; design in plans/terminology.md "Guards" and "Wording rules"; touches test/vocabulary.test.ts + test/helpers/legacy-files.ts + test/retired-names.test.ts + string literals in src/agent/ through src/init/ + src/*.ts)
+
+**Goal.** test/vocabulary.test.ts scans every src/ module, not only those with the `// vocabulary: plain` header, except the directories listed in a new pending set. This part cleans the first half of src/ (agent through init, plus the root modules) and removes them from that set.
+
+**Approach.**
+- Guard change in test/vocabulary.test.ts:
+  - Add `PENDING_VOCABULARY_DIRS`, a set of src/ directory paths whose header-less modules the guard still skips. Change the guard's single opt-in test, `optedIn(text)` (Plain terms groundwork put it in one function for this flip), to take the module path as well, and return true when the module has the header or lies outside the pending set. Modules that carry the header keep being scanned wherever they live.
+  - Every other module under src/ is scanned with the existing rules (string literals and template-literal text, word-bounded, case-insensitive, a line ending `// vocabulary-ok: <reason>` exempt).
+  - The set starts as the second half of src/: `src/merge`, `src/operator`, `src/orchestrator`, `src/pi`, `src/pi-extension`, `src/process`, `src/prompt`, `src/redeploy`, `src/report`, `src/review`, `src/roles`, `src/run`, `src/runner`, `src/scheduling`, `src/status`, `src/team`, `src/text`, `src/ui`, `src/verdict`. Part 6/7 empties it.
+  - Add a test that fails when a set entry names a directory that does not exist, so the set cannot rot.
+- Legacy readers must name old words on purpose, and they need the same exemption in both guards:
+  - Move test/retired-names.test.ts's `LEGACY_FILES` list into a small shared helper, test/helpers/legacy-files.ts, so a test file never imports another test file (that would register its tests twice). Import the helper from both guards.
+  - Make the vocabulary guard skip the `LEGACY_FILES` modules and honor the retired-names guard's `retired-name-ok:start`/`end` regions and `// retired-name-ok:` lines as well as its own `// vocabulary-ok:`. One marker then serves both guards: `normalizeLegacyEvent`'s tables, the state loaders' legacy-key maps, the `legacyLand*` helpers, src/orchestrator/startup-migrations.ts and startup-migration-steps.ts, `CONFIG_KEY_RENAMES` in src/config/config-aliases.ts, and src/roles/legacy-role-ids.ts.
+  - Pin both behaviors with a guard test.
+- Then fix every hit the guard reports in src/agent, src/backlog, src/baseline, src/brief, src/budget, src/build, src/change, src/cli, src/concurrency, src/config, src/doctor, src/events, src/failure, src/files, src/gates, src/git, src/gui, src/history, src/inbox, src/init and the root modules (src/cli.ts, src/paths.ts, src/version.ts, …):
+  - User-visible text a reader can see (CLI output, errors, warnings, agent prompts): reword per plans/terminology.md "Glossary" and "Wording rules".
+  - Machine names that must stay: the `tumwater(operator):` prefix, hidden-alias argv (`"tick"`, `"run"`), git ref and directory names of legacy layouts, and env vars of other tools. These get `// vocabulary-ok: <reason>` at the end of the line.
+  - Internal strings no user sees (cache keys, log tags, test seams): rename to plain words when nothing persisted depends on them; otherwise mark them `vocabulary-ok`.
+- To list the hits, run the guard (`npm run test` filtered to vocabulary, as DEVELOPMENT.md describes the runner's file filter) and work directory by directory. If this half reports far more than about 300 lines, stop at a directory boundary, add the untouched directories back to `PENDING_VOCABULARY_DIRS`, and say so in the commit message; part 6/7 starts from whatever the set holds.
+
+**Files touched.** test/vocabulary.test.ts; test/helpers/legacy-files.ts (new) and test/retired-names.test.ts (imports it); string literals in src/agent/ … src/init/ and the root src/*.ts modules. Tests asserting reworded output in the same directories (for example test/cli*.test.ts and test/doctor*.test.ts).
+
+**Acceptance criteria.**
+- test/vocabulary.test.ts scans every module outside `PENDING_VOCABULARY_DIRS` and passes; the set holds only second-half directories (plus any first-half ones this part's commit message names).
+- Each surviving retired word in a scanned module sits on a `// vocabulary-ok: <reason>` line or in an exempt legacy reader.
+- Adding `say("the fleet is idle")` to an unmarked module in src/cli/ makes the guard fail (check locally, do not commit).
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 6/7: Fix the second half of src for the vocabulary guard (planned 2026-10-16 by user; requires part 5/7 landed; design in plans/terminology.md "Guards" and "Wording rules"; touches test/vocabulary.test.ts + string literals in the directories still in PENDING_VOCABULARY_DIRS)
+
+**Goal.** `PENDING_VOCABULARY_DIRS` is empty: every src/ module passes the vocabulary guard, with or without a header.
+
+**Approach.**
+- Fix every hit the guard reports in the directories `PENDING_VOCABULARY_DIRS` still holds: the second half of src/ (merge … verdict, including src/ui/ and its gui/ and tui/ subdirectories), plus any first-half directory part 5/7 handed over. Apply the same treatment as part 5/7:
+  - Reword user-visible text per plans/terminology.md "Glossary" and "Wording rules".
+  - Mark machine names that must stay with `// vocabulary-ok: <reason>` (the `tumwater(operator):` prefix, hidden-alias argv, legacy layout names, other tools' env vars).
+  - Rename or mark internal strings.
+  - Legacy readers stay exempt through the shared retired-names exemption.
+- The dashboard's gui-client modules are browser code inside String.raw templates, which the guard reads as template text. A code name inside the browser code that still trips it (a DOM id, a CSS class, a local) is renamed to a plain word, checking uniqueness across the concatenated client modules. An end-of-line `// vocabulary-ok:` there is a browser-side JS comment and is allowed.
+- Remove each directory from `PENDING_VOCABULARY_DIRS` as it passes, then delete the set and its existence test once it is empty, leaving the guard's header rule for part 7/7.
+- Update tests that assert reworded output in the same directories.
+
+**Files touched.** test/vocabulary.test.ts; string literals in src/merge/, src/operator/, src/orchestrator/, src/pi/, src/pi-extension/, src/process/, src/prompt/, src/redeploy/, src/report/, src/review/, src/roles/, src/run/, src/runner/, src/scheduling/, src/status/, src/team/, src/text/, src/ui/ and src/verdict/ (only those with hits); their tests.
+
+**Acceptance criteria.**
+- `PENDING_VOCABULARY_DIRS` no longer exists, and the guard scans every src/ module and passes.
+- Each surviving retired word in src/ string literals sits on a `// vocabulary-ok: <reason>` line or in an exempt legacy reader.
+- No user-visible behavior changes beyond wording: every test passes, and any changed assertion changed only reworded text.
+- `npm run test` passes.
+
+### Plain terms code cleanup, part 7/7: Make the vocabulary guard cover all of src and drop the opt-in headers (planned 2026-10-16 by user; requires part 6/7 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts + every src/ module carrying a vocabulary header)
+
+**Goal.** Mostly mechanical. The vocabulary guard has no opt-in: it always scans every src/ module. The `// vocabulary: plain` header lines are deleted, since they no longer mean anything.
+
+**Approach.**
+- test/vocabulary.test.ts: remove the header requirement and any remaining scope logic (`optedIn` goes away), so the target is every `.ts`/`.tsx` module under src/. Replace the groundwork test "with no `// vocabulary: plain` header anywhere in src/, the guard passes" with one that a header-less module is scanned. Keep the word list, the word-bounded case-insensitive match, the string-literal and template-text walk (never `${…}` expressions), the `// vocabulary-ok: <reason>` line exemption, and the shared legacy-reader exemption from part 5/7. Update the file's header comment to say the guard covers all of src/ and that `vocabulary-ok` is the only escape.
+- Delete every `// vocabulary: plain` line in src/: `grep -rln '^// vocabulary: plain' src` lists them, one line per module, up to about 300. Change nothing else in those files.
+- Features keep landing while this series runs, so run the guard and fix any hit introduced since part 6/7 the same way: reword, or mark `vocabulary-ok` with a reason.
+- docs/glossary.md and DEVELOPMENT.md may describe the opt-in header. Update their sentence on how the guard is scoped, and nothing else in them.
+
+**Files touched.** test/vocabulary.test.ts; every src/ module with a `// vocabulary: plain` header (one deleted line each); any module with a newly introduced hit; the guard sentence in docs/glossary.md and DEVELOPMENT.md if they describe the header.
+
+**Acceptance criteria.**
+- `grep -rn 'vocabulary: plain' src test` prints nothing, apart from a negative-case fixture inside test/vocabulary.test.ts if it keeps one.
+- Adding `say("the fleet is idle")` to any src/ module without a `vocabulary-ok` marker makes the guard fail (check locally, do not commit).
+- The guard's own tests pin the new scope: a module without any header is scanned.
+- `npm run test` passes.
+
 ## Done
 ### The CLI `tumwater status` per-loop row shows when an individually timed-paused loop resumes, mirroring the GUI loop-list's `· resumes in <time>` (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `gui-endpoints.ts`'s `handleHistory` + `gui-client-history.ts` (history summary), `gui-client-fleet.ts` (fleet tally), and `gui-client-drawer.ts` (drawer configuration), and this touches none of them: only `src/ui/status-model.ts` and `test/status-model.test.ts`. The GUI twin it mirrors, `gui-client-loops.ts`'s `phaseDetail`, is read, not edited; the browser view-model `gui-client-model.ts`'s `phaseInfo` lands in the same change (a review finding — without it the new phase string reclassified to an idle "other" and the GUI's countdown guard went dead), with their tests; no `src/gui`, `src/cli`, `src/loop`, `src/tick`, `src/ui/status-*`'s render/payload, or `src/ui/tui` edit) — done 2026-10-16
 
