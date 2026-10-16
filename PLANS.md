@@ -2399,33 +2399,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### docs/cli.md names every long flag `tumwater help` lists, and a test keeps the two flag sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It edits only docs/cli.md and test/cli-doc.test.ts. No source, help text, payload, or event key changes. The in-flight docs-links plan adds only test/docs-links.test.ts)
-
-**Goal.** test/cli-doc.test.ts checks that docs/cli.md names every *command* `tumwater help` lists, but nothing compares *flags*. A prototype scan on 2026-10-16 matched `/(?<![\w-])--[a-z][a-z0-9-]*/g` over `HELP` (src/cli/help.ts) and over docs/cli.md. It found 46 distinct long flags in the help and 39 in the doc. Every doc flag is in the help, but seven help flags appear nowhere in the doc: `--branch` (`init` and `start`), `--port` (`gui`), `--follow` (`logs -f/--follow`), `--count` (`logs`), `--prompt` (`logs --role`), and `--roles` and `--config-keys` (`completion`). The reference says it lists "every `tumwater` command and the main flags it takes". After this plan it names them all, and a test fails when a flag is added to the help without the doc, or when the doc keeps a flag the help dropped.
-
-**Approach.**
-1. docs/cli.md: add the seven flags. Take each meaning from its help stanza in src/cli/help.ts:
-   - "Start the team" block, `init` comment lines: add `# add --branch <name> to name the branch a new repository starts on (it seeds a new repo only)`.
-   - Same block, after the `tumwater start --once` lines: add `tumwater start --branch <name>  # merge into that branch instead of baseBranch in tumwater.json or the checked-out branch; it must exist`. That is `resolveMainBranch` in src/gates/startup-gate.ts: `--branch` wins, then `config.baseBranch`, then the current branch, and an explicit name that does not exist is a startup problem.
-   - The paragraph after that block that starts "`gui --all-interfaces` exposes…": put `` `tumwater gui --port N` serves the dashboard on another port than 7180; `` before it.
-   - "Check state" row: change `` `tumwater logs -f` `` to `` `tumwater logs -f` (`--follow`) ``. After the `--type` item, add `` `tumwater logs --count` (one `N × <type>` line per event type present in the selected window, most frequent first; with `--json`, one object mapping type to count) ``. Change `` `tumwater logs --role <id>` `` to `` `tumwater logs --role <id> [--prompt]` (that role's pi transcript; `--prompt` also shows each run's exact prompt text) ``.
-   - The closing completion paragraph: after its first sentence, add `` `tumwater completion --roles` and `tumwater completion --config-keys` print the role ids and config keys that script completes. ``
-   Leave every other row unchanged.
-2. test/cli-doc.test.ts: add a module-level `const LONG_FLAG = /(?<![\w-])--[a-z][a-z0-9-]*/g;` and a helper `longFlags(text: string): Set<string>` that returns `new Set(text.match(LONG_FLAG) ?? [])`. Add two tests that use the existing `DOC` and `HELP` imports:
-   - "docs/cli.md names every long flag `tumwater help` lists": `missing` holds the help flags that are not in the doc's set. Run `assert.deepEqual(missing, [])`, then assert that the help set's size is at least 40 (a floor, so a regex regression cannot pass vacuously).
-   - "docs/cli.md names no long flag `tumwater help` lacks": `stale` holds the doc flags that are not in the help's set. Run `assert.deepEqual(stale, [])`.
-   Update the file's doc comment to say it also compares the long flags.
-
-**Files touched.** docs/cli.md, test/cli-doc.test.ts.
-
-**Acceptance criteria.**
-- Both new tests pass on the tree as it lands. With only the test change applied, the first test fails and names exactly the seven flags above (check this before editing the doc).
-- Temporarily adding `--bogus-flag` to a docs/cli.md row makes the second test fail and name `--bogus-flag`. Revert that edit before landing.
-- The existing two tests in test/cli-doc.test.ts still pass.
-- Every sentence added to docs/cli.md matches the help stanza for that flag in src/cli/help.ts. `--branch` on `start` also matches `resolveMainBranch`.
-- `git diff --stat` shows only docs/cli.md, test/cli-doc.test.ts, and PLANS.md.
-- `npm run test` passes.
-
 ### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it)
 
 **Goal.** README.md says "Every command, flag, and TUI key is in docs/cli.md", but cli.md mentions TUI keys only in passing inside command rows. A prototype scan on 2026-10-16 found these Ctrl keys handled in code: A B C D E F G L N O P Q R S T W X, plus the line-editing keys U and K. docs/cli.md names only A C E F N P Q W X. docs/how-it-works.md never names Ctrl+B (daily cap), Ctrl+C (interrupt the director), or Ctrl+D (quit). Add one reference table and a test that fails when a handler is added or removed without the table changing too.
@@ -2472,6 +2445,33 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### docs/cli.md names every long flag `tumwater help` lists, and a test keeps the two flag sets equal (planned 2026-10-16 by plan; done 2026-10-16; independent of every other Planned entry. It edits only docs/cli.md and test/cli-doc.test.ts. No source, help text, payload, or event key changes. The in-flight docs-links plan adds only test/docs-links.test.ts)
+
+**Goal.** test/cli-doc.test.ts checks that docs/cli.md names every *command* `tumwater help` lists, but nothing compares *flags*. A prototype scan on 2026-10-16 matched `/(?<![\w-])--[a-z][a-z0-9-]*/g` over `HELP` (src/cli/help.ts) and over docs/cli.md. It found 46 distinct long flags in the help and 39 in the doc. Every doc flag is in the help, but seven help flags appear nowhere in the doc: `--branch` (`init` and `start`), `--port` (`gui`), `--follow` (`logs -f/--follow`), `--count` (`logs`), `--prompt` (`logs --role`), and `--roles` and `--config-keys` (`completion`). The reference says it lists "every `tumwater` command and the main flags it takes". After this plan it names them all, and a test fails when a flag is added to the help without the doc, or when the doc keeps a flag the help dropped.
+
+**Approach.**
+1. docs/cli.md: add the seven flags. Take each meaning from its help stanza in src/cli/help.ts:
+   - "Start the team" block, `init` comment lines: add `# add --branch <name> to name the branch a new repository starts on (it seeds a new repo only)`.
+   - Same block, after the `tumwater start --once` lines: add `tumwater start --branch <name>  # merge into that branch instead of baseBranch in tumwater.json or the checked-out branch; it must exist`. That is `resolveMainBranch` in src/gates/startup-gate.ts: `--branch` wins, then `config.baseBranch`, then the current branch, and an explicit name that does not exist is a startup problem.
+   - The paragraph after that block that starts "`gui --all-interfaces` exposes…": put `` `tumwater gui --port N` serves the dashboard on another port than 7180; `` before it.
+   - "Check state" row: change `` `tumwater logs -f` `` to `` `tumwater logs -f` (`--follow`) ``. After the `--type` item, add `` `tumwater logs --count` (one `N × <type>` line per event type present in the selected window, most frequent first; with `--json`, one object mapping type to count) ``. Change `` `tumwater logs --role <id>` `` to `` `tumwater logs --role <id> [--prompt]` (that role's pi transcript; `--prompt` also shows each run's exact prompt text) ``.
+   - The closing completion paragraph: after its first sentence, add `` `tumwater completion --roles` and `tumwater completion --config-keys` print the role ids and config keys that script completes. ``
+   Leave every other row unchanged.
+2. test/cli-doc.test.ts: add a module-level `const LONG_FLAG = /(?<![\w-])--[a-z][a-z0-9-]*/g;` and a helper `longFlags(text: string): Set<string>` that returns `new Set(text.match(LONG_FLAG) ?? [])`. Add two tests that use the existing `DOC` and `HELP` imports:
+   - "docs/cli.md names every long flag `tumwater help` lists": `missing` holds the help flags that are not in the doc's set. Run `assert.deepEqual(missing, [])`, then assert that the help set's size is at least 40 (a floor, so a regex regression cannot pass vacuously).
+   - "docs/cli.md names no long flag `tumwater help` lacks": `stale` holds the doc flags that are not in the help's set. Run `assert.deepEqual(stale, [])`.
+   Update the file's doc comment to say it also compares the long flags.
+
+**Files touched.** docs/cli.md, test/cli-doc.test.ts.
+
+**Acceptance criteria.**
+- Both new tests pass on the tree as it lands. With only the test change applied, the first test fails and names exactly the seven flags above (check this before editing the doc).
+- Temporarily adding `--bogus-flag` to a docs/cli.md row makes the second test fail and name `--bogus-flag`. Revert that edit before landing.
+- The existing two tests in test/cli-doc.test.ts still pass.
+- Every sentence added to docs/cli.md matches the help stanza for that flag in src/cli/help.ts. `--branch` on `start` also matches `resolveMainBranch`.
+- `git diff --stat` shows only docs/cli.md, test/cli-doc.test.ts, and PLANS.md.
+- `npm run test` passes.
 
 ### Every relative link and backticked repo path in the current docs resolves, and a test keeps them that way (planned 2026-10-16 by plan; independent of every other Planned entry. It adds only test/docs-links.test.ts. No doc, source, payload, or event key changes) (done 2026-10-16)
 
