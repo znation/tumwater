@@ -98,6 +98,31 @@ test("plan and bug --release lift the Refused note and commit it on main", async
   assert.equal(subject(repo), "tumwater(operator): Release bug: broken");
 });
 
+test("plan and bug --top move an entry to the head of its section and commit it on main", async () => {
+  const repo = await initializedRepo();
+  const plans = fs.readFileSync(path.join(repo, "PLANS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "PLANS.md"), plans.replace("## Planned\n", "## Planned\n\n### first\n\nbody\n\n### second\n\nbody\n"));
+  const bugs = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
+  fs.writeFileSync(path.join(repo, "BUGS.md"), bugs.replace("## Open\n", "## Open\n\n### b1\nx\n\n### b2\ny\n"));
+  sh(repo, "git", "commit", "-qam", "seed");
+  const head = sh(repo, "git", "rev-parse", "HEAD");
+  for (const bad of [["--top", "1"], ["--top", "9"], ["--top"], ["--top", "2", "extra"]]) {
+    assert.notEqual((await cli(repo, "plan", ...bad)).code, 0, bad.join(" "));
+  }
+  assert.equal(sh(repo, "git", "rev-parse", "HEAD"), head);
+  const out = await cli(repo, "plan", "--top", "2");
+  assert.equal(out.code, 0);
+  assert.match(out.stdout, /moved plan to the top of PLANS\.md: second/);
+  assertClean(repo);
+  assert.equal(subject(repo), "tumwater(operator): Prioritize plan: second");
+  const list = JSON.parse((await cli(repo, "plan", "--list", "--json")).stdout);
+  assert.match(JSON.stringify(list[0] ?? list.entries?.[0]), /second/);
+  const json = await cli(repo, "bug", "--top", "2", "--json");
+  assert.equal(json.code, 0);
+  assert.deepEqual(JSON.parse(json.stdout), { file: "BUGS.md", title: "b2" });
+  assert.equal(subject(repo), "tumwater(operator): Prioritize bug: b2");
+});
+
 test("bug --cancel, plan --edit, and questions answer each commit on main; a missing position commits nothing", async () => {
   const repo = await initializedRepo();
   assert.equal((await cli(repo, "bug", "b1")).code, 0);

@@ -255,6 +255,45 @@ export async function releaseAndAnnounce(
   }
 }
 
+/** The shell of the `bug --top` and `plan --top` CLI cases, parsed as releaseAndAnnounce parses
+ * `--release`: `--top <n>`, an optional `--json`, anything else refused. After requireReadyRepo
+ * it moves the entry to the head of its section and commits the file on main. No wake: a
+ * reorder makes no entry newly eligible. Prints `moved <command> to the top of <file>: <title>`
+ * or only the `--json` payload. */
+export async function topAndAnnounce(
+  root: string,
+  args: string[],
+  command: "bug" | "plan",
+  top: (n: number) => { file: string; title: string },
+): Promise<void> {
+  let position: number | null = null;
+  let json = false;
+  const rest: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--json") {
+      rejectRepeatFlag(json, "--json");
+      json = true;
+      continue;
+    }
+    if (arg === "--top") {
+      rejectRepeatFlag(position !== null, "--top");
+      position = parsePositionFlag("--top", args[i + 1], "--top 2");
+      i++;
+      continue;
+    }
+    if (arg === "--help" || arg === "-h") continue;
+    rest.push(arg as string);
+  }
+  rejectUnknownArgs(command, rest, []);
+  if (position === null) fail(`--top needs a position (usage: tumwater ${command} --top <n>)`);
+  await requireReadyRepo(root);
+  const moved = top(position);
+  warnIfUncommitted(await commitOperatorBacklogEdit(root, moved.file, stampedSubject("operator", `Prioritize ${command}: ${moved.title}`)), moved.file); // vocabulary-ok: the tumwater(operator): commit prefix is a machine string
+  if (json) sayJson({ file: moved.file, title: moved.title });
+  else say(`moved ${command} to the top of ${moved.file}: ${moved.title}`);
+}
+
 /** Ascending positions as runs: consecutive ones join with an en dash (`13–17`), runs separate
  * with commas (`13–15, 18`). */
 function positionRuns(positions: readonly number[]): string {

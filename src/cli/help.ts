@@ -179,6 +179,10 @@ Usage:
                                    Lift the Refused note from the Nth entry in BUGS.md ## Open
                                    (as \`tumwater bug --list\` lists it), commit it on main,
                                    and wake the bugfix role; --json prints {file, title}
+  tumwater bug --top <n> [--json]
+                                   Move the Nth entry (as \`tumwater bug --list\` lists it) to
+                                   the head of BUGS.md ## Open, so bugfix claims it next; commit
+                                   it on main; no wake; --json prints {file, title}
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
                                    bug --list\` lists it); no wake; --json prints {file, title}
@@ -220,6 +224,10 @@ Usage:
                                    Lift the Refused note from the Nth entry in PLANS.md ## Planned
                                    (as \`tumwater plan --list\` lists it), commit it on main,
                                    and wake the feature role; --json prints {file, title}
+  tumwater plan --top <n> [--json]
+                                   Move the Nth entry (as \`tumwater plan --list\` lists it) to
+                                   the head of PLANS.md ## Planned, so feature claims it next;
+                                   commit it on main; no wake; --json prints {file, title}
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
                                    plan --list\` lists it); no wake; --json prints {file, title}
@@ -420,12 +428,12 @@ export function helpTopic(command: string, help: string = HELP): string | null {
 /** The free-form text commands and the flags that take a separate value token, for
  * helpTopicForArgs: a valued flag's value is plumbing (`prompt --role qa --help`, `bug
  * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
- * `--file` and `--release`. */
+ * `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
   prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
   init: ["--branch", "--template", "--file"],
-  bug: ["--cancel", "--edit", "--file", "--release"],
-  plan: ["--cancel", "--edit", "--file", "--release"],
+  bug: ["--cancel", "--edit", "--file", "--release", "--top"],
+  plan: ["--cancel", "--edit", "--file", "--release", "--top"],
 };
 
 /** The `--help`/`-h` request cli.ts answers before dispatch: the topic text for `command`

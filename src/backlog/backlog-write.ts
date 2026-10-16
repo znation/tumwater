@@ -558,6 +558,33 @@ export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { f
   });
 }
 
+/** Move the `n`th entry (1-based, as `--list` numbers them) of the kind's open section to the
+ * head of that section and write the file, under the same lock as the other writers. Position
+ * 1 fails ("is already first") and an out-of-range one fails with locateEntry's wording, both
+ * writing nothing. The entry's lines move byte for byte; only the blank lines around the cut
+ * and the splice are normalized, and an entry that was the file's last content leaves the file
+ * ending as it did before the move (a trailing newline iff it had one). */
+export function moveEntryToTop(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
+  const { fileName, sectionTitle } = backlogTarget(kind);
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
+    if (n === 1) fail(`${kind} #1 "${entry.title}" is already first`);
+    const first = findEntry(lines.join("\n"), sectionTitle, 1) as ActionableEntryRange;
+    const endsWithNewline = lines[lines.length - 1] === "";
+    const atEof = lines.slice(entry.end).every((l) => l.trim() === "");
+    const cut = lines.slice(entry.start - 1, entry.end);
+    trimTrailingBlankLines(cut);
+    lines.splice(entry.start - 1, entry.end - entry.start + 1);
+    if (atEof) {
+      trimTrailingBlankLines(lines);
+      if (endsWithNewline) lines.push("");
+    }
+    lines.splice(first.start - 1, 0, ...cut, "");
+    writeTextAtomic(file, lines.join("\n"));
+    return { file: fileName, title: entry.title };
+  });
+}
+
 /** The nth entry as the markdown file `--edit <n> --file` reads back: the stamp-stripped title
  * and the body with its indentation kept (read from the raw lines, not the trimmed
  * BacklogEntry.body), plus the entry's eligibility hold. Read-only. */

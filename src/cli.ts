@@ -238,9 +238,9 @@ async function main(): Promise<void> {
       await (await import("./cli/cli-query-commands.js")).cmdBacklog(root, args);
       break;
     case "bug": {
-      const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, releaseEntry, editBug, editBugFromText, fileBug, fileBugFromText } =
+      const { OPERATOR_FILE_KINDS, bugWakeText, cancelBug, moveEntryToTop, releaseEntry, editBug, editBugFromText, fileBug, fileBugFromText } =
         await import("./backlog/backlog-write.js");
-      const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce } =
+      const { bugTitleOf, cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce } =
         await import("./backlog/backlog-cli.js");
       const usage = 'tumwater bug "<symptom>"';
       if (args.includes("--show")) {
@@ -261,6 +261,10 @@ async function main(): Promise<void> {
         await cancelAndAnnounce(root, args, "bug", (n) => cancelBug(root, n));
         break;
       }
+      if (args.includes("--top")) {
+        await topAndAnnounce(root, args, "bug", (n) => moveEntryToTop(root, "bug", n));
+        break;
+      }
       if (args.includes("--release")) {
         await releaseAndAnnounce(root, args, "bug", (n) => releaseEntry(root, "bug", n), OPERATOR_FILE_KINDS.bug.role);
         break;
@@ -278,9 +282,9 @@ async function main(): Promise<void> {
       break;
     }
     case "plan": {
-      const { OPERATOR_FILE_KINDS, cancelPlan, releaseEntry, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
+      const { OPERATOR_FILE_KINDS, cancelPlan, moveEntryToTop, releaseEntry, editPlan, editPlanFromText, filePlan, filePlanFromText, planWakeText } =
         await import("./backlog/backlog-write.js");
-      const { cancelAndAnnounce, releaseAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce, planTitleOf } =
+      const { cancelAndAnnounce, releaseAndAnnounce, topAndAnnounce, editAndAnnounce, fileAndAnnounce, listAndAnnounce, showAndAnnounce, planTitleOf } =
         await import("./backlog/backlog-cli.js");
       const usage = 'tumwater plan "<title>" [body...]';
       if (args.includes("--show")) {
@@ -300,6 +304,10 @@ async function main(): Promise<void> {
       }
       if (args.includes("--cancel")) {
         await cancelAndAnnounce(root, args, "plan", (n) => cancelPlan(root, n));
+        break;
+      }
+      if (args.includes("--top")) {
+        await topAndAnnounce(root, args, "plan", (n) => moveEntryToTop(root, "plan", n));
         break;
       }
       if (args.includes("--release")) {
