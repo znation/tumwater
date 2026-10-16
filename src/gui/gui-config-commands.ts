@@ -1,11 +1,12 @@
 /**
  * The dashboard's POST config/budget command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * config-set, config-unset, and budget — the post-handler layer onto the config-write domain
- * module. Each handler adapts HTTP and touches no socket beyond its own `res`.
+ * config-set, config-unset, budget, and notify-test — the post-handler layer onto the
+ * config-write domain module. Each handler adapts HTTP and touches no socket beyond its own `res`.
  */
 import { setConfigKey, setDailyBudgetUsd, unsetConfigKey } from "../config/config-write.js";
 import { checkDailyBudgetUsd } from "../config/config-keys.js";
+import { testNotifyHook } from "../cli/notify-command.js";
 import { requireConfigKey } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
 import { readPostBody } from "./gui-endpoint-common.js";
@@ -90,4 +91,20 @@ export async function handleConfigUnset(req: http.IncomingMessage, res: http.Ser
   const result = unsetConfigKey(root, key);
   if (!result.ok) return configKeyError(res, key, result);
   sendJson(res, 200, { ok: true, key, oldValue: result.oldValue });
+}
+
+/** Handle POST /api/notify-test: the Settings view's "Send test" — what `tumwater notify --test`
+ * runs (testNotifyHook, under the same NOTIFY_TEST_TIMEOUT_MS bound), with the hook's stdio
+ * ignored so its output never reaches the server's terminal. The body is ignored, like
+ * /api/restart's. No hook set is a 409 with the CLI's wording; a hook that fails or times out is
+ * still a 200 — the request worked, and `passed` carries the verdict. */
+export async function handleNotifyTest(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, "{}");
+  if (!body) return;
+  const outcome = await testNotifyHook(root, "ignore");
+  if (outcome.status === "not_configured") {
+    sendJson(res, 409, { error: "notify is not configured (set `notify` in tumwater.json)" });
+    return;
+  }
+  sendJson(res, 200, { ok: true, passed: outcome.passed, message: outcome.message });
 }

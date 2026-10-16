@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -25,6 +25,7 @@ import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
 import { collectFleetChanges, collectRoleChange } from "../src/change/change-data.js";
+import { setConfigKey } from "../src/config/config-write.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { captureJson } from "./fakes/fake-res.js";
@@ -1234,4 +1235,21 @@ test("POST /api/brief replaces the prompt and commits on main; refusals leave th
   }
   assert.equal(fs.readFileSync(path.join(repo, "README.md"), "utf8"), before);
   assert.equal(head(), after);
+});
+
+test("handleNotifyTest runs the saved hook and answers its verdict; no hook is a 409", async () => {
+  const root = await initializedRepo();
+  const none = await captureJson((res) => handleNotifyTest(fakeReq("{}"), res, root));
+  assert.equal(none.captured.status, 409);
+  assert.match((none.data as { error: string }).error, /notify is not configured/);
+  const out = path.join(root, "notify-out.txt");
+  assert.ok(setConfigKey(root, "notify", `echo "$TUMWATER_EVENT_TYPE" >> ${out}`).ok);
+  const ok = await captureJson((res) => handleNotifyTest(fakeReq("{}"), res, root));
+  assert.equal(ok.captured.status, 200);
+  assert.deepEqual(ok.data, { ok: true, passed: true, message: "notify hook exited 0" });
+  assert.equal(fs.readFileSync(out, "utf8").split("\n").filter(Boolean).length, 1);
+  assert.ok(setConfigKey(root, "notify", "exit 3").ok);
+  const bad = await captureJson((res) => handleNotifyTest(fakeReq("{}"), res, root));
+  assert.equal(bad.captured.status, 200);
+  assert.equal((bad.data as { passed: boolean }).passed, false);
 });

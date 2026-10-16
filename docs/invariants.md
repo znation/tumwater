@@ -280,13 +280,14 @@ cannot drop it silently.
 **Guarantee.** `tumwater notify --test` stops waiting for a hook that does not finish within
 `NOTIFY_TEST_TIMEOUT_MS` and reports the timeout with a non-zero exit, rather than awaiting the
 hook forever; the bound is cleared on every outcome, so a hook that exits promptly never keeps
-the CLI alive.
+the CLI alive. The dashboard's `POST /api/notify-test` runs the same test under the same bound.
 
-**Binds.** `src/cli/notify-command.ts` (`runNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`).
+**Binds.** `src/cli/notify-command.ts` (`runNotifyHook`, `testNotifyHook`, `cmdNotify`, `NOTIFY_TEST_TIMEOUT_MS`) and
+`src/gui/gui-config-commands.ts` (`handleNotifyTest`).
 
 **Pinned by.** `test/notify-command.test.ts` — "a hook that never exits is killed at the timeout
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
-injected timeout".
+injected timeout"; `test/gui-endpoints.test.ts` — the `handleNotifyTest` tests.
 
 ### INV-E2: a team that goes down unasked runs the configured notify hook once
 

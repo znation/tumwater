@@ -1,7 +1,8 @@
 // vocabulary: plain
 /** The dashboard's Settings view, browser-side: the curated top-level config keys
  * (EDITABLE_CONFIG_KEYS's set, mirrored here for the labels) as label + current value +
- * inline field + Save + Clear, one row per key. Values load once through GET /api/config when
+ * inline field + Save + Clear, one row per key (the Notify row also has Send test, which
+ * posts to POST /api/notify-test). Values load once through GET /api/config when
  * the view is first opened — no polling loop of its own; a re-click of the tab refetches, like
  * the other views' refresh-on-open. Save posts {key, value} to POST /api/config-set — the
  * same setConfigKey write path `tumwater config set` uses — and Clear posts {key} to
@@ -47,6 +48,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<input class='field' id='set-" + k[0] + "' value='" + esc(settingsFieldValue(d[k[0]])) + "'>" +
       "<button type='submit' class='btn btn-sm'>Save</button>" +
       "<button type='button' class='btn btn-sm rowaction' data-action='unset'>Clear</button>" +
+      (k[0] === "notify" ? "<button type='button' class='btn btn-sm rowaction' data-action='notify-test' title='Runs the saved hook once with a synthetic merge_failed event'>Send test</button>" : "") +
       "</form>").join("");
   }
   // The view's one panel: built once, values fetched on each open of the tab (the boot's
@@ -123,6 +125,17 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       const d = await postJson("/api/config-unset", { key: key });
       showFlash(d && d.oldValue !== undefined ? "Unset " + key + " (was " + JSON.stringify(d.oldValue) + ")" : "Nothing to unset for " + key + " — it was already the default");
       await fetchSettings();
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+  }
+  // The Notify row's Send test button: POST /api/notify-test runs the saved hook once, the same
+  // test that "tumwater notify --test" runs. The hook can take up to 10 s, so say so first.
+  async function testNotify() {
+    showFlash("Sending a test notification…");
+    try {
+      const d = await postJson("/api/notify-test", {});
+      showFlash((d.passed ? "" : "error: ") + d.message);
     } catch (err) {
       showFlash("error: " + clientErrorMessage(err));
     }

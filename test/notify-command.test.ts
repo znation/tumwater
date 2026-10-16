@@ -5,7 +5,7 @@ import path from "node:path";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { setConfigKey } from "../src/config/config-write.js";
-import { runNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/notify-command.js";
+import { runNotifyHook, testNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/notify-command.js";
 
 // The `notify --test` command: run the configured notify hook once with a synthetic event, via
 // the CLI the way the cli-queue tests drive `queue` — an initialized repo, child-process runs,
@@ -81,4 +81,18 @@ test("a hook that never exits is killed at the timeout and reported, not awaited
 test("runNotifyHook resolves a never-ending hook at the injected timeout", async () => {
   const r = await runNotifyHook("sleep 30", {}, 150);
   assert.deepEqual(r, { timedOut: true });
+});
+
+test("testNotifyHook runs the saved hook once and reports the outcome line", async () => {
+  const repo = await initializedRepo();
+  assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "not_configured" });
+  const out = path.join(repo, "notify-out.txt");
+  assert.ok(setConfigKey(repo, "notify", recorderCommand(out)).ok);
+  assert.deepEqual(await testNotifyHook(repo, "ignore"), { status: "ran", passed: true, message: "notify hook exited 0" });
+  assert.deepEqual(recordedLines(out), ["merge_failed|tumwater|tumwater notify --test"]);
+  assert.ok(setConfigKey(repo, "notify", "exit 3").ok);
+  const failed = await testNotifyHook(repo, "ignore");
+  assert.equal(failed.status, "ran");
+  assert.equal(failed.status === "ran" && failed.passed, false);
+  assert.match(failed.status === "ran" ? failed.message : "", /exited with code 3/);
 });

@@ -20,6 +20,7 @@ interface SettingsFns {
   clearSetting(form: { dataset: Record<string, string> }): Promise<void>;
   renderDoctorReport(d: unknown): string;
   fetchDoctor(): Promise<void>;
+  testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
 }
@@ -27,7 +28,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "fetchBrief", "saveBrief"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "testNotify", "fetchBrief", "saveBrief"],
     inject,
   );
 }
@@ -43,6 +44,8 @@ test("renderSettings renders one row per curated key, esc'd, with the key's conf
     assert.match(html, new RegExp(`data-key='${key}'`));
     assert.match(html, new RegExp(`id='set-${key}'`));
   }
+  assert.equal((html.match(/data-action='notify-test'/g) || []).length, 1);
+  assert.match(html, /data-key='notify'[^]*?data-action='notify-test'[^]*?<\/form>/);
   assert.equal((html.match(/<form class='settings-row'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
   assert.equal((html.match(/type='submit'/g) || []).length, EDITABLE_CONFIG_KEYS.length);
   // One Clear button per curated key, beside the Save counts.
@@ -84,6 +87,30 @@ test("fetchSettings builds the panel and fills it from GET /api/config; a failur
   await fetchFail();
   assert.match(els.settingscard!.innerHTML, /Settings could not load/);
   assert.match(els.settingscard!.innerHTML, /broken file/);
+});
+
+test("testNotify posts to /api/notify-test and flashes the outcome", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let reply: () => Promise<unknown> = async () => ({ passed: true, message: "notify hook exited 0" });
+  const { testNotify } = settingsScope({
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      return reply();
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await testNotify();
+  assert.deepEqual(posts, [{ path: "/api/notify-test", body: {} }]);
+  assert.deepEqual(flashes, ["Sending a test notification…", "notify hook exited 0"]);
+  flashes.length = 0;
+  reply = async () => ({ passed: false, message: "notify hook exited with code 3" });
+  await testNotify();
+  assert.equal(flashes[1], "error: notify hook exited with code 3");
+  flashes.length = 0;
+  reply = async () => { throw { message: "notify is not configured (set `notify` in tumwater.json)" }; };
+  await testNotify();
+  assert.equal(flashes[1], "error: notify is not configured (set `notify` in tumwater.json)");
 });
 
 test("saveSetting posts the row's key and value and flashes the outcome", async () => {
