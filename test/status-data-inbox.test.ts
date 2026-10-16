@@ -247,4 +247,21 @@ test("snapshot's roleInbox deliverability advances with its pinned clock", async
   assert.equal(snapshot(repo, undefined, until).roleInbox.clean, 1);
 });
 
+test("snapshot's director inbox deliverability advances with its pinned clock", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "inbox clock seam test");
+  const now = Date.now();
+  const until = now + 30 * 60_000;
+  // A deferred director prompt (tumwater prompt --at): keyed to the shared inbox, not a role.
+  submitPrompt(repo, "later", undefined, until);
+  // Still deferred at the pinned instant: not deliverable, so not counted — but still listed,
+  // so the Queued tab can show and cancel it, exactly as a deferred role prompt rides
+  // roleInboxPrompts.
+  const deferred = snapshot(repo, undefined, now);
+  assert.equal(deferred.inbox, 0);
+  assert.equal(deferred.inboxPrompts.length, 1);
+  // At the deferred time itself (deliverableAt is `at <= now`), it counts.
+  assert.equal(snapshot(repo, undefined, until).inbox, 1);
+});
+
 // --- pausedUntil: the fleet marker's standing timed-pause deadline (PLANS.md 2026-09-25) ---

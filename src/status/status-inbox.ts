@@ -20,20 +20,24 @@ interface InboxCollectResult {
 }
 
 /** One inbox pass per poll serves all four director fields (queuedRolePromptEntries lists the
- * directory and reads each file once): the count is the entries' length, so a prompt enqueued
- * or dequeued mid-snapshot can never make the header badge disagree with its numbered previews,
- * and each preview keeps its queue-file address beside it. A second listing pass per role (all
- * non-director loops) fills the per-role counts and their cancel-addressable entries from the
- * same `queuedRolePromptEntries` records, with deliverableAt (prompt-not-before.ts) over the
- * same cached text. `roles` is the already-computed loop list so one `loopIds` read serves the
- * caller and both passes; `now` is the snapshot's pinned clock, so deliverability and the
- * counts advance together instead of racing the wall clock. */
+ * directory and reads each file once): the count is the deliverable entries' length, so a
+ * prompt enqueued or dequeued mid-snapshot can never make the header badge disagree with its
+ * numbered previews, and each preview keeps its queue-file address beside it. A second
+ * listing pass per role (all non-director loops) fills the per-role counts and their
+ * cancel-addressable entries from the same `queuedRolePromptEntries` records, with
+ * deliverableAt (prompt-not-before.ts) over the same cached text. `roles` is the
+ * already-computed loop list so one `loopIds` read serves the caller and both passes; `now`
+ * is the snapshot's pinned clock, so deliverability and the counts advance together instead
+ * of racing the wall clock. */
 export function collectInboxes(root: string, roles: string[], now: number): InboxCollectResult {
   const queued = queuedRolePromptEntries(root, DIRECTOR_ROLE);
   const inboxPrompts = queued.map((e) => e.preview);
   const inboxFiles = queued.map((e) => e.file);
   const inboxQueuedAt = queued.map((e) => e.queuedAtMs);
   const inboxNotBefore = queued.map((e) => e.notBeforeMs);
+  // The director and the per-role queues count queued prompts by the one rule — deliverableAt
+  // (prompt-not-before.ts) over the same cached text — so a deferred prompt never inflates
+  // either the header badge or a per-role marker while it is still listed and cancelable.
   // One directory listing pass per role per poll fills the per-role counts; the director is
   // excluded because its queue is the shared inbox above. A role with prompts queued also
   // fills its cancel-addressable entries — the stat-keyed prompt cache keeps an unchanged
@@ -48,7 +52,7 @@ export function collectInboxes(root: string, roles: string[], now: number): Inbo
     if (entries.length) roleInboxPrompts[r] = entries;
   }
   return {
-    inbox: inboxPrompts.length,
+    inbox: queued.filter((e) => deliverableAt(e.notBeforeMs, now)).length,
     inboxPrompts,
     inboxFiles,
     inboxQueuedAt,
