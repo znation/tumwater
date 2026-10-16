@@ -61,6 +61,18 @@ function cycleLabel<T>(table: ReadonlyArray<[T, string]>, current: T): string | 
   return table.find(([key]) => key === current)?.[1] ?? null;
 }
 
+/** The trailing 1h/6h/1d/7d slots the History (Ctrl+S) and Usage/Failures (Ctrl+E) session
+ * window cycles share, minus each pane's leading `[null, "default"]` slot. Single-homed so
+ * the two panes cannot drift — and the 7d slot reads the named REPORT_SINCE_MAX_MS cap (`tumwater
+ * report --since`'s bound) rather than History's old hard-coded 604_800_000 magic number, which
+ * was the same value but untethered from the cap it mirrors. */
+const SESSION_WINDOW_TAIL: ReadonlyArray<[number, string]> = [
+  [3_600_000, "1h"],
+  [21_600_000, "6h"],
+  [86_400_000, "1d"],
+  [REPORT_SINCE_MAX_MS, "7d"],
+];
+
 /** The History pane's session window cycle, Ctrl+S: the default newest-N read, then the same
  * trailing windows the dashboard's History view and `tumwater history --since` offer — 1h,
  * 6h, 1d, and the 7d cap the CLI's flag and the dashboard both stop at. The label is what the
@@ -68,10 +80,7 @@ function cycleLabel<T>(table: ReadonlyArray<[T, string]>, current: T): string | 
  * through readTickRows, kept first so the pane opens on today's behavior. */
 const HISTORY_WINDOWS: ReadonlyArray<[number | null, string]> = [
   [null, "default"],
-  [3_600_000, "1h"],
-  [21_600_000, "6h"],
-  [86_400_000, "1d"],
-  [604_800_000, "7d"],
+  ...SESSION_WINDOW_TAIL,
 ];
 
 /** The Ctrl+G scope cycle: fleet-wide (null), then each unique base role the roster names, in
@@ -171,10 +180,7 @@ function historyPaneCache(
  * REPORT_DEFAULT_DAYS shape, kept first so the panes open on today's behavior. */
 const REPORT_WINDOWS: ReadonlyArray<[number | null, string]> = [
   [null, "default"],
-  [3_600_000, "1h"],
-  [21_600_000, "6h"],
-  [86_400_000, "1d"],
-  [REPORT_SINCE_MAX_MS, "7d"],
+  ...SESSION_WINDOW_TAIL,
 ];
 
 /** The Usage pane's body for one window and role scope: the paneCache the Ctrl+T/Ctrl+G/Ctrl+E
