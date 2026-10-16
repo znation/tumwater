@@ -662,6 +662,15 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     // return true whenever one is open — but the guards restate them so each pane arm keeps
     // its mutual-exclusion contract explicit rather than relying on the routing order.
     const es = editors.state();
+    // Whether no editor currently holds the prompt line — the mutual-exclusion contract the
+    // pane arms below restate when they open their own one-line editors. The editors consume
+    // every key that reads or writes the line and return true while one is open, so by the
+    // time this fallback runs the flags are already all false; the check stays explicit so
+    // each arm's exclusion reads on its own instead of leaning on the routing order. Line 790
+    // deliberately omits searchMode and keeps its own literal guard.
+    const promptLineFree = (): boolean =>
+      !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
+      !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor;
     if (key.ctrl && key.name === "n") {
       // Ctrl+N cycles the viewed loop's pane live transcript → notebook → change → transcript
       // (PLANS.md "Inspect a loop's notebook and next tick prompt in the TUI" and "Show a
@@ -672,7 +681,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       // key falls through to applyKey. On the History pane the same key swaps the row list for
       // one tick's full event trail instead (the CLI's `tumwater tick --last` text), so it is
       // handled before the transcript guard below.
-      if (view === roleIds.length + 4 && !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor) {
+      if (view === roleIds.length + 4 && promptLineFree()) {
         trailGen++;
         if (trailMode) {
           trailMode = false;
@@ -750,7 +759,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "g" && !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor) {
+    if (key.ctrl && key.name === "g" && promptLineFree()) {
       // Ctrl+G cycles the active pane's loop scope (mnemonic: the **g**lobal scope / the
       // **g**roup). Guarded out of the budget and role-prompt editors, whose prompt line the
       // key must not disturb — the same inertness the per-loop keys honor. On the History
@@ -802,7 +811,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "s" && !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor) {
+    if (key.ctrl && key.name === "s" && promptLineFree()) {
       // Ctrl+S advances the History pane's trailing window (mnemonic: **S**ince). Guarded out
       // of budget-edit and role-prompt modes like the other mode-sensitive keys. The window is
       // session state: advancing it off the History view only changes the label, and the next
@@ -813,7 +822,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
       deps.requestRender();
       return;
     }
-    if (key.ctrl && key.name === "o" && !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor) {
+    if (key.ctrl && key.name === "o" && promptLineFree()) {
       // Ctrl+O advances the History pane's outcome filter (mnemonic: **O**utcome). Guarded out
       // of budget-edit and role-prompt modes like Ctrl+S beside it. The class is session state:
       // advancing it off the History view only changes the label, and the next Ctrl+T into
@@ -826,7 +835,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" && noteMode &&
-      !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
+      promptLineFree() &&
       view >= 1 && view <= roleIds.length
     ) {
       // Ctrl+X twice clears the viewed loop's notebook through the writer the CLI's
@@ -849,7 +858,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" &&
-      !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
+      promptLineFree() &&
       view === roleIds.length + 6 && selectedQueued !== null
     ) {
       // Ctrl+X cancels the selected queued prompt through the CLI's own per-loop path
@@ -879,7 +888,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.ctrl && key.name === "x" &&
-      !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode && !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
+      promptLineFree() &&
       view === roleIds.length + 1
     ) {
       // Ctrl+X twice cancels the selected plan or bug through the non-exiting core the
@@ -1090,7 +1099,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
     }
     if (
       key.name === "escape" && selectedQueued !== null && view === roleIds.length + 6 &&
-      !es.budgetMode && !es.deferMode && !es.pauseEditMode && !es.rolePromptFor && !es.searchMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor
+      promptLineFree()
     ) {
       // Esc on the Queued pane returns it to list mode; the cached list is untouched (nothing
       // was cancelled), so the pane shows the same renderQueuedList it entered with. The
