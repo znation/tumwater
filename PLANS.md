@@ -201,6 +201,28 @@ README.md, and their tests.
 - A role-scoped report prints no provider line (its `ROLE_SCOPE_NOTE` is unchanged); the existing per-role `Cost by role` and `notionalCostUsd` totals keep their exact current values (the provider maps are a parallel tally, never subtracted).
 - `npm run test` passes.
 
+### Surface a per-loop consecutive "no change" streak: `tumwater status`, the TUI and the dashboard show how many ticks a loop has returned nothing to do (planned 2026-10-16 by plan; does not require any part of the per-provider concurrency-caps series (4/5, 5/5) or the per-provider-spend plan to land — those touch `src/loop/loop-state.ts` and the `src/status`/`src/ui` renders for other than a no-change counter, and no part derives anything from this streak; this adds one persisted counter and renders it, so it lands independently on any feature run)
+
+**Goal.** The fleet already detects a loop that FAILS tick after tick (`consecutiveErrors`, the `error streaks` doctor check and the "failing" cell) and one that is quiet-killed, and it stretches a loop's min-tick gap while it keeps finding nothing (`recentOutcomes`/`yieldMultiplier`, src/scheduling/backoff.ts). But nothing names a loop that keeps WAKING and returning nothing to do — a silent no-op run of `no_change` ticks is invisible, reading only as the ordinary "sleeping (for …)" cell. That is exactly the harness premise's failure mode ("Loop sleeps a while when the prompt results in no further changes" run ad infinitum): a role whose find-something-to-do is broken, or whose prompt keeps coming back empty against real backlog, is indistinguishable from a healthy idle loop. The `no_change` result is already the verdict, and the loop state already persists streak-style counters beside it (`quietKillStreak`); only the per-loop no-change count and its rendering are missing.
+
+**Approach.** Count consecutive `no_change` outcomes per loop in the existing accumulator, persist it, and expose it on every loop surface. Count `no_change` specifically (not the yield ring's `n`, which also swallows non-landing results like `user_aborted` and `review_error`); reset on any other completed result so a loop that lands between no-ops never shows a stale streak.
+
+- `src/loop/loop-state.ts`: add a persisted `noChangeStreak?: number` field, documented right beside `consecutiveErrors`/`quietKillStreak` (the `LoopState` interface ~line 132-139) as "consecutive completed ticks that ended `no_change`". Absent on states written before the field existed — reads as 0.
+- `src/tick/tick-apply.ts`: in `applyTickOutcome`, immediately beside the `quietKillStreak` increment (the result-driven block ~line 109-115, next to `pushYieldOutcome`), add `s.noChangeStreak = outcome.result === "no_change" ? (s.noChangeStreak ?? 0) + 1 : 0;`. Every completed result reaches this block (tick-finalize.ts:80 calls `applyTickOutcome` for every outcome), so `changed`/`queued`/`error`/`aborted`/`quiet_killed`/`user_aborted` all reset it and only a `no_change` tick grows it.
+- `src/ui/status-payload.ts`: in the per-loop record builder, beside `yieldMultiplier` (~line 107), add `noChangeStreak: s.noChangeStreak ?? 0,` so the TUI and GUI have the number without re-deriving anything.
+- `src/ui/status-model.ts`: in the phase-label function that returns the state cell (the one returning `sleeping (for …)` ~line 222, plain idle/skip labels after), when `(s.noChangeStreak ?? 0) >= 2 && !onErrorStreak(s)` append a ` · no change ×N` suffix to the returned label. N=1 and an absent field render today's label byte-identically.
+- `src/ui/gui/gui-client-model.ts`: read `noChangeStreak` from the payload and render `no change ×N` on the loop row/drawer when it is >= 2, mirroring the status label.
+- Tests: src/tick/tick-apply's tests (test/tick-apply.test.ts) assert a `no_change` outcome increments the field and a `changed`/`error`/`queued` outcome resets it; the status-model/status-payload tests assert the ` · no change ×N` suffix appears at N>=2 and is absent at 0/1 or when the field is missing.
+
+**Files touched.** `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, `src/ui/status-payload.ts`, `src/ui/status-model.ts`, `src/ui/gui/gui-client-model.ts`, and their tests (`test/tick-apply.test.ts`, the status-model/status-render/status-payload suites). No `src/scheduling`, `src/doctor`, `src/status`, `src/orchestrator`, `src/concurrency`, or `src/report` file.
+
+**Acceptance criteria.**
+- A loop whose last N completed ticks were `no_change` (N>=2) shows ` · no change ×N` in `tumwater status` and the GUI; N=1, a 0/absent field, or a non-`no_change` last result render today's label exactly, so old goldens are unchanged.
+- Any completed result other than `no_change` — a landing (`changed`), a `queued` change, an `error`, an `aborted`, a `quiet_killed` — resets the counter to 0 (a loop that lands between no-ops never shows a stale streak).
+- The counter persists across a restart (a persisted `LoopState` field), and the streak also appears as `noChangeStreak` in `tumwater status --json` / the status payload for the TUI and GUI to read.
+- No new doctor warning (a long streak on a legitimately idle maintenance loop with an empty backlog is expected, not an error) — this is observational only.
+- `npm run test` passes.
+
 
 
 
