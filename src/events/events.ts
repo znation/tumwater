@@ -41,7 +41,7 @@ export interface HarnessEvent {
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "entry_refused" // a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason and files — the entry stays held until a human or the director lifts it
     | "wake"
-    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/human commit since its last no_change tick), or "plans-full" (the plan loop's PLANS.md already holds its eligible-plan target); one per deferral episode
+    | "tick_deferred" // need-based prioritization: a due maintenance tick was deferred; carries reason "backlog" (PLANS.md `## Planned` or BUGS.md `## Open` non-empty) "no-work" (no feature/bugfix/director/operator/human commit since its last no_change tick), or "plans-full" (the plan loop's PLANS.md already holds its eligible-plan target); one per deferral episode
     | "orchestrator_start"
     | "orchestrator_stop"
     | "prompt_enqueued"

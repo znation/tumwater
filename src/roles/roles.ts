@@ -54,8 +54,9 @@ const CODE_MAINTENANCE_ROLES: readonly string[] = [
 ];
 
 /** Maintenance-tier roles (need-based prioritization): exactly the ten built-ins whose due
- * ticks are deferrable while no feature/bugfix/director/human commit has landed on main since
- * their last tick and that tick did nothing. Unknown/custom roles are deliberately NOT in this
+ * ticks are deferrable while no feature, bugfix, director, operator or human commit has merged
+ * into main since their last tick and that tick did nothing. Unknown/custom roles are
+ * deliberately NOT in this
  * set — the harness cannot judge what an arbitrary custom role needs, so they never defer (they
  * still sort into tier 1 for fairOrder via roleTier). Observers are excluded: an unmoved tree
  * says nothing about whether the product or the event log has something new to report. */

@@ -341,7 +341,7 @@ test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order fo
 
 // --- Need-based prioritization (workLanded / deferTick) ---
 
-test("workLanded: feature/bugfix/director and human subjects count; other roles do not", () => {
+test("workLanded: feature/bugfix/director, operator and human subjects count; other roles do not", () => {
   assert.equal(workLanded(["tumwater(feature): land a plan"]), true);
   assert.equal(workLanded(["tumwater(bugfix): fix the crash"]), true);
   // A director commit is user-directed work: after a pure-director burst the maintenance
@@ -360,11 +360,22 @@ test("workLanded: feature/bugfix/director and human subjects count; other roles 
   // A human commit (no tumwater( prefix) is work: the world changed in a way the fleet
   // cannot generate itself.
   assert.equal(workLanded(["fix the flaky test by hand"]), true);
+  assert.equal(workLanded(["tumwater(operator): Edit brief"]), true);
+  assert.equal(workLanded(["tumwater(operator): File plan: x"]), true);
   assert.equal(
     workLanded(["tumwater(readme): sync", "tumwater(bugfix): fix it"]),
     true,
   );
   assert.equal(workLanded([]), false); // nothing landed since
+});
+
+test("deferTickReason: an operator commit admits an idle readme; a readme commit alone does not", () => {
+  const NOW = Date.now();
+  const s = freshLoopState("readme");
+  s.lastResult = "no_change";
+  s.lastMainHead = "abc123";
+  assert.equal(deferTickReason(s, "readme", workLanded(["tumwater(operator): Edit brief"]), false, false, NOW), null);
+  assert.equal(deferTickReason(s, "readme", workLanded(["tumwater(readme): sync"]), false, false, NOW), "no-work");
 });
 
 test("deferTick: only a deferrable no_change role that has seen main and got no work defers", () => {

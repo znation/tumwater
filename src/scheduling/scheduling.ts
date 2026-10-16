@@ -145,16 +145,19 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
 
 /** Did work land on main since a head? (Need-based prioritization, PLANS.md "Prioritize loops
  * by need".) A commit counts when its subject starts with `tumwater(feature):`,
- * `tumwater(bugfix):`, or `tumwater(director):` — the harness stamps that prefix itself
- * (buildCommitMessage), so attribution needs no new metadata; a director commit is user-directed
+ * `tumwater(bugfix):`, `tumwater(director):`, or `tumwater(operator):` — the harness stamps
+ * that prefix itself (buildCommitMessage), so attribution needs no new metadata; a director
+ * commit is user-directed
  * work, and after a pure-director burst the maintenance roles must resync. Or the subject
  * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
- * fleet cannot generate itself. Every other role's landing is markdown or hygiene; waking
+ * fleet cannot generate itself. An operator commit (the stamp the CLI, TUI and dashboard
+ * backlog/brief edits write) is the human's own change made through tumwater, so it counts like
+ * an unstamped human commit. Every other role's landing is markdown or hygiene; waking
  * maintenance roles on it is exactly the cascade deferral removes.
  */
 export function workLanded(subjects: string[]): boolean {
   return subjects.some(
-    (subject) => /^tumwater\((feature|bugfix|director)\):/.test(subject) || !subject.startsWith("tumwater("),
+    (subject) => /^tumwater\((feature|bugfix|director|operator)\):/.test(subject) || !subject.startsWith("tumwater("),
   );
 }
 
@@ -183,7 +186,7 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * nothing; it has seen main before (a never-ticked role always runs its first tick); either
  * the backlog is open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued
  * feature/bugfix work outranks idle maintenance regardless of what landed — or no
- * feature/bugfix/director/human commit landed since that head; and the deferral has not
+ * feature/bugfix/director/operator/human commit landed since that head; and the deferral has not
  * outlasted DEFER_MAX_MS. Only `no_change` defers: every other outcome carries pending
  * business (retry an error, address recorded review-rejection reasons, recover a merge
  * failure) that must not stall until unrelated work lands. A blocked backlog keeps maintenance
@@ -198,13 +201,13 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * false) it has no assigned work and behaves as a search role, so it schedules like a
  * maintenance role — same predicate, including the wake override and the DEFER_MAX_MS cap —
  * except the backlog-open clause is dropped: its backlog is empty by precondition, so it defers
- * only while no feature/bugfix/director/human commit landed since its last tick (a feature
+ * only while no feature/bugfix/director/operator/human commit landed since its last tick (a feature
  * landing is exactly the kind of change that creates bugs, so it wakes the search). With one or
  * more open bugs it never defers here; pollRunnerReasons stands it down while all of them are
  * held (refused, needs-review, blocked).
  */
 /** Which clause deferred a due tick: the open feature/bugfix backlog ("backlog"), or no
- * feature/bugfix/director/human commit having landed since its last no-change tick
+ * feature/bugfix/director/operator/human commit having landed since its last no-change tick
  * ("no-work"). The `tick_deferred` event carries it, so the feed and the failure digest name
  * the clause that actually held the role back instead of spelling the no-work case over a
  * need-based deferral. */
