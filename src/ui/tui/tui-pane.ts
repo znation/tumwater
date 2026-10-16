@@ -12,7 +12,7 @@ import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
 import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
 import type { HarnessEvent } from "../../events/events.js";
-import { backlogLines, entryBodyWindow, labeledBacklogEntries } from "./tui-backlog.js";
+import { backlogLines, entryBodyWindow, labeledBacklogEntries, planListLines } from "./tui-backlog.js";
 import type { QueuedListRow } from "../../inbox/inbox.js";
 import { rolePayload } from "../../roles/role-view.js";
 import { inspectMarkdownLines } from "../../roles/role-render.js";
@@ -132,8 +132,11 @@ export function paneBody(
       // List mode: section headings stand out, empty sections read dim. Keeps the HEAD of the
       // list when it overflows — file order is newest-first, unlike events which keep the tail.
       const listed = (label: string) => flat.filter((e) => e.label === label).map((e) => e.title + e.mark);
+      // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
+      // below still walks the flat list, one entry per part.
+      const plans = flat.filter((e) => e.label === "plan");
       return {
-        body: backlogLines(listed("plan"), listed("bug"), listed("question"))
+        body: backlogLines(planListLines(plans), listed("bug"), listed("question"), plans.length)
           .slice(0, eventBudget)
           .map((l) => toneLine(l, width, /^(?:plans|open bugs|open questions) \(\d+\):$/.test(l) ? "bold" : l.startsWith("(") ? "dim" : undefined)),
         emptyNote: "(no events yet)",

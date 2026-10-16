@@ -5,7 +5,13 @@ import {
   plannedPlanEntries,
   type BacklogEntry,
 } from "../../backlog/backlog.js";
-import { backlogMarks } from "../../backlog/backlog-eligibility.js";
+import {
+  backlogHolds,
+  backlogInProgress,
+  backlogMarks,
+  type EntryHold,
+} from "../../backlog/backlog-eligibility.js";
+import { groupBlockedSeries, partsLabel } from "../../backlog/backlog-structure.js";
 import { clipToWidth } from "../../text/text-width.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
@@ -16,27 +22,69 @@ import { clipToWidth } from "../../text/text-width.js";
  * unit-testable without a TTY. */
 
 /** The project-status pane's flat entry list (plans, then bugs, then questions), each labeled
- * with its section and carrying its eligibility mark (empty for an eligible entry), read fresh
+ * with its section and carrying its eligibility mark (empty for an eligible entry) plus the
+ * hold and live claimer that mark was built from (questions: null and undefined), read fresh
  * — the one definition shared by the keypress handlers and the render (src/ui/tui/tui-keys.ts,
  * src/ui/tui/tui-pane.ts), so stale-selection clamping cannot drift. */
-export function labeledBacklogEntries(root: string): Array<{ label: string; mark: string } & BacklogEntry> {
+export function labeledBacklogEntries(
+  root: string,
+): Array<{ label: string; mark: string; hold: EntryHold; claimer: string | undefined } & BacklogEntry> {
   const marks = backlogMarks(root);
+  const holds = backlogHolds(root);
+  const runners = backlogInProgress(root);
   return [
-    ...plannedPlanEntries(root).map((e, i) => ({ label: "plan", mark: marks.plans[i] ?? "", ...e })),
-    ...openBugEntries(root).map((e, i) => ({ label: "bug", mark: marks.bugs[i] ?? "", ...e })),
-    ...openQuestionEntries(root).map((e) => ({ label: "question", mark: "", ...e })),
+    ...plannedPlanEntries(root).map((e, i) => ({
+      label: "plan",
+      mark: marks.plans[i] ?? "",
+      hold: holds.plans[i] ?? null,
+      claimer: runners.plans[i] ?? undefined,
+      ...e,
+    })),
+    ...openBugEntries(root).map((e, i) => ({
+      label: "bug",
+      mark: marks.bugs[i] ?? "",
+      hold: holds.bugs[i] ?? null,
+      claimer: runners.bugs[i] ?? undefined,
+      ...e,
+    })),
+    ...openQuestionEntries(root).map((e) => ({
+      label: "question",
+      mark: "",
+      hold: null,
+      claimer: undefined,
+      ...e,
+    })),
   ];
+}
+
+/** The plan section's list lines: each row is its title plus mark, except a series' blocked
+ * parts (two or more), which become one `<series>, N blocked parts (…)` line at the first
+ * part — the text `plan --list` prints (groupBlockedSeries). Pure. */
+export function planListLines(
+  plans: ReadonlyArray<{ title: string; mark: string; hold: EntryHold; claimer: string | undefined }>,
+): string[] {
+  return groupBlockedSeries(plans).map((g) =>
+    g.kind === "row"
+      ? g.row.title + g.row.mark
+      : `${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`,
+  );
 }
 
 /** The project-status body lines for the TUI: a `plans (N):` subheader with one line per plan,
  * an `open bugs (M):` subheader and one line per bug, then an `open questions (K):` subheader
- * and one line per question. An empty section renders `(none)` under its subheader; when all
+ * and one line per question. `planCount` is the number of planned entries when `plans` holds
+ * collapsed series lines. An empty section renders `(none)` under its subheader; when all
  * three are empty the whole view is a single self-explanatory line.
  * Pure, so it is unit-testable without touching disk. */
-export function backlogLines(plans: string[], bugs: string[], questions: string[]): string[] {
+export function backlogLines(
+  plans: string[],
+  bugs: string[],
+  questions: string[],
+  planCount: number = plans.length,
+): string[] {
   if (plans.length === 0 && bugs.length === 0 && questions.length === 0)
     return ["(no planned features, open bugs, or open questions)"];
-  const lines = [`plans (${plans.length}):`];
+  const lines = [`plans (${planCount}):`];
   lines.push(...(plans.length ? plans : ["(none)"]));
   lines.push(`open bugs (${bugs.length}):`);
   lines.push(...(bugs.length ? bugs : ["(none)"]));

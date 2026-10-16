@@ -5,10 +5,11 @@ import {
   entryBodyWindow,
   labeledBacklogEntries,
   moveEntrySelection,
+  planListLines,
   stepEntryScroll,
 } from "../src/ui/tui/tui-backlog.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { backlogMarks } from "../src/backlog/backlog-eligibility.js";
+import { backlogMarks, holdMark } from "../src/backlog/backlog-eligibility.js";
 import { paneBody } from "../src/ui/tui/tui-pane.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 
@@ -249,4 +250,67 @@ test("paneBody's backlog list and entry mode show the same eligibility mark besi
     header.map((s) => s.text).join(""),
     "plan: Later, part 2/2: y (planned 2026-10-02; requires Base 1/2 landed) [blocked: requires Base 1/2]",
   );
+});
+
+const blockedHold = { blockedBy: ["S 1/3"] };
+const planRow = (title: string, hold: { blockedBy: string[] } | null, claimer?: string) => ({
+  title,
+  hold,
+  claimer,
+  mark: holdMark(hold),
+});
+
+test("planListLines collapses a series' blocked parts to one line at its first part", () => {
+  const rows = [
+    planRow("Ready", null),
+    planRow("S, part 1/3: a", null),
+    planRow("S, part 2/3: b", blockedHold),
+    planRow("S, part 3/3: c", blockedHold),
+    planRow("Lone, part 2/2: d", blockedHold),
+  ];
+  assert.deepEqual(planListLines(rows), [
+    "Ready",
+    "S, part 1/3: a",
+    "S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]",
+    "Lone, part 2/2: d" + holdMark(blockedHold),
+  ]);
+  const claimed = [
+    planRow("S, part 1/3: a", null),
+    planRow("S, part 2/3: b", blockedHold, "feature"),
+    planRow("S, part 3/3: c", blockedHold),
+  ];
+  assert.deepEqual(
+    planListLines(claimed),
+    claimed.map((r) => r.title + r.mark),
+  );
+});
+
+test("backlogLines counts planCount, not lines, in the plans subheader", () => {
+  assert.equal(backlogLines(["x"], [], [], 3)[0], "plans (3):");
+});
+
+test("paneBody's backlog list collapses a blocked series while entry mode still reaches each part", () => {
+  const dir = tmpdir();
+  writeBacklogFile(dir, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: "### Base, part 1/3: x (planned 2026-10-01)\n\nBody.\n\n### Base, part 2/3: y (planned 2026-10-02; requires Base 1/3 landed)\n\nBody.\n\n### Base, part 3/3: z (planned 2026-10-03; requires Base 2/3 landed)\n\nBody.",
+    },
+    { heading: "## Done" },
+  ]);
+  writeBacklogFile(dir, "BUGS.md", [
+    { heading: "## Open", body: "### Live bug (reported 2026-10-01)\n\nRepro." },
+    { heading: "## Fixed" },
+  ]);
+  const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
+  const opts = { root: dir, width: 300, eventBudget: 20, entryBudget: 5 };
+  const text = (selectedEntry: number | null) =>
+    paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry } }).body.map((l) => l.map((x) => x.text).join(""));
+  const list = text(null);
+  assert.equal(list[0], "plans (3):");
+  assert.equal(list[1], "Base, part 1/3: x (planned 2026-10-01)");
+  assert.equal(list[2], "Base, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]");
+  assert.ok(list.includes("Live bug (reported 2026-10-01)"));
+  const third = labeledBacklogEntries(dir)[2]!;
+  assert.equal(text(2)[0], `plan: ${third.title}${third.mark}`);
 });
