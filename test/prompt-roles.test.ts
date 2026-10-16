@@ -122,7 +122,7 @@ test("the director's request-file contract replaces the tumwater.json edit excep
   assert.match(d, /Note on one boundary in the rules below, director only/);
   // The note precedes the shared rules so the reply contract still closes the prompt.
   assert.ok(buildDirectorPrompt("x", "y").trimEnd().endsWith("write none when nothing was run>"));
-  assert.match(d, /applies only its customLoops array/);
+  assert.match(d, /applies only its customRoles array/);
   assert.match(d, /discarded with a warning/);
   // No edit exception remains: the director is told the config stays off-limits to it too.
   assert.ok(!d.includes("Exception to one boundary above"), "no tumwater.json edit exception");

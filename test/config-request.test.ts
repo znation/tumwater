@@ -12,7 +12,7 @@ import { customLoopNames, defaultConfig, loadConfig, saveConfig } from "../src/c
 import { configRequestPath } from "../src/paths.js";
 
 // Harness-mediated config writes (plans/portability.md §3/7): the director leaves a request
-// file in its worktree; applyConfigRequest validates, applies only customLoops, and deletes
+// file in its worktree; applyConfigRequest validates, applies only customRoles, and deletes
 // the request on EVERY path — so custom-loop management works with the config tracked,
 // gitignored, or absent, and the file never reaches a commit.
 
@@ -26,11 +26,11 @@ test("applyConfigRequest returns null when no request file exists", () => {
   assert.equal(applyConfigRequest(root, wt), null);
 });
 
-test("applyConfigRequest applies a customLoops array to the live config and deletes the request", () => {
+test("applyConfigRequest applies a customRoles array to the live config and deletes the request", () => {
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
-  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "Keep the examples current." }] });
   const result = applyConfigRequest(root, wt);
   assert.deepEqual(result?.applied, ["docs"]);
   assert.deepEqual(result?.ignored, []);
@@ -42,6 +42,35 @@ test("applyConfigRequest applies a customLoops array to the live config and dele
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 });
 
+test("applyConfigRequest still applies a request that says the old customLoops", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  const result = applyConfigRequest(root, wt);
+  assert.deepEqual(result?.applied, ["docs"]);
+  assert.deepEqual(result?.ignored, []);
+  assert.equal(result?.error, undefined);
+  assert.deepEqual(customLoopNames(loadConfig(root)), ["docs"]);
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+});
+
+test("applyConfigRequest refuses a request naming both customRoles and customLoops", () => {
+  const root = tmpdir();
+  const wt = tmpdir();
+  saveConfig(root, defaultConfig());
+  const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
+  writeRequest(wt, {
+    customRoles: [{ name: "docs", task: "a" }],
+    customLoops: [{ name: "docs", task: "b" }],
+  });
+  const result = applyConfigRequest(root, wt);
+  assert.deepEqual(result?.applied, []);
+  assert.match(result?.error ?? "", /customLoops and customRoles are both set/);
+  assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before);
+  assert.ok(!fs.existsSync(configRequestPath(wt)));
+});
+
 test("applyConfigRequest keeps one pi spelling when writing the merged config", () => {
   const root = tmpdir();
   const wt = tmpdir();
@@ -50,7 +79,7 @@ test("applyConfigRequest keeps one pi spelling when writing the merged config", 
   // saveConfig collapses the default piArgs the merged config always carries, so the live file
   // starts with only the new spelling.
   saveConfig(root, config);
-  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "Keep the examples current." }] });
   const result = applyConfigRequest(root, wt);
   assert.equal(result?.error, undefined);
   assert.deepEqual(result?.applied, ["docs"]);
@@ -66,7 +95,7 @@ test("applyConfigRequest replaces the whole array and strips orphaned roles entr
   const root = tmpdir();
   const wt = tmpdir();
   const config = defaultConfig();
-  config.customLoops = [
+  config.customRoles = [
     { name: "docs", task: "old task" },
     { name: "scrape", task: "old task" },
   ];
@@ -75,24 +104,24 @@ test("applyConfigRequest replaces the whole array and strips orphaned roles entr
   saveConfig(root, config);
   // The replacement array keeps only docs — scrape's roles entry must go with it, or
   // validateConfig would reject the orphaned id and the removal would never apply.
-  writeRequest(wt, { customLoops: [{ name: "docs", task: "new task" }] });
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "new task" }] });
   const result = applyConfigRequest(root, wt);
   assert.deepEqual(result?.applied, ["docs"]);
   assert.deepEqual(result?.ignored, []);
   assert.equal(result?.error, undefined);
   const loaded = loadConfig(root);
   assert.deepEqual(customLoopNames(loaded), ["docs"]);
-  assert.equal(loaded.customLoops[0]!.task, "new task");
+  assert.equal(loaded.customRoles[0]!.task, "new task");
   assert.equal(loaded.roles.docs?.enabled, false, "a kept loop's roles entry survives");
   assert.ok(!("scrape" in loaded.roles), "a removed loop's roles entry is stripped");
 });
 
-test("applyConfigRequest ignores disallowed keys with their names, and still applies customLoops", () => {
+test("applyConfigRequest ignores disallowed keys with their names, and still applies customRoles", () => {
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
   writeRequest(wt, {
-    customLoops: [{ name: "docs", task: "Keep the examples current." }],
+    customRoles: [{ name: "docs", task: "Keep the examples current." }],
     maxDailyCostUsd: 1,
     roles: { director: { enabled: false } },
   });
@@ -112,10 +141,10 @@ test("applyConfigRequest rejects an invalid candidate: nothing written, previous
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
-  writeRequest(wt, { customLoops: [{ name: "Docs", task: "uppercase name" }] });
+  writeRequest(wt, { customRoles: [{ name: "Docs", task: "uppercase name" }] });
   const result = applyConfigRequest(root, wt);
   assert.ok(result?.error, "a validation failure surfaces as an error string");
-  assert.match(result.error, /customLoops\[0\]\.name/);
+  assert.match(result.error, /customRoles\[0\]\.name/);
   assert.deepEqual(result.applied, []);
   assert.deepEqual(loadConfig(root), defaultConfig());
   // Deleted anyway — a malformed request must not retry forever.
@@ -128,9 +157,9 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   saveConfig(root, defaultConfig());
   // Regression: a null entry must reach validateConfig as a named problem, never crash on a
   // premature `.name` dereference.
-  writeRequest(wt, { customLoops: [null] });
+  writeRequest(wt, { customRoles: [null] });
   let result = applyConfigRequest(root, wt);
-  assert.ok(result?.error?.includes('customLoops[0]'), JSON.stringify(result));
+  assert.ok(result?.error?.includes('customRoles[0]'), JSON.stringify(result));
   assert.deepEqual(loadConfig(root), defaultConfig());
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
@@ -139,7 +168,7 @@ test("applyConfigRequest survives structurally malformed requests without throwi
   assert.ok(result?.error, "unparseable JSON surfaces as an error string");
   assert.ok(!fs.existsSync(configRequestPath(wt)));
 
-  writeRequest(wt, { customLoops: "everything" });
+  writeRequest(wt, { customRoles: "everything" });
   result = applyConfigRequest(root, wt);
   assert.ok(result?.error?.includes('must be an array'), JSON.stringify(result));
   assert.ok(!fs.existsSync(configRequestPath(wt)));
@@ -161,7 +190,7 @@ test("a request whose unlink fails is still applied, with the failed deletion su
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
-  writeRequest(wt, { customLoops: [{ name: "docs", task: "Keep the examples current." }] });
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "Keep the examples current." }] });
   fs.chmodSync(wt, 0o555); // readable and searchable — the read succeeds, the unlink cannot
   try {
     const result = applyConfigRequest(root, wt);
@@ -182,13 +211,13 @@ test("a validation failure outranks a failed deletion in the surfaced error", (t
   const root = tmpdir();
   const wt = tmpdir();
   saveConfig(root, defaultConfig());
-  writeRequest(wt, { customLoops: [{ name: "Docs", task: "uppercase name" }] });
+  writeRequest(wt, { customRoles: [{ name: "Docs", task: "uppercase name" }] });
   fs.chmodSync(wt, 0o555);
   try {
     const result = applyConfigRequest(root, wt);
     assert.ok(result);
     assert.deepEqual(result.applied, []);
-    assert.match(result.error ?? "", /customLoops\[0\]\.name/);
+    assert.match(result.error ?? "", /customRoles\[0\]\.name/);
     assert.doesNotMatch(result.error ?? "", /could not be deleted/);
   } finally {
     fs.chmodSync(wt, 0o755);
@@ -206,7 +235,7 @@ test("applyConfigRequest preserves the file's own roles section", () => {
     path.join(root, "tumwater.json"),
     JSON.stringify({ roles: { feature: { enabled: true }, qa: { enabled: false } } }),
   );
-  writeRequest(wt, { customLoops: [] });
+  writeRequest(wt, { customRoles: [] });
   const result = applyConfigRequest(root, wt);
   assert.equal(result?.error, undefined);
   assert.deepEqual(
@@ -222,14 +251,14 @@ test("applyConfigRequest strips a removed custom loop's entry from the file's ow
   fs.writeFileSync(
     path.join(root, "tumwater.json"),
     JSON.stringify({
-      customLoops: [
+      customRoles: [
         { name: "docs", task: "old task" },
         { name: "scrape", task: "old task" },
       ],
       roles: { feature: { enabled: true }, docs: { enabled: false }, scrape: { enabled: false } },
     }),
   );
-  writeRequest(wt, { customLoops: [{ name: "docs", task: "new task" }] });
+  writeRequest(wt, { customRoles: [{ name: "docs", task: "new task" }] });
   const result = applyConfigRequest(root, wt);
   assert.equal(result?.error, undefined);
   assert.deepEqual(

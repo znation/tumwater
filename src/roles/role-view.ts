@@ -37,9 +37,9 @@ import { finiteNumber } from "../files/json-object.js";
 export interface RoleViewPayload {
   /** The loop's id as the caller named it. */
   id: string;
-  /** The catalog title, or "user-defined loop" for a customLoops entry. */
+  /** The catalog title, or "user-defined loop" for a customRoles entry. */
   title: string;
-  /** True when the id resolves through config.customLoops, not the built-in catalog. */
+  /** True when the id resolves through config.customRoles, not the built-in catalog. */
   custom: boolean;
   /** Whether the loop is enabled in tumwater.json (a disabled loop never ticks). */
   enabled: boolean;
@@ -162,7 +162,7 @@ export function rolePayload(
   const { config } = loadConfigSafe(root);
   const cfg = config ?? defaultConfig();
   const catalog = roleById(role);
-  const customEntry = cfg.customLoops.find((c) => c.name === role);
+  const customEntry = cfg.customRoles.find((c) => c.name === role);
   // The director is inspectable like any loop but has no catalog entry: a pseudo-Role whose
   // find text is empty (rolePayload nulls it below — the director's queued prompts ARE its
   // work), so the unknown-role throw only fires for ids nothing can answer.

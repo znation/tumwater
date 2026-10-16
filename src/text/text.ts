@@ -199,7 +199,7 @@ export function parseNonNegativeInt(raw: string): number | null {
  * with `tail` naming where the text rides once accepted. The one home of that phrasing, used
  * by init's seed check (init.ts, "the initial prompt … every tick's prefill"), inbox-submit's
  * promptLengthProblem ("the prompt … the <role> tick's prefill"), and config-validation's
- * customLoops task and roles instructions caps (both "every tick's prefill"), so the four
+ * customRoles task and roles instructions caps (both "every tick's prefill"), so the four
  * too-long messages cannot drift apart in shape. Callers keep their own subject, cap, and
  * tail; this owns only the sentence around them. */
 export function tooLongMessage(subject: string, n: number, max: number, tail: string): string {

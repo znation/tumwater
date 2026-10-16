@@ -126,7 +126,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; exit 1`);
   fs.writeFileSync(
     path.join(root, "tumwater.json"),
-    JSON.stringify({ customLoops: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
+    JSON.stringify({ customRoles: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
   );
   const restore = fakeNpm(`echo run >> ${counter}; exit 1`);
   try {
@@ -140,7 +140,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.length, 1);
     assert.equal(checks[0]?.loop, "docs-auditor");
-    // A role that is neither in the catalog nor in customLoops still passes through ungated.
+    // A role that is neither in the catalog nor in customRoles still passes through ungated.
     assert.equal(await mainRedGate(root, "not-a-role", wt), null);
   } finally {
     restore();

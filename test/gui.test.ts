@@ -309,14 +309,14 @@ test("gui /api/transcript serves rendered lines and validates role/n", async () 
   }
 });
 
-// User-defined loops (tumwater.json's customLoops) are first-class transcript targets: the
+// User-defined loops (tumwater.json's customRoles) are first-class transcript targets: the
 // GUI marks them with an asterisk, so clicking one must open its panel — /api/transcript
-// validates against catalog + customLoops when the config parses.
+// validates against catalog + customRoles when the config parses.
 test("gui /api/transcript accepts user-defined loop roles listed in tumwater.json", async () => {
   const repo = makeRepo();
   await initProject(repo, "custom transcript test");
   const cfg = loadConfig(repo);
-  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // A log for the custom loop — same shape as a built-in's.
   writeLogLines(piLogPath(repo, "nightly"), [

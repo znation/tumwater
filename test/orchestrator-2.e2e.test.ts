@@ -448,7 +448,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     // Adding a custom entry starts its runner within one poll cycle — the live-reload
     // machinery already handles any enabled id, so no orchestrator change is needed.
     let cfg = fastConfig(["clean"]);
-    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
     await waitFor(() => finished("docs-auditor"), "the new custom loop to tick");
     assert.ok(
@@ -482,7 +482,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     // Re-adding the same name revives its persisted state — counters survive, like re-enabling a
     // built-in.
     cfg = fastConfig(["clean"]);
-    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
     await waitFor(
       () => loadLoopState(repo, "docs-auditor").ticks > removedTicks && !loadLoopState(repo, "docs-auditor").running,
@@ -496,15 +496,15 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
 
     // Reordering two entries reorders the status table without touching built-in order.
     cfg = fastConfig(["clean"]);
-    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
-    cfg.customLoops.push({ name: "perf-hunter", task: "Hunt perf wins." });
+    cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
+    cfg.customRoles.push({ name: "perf-hunter", task: "Hunt perf wins." });
     saveConfig(repo, cfg);
     await waitFor(() => finished("perf-hunter"), "the second custom loop to tick");
     assert.deepEqual(loopOrder().slice(-2), ["docs-auditor", "perf-hunter"], "customs after built-ins in array order");
 
     cfg = fastConfig(["clean"]);
-    cfg.customLoops.push({ name: "perf-hunter", task: "Hunt perf wins." });
-    cfg.customLoops.push({ name: "docs-auditor", task: "Keep the docs current." });
+    cfg.customRoles.push({ name: "perf-hunter", task: "Hunt perf wins." });
+    cfg.customRoles.push({ name: "docs-auditor", task: "Keep the docs current." });
     saveConfig(repo, cfg);
     await waitFor(
       () => {

@@ -16,7 +16,7 @@ import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixture
 // test/config-validation-check.test.ts (the `check` section), test/config-validation-limits.test.ts
 // (budget/disk/duration/quiet-hours bounds), and test/config-validation-model.test.ts (the
 // fallback and model-tier forms). The rest of src/config/config.ts's surface (defaults, per-role
-// views, the read cache, customLoops, the example template) stays in test/config.test.ts.
+// views, the read cache, customRoles, the example template) stays in test/config.test.ts.
 
 test("show renders the offending value honestly and compactly", () => {
   // Regression: JSON.stringify(Infinity) is "null", so a huge numeric literal — which

@@ -62,7 +62,7 @@ export interface StatusSnapshot {
    * Empty when nothing failed or no probe ran — the amber probe alert keys on this. */
   imageProbeFailures: string[];
   /** One row per enabled loop. `custom` marks user-defined loops (tumwater.json's
-   * customLoops) for the dashboards' asterisk — display-only metadata computed here at the
+   * customRoles) for the dashboards' asterisk — display-only metadata computed here at the
    * source, from the same last-known-good config that produced the role list, so a transiently
    * broken tumwater.json keeps marking its customs rather than flipping them unmarked
    * mid-poll. LoopState itself stays the persisted type; this intersection is view-layer only. */

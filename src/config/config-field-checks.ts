@@ -122,7 +122,7 @@ export const POSITIVE_INTEGER: NumberRule = {
 export const AT_LEAST_ONE: NumberRule = { ok: (n) => n >= 1, what: "a number of at least 1" };
 
 /** Shared known-role guard for the per-role config sections (`roles.<id>` entries and
- * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customLoops cannot
+ * `maxDailyCostUsdPerRole.<id>` keys): an id outside the role catalog and customRoles cannot
  * work — a `roles` typo spawns a phantom loop that errors every tick forever; a caps typo
  * silently no-ops the cap — so both reject it here with the valid ids, the same message shape
  * `tumwater logs --role` uses for a bad flag value. Returns true when the id is known. */

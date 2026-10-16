@@ -214,7 +214,7 @@ test("COMMON_RULES carries the Refused-note skip rule for every role", () => {
   assert.match(prompt, /skip entries carrying a Refused note — do not pick them and do not re-refuse them/);
 });
 
-// The director is the only loop that can change customLoops — through the harness-mediated
+// The director is the only loop that can change customRoles — through the harness-mediated
 // request file (plans/portability.md §3/7), never by editing tumwater.json. The routing bullet
 // names the mechanics; the note scopes the request so a vague request cannot drift into
 // retuning timeouts or disabling roles. Role tick prompts keep the blanket ban untouched.
@@ -507,7 +507,7 @@ test("a user-defined loop's tick prompt identifies it and carries its task as th
   // The task IS the role-specific find-something-to-do text — no catalog prose around it.
   assert.ok(prompt.includes("Keep the docs current."), "the task rides in as the run's task");
   // COMMON_RULES ride along with every tick prompt — including the blanket tumwater.json ban
-  // (only the director writes that file, and only its customLoops key).
+  // (only the director writes that file, and only its customRoles key).
   assert.match(prompt, new RegExp(NOTHING_TO_DO));
   assert.match(prompt, /Never touch the \.tumwater directory or tumwater\.json/);
 });

@@ -120,7 +120,7 @@ test("completion --config-keys prints parseable keys for this repo's roles, or t
   await run("git", ["init", "-q", dir]);
   writeFileSync(
     join(dir, "tumwater.json"),
-    JSON.stringify({ roles: { feature: { instances: 2 } }, customLoops: [{ name: "docs-bot", task: "keep docs fresh" }] }),
+    JSON.stringify({ roles: { feature: { instances: 2 } }, customRoles: [{ name: "docs-bot", task: "keep docs fresh" }] }),
   );
   const ok = await cli(dir, "completion", "--config-keys");
   assert.equal(ok.code, 0);

@@ -95,7 +95,7 @@ test("status payload marks user-defined loops with the custom flag", async () =>
   const repo = makeRepo();
   await initProject(repo, "payload custom test");
   const cfg = loadConfig(repo);
-  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   // The payload's structural fixture type tolerates the extra field — assert on it directly.
   const payload = statusPayload(repo) as { loops: Array<{ role: string; custom?: boolean }> };

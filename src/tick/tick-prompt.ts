@@ -112,14 +112,14 @@ export function assembleTickPrompt(
     const base = baseRoleOf(role);
     // Catalog first, then user-defined loops (plans/user-defined-loops.md): a custom's task
     // is its entire find-something-to-do text and the title identifies it in the prompt.
-    const custom = config.customLoops.find((c) => c.name === role);
+    const custom = config.customRoles.find((c) => c.name === role);
     const resolved = roleById(role) ?? (custom ? customRole(custom.name, custom.task) : undefined);
     if (!resolved) {
       // The shared unknownRoleMessage (parseRoleFlag, the operator commands) names the valid
       // ids; this defensive path — a runner asked to tick a role no catalog entry or
-      // customLoops task can answer — says the same, so if it ever fires it reads as the
+      // customRoles task can answer — says the same, so if it ever fires it reads as the
       // harness bug it is instead of a bare dead end.
-      const validIds = [...allRoleIds(), ...config.customLoops.map((c) => c.name)];
+      const validIds = [...allRoleIds(), ...config.customRoles.map((c) => c.name)];
       throw new Error(unknownRoleMessage(role, validIds));
     }
     // A queued per-role prompt is dequeued here, before the prompt is built, so its text rides

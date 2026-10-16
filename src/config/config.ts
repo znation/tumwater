@@ -140,7 +140,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // to exempt. Removing it also closes the path where a director tick could land a mixed
     // doc-plus-config diff unreviewed.
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
-    customLoops: [],
+    customRoles: [],
     roles,
   };
 }
@@ -176,7 +176,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
     ),
     // Absent stays absent: no fallback = today's pause behavior.
     ...(cfg.fallbackModel ? { fallbackModel: { ...cfg.fallbackModel } } : {}),
-    customLoops: (cfg.customLoops ?? []).map((c) => ({ ...c })),
+    customRoles: (cfg.customRoles ?? []).map((c) => ({ ...c })),
     roles: { ...base.roles },
   };
   // Seed each user-defined loop into roles BEFORE the overlay loop so a file's `roles` section
@@ -184,7 +184,7 @@ export function overlayDefaults(base: TumwaterConfig, cfg: Partial<TumwaterConfi
   // tickInterval, provider/model); seeding after would silently ignore those overrides.
   // A custom absent from `roles` stays enabled. Insertion order = built-ins then customs in
   // array order — the display and startup tie-break order.
-  for (const c of merged.customLoops) {
+  for (const c of merged.customRoles) {
     // Own-property test, not a bare truthiness read: the custom name `constructor` passes the
     // lowercase charset check and collides with an Object.prototype key, whose inherited value
     // is truthy — a bare `!merged.roles[c.name]` would skip the seed and the loop would never
@@ -215,7 +215,7 @@ export function loadConfig(root: string): TumwaterConfig {
  * Two validation passes, so load enforces exactly what saveConfig and applyConfigRequest do
  * (they gate the fully merged shape): the raw file first, so its own errors keep their precise
  * messages — a whole-section wrong type degrades or crashes under overlaying (a string where
- * `customLoops` belongs makes the merge itself throw) — then the merged result, so cross-field
+ * `customRoles` belongs makes the merge itself throw) — then the merged result, so cross-field
  * rules that depend on defaults catch the shape the file actually produces: a file naming only
  * `idleBackoff.maxSeconds` is judged against the default initialSeconds here, not waved
  * through to be rejected by the next save or silently clamped at runtime. */
@@ -269,7 +269,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
     idleBackoff: { ...c.idleBackoff },
     review: { ...c.review },
     ...(c.fallbackModel ? { fallbackModel: { ...c.fallbackModel } } : {}),
-    customLoops: c.customLoops.map((cl) => ({ ...cl })),
+    customRoles: c.customRoles.map((cl) => ({ ...cl })),
     roles: Object.fromEntries(Object.entries(c.roles).map(([id, rc]) => [id, { ...rc }])),
   };
 }
@@ -334,7 +334,7 @@ export function saveConfig(root: string, config: TumwaterConfig): void {
 
 /** Canonical serialization for config comparison: object keys are sorted recursively so a mere
  * reordering of the same content never looks like a change; arrays keep their order (order is
- * meaningful for `piArgs` and `customLoops`). */
+ * meaningful for `piArgs` and `customRoles`). */
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (isJsonObject(value)) {
@@ -352,7 +352,7 @@ function stableJson(value: unknown): string {
  * already has its own, more informative event. `maxConcurrentPerProvider` is skipped too — each
  * changed provider fires its own `provider_concurrency_changed` event. The `roles` map is never
  * reported whole — only
- * each differing `roles.<id>` — so a `customLoops` add/remove names both the section and the
+ * each differing `roles.<id>` — so a `customRoles` add/remove names both the section and the
  * affected role. */
 export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): string[] {
   const skip = new Set(["maxConcurrent", "maxConcurrentPerProvider", "sessionRetentionDays", "roles"]);
@@ -372,12 +372,12 @@ export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): s
 /** The names of the user-defined loops, in array order (plans/user-defined-loops.md).
  * One source of truth for "which ids are user-defined" so consumers cannot drift. */
 export function customLoopNames(config: TumwaterConfig): string[] {
-  return config.customLoops.map((c) => c.name);
+  return config.customRoles.map((c) => c.name);
 }
 
 /** True when `id` is a user-defined loop rather than a catalog role. */
 export function isCustomRole(config: TumwaterConfig, id: string): boolean {
-  return config.customLoops.some((c) => c.name === id);
+  return config.customRoles.some((c) => c.name === id);
 }
 
 /** Every valid role id — the catalog plus the user-defined loops (the one answer for "which

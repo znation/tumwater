@@ -51,7 +51,7 @@ function configKeyError(res: http.ServerResponse, key: string, result: { error: 
  * one JSON value, through setConfigKey so the browser cannot drift from the CLI's rules
  * (unknown-key refusal, the per-key validators' messages, whole-candidate validateConfig,
  * atomic write the running fleet picks up live). A key outside EDITABLE_CONFIG_KEYS is
- * refused 400 with the key named — a known-but-not-curated key (customLoops) included, so
+ * refused 400 with the key named — a known-but-not-curated key (customRoles) included, so
  * the panel's reach stays exactly EDITABLE_CONFIG_KEYS. The body's value is re-encoded with
  * JSON.stringify before setConfigKey parses it back, so `set model gpt-5`'s
  * JSON-or-literal rule is bypassed harmlessly: the browser already sent parsed JSON.

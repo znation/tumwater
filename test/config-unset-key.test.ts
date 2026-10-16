@@ -171,7 +171,7 @@ test("unsetConfigKey drops a roles entry it empties, keeping the rest of the sec
 test("unsetConfigKey rejects unknown keys and role fields, and a validation failure leaves the file byte-identical", () => {
   const dir = tmpdir();
   const base = defaultConfig();
-  base.customLoops = [{ name: "myloop", task: "do a thing" }];
+  base.customRoles = [{ name: "myloop", task: "do a thing" }];
   base.roles.myloop = { enabled: true };
   saveConfig(dir, base);
   const file = path.join(dir, "tumwater.json");
@@ -185,11 +185,11 @@ test("unsetConfigKey rejects unknown keys and role fields, and a validation fail
   if (!badField.ok) assert.match(badField.error, /unknown role field "colour" for roles\.qa/);
   assert.equal(fs.readFileSync(file, "utf8"), before, "refused non-writes leave the file byte-identical");
 
-  // Removing customLoops while roles.myloop remains is a candidate validateConfig rejects:
+  // Removing customRoles while roles.myloop remains is a candidate validateConfig rejects:
   // nothing is written and the error is surfaced.
-  const rejected = unsetConfigKey(dir, "customLoops");
+  const rejected = unsetConfigKey(dir, "customRoles");
   assert.equal(rejected.ok, false);
-  if (!rejected.ok) assert.match(rejected.error, /roles\.myloop|customLoops/);
+  if (!rejected.ok) assert.match(rejected.error, /roles\.myloop|customRoles/);
   assert.equal(fs.readFileSync(file, "utf8"), before, "a rejected candidate leaves the file byte-identical");
 });
 

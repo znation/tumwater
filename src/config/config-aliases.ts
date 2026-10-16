@@ -16,6 +16,7 @@ const CONFIG_KEY_RENAMES: readonly ConfigKeyRename[] = [
   { from: "tickTimeoutSeconds", to: "runTimeoutSeconds", scope: "top" },
   { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "top" },
   { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "role" },
+  { from: "customLoops", to: "customRoles", scope: "top" },
 ];
 
 /** Move every old key of one object to its new name. Returns a copy when anything moved. */

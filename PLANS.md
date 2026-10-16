@@ -21,39 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests)
-
-**Goal.** Custom roles are declared under `customRoles`. Old files, and the director's `.tumwater-config-request.json`, may still say `customLoops`. A file or request that says both is refused.
-
-**Approach.**
-- Add the row `customLoops` → `customRoles`, scope `"top"`, to `CONFIG_KEY_RENAMES`.
-- Rename `TumwaterConfig.customLoops` → `customRoles` (src/config/config-schema.ts; the `CustomLoop` interface name stays until Plain terms code cleanup) and its `TOP_LEVEL_KEYS` entry. Update the uses:
-  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `customLoopNames`, `isCustomRole`, and the stableJson comment;
-  - src/config/config-validation.ts: messages now name `customRoles[0].name`;
-  - src/config/config-field-checks.ts, src/roles/role-view.ts, src/tick/tick-prompt.ts;
-  - comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts and src/gui/gui-args.ts;
-  - the `EDITABLE_CONFIG_KEYS` comment in src/config/config-editable-keys.ts.
-- `applyConfigRequest` (src/config/config-write.ts), using the normalization part 1/6 wired:
-  - The request may say `customRoles` or `customLoops`.
-  - Both at once fail with the problem text, and nothing is written; the request file is still deleted.
-  - The allowed-key screen compares against `customRoles`, so `customLoops` never shows up as ignored.
-  - Update the docstring's request shape.
-- The key named in text the director reads: the request example and rules in src/prompt/prompt.ts (the `{ "customLoops": … }` lines and "applies only its customLoops array"), and the ignored-keys warning in src/tick/tick-verdict.ts ("only customRoles is accepted"). These are key names, so they move with the key. The rest of the prompt's wording belongs to Plain terms text.
-- tumwater.example.json: `"customRoles": []`.
-- Tests:
-  - test/config-request.test.ts: the request with `customRoles`; the request with old `customLoops` still applies; both together are refused with nothing written; error text now names `customRoles[0].name`.
-  - test/config.test.ts, config-validation-limits, config-unset-key, role-view, tick-prompt, tick-verdict, gui, gui-endpoints, cli-operators-fleet, status-data, orchestrator-probe, loop-ids, main-red and the rest: TypeScript `cfg.customLoops` → `cfg.customRoles`.
-  - test/prompt-roles.test.ts and test/prompt.test.ts assertions on the prompt's key name.
-
-**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-field-checks.ts, config-write.ts, config-editable-keys.ts (comment); src/roles/role-view.ts; src/tick/tick-prompt.ts, tick-verdict.ts; src/prompt/prompt.ts; comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts, src/gui/gui-args.ts, src/cli/config-commands.ts; tumwater.example.json. Tests as listed.
-
-**Acceptance criteria.**
-- A tumwater.json with `customLoops: [{name:"docs",task:"…"}]` runs a `docs` role. `tumwater config` prints it under `customRoles`.
-- A director request `{ "customLoops": [...] }` applies and `{ "customRoles": [...] }` applies. A request with both is refused, the request file is deleted, and tumwater.json is unchanged.
-- Doctor's `config key names` check names `customLoops → customRoles`.
-- The director's prompt shows the request as `{ "customRoles": [ … ] }`.
-- `npm run test` passes.
-
 ### Plain terms commands, part 4/6: Rename the agent and agents config keys to backend and backends (planned 2026-10-16 by user; requires part 3/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/pi/pi-bin.ts and src/agent/agent-backend.ts and src/cli/ and src/ui/gui/gui-client-settings.ts plus tests)
 
 **Goal.** The config names the agent backend `backend` (default for bare model ids) and `backends` (per-backend `bin`/`args`). Old files keep working. The legacy `agentBin`/`piArgs` now chain to `backends.pi.bin`/`.args`.
@@ -3838,6 +3805,39 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests) (done 2026-10-16)
+
+**Goal.** Custom roles are declared under `customRoles`. Old files, and the director's `.tumwater-config-request.json`, may still say `customLoops`. A file or request that says both is refused.
+
+**Approach.**
+- Add the row `customLoops` → `customRoles`, scope `"top"`, to `CONFIG_KEY_RENAMES`.
+- Rename `TumwaterConfig.customLoops` → `customRoles` (src/config/config-schema.ts; the `CustomLoop` interface name stays until Plain terms code cleanup) and its `TOP_LEVEL_KEYS` entry. Update the uses:
+  - src/config/config.ts: `overlayDefaults`, `cloneConfig`, `customLoopNames`, `isCustomRole`, and the stableJson comment;
+  - src/config/config-validation.ts: messages now name `customRoles[0].name`;
+  - src/config/config-field-checks.ts, src/roles/role-view.ts, src/tick/tick-prompt.ts;
+  - comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts and src/gui/gui-args.ts;
+  - the `EDITABLE_CONFIG_KEYS` comment in src/config/config-editable-keys.ts.
+- `applyConfigRequest` (src/config/config-write.ts), using the normalization part 1/6 wired:
+  - The request may say `customRoles` or `customLoops`.
+  - Both at once fail with the problem text, and nothing is written; the request file is still deleted.
+  - The allowed-key screen compares against `customRoles`, so `customLoops` never shows up as ignored.
+  - Update the docstring's request shape.
+- The key named in text the director reads: the request example and rules in src/prompt/prompt.ts (the `{ "customLoops": … }` lines and "applies only its customLoops array"), and the ignored-keys warning in src/tick/tick-verdict.ts ("only customRoles is accepted"). These are key names, so they move with the key. The rest of the prompt's wording belongs to Plain terms text.
+- tumwater.example.json: `"customRoles": []`.
+- Tests:
+  - test/config-request.test.ts: the request with `customRoles`; the request with old `customLoops` still applies; both together are refused with nothing written; error text now names `customRoles[0].name`.
+  - test/config.test.ts, config-validation-limits, config-unset-key, role-view, tick-prompt, tick-verdict, gui, gui-endpoints, cli-operators-fleet, status-data, orchestrator-probe, loop-ids, main-red and the rest: TypeScript `cfg.customLoops` → `cfg.customRoles`.
+  - test/prompt-roles.test.ts and test/prompt.test.ts assertions on the prompt's key name.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-field-checks.ts, config-write.ts, config-editable-keys.ts (comment); src/roles/role-view.ts; src/tick/tick-prompt.ts, tick-verdict.ts; src/prompt/prompt.ts; comments in src/status/status-data.ts, src/brief/brief.ts, src/text/text.ts, src/text/phrases.ts, src/gui/gui-args.ts, src/cli/config-commands.ts; tumwater.example.json. Tests as listed.
+
+**Acceptance criteria.**
+- A tumwater.json with `customLoops: [{name:"docs",task:"…"}]` runs a `docs` role. `tumwater config` prints it under `customRoles`.
+- A director request `{ "customLoops": [...] }` applies and `{ "customRoles": [...] }` applies. A request with both is refused, the request file is deleted, and tumwater.json is unchanged.
+- Doctor's `config key names` check names `customLoops → customRoles`.
+- The director's prompt shows the request as `{ "customRoles": [ … ] }`.
+- `npm run test` passes.
 
 ### `tumwater role <id>` and the GUI loop drawer name the quiet-hours windows that govern the loop and whether one is holding it now, so a per-loop inspection explains a `Next tick: due now` that will not start (planned 2026-10-16 by plan; independent of every other eligible Planned entry — the CLI-banners plan touches `src/ui/status-render.ts` + `src/ui/tui/tui-frame.ts`, the compact-backlog-index plan touches the backlog index, and the diff-behind plan touches `src/change/`; this touches only `src/roles/role-view.ts`, `src/roles/role-render.ts`, `src/ui/gui/gui-client-drawer.ts`, and their tests. It reads, and does not edit, `quietHoursStatus` in src/scheduling/quiet-hours.ts and `baseRoleOf` in src/roles/loop-ids.ts) (done 2026-10-16)
 

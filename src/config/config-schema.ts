@@ -67,7 +67,7 @@ export interface RoleConfig {
   instances?: number;
 }
 
-/** A user-defined loop in tumwater.json's `customLoops` array
+/** A user-defined loop in tumwater.json's `customRoles` array
  * (plans/user-defined-loops.md): each entry becomes a full-citizen loop — persistent worktree +
  * branch, tick lifecycle, review gate, merge to main. Only the director may write this key; every
  * other role's prompt keeps the blanket tumwater.json ban. */
@@ -282,7 +282,7 @@ export interface TumwaterConfig {
    * `maxDailyCostUsd`): a loop whose local-day spend has reached its cap starts no new ticks
    * until local midnight or a live edit raises/removes it. 0 disables that role's cap; an
    * absent key means uncapped. The director is exempt — an explicit human prompt outranks the
-   * autonomous-spend cap. Keys must name known roles (built-in or customLoops) — a typo is a
+   * autonomous-spend cap. Keys must name known roles (built-in or customRoles) — a typo is a
    * validation error, never a silently inert cap. */
   maxDailyCostUsdPerRole?: Record<string, number>;
   /** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): how many
@@ -377,7 +377,7 @@ export interface TumwaterConfig {
    * move makes every existing mechanism (runner creation, live enable/disable, configForRole,
    * status lists, gates) work unchanged. Optional in the file, defaulted to `[]`; required on
    * this type so read sites never see undefined. */
-  customLoops: CustomLoop[];
+  customRoles: CustomLoop[];
   roles: Record<string, RoleConfig>;
 }
 
@@ -425,7 +425,7 @@ export const TOP_LEVEL_KEYS = [
   "autoRestart",
   "bootstrap",
   "review",
-  "customLoops",
+  "customRoles",
   "roles",
 ];
 

@@ -27,7 +27,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   const repo = makeRepo();
   await initProject(repo, "custom role cli test");
   const cfg = loadConfig(repo);
-  cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
+  cfg.customRoles.push({ name: "docs-sync", task: "keep the README examples current" });
   writeConfig(repo, cfg);
 
   // logs --role <custom>: valid id, no transcript yet.
@@ -310,7 +310,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   // not the overrides-only tumwater.json.
   const cfg = loadConfig(repo);
   cfg.minRunIntervalSeconds = 25;
-  cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
+  cfg.customRoles.push({ name: "docs-sync", task: "keep the README examples current" });
   writeConfig(repo, cfg);
 
   const r = await cli(repo, "config");

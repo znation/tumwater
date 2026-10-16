@@ -1,6 +1,6 @@
 /**
  * The config keys the dashboard's Settings view may show and edit: the top-level settings
- * an operator changes often from the browser. Everything else — customLoops, the per-role
+ * an operator changes often from the browser. Everything else — customRoles, the per-role
  * maps — stays CLI/director territory (the plan's curation decision, 2026-10-02). One
  * constant so handleConfig (GET /api/config) and handleConfigSet (POST /api/config-set)
  * cannot drift apart on what is editable.

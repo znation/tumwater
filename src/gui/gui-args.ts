@@ -20,7 +20,7 @@ import { badRequest, sendJson } from "./http-body.js";
 import type http from "node:http";
 
 /** The role ids a loop-targeting endpoint accepts: when tumwater.json parses, catalog +
- * customLoops (knownRoleIds); a transiently broken file falls back to the built-in catalog
+ * customRoles (knownRoleIds); a transiently broken file falls back to the built-in catalog
  * rather than refusing every id — the rule config.knownRoleIdsCached owns. Shared by
  * /api/transcript and the two operator endpoints so their validation and 400 wording cannot
  * drift. */

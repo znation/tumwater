@@ -39,7 +39,7 @@ export const CONFIG_USAGE =
 /** The key screens `config get` and `config unset` run before resolving or removing a value:
  * the shape parser's own error; the shared unknown-top-level-key message; then, for a dotted
  * key, the catalog's known-role check and the shared unknown-role-field message. A dotted key
- * naming a role the catalog (plus customLoops) does not know can never resolve, and a silent
+ * naming a role the catalog (plus customRoles) does not know can never resolve, and a silent
  * `null`/removal for it would read as a real unset when the operator misspelled the id. Fails
  * the process with whichever message applies; returns the parsed key and the freshly loaded
  * config for the caller's own read/mutation. (An unknown role id in the FILE is already a

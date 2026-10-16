@@ -623,7 +623,7 @@ function serveConfigUnset(root: string, body: unknown) {
 
 test("handleConfig returns exactly the curated keys, resolved values with null for unset", async () => {
   const root = tmpdir();
-  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customLoops: [{ name: "watch", task: "watch" }] });
+  writeJsonFile(configPath(root), { model: "gpt-5", quietHours: "23:00-07:00", customRoles: [{ name: "watch", task: "watch" }] });
   const { captured, data } = await serveConfig(root);
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
@@ -638,8 +638,8 @@ test("handleConfig returns exactly the curated keys, resolved values with null f
   assert.equal(cfg.notify, null);
   // agents resolves to the default empty map when the file names none.
   assert.deepEqual(cfg.agents, {});
-  // customLoops is deliberately not served: the panel's reach is the curated set.
-  assert.equal("customLoops" in cfg, false);
+  // customRoles is deliberately not served: the panel's reach is the curated set.
+  assert.equal("customRoles" in cfg, false);
 });
 
 test("handleConfig answers 500 with validateConfig's message on a broken tumwater.json", async () => {
@@ -682,9 +682,9 @@ test("handleConfigSet refuses a key outside the curated set, naming it", async (
   assert.equal(unknownKey.captured.status, 400);
   assert.match((unknownKey.data as { error: string }).error, /modle/);
   // A known-but-not-curated key is refused too — curation, not validity, is the gate.
-  const curated = await serveConfigSet(root, { key: "customLoops", value: [] });
+  const curated = await serveConfigSet(root, { key: "customRoles", value: [] });
   assert.equal(curated.captured.status, 400);
-  assert.match((curated.data as { error: string }).error, /customLoops/);
+  assert.match((curated.data as { error: string }).error, /customRoles/);
   // A body with no key at all names no value — the shared gotSuffix convention appends
   // nothing for an absent field rather than echoing back a literal `null` it never carried.
   const missing = await serveConfigSet(root, { value: "gpt-5" });
@@ -710,9 +710,9 @@ test("handleConfigUnset removes one curated key and leaves its siblings", async 
 
 test("handleConfigUnset refuses a key outside the curated set, naming it", async () => {
   const root = tmpdir();
-  const curated = await serveConfigUnset(root, { key: "customLoops" });
+  const curated = await serveConfigUnset(root, { key: "customRoles" });
   assert.equal(curated.captured.status, 400);
-  assert.match((curated.data as { error: string }).error, /customLoops/);
+  assert.match((curated.data as { error: string }).error, /customRoles/);
   // A body with no key at all names no value — the shared gotSuffix convention appends
   // nothing for an absent field rather than echoing back a literal `null` it never carried.
   const missing = await serveConfigUnset(root, {});

@@ -92,7 +92,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       if (request.error) ctx.warn(`config request rejected: ${request.error}`);
       if (request.ignored.length)
         ctx.warn(
-          `config request ignored key(s): ${request.ignored.join(", ")} — only customLoops is accepted`,
+          `config request ignored key(s): ${request.ignored.join(", ")} — only customRoles is accepted`,
         );
     }
   }

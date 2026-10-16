@@ -379,16 +379,16 @@ work yourself:
   ${NEEDS_REVIEW_NOTE} note, or clear a ${NEEDS_REPLAN_NOTE} note and rewrite the entry — per
   the user's direction.
 - A request to manage user-defined loops ("add a loop named X that does Y", "remove X",
-  "move X before Y"): write the FULL replacement customLoops array to
+  "move X before Y"): write the FULL replacement customRoles array to
   .tumwater-config-request.json at your worktree root — the shape is
-  { "customLoops": [ { "name": "…", "task": "…" } ] }. Add appends an entry with a name in
+  { "customRoles": [ { "name": "…", "task": "…" } ] }. Add appends an entry with a name in
   [a-z0-9_-] no built-in role uses and a task written as the loop's standing per-tick
   instruction (one clear paragraph); remove deletes the entry; move reorders entries (array
   order is display/scheduling order). The array REPLACES the current one — include every loop
   that should exist, not only the changed entries. Worked example — to add a loop named docs
   that keeps the examples current and drop one named scrape, write the file containing exactly
   the surviving entries:
-  { "customLoops": [ { "name": "docs", "task": "Keep the examples/ directory current with the latest API changes." } ] }.
+  { "customRoles": [ { "name": "docs", "task": "Keep the examples/ directory current with the latest API changes." } ] }.
   Write the file and stop: the harness validates it, applies it to the live config, and deletes
   it; the loops start on their own and the request file is never committed.
 - Only a trivially small direct edit (fix a typo, tweak a doc line, adjust a config value the
@@ -404,7 +404,7 @@ work yourself:
     `Note on one boundary in the rules below, director only: user-defined-loop requests are
 executed by writing .tumwater-config-request.json in your worktree (shape and worked example
 above) — never by editing tumwater.json, which stays off-limits to you as to every role. The
-harness validates the request and applies only its customLoops array; a request that also names
+harness validates the request and applies only its customRoles array; a request that also names
 any other setting (timeouts, budgets, role enablement, review settings) has that key discarded
 with a warning, so such a request is guidance to record per the routing rules, not an edit you
 can make.`,

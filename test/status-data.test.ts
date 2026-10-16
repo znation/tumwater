@@ -176,7 +176,7 @@ test("snapshot reads the orchestrator info file once per poll", async () => {
   assert.equal(reads, 1); // one read serves both — not two
 });
 
-// The `custom` flag marks user-defined loops (tumwater.json's customLoops) for the
+// The `custom` flag marks user-defined loops (tumwater.json's customRoles) for the
 // dashboards' asterisk. It is computed in snapshot from the same last-known-good config that
 // produced the role list — so a transiently broken file keeps marking its customs rather than
 // flipping them unmarked mid-poll.
@@ -186,7 +186,7 @@ test("snapshot rows carry the custom flag matching the config", async () => {
   assert.ok(snapshot(repo).loops.every((l) => !l.custom), "built-ins unmarked by default");
 
   const cfg = loadConfig(repo);
-  cfg.customLoops.push({ name: "nightly", task: "do the nightly thing" });
+  cfg.customRoles.push({ name: "nightly", task: "do the nightly thing" });
   saveConfig(repo, cfg);
   let snap = snapshot(repo);
   assert.ok(snap.loops.some((l) => l.role === "nightly" && l.custom), "listed custom is marked");

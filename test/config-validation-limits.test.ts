@@ -12,19 +12,19 @@ import { validationError } from "./fixtures/config-fixtures.js";
 test("validateConfig accepts a well-formed maxDailyCostUsdPerRole map and rejects bad ones", () => {
   // Absent key: the pre-feature shape, still valid.
   assert.doesNotThrow(() => validateConfig(defaultConfig()));
-  // Built-in ids, a customLoops name, and the disabled 0 are all valid.
+  // Built-in ids, a customRoles name, and the disabled 0 are all valid.
   assert.doesNotThrow(() =>
     validateConfig({
       ...defaultConfig(),
       maxDailyCostUsdPerRole: { organize: 0.5, coverage: 0 },
-      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+      customRoles: [{ name: "sniff", task: "Run the linter and fix what it names." }],
     }),
   );
   assert.doesNotThrow(() =>
     validateConfig({
       ...defaultConfig(),
       maxDailyCostUsdPerRole: { sniff: 1 },
-      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+      customRoles: [{ name: "sniff", task: "Run the linter and fix what it names." }],
     }),
   );
 
@@ -175,12 +175,12 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
 test("validateConfig accepts a well-formed quietHoursPerRole map and rejects bad ones", () => {
   // Absent key: the pre-feature shape, still valid.
   assert.doesNotThrow(() => validateConfig(defaultConfig()));
-  // Built-in ids, a customLoops name, and the off value are all valid.
+  // Built-in ids, a customRoles name, and the off value are all valid.
   assert.doesNotThrow(() =>
     validateConfig({
       ...defaultConfig(),
       quietHoursPerRole: { qa: "23:00-07:00", organize: "", coverage: "10:00-12:00" },
-      customLoops: [{ name: "sniff", task: "Run the linter and fix what it names." }],
+      customRoles: [{ name: "sniff", task: "Run the linter and fix what it names." }],
     }),
   );
   // A non-object names the key and shows the value.

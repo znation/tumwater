@@ -441,13 +441,13 @@ export function unsetConfigKey(
 
 /** Consume the director's config-write request file (plans/portability.md §3/7). After its pi
  * run the director may leave `.tumwater-config-request.json` at its worktree root:
- * `{ "customLoops": [ { "name", "task" }, … ] }` — the whole array, replacing the current one.
+ * `{ "customRoles": [ { "name", "task" }, … ] }` — the whole array, replacing the current one.
  * Applied atomically to the live config with setDailyBudgetUsd's idiom (fresh loadConfig that
  * bypasses the stat cache, validateConfig, then writeJsonAtomic — readers poll every ~2 s), so
  * the orchestrator's live reload starts the new loop with no commit, no review gate, and no
  * merge, and the request file never enters a diff.
  *
- * The permitted key set is enforced here, not in prose: `customLoops` is accepted and every
+ * The permitted key set is enforced here, not in prose: `customRoles` is accepted and every
  * other top-level key is collected into `ignored` and dropped (the caller logs the warning that
  * names them). Validation runs BEFORE any write and nothing here dereferences a request entry
  * first — a structurally malformed entry (`[null]`, a non-string name) is left for
@@ -491,11 +491,11 @@ export function applyConfigRequest(
     if (normalized.problems.length > 0) throw new Error(normalized.problems.join("; "));
     const parsed = normalized.raw as Record<string, unknown>;
     for (const key of Object.keys(parsed)) {
-      if (key !== "customLoops") ignored.push(key);
+      if (key !== "customRoles") ignored.push(key);
     }
-    const loops = parsed.customLoops;
+    const loops = parsed.customRoles;
     if (!Array.isArray(loops))
-      throw new Error(`config request's customLoops must be an array (got ${show(loops)})`);
+      throw new Error(`config request's customRoles must be an array (got ${show(loops)})`);
     // The load-to-write sequence is one critical section under withConfigLock: a concurrent
     // `config set`/dashboard write between the load and this write must not be dropped by the
     // whole-file overwrite (see writeConfigMutation).
@@ -516,10 +516,10 @@ export function applyConfigRequest(
       const roles = isJsonObject(rawRolesCandidate)
         ? { ...(rawRolesCandidate) }
         : {};
-      for (const c of current.customLoops) {
+      for (const c of current.customRoles) {
         if (!requestedNames.has(c.name)) delete roles[c.name];
       }
-      const candidate = { ...current, customLoops: loops as TumwaterConfig["customLoops"] };
+      const candidate = { ...current, customRoles: loops as TumwaterConfig["customRoles"] };
       const candidateRecord = candidate as unknown as Record<string, unknown>;
       if (rawRolesCandidate === undefined) delete candidateRecord.roles;
       else candidateRecord.roles = roles;
@@ -529,7 +529,7 @@ export function applyConfigRequest(
       const collapsed = collapseAgentAliases(candidate);
       validateConfig(collapsed); // throws listing every problem — nothing is written on failure
       writeJsonAtomic(configPath(root), collapsed, true);
-      applied = collapsed.customLoops.map((c) => c.name);
+      applied = collapsed.customRoles.map((c) => c.name);
     });
   } catch (err) {
     applied = []; // no write happened, or it must not be reported as applied

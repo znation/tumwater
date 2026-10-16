@@ -57,7 +57,7 @@ test("totals row shows zeros without breaking alignment", () => {
   assert.match(totals, /\$0\.00/);
 });
 
-// User-defined loops (tumwater.json's customLoops) are marked with an asterisk beside their
+// User-defined loops (tumwater.json's customRoles) are marked with an asterisk beside their
 // name plus one footnote line under the table — and a fleet without any of them renders the
 // exact same table as before the marker existed.
 

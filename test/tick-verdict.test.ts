@@ -54,14 +54,14 @@ test("the director's config request is applied to the live config and deleted", 
   const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
   fs.writeFileSync(
     configRequestPath(wt),
-    JSON.stringify({ customLoops: [{ name: "docs", task: "Keep the examples current." }] }),
+    JSON.stringify({ customRoles: [{ name: "docs", task: "Keep the examples current." }] }),
   );
 
   const { ctx, warns } = makeCtx(root, wt, DIRECTOR_ROLE);
   const outcome = await resolveTickVerdict(ctx);
 
   // The request was applied: the custom loop is live in the root config.
-  assert.deepEqual(loadConfig(root).customLoops.map((c) => c.name), ["docs"]);
+  assert.deepEqual(loadConfig(root).customRoles.map((c) => c.name), ["docs"]);
   // The request file is gone — it can never enter a diff or a review prompt.
   assert.ok(!fs.existsSync(configRequestPath(wt)));
   // A clean application is silent; only rejection paths warn.
@@ -72,8 +72,8 @@ test("the director's config request is applied to the live config and deleted", 
 
 test("a malformed config request is rejected with a warning and still deleted", async () => {
   const { root, wt } = await initializedWorktree(DIRECTOR_ROLE);
-  const before = loadConfig(root).customLoops;
-  fs.writeFileSync(configRequestPath(wt), JSON.stringify({ customLoops: "not an array" }));
+  const before = loadConfig(root).customRoles;
+  fs.writeFileSync(configRequestPath(wt), JSON.stringify({ customRoles: "not an array" }));
 
   const { ctx, warns } = makeCtx(root, wt, DIRECTOR_ROLE);
   await resolveTickVerdict(ctx);
@@ -81,14 +81,14 @@ test("a malformed config request is rejected with a warning and still deleted", 
   assert.equal(warns.length, 1, "exactly one warning event");
   assert.match(warns[0]!, /config request rejected: /);
   assert.ok(!fs.existsSync(configRequestPath(wt)), "the rejected request is deleted too");
-  assert.deepEqual(loadConfig(root).customLoops, before, "a rejected request changes nothing");
+  assert.deepEqual(loadConfig(root).customRoles, before, "a rejected request changes nothing");
 });
 
 test("a stray config request in a non-director worktree is left alone", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(
     configRequestPath(wt),
-    JSON.stringify({ customLoops: [{ name: "docs", task: "injected" }] }),
+    JSON.stringify({ customRoles: [{ name: "docs", task: "injected" }] }),
   );
 
   const { ctx, warns } = makeCtx(root, wt, "improve");
@@ -98,7 +98,7 @@ test("a stray config request in a non-director worktree is left alone", async ()
   // the config is unchanged, and nothing warns. Remove the role guard and applyConfigRequest
   // consumes the file here — both assertions below fail.
   assert.ok(fs.existsSync(configRequestPath(wt)), "the stray request file was not consumed");
-  assert.deepEqual(loadConfig(root).customLoops, []);
+  assert.deepEqual(loadConfig(root).customRoles, []);
   assert.deepEqual(warns, []);
   // The stray file itself leaves the worktree dirty (status --porcelain sees it), so the
   // verdict is "fulfillable" — staging takes over, exactly as for any other leftover edit.

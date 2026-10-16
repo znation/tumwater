@@ -253,7 +253,7 @@ test("an unknown role throws — the fleet cannot run a prompt with no task", ()
 
 test("a custom role's task is its find-something-to-do text, titled by its name", () => {
   const config = defaultConfig();
-  config.customLoops = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
+  config.customRoles = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
   const result = promptFor(root(), "changelog", { config });
   assert.ok(result);
   assert.match(result.prompt, /You are the "changelog" loop/);
@@ -263,12 +263,12 @@ test("a custom role's task is its find-something-to-do text, titled by its name"
 test("a runner whose role answers to nothing throws the shared unknown-role message, custom ids included", () => {
   // The race the defensive path exists for: a live tumwater.json edit removes a custom loop
   // while its runner is still alive (runners are built at start and survive reloads), so the
-  // next tick's assembly finds neither a catalog entry nor a customLoops task. It must throw
+  // next tick's assembly finds neither a catalog entry nor a customRoles task. It must throw
   // the shared unknownRoleMessage — the same wording the CLI's parseRoleFlag and the operator
   // commands use — with the valid ids as the live config sees them, so if it ever fires it
   // reads as the harness bug it is instead of a bare dead end.
   const config = defaultConfig();
-  config.customLoops = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
+  config.customRoles = [{ name: "changelog", task: "Keep CHANGELOG.md current." }];
   assert.throws(
     () => promptFor(root(), "ghost", { config }),
     (err: unknown) =>

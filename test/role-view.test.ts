@@ -103,7 +103,7 @@ test("a subscription claude fallback reads free in the role view", () => {
 
 test("a custom loop's task is its find text, and it reads as enabled and custom", () => {
   const dir = root();
-  writeConfig(dir, { customLoops: [{ name: "greeter", task: "Say hello to the project." }] });
+  writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const p = rolePayload(dir, "greeter", NO_MODELS);
   assert.equal(p.custom, true);
   assert.equal(p.title, "user-defined loop");
@@ -270,7 +270,7 @@ test("the State line distinguishes disabled from paused, alone and together", ()
 
 test("a custom loop renders as user-defined, on the maintenance tier", () => {
   const dir = root();
-  writeConfig(dir, { customLoops: [{ name: "greeter", task: "Say hello to the project." }] });
+  writeConfig(dir, { customRoles: [{ name: "greeter", task: "Say hello to the project." }] });
   const md = renderRoleMarkdown(rolePayload(dir, "greeter", NO_MODELS));
   assert.match(md, /- Loop: "greeter" \(user-defined loop\) — user-defined loop/);
   assert.match(md, /- Scheduling tier: 1 \(maintenance\/observer\)/);

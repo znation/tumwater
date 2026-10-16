@@ -303,7 +303,7 @@ test("config_changed with more keys than fit the line cap names every dropped ke
     "provider",
     "quietHours",
     "notify",
-    "customLoops",
+    "customRoles",
   ];
   const line = describeStateChange(ev({ type: "config_changed", keys }));
   assert.equal(line, "config changed: fallbackModel, idleBackoff … +6 more keys");

@@ -350,30 +350,30 @@ test("autoRestart defaults on and is validated as a boolean", () => {
 
 // --- User-defined loops (plans/user-defined-loops.md) ---
 
-test("defaultConfig carries no customLoops and no longer exempts tumwater.json from review", () => {
+test("defaultConfig carries no customRoles and no longer exempts tumwater.json from review", () => {
   // Config changes no longer ride the commit path (plans/portability.md §3/7): the director's
   // request file is consumed before any diff exists, so the exemption has nothing left to
   // exempt — and removing it closes the mixed doc-plus-config diff it left unreviewed.
-  assert.deepEqual(defaultConfig().customLoops, []);
+  assert.deepEqual(defaultConfig().customRoles, []);
   assert.ok(
     !defaultConfig().review.exemptPaths.includes("tumwater.json"),
     "tumwater.json has left the default review exemptions",
   );
 });
 
-test("loadConfig merges customLoops into roles after the built-ins in array order", () => {
+test("loadConfig merges customRoles into roles after the built-ins in array order", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
     JSON.stringify({
-      customLoops: [
+      customRoles: [
         { name: "docs-auditor", task: "Keep the docs current." },
         { name: "perf-hunter", task: "Hunt perf wins." },
       ],
     }),
   );
   const config = loadConfig(dir);
-  assert.deepEqual(config.customLoops, [
+  assert.deepEqual(config.customRoles, [
     { name: "docs-auditor", task: "Keep the docs current." },
     { name: "perf-hunter", task: "Hunt perf wins." },
   ]);
@@ -397,7 +397,7 @@ test("loadConfig seeds a custom loop whose name collides with an Object.prototyp
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
     JSON.stringify({
-      customLoops: [{ name: "constructor", task: "Keep an eye on construction." }],
+      customRoles: [{ name: "constructor", task: "Keep an eye on construction." }],
     }),
   );
   const config = loadConfig(dir);
@@ -408,81 +408,81 @@ test("loadConfig seeds a custom loop whose name collides with an Object.prototyp
   assert.equal(config.roles["constructor"]?.enabled, true);
 });
 
-test("loadConfig defaults customLoops to [] when the key is absent", () => {
+test("loadConfig defaults customRoles to [] when the key is absent", () => {
   const dir = tmpdir();
   writeConfig(dir, { model: "sonnet" });
-  assert.deepEqual(loadConfig(dir).customLoops, []);
-  // Built-in behavior byte-identical when customLoops is absent.
+  assert.deepEqual(loadConfig(dir).customRoles, []);
+  // Built-in behavior byte-identical when customRoles is absent.
   const ids = Object.keys(loadConfig(dir).roles);
   for (const id of allRoleIds()) assert.ok(ids.includes(id), `built-in ${id} still present`);
 });
 
-test("validateConfig rejects invalid customLoops entries with named errors", () => {
+test("validateConfig rejects invalid customRoles entries with named errors", () => {
   // Bad name charset: uppercase, leading dash, and over-long names each fail on their own.
   for (const bad of ["Docs", "-lead", "a".repeat(33)]) {
     assert.match(
-      validationError({ customLoops: [{ name: bad, task: "t" }] }),
-      /customLoops\[0\]\.name "/,
+      validationError({ customRoles: [{ name: bad, task: "t" }] }),
+      /customRoles\[0\]\.name "/,
       `bad name ${JSON.stringify(bad)}`,
     );
   }
   // A non-string name and a missing key are named too.
   assert.match(
-    validationError({ customLoops: [{ name: 7, task: "t" }] }),
-    /customLoops\[0\]\.name must be a string matching/,
+    validationError({ customRoles: [{ name: 7, task: "t" }] }),
+    /customRoles\[0\]\.name must be a string matching/,
   );
   assert.match(
-    validationError({ customLoops: [{ task: "t" }] }),
-    /customLoops\[0\]\.name must be a string matching.*\(got missing\)/,
+    validationError({ customRoles: [{ task: "t" }] }),
+    /customRoles\[0\]\.name must be a string matching.*\(got missing\)/,
   );
 
   // Collision with a built-in id (including the director) would shadow its prompt.
   for (const colliding of ["feature", "director"]) {
     assert.match(
-      validationError({ customLoops: [{ name: colliding, task: "t" }] }),
+      validationError({ customRoles: [{ name: colliding, task: "t" }] }),
       /collides with a built-in role id/,
     );
   }
 
   // Duplicate names within the list.
   assert.match(
-    validationError({ customLoops: [{ name: "docs", task: "a" }, { name: "docs", task: "b" }] }),
-    /customLoops\[1\]\.name "docs" is duplicated in customLoops/,
+    validationError({ customRoles: [{ name: "docs", task: "a" }, { name: "docs", task: "b" }] }),
+    /customRoles\[1\]\.name "docs" is duplicated in customRoles/,
   );
 
   // Empty, whitespace-only, and over-long tasks. A blank-but-non-empty task is rejected the
   // same way an empty one is: it rides into every tick prefill as blank text.
-  assert.match(validationError({ customLoops: [{ name: "docs", task: "" }] }), /customLoops\[0\]\.task must be a non-empty string \(got ""\)/);
+  assert.match(validationError({ customRoles: [{ name: "docs", task: "" }] }), /customRoles\[0\]\.task must be a non-empty string \(got ""\)/);
   assert.match(
-    validationError({ customLoops: [{ name: "docs", task: "   " }] }),
-    /customLoops\[0\]\.task must be a non-empty string \(got "   "\)/,
+    validationError({ customRoles: [{ name: "docs", task: "   " }] }),
+    /customRoles\[0\]\.task must be a non-empty string \(got "   "\)/,
   );
   const long = "x".repeat(4097);
   assert.match(
-    validationError({ customLoops: [{ name: "docs", task: long }] }),
-    /customLoops\[0\]\.task is 4097 chars — shorten it to at most 4096/,
+    validationError({ customRoles: [{ name: "docs", task: long }] }),
+    /customRoles\[0\]\.task is 4097 chars — shorten it to at most 4096/,
   );
 
   // Container and key-shape violations, like every other section.
-  assert.match(validationError({ customLoops: "on" }), /customLoops must be an array of \{ name, task \} entries/);
-  assert.match(validationError({ customLoops: ["docs"] }), /customLoops\[0\] must be an object with keys name and task/);
+  assert.match(validationError({ customRoles: "on" }), /customRoles must be an array of \{ name, task \} entries/);
+  assert.match(validationError({ customRoles: ["docs"] }), /customRoles\[0\] must be an object with keys name and task/);
   assert.match(
-    validationError({ customLoops: [{ name: "docs", task: "t", model: "big" }] }),
-    /unknown key "model" in customLoops\[0\] \(valid keys: name, task\)/,
+    validationError({ customRoles: [{ name: "docs", task: "t", model: "big" }] }),
+    /unknown key "model" in customRoles\[0\] \(valid keys: name, task\)/,
   );
 
   // A fully valid entry passes — including the 4096-char boundary.
   assert.doesNotThrow(() =>
-    validateConfig({ customLoops: [{ name: "docs-auditor", task: "x".repeat(4096) }] }),
+    validateConfig({ customRoles: [{ name: "docs-auditor", task: "x".repeat(4096) }] }),
   );
 });
 
-test("validateConfig accepts a custom id under roles only when listed in customLoops", () => {
+test("validateConfig accepts a custom id under roles only when listed in customRoles", () => {
   // The cross-check keeps saveConfig consistent with load-time merging: the file's `roles`
   // section may carry per-role settings for a custom exactly like for built-ins.
   assert.doesNotThrow(() =>
     validateConfig({
-      customLoops: [{ name: "docs-auditor", task: "t" }],
+      customRoles: [{ name: "docs-auditor", task: "t" }],
       roles: { "docs-auditor": { enabled: false, instructions: "be careful" } },
     }),
   );
@@ -500,7 +500,7 @@ test("a custom listed under roles with per-role settings has them applied like a
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
     JSON.stringify({
-      customLoops: [
+      customRoles: [
         { name: "docs-auditor", task: "Keep the docs current." },
         { name: "perf-hunter", task: "Hunt perf wins." },
       ],
@@ -519,27 +519,27 @@ test("a custom listed under roles with per-role settings has them applied like a
   assert.equal(config.roles["perf-hunter"]?.enabled, true);
 });
 
-test("loadConfigCached hands out independent customLoops arrays", () => {
+test("loadConfigCached hands out independent customRoles arrays", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
-    JSON.stringify({ customLoops: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
+    JSON.stringify({ customRoles: [{ name: "docs-auditor", task: "Keep the docs current." }] }),
   );
   const first = loadConfigCached(dir).config!;
-  first.customLoops[0]!.task = "mutated";
+  first.customRoles[0]!.task = "mutated";
   first.roles["docs-auditor"]!.enabled = false;
   // The next poll of an unchanged file must come back clean — cached-config mutation cannot
   // poison later polls (the same contract as piArgs/idleBackoff/review/roles).
   const second = loadConfigCached(dir).config!;
-  assert.equal(second.customLoops[0]?.task, "Keep the docs current.");
+  assert.equal(second.customRoles[0]?.task, "Keep the docs current.");
   assert.equal(second.roles["docs-auditor"]?.enabled, true);
 });
 
-test("an invalid customLoops file keeps the fleet-visible contract: loadConfigSafe returns the error", () => {
+test("an invalid customRoles file keeps the fleet-visible contract: loadConfigSafe returns the error", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
-    JSON.stringify({ customLoops: [{ name: "feature", task: "t" }] }),
+    JSON.stringify({ customRoles: [{ name: "feature", task: "t" }] }),
   );
   const broken = loadConfigSafe(dir);
   assert.equal(broken.config, undefined);
@@ -548,7 +548,7 @@ test("an invalid customLoops file keeps the fleet-visible contract: loadConfigSa
 
 test("customLoopNames, isCustomRole, and knownRoleIds are the one source of truth for custom ids", () => {
   const config = defaultConfig();
-  config.customLoops = [{ name: "docs-auditor", task: "t" }];
+  config.customRoles = [{ name: "docs-auditor", task: "t" }];
   assert.deepEqual(customLoopNames(config), ["docs-auditor"]);
   assert.equal(isCustomRole(config, "docs-auditor"), true);
   assert.equal(isCustomRole(config, "feature"), false);
@@ -573,7 +573,7 @@ test("knownRoleIdsCached is the one home of the read-only fallback rule", () => 
   assert.deepEqual(knownRoleIdsCached(tmpdir()), allRoleIds());
   // A config with customs: catalog plus the user-defined loops.
   const withCustom = tmpdir();
-  writeConfig(withCustom, { customLoops: [{ name: "docs-auditor", task: "t" }] });
+  writeConfig(withCustom, { customRoles: [{ name: "docs-auditor", task: "t" }] });
   assert.deepEqual(knownRoleIdsCached(withCustom), [...allRoleIds(), "docs-auditor"]);
   // A transiently broken tumwater.json must not take a read-only view down: it falls back to
   // the built-in catalog rather than refusing every id.
@@ -646,13 +646,13 @@ test("changedConfigKeys reports a roles.<id> edit per role, never the whole role
   const next = defaultConfig();
   next.roles.feature = { ...next.roles.feature!, model: "bigger" };
   assert.deepEqual(changedConfigKeys(prev, next), ["roles.feature"]);
-  // Adding a custom loop names both `customLoops` and the affected role entry.
+  // Adding a custom loop names both `customRoles` and the affected role entry.
   const added = defaultConfig();
-  added.customLoops.push({ name: "docs-auditor", task: "Keep docs current." });
+  added.customRoles.push({ name: "docs-auditor", task: "Keep docs current." });
   added.roles["docs-auditor"] = { enabled: true };
-  assert.deepEqual(changedConfigKeys(prev, added), ["customLoops", "roles.docs-auditor"]);
+  assert.deepEqual(changedConfigKeys(prev, added), ["customRoles", "roles.docs-auditor"]);
   // Removing one reports the same two.
-  assert.deepEqual(changedConfigKeys(added, prev), ["customLoops", "roles.docs-auditor"]);
+  assert.deepEqual(changedConfigKeys(added, prev), ["customRoles", "roles.docs-auditor"]);
 });
 
 test("changedConfigKeys ignores key order and reports nested section names", () => {

@@ -437,15 +437,15 @@ function checkSelectorValue(
   // they are validated strictly — a colliding name would silently shadow a built-in's prompt
   // (roleById wins in tickPrompt), validation makes that impossible instead of subtle. The
   // collected names feed the roles cross-check below: an id under `roles` is valid when it is
-  // in the catalog OR listed as a customLoops name.
+  // in the catalog OR listed as a customRoles name.
   const customNames = new Set<string>();
-  if ("customLoops" in r) {
-    const cl = r.customLoops;
+  if ("customRoles" in r) {
+    const cl = r.customRoles;
     if (!Array.isArray(cl)) {
-      problems.push(`customLoops must be an array of { name, task } entries (got ${show(cl)})`);
+      problems.push(`customRoles must be an array of { name, task } entries (got ${show(cl)})`);
     } else {
       cl.forEach((entry, i) => {
-        const where = `customLoops[${i}]`;
+        const where = `customRoles[${i}]`;
         if (!isJsonObject(entry)) {
           problems.push(`${where} must be an object with keys name and task (got ${show(entry)})`);
           return;
@@ -467,7 +467,7 @@ function checkSelectorValue(
             `${where}.name "${name}" would shadow the ${baseRoleOf(name)} loop's instance ids — pick another name`,
           );
         } else if (customNames.has(name)) {
-          problems.push(`${where}.name "${name}" is duplicated in customLoops — names must be unique`);
+          problems.push(`${where}.name "${name}" is duplicated in customRoles — names must be unique`);
         } else {
           customNames.add(name);
         }
@@ -498,7 +498,7 @@ function checkSelectorValue(
       problems.push(`roles must be an object mapping role ids to settings (got ${show(roles)})`);
     } else {
       for (const [id, rc] of Object.entries(roles)) {
-        // An id outside the catalog and customLoops cannot work: tickPrompt has no prompt for
+        // An id outside the catalog and customRoles cannot work: tickPrompt has no prompt for
         // it and the loop would error every tick forever (checkKnownRoleId).
         if (!checkKnownRoleId("roles", id, customNames, problems)) continue;
         if (!isJsonObject(rc)) {
@@ -539,7 +539,7 @@ function checkSelectorValue(
   }
 
   // Per-role daily cost caps (src/gates/role-cap-gates.ts): each key must name a known role —
-  // built-in or customLoops — because a typo'd id would silently no-op the cap, the exact
+  // built-in or customRoles — because a typo'd id would silently no-op the cap, the exact
   // silent-ignore class the `roles.<id>` check exists to prevent (the customNames set above
   // is fully collected by this point, so a custom loop can be capped). Each value is a
   // spend threshold with the NON_NEGATIVE_OR_DISABLED semantics: 0 disables that role's cap.

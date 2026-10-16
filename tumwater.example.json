@@ -9,7 +9,7 @@
   "thrashMinutes": 30,
   "autoRestart": true,
   "review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"] },
-  "customLoops": [],
+  "customRoles": [],
   "roles": {
     "steward": { "enabled": true, "minRunIntervalSeconds": 21600 },
     "qa": { "enabled": true, "minRunIntervalSeconds": 7200 },

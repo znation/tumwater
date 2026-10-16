@@ -17,7 +17,7 @@ const NO_REASONS_GIVEN = "no reasons given";
 
 /** The reason an over-long prompt or config field carries: the text rides into a tick's
  * prefill, so a longer value bloats every tick's context. The single home of that tail,
- * shared by init's seed check (init/init.ts) and config-validation's customLoops task and
+ * shared by init's seed check (init/init.ts) and config-validation's customRoles task and
  * roles-instructions caps (config/config-validation.ts), so the three cannot drift on the
  * wording. inbox-submit's promptLengthProblem renders a role-scoped variant ("it rides into
  * the <role> tick's prefill") and keeps its own wording. */

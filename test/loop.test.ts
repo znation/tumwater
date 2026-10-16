@@ -487,7 +487,7 @@ test("a director tick applies a config request without producing a commit", asyn
   const repo = await initializedRepo();
   const script = [
     `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
-    `printf '%s' '{"customLoops":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
+    `printf '%s' '{"customRoles":[{"name":"docs","task":"Keep the examples current."}]}' > .tumwater-config-request.json`,
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "director");
@@ -505,11 +505,11 @@ test("a director tick applies a config request without producing a commit", asyn
   });
 });
 
-test("a config request naming a disallowed key applies customLoops and warns naming the key", async () => {
+test("a config request naming a disallowed key applies customRoles and warns naming the key", async () => {
   const repo = await initializedRepo();
   const script = [
     `printf '%s\n' '${assistantLine("done\nSUMMARY: add docs loop")}'`,
-    `printf '%s' '{"customLoops":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
+    `printf '%s' '{"customRoles":[{"name":"docs","task":"t"}],"maxDailyCostUsd":1}' > .tumwater-config-request.json`,
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "director");

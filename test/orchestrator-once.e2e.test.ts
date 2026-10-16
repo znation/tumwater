@@ -281,7 +281,7 @@ test("once --role: --role without --once fails with its own message", async () =
 test("once --role: a custom loop id is a valid target", async () => {
   const repo = await makeFastRepo("once scoped custom test", ["clean"]);
   const config = loadConfig(repo);
-  config.customLoops.push({ name: "docs-sync", task: "Keep the docs current." });
+  config.customRoles.push({ name: "docs-sync", task: "Keep the docs current." });
   saveConfig(repo, config);
   await withIdlePi(async () => {
     const r = await cli(repo, "run", "--once", "--role", "docs-sync");

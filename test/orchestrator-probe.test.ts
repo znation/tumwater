@@ -56,7 +56,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
   cfg.fallbackModel = { provider: "free", model: "qwen-free" };
   // The second role is a custom loop, not bugfix: a custom never defers (DEFERRABLE_ROLES
   // holds only built-ins), so it stays due behind its wake and can take the probe slot.
-  cfg.customLoops = [{ name: "helper", task: "Keep the scratch notes current." }];
+  cfg.customRoles = [{ name: "helper", task: "Keep the scratch notes current." }];
   const cfgPath = path.join(repo, "tumwater.json");
   fs.writeFileSync(cfgPath, JSON.stringify(cfg));
 
