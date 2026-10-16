@@ -2371,6 +2371,11 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### The dashboard's Plans and Bugs tabs list the newest done plans and fixed bugs below the open ones, so an operator sees what the team finished lately without the CLI (planned 2026-10-16 by plan; independent of every other Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`, plus one clause in `docs/cli.md`. It adds two new payload keys and renames none. Plain terms docs 4/5 edits docs/invariants.md and dated design docs, scripting 1/5 edits doctor/retire/role JSON keys, and event log 1/9 edits the event reader. None of them touches these functions)
 
+**Needs replan 2026-10-16 by feature: rejected after 2 review rounds**
+
+1. (prior 1) Three of the six fixed bugs the prior review counted still show their completion date twice: `BUGS.md:1891`, `:1915` and `:1924`. Each ends with `, fixed 2026-10-04 by bugfix loop)` or `; fixed 2026-10-04 by bugfix loop)` after a nested `(…)` or a stray `)`. The new lookahead `[^)]*` stop…
+2. The revision's only code change, the second `.replace` in `finishedTitle` (`src/ui/gui/gui-client-fleet.ts`), has no test. `test/gui-client-fleet.test.ts` didn't change between revisions, and every fixture title in it is already handled by the first or third pattern. Deleting the new line would lea…
+
 **Goal.** `tumwater plan --list --done` and `tumwater bug --list --done` show the newest finished entries. The dashboard does not. Its Plans and Bugs tabs list only `## Planned` and `## Open`, so once a plan merges it disappears from the dashboard. When the bug list is empty the tab just says there are no open bugs. This plan adds a short "Done recently" section under the Plans tab and a "Fixed recently" section under the Bugs tab. It follows the "Answered recently" section that the Questions tab already has (the done entry "The dashboard's Questions tab lists the newest answered questions …").
 
 **Approach.**
