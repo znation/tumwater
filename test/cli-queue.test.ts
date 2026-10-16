@@ -47,7 +47,7 @@ test("queue --json prints the collector's {entries, unreadable} document with ra
   const r = await cli(repo, "queue", "--json");
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as {
-    entries: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
+    entries: Array<{ role: string; sha: string; run: number; summary: string; enqueuedAt: number }>;
     unreadable: number;
   };
   assert.equal(payload.unreadable, 0);
@@ -55,7 +55,8 @@ test("queue --json prints the collector's {entries, unreadable} document with ra
   const e = payload.entries[0]!;
   assert.equal(e.role, "improve");
   assert.equal(e.sha, sha, "the raw sha, not the render's short form");
-  assert.equal(e.tick, 7);
+  assert.equal(e.run, 7);
+  assert.ok(!("tick" in e));
   assert.equal(e.summary, "raw payload");
   assert.ok(typeof e.enqueuedAt === "number" && e.enqueuedAt >= before, "numeric enqueuedAt");
 });

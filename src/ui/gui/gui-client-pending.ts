@@ -54,9 +54,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   // skips, so a positive depth with no readable list states the count instead of inventing rows.
   // Pure: the age comes from the passed now, and a malformed entry renders a stand-in rather
   // than undefined/NaN. Null/absent/zero-depth reads as empty.
-  function pendingQueueHtml(landQueue, now, labels) {
-    const depth = landQueue && Number.isFinite(landQueue.depth) ? landQueue.depth : 0;
-    const entries = landQueue && Array.isArray(landQueue.entries) ? landQueue.entries : [];
+  function pendingQueueHtml(mergeQueue, now, labels) {
+    const depth = mergeQueue && Number.isFinite(mergeQueue.depth) ? mergeQueue.depth : 0;
+    const entries = mergeQueue && Array.isArray(mergeQueue.entries) ? mergeQueue.entries : [];
     let body;
     if (depth === 0) {
       body = "<div class='empty'>Merge queue empty</div>";
@@ -65,9 +65,9 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
     } else {
       body = "<div style='padding:10px 16px 12px'>" + entries.map((e, i) => {
         const sec = Number.isFinite(e.enqueuedAt) ? Math.max(0, Math.round((now - e.enqueuedAt) / 1000)) : 0;
-        const tick = Number.isFinite(e.tick) ? e.tick : "?";
+        const run = Number.isFinite(e.run) ? e.run : "?";
         return "<div class='mono clamp1' style='padding:3px 0'>" + (i + 1) + ". " + esc(e.role ? roleLabel(e.role) : "?") +
-          " run #" + esc(tick) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
+          " run #" + esc(run) + " · " + esc(shortSha(e.sha)) + " · " + esc(humanSeconds(sec)) +
           " ago" + (Array.isArray(labels) && labels[i] && typeof labels[i] === "string" ? " · [" + esc(labels[i]) + "]" : "") +
           " · " + esc(e.summary || "—") + "</div>";
       }).join("") + "</div>";
@@ -80,7 +80,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingFleet = null;
   function renderPendingQueue(status) {
     const card = $("pendingqueue");
     if (!card) return;
-    card.innerHTML = pendingQueueHtml(status && status.landQueue, Date.now(), status && status.landQueueLabels);
+    card.innerHTML = pendingQueueHtml(status && status.mergeQueue, Date.now(), status && status.mergeQueueLabels);
   }
   function buildPendingView() {
     if (!buildOnce("pending", "<div class='view-head'><div><h1>Pending</h1><p>Every role's unmerged change — its branch, commits ahead of main, and uncommitted files. Open a row for the full diff.</p></div>" +

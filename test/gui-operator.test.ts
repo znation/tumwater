@@ -50,7 +50,7 @@ test("status payload carries the daily budget while enabled and null when disabl
   const atNoon = () => statusPayload(repo, now.getTime()) as typeof payload;
   let payload = atNoon() as { budget: { spentUsd: number; capUsd: number; capHitAt: number | null; free: boolean; fallback: { provider?: string; model?: string } | null } | null; budgetBadge: string };
   // No provider/model configured (pi's own default) — the fleet cannot be verified as free.
-  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, agent: "pi", fallback: null, tiers: null }, "enabled by default with no spend yet");
+  assert.deepEqual(payload.budget, { spentUsd: 0, capUsd: 50, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "enabled by default with no spend yet");
   assert.equal(payload.budgetBadge, " · budget: $0.00/$50 today", "the preformatted badge matches the TUI header string");
 
   // Today's spend is summed from the loops' persisted daily windows (a stale stamp reads $0).
@@ -69,32 +69,32 @@ test("status payload carries the daily budget while enabled and null when disabl
   cfg.maxDailyCostUsd = 0;
   saveConfig(repo, cfg);
   payload = atNoon() as typeof payload;
-  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, agent: "pi", fallback: null, tiers: null }, "cap 0 disables the gate but keeps the data");
+  assert.deepEqual(payload.budget, { spentUsd: 12.34, capUsd: 0, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null }, "cap 0 disables the gate but keeps the data");
   assert.equal(payload.budgetBadge, " · budget: $12.34 today · no cap", "disabled: standing badge with spend and no cap");
 });
 
-// Merge queue 4/5 — the payload's landQueue field: depth always present, inFlight only
+// Merge queue 4/5 — the payload's mergeQueue field: depth always present, inFlight only
 // while a landing is actually running (marker + matching entry + live orchestrator), and
-// the preformatted landingBadge the page renders in its header.
+// the preformatted mergeBadge the page renders in its header.
 test("status payload carries the land queue depth and the in-flight landing", async () => {
   const repo = makeRepo();
   await initProject(repo, "gui land queue test");
   const payload = statusPayload(repo) as {
-    landQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
-    landingBadge: string;
+    mergeQueue: { depth: number; inFlight?: { role: string; sha: string; summary: string; startedAt: number; stage?: string } };
+    mergeBadge: string;
     roles: Array<{ role: string; phase: string; inFlight: boolean }>;
   };
   // Idle: depth 0 (the field is never null/absent — one stable shape for JSON consumers)
   // and the preformatted badge is empty, so the page appends nothing.
-  assert.equal(payload.landQueue.depth, 0);
-  assert.equal(payload.landingBadge, "");
+  assert.equal(payload.mergeQueue.depth, 0);
+  assert.equal(payload.mergeBadge, "");
 
   // One queued entry lifts the depth — but a merely queued landing is not in flight.
   enqueueLanding(repo, { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: Date.now() });
   let p = statusPayload(repo) as typeof payload;
-  assert.equal(p.landQueue.depth, 1);
-  assert.equal(p.landingBadge, " · merge queue: 1");
-  assert.equal(p.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
+  assert.equal(p.mergeQueue.depth, 1);
+  assert.equal(p.mergeBadge, " · merge queue: 1");
+  assert.equal(p.mergeQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
 
   // A live orchestrator plus the 4/5 marker with a matching entry → in flight, and the
   // landing role's row phase reads `landing <elapsed> · <stage>` while every other row is
@@ -106,14 +106,14 @@ test("status payload carries the land queue depth and the in-flight landing", as
     JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt, stage: "build-check" }),
   );
   p = statusPayload(repo) as typeof payload;
-  assert.equal(p.landQueue.inFlight?.role, "clean");
-  assert.equal(p.landQueue.inFlight?.sha, "abc1234");
+  assert.equal(p.mergeQueue.inFlight?.role, "clean");
+  assert.equal(p.mergeQueue.inFlight?.sha, "abc1234");
   assert.match(
     p.roles.find((l) => l.role === "clean")!.phase,
     /^merging \d+s · checking$/,
     "the landing role's phase is marker-driven, stage included",
   );
-  assert.equal(p.landQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
+  assert.equal(p.mergeQueue.inFlight?.stage, "build-check", "the raw record carries the stage for `status --json`");
   assert.equal(p.roles.find((l) => l.role === "bugfix")!.phase, "due", "other roles keep their normal phase");
   // The row-level inFlight flag (isActivePhase over the rendered phase) is the permit-holder
   // cap set the payload exports: the landing role is in flight, every other row is not. (The
@@ -145,7 +145,7 @@ test("a disabled cap never pauses the fleet in the phase payload", async () => {
     budgetBadge: string;
     roles: Array<{ role: string; phase: string }>;
   };
-  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, agent: "pi", fallback: null, tiers: null });
+  assert.deepEqual(payload.budget, { spentUsd: 500, capUsd: 0, capHitAt: null, free: false, backend: "pi", fallback: null, tiers: null });
   assert.equal(payload.budgetBadge, " · budget: $500.00 today · no cap");
   // No loop reads waiting: budget spent — the gate is off by definition while the cap is 0.
   for (const l of payload.roles) {

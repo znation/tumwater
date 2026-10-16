@@ -557,8 +557,8 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     const notable = feedFilter === "all" ? items : items.filter((it) => eventKind(it) !== "routine");
     const needle = feedText.toLowerCase();
     const local = notable.filter((it) =>
-      (!feedRole || it.loop === feedRole) &&
-      (!needle || (it.loop + " " + it.type + " " + it.message).toLowerCase().includes(needle)));
+      (!feedRole || it.source === feedRole) &&
+      (!needle || (it.source + " " + it.type + " " + it.message).toLowerCase().includes(needle)));
     // The server's /api/logs slice replaces the carried window once it answers; the Notable/All
     // choice still culls it. A failed fetch paints the search-empty state, never a misleading
     // partial window.
@@ -572,9 +572,9 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       ? tallyChips(shown) + shown.map((it) => {
         const kind = eventKind(it);
         const tone = it.type === "run_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
-        const whoLabel = it.loop === "harness" ? "tumwater" : roleLabel(it.loop); // vocabulary-ok: the harness event source
-        const who = roles.has(it.loop) // vocabulary-ok: event field name
-          ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.loop) + "'>" + esc(whoLabel) + "</button>" // vocabulary-ok: CSS class and event field
+        const whoLabel = it.source === "harness" ? "tumwater" : roleLabel(it.source); // vocabulary-ok: the harness event source
+        const who = roles.has(it.source) // vocabulary-ok: event field name
+          ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.source) + "'>" + esc(whoLabel) + "</button>" // vocabulary-ok: CSS class and event field
           : "<span class='feed-loop'>" + esc(whoLabel) + "</span>"; // vocabulary-ok: CSS class
         return "<li class='feed-item k-" + kind + "'><span class='feed-icon t-" + tone + "'>" + icon(KINDS[kind][0]) + "</span>" +
           "<div class='feed-msg clamp2' title='" + esc(it.message) + "'>" + who + esc(it.message) + "</div>" +

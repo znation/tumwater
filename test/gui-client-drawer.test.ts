@@ -139,7 +139,7 @@ function workingStatus() {
     roles: [{
       role: "clean", phase: "working · writing tests", inFlight: true,
       currentWork: "Adding drawer tests", lastResult: "changed", lastSummary: "did the thing",
-      lastTickEndedAt: now - 60_000, commits: 2, ticks: 5, generated: 12_345, peakCtx: 90_000,
+      lastRunEndedAt: now - 60_000, commits: 2, runs: 5, generated: 12_345, peakCtx: 90_000,
       todayUsd: 1.5, costUsd: 3, nextRunAt: now + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
     }],
   };
@@ -278,7 +278,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   assert.match(meta, /Peak context, this run<\/dt><dd title='90\.0k'>90\.0k</);
   assert.match(meta, /Spent today<\/dt><dd title='\$1\.50'>\$1\.50</);
   assert.match(meta, /1m ago/); // the last tick's age, through the real fmtAgo
-  // A loop with no lastLandedAt reports never merged in its drawer kv.
+  // A loop with no lastMergedAt reports never merged in its drawer kv.
   assert.match(meta, /Last merged<\/dt><dd title='never'>never</);
   // The fetched tick rows render with the real result/age/span formatters.
   assert.match(meta, /#3 · /);
@@ -374,14 +374,14 @@ test("closing the drawer silences refreshDrawer", async () => {
 
 test("landingSummary picks the held change for a role, in both in-flight shapes, and stays empty otherwise", () => {
   const t = openDrawer(["landingSummary"]);
-  const single = { landQueue: { inFlight: { role: "clean", summary: "Sole change" } } };
+  const single = { mergeQueue: { inFlight: { role: "clean", summary: "Sole change" } } };
   assert.equal(t.scope.landingSummary(single, "clean"), "Sole change");
   assert.equal(t.scope.landingSummary(single, "other"), "");
-  const batch = { landQueue: { inFlight: { changes: [{ role: "a", summary: "A" }, { role: "b", summary: "B" }] } } };
+  const batch = { mergeQueue: { inFlight: { changes: [{ role: "a", summary: "A" }, { role: "b", summary: "B" }] } } };
   assert.equal(t.scope.landingSummary(batch, "b"), "B");
   assert.equal(t.scope.landingSummary(batch, "c"), "");
   assert.equal(t.scope.landingSummary({}, "a"), "");
-  assert.equal(t.scope.landingSummary({ landQueue: { inFlight: { changes: [{ role: "a", summary: "" }] } } }, "a"), "");
+  assert.equal(t.scope.landingSummary({ mergeQueue: { inFlight: { changes: [{ role: "a", summary: "" }] } } }, "a"), "");
 });
 
 test("drawerChangeHtml renders the full patch for a ready view and degrades the rest", () => {
@@ -436,7 +436,7 @@ test("a loop with no notebook or queued prompt shows the placeholder lines", asy
 test("the loop drawer renders its notebook and next prompt, refetching when the drawer switches roles", async () => {
   const loop = (role: string) => ({
     role, phase: "sleeping", inFlight: false, currentWork: "", lastResult: "changed", lastSummary: "x",
-    lastTickEndedAt: Date.now() - 60_000, commits: 1, ticks: 2, generated: 100, peakCtx: 100,
+    lastRunEndedAt: Date.now() - 60_000, commits: 1, runs: 2, generated: 100, peakCtx: 100,
     todayUsd: 0, costUsd: 0, nextRunAt: Date.now() + 30_000, yieldMultiplier: 1, backoffSeconds: 0,
   });
   const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
@@ -457,7 +457,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   const rolePaints = t.painted.filter(([id]) => id === "drawerrole").length;
   const metaPaints = t.painted.filter(([id]) => id === "drawermeta").length;
   const older = loop("clean");
-  older.lastTickEndedAt -= 5_000;
+  older.lastRunEndedAt -= 5_000;
   const polled = { running: true, pausedRoles: [], roles: [older, loop("bugfix")] };
   t.scope.renderLoopDrawer(polled);
   assert.ok(t.painted.filter(([id]) => id === "drawermeta").length > metaPaints, "drawermeta repaints on the poll");

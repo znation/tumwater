@@ -276,7 +276,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
       if (activeView === "usage" || activeView === "failures") syncReportRoles(d);
       const items = d.eventItems || [];
       const last = items[items.length - 1];
-      const key = last ? last.ts + ":" + last.type + ":" + last.loop : "";
+      const key = last ? last.ts + ":" + last.type + ":" + last.source : "";
       if (lastEventKey !== null && key !== lastEventKey) onNewEvents();
       lastEventKey = key;
     } catch (err) {

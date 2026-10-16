@@ -302,7 +302,7 @@ test("budgetBadge's backend-default fallback label follows the fleet agent", () 
   // Part 4f/7: an engaged fallback pair that names neither half reads `<agent> default`; a
   // claude fleet says so, a pi fleet stays byte-identical to before.
   assert.equal(
-    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {}, agent: "claude" }),
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: {}, backend: "claude" }),
     " · budget: $50.00/$50 today · over-cap model: claude default (cost n/a)",
   );
   assert.equal(

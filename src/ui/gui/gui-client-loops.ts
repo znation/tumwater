@@ -124,7 +124,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       (l.modelTier ? "<span class='tag' title='The model tier this role resolves at'>" + esc(l.modelTier) + "</span>" : "") +
       (l.fallback ? "<span class='tag t-amber' title='Running on the model fallback while its primary keeps failing provider-class errors'>fallback</span>" : "") +
       (queued ? "<span class='tag t-indigo' title='" + esc(plural(queued, "message") + " in this role's inbox") + "'>" + icon("chat") + queued + "</span>" : "") +
-      "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.ticks, "run") + " · merged " + (l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never")) + (l.model ? " · " + esc(l.model) : "") +
+      "</div><div class='sub'>" + esc(plural(l.commits, "commit") + " · " + plural(l.runs, "run") + " · merged " + (l.lastMergedAt ? fmtAgo(l.lastMergedAt) : "never")) + (l.model ? " · " + esc(l.model) : "") +
       (l.modelFromPi ? " <span class='tag' title='pi&#39;s own default model, from its settings.json: tumwater.json names no model'>(pi default)</span>" : "") + "</div>";
     const status = pill(info) + (detail ? "<div class='sub" + (stalled ? " t-red" : "") + "' title='" + esc(l.phase) + "'>" + esc(detail) + "</div>" : "");
     let activity;
@@ -143,7 +143,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       const r = resultInfo(l.lastResult);
       const why = resultWhy(l);
       activity = "<div class='clamp2' title='" + esc(why || r.label) + "'><span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" +
-        (why ? " <span class='now'>" + esc(why) + "</span>" : "") + "</div><div class='sub'>" + esc(fmtAgo(l.lastTickEndedAt)) + "</div>";
+        (why ? " <span class='now'>" + esc(why) + "</span>" : "") + "</div><div class='sub'>" + esc(fmtAgo(l.lastRunEndedAt)) + "</div>";
     } else activity = "<div class='muted'>No runs yet</div>";
     const spent = "<div>" + esc(fmtUsd(l.todayUsd)) + "</div><div class='sub'>" + esc(fmtUsd(l.costUsd)) + " total</div>";
     const b = (action, ic, title, cls) => "<button type='button' class='icon-btn rowaction" + (cls ? " " + cls : "") + "' data-action='" + action +

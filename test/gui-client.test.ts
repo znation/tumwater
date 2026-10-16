@@ -22,7 +22,7 @@ interface Model {
   resultInfo(result: string | null): { label: string; tone: string };
   resultWhy(l: object): string;
   loopRank(phase: string): number;
-  sortLoops<T extends { role: string; phase: string; lastTickEndedAt: number | null }>(loops: T[]): T[];
+  sortLoops<T extends { role: string; phase: string; lastRunEndedAt: number | null }>(loops: T[]): T[];
   pageAlerts(d: object | null, offline: boolean): Alert[];
   needsYou(alerts: Alert[]): number;
   eventKind(item: { type: string; result?: string }): string;
@@ -115,22 +115,22 @@ test("every phase label loopPhase renders maps to a known status on the page", (
 test("the page's loop order is status-model's, rank by rank", () => {
   const t = (min: number) => Date.parse("2026-09-11T00:00:00Z") + min * 60_000;
   const loops = [
-    { role: "sleepy", phase: "sleeping (for 5m)", lastTickEndedAt: t(3) },
-    { role: "working-b", phase: "working 2m", lastTickEndedAt: t(1) },
-    { role: "reviewing-a", phase: "reviewing 1m", lastTickEndedAt: null },
-    { role: "queued-z", phase: "due", lastTickEndedAt: t(5) },
-    { role: "landing-x", phase: "merging 2m · finishing the merge", lastTickEndedAt: t(0) },
-    { role: "director", phase: "director working 1m", lastTickEndedAt: t(7) },
-    { role: "vetted-v", phase: "approved, waiting to merge", lastTickEndedAt: t(4) },
-    { role: "parked-p", phase: "waiting to start 10s", lastTickEndedAt: t(6) },
-    { role: "never-ticked", phase: "stopped", lastTickEndedAt: null },
-    { role: "main-red", phase: "main's check is failing", lastTickEndedAt: t(0) },
-    { role: "broken", phase: "failing", lastTickEndedAt: t(2) },
-    { role: "held", phase: "paused", lastTickEndedAt: t(9) },
-    { role: "timed", phase: "paused · resumes in 2m", lastTickEndedAt: t(8) },
-    { role: "broke", phase: "waiting: budget spent", lastTickEndedAt: t(1) },
-    { role: "capped", phase: "waiting: daily cap spent", lastTickEndedAt: t(2) },
-    { role: "bootstrapped", phase: "waiting: bootstrap", lastTickEndedAt: t(0) },
+    { role: "sleepy", phase: "sleeping (for 5m)", lastRunEndedAt: t(3) },
+    { role: "working-b", phase: "working 2m", lastRunEndedAt: t(1) },
+    { role: "reviewing-a", phase: "reviewing 1m", lastRunEndedAt: null },
+    { role: "queued-z", phase: "due", lastRunEndedAt: t(5) },
+    { role: "landing-x", phase: "merging 2m · finishing the merge", lastRunEndedAt: t(0) },
+    { role: "director", phase: "director working 1m", lastRunEndedAt: t(7) },
+    { role: "vetted-v", phase: "approved, waiting to merge", lastRunEndedAt: t(4) },
+    { role: "parked-p", phase: "waiting to start 10s", lastRunEndedAt: t(6) },
+    { role: "never-ticked", phase: "stopped", lastRunEndedAt: null },
+    { role: "main-red", phase: "main's check is failing", lastRunEndedAt: t(0) },
+    { role: "broken", phase: "failing", lastRunEndedAt: t(2) },
+    { role: "held", phase: "paused", lastRunEndedAt: t(9) },
+    { role: "timed", phase: "paused · resumes in 2m", lastRunEndedAt: t(8) },
+    { role: "broke", phase: "waiting: budget spent", lastRunEndedAt: t(1) },
+    { role: "capped", phase: "waiting: daily cap spent", lastRunEndedAt: t(2) },
+    { role: "bootstrapped", phase: "waiting: bootstrap", lastRunEndedAt: t(0) },
   ];
   const order = model.sortLoops(loops).map((l) => l.role);
   assert.deepEqual(order, [
@@ -142,12 +142,12 @@ test("the page's loop order is status-model's, rank by rank", () => {
     "queued-z", "sleepy", "never-ticked", // idle
   ]);
   // Lockstep with the TUI/status comparator and its rank function.
-  assert.deepEqual(sortLoopsByState(loops).map((l) => l.role), order);
+  assert.deepEqual(sortLoopsByState(loops.map((l) => ({ ...l, lastTickEndedAt: l.lastRunEndedAt }))).map((l) => l.role), order);
   for (const l of loops) assert.equal(model.loopRank(l.phase), loopRank(l.phase), l.phase);
   // Ties break on the name, and the input is left alone.
   const tied = [
-    { role: "zeta", phase: "due", lastTickEndedAt: t(4) },
-    { role: "alpha", phase: "due", lastTickEndedAt: t(4) },
+    { role: "zeta", phase: "due", lastRunEndedAt: t(4) },
+    { role: "alpha", phase: "due", lastRunEndedAt: t(4) },
   ];
   assert.deepEqual(model.sortLoops(tied).map((l) => l.role), ["alpha", "zeta"]);
   assert.deepEqual(tied.map((l) => l.role), ["zeta", "alpha"], "sortLoops returns a new array");

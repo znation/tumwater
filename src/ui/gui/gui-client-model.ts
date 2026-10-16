@@ -115,8 +115,8 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
       const ra = loopRank(a.phase);
       const rb = loopRank(b.phase);
       if (ra !== rb) return ra - rb;
-      const ta = a.lastTickEndedAt ?? 0;
-      const tb = b.lastTickEndedAt ?? 0;
+      const ta = a.lastRunEndedAt ?? 0;
+      const tb = b.lastRunEndedAt ?? 0;
       if (ta !== tb) return tb - ta;
       return a.role.localeCompare(b.role);
     });

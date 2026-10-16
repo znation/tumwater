@@ -127,10 +127,13 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // the render's short sha and age — and the render is the collector's view with one clock
   // read, so `tumwater queue` and `tumwater status --json`'s landQueue cannot drift.
   // The in-flight marker rides along only while an orchestrator runs and the marker names a
-  // queued entry (queueInFlight) — status --json's landQueue.inFlight, so the two agree.
+  // queued entry (queueInFlight) — status --json's mergeQueue.inFlight, so the two agree.
   const view = readLandingQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, (v) => renderLandingQueue(v, Date.now(), inFlight));
+  // The document's entries carry `run` where the persisted LandingEntry still says `tick`; the
+  // human render keeps reading the persisted shape.
+  const doc = { ...view, entries: view.entries.map(({ tick, ...rest }) => ({ ...rest, run: tick })) };
+  sayJsonOrRender(args, inFlight ? { ...doc, inFlight } : doc, () => renderLandingQueue(view, Date.now(), inFlight));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

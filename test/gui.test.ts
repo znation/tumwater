@@ -371,8 +371,8 @@ test("the GUI last tick cell shows absolute time plus relative age, mirroring th
   assert.ok(hs, "human-seconds-fmt region found in the page");
   const fmtLastTick = new Function(`${hs[1]}\n${m[1]}\nreturn fmtLastTick;`)() as (ts: number | null) => string;
 
-  // The cell renders client-side from the payload's existing lastTickEndedAt field.
-  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastTickEndedAt\)/);
+  // The cell renders client-side from the payload's existing lastRunEndedAt field.
+  assert.match(GUI_PAGE, /fmtLastTick\(l\.lastRunEndedAt\)/);
 
   const now = Date.now();
   // The absolute part derives from the fixed ts, so it is stable across the test's own clock

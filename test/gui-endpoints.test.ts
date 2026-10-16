@@ -359,12 +359,12 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
     { ts: 3000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing here" },
   ]);
   const { captured, data } = await serveLogs(root, "?grep=added");
-  const events = (data as { events: { ts: number; loop: string; type: string; result?: string; message: string }[] }).events;
+  const events = (data as { events: { ts: number; source: string; type: string; result?: string; message: string }[] }).events;
   assert.equal(captured.status, 200);
   assert.equal(captured.contentType, "application/json");
   assert.deepEqual(events.map((e) => e.ts), [1000]);
   assert.deepEqual(events[0], {
-    ts: 1000, loop: "feature", type: "run_end", result: "changed",
+    ts: 1000, source: "feature", type: "run_end", result: "changed",
     message: "run #1 merged — added a thing",
   });
   // The answer is exactly the shared computation: the scanned tail through eventMatchesGrep and
@@ -410,9 +410,9 @@ test("the live server routes GET /api/logs to the slice handler", async () => {
   try {
     const res = await fetch(base + "/api/logs?n=10&role=feature");
     assert.equal(res.status, 200);
-    const data = (await res.json()) as { events: { loop: string; message: string }[] };
+    const data = (await res.json()) as { events: { source: string; message: string }[] };
     assert.equal(data.events.length, 1);
-    assert.equal(data.events[0]?.loop, "feature");
+    assert.equal(data.events[0]?.source, "feature");
     assert.match(data.events[0]?.message ?? "", /routed/);
   } finally {
     server.close();

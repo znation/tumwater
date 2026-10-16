@@ -80,14 +80,14 @@ test("pendingTableHtml escapes role, branch, and subject text", () => {
 // carries, painted in execution order like `tumwater queue` — from a pure function of the
 // payload and a fixed `now` so the ages are pinned.
 test("pendingQueueHtml lists each queued landing in order with position, role, tick, short sha, age, and summary", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
   const html = pendingQueueHtml({ depth: 2, entries: [
-    { role: "feature", sha: "abcdef1234567890", tick: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
-    { role: "bugfix", sha: "0123456789abcdef", tick: 7, summary: "fix the thing", enqueuedAt: now - 5_000 },
+    { role: "feature", sha: "abcdef1234567890", run: 42, summary: "add the thing", enqueuedAt: now - 180_000 },
+    { role: "bugfix", sha: "0123456789abcdef", run: 7, summary: "fix the thing", enqueuedAt: now - 5_000 },
   ] }, now);
   assert.match(html, /1\. feature run #42 · abcdef12 · 3m ago · add the thing/);
   assert.match(html, /2\. bugfix run #7 · 01234567 · 5s ago · fix the thing/);
@@ -95,14 +95,14 @@ test("pendingQueueHtml lists each queued landing in order with position, role, t
 });
 
 test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent labels", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number, labels?: unknown): string }>(
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number, labels?: unknown): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
   const q = { depth: 2, entries: [
-    { role: "feature", sha: "abcdef1234567890", tick: 1, summary: "a", enqueuedAt: now },
-    { role: "bugfix", sha: "0123456789abcdef", tick: 2, summary: "b", enqueuedAt: now },
+    { role: "feature", sha: "abcdef1234567890", run: 1, summary: "a", enqueuedAt: now },
+    { role: "bugfix", sha: "0123456789abcdef", run: 2, summary: "b", enqueuedAt: now },
   ] };
   const html = pendingQueueHtml(q, now, ["landing 2m · reviewing", "<b>x</b>"]);
   assert.match(html, /0s ago · \[landing 2m · reviewing\] · a/);
@@ -112,7 +112,7 @@ test("pendingQueueHtml adds a landing label per row, escaped, and ignores absent
 });
 
 test("pendingQueueHtml states an empty, unreadable-only, or malformed queue without undefined or NaN", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
@@ -124,20 +124,20 @@ test("pendingQueueHtml states an empty, unreadable-only, or malformed queue with
   // An entries field that is not an array, and an entry missing its sha/enqueuedAt, degrades.
   assert.doesNotMatch(pendingQueueHtml({ depth: 1, entries: "nope" }, now), /undefined|NaN/);
   const malformed = pendingQueueHtml({ depth: 1, entries: [
-    { role: "qa", tick: undefined, summary: undefined, sha: undefined, enqueuedAt: undefined },
+    { role: "qa", run: undefined, summary: undefined, sha: undefined, enqueuedAt: undefined },
   ] }, now);
   assert.match(malformed, /qa/);
   assert.doesNotMatch(malformed, /undefined|NaN/);
 });
 
 test("pendingQueueHtml escapes role and summary markup", () => {
-  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(landQueue: unknown, now: number): string }>(
+  const { pendingQueueHtml } = clientScope<{ pendingQueueHtml(mergeQueue: unknown, now: number): string }>(
     ["format", "labels", "pending-table"],
     ["pendingQueueHtml"],
   );
   const now = 1_000_000_000_000;
   const html = pendingQueueHtml({ depth: 1, entries: [
-    { role: "r<script>", sha: "abcdef12", tick: 1, summary: "<img>", enqueuedAt: now - 1_000 },
+    { role: "r<script>", sha: "abcdef12", run: 1, summary: "<img>", enqueuedAt: now - 1_000 },
   ] }, now);
   assert.doesNotMatch(html, /<script>|<img>/);
   assert.match(html, /r&lt;script&gt;/);

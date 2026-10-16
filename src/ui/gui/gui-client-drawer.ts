@@ -84,7 +84,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   }
   // The change the landing slot holds for a role — what a landing (or approved) row is about.
   function landingSummary(d, role) {
-    const f = d.landQueue && d.landQueue.inFlight;
+    const f = d.mergeQueue && d.mergeQueue.inFlight;
     if (!f) return "";
     const change = (Array.isArray(f.changes) ? f.changes : [f]).find((c) => c.role === role);
     return change && change.summary ? change.summary : "";
@@ -139,7 +139,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : "";
     const r = l.lastResult ? resultInfo(l.lastResult) : null;
     const why = resultWhy(l);
-    const last = "<section><div class='sec-head'><h3>Last result</h3>" + (l.lastTickEndedAt ? "<span class='muted' style='font-size:13px'>" + esc(fmtAgo(l.lastTickEndedAt)) + "</span>" : "") +
+    const last = "<section><div class='sec-head'><h3>Last result</h3>" + (l.lastRunEndedAt ? "<span class='muted' style='font-size:13px'>" + esc(fmtAgo(l.lastRunEndedAt)) + "</span>" : "") +
       "</div><div class='note'>" + (r ? "<span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" + (why ? " — " + esc(why) : "") : "<span class='muted'>No completed runs yet.</span>") + "</div></section>";
     const next = fmtNextRun(l, d.running);
     // fmtNextRun's shapes: "-", "now" (possibly with a " ×N" yield suffix), and a bare or
@@ -150,11 +150,11 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : next.startsWith("sleeping ") ? "in " + next.slice(9) + " (sleeping)"
       : "in " + next;
     const tickWord = info.live ? "this run" : "last run";
-    const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Runs", String(l.ticks)) +
+    const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Runs", String(l.runs)) +
       kvRow("Tokens, " + tickWord, fmtTokens(l.generated)) + kvRow("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
       kvRow("Spent today", fmtUsd(l.todayUsd)) + kvRow("Spent in total", fmtUsd(l.costUsd)) +
-      kvRow("Last run ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
-      kvRow("Last merged", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
+      kvRow("Last run ended", l.lastRunEndedAt ? fmtAgo(l.lastRunEndedAt) : "never", fmtLastTick(l.lastRunEndedAt)) +
+      kvRow("Last merged", l.lastMergedAt ? fmtAgo(l.lastMergedAt) : "never") +
       kvRow("Next run", nextNote) + "</dl>";
     const ticks = drawerTicks === null
       ? "<p class='muted'>Loading…</p>"

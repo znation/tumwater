@@ -199,7 +199,7 @@ export function budgetBadge(
   const tierEntries = fallbackTierEntries(budget.tiers);
   // The backend-default label when the engaged pair names neither half: `<agent> default`
   // (plans/agent-backends.md part 4f/7), `pi default` for a pi fleet as before.
-  const agentDefault = `${budget.agent && budget.agent !== "pi" ? budget.agent : "pi"} default`;
+  const agentDefault = `${budget.backend && budget.backend !== "pi" ? budget.backend : "pi"} default`;
   const fallback =
     fleetBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2

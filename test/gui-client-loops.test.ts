@@ -139,7 +139,7 @@ test("a stalled working loop's detail line is flagged red", () => {
 });
 
 test("an idle loop's activity is its last result in words with the reason that explains it", () => {
-  const base = { role: "docs", phase: "sleeping", lastTickEndedAt: now - 90_000 };
+  const base = { role: "docs", phase: "sleeping", lastRunEndedAt: now - 90_000 };
   // A problem result shows the loop's own summary when it has one.
   const summarized = row({ ...base, lastResult: "error", lastSummary: "could not read the log" });
   assert.ok(summarized.activity.includes("<span class='res t-red'>Error</span>"));
@@ -189,7 +189,7 @@ test("each row's actions match its state: wake when idle, abort (two-click) when
 });
 
 test("a row's name cell tags custom loops and queued prompts, and shows today's spend over the total", () => {
-  const cells = loopCells({ role: "watcher", phase: "sleeping", custom: true, commits: 3, ticks: 12,
+  const cells = loopCells({ role: "watcher", phase: "sleeping", custom: true, commits: 3, runs: 12,
     todayUsd: 1.5, costUsd: 20.25 }, { roleInbox: { watcher: 2 } }).cells.map(String);
   const name = cells[0] ?? "";
   assert.ok(name.includes("custom"), "a user-defined loop says so");
@@ -199,24 +199,24 @@ test("a row's name cell tags custom loops and queued prompts, and shows today's 
 });
 
 test("a row's name line names when the loop last landed, or 'never' when it has not", () => {
-  const landed = loopCells({ role: "feature", phase: "sleeping", ticks: 4, commits: 2, todayUsd: 0, costUsd: 0,
-    lastLandedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
+  const landed = loopCells({ role: "feature", phase: "sleeping", runs: 4, commits: 2, todayUsd: 0, costUsd: 0,
+    lastMergedAt: Date.now() - 180_000 }, {}).cells.map(String)[0] ?? "";
   assert.match(landed, /merged 3m ago/, "the row names the last-landed age through fmtAgo");
-  const fresh = loopCells({ role: "new", phase: "sleeping", ticks: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+  const fresh = loopCells({ role: "new", phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
   assert.match(fresh, /merged never/, "a loop that has never landed says never");
 });
 
 test("a loop row renders its model tier tag and selector when the payload carries them", () => {
   const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
-  const named = cells({ role: "plan", phase: "sleeping", ticks: 2, commits: 1, modelTier: "strong", model: "prov-s/model-s:high" });
+  const named = cells({ role: "plan", phase: "sleeping", runs: 2, commits: 1, modelTier: "strong", model: "prov-s/model-s:high" });
   assert.match(named, /<span class='tag' title='[^']*'>strong<\/span>/);
   assert.match(named, /prov-s\/model-s:high/);
   // Without tier fields (no map declared) the row carries no tier tag and no selector.
-  const plain = cells({ role: "clean", phase: "sleeping", ticks: 2, commits: 1 });
+  const plain = cells({ role: "clean", phase: "sleeping", runs: 2, commits: 1 });
   assert.doesNotMatch(plain, /class='tag' title='[^']*'>strong</);
   assert.doesNotMatch(plain, /model-s/);
   // A tier tag without a resolved selector still renders, with no dangling separator.
-  const tierOnly = cells({ role: "clean", phase: "sleeping", ticks: 2, commits: 1, modelTier: "strong" });
+  const tierOnly = cells({ role: "clean", phase: "sleeping", runs: 2, commits: 1, modelTier: "strong" });
   assert.match(tierOnly, />strong<\/span>/);
   assert.doesNotMatch(tierOnly, /model-s/);
 });
@@ -225,12 +225,12 @@ test("a loop row renders its model tier tag and selector when the payload carrie
 // named in tumwater.json) labels it, so a row without the flag renders byte-identical to today.
 test("a loop row marks a model pi's own saved default", () => {
   const cells = (l: object): string => loopCells({ todayUsd: 0, costUsd: 0, ...l }, {}).cells.map(String)[0] ?? "";
-  const marked = cells({ role: "feature", phase: "sleeping", ticks: 2, commits: 1, model: "prov/org/m:route:low", modelFromPi: true });
+  const marked = cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov/org/m:route:low", modelFromPi: true });
   assert.match(marked, /prov\/org\/m:route:low/);
   assert.match(marked, /\(pi default\)/);
   assert.match(marked, /from its settings\.json/);
   // Without the flag the same selector renders unchanged.
-  assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", ticks: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
+  assert.doesNotMatch(cells({ role: "feature", phase: "sleeping", runs: 2, commits: 1, model: "prov-a/model-a" }), /\(pi default\)/);
 });
 
 // Model failure fallback, part 2/2: a loop row carries a fallback tag only while the

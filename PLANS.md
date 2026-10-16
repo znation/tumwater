@@ -40,52 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui)
-
-**Goal.** The last script interfaces lose their retired keys:
-- `status --json` and `/api/status` rows carry `runs`, `lastRunEndedAt` and `lastMergedAt`.
-- The merge queue is published as `mergeQueue` (its entries carry `run`), next to `mergeBadge` and `mergeQueueLabels`.
-- The budget block carries `backend`.
-- Activity-feed items (`eventItems` and `GET /api/logs`) carry `source`.
-- `tumwater queue --json` entries carry `run`.
-
-**Approach.**
-- Rows in `statusPayload` (src/ui/status-payload.ts):
-  - `ticks: s.ticks` → `runs: s.ticks`. The right-hand side reads the persisted state field, which Plain terms state renames.
-  - `lastTickEndedAt` → `lastRunEndedAt`.
-  - `lastLandedAt` → `lastMergedAt`.
-- Top level of `statusPayload`: `landQueue` → `mergeQueue`, `landingBadge` → `mergeBadge`, `landQueueLabels` → `mergeQueueLabels`.
-- Merge-queue entries:
-  - src/status/status-data.ts copies each queued entry into the snapshot. Write `run: e.tick` there, and rename `StatusSnapshot.landQueue.entries[].tick` to `run`. The dashboard reads it as `e.tick` in `pendingQueueHtml` (src/ui/gui/gui-client-pending.ts).
-  - `cmdQueue` (src/cli/cli-query-commands.ts) maps its `--json` document's entries' `tick` to `run` the same way. Its human render keeps reading `LandingEntry`.
-  - The persisted `LandingEntry.tick` and `.tumwater/land-queue/` stay until Plain terms state, which drops both projections when it renames the stored field. `inFlight`'s shape and its status values (`landing`, `vetted`) are the merging marker's, which Plain terms state renames.
-- Budget: `StatusSnapshot.budget.agent` becomes `backend`. It is declared in src/status/status-data.ts, written in src/status/status-budget.ts and read by `budgetBadge` in src/ui/badges.ts.
-- Feed items: `eventFeedItem` (src/events/event-format.ts) returns `source` instead of `loop`. The value is still `eventRole(e)`, and the name matches the event log's own `source` field (plans/terminology.md "Event log"). The dashboard reads it in two places: the feed filter and render in src/ui/gui/gui-client-fleet.ts (`it.loop`), and the poll's new-event key in src/ui/gui/gui-client-boot.ts (`last.loop`).
-- Dashboard script readers of the row fields:
-  - src/ui/gui/gui-client-drawer.ts: the stats list (`l.ticks`, `l.lastTickEndedAt`, `l.lastLandedAt`) and `landingSummary`'s `d.landQueue`
-  - src/ui/gui/gui-client-loops.ts: the sub line and the idle cell
-  - src/ui/gui/gui-client-model.ts: the sort on `lastTickEndedAt`
-  - src/ui/gui/gui-client-pending.ts: `status.landQueue` and `status.landQueueLabels`
-- The rows' `phase` text (for example `landing 2m · reviewing`) is a display label. It belongs to the text part that converted `loopPhase` together with its parser in gui-client-model.ts. Leave it.
-- Append to `RETIRED_CLIENT_READS`: `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landQueueLabels`, `landingBadge` and `ticks`. In test/status-payload.test.ts, add a test that walks the whole `statusPayload` object and fails on any key named `loops`, `ticks`, `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landingBadge` or `landQueueLabels`, or on a `budget.agent`, `eventItems[].loop` or `mergeQueue.entries[].tick` key.
-- Tests:
-  - status payload: test/status-payload.test.ts, test/status-data-models.test.ts
-  - budget: the `budget` deepEquals in test/gui-operator.test.ts, plus test/badges.test.ts, test/status-data-budget.test.ts, test/fleet-alerts.test.ts and test/fixtures/status-fixtures.ts
-  - queue: test/cli-queue.test.ts
-  - feed items: test/gui-endpoints.test.ts (`/api/logs`)
-  - dashboard fixtures in test/gui-client-*.test.ts: drawer, loops, the model sort in gui-client.test.ts, pending, and the fleet feed items' `loop:` → `source:`
-  - Leave alone the `LoopState` objects tests write to `state/<id>.json` (`ticks`, `lastTickEndedAt`, `lastLandedAt`). They are persisted state, which Plain terms state renames.
-
-**Files touched.** Source: src/ui/status-payload.ts, src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/events/event-format.ts, src/cli/cli-query-commands.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-boot.ts. Tests: test/script-keys.test.ts and those listed above.
-
-**Acceptance criteria.**
-- A `status --json` row carries `runs`, `lastRunEndedAt` and `lastMergedAt`, and none of `ticks`, `lastTickEndedAt` or `lastLandedAt`.
-- The top level carries `mergeQueue` (whose entries carry `run`), `mergeBadge`, `mergeQueueLabels` and `budget.backend`. The new key-walking test in test/status-payload.test.ts finds no old name.
-- `tumwater queue --json` entries carry `run`, not `tick` (test/cli-queue.test.ts).
-- `eventItems[]` and the `GET /api/logs` items carry `source`, and the dashboard feed's role filter and role chips still work (test/gui-client-fleet.test.ts).
-- test/script-keys.test.ts passes with this part's keys listed.
-- `npm run test` passes.
-
 ### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/)
 
 **Goal.** `land_queued`, `landed` and `land_failed` become `merge_queued`, `merge_done` and `merge_failed`. The existing `merged` (the fast-forward onto main) is unchanged. The notify hook pages on `merge_failed` and receives `TUMWATER_EVENT_SOURCE` instead of `TUMWATER_EVENT_LOOP`.
@@ -2258,6 +2212,52 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui; done 2026-10-16)
+
+**Goal.** The last script interfaces lose their retired keys:
+- `status --json` and `/api/status` rows carry `runs`, `lastRunEndedAt` and `lastMergedAt`.
+- The merge queue is published as `mergeQueue` (its entries carry `run`), next to `mergeBadge` and `mergeQueueLabels`.
+- The budget block carries `backend`.
+- Activity-feed items (`eventItems` and `GET /api/logs`) carry `source`.
+- `tumwater queue --json` entries carry `run`.
+
+**Approach.**
+- Rows in `statusPayload` (src/ui/status-payload.ts):
+  - `ticks: s.ticks` → `runs: s.ticks`. The right-hand side reads the persisted state field, which Plain terms state renames.
+  - `lastTickEndedAt` → `lastRunEndedAt`.
+  - `lastLandedAt` → `lastMergedAt`.
+- Top level of `statusPayload`: `landQueue` → `mergeQueue`, `landingBadge` → `mergeBadge`, `landQueueLabels` → `mergeQueueLabels`.
+- Merge-queue entries:
+  - src/status/status-data.ts copies each queued entry into the snapshot. Write `run: e.tick` there, and rename `StatusSnapshot.landQueue.entries[].tick` to `run`. The dashboard reads it as `e.tick` in `pendingQueueHtml` (src/ui/gui/gui-client-pending.ts).
+  - `cmdQueue` (src/cli/cli-query-commands.ts) maps its `--json` document's entries' `tick` to `run` the same way. Its human render keeps reading `LandingEntry`.
+  - The persisted `LandingEntry.tick` and `.tumwater/land-queue/` stay until Plain terms state, which drops both projections when it renames the stored field. `inFlight`'s shape and its status values (`landing`, `vetted`) are the merging marker's, which Plain terms state renames.
+- Budget: `StatusSnapshot.budget.agent` becomes `backend`. It is declared in src/status/status-data.ts, written in src/status/status-budget.ts and read by `budgetBadge` in src/ui/badges.ts.
+- Feed items: `eventFeedItem` (src/events/event-format.ts) returns `source` instead of `loop`. The value is still `eventRole(e)`, and the name matches the event log's own `source` field (plans/terminology.md "Event log"). The dashboard reads it in two places: the feed filter and render in src/ui/gui/gui-client-fleet.ts (`it.loop`), and the poll's new-event key in src/ui/gui/gui-client-boot.ts (`last.loop`).
+- Dashboard script readers of the row fields:
+  - src/ui/gui/gui-client-drawer.ts: the stats list (`l.ticks`, `l.lastTickEndedAt`, `l.lastLandedAt`) and `landingSummary`'s `d.landQueue`
+  - src/ui/gui/gui-client-loops.ts: the sub line and the idle cell
+  - src/ui/gui/gui-client-model.ts: the sort on `lastTickEndedAt`
+  - src/ui/gui/gui-client-pending.ts: `status.landQueue` and `status.landQueueLabels`
+- The rows' `phase` text (for example `landing 2m · reviewing`) is a display label. It belongs to the text part that converted `loopPhase` together with its parser in gui-client-model.ts. Leave it.
+- Append to `RETIRED_CLIENT_READS`: `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landQueueLabels`, `landingBadge` and `ticks`. In test/status-payload.test.ts, add a test that walks the whole `statusPayload` object and fails on any key named `loops`, `ticks`, `lastTickEndedAt`, `lastLandedAt`, `landQueue`, `landingBadge` or `landQueueLabels`, or on a `budget.agent`, `eventItems[].loop` or `mergeQueue.entries[].tick` key.
+- Tests:
+  - status payload: test/status-payload.test.ts, test/status-data-models.test.ts
+  - budget: the `budget` deepEquals in test/gui-operator.test.ts, plus test/badges.test.ts, test/status-data-budget.test.ts, test/fleet-alerts.test.ts and test/fixtures/status-fixtures.ts
+  - queue: test/cli-queue.test.ts
+  - feed items: test/gui-endpoints.test.ts (`/api/logs`)
+  - dashboard fixtures in test/gui-client-*.test.ts: drawer, loops, the model sort in gui-client.test.ts, pending, and the fleet feed items' `loop:` → `source:`
+  - Leave alone the `LoopState` objects tests write to `state/<id>.json` (`ticks`, `lastTickEndedAt`, `lastLandedAt`). They are persisted state, which Plain terms state renames.
+
+**Files touched.** Source: src/ui/status-payload.ts, src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/events/event-format.ts, src/cli/cli-query-commands.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-pending.ts, src/ui/gui/gui-client-fleet.ts, src/ui/gui/gui-client-boot.ts. Tests: test/script-keys.test.ts and those listed above.
+
+**Acceptance criteria.**
+- A `status --json` row carries `runs`, `lastRunEndedAt` and `lastMergedAt`, and none of `ticks`, `lastTickEndedAt` or `lastLandedAt`.
+- The top level carries `mergeQueue` (whose entries carry `run`), `mergeBadge`, `mergeQueueLabels` and `budget.backend`. The new key-walking test in test/status-payload.test.ts finds no old name.
+- `tumwater queue --json` entries carry `run`, not `tick` (test/cli-queue.test.ts).
+- `eventItems[]` and the `GET /api/logs` items carry `source`, and the dashboard feed's role filter and role chips still work (test/gui-client-fleet.test.ts).
+- test/script-keys.test.ts passes with this part's keys listed.
+- `npm run test` passes.
 
 ### The TUI's backlog pane lists the newest done plans and fixed bugs after the answered questions, as the dashboard's Plans and Bugs tabs already do (planned 2026-10-16 by plan; independent of every other Planned entry. It edits src/ui/status-payload.ts, src/ui/tui/tui-backlog.ts, src/ui/tui/tui-pane.ts, test/tui-backlog.test.ts and one docs/cli.md sentence; it renames no payload key, so it does not touch what the Plain terms series own, done 2026-10-16)
 

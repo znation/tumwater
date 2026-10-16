@@ -138,11 +138,11 @@ export function formatEvent(e: HarnessEvent): string {
  * layer owns the event shape's projection, so both the status poll (ui/status-payload.ts) and
  * the slice endpoint (gui/gui-endpoints.ts's handleLogs) read the same fields, and a feed row's
  * shape cannot drift between them. */
-export function eventFeedItem(e: HarnessEvent): { ts: number; loop: string; type: string; result?: string; message: string } {
+export function eventFeedItem(e: HarnessEvent): { ts: number; source: string; type: string; result?: string; message: string } {
   const result = eventResult(e);
   // eventRole renders a missing/empty loop as "?" like the reports, so a torn or hand-edited
   // event never shows a literal "undefined" loop chip in the dashboard's activity feed.
-  return { ts: e.ts, loop: eventRole(e), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
+  return { ts: e.ts, source: eventRole(e), type: e.type, ...(result === undefined ? {} : { result }), message: eventMessage(e) };
 }
 
 /** The feed's `--grep`/Search match rule: case-insensitive substring over the raw event type

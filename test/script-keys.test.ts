@@ -15,6 +15,12 @@ const RETIRED_CLIENT_READS = [
   "landedByRole",
   "landingFailedByRole",
   "loops",
+  "lastTickEndedAt",
+  "lastLandedAt",
+  "landQueue",
+  "landQueueLabels",
+  "landingBadge",
+  "ticks",
 ];
 
 /** Lines of `source` that read a listed key as `.key` or as a quoted string key. */
@@ -23,7 +29,9 @@ function retiredReads(source: string, keys: readonly string[]): string[] {
   source.split("\n").forEach((line, i) => {
     for (const key of keys) {
       const prop = new RegExp(`\\.${key}(?![A-Za-z0-9_$])`);
-      if (prop.test(line) || line.includes(`"${key}"`) || line.includes(`'${key}'`)) {
+      // A quoted name right after `=` is an HTML attribute value (`class='ticks'`), not a key.
+      const quoted = new RegExp(`(?<!=)["']${key}["']`);
+      if (prop.test(line) || quoted.test(line)) {
         hits.push(`${key} on line ${i + 1}`);
       }
     }
@@ -46,4 +54,5 @@ test("the matcher flags a property read and a quoted key, and passes a longer na
     "landingRuns on line 2",
   ]);
   assert.deepEqual(retiredReads("x = d.ticksByRoleExtra;", RETIRED_CLIENT_READS), []);
+  assert.deepEqual(retiredReads("h = \"<ul class='ticks'>\"; k = d['ticks'];", RETIRED_CLIENT_READS), ["ticks on line 1"]);
 });

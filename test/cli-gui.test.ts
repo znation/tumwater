@@ -112,10 +112,10 @@ test("the served /api/status carries the land queue's entries", async () => {
   try {
     await gui.waitFor((b) => b.includes(`tumwater gui at http://127.0.0.1:${port}`), "the gui banner");
     const snap = await (await fetch(`http://127.0.0.1:${port}/api/status`)).json();
-    assert.equal(snap.landQueue.depth, 2);
+    assert.equal(snap.mergeQueue.depth, 2);
     assert.deepEqual(
-      snap.landQueue.entries.map((e: { role: string; sha: string; tick: number; summary: string; enqueuedAt: number }) =>
-        [e.role, e.sha, e.tick, e.summary, typeof e.enqueuedAt]),
+      snap.mergeQueue.entries.map((e: { role: string; sha: string; run: number; summary: string; enqueuedAt: number }) =>
+        [e.role, e.sha, e.run, e.summary, typeof e.enqueuedAt]),
       [["clean", "abc1234", 1, "tidy something", "number"], ["feature", "def5678", 2, "add a thing", "number"]],
       "the queued changes reach the client oldest first",
     );

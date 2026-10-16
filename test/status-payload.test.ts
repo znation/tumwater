@@ -10,6 +10,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
 import { statusPayload } from "../src/ui/status-payload.js";
+import { enqueueLanding } from "../src/landing/landing-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
@@ -446,12 +447,12 @@ test("the status payload names the project and carries the recent events as data
   const payload = statusPayload(repo) as {
     project: string;
     events: string[];
-    eventItems: Array<{ ts: number; loop: string; type: string; result?: string; message: string }>;
+    eventItems: Array<{ ts: number; source: string; type: string; result?: string; message: string }>;
   };
   assert.equal(payload.project, path.basename(repo), "the project is the directory's name");
   assert.equal(payload.eventItems.length, payload.events.length, "one item per feed line");
   const tail = payload.eventItems.slice(-3);
-  assert.deepEqual(tail.map((e) => [e.loop, e.type, e.result]), [["qa", "run_end", "error"], ["bugfix", "merged", undefined], ["bugfix", "build_check", "failed"]]);
+  assert.deepEqual(tail.map((e) => [e.source, e.type, e.result]), [["qa", "run_end", "error"], ["bugfix", "merged", undefined], ["bugfix", "build_check", "failed"]]);
   // Each item's message is its feed line without the time and loop columns.
   for (const [i, item] of payload.eventItems.entries()) {
     assert.ok(payload.events[i]!.endsWith(" " + item.message), `line ${i} ends with its item's message`);
@@ -467,8 +468,8 @@ test("the status payload renders a corrupt event's loop as ? like the reports", 
   // no loop reaches eventItem; String(undefined) shipped the literal "undefined" as the feed's
   // loop chip. eventRole's "?" is the rule the usage report and failure digest apply.
   writeEvents(repo, [{ ts: 123, type: "wake", reason: "main moved" }]);
-  const payload = statusPayload(repo) as { eventItems: Array<{ loop: string }> };
-  assert.equal(payload.eventItems.at(-1)?.loop, "?");
+  const payload = statusPayload(repo) as { eventItems: Array<{ source: string }> };
+  assert.equal(payload.eventItems.at(-1)?.source, "?");
 });
 
 test("the status payload carries each loop's last error for the rows that failed", async () => {
@@ -491,9 +492,9 @@ test("the status payload carries each loop's last-landed epoch ms, null until it
   s.lastLandedAt = 123_456_789;
   saveLoopState(repo, s);
   saveLoopState(repo, freshLoopState("clean"));
-  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastLandedAt: number | null }> };
-  assert.equal(payload.roles.find((l) => l.role === "qa")?.lastLandedAt, 123_456_789);
-  assert.equal(payload.roles.find((l) => l.role === "clean")?.lastLandedAt, null);
+  const payload = statusPayload(repo) as { roles: Array<{ role: string; lastMergedAt: number | null }> };
+  assert.equal(payload.roles.find((l) => l.role === "qa")?.lastMergedAt, 123_456_789);
+  assert.equal(payload.roles.find((l) => l.role === "clean")?.lastMergedAt, null);
 });
 
 test("statusPayload exposes each loop's nextRunAt and backoffSeconds", async () => {
@@ -685,4 +686,35 @@ test("status payload lists the newest done plans and fixed bugs beside the open 
   assert.deepEqual(payload.donePlans.map((d) => d.title), ["D6", "D5", "D4", "D3", "D2"]);
   assert.equal(payload.donePlans[0]?.completedOn, "2026-10-06");
   assert.deepEqual(payload.fixedBugs, [{ title: "B2", completedOn: "2026-10-03" }, { title: "B1 with no stamp", completedOn: null }]);
+});
+
+test("the status payload carries no retired script key anywhere in its tree", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "retired keys test");
+  saveLoopState(repo, freshLoopState("qa"));
+  enqueueLanding(repo, { role: "qa", sha: "abc1234", tick: 3, summary: "queued", enqueuedAt: Date.now() });
+  writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]);
+  const payload = statusPayload(repo) as {
+    roles: Array<Record<string, unknown>>;
+    mergeQueue: { entries: Array<Record<string, unknown>> };
+    budget: Record<string, unknown>;
+    eventItems: Array<Record<string, unknown>>;
+  };
+  const retired = new Set(["loops", "ticks", "lastTickEndedAt", "lastLandedAt", "landQueue", "landingBadge", "landQueueLabels"]);
+  const found: string[] = [];
+  const walk = (v: unknown, at: string): void => {
+    if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${at}[${i}]`));
+    else if (v && typeof v === "object") {
+      for (const [k, x] of Object.entries(v)) {
+        if (retired.has(k)) found.push(`${at}.${k}`);
+        walk(x, `${at}.${k}`);
+      }
+    }
+  };
+  walk(payload, "payload");
+  assert.deepEqual(found, []);
+  assert.ok(payload.mergeQueue.entries.length > 0 && payload.eventItems.length > 0 && payload.roles.length > 0);
+  assert.ok(!("agent" in payload.budget) && "backend" in payload.budget);
+  assert.ok(payload.eventItems.every((it) => !("loop" in it) && "source" in it));
+  assert.ok(payload.mergeQueue.entries.every((e) => !("tick" in e) && "run" in e));
 });

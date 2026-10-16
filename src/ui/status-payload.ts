@@ -117,7 +117,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // What a working loop is doing right now (first assistant text of the in-flight run).
       // Null when idle — never show a stale item from a finished tick.
       currentWork: live?.currentWork ?? null,
-      ticks: s.ticks,
+      runs: s.ticks,
       commits: s.commits,
       generated,
       peakCtx,
@@ -130,11 +130,11 @@ export function statusPayload(root: string, now = Date.now()): object {
       // The last failure's text (a tick error, a failed landing's reason); the dashboard shows it
       // beside a problem result that carries no summary of its own.
       lastError: s.lastError ?? null,
-      lastTickEndedAt: s.lastTickEndedAt ?? null,
+      lastRunEndedAt: s.lastTickEndedAt ?? null,
       // When the loop last actually landed a change on main (epoch ms; null until it ever
       // does) — the direct answer to "how long has the dry spell been", the productivity
       // complement to lastError/lastTickEndedAt.
-      lastLandedAt: s.lastLandedAt ?? null,
+      lastMergedAt: s.lastLandedAt ?? null,
       // The scheduling facts behind the `next run` column: raw epoch ms and seconds, formatted
       // client-side like lastTickEndedAt/costUsd — the GUI's fmtNextRun twin applies the same
       // rules nextRunCell does (see status-render.ts).
@@ -188,12 +188,12 @@ export function statusPayload(root: string, now = Date.now()): object {
     // `status --json`; 0 when idle) plus the in-flight landing's identity only while one is
     // actually running. Raw data here, like budget — and the display-ready header badge
     // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
-    landQueue: snap.landQueue,
-    landingBadge: landingBadge(snap.landQueue),
+    mergeQueue: snap.landQueue,
+    mergeBadge: landingBadge(snap.landQueue),
     // One bracketed landing label per land-queue entry (queueEntryLandingLabel, "" for none),
     // parallel to landQueue.entries — display-ready like landingBadge, since browser JS cannot
     // import the TypeScript stage labels.
-    landQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryLandingLabel(e.sha, snap.landQueue.inFlight, now)),
+    mergeQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryLandingLabel(e.sha, snap.landQueue.inFlight, now)),
     // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
     // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status

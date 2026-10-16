@@ -294,14 +294,14 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   const loops = doc.roles as Array<Record<string, unknown>>;
   assert.ok(loops.length > 0);
   for (const l of loops) {
-    for (const field of ["role", "phase", "ticks", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastTickEndedAt"]) {
+    for (const field of ["role", "phase", "runs", "commits", "generated", "peakCtx", "costUsd", "todayUsd", "lastResult", "lastSummary", "lastRunEndedAt"]) {
       assert.ok(field in l, `loop field ${field} present`);
     }
   }
   // Seeded counters surface verbatim — the JSON is state-file data, not a re-rendering.
   const feature = loops.find((l) => l.role === "feature");
   assert.ok(feature, "feature loop row present");
-  assert.equal(feature!.ticks, 7);
+  assert.equal(feature!.runs, 7);
   assert.equal(feature!.commits, 3);
   assert.equal(feature!.generated, 424242);
   assert.equal(feature!.costUsd, 1.5);

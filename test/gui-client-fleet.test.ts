@@ -302,8 +302,8 @@ test("the Activity feed narrows to one loop when its Loop picker is set", () => 
   scope.renderFeed({
     roles: [{ role: "feature" }, { role: "bugfix" }],
     eventItems: [
-      { ts: Date.now(), loop: "feature", type: "merged", message: "did a feature thing" },
-      { ts: Date.now(), loop: "bugfix", type: "question_posted", message: "did a bugfix thing" },
+      { ts: Date.now(), source: "feature", type: "merged", message: "did a feature thing" },
+      { ts: Date.now(), source: "bugfix", type: "question_posted", message: "did a bugfix thing" },
     ],
   });
   const html = panels["feed"] ?? "";
@@ -313,8 +313,8 @@ test("the Activity feed narrows to one loop when its Loop picker is set", () => 
 
 test("the Activity feed's Search matches loop, type, and message case-insensitively", () => {
   const items = [
-    { ts: Date.now(), loop: "qa", type: "merged", message: "the suite FAILED" },
-    { ts: Date.now(), loop: "qa", type: "question_posted", message: "all green" },
+    { ts: Date.now(), source: "qa", type: "merged", message: "the suite FAILED" },
+    { ts: Date.now(), source: "qa", type: "question_posted", message: "all green" },
   ];
   const lower = feedScope({ "feed-grep": "failed" });
   lower.scope.renderFeed({ roles: [], eventItems: items });
@@ -327,7 +327,7 @@ test("the Activity feed's Search matches loop, type, and message case-insensitiv
 });
 
 test("a filter that removes every carried event paints the clearable empty state", () => {
-  const carried = { ts: Date.now(), loop: "qa", type: "merged", message: "boom" };
+  const carried = { ts: Date.now(), source: "qa", type: "merged", message: "boom" };
   const filtered = feedScope({ "feed-grep": "no-such-text" });
   filtered.scope.renderFeed({ roles: [], eventItems: [carried] });
   const html = filtered.panels["feed"] ?? "";
@@ -347,7 +347,7 @@ test("an in-progress Search value survives a status poll", () => {
   box.value = "half-typed";
   scope.renderFeed({
     roles: [],
-    eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "landed one" }],
+    eventItems: [{ ts: Date.now(), source: "qa", type: "merged", message: "landed one" }],
   });
   assert.equal(box.value, "half-typed", "renderFeed leaves the box's live value alone");
 });
@@ -356,7 +356,7 @@ test("a Notable-only cull keeps the notable wording, not the filter empty state"
   const { scope, panels } = feedScope({ "feed-role": "qa" });
   scope.renderFeed({
     roles: [{ role: "qa" }],
-    eventItems: [{ ts: Date.now(), loop: "qa", type: "run_start", message: "working" }],
+    eventItems: [{ ts: Date.now(), source: "qa", type: "run_start", message: "working" }],
   });
   const html = panels["feed"] ?? "";
   assert.match(html, /Nothing notable lately/, "the Notable choice, not the Loop picker, emptied the feed");
@@ -367,8 +367,8 @@ test("with neither filter set the Activity feed paints the unfiltered rows byte-
   const payload = {
     roles: [{ role: "qa" }],
     eventItems: [
-      { ts: Date.now(), loop: "qa", type: "merged", message: "landed one" },
-      { ts: Date.now(), loop: "qa", type: "question_posted", message: "needs you" },
+      { ts: Date.now(), source: "qa", type: "merged", message: "landed one" },
+      { ts: Date.now(), source: "qa", type: "question_posted", message: "needs you" },
     ],
   };
   const plain = feedScope();
@@ -381,11 +381,11 @@ test("with neither filter set the Activity feed paints the unfiltered rows byte-
 });
 
 test("an active Search fetches /api/logs and paints a slice beyond the carried window", async () => {
-  const payload = { roles: [], eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "carried row" }] };
+  const payload = { roles: [], eventItems: [{ ts: Date.now(), source: "qa", type: "merged", message: "carried row" }] };
   const calls: string[] = [];
   const getJson = async (path: string) => {
     calls.push(path);
-    return { events: [{ ts: 1, loop: "feature", type: "land_failed", result: "rejected", message: "old failure" }] };
+    return { events: [{ ts: 1, source: "feature", type: "land_failed", result: "rejected", message: "old failure" }] };
   };
   const { scope, panels } = feedScope({ "feed-grep": "failure" }, { getJson, lastStatus: payload });
   scope.renderFeed(payload);
@@ -410,7 +410,7 @@ test("the search query carries only the non-empty Loop and Search filters", asyn
 });
 
 test("a server search with no matches names the searched slice, not the carried window", async () => {
-  const payload = { roles: [], eventItems: [{ ts: Date.now(), loop: "qa", type: "merged", message: "carried row" }] };
+  const payload = { roles: [], eventItems: [{ ts: Date.now(), source: "qa", type: "merged", message: "carried row" }] };
   const { scope, panels } = feedScope({ "feed-grep": "carried" }, {
     getJson: async () => ({ events: [] }),
     lastStatus: payload,
@@ -436,9 +436,9 @@ test("a stale search response never paints over a newer filter", async () => {
   await feedSettle();
   assert.deepEqual(calls, ["/api/logs?grep=first", "/api/logs?grep=second"]);
   // The newer answer lands, then the stale one — which must not repaint.
-  resolvers[1]!({ events: [{ ts: 2, loop: "qa", type: "merged", message: "second match" }] });
+  resolvers[1]!({ events: [{ ts: 2, source: "qa", type: "merged", message: "second match" }] });
   await new Promise((r) => setTimeout(r, 10));
-  resolvers[0]!({ events: [{ ts: 1, loop: "qa", type: "land_failed", message: "first match" }] });
+  resolvers[0]!({ events: [{ ts: 1, source: "qa", type: "land_failed", message: "first match" }] });
   await new Promise((r) => setTimeout(r, 10));
   assert.match(panels["feed"] ?? "", /second match/);
   assert.doesNotMatch(panels["feed"] ?? "", /first match/);
@@ -461,12 +461,12 @@ test("clearing the filter restores the windowed feed byte-for-byte", async () =>
   const payload = {
     roles: [{ role: "qa" }],
     eventItems: [
-      { ts: Date.now(), loop: "qa", type: "merged", message: "landed one" },
-      { ts: Date.now(), loop: "qa", type: "question_posted", message: "needs you" },
+      { ts: Date.now(), source: "qa", type: "merged", message: "landed one" },
+      { ts: Date.now(), source: "qa", type: "question_posted", message: "needs you" },
     ],
   };
   const { scope, panels } = feedScope({ "feed-grep": "one" }, {
-    getJson: async () => ({ events: [{ ts: 1, loop: "qa", type: "land_failed", message: "server row" }] }),
+    getJson: async () => ({ events: [{ ts: 1, source: "qa", type: "land_failed", message: "server row" }] }),
     lastStatus: payload,
   });
   scope.renderFeed(payload);
@@ -484,14 +484,14 @@ test("the Activity feed tallies its present event types like logs --count", () =
   scope.renderFeed({
     roles: [],
     eventItems: [
-      { ts: 1, loop: "qa", type: "run_end", message: "a" },
-      { ts: 2, loop: "qa", type: "run_end", message: "b" },
-      { ts: 3, loop: "qa", type: "run_end", message: "c" },
-      { ts: 4, loop: "qa", type: "question_posted", message: "d" },
-      { ts: 5, loop: "qa", type: "question_posted", message: "e" },
-      { ts: 6, loop: "qa", type: "run_start", message: "f" },
-      { ts: 7, loop: "qa", type: "run_start", message: "g" },
-      { ts: 8, loop: "qa", type: "merged", message: "h" },
+      { ts: 1, source: "qa", type: "run_end", message: "a" },
+      { ts: 2, source: "qa", type: "run_end", message: "b" },
+      { ts: 3, source: "qa", type: "run_end", message: "c" },
+      { ts: 4, source: "qa", type: "question_posted", message: "d" },
+      { ts: 5, source: "qa", type: "question_posted", message: "e" },
+      { ts: 6, source: "qa", type: "run_start", message: "f" },
+      { ts: 7, source: "qa", type: "run_start", message: "g" },
+      { ts: 8, source: "qa", type: "merged", message: "h" },
     ],
   });
   const html = panels["feed"] ?? "";
@@ -514,10 +514,10 @@ test("the Notable cull tallies only the notable rows", () => {
   scope.renderFeed({
     roles: [],
     eventItems: [
-      { ts: 1, loop: "qa", type: "run_end", message: "a" },
-      { ts: 2, loop: "qa", type: "run_end", message: "b" },
-      { ts: 3, loop: "qa", type: "merged", message: "c" },
-      { ts: 4, loop: "qa", type: "question_posted", message: "d" },
+      { ts: 1, source: "qa", type: "run_end", message: "a" },
+      { ts: 2, source: "qa", type: "run_end", message: "b" },
+      { ts: 3, source: "qa", type: "merged", message: "c" },
+      { ts: 4, source: "qa", type: "question_posted", message: "d" },
     ],
   });
   const html = panels["feed"] ?? "";
@@ -527,7 +527,7 @@ test("the Notable cull tallies only the notable rows", () => {
 });
 
 test("a filter that removes every row and an empty feed paint no tally", () => {
-  const carried = { ts: 1, loop: "qa", type: "merged", message: "boom" };
+  const carried = { ts: 1, source: "qa", type: "merged", message: "boom" };
   const filtered = feedScope({ "feed-grep": "no-such-text" });
   filtered.scope.renderFeed({ roles: [], eventItems: [carried] });
   assert.doesNotMatch(filtered.panels["feed"] ?? "", /feed-tally/, "a filter that empties the feed paints no chips");
@@ -541,10 +541,10 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
   const { scope, panels } = feedScope({ feed: "all", "feed-grep": "needle" }, {
     getJson: async () => ({
       events: [
-        { ts: 1, loop: "qa", type: "merged", message: "needle one" },
-        { ts: 2, loop: "qa", type: "land_failed", message: "needle two" },
-        { ts: 3, loop: "qa", type: "merged", message: "needle three" },
-        { ts: 4, loop: "qa", type: "run_end", result: "failed", message: "needle four" },
+        { ts: 1, source: "qa", type: "merged", message: "needle one" },
+        { ts: 2, source: "qa", type: "land_failed", message: "needle two" },
+        { ts: 3, source: "qa", type: "merged", message: "needle three" },
+        { ts: 4, source: "qa", type: "run_end", result: "failed", message: "needle four" },
       ],
     }),
     lastStatus: payload,

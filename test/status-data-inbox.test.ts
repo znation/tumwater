@@ -84,9 +84,9 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.depth, 1);
   assert.equal(snap.landQueue.inFlight, undefined, "queued, not landing: no inFlight yet");
   // The queued change is listed in execution order with the fields the drawer paints —
-  // role, sha, tick, summary, enqueuedAt — without the entry's optional body/highFriction.
+  // role, sha, run, summary, enqueuedAt — without the entry's optional body/highFriction.
   assert.deepEqual(snap.landQueue.entries, [
-    { role: "clean", sha: "abc1234", tick: 1, summary: "tidy something", enqueuedAt: snap.landQueue.entries![0]!.enqueuedAt },
+    { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: snap.landQueue.entries![0]!.enqueuedAt },
   ]);
 
   // Two queued entries list oldest first, in the queue's filename order.
@@ -95,7 +95,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal(snap.landQueue.depth, 2);
   assert.deepEqual(snap.landQueue.entries!.map((e) => e.role), ["clean", "feature"]);
   assert.deepEqual(
-    snap.landQueue.entries!.map((e) => [e.sha, e.tick, e.summary, typeof e.enqueuedAt]),
+    snap.landQueue.entries!.map((e) => [e.sha, e.run, e.summary, typeof e.enqueuedAt]),
     [["abc1234", 1, "tidy something", "number"], ["def5678", 2, "add a thing", "number"]],
   );
   // The entries are shallow copies, not the queue's own objects (the drawer never mutates

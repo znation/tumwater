@@ -138,7 +138,7 @@ export interface StatusSnapshot {
     /** The fleet's resolved backend (`agent` config, plans/agent-backends.md): the badge's
      * `<agent> default` label when a fallback pair names neither a provider nor a model.
      * Optional so literal budget blocks in the tests stand; fresh per poll like the pair. */
-    agent?: string;
+    backend?: string;
     fallback: { provider?: string; model?: string } | null;
     /** The per-tier fallback labels (part 7b/8): tier → `provider/model[ (from <tier>)]` —
      * non-null ONLY while the cap is reached and the tiers resolve to two or more distinct
@@ -308,7 +308,7 @@ export interface StatusSnapshot {
      * same filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
      * common empty case carries no field. (`depth` can be positive with `entries` absent: it
      * also counts the unreadable files the reader skips.) */
-    entries?: Array<{ role: string; sha: string; tick: number; summary: string; enqueuedAt: number }>;
+    entries?: Array<{ role: string; sha: string; run: number; summary: string; enqueuedAt: number }>;
     inFlight?: LandingInFlight;
   };
   /** Main's newest merge-scope build check:
@@ -398,7 +398,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     landQueue.entries = landings.map((e) => ({
       role: e.role,
       sha: e.sha,
-      tick: e.tick,
+      run: e.tick,
       summary: e.summary,
       enqueuedAt: e.enqueuedAt,
     }));
