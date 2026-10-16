@@ -138,6 +138,28 @@ README.md, and their tests.
 
 
 
+### The "looks stuck" alert says how long each loop has been stuck (planned 2026-10-16 from an operator request; independent of every other Planned entry — no other waiting plan edits the `stuck` alert's detail or threads a silence duration into the `AlertLoop` rows, though PLANS.md's image-input part 5/5 also touches `src/ui/fleet-alerts.ts` to add an `images` alert; land in either order, the harness resolves the merge)
+
+**Goal.** When the dashboard (or the TUI attention lines) raises "<loop> looks stuck", it should say for how long the loop has been stuck, not just that it is. Today the `stuck` alert's detail shows the matched stall phrase (`tool call stalled: bash` or `no pi output for 6m05s`) — the tool-call case carries no duration at all, and the duration is only whatever the cell happened to render. The honest stall span is `LiveProgress.quietMs` (ms since the last pi log write), already capped to the tick's own elapsed by `progressOfTick`, so it never reads a previous run's silence.
+
+**Approach.** Thread the silence duration from the live tail into the alert, and render it.
+- Add an optional `stuckMs?: number` to `AlertLoop` in `src/ui/fleet-alerts.ts` — ms the in-flight run has been silent (its stall span); absent when the caller has no live tail.
+- Both `AlertLoop` builders already hold the live tail, so populate it: in `src/ui/status-payload.ts`'s loops map add `stuckMs: live?.quietMs ?? undefined` (`live` comes from `loopRowCells`); in `src/ui/status-render.ts`'s final `loops` map (~line 388) destructure `live` from `withMetrics` and add `stuckMs: live?.quietMs`.
+- In `fleet-alerts.ts`'s `stuck` branch (`~line 144`), render a duration per stuck loop using the shared `duration` helper (already exported by `src/ui/tick-progress-model.ts`, beside `STALL_RE`):
+  - duration = `l.stuckMs` when present; otherwise parsed from the phase's own "no pi output for `<d>`" match; otherwise omitted (no `for …`).
+  - Keep the stall cause from the existing `STALL_RE` match when it is a tool call (`tool call stalled: <tool>`), and do NOT double-print the duration that a "no pi output for `<d>`" match already carries (append ` for <duration>` only when the match has none).
+  - Resulting line shape, e.g. `feature: tool call stalled: bash for 12m` or `feature: no pi output for 6m05s` (unchanged).
+- Update `test/fleet-alerts.test.ts`'s stuck case to pass `stuckMs` and assert the new `for <duration>` suffix; keep the existing no-`stuckMs` and no-pi-output assertions as the fallback-regression net. The alert's `title` stays "<loop> looks stuck".
+
+**Files touched.** `src/ui/fleet-alerts.ts`, `src/ui/status-payload.ts`, `src/ui/status-render.ts`, `test/fleet-alerts.test.ts`.
+
+**Acceptance criteria.**
+- A running loop whose phase reads `working 30m · turn 2 · tool call stalled: bash` with `stuckMs` 720000 raises the `stuck` alert with detail naming the role, the tool, and "for 12m".
+- A loop whose phase reads `working 6m · no pi output for 6m05s` raises a `stuck` detail that names the duration once — no doubled "for … for …" — with or without `stuckMs`.
+- A stuck loop with no `stuckMs` and a tool-call-stalled phase still alerts, detail as today (no new suffix).
+- Both observer surfaces show it: `tumwater status` (which feeds the TUI attention lines through `status-render`'s `loops`) and the dashboard (through `status-payload`'s `alerts`).
+- `npm run test` passes.
+
 
 
 
