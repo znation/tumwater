@@ -627,6 +627,27 @@ test("prompt --edit <n> fails on editor failure and on no editor, leaving the qu
   assert.ok(before.equals(fs.readFileSync(file)));
 });
 
+test("prompt --edit <n> names an editor command sh could not find, not a bare status", async () => {
+  const root = makeRoot();
+  await expectOk(() => cmdPrompt(root, ["--role", "clean", "keep me"]));
+  const saved = { VISUAL: process.env.VISUAL, EDITOR: process.env.EDITOR };
+  delete process.env.VISUAL;
+  // A $EDITOR naming a binary that does not exist: sh reports it as 127 ("command not
+  // found"). The message must say so and point at the env var, not print a bare exit code.
+  process.env.EDITOR = "/definitely/not/a/real/editor-binary";
+  try {
+    const res = await expectFailAsync(() => cmdPrompt(root, ["--edit", "1"]));
+    assert.match(res, /editor command was not found/);
+    assert.match(res, /check \$EDITOR/);
+    assert.doesNotMatch(res, /status 127/);
+  } finally {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+});
+
 test("prompt --edit <n> with no text fails on an ambiguous or missing position before any editor runs", async () => {
   const root = makeRoot();
   await expectOk(() => cmdPrompt(root, ["--role", "clean", "a"]));

@@ -19,6 +19,15 @@ const SIGNAL_NAMES: Record<number, string> = Object.fromEntries(
 function exitReason(r: { error?: Error; signal: NodeJS.Signals | null; status: number | null }): string {
   if (r.error) return r.error.message;
   if (r.signal) return `signal ${r.signal}`;
+  // The editor value runs through `sh -c`, and sh reports a command it could not launch as
+  // 127 (not found) or 126 (found but not executable) — most often the $EDITOR/$VISUAL value
+  // itself is a typo or a path to a binary that is not installed. A bare "status 127" tells
+  // the user only that sh refused, so name the likely cause and the env var to fix, the way
+  // the no-editor arm does. Occasionally the 127/126 came from inside the editor's own shell
+  // script rather than the editor command; an occasionally-missed guess still beats a bare
+  // status code that never suggests anything.
+  if (r.status === 127) return "the editor command was not found (exit 127) — check $EDITOR/$VISUAL";
+  if (r.status === 126) return "the editor command was found but not executable (exit 126) — check $EDITOR/$VISUAL";
   const signalled = r.status !== null && r.status > 128 ? SIGNAL_NAMES[r.status - 128] : undefined;
   return signalled ? `signal ${signalled}` : `status ${r.status}`;
 }
