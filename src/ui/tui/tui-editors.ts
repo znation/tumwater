@@ -229,15 +229,20 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   let searchSavedInput = "";
   let searchSavedCursor = 0;
 
+  // Restore the prompt line's saved draft and reset its recall state — the shared tail of
+  // every editor's exit: the restored text becomes the live draft now, so the next Up starts
+  // a fresh browse instead of resuming whatever that editor's line had left behind.
+  const restorePromptFrom = (text: string, pos: number): void => {
+    input = text;
+    cursor = pos;
+    promptHistory = resetPromptRecall(promptHistory);
+  };
+
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
-  // The recall state resets with it: the restored text is the live draft now, so the next
-  // Up starts a fresh browse instead of resuming whatever the cap editor's line left behind.
   const exitBudgetMode = (): void => {
     if (!budgetMode) return;
     budgetMode = false;
-    input = savedInput;
-    cursor = savedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(savedInput, savedCursor);
   };
 
   // Leave role-prompt mode (Esc, Ctrl+R again, or Ctrl+T): restore the saved prompt text,
@@ -247,9 +252,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitRolePromptMode = (): void => {
     if (!rolePromptFor) return;
     rolePromptFor = null;
-    input = roleSavedInput;
-    cursor = roleSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(roleSavedInput, roleSavedCursor);
   };
 
   // Leave defer-edit mode (Esc, Ctrl+L again, or Ctrl+T): restore the saved prompt text. The
@@ -257,9 +260,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitDeferMode = (): void => {
     if (!deferMode) return;
     deferMode = false;
-    input = deferSavedInput;
-    cursor = deferSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(deferSavedInput, deferSavedCursor);
   };
 
   // Leave pause-edit mode (Esc, Ctrl+F again, a written pause, or Ctrl+T): restore the draft.
@@ -269,9 +270,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     pauseEditRole = null;
     pauseEditWake = false;
     pauseEditStop = false;
-    input = pauseSavedInput;
-    cursor = pauseSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(pauseSavedInput, pauseSavedCursor);
   };
 
   // Leave the backlog pane's answer editor (Esc, a recorded answer, or Ctrl+T): restore the
@@ -279,9 +278,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitAnswerMode = (): void => {
     if (!answerFor) return;
     answerFor = null;
-    input = answerSavedInput;
-    cursor = answerSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(answerSavedInput, answerSavedCursor);
   };
 
   // Leave the backlog pane's title editor (Esc, a saved edit, or Ctrl+T): the same settle
@@ -289,9 +286,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitEntryEdit = (): void => {
     if (!entryEditFor) return;
     entryEditFor = null;
-    input = entryEditSavedInput;
-    cursor = entryEditSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(entryEditSavedInput, entryEditSavedCursor);
   };
 
   // Leave the Queued pane's in-place editor (Esc, a saved edit, or Ctrl+T): restore the saved
@@ -300,9 +295,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitQueuedEdit = (): void => {
     if (!queuedEditFor) return;
     queuedEditFor = null;
-    input = queuedSavedInput;
-    cursor = queuedSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(queuedSavedInput, queuedSavedCursor);
   };
 
   // Leave the shared search editor (Enter applies, Esc cancels, Ctrl+T cycles): restore the
@@ -312,9 +305,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const exitHistorySearch = (): void => {
     if (!searchMode) return;
     searchMode = false;
-    input = searchSavedInput;
-    cursor = searchSavedCursor;
-    promptHistory = resetPromptRecall(promptHistory);
+    restorePromptFrom(searchSavedInput, searchSavedCursor);
   };
 
   const handleKey = (str: string | undefined, key: { ctrl?: boolean; name?: string }, ctx: TuiEditorCtx): boolean => {
