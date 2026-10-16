@@ -48,7 +48,7 @@ test("notify --test runs the hook once with the synthetic event and reports exit
   assert.equal(r.code, 0);
   assert.match(r.stdout, /running the notify hook/);
   assert.match(r.stdout, /notify hook exited 0/);
-  assert.deepEqual(recordedLines(out), ["merge_failed|harness|tumwater notify --test"]);
+  assert.deepEqual(recordedLines(out), ["merge_failed|tumwater|tumwater notify --test"]);
 });
 
 test("a hook that exits non-zero makes notify --test exit non-zero and print the code", async () => {

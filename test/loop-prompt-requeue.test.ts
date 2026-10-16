@@ -197,7 +197,7 @@ test("a tick that dequeues a role prompt logs one prompt_taken naming the tick",
     await runner.tick();
     const taken = eventsOfType(repo, "prompt_taken");
     assert.equal(taken.length, 1);
-    assert.equal(taken[0]!.loop, "perf");
+    assert.equal(taken[0]!.source, "perf");
     assert.match(String(taken[0]!.preview), /flubbernator/);
     const start = eventsOfType(repo, "run_start");
     assert.equal(taken[0]!.run, start[start.length - 1]!.run);

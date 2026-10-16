@@ -71,7 +71,7 @@ test("crossing the cap engages the fallback once: one event, the derived role vi
   const events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_fallback"]);
   const ev = events[0]!;
-  assert.equal(ev.loop, "harness");
+  assert.equal(ev.source, "tumwater");
   assert.equal(ev.provider, "free");
   assert.equal(ev.model, "qwen-free");
   // One fallback pair resolves every tier to it (small and strong borrow default's own), so
@@ -183,7 +183,7 @@ test("crossing 80% of the cap warns once while the gate is open, and re-arms aft
   poll(root, state, cfg, models, [spentLoopState("feature", threshold)]);
   let events = readEvents(root);
   assert.deepEqual(events.map((e) => e.type), ["budget_warning"]);
-  assert.equal(events[0]!.loop, "harness");
+  assert.equal(events[0]!.source, "tumwater");
   assert.equal(events[0]!.capUsd, 10);
   assert.equal(events[0]!.spentUsd, threshold);
 

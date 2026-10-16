@@ -302,7 +302,7 @@ test("pollFleetHold trips on two roles' 429s, logs one event per crossing, and r
   assert.equal(hold.until, now + HOLD_BASE_MS);
   const [tripped] = holdEvents();
   assert.equal(tripped?.type, "rate_limit_hold");
-  assert.equal(tripped?.loop, "harness");
+  assert.equal(tripped?.source, "tumwater");
   assert.deepEqual(tripped?.roles, ["bugfix", "clean"]);
   assert.equal(tripped?.holdMs, HOLD_BASE_MS);
   assert.equal(tripped?.escalation, 0);

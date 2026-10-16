@@ -131,7 +131,7 @@ test("a main_red_hold spawns the notify command once with the harness loop and t
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "main_red_hold");
-    assert.equal(line.loop, "harness");
+    assert.equal(line.loop, "tumwater");
     assert.ok(line.message.includes(" main ") && line.message.includes("is red"), `unexpected message: ${line.message}`);
   } finally {
     notifier.dispose();
@@ -149,7 +149,7 @@ test("claude window events each spawn the notify command with the rendered line"
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "claude_window_limited");
-    assert.equal(line.loop, "harness");
+    assert.equal(line.loop, "tumwater");
     assert.equal(line.message, formatEvent(event));
     // A different type is not suppressed by the limited page's throttle slot.
     logEvent(root, { loop: "harness", type: "claude_window_warning", windowType: "five_hour", resetsAt });
@@ -386,17 +386,17 @@ test("notifyFleetDown runs the configured hook once with the supervisor_exit lin
   const root = tmpdir("notify-fleet-down-");
   const out = path.join(root, "out.txt");
   writeConfig(root, { ...defaultConfig(), notify: recorderCommand(out) });
-  const event = { loop: "harness", type: "supervisor_exit" as const, generation: 2, code: 1, ts: Date.now() };
+  const event = { source: "tumwater", type: "supervisor_exit" as const, generation: 2, code: 1, ts: Date.now() };
   notifyFleetDown(root, event);
   await waitFor(() => recordedLines(out).length === 1, "one recorded line");
   const rec = parseLine(recordedLines(out)[0]!);
   assert.equal(rec.type, "supervisor_exit");
-  assert.equal(rec.loop, "harness");
+  assert.equal(rec.loop, "tumwater");
   assert.equal(rec.message, formatEvent(event));
 });
 
 test("notifyFleetDown returns silently without a usable notify command", async () => {
-  const event = { loop: "harness", type: "supervisor_exit" as const, generation: 1, code: 1, ts: Date.now() };
+  const event = { source: "tumwater", type: "supervisor_exit" as const, generation: 1, code: 1, ts: Date.now() };
   const missing = tmpdir("notify-fleet-down-missing-");
   const invalid = tmpdir("notify-fleet-down-invalid-");
   fs.writeFileSync(path.join(invalid, "tumwater.json"), "{ not json");
@@ -411,11 +411,11 @@ test("notifyFleetDown returns silently without a usable notify command", async (
 });
 
 test("isNotifyFailure holds for each failure shape and nothing else", () => {
-  const warning = (message: string) => ({ ts: 1, loop: "harness", type: "warning" as const, message });
+  const warning = (message: string) => ({ ts: 1, source: "tumwater", type: "warning" as const, message });
   assert.ok(isNotifyFailure(warning(notifyExitWarning("merge_failed", 3, null) ?? "")));
   assert.ok(isNotifyFailure(warning(notifyExitWarning("merge_failed", null, "SIGKILL") ?? "")));
   assert.ok(isNotifyFailure(warning("notify command could not start: spawn ENOENT")));
-  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), loop: "feature" }));
+  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), source: "feature" }));
   assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), type: "run_start" }));
   assert.ok(!isNotifyFailure(warning("something else")));
 });

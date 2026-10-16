@@ -22,8 +22,8 @@ function divergenceWarnings(repo: string): { message: string }[] {
     .readFileSync(eventsLogPath(repo), "utf8")
     .split("\n")
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { loop: string; type: string; message: string })
-    .filter((e) => e.type === "warning" && e.loop === "harness" && e.message.includes("your checkout moved to"));
+    .map((line) => JSON.parse(line) as { source: string; type: string; message: string })
+    .filter((e) => e.type === "warning" && e.source === "tumwater" && e.message.includes("your checkout moved to"));
 }
 
 /** A settled tick on the configured role gates the baseline: the orchestrator has polled at

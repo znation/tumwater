@@ -62,7 +62,7 @@ test("a blocked role skips authoring while main is red: no pi run, one warning p
     assert.equal(checks.length, 1);
     assert.equal(checks[0]!.scope, "baseline");
     assert.equal(checks[0]!.status, "failed");
-    assert.equal(checks[0]!.loop, "feature");
+    assert.equal(checks[0]!.source, "feature");
     assert.ok(Number(checks[0]!.durationMs) >= 0);
 
     // Exactly one harness-level main_red_hold for the red SHA: script name + clipped first
@@ -164,7 +164,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
       // The healer's check is priced in the feed under bugfix, and the red SHA warns once.
       const checks = eventsOfType(repo, "build_check");
       assert.equal(checks.length, 1);
-      assert.equal(checks[0]!.loop, "bugfix");
+      assert.equal(checks[0]!.source, "bugfix");
       assert.equal(checks[0]!.scope, "baseline");
       assert.equal(checks[0]!.status, "failed");
       assert.equal(mainRedHolds(repo).length, 1);
@@ -247,7 +247,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     // The baseline check's warning names the missing npm and that the MAIN BASELINE check was
     // skipped — distinct from the gate's own pre-check warning ("skipping build check"), which
     // this tick also logs. Both prove warn-and-proceed at their respective layers.
-    const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.loop === "feature");
+    const warnings = readEvents(repo).filter((e) => e.type === "warning" && e.source === "feature");
     assert.ok(
       warnings.some((w) => String(w.message ?? "") === "no npm on PATH; skipping main baseline check"),
       `baseline skip warning missing:\n${JSON.stringify(warnings, null, 2)}`,

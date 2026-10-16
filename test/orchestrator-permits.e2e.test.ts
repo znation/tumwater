@@ -101,7 +101,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
     // ends, and the merge after it (which runs no pi) can log `landed` just after bugfix's next
     // tick has started.
     await waitFor(
-      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "clean"),
+      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "merge_done" && e.source === "clean"),
       "several pi runs across the landing and role ticks, and clean's change landed",
     );
     const samples = readSamples(runDir);

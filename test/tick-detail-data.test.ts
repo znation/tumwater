@@ -59,7 +59,7 @@ test("a paired tick's block is its start, its in-tick events, and its end — no
   assert.equal(detail.costUsd, 0.5);
   assert.equal(detail.usage, "1234 tok · $0.50");
   assert.deepEqual(
-    detail.events.map((e) => [e.type, e.ts, e.loop]),
+    detail.events.map((e) => [e.type, e.ts, e.source]),
     [
       ["run_start", 1000, "feature"],
       ["review_verdict", 1400, "feature"],

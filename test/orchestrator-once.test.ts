@@ -146,7 +146,7 @@ test("once: a queued per-role prompt makes its loop due on its own and logs the 
     assert.equal(exit.ticksRun?.get("clean"), 1, "the queued prompt makes the loop due without the clock");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the tick really ran");
     assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
-    const wake = eventsOfType(repo, "wake").find((e) => e.loop === "clean");
+    const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");
     assert.ok(wake, "the demand is announced with a wake event, not a silent start");
     assert.equal(wake?.reason, "inbox");
   });

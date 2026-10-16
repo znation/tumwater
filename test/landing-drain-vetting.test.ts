@@ -58,14 +58,14 @@ test("mergeBatchMax caps each merge's stack, read from the live config at each d
 
     const checks = readEvents(root).filter((e) => e.type === "build_check" && e.scope !== "gate");
     assert.deepEqual(
-      checks.map((e) => [e.loop, e.scope]),
+      checks.map((e) => [e.source, e.scope]),
       [
         ["alpha", "batch"],
         ["gamma", "merge"],
       ],
       "one shared check for the stack of two, then gamma's own in-lock re-check on the main they moved",
     );
-    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.loop), roles);
+    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), roles);
   } finally {
     await Promise.allSettled(allTasks(pipeline));
     restore();
@@ -117,7 +117,7 @@ test("every vet holds a shared permit: with one free, one reviews while the othe
         assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: the parked vet is not in flight");
         assert.deepEqual(abortableLandings(pipeline).flatMap((t) => t.roles), ["alpha"], "one free: nor abortable");
       } else {
-        await waitFor(() => readEvents(root).some((e) => e.type === "review_verdict" && e.loop === "beta"), "beta's review beside alpha's", 30_000);
+        await waitFor(() => readEvents(root).some((e) => e.type === "review_verdict" && e.source === "beta"), "beta's review beside alpha's", 30_000);
       }
       fs.writeFileSync(path.join(flags, "alpha-release"), "");
       await waitFor(drained(root, pipeline), `${free} free: both changes to land`, 60_000);
@@ -177,10 +177,10 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
       assert.equal(pipeline.vetting.has("beta"), false, `${stop}: beta holds no vet any more`);
       assert.ok(queuedLandingFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
       assert.equal(await refSha(root, landingRefName("beta")), shas.beta, `${stop}: with its pin`);
-      assert.equal(readEvents(root).some((e) => e.loop === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
+      assert.equal(readEvents(root).some((e) => e.source === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
       assert.ok(!readLandingMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
       if (stop === "shutdown") {
-        const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.loop === "alpha");
+        const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha");
         assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the vet under review ended aborted");
         assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha, "its pin survives the shutdown");
       } else {

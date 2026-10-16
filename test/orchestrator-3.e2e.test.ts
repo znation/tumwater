@@ -46,7 +46,7 @@ const FAST_POLL_MS = 100;
  * where that outcome lives: `lastResult` records only completed results, so a queued tick
  * leaves it at the prior outcome until the landing resolves (BUGS.md 2026-09-23). */
 function tickQueued(repo: string, role: string): boolean {
-  return readEvents(repo).some((e) => e.type === "run_end" && e.loop === role && e.result === "queued");
+  return readEvents(repo).some((e) => e.type === "run_end" && e.source === role && e.result === "queued");
 }
 
 /** Seed what a crash between the role's commit and the landing's entry drop leaves behind:
@@ -345,7 +345,7 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
   const failed = eventsOfType(repo, "merge_failed");
   assert.equal(failed.length, 1);
-  assert.equal(failed[0]?.loop, "clean");
+  assert.equal(failed[0]?.source, "clean");
   assert.equal(failed[0]?.result, "error");
   assert.equal(failed[0]?.commit, sha);
   assert.equal(eventsOfType(repo, "merge_done").length, 0);
@@ -388,7 +388,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
 
     const aborted = () => eventsOfType(repo, "run_aborted");
     assert.equal(aborted().length, 1, "exactly one run_aborted event");
-    assert.equal(aborted()[0]?.loop, "clean", "filed under the role's loop");
+    assert.equal(aborted()[0]?.source, "clean", "filed under the role's loop");
 
     // The killed run ends user_aborted: half-done work discarded (worktree reset to main),
     // backed off instead of resuming promptly.
@@ -523,7 +523,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
-        .map((e) => [e.loop, e.result]),
+        .map((e) => [e.source, e.result]),
       [["dry", "aborted"]],
     );
 
@@ -573,19 +573,19 @@ test("a role rejected in its vet ticks again while another queued change is stil
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")
-        .map((e) => [e.loop, e.result]),
+        .map((e) => [e.source, e.result]),
       [["clean", "rejected"]],
       "clean's outcome was written at its verdict",
     );
 
     fs.writeFileSync(release, "");
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "dry"),
+      () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "dry"),
       "dry to land",
       60_000,
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "merge_failed" && e.loop === "clean").length,
+      readEvents(repo).filter((e) => e.type === "merge_failed" && e.source === "clean").length,
       1,
       "clean's outcome was written once",
     );
@@ -684,12 +684,12 @@ test("a vet slot that can no longer be created is contained: the healthy change 
       "clean's change did not land — its lander worktree was gone",
     );
     const cleanErrors = readEvents(repo).filter(
-      (e) => e.type === "merge_failed" && e.loop === "clean" && e.result === "error",
+      (e) => e.type === "merge_failed" && e.source === "clean" && e.result === "error",
     );
     assert.ok(cleanErrors.length >= 1, "clean ended in a terminal error outcome");
     const merged = eventsOfType(repo, "merged");
     assert.equal(
-      merged.filter((e) => e.loop === "dry").length,
+      merged.filter((e) => e.source === "dry").length,
       1,
       "exactly one merged event, and it is dry's",
     );
@@ -743,7 +743,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
 
     // The aborted vets are recorded like any shutdown abort: both changes `aborted`, their pins
     // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
-    const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.loop}:${String(e.result)}`);
+    const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
     assert.deepEqual(failed.sort(), ["clean:aborted", "dry:aborted"]);
     assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dry"), "both pins survive for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
@@ -790,7 +790,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     assert.ok(!signal.aborted, "the hand-off ended the run, not the test's safety stop");
 
     const events = readEvents(repo);
-    const warnings = events.filter((e) => e.type === "warning" && e.loop === "harness");
+    const warnings = events.filter((e) => e.type === "warning" && e.source === "tumwater");
     assert.ok(
       warnings.some((e) => String((e as unknown as { message: string }).message).includes("role clean enabled — starting runs")),
       "clean joined through the live-reload path, so its wiring is the one under test",
@@ -803,8 +803,8 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const lapseAt = indexOf(
       (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dry outlived its 0.5s deadline — aborted'),
     );
-    const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.loop === "clean" && e.result === "aborted");
-    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.loop === "dry");
+    const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.source === "clean" && e.result === "aborted");
+    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dry");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
     // The drain cut its permit holder off AT the swap, and the landing was aborted only past its
     // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait

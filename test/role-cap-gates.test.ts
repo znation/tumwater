@@ -43,7 +43,7 @@ test("pollRoleCapGate: one crossing logs exactly one role_cap_paused with the fi
 
   const events = readEvents(root, 100).filter((e) => e.type === "role_cap_paused");
   assert.equal(events.length, 1);
-  assert.equal(events[0]!.loop, "harness");
+  assert.equal(events[0]!.source, "tumwater");
   assert.equal(events[0]!.role, "docs");
   assert.equal(events[0]!.spentUsd, 0.5);
   assert.equal(events[0]!.capUsd, 0.5);
@@ -160,7 +160,7 @@ test("pollRoleCapGate: an 80% crossing logs one role_cap_warning and stays unpau
   assert.equal(pollRoleCapGate(root, state, runners, caps, Date.now()).size, 0, "a warning does not pause");
   const warnings = readEvents(root, 100).filter((e) => e.type === "role_cap_warning");
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0]!.loop, "harness");
+  assert.equal(warnings[0]!.source, "tumwater");
   assert.equal(warnings[0]!.role, "docs");
   assert.equal(warnings[0]!.spentUsd, 0.8);
   assert.equal(warnings[0]!.capUsd, 1);

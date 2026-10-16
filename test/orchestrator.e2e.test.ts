@@ -305,7 +305,7 @@ test("a main move and a queued prompt each log exactly one wake event with their
     // every poll while the prompt is pending or the tick is in flight.
     const wakes = eventsOfType(repo, "wake");
     assert.deepEqual(
-      wakes.map((w) => [w.loop, w.reason]),
+      wakes.map((w) => [w.source, w.reason]),
       [
         ["clean", "main moved"],
         ["director", "inbox"],
@@ -348,7 +348,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     // not-due and none on exit. (The woken tick's own no_change outcome starts a fresh
     // episode only after its 1s backoff — outside this assertion window.)
     const deferred = eventsOfType(repo, "run_deferred");
-    assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
+    assert.deepEqual(deferred.map((d) => d.source), ["organize"]);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -387,7 +387,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     // deferring a second time is announced again because the inbox run ended the first
     // episode.
     await waitFor(() => eventsOfType(repo, "run_deferred").length === 2, "the second deferral event");
-    const deferred = eventsOfType(repo, "run_deferred").filter((d) => d.loop === "organize");
+    const deferred = eventsOfType(repo, "run_deferred").filter((d) => d.source === "organize");
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
     // And the second episode still defers: no third tick while it holds.
     await sleep(500);
@@ -434,7 +434,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     // One deferral episode: one event on the transition in, none while merely not-due and
     // none on exit.
     const deferred = eventsOfType(repo, "run_deferred");
-    assert.deepEqual(deferred.map((d) => d.loop), ["organize"]);
+    assert.deepEqual(deferred.map((d) => d.source), ["organize"]);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -593,11 +593,11 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
     const changes = eventsOfType(repo, "retention_changed");
     assert.equal(changes.length, 3);
     assert.deepEqual(
-      changes.map((c) => [c.loop, c.from, c.to]),
+      changes.map((c) => [c.source, c.from, c.to]),
       [
-        ["harness", 30, 1],
-        ["harness", 1, 30],
-        ["harness", 30, 0],
+        ["tumwater", 30, 1],
+        ["tumwater", 1, 30],
+        ["tumwater", 30, 0],
       ],
     );
   } finally {
@@ -693,7 +693,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // The reset is visible as one plain event (no warning prefix), filed under the role.
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
-    assert.equal(resets[0]?.loop, "clean");
+    assert.equal(resets[0]?.source, "clean");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -738,7 +738,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
     // The reset is still visible as one plain event, filed under the role.
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
-    assert.equal(resets[0]?.loop, "clean");
+    assert.equal(resets[0]?.source, "clean");
   } finally {
     await stopOrchestrator(orch, restore);
   }

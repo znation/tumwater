@@ -47,7 +47,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1, "one transition event per pause");
-    assert.equal(paused[0]?.loop, "harness");
+    assert.equal(paused[0]?.source, "tumwater");
     assert.equal(paused[0]?.capUsd, 0.5);
     // The spend is the fake run's cost folded into clean's daily window — not just its
     // lifetime totalCostUsd (which would also read $1 here, but from a different field).
@@ -78,7 +78,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_resumed"), "a budget_resumed event");
     const resumed = eventsOfType(repo, "budget_resumed");
     assert.equal(resumed.length, 1, "one transition event per resume");
-    assert.equal(resumed[0]?.loop, "harness");
+    assert.equal(resumed[0]?.source, "tumwater");
     assert.equal(resumed[0]?.capUsd, 100);
     // clean is deferrable and no work has landed since its first tick — a work commit supplies
     // the wake for the post-resume tick.
@@ -215,7 +215,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "a budget_fallback event");
     const fallback = eventsOfType(repo, "budget_fallback");
     assert.equal(fallback.length, 1, "one transition event per switch");
-    assert.equal(fallback[0]?.loop, "harness");
+    assert.equal(fallback[0]?.source, "tumwater");
     assert.equal(fallback[0]?.capUsd, 0.5);
     assert.equal(fallback[0]?.spentUsd, 1);
     assert.equal(fallback[0]?.provider, "local");

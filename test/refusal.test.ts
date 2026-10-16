@@ -74,7 +74,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
 
   const refused = readEvents(root).filter((e) => e.type === "entry_refused");
   assert.equal(refused.length, 1, "the landed note pages once");
-  assert.equal(refused[0]!.loop, "improve");
+  assert.equal(refused[0]!.source, "improve");
   assert.equal(refused[0]!.reason, "it would delete user data");
   assert.ok((refused[0]!.files as string[]).includes("PLANS.md"));
 });

@@ -8,7 +8,7 @@ import { displayWidth } from "../src/text/text-width.js";
 test("formatEvent renders provider_concurrency_changed like its maxConcurrent sibling", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "provider_concurrency_changed",
     provider: "omlx",
     from: 1,
@@ -20,7 +20,7 @@ test("formatEvent renders provider_concurrency_changed like its maxConcurrent si
 test("formatEvent renders image_blind naming the file, the model, and the action", () => {
   const fail = formatEvent({
     ts: 0,
-    loop: "improve",
+    source: "improve",
     type: "image_blind",
     run: 7,
     path: "/x/shot.png",
@@ -31,7 +31,7 @@ test("formatEvent renders image_blind naming the file, the model, and the action
 
   const logged = formatEvent({
     ts: 0,
-    loop: "improve",
+    source: "improve",
     type: "image_blind",
     path: "/x/shot.png",
     model: "huggingface/deepseek",
@@ -43,7 +43,7 @@ test("formatEvent renders image_blind naming the file, the model, and the action
 test("formatEvent renders image_reroute naming the hop and the preflight distinction", () => {
   const followup = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "image_reroute",
     run: 7,
     from: "local/text",
@@ -56,7 +56,7 @@ test("formatEvent renders image_reroute naming the hop and the preflight distinc
 
   const preflight = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "image_reroute",
     run: 8,
     to: "local/vision",
@@ -70,7 +70,7 @@ test("formatEvent renders image_reroute naming the hop and the preflight distinc
 test("formatEvent renders the image-reroute resume cause as a fresh-session handoff", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "resume",
     cause: "image-reroute",
   } as never);
@@ -80,16 +80,16 @@ test("formatEvent renders the image-reroute resume cause as a fresh-session hand
 
 test("formatEvent renders each type as one line", () => {
   const cases = [
-    { ts: 0, loop: "clean", type: "run_start", run: 3 },
-    { ts: 0, loop: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up" },
-    { ts: 0, loop: "clean", type: "run_end", run: 4, result: "error", error: "boom" },
-    { ts: 0, loop: "clean", type: "merged", commit: "abcdef1234567890", summary: "tidy up" },
-    { ts: 0, loop: "harness", type: "orchestrator_start", pid: 1 },
-    { ts: 0, loop: "director", type: "prompt_enqueued", preview: "do x" },
+    { ts: 0, source: "clean", type: "run_start", run: 3 },
+    { ts: 0, source: "clean", type: "run_end", run: 3, result: "changed", summary: "tidy up" },
+    { ts: 0, source: "clean", type: "run_end", run: 4, result: "error", error: "boom" },
+    { ts: 0, source: "clean", type: "merged", commit: "abcdef1234567890", summary: "tidy up" },
+    { ts: 0, source: "tumwater", type: "orchestrator_start", pid: 1 },
+    { ts: 0, source: "director", type: "prompt_enqueued", preview: "do x" },
   ] as const;
   for (const e of cases) {
     const line = formatEvent(e as never);
-    assert.ok(line.includes(e.loop === "harness" ? "tumwater" : e.loop), `line should name the loop: ${line}`);
+    assert.ok(line.includes(e.source === "tumwater" ? "tumwater" : e.source), `line should name the source: ${line}`);
     assert.ok(!line.includes("\n"));
   }
   assert.match(formatEvent(cases[1] as never), /tidy up/);
@@ -98,9 +98,9 @@ test("formatEvent renders each type as one line", () => {
 });
 
 test("formatEvent prints an instance id as its role label and the harness source as tumwater", () => {
-  const run = formatEvent({ ts: 0, loop: "feature-2", type: "run_end", run: 12, result: "no_change" } as never);
+  const run = formatEvent({ ts: 0, source: "feature-2", type: "run_end", run: 12, result: "no_change" } as never);
   assert.match(run, /^\S+ \S+ feature #2 run #12 no change$/);
-  const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 1 } as never);
+  const start = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_start", pid: 1 } as never);
   assert.match(start, /^\S+ \S+ tumwater   tumwater started \(pid 1\)$/);
 });
 
@@ -109,7 +109,7 @@ test("formatEvent renders a corrupt event ts as the em dash, never NaN", () => {
   // object), so a corrupt `ts` reaches this renderer through the real paths. new Date(NaN)
   // as the leading column printed "NaN-NaN-NaN NaN:NaN:NaN" on every such line.
   for (const ts of [NaN, Infinity, "oops"]) {
-    const line = formatEvent({ ts, loop: "clean", type: "wake", reason: "main moved" } as never);
+    const line = formatEvent({ ts, source: "clean", type: "wake", reason: "main moved" } as never);
     assert.ok(!line.includes("NaN"), `corrupt ts must not print NaN: ${line}`);
     assert.ok(line.startsWith("— "), `corrupt ts must render the time as the dash: ${line}`);
   }
@@ -132,7 +132,7 @@ test("formatEvent renders a corrupt event's tick as #0, never undefined or NaN",
   // rule; ticks are 1-based, so 0 is visibly not a real tick.
   for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
     for (const type of ["run_start", "run_end"] as const) {
-      const line = formatEvent({ ts: 0, loop: "clean", type, tick, result: "changed" } as never);
+      const line = formatEvent({ ts: 0, source: "clean", type, tick, result: "changed" } as never);
       assert.ok(line.includes("#0"), `corrupt tick must render #0: ${line}`);
       assert.ok(!/undefined|NaN/.test(line), `corrupt tick must not print undefined or NaN: ${line}`);
     }
@@ -146,8 +146,8 @@ test("formatEvent keeps the loop column aligned when a loop name holds a wide ch
   // and that row's message sat right of every ASCII row's (BUGS.md, event feed sibling of
   // the aligned-tables fix).
   const ts = 0;
-  const ascii = formatEvent({ ts, loop: "bugfix", type: "wake", reason: "main moved" } as never);
-  const wide = formatEvent({ ts, loop: "翻译", type: "wake", reason: "main moved" } as never);
+  const ascii = formatEvent({ ts, source: "bugfix", type: "wake", reason: "main moved" } as never);
+  const wide = formatEvent({ ts, source: "翻译", type: "wake", reason: "main moved" } as never);
   // Both lines share the identical time prefix, so the loop column starts right after it.
   const time = formatTimestamp(ts);
   const messageColumn = (line: string) =>
@@ -159,18 +159,18 @@ test("formatEvent keeps the loop column aligned when a loop name holds a wide ch
 test("formatEvent renders wake reasons and warning messages operators rely on", () => {
   // These are the diagnostic lines read in logs/TUI/GUI when figuring out why a loop woke or
   // what went wrong: the reason and message payloads must survive formatting.
-  const wake = formatEvent({ ts: 0, loop: "clean", type: "wake", reason: "main moved" } as never);
+  const wake = formatEvent({ ts: 0, source: "clean", type: "wake", reason: "main moved" } as never);
   assert.match(wake, /woke \(main moved\)/, `wake line must carry its reason: ${wake}`);
 
   const warn = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "warning",
     message: "tumwater.json invalid — keeping current config",
   } as never);
   assert.match(warn, /warning: tumwater\.json invalid/, `warning line must carry its message: ${warn}`);
 
-  const stop = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_stop" } as never);
+  const stop = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_stop" } as never);
   assert.match(stop, /tumwater stopped/);
 });
 
@@ -180,7 +180,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   // showing only "changed"/"error" left those outcomes as bare result words.
   const refused = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 7,
     result: "refused",
@@ -190,7 +190,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
 
   const rejected = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 8,
     result: "rejected",
@@ -200,7 +200,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
 
   const mergeFailed = formatEvent({
     ts: 0,
-    loop: "bugfix",
+    source: "bugfix",
     type: "run_end",
     run: 9,
     result: "merge_conflict",
@@ -212,7 +212,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   // summary is the more specific of the two and wins.
   const reviewError = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 10,
     result: "review_error",
@@ -225,7 +225,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
 test("formatEvent renders a no-change tick with no summary or error suffix", () => {
   // The third arm of the run_end ternary is the empty string: a regression that gave every
   // result a suffix would print "— undefined" on every idle tick in every display surface.
-  const line = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 5, result: "no_change" } as never);
+  const line = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5, result: "no_change" } as never);
   assert.match(line, /run #5 no change$/, `no-change tick must end at the result: ${line}`);
 });
 
@@ -233,22 +233,22 @@ test("formatEvent degrades gracefully for unknown event types", () => {
   // The default branch is a safety net: HarnessEvent's union has no exhaustiveness check, so a
   // type added in events.ts without a case here would otherwise render empty or crash on every
   // display surface. Pin the graceful fallback.
-  const line = formatEvent({ ts: 0, loop: "clean", type: "brand_new_type" } as never);
+  const line = formatEvent({ ts: 0, source: "clean", type: "brand_new_type" } as never);
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
 });
 
 test("formatEvent renders run_start's model after the tick number, and omits it when absent", () => {
-  const withModel = formatEvent({ ts: 0, loop: "feature", type: "run_start", run: 3, model: "prov/m1" } as never);
+  const withModel = formatEvent({ ts: 0, source: "feature", type: "run_start", run: 3, model: "prov/m1" } as never);
   assert.match(withModel, /feature\s+run #3 started on prov\/m1$/);
-  const bare = formatEvent({ ts: 0, loop: "feature", type: "run_start", run: 3 } as never);
+  const bare = formatEvent({ ts: 0, source: "feature", type: "run_start", run: 3 } as never);
   assert.match(bare, /feature\s+run #3 started$/);
 });
 
 test("formatEvent renders counters_reset plainly, naming all roles when several are affected", () => {
-  const single = formatEvent({ ts: 0, loop: "clean", type: "counters_reset" } as never);
+  const single = formatEvent({ ts: 0, source: "clean", type: "counters_reset" } as never);
   assert.match(single, /clean\s+counters reset \(runs, merges, tokens, cost\)/);
   const multi = formatEvent(
-    { ts: 0, loop: "harness", type: "counters_reset", roles: ["feature", "bugfix"] } as never,
+    { ts: 0, source: "tumwater", type: "counters_reset", roles: ["feature", "bugfix"] } as never,
   );
   assert.match(multi, /tumwater\s+counters reset for feature, bugfix \(runs, merges, tokens, cost\)/);
 });
@@ -259,21 +259,21 @@ test("formatEvent renders counters_reset plainly, naming all roles when several 
 test("formatEvent renders the review-gate events with truncated heads and safe fallbacks", () => {
   const head = "0123456789abcdef"; // full hash as logged by review.ts
 
-  const start = formatEvent({ ts: 0, loop: "feature", type: "review_start", head } as never);
+  const start = formatEvent({ ts: 0, source: "feature", type: "review_start", head } as never);
   assert.match(start, /feature\s+reviewing 01234567 before merge$/);
   assert.ok(!start.includes("89abcdef"), `full hash must not leak into the line: ${start}`);
 
   // Model-tiers part 2/8 (PLANS.md): when the run's model is configured it renders after the
   // existing text; an old event without the field must still read unchanged.
   const startWithModel = formatEvent(
-    { ts: 0, loop: "feature", type: "review_start", head, model: "prov/r1:high" } as never,
+    { ts: 0, source: "feature", type: "review_start", head, model: "prov/r1:high" } as never,
   );
   assert.match(startWithModel, /reviewing 01234567 before merge on prov\/r1:high$/);
 
   // A revision landing labels its round (plans/revise-rejected.md part 2/2); a fresh one has
   // no revision field and renders exactly as before.
   const startRevision = formatEvent(
-    { ts: 0, loop: "feature", type: "review_start", head, revision: 2 } as never,
+    { ts: 0, source: "feature", type: "review_start", head, revision: 2 } as never,
   );
   assert.match(startRevision, /reviewing 01234567 \(revision 2\) before merge$/);
 
@@ -281,26 +281,26 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   // session; the flag switches the verb so the feed reads it as a resume, not a fresh run.
   // The revision and model suffixes append exactly as they do on a from-scratch review.
   const startResumed = formatEvent(
-    { ts: 0, loop: "feature", type: "review_start", head, resumed: true } as never,
+    { ts: 0, source: "feature", type: "review_start", head, resumed: true } as never,
   );
   assert.match(startResumed, /review resumed 01234567 before merge$/);
   const startResumedRevision = formatEvent(
-    { ts: 0, loop: "feature", type: "review_start", head, resumed: true, revision: 3 } as never,
+    { ts: 0, source: "feature", type: "review_start", head, resumed: true, revision: 3 } as never,
   );
   assert.match(startResumedRevision, /review resumed 01234567 \(revision 3\) before merge$/);
   // An explicit false — or an absent flag — still reads as a fresh review.
   const startNotResumed = formatEvent(
-    { ts: 0, loop: "feature", type: "review_start", head, resumed: false } as never,
+    { ts: 0, source: "feature", type: "review_start", head, resumed: false } as never,
   );
   assert.match(startNotResumed, /reviewing 01234567 before merge$/);
 
   // Approvals carry reason = verdict.reasons[0], which is undefined when the reviewer gave
   // none: the suffix must vanish, not print "— undefined".
-  const bareApproval = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head } as never);
+  const bareApproval = formatEvent({ ts: 0, source: "feature", type: "review_verdict", head } as never);
   assert.match(bareApproval, /review approved 01234567$/);
 
   const approval = formatEvent(
-    { ts: 0, loop: "feature", type: "review_verdict", head, reason: "principles upheld" } as never,
+    { ts: 0, source: "feature", type: "review_verdict", head, reason: "principles upheld" } as never,
   );
   assert.match(approval, /review approved 01234567 — principles upheld/);
 
@@ -308,33 +308,33 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
   // the first plus a count of the rest (the full list rides along in state.lastReview for the
   // author's next tick) — the second reason's text itself must not leak into the one-liner.
   const rejected = formatEvent(
-    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep", "second reason"] } as never,
+    { ts: 0, source: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep", "second reason"] } as never,
   );
   assert.match(rejected, /review rejected 01234567 — adds a runtime dep/);
   assert.match(rejected, /\+1 more — the author's next run carries every reason/);
   assert.ok(!rejected.includes("second reason"), `only the first reason shows: ${rejected}`);
 
   const singleReject = formatEvent(
-    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep"] } as never,
+    { ts: 0, source: "feature", type: "review_rejected", head, reasons: ["adds a runtime dep"] } as never,
   );
   assert.ok(!singleReject.includes("more"), `one reason renders without a more-count: ${singleReject}`);
 
   const bareReject = formatEvent(
-    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: [] } as never,
+    { ts: 0, source: "feature", type: "review_rejected", head, reasons: [] } as never,
   );
   assert.match(bareReject, /review rejected 01234567 — no reasons given/);
 
   // A torn or hand-edited event line could carry a non-array reasons field; the fallback must
   // still render instead of crashing every display surface.
   const malformed = formatEvent(
-    { ts: 0, loop: "feature", type: "review_rejected", head, reasons: "oops" } as never,
+    { ts: 0, source: "feature", type: "review_rejected", head, reasons: "oops" } as never,
   );
   assert.match(malformed, /no reasons given/);
 
   const failed = formatEvent(
     {
       ts: 0,
-      loop: "feature",
+      source: "feature",
       type: "review_failed",
       head,
       message: "no parseable VERDICT line in the reviewer's reply",
@@ -352,7 +352,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
 test("formatEvent renders question_posted with the posted heading and no warning prefix", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "question_posted",
     question: "Should we support multiple repos per fleet?",
   } as never);
@@ -365,7 +365,7 @@ test("formatEvent renders question_posted with the posted heading and no warning
 });
 
 test("formatEvent renders entry_refused with the reason and files and no warning prefix", () => {
-  const line = formatEvent({ ts: 0, loop: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"] } as never);
+  const line = formatEvent({ ts: 0, source: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"] } as never);
   assert.match(line, /entry refused: too risky \(PLANS\.md\)/);
   assert.ok(!line.includes("warning"), line);
 });
@@ -375,7 +375,7 @@ test("formatEvent renders entry_refused with the reason and files and no warning
 test("formatEvent renders prompt_cancelled plainly with the preview", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "director",
+    source: "director",
     type: "prompt_cancelled",
     preview: "add dark mode",
   } as never);
@@ -384,13 +384,13 @@ test("formatEvent renders prompt_cancelled plainly with the preview", () => {
 
   // A torn or hand-edited event line could carry no preview; the fallback must render "?",
   // never String(undefined)'s literal "undefined".
-  const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_cancelled" } as never);
+  const bare = formatEvent({ ts: 0, source: "director", type: "prompt_cancelled" } as never);
   assert.match(bare, /message removed from the inbox: \?$/);
   assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
 test("formatEvent renders the resume event", () => {
-  const line = formatEvent({ ts: 0, loop: "feature", type: "resume" } as never);
+  const line = formatEvent({ ts: 0, source: "feature", type: "resume" } as never);
   assert.match(line, /feature\s+resuming the run a shutdown interrupted \(same agent session and workspace\)/);
 });
 
@@ -401,7 +401,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
   // Both parts, in order: tokens first (compactTokens), then two-decimal cost.
   const both = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 7,
     result: "changed",
@@ -418,7 +418,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
   // Tokens-only (the local-model case where pi reports no cost): just the token part.
   const tokensOnly = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 8,
     result: "no_change",
@@ -429,7 +429,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
   // Cost rides after an error payload too (error ticks are exactly where spend matters).
   const withError = formatEvent({
     ts: 0,
-    loop: "bugfix",
+    source: "bugfix",
     type: "run_end",
     run: 9,
     result: "error",
@@ -442,14 +442,14 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
   // Zero or absent fields render byte-identical to today's line — no trailing separator.
   const zero = formatEvent({
     ts: 0,
-    loop: "clean",
+    source: "clean",
     type: "run_end",
     run: 5,
     result: "no_change",
     tokens: 0,
     costUsd: 0,
   } as never);
-  const absent = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 5, result: "no_change" } as never);
+  const absent = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5, result: "no_change" } as never);
   assert.equal(zero, absent, `zero fields must render exactly like absent ones: ${JSON.stringify([zero, absent])}`);
   assert.match(absent, /run #5 no change$/);
 });
@@ -459,7 +459,7 @@ test("formatEvent renders per-tick usage on run_end after result, summary, and e
 // ends with result "user_aborted". These are the lines an operator reads in logs/TUI/GUI to
 // see that their `tumwater abort` landed — routine state changes, not warnings.
 test("formatEvent renders run_aborted plainly under the role's loop", () => {
-  const line = formatEvent({ ts: 0, loop: "feature", type: "run_aborted" } as never);
+  const line = formatEvent({ ts: 0, source: "feature", type: "run_aborted" } as never);
   assert.match(
     line,
     /feature\s+run stopped by you/,
@@ -473,22 +473,22 @@ test("formatEvent renders run_aborted plainly under the role's loop", () => {
 // tick did nothing and no work has landed since. Routine state, not a warning — but the line
 // must name the loop and its cause, since it is the only signal that a role is being deferred.
 test("formatEvent renders run_deferred with the clause that deferred it", () => {
-  const backlog = formatEvent({ ts: 0, loop: "clean", type: "run_deferred", reason: "backlog" } as never);
+  const backlog = formatEvent({ ts: 0, source: "clean", type: "run_deferred", reason: "backlog" } as never);
   assert.match(
     backlog,
     /clean\s+deferred — feature\/bugfix backlog open$/,
     `a backlog deferral must say so: ${backlog}`,
   );
-  const noWork = formatEvent({ ts: 0, loop: "clean", type: "run_deferred", reason: "no-work" } as never);
+  const noWork = formatEvent({ ts: 0, source: "clean", type: "run_deferred", reason: "no-work" } as never);
   assert.match(
     noWork,
     /clean\s+deferred — nothing merged since the last run$/,
     `a no-work deferral must say so: ${noWork}`,
   );
-  const full = formatEvent({ ts: 0, loop: "plan", type: "run_deferred", reason: "plans-full" } as never);
+  const full = formatEvent({ ts: 0, source: "plan", type: "run_deferred", reason: "plans-full" } as never);
   assert.match(full, /plan\s+deferred — plan backlog at its target$/);
   // A torn line or a pre-field event has no clause recorded: fall back to the old spelling.
-  const legacy = formatEvent({ ts: 0, loop: "clean", type: "run_deferred" } as never);
+  const legacy = formatEvent({ ts: 0, source: "clean", type: "run_deferred" } as never);
   assert.match(
     legacy,
     /clean\s+deferred — nothing merged since the last run$/,
@@ -503,7 +503,7 @@ test("formatEvent renders a user_aborted run_end with its result verbatim", () =
   // the result word is what tells them apart in the feed. The aborted outcome carries no
   // summary or error, so the line ends at the result — a regression appending an empty
   // payload would print "— undefined".
-  const line = formatEvent({ ts: 0, loop: "feature", type: "run_end", run: 12, result: "user_aborted" } as never);
+  const line = formatEvent({ ts: 0, source: "feature", type: "run_end", run: 12, result: "user_aborted" } as never);
   assert.match(line, /run #12 stopped by you$/, `the result must render verbatim with no suffix: ${line}`);
   assert.ok(!line.includes("warning"), `a deliberate stop is not a warning: ${line}`);
 
@@ -511,7 +511,7 @@ test("formatEvent renders a user_aborted run_end with its result verbatim", () =
   // partial spend, so usage still rides on the end line like every other result.
   const withUsage = formatEvent({
     ts: 0,
-    loop: "feature",
+    source: "feature",
     type: "run_end",
     run: 12,
     result: "user_aborted",
@@ -529,26 +529,26 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   // Build provenance (src/build/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one
   // fact about
   // the fleet nothing inside it can otherwise see, so its events must name both commits.
-  const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
+  const start = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
   assert.match(start, /tumwater started \(pid 7, version abcdef12\)/);
-  const bare = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 7 } as never);
+  const bare = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_start", pid: 7 } as never);
   assert.match(bare, /tumwater started \(pid 7\)$/, "no stamp: the pre-stamp line, byte for byte");
 
   const stale = formatEvent({
-    ts: 0, loop: "harness", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: 12,
+    ts: 0, source: "tumwater", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: 12,
   } as never);
   assert.match(stale, /update available \(12 commits behind\) — restarts when idle/);
   assert.doesNotMatch(stale, /warning/, "staleness is a state, not a warning");
 
-  const pending = formatEvent({ ts: 0, loop: "harness", type: "restart_pending", head: "b".repeat(40) } as never);
+  const pending = formatEvent({ ts: 0, source: "tumwater", type: "restart_pending", head: "b".repeat(40) } as never);
   assert.match(pending, /restart pending — main bbbbbbbb is green; finishing current runs/);
 
   const restart = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 5 * 60_000, abortedRuns: 2,
+    ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 5 * 60_000, abortedRuns: 2,
   } as never);
   assert.match(restart, /restarting onto update bbbbbbbb \(finished current work in 5m, 2 run\(s\) resume after the restart\)/);
   const clean = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 0, abortedRuns: 0,
+    ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: 0, abortedRuns: 0,
   } as never);
   assert.match(clean, /\(finished current work in 0m\)$/, "nothing aborted: no resume clause");
 
@@ -556,61 +556,61 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   // NaNm", and "true tick(s)" would all mislead an operator, and `String`/`Number`
   // coercions otherwise leak them through.
   const staleTorn = formatEvent({
-    ts: 0, loop: "harness", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: "12",
+    ts: 0, source: "tumwater", type: "build_stale", build: "a".repeat(40), head: "b".repeat(40), aheadCommits: "12",
   } as never);
   assert.match(staleTorn, /\(0 commits behind\)/, `corrupt aheadCommits must read zero: ${staleTorn}`);
   assert.doesNotMatch(staleTorn, /NaN/);
   const restartTorn = formatEvent({
-    ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: "x", abortedRuns: "2",
+    ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40), finishedMs: "x", abortedRuns: "2",
   } as never);
   assert.match(restartTorn, /\(finished current work in 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
   assert.doesNotMatch(restartTorn, /NaN|true tick/);
 
   // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead fleet says so.
   const refused = formatEvent({
-    ts: 0, loop: "harness", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
+    ts: 0, source: "tumwater", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
   } as never);
   assert.match(refused, /restart onto update bbbbbbbb refused — the new version could not start here: not initialized; staying on version aaaaaaaa/);
   // A blocked restart is a different verdict (redeploy latched this head, and only main
   // moving ends it): the line must name the blocked head, the reason, and the build that
   // stays — the refused wording would mislead an operator into repairing the wrong thing.
   const blocked = formatEvent({
-    ts: 0, loop: "harness", type: "restart_blocked", from: "a".repeat(40), to: "b".repeat(40), reason: "main is red",
+    ts: 0, source: "tumwater", type: "restart_blocked", from: "a".repeat(40), to: "b".repeat(40), reason: "main is red",
   } as never);
   assert.match(blocked, /restart blocked for main bbbbbbbb — main is red; staying on version aaaaaaaa until main moves/);
-  const down = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" } as never);
+  const down = formatEvent({ ts: 0, source: "tumwater", type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" } as never);
   assert.match(down, /tumwater is down — restart 2 exited 1: not initialized; start it again with `tumwater start`/);
-  const killed = formatEvent({ ts: 0, loop: "harness", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" } as never);
+  const killed = formatEvent({ ts: 0, source: "tumwater", type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" } as never);
   assert.match(killed, /tumwater is down — restart 1 was killed by SIGKILL; start it again/);
 });
 
 test("formatEvent tells a cut-off resume from a restart resume", () => {
-  const cut = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "cut-off" } as never);
+  const cut = formatEvent({ ts: 0, source: "improve", type: "resume", cause: "cut-off" } as never);
   assert.match(cut, /resuming the run cut off at the context ceiling/);
-  const restart = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "restart" } as never);
+  const restart = formatEvent({ ts: 0, source: "improve", type: "resume", cause: "restart" } as never);
   assert.match(restart, /resuming the run a shutdown interrupted/);
   // Events written by builds that predate the cause field render the restart wording.
-  assert.equal(formatEvent({ ts: 0, loop: "improve", type: "resume" } as never), restart);
+  assert.equal(formatEvent({ ts: 0, source: "improve", type: "resume" } as never), restart);
   // A cross-agent handoff keeps the worktree but starts a fresh session — its own line.
-  const handoff = formatEvent({ ts: 0, loop: "improve", type: "resume", cause: "handoff" } as never);
+  const handoff = formatEvent({ ts: 0, source: "improve", type: "resume", cause: "handoff" } as never);
   assert.match(handoff, /handing the interrupted run off to a fresh session on another agent/);
 });
 
 test("formatEvent prices the gates: build_check lines and review durations", () => {
-  const gate = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "gate", status: "passed", script: "test", durationMs: 57_000 } as never);
+  const gate = formatEvent({ ts: 0, source: "feature", type: "build_check", scope: "gate", status: "passed", script: "test", durationMs: 57_000 } as never);
   assert.match(gate, /check \(gate\): test passed \(in 57s\)/);
-  const baseline = formatEvent({ ts: 0, loop: "clean", type: "build_check", scope: "baseline", status: "failed", script: "test", durationMs: 130_000 } as never);
+  const baseline = formatEvent({ ts: 0, source: "clean", type: "build_check", scope: "baseline", status: "failed", script: "test", durationMs: 130_000 } as never);
   assert.match(baseline, /check \(baseline\): test failed \(in 2m\)/);
   // script carries the FULL command for a configured-command check (an npm prefix would
   // misrender it), so the line shows the bare name for both kinds.
-  const command = formatEvent({ ts: 0, loop: "feature", type: "build_check", scope: "merge", status: "passed", script: "cargo test", durationMs: 90_000 } as never);
+  const command = formatEvent({ ts: 0, source: "feature", type: "build_check", scope: "merge", status: "passed", script: "cargo test", durationMs: 90_000 } as never);
   assert.match(command, /check \(merge\): cargo test passed \(in 90s\)/);
-  const approved = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok", durationMs: 5 * 60_000 } as never);
+  const approved = formatEvent({ ts: 0, source: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok", durationMs: 5 * 60_000 } as never);
   assert.match(approved, /review approved aaaaaaaa — ok \(in 5m\)$/);
   // Events from builds that predate durationMs render exactly as before.
-  const legacy = formatEvent({ ts: 0, loop: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok" } as never);
+  const legacy = formatEvent({ ts: 0, source: "feature", type: "review_verdict", head: "a".repeat(40), reason: "ok" } as never);
   assert.match(legacy, /review approved aaaaaaaa — ok$/);
-  const rejected = formatEvent({ ts: 0, loop: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["dup"], durationMs: 61_000 } as never);
+  const rejected = formatEvent({ ts: 0, source: "feature", type: "review_rejected", head: "a".repeat(40), reasons: ["dup"], durationMs: 61_000 } as never);
   assert.match(rejected, /review rejected aaaaaaaa — dup \(in 61s\)$/);
 });
 
@@ -618,17 +618,17 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
 // tick's enqueue, the slot's completion (with the landing's own spend), and the slot's failure.
 test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Every line starts with the wall-clock time and the padded loop name — assert the payload.
-  const queued = formatEvent({ ts: 0, loop: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
+  const queued = formatEvent({ ts: 0, source: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
   assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `merge_queued must name the sha and summary: ${queued}`);
 
   // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
-  const bare = formatEvent({ ts: 0, loop: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
+  const bare = formatEvent({ ts: 0, source: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
   assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
   // The landing's own spend rides after the duration, "·"-separated like run_end (minutes
   // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
   const withUsage = formatEvent({
     ts: 0,
-    loop: "clean",
+    source: "clean",
     type: "merge_done",
     commit: "abcdef1234567890",
     result: "changed",
@@ -639,7 +639,7 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   assert.match(withUsage, /merge of abcdef12 done \(in 2m\) · 12\.3k tok · \$0\.05$/, `usage must ride after the duration: ${withUsage}`);
 
   // A failed landing names the outcome — the detail lives in the review/merge events themselves.
-  const failed = formatEvent({ ts: 0, loop: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
+  const failed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
   assert.match(failed, /merge of abcdef12 failed \(merge conflict\) \(in 1s\)$/, `merge_failed must name the outcome: ${failed}`);
 });
 
@@ -649,7 +649,7 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
 // lines, and a blank or undefined-injected line would be worse than the degraded truth.
 test("formatEvent renders the fallback sides of optional payload fields", () => {
   // budget_fallback without provider/model: the switch still happened; name the unknown.
-  const fallbackBare = formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10 } as never);
+  const fallbackBare = formatEvent({ ts: 0, source: "tumwater", type: "budget_fallback", spentUsd: 10.5, capUsd: 10 } as never);
   assert.match(
     fallbackBare,
     /over-cap model — \$10\.50 of \$10\.00 daily cost reached; roles continue on pi's default provider\/pi's default model \(cost n\/a\)$/,
@@ -659,7 +659,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   // With the per-tier map (part 7b/8, carried only for two or more distinct pairs), each
   // tier's pair is listed in tier order and the borrowed one carries its `(from …)` suffix.
   const fallbackTiers = formatEvent({
-    ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10,
+    ts: 0, source: "tumwater", type: "budget_fallback", spentUsd: 10.5, capUsd: 10,
     tiers: { small: "free/qwen-free (from default)", default: "free/qwen-free", strong: "free/llama-free" },
   } as never);
   assert.match(
@@ -669,12 +669,12 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   );
   // A torn line's non-map or partial tiers fall back to the single-pair sentence.
   assert.match(
-    formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: "garbage" } as never),
+    formatEvent({ ts: 0, source: "tumwater", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: "garbage" } as never),
     /continue on pi's default provider\/pi's default model/,
     "a torn tiers field must not break the line",
   );
   assert.match(
-    formatEvent({ ts: 0, loop: "harness", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: { default: "free/qwen-free" } } as never),
+    formatEvent({ ts: 0, source: "tumwater", type: "budget_fallback", spentUsd: 10.5, capUsd: 10, tiers: { default: "free/qwen-free" } } as never),
     /continue on pi's default provider\/pi's default model/,
     "a one-entry tiers field (never emitted) keeps the single-pair text",
   );
@@ -682,7 +682,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   // A demoted fallback whose failure count was lost still reads — the "?" says a field is
   // missing, not that nothing failed.
   const demotedBare = formatEvent({
-    ts: 0, loop: "harness", type: "budget_paused", spentUsd: 10.5, capUsd: 10, fallbackDemoted: "omlx/qwen",
+    ts: 0, source: "tumwater", type: "budget_paused", spentUsd: 10.5, capUsd: 10, fallbackDemoted: "omlx/qwen",
   } as never);
   assert.match(
     demotedBare,
@@ -691,15 +691,15 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   );
 
   // role_paused/role_resumed carry the role loosely; without one the line still names its kind.
-  const pausedBare = formatEvent({ ts: 0, loop: "harness", type: "role_paused" } as never);
+  const pausedBare = formatEvent({ ts: 0, source: "tumwater", type: "role_paused" } as never);
   assert.match(pausedBare, /role \? paused — it starts no new runs/, `absent role must read "?": ${pausedBare}`);
-  const resumedBare = formatEvent({ ts: 0, loop: "harness", type: "role_resumed" } as never);
+  const resumedBare = formatEvent({ ts: 0, source: "tumwater", type: "role_resumed" } as never);
   assert.match(resumedBare, /role \? resumed — it runs again$/, `absent role must read "?": ${resumedBare}`);
 
   // rate_limit_hold whose roles payload is not an array (a torn line): "several roles" beats
   // crashing the feed or joining a string's characters.
   const holdBare = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_hold", roles: "feature", holdMs: 60_000, escalation: 0,
+    ts: 0, source: "tumwater", type: "rate_limit_hold", roles: "feature", holdMs: 60_000, escalation: 0,
   } as never);
   assert.match(
     holdBare,
@@ -708,7 +708,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 
   // restart without finishedMs/abortedRuns (the old event shape, or a torn line): zero
   // defaults, and no resume clause.
-  const restartBare = formatEvent({ ts: 0, loop: "harness", type: "restart", from: "a".repeat(40), to: "b".repeat(40) } as never);
+  const restartBare = formatEvent({ ts: 0, source: "tumwater", type: "restart", from: "a".repeat(40), to: "b".repeat(40) } as never);
   assert.match(restartBare, /\(finished current work in 0m\)$/, `absent drain/abort counts must default to zero: ${restartBare}`);
 });
 
@@ -716,14 +716,14 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
 test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "merge_done", status: "merged" }), "merged");
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "build_check", status: "failed" }), "failed");
+  assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "changed" }), "changed");
+  assert.equal(eventResult({ ts: 0, source: "x", type: "merge_done", status: "merged" }), "merged");
+  assert.equal(eventResult({ ts: 0, source: "x", type: "build_check", status: "failed" }), "failed");
   // A status is only a fallback: when both ride one event the tick's result wins.
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "error", status: "failed" }), "error");
+  assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: "error", status: "failed" }), "error");
   // Non-string values (a number smuggled into the loose payload) are not an outcome.
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: 7 } as never), undefined);
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "wake" }), undefined);
+  assert.equal(eventResult({ ts: 0, source: "x", type: "run_end", result: 7 } as never), undefined);
+  assert.equal(eventResult({ ts: 0, source: "x", type: "wake" }), undefined);
 });
 
 // outcomeText — eventResult as a display cell: the same extraction with "?" for an absent
@@ -731,19 +731,19 @@ test("eventResult takes a tick's result, else a landing's or build check's statu
 // String(undefined)'s literal "undefined". eventResult must stay undefined for the tone and
 // filter keys, so the corrupt-field guard lives here, not there.
 test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "merge_done", status: "merged" }), "merged");
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end" }), "?");
+  assert.equal(outcomeText({ ts: 0, source: "x", type: "run_end", result: "changed" }), "changed");
+  assert.equal(outcomeText({ ts: 0, source: "x", type: "merge_done", status: "merged" }), "merged");
+  assert.equal(outcomeText({ ts: 0, source: "x", type: "run_end" }), "?");
   // A non-string value smuggled into the loose payload is not an outcome.
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: 7 } as never), "?");
+  assert.equal(outcomeText({ ts: 0, source: "x", type: "run_end", result: 7 } as never), "?");
 });
 
 test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
-  const tickEnd = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 5 } as never);
+  const tickEnd = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5 } as never);
   assert.match(tickEnd, /run #5 \?$/);
-  const landFailed = formatEvent({ ts: 0, loop: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
+  const landFailed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
   assert.match(landFailed, /failed \(\?\)/);
-  const build = formatEvent({ ts: 0, loop: "clean", type: "build_check", scope: "merge", script: "test" } as never);
+  const build = formatEvent({ ts: 0, source: "clean", type: "build_check", scope: "merge", script: "test" } as never);
   assert.match(build, /check \(merge\): test \?$/);
 });
 
@@ -754,23 +754,23 @@ test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
 // TUI, and the GUI through formatEvent/eventMessage.
 test("formatEvent never renders undefined or [object Object] for corrupt event fields", () => {
   const corrupt: HarnessEvent[] = [
-    { ts: 0, loop: "clean", type: "merged", commit: "abcdef1234567890" } as never,
-    { ts: 0, loop: "clean", type: "merge_queued" } as never,
-    { ts: 0, loop: "feature", type: "question_posted" } as never,
-    { ts: 0, loop: "feature", type: "wake" } as never,
-    { ts: 0, loop: "harness", type: "orchestrator_start" } as never,
-    { ts: 0, loop: "director", type: "prompt_enqueued" } as never,
-    { ts: 0, loop: "feature", type: "review_start" } as never,
-    { ts: 0, loop: "feature", type: "review_failed" } as never,
-    { ts: 0, loop: "feature", type: "revision" } as never,
-    { ts: 0, loop: "feature", type: "conflict_handback" } as never,
-    { ts: 0, loop: "harness", type: "build_check" } as never,
-    { ts: 0, loop: "harness", type: "max_concurrent_changed" } as never,
-    { ts: 0, loop: "harness", type: "retention_changed" } as never,
-    { ts: 0, loop: "harness", type: "restart_refused" } as never,
-    { ts: 0, loop: "harness", type: "restart_blocked" } as never,
-    { ts: 0, loop: "harness", type: "supervisor_exit" } as never,
-    { ts: 0, loop: "harness", type: "warning" } as never,
+    { ts: 0, source: "clean", type: "merged", commit: "abcdef1234567890" } as never,
+    { ts: 0, source: "clean", type: "merge_queued" } as never,
+    { ts: 0, source: "feature", type: "question_posted" } as never,
+    { ts: 0, source: "feature", type: "wake" } as never,
+    { ts: 0, source: "tumwater", type: "orchestrator_start" } as never,
+    { ts: 0, source: "director", type: "prompt_enqueued" } as never,
+    { ts: 0, source: "feature", type: "review_start" } as never,
+    { ts: 0, source: "feature", type: "review_failed" } as never,
+    { ts: 0, source: "feature", type: "revision" } as never,
+    { ts: 0, source: "feature", type: "conflict_handback" } as never,
+    { ts: 0, source: "tumwater", type: "build_check" } as never,
+    { ts: 0, source: "tumwater", type: "max_concurrent_changed" } as never,
+    { ts: 0, source: "tumwater", type: "retention_changed" } as never,
+    { ts: 0, source: "tumwater", type: "restart_refused" } as never,
+    { ts: 0, source: "tumwater", type: "restart_blocked" } as never,
+    { ts: 0, source: "tumwater", type: "supervisor_exit" } as never,
+    { ts: 0, source: "tumwater", type: "warning" } as never,
   ];
   for (const e of corrupt) {
     const line = formatEvent(e);
@@ -779,26 +779,26 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
   // A hand-edited field can also hold a foreign value, which String(...) would render as
   // "[object Object]"; textOr substitutes its placeholder instead.
   const foreign: HarnessEvent[] = [
-    { ts: 0, loop: "feature", type: "run_end", run: 5, result: "changed", summary: { a: 1 } } as never,
-    { ts: 0, loop: "feature", type: "run_end", run: 5, result: "error", error: ["boom"] } as never,
-    { ts: 0, loop: "feature", type: "review_verdict", head: "abcdef12", reason: { a: 1 } } as never,
-    { ts: 0, loop: "harness", type: "dep_install", status: "failed", error: { a: 1 } } as never,
-    { ts: 0, loop: "harness", type: "budget_paused", fallbackRejected: { a: 1 } } as never,
-    { ts: 0, loop: "harness", type: "budget_paused", fallbackDemoted: "free/model", failures: { a: 1 } } as never,
-    { ts: 0, loop: "harness", type: "role_streak_paused", role: { a: 1 }, streak: { a: 1 } } as never,
-    { ts: 0, loop: "harness", type: "model_fallback_started", provider: { a: 1 }, model: { a: 1 }, reason: { a: 1 } } as never,
+    { ts: 0, source: "feature", type: "run_end", run: 5, result: "changed", summary: { a: 1 } } as never,
+    { ts: 0, source: "feature", type: "run_end", run: 5, result: "error", error: ["boom"] } as never,
+    { ts: 0, source: "feature", type: "review_verdict", head: "abcdef12", reason: { a: 1 } } as never,
+    { ts: 0, source: "tumwater", type: "dep_install", status: "failed", error: { a: 1 } } as never,
+    { ts: 0, source: "tumwater", type: "budget_paused", fallbackRejected: { a: 1 } } as never,
+    { ts: 0, source: "tumwater", type: "budget_paused", fallbackDemoted: "free/model", failures: { a: 1 } } as never,
+    { ts: 0, source: "tumwater", type: "role_streak_paused", role: { a: 1 }, streak: { a: 1 } } as never,
+    { ts: 0, source: "tumwater", type: "model_fallback_started", provider: { a: 1 }, model: { a: 1 }, reason: { a: 1 } } as never,
     // Array-valued fields can be corrupt too: stringList drops foreign entries, so a
     // hand-edited packages/keys/reasons array never joins to "[object Object]".
-    { ts: 0, loop: "harness", type: "dep_install", packages: ["pi", { a: 1 }] } as never,
-    { ts: 0, loop: "harness", type: "config_changed", keys: ["maxConcurrent", { a: 1 }] } as never,
-    { ts: 0, loop: "feature", type: "review_rejected", head: "abcdef12", reasons: [{ a: 1 }, "bad"] } as never,
-    { ts: 0, loop: "harness", type: "disk_reclaim", worktrees: [{ a: 1 }, "wt-1"] } as never,
+    { ts: 0, source: "tumwater", type: "dep_install", packages: ["pi", { a: 1 }] } as never,
+    { ts: 0, source: "tumwater", type: "config_changed", keys: ["maxConcurrent", { a: 1 }] } as never,
+    { ts: 0, source: "feature", type: "review_rejected", head: "abcdef12", reasons: [{ a: 1 }, "bad"] } as never,
+    { ts: 0, source: "tumwater", type: "disk_reclaim", worktrees: [{ a: 1 }, "wt-1"] } as never,
     // rolesPhrase is the one reader behind three event-feed lines; a foreign entry is dropped
     // there too, so none of them renders "[object Object]".
-    { ts: 0, loop: "harness", type: "counters_reset", roles: [{ a: 1 }, "feature"] } as never,
-    { ts: 0, loop: "harness", type: "budget_handback", roles: [{ a: 1 }, "feature"] } as never,
-    { ts: 0, loop: "harness", type: "rate_limit_hold", roles: [{ a: 1 }, "feature"] } as never,
-    { ts: 0, loop: "harness", type: "counters_reset", roles: [{ a: 1 }] } as never,
+    { ts: 0, source: "tumwater", type: "counters_reset", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, source: "tumwater", type: "budget_handback", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, source: "tumwater", type: "rate_limit_hold", roles: [{ a: 1 }, "feature"] } as never,
+    { ts: 0, source: "tumwater", type: "counters_reset", roles: [{ a: 1 }] } as never,
   ];
   for (const e of foreign) {
     const line = formatEvent(e);
@@ -806,7 +806,7 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
   }
   // parseEventLine admits any JSON object, so a typeless event reaches eventMessage's default
   // branch; it must read the placeholder, not "undefined".
-  const typeless = formatEvent({ ts: 0, loop: "harness" } as never);
+  const typeless = formatEvent({ ts: 0, source: "tumwater" } as never);
   assert.ok(!typeless.includes("undefined"), `a typeless event must not render undefined: ${typeless}`);
 });
 
@@ -814,14 +814,14 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
 // cost without tokens (a provider that reports spend but not token counts). The separator
 // must not appear before the money, and a fully empty usage must contribute nothing at all.
 test("usageText renders cost-only usage without a dangling separator", () => {
-  assert.equal(usageText({ ts: 0, loop: "x", type: "run_end", costUsd: 0.05 } as never), "$0.05");
-  assert.equal(usageText({ ts: 0, loop: "x", type: "run_end", tokens: 0, costUsd: 0 } as never), "");
+  assert.equal(usageText({ ts: 0, source: "x", type: "run_end", costUsd: 0.05 } as never), "$0.05");
+  assert.equal(usageText({ ts: 0, source: "x", type: "run_end", tokens: 0, costUsd: 0 } as never), "");
   // In a sentence context the cost-only fragment rides the same " · " glue — and an event
   // with no usage contributes neither text nor separator.
-  const costOnly = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 5, result: "changed", costUsd: 0.05 } as never);
+  const costOnly = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 5, result: "changed", costUsd: 0.05 } as never);
   assert.match(costOnly, /run #5 merged · \$0\.05$/, `cost-only usage: ${costOnly}`);
   assert.doesNotMatch(costOnly, /tok/);
-  const noUsage = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 6, result: "changed" } as never);
+  const noUsage = formatEvent({ ts: 0, source: "clean", type: "run_end", run: 6, result: "changed" } as never);
   assert.doesNotMatch(noUsage, / · /, `a usage-free run_end must carry no usage clause: ${noUsage}`);
 });
 
@@ -831,7 +831,7 @@ test("usageText renders cost-only usage without a dangling separator", () => {
 test("formatEvent renders prompt_edited plainly with the preview", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "director",
+    source: "director",
     type: "prompt_edited",
     preview: "add dark mode, then verify",
   } as never);
@@ -840,13 +840,13 @@ test("formatEvent renders prompt_edited plainly with the preview", () => {
 
   // A torn or hand-edited event line could carry no preview; the fallback must render "?",
   // never String(undefined)'s literal "undefined".
-  const bare = formatEvent({ ts: 0, loop: "director", type: "prompt_edited" } as never);
+  const bare = formatEvent({ ts: 0, source: "director", type: "prompt_edited" } as never);
   assert.match(bare, /inbox message edited: \?$/);
   assert.ok(!bare.includes("undefined"), `corrupt preview must not render undefined: ${bare}`);
 });
 
 test("formatEvent renders prompt_taken plainly with the tick and preview", () => {
-  const line = formatEvent({ ts: 0, loop: "perf", type: "prompt_taken", run: 7, preview: "fix x" });
+  const line = formatEvent({ ts: 0, source: "perf", type: "prompt_taken", run: 7, preview: "fix x" });
   assert.match(line, /inbox message taken by run #7: fix x/);
   assert.ok(!line.includes("warning"), `a taken prompt is routine: ${line}`);
 });
@@ -858,7 +858,7 @@ test("formatEvent renders prompt_taken plainly with the tick and preview", () =>
 test("formatEvent renders dep_install with packages, status, duration, and an optional error", () => {
   const passed = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "dep_install",
     packages: ["pi", "ink"],
     status: "passed",
@@ -873,7 +873,7 @@ test("formatEvent renders dep_install with packages, status, duration, and an op
 
   const failed = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "dep_install",
     packages: ["ink"],
     status: "failed",
@@ -892,7 +892,7 @@ test("formatEvent reads a torn non-number durationMs as absent, like minutes", (
   // render a duration the event never recorded. The shared finiteNumber rule keeps it absent.
   const quoted = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "dep_install",
     packages: ["ink"],
     status: "passed",
@@ -902,7 +902,7 @@ test("formatEvent reads a torn non-number durationMs as absent, like minutes", (
   // The same event with a real number still renders its duration.
   const real = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "dep_install",
     packages: ["ink"],
     status: "passed",
@@ -914,7 +914,7 @@ test("formatEvent reads a torn non-number durationMs as absent, like minutes", (
 test("formatEvent renders model_changed with the new selector, or pi's default", () => {
   const changed = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "model_changed",
     from: "prov-a/model-a",
     to: "prov-b/model-b",
@@ -922,7 +922,7 @@ test("formatEvent renders model_changed with the new selector, or pi's default",
   assert.match(changed, /tumwater\s+model changed — now prov-b\/model-b$/);
   const cleared = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "model_changed",
     from: "prov-a/model-a",
     to: null,
@@ -933,7 +933,7 @@ test("formatEvent renders model_changed with the new selector, or pi's default",
 test("formatEvent renders the model-fallback episode start and end", () => {
   const started = formatEvent({
     ts: 0,
-    loop: "bugfix",
+    source: "bugfix",
     type: "model_fallback_started",
     provider: "backup",
     model: "f1",
@@ -942,7 +942,7 @@ test("formatEvent renders the model-fallback episode start and end", () => {
   assert.match(started, /bugfix\s+model fallback — backup\/f1 engaged \(primary failing: server\)$/);
   const ended = formatEvent({
     ts: 0,
-    loop: "bugfix",
+    source: "bugfix",
     type: "model_fallback_ended",
     provider: "primary",
     model: "m1",
@@ -952,7 +952,7 @@ test("formatEvent renders the model-fallback episode start and end", () => {
   // A torn durationMs is not NaN minutes: the episode length reads as 0.
   const endedTorn = formatEvent({
     ts: 0,
-    loop: "bugfix",
+    source: "bugfix",
     type: "model_fallback_ended",
     provider: "primary",
     model: "m1",
@@ -965,7 +965,7 @@ test("formatEvent renders the model-fallback episode start and end", () => {
 test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "clean",
+    source: "clean",
     type: "slot_wait",
     role: "clean",
     purpose: "vet",
@@ -979,12 +979,12 @@ test("formatEvent renders slot_wait with the wait, purpose, and pool shape", () 
 });
 
 test("formatEvent renders claim assignment and release lines", () => {
-  const assigned = formatEvent({ ts: 0, loop: "feature-2", type: "claim", action: "assigned", key: "plan a", title: "Plan A" } as never);
+  const assigned = formatEvent({ ts: 0, source: "feature-2", type: "claim", action: "assigned", key: "plan a", title: "Plan A" } as never);
   assert.match(assigned, /feature #2\s+assigned "Plan A"/);
-  const released = formatEvent({ ts: 0, loop: "feature-2", type: "claim", action: "released", key: "plan a", title: "Plan A", reason: "left" } as never);
+  const released = formatEvent({ ts: 0, source: "feature-2", type: "claim", action: "released", key: "plan a", title: "Plan A", reason: "left" } as never);
   assert.match(released, /released "Plan A" \(left\)/);
   // A torn event: the reason falls back to "?", never the literal "undefined".
-  const torn = formatEvent({ ts: 0, loop: "feature", type: "claim", action: "released", title: "Plan A" } as never);
+  const torn = formatEvent({ ts: 0, source: "feature", type: "claim", action: "released", title: "Plan A" } as never);
   assert.match(torn, /released "Plan A" \(\?\)/);
   assert.doesNotMatch(torn, /undefined/);
 });

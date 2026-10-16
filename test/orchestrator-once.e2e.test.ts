@@ -47,7 +47,7 @@ test("once: a round that produces a change merges it before exiting", async () =
       assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
       assert.notEqual(mainSha(repo), before, "main's head moved");
       assert.ok(
-        readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "clean"),
+        readEvents(repo).some((e) => e.type === "merge_done" && e.source === "clean"),
         "the round's landed event is in events.jsonl",
       );
     },
@@ -72,7 +72,7 @@ test("once: a role in error backoff is skipped and does not run, and the round s
     assert.equal(exit.restart, false);
     assert.equal(loadLoopState(repo, "clean").ticks, 3, "the backed-off role ran no tick");
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "run_start" && e.loop === "clean"),
+      !readEvents(repo).some((e) => e.type === "run_start" && e.source === "clean"),
       "no tick started for the backed-off role",
     );
   });
@@ -142,7 +142,7 @@ test("once: a deferrable role with an open backlog is deferred and does not bloc
     assert.equal(exit.restart, false);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "the deferred role ran no tick");
     assert.ok(
-      readEvents(repo).some((e) => e.type === "run_deferred" && e.loop === "clean"),
+      readEvents(repo).some((e) => e.type === "run_deferred" && e.source === "clean"),
       "the deferral is logged, not silent",
     );
   });

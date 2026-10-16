@@ -11,7 +11,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 // merge-conflict/merge-blocked) with their newest-wins example and the top-5 cap.
 
 function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
-  return { ts: 1000, loop: "coverage", type: "run_end", ...extra } as HarnessEvent;
+  return { ts: 1000, source: "coverage", type: "run_end", ...extra } as HarnessEvent;
 }
 
 test("outcome classes fold per role: landed, no_change, error; unknown results cost nothing", () => {
@@ -57,10 +57,10 @@ test("duration source chain: own durationMs, else the run_start pairing, else 0"
 test("rows rank by summed wall-clock ms, roles tie-broken by name", () => {
   const { timeSpend } = timeAndSpend(
     [
-      ev({ loop: "alpha", ts: 100, result: "changed", durationMs: 100 }),
-      ev({ loop: "beta", ts: 100, result: "changed", durationMs: 300 }),
-      ev({ loop: "beta", ts: 200, result: "no_change", durationMs: 300 }),
-      ev({ loop: "gamma", ts: 100, result: "error", durationMs: 300 }),
+      ev({ source: "alpha", ts: 100, result: "changed", durationMs: 100 }),
+      ev({ source: "beta", ts: 100, result: "changed", durationMs: 300 }),
+      ev({ source: "beta", ts: 200, result: "no_change", durationMs: 300 }),
+      ev({ source: "gamma", ts: 100, result: "error", durationMs: 300 }),
     ],
     [],
   );
@@ -72,7 +72,7 @@ test("rows rank by summed wall-clock ms, roles tie-broken by name", () => {
 
 test("a queued tick whose landing was rejected prices into the error cell and a review-rejected cause", () => {
   const tickEnd = ev({
-    loop: "coverage",
+    source: "coverage",
     ts: 100,
     run: 7,
     result: "queued",
@@ -83,16 +83,16 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
     [tickEnd],
     [
       tickEnd,
-      ev({ loop: "coverage", ts: 95, type: "merge_queued", commit: "abc1234" }),
+      ev({ source: "coverage", ts: 95, type: "merge_queued", commit: "abc1234" }),
       ev({
-        loop: "coverage",
+        source: "coverage",
         ts: 112,
         type: "review_rejected",
         head: "abc1234",
         reasons: ["type error: foo is not defined"],
       }),
       ev({
-        loop: "coverage",
+        source: "coverage",
         ts: 120,
         type: "merge_failed",
         commit: "abc1234",
@@ -134,16 +134,16 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
   // taking the shared no-text placeholder because merge_failed carries no message.
   const conflict = ev({ ts: 100, run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
-  const blocked = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const blocked = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(
     [conflict, blocked],
     [
       conflict,
       blocked,
       ev({ ts: 95, type: "merge_queued", commit: "abc1234" }),
-      ev({ ts: 90, loop: "feature", type: "merge_queued", commit: "def5678" }),
+      ev({ ts: 90, source: "feature", type: "merge_queued", commit: "def5678" }),
       ev({ ts: 120, type: "merge_failed", commit: "abc1234", result: "merge_conflict" }),
-      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
+      ev({ ts: 120, source: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
     ],
   );
   assert.deepEqual(timeSpend.map((r) => [r.role, r.classes.error]), [
@@ -158,14 +158,14 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
 });
 
 test("a merge_blocked landing whose merge-scope check was killed at its own deadline names that cause", () => {
-  const blocked = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
+  const blocked = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { lossCauses } = timeAndSpend(
     [blocked],
     [
       blocked,
-      ev({ ts: 90, loop: "feature", type: "merge_queued", commit: "def5678" }),
-      ev({ ts: 110, loop: "feature", type: "build_check", scope: "batch", status: "failed", timeoutMs: 300000, deadlineLateMs: 20 }),
-      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
+      ev({ ts: 90, source: "feature", type: "merge_queued", commit: "def5678" }),
+      ev({ ts: 110, source: "feature", type: "build_check", scope: "batch", status: "failed", timeoutMs: 300000, deadlineLateMs: 20 }),
+      ev({ ts: 120, source: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
     ],
   );
   assert.equal(lossCauses.length, 1);
@@ -178,15 +178,15 @@ test("a queued tick that failed retriably, was rebased, and recovered into a lan
   // recovery re-enqueues sha2 while the failed attempt logged sha1, and sha2's retry lands.
   // The authoring tick's span must price under `landed`, with no loss cause, rather than
   // latch the retriable failure and burn agent-hours into the error cell.
-  const queued = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
+  const queued = ev({ ts: 100, source: "feature", run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
   const { timeSpend, lossCauses } = timeAndSpend(
     [queued],
     [
       queued,
-      ev({ ts: 95, loop: "feature", type: "merge_queued", commit: "sha1" }),
-      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" }),
-      ev({ ts: 150, loop: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature" }),
-      ev({ ts: 180, loop: "feature", type: "merge_done", commit: "sha2", result: "changed" }),
+      ev({ ts: 95, source: "feature", type: "merge_queued", commit: "sha1" }),
+      ev({ ts: 120, source: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" }),
+      ev({ ts: 150, source: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature" }),
+      ev({ ts: 180, source: "feature", type: "merge_done", commit: "sha2", result: "changed" }),
     ],
   );
   assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 5000, costUsd: 0.25 });
@@ -196,10 +196,10 @@ test("a queued tick that failed retriably, was rebased, and recovered into a lan
 
 test("an error cluster pools its members' time across roles and its example rides lastSeen", () => {
   const events = [
-    ev({ loop: "qa", ts: 100, result: "error", error: "pi exited 1: boom 3", durationMs: 1000 }),
-    ev({ loop: "qa", ts: 300, result: "error", error: "pi exited 1: boom 42", durationMs: 500 }),
+    ev({ source: "qa", ts: 100, result: "error", error: "pi exited 1: boom 3", durationMs: 1000 }),
+    ev({ source: "qa", ts: 300, result: "error", error: "pi exited 1: boom 42", durationMs: 500 }),
     ev({
-      loop: "coverage",
+      source: "coverage",
       ts: 500,
       result: "error",
       error: "pi exited 1: boom 7",
@@ -222,7 +222,7 @@ test("an error cluster pools its members' time across roles and its example ride
 
 test("a no_change tick's loss cause is its role, with an empty example", () => {
   const { lossCauses } = timeAndSpend(
-    [ev({ loop: "steward", ts: 100, result: "no_change", durationMs: 400 })],
+    [ev({ source: "steward", ts: 100, result: "no_change", durationMs: 400 })],
     [],
   );
   assert.deepEqual(lossCauses, [
@@ -232,8 +232,8 @@ test("a no_change tick's loss cause is its role, with an empty example", () => {
 
 test("a clustered failure that records no error text still itemizes a loss cause", () => {
   const events = [
-    ev({ loop: "bugfix", ts: 100, result: "aborted", durationMs: 600_000, costUsd: 0.4 }),
-    ev({ loop: "feature", ts: 200, result: "error", durationMs: 60_000, costUsd: 0.1 }),
+    ev({ source: "bugfix", ts: 100, result: "aborted", durationMs: 600_000, costUsd: 0.4 }),
+    ev({ source: "feature", ts: 200, result: "error", durationMs: 60_000, costUsd: 0.1 }),
   ];
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(events, events);
   // The error-class cells price both spans…
@@ -256,7 +256,7 @@ test("a clustered failure that records no error text still itemizes a loss cause
 
 test("the loss ranking keeps at most five causes", () => {
   const events = ["r1", "r2", "r3", "r4", "r5", "r6"].map((role, i) =>
-    ev({ loop: role, ts: 100 + i, result: "no_change", durationMs: 1000 }),
+    ev({ source: role, ts: 100 + i, result: "no_change", durationMs: 1000 }),
   );
   const { lossCauses, timeSpend } = timeAndSpend(events, events);
   assert.equal(timeSpend.length, 6); // the table keeps every role

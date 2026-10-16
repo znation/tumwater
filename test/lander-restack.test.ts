@@ -61,7 +61,7 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
         "the stack landed on top of the racer, in queue order",
       );
       const merged = eventsOfType(root, "merged");
-      assert.deepEqual(merged.map((e) => e.loop), ["gamma", "alpha", "beta"]);
+      assert.deepEqual(merged.map((e) => e.source), ["gamma", "alpha", "beta"]);
       assert.equal(merged[2]!.commit, mainSha(root), "the re-stacked tip is main's head");
       assert.deepEqual(
         batchChecks(root).map((e) => e.status),

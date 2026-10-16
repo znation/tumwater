@@ -49,7 +49,7 @@ test("mainRedGate proceeds on a green main and prices the run under the role", a
     const check = events[0];
     assert.ok(check);
     assert.equal(check.type, "build_check");
-    assert.equal(check.loop, ROLE, "priced under the role that paid for it");
+    assert.equal(check.source, ROLE, "priced under the role that paid for it");
     assert.equal(check.scope, "baseline", "distinguished from the review gate's pre-check");
     assert.equal(check.status, "passed");
     assert.equal(check.script, "test");
@@ -79,7 +79,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.equal(checks.length, 1);
     const check = checks[0];
     assert.ok(check);
-    assert.equal(check.loop, ROLE);
+    assert.equal(check.source, ROLE);
     assert.equal(check.status, "failed");
     assert.equal(check.script, "test");
 
@@ -87,7 +87,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
     assert.equal(holds.length, 1, "one main_red_hold for the newly-discovered red SHA");
     const warning = holds[0];
     assert.ok(warning);
-    assert.equal(warning.loop, "harness", "fleet-wide, not per role");
+    assert.equal(warning.source, "tumwater", "fleet-wide, not per role");
     assert.equal(warning.sha, sha);
     assert.equal(warning.script, "test");
     assert.equal(warningEvents(events).length, 0, "no generic warning for the red SHA");
@@ -139,7 +139,7 @@ test("mainRedGate blocks a user-defined loop on red main like the code roles", a
     assert.equal(runsOf(counter), 1);
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.loop, "docs-auditor");
+    assert.equal(checks[0]?.source, "docs-auditor");
     // A role that is neither in the catalog nor in customRoles still passes through ungated.
     assert.equal(await mainRedGate(root, "not-a-role", wt), null);
   } finally {
@@ -165,12 +165,12 @@ test("mainRedGate warns under the role and proceeds when npm is missing", async 
     const check = checks[0];
     assert.ok(check);
     assert.equal(check.status, "skipped");
-    assert.equal(check.loop, ROLE);
+    assert.equal(check.source, ROLE);
     const warnings = warningEvents(events);
     assert.equal(warnings.length, 1);
     const warning = warnings[0];
     assert.ok(warning);
-    assert.equal(warning.loop, ROLE, "the skip is warned under the role that hit it");
+    assert.equal(warning.source, ROLE, "the skip is warned under the role that hit it");
     assert.ok(
       (warning as { message?: string }).message?.includes("no npm on PATH"),
       `skip reason in warning: ${(warning as { message?: string }).message}`,
@@ -221,12 +221,12 @@ test("bugfixMainRedNote hands the healer the failing script and headline, warnin
     const events = readEvents(root);
     const checks = events.filter((e) => e.type === "build_check");
     assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.loop, "bugfix");
+    assert.equal(checks[0]?.source, "bugfix");
     assert.equal(checks[0]?.scope, "baseline");
     assert.equal(checks[0]?.status, "failed");
     const holds = mainRedHolds(root);
     assert.equal(holds.length, 1, "one fleet-wide main_red_hold for the red SHA");
-    assert.equal(holds[0]?.loop, "harness");
+    assert.equal(holds[0]?.source, "tumwater");
 
     // A blocked role on the same SHA still reads the cached red and does NOT add a second
     // warning: the healer's check and the gate share the once-per-SHA guard.
@@ -325,7 +325,7 @@ test("mainRedGate proceeds unverified when the baseline run spanned a host sleep
   const check = events.filter((e) => e.type === "build_check").at(-1);
   assert.equal(check?.status, "failed");
   assert.equal(check?.sleptMs, 119_000, "the event carries the measured sleep");
-  const warning = events.find((e) => e.type === "warning" && e.loop === ROLE);
+  const warning = events.find((e) => e.type === "warning" && e.source === ROLE);
   assert.match(
     String(warning?.message ?? ""),
     /main baseline check ran while the host slept 119s mid-run; proceeding with authoring unverified/,
@@ -355,7 +355,7 @@ test("mainTipVerdict reports green at main's tip, priced under the asking role",
     assert.equal(runsOf(counter), 1, "the tip's check ran once");
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.length, 1);
-    assert.equal(checks[0]?.loop, ROLE, "the run is priced under the role that asked");
+    assert.equal(checks[0]?.source, ROLE, "the run is priced under the role that asked");
     assert.equal(checks[0]?.scope, "baseline");
     assert.equal(checks[0]?.status, "passed");
   } finally {
@@ -406,7 +406,7 @@ test("mainTipVerdict reports the skip reason when the tip's check cannot run", a
     const checks = eventsOfType(root, "build_check");
     assert.equal(checks.length, 1);
     assert.equal(checks[0]?.status, "skipped");
-    assert.equal(checks[0]?.loop, ROLE);
+    assert.equal(checks[0]?.source, ROLE);
   } finally {
     restorePath();
   }

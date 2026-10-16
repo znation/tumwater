@@ -138,7 +138,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
 
   const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
   assert.ok(landed, "the landing logged a landed event");
-  assert.equal(landed.loop, "improve");
+  assert.equal(landed.source, "improve");
   assert.equal(landed.commit, entry.sha);
   assert.equal(landed.result, "changed");
   assert.equal(landed.durationMs, 1234);
@@ -259,7 +259,7 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   assert.equal(crossing.consecutiveErrors, ERROR_STREAK_WARN, "the landing did the crossing");
   const crossed = warnings();
   assert.equal(crossed.length, 1, "the landing-side crossing warns exactly once");
-  assert.equal(crossed[0]!.loop, "improve");
+  assert.equal(crossed[0]!.source, "improve");
   assert.match(crossed[0]!.message as string, /^3 runs failed in a row: /);
 
   // The other half of the invariant: a rejection landing onto a streak the episode already

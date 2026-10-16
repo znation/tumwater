@@ -2,7 +2,7 @@
 import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
-import type { HarnessEvent } from "./events.js";
+import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
@@ -129,7 +129,7 @@ export function formatEvent(e: HarnessEvent): string {
   // itself goes through eventRole, so a torn or hand-edited event with no loop shows "?" like
   // the usage report and failure digest, never String(undefined)'s literal "undefined".
   const source = eventRole(e);
-  const loop = padToWidth(source === "harness" ? "tumwater" : roleLabel(source), 10); // vocabulary-ok: "harness" is the stored event source
+  const loop = padToWidth(source === TUMWATER_SOURCE ? "tumwater" : roleLabel(source), 10);
   return `${time} ${loop} ${eventMessage(e)}`;
 }
 

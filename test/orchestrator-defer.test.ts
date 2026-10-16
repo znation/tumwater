@@ -72,7 +72,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
     assert.equal(exit.ticksRun?.get("clean"), 0, "the deferred role ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
-      eventsOfType(repo, "run_deferred").map((e) => e.loop),
+      eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["clean"],
       "the deferral is logged once on the transition in, not silent",
     );
@@ -130,7 +130,7 @@ test("once: bugfix in search mode defers on the work-landed verdict alone, backl
     assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
     assert.equal(loadLoopState(repo, "bugfix").ticks, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
-      eventsOfType(repo, "run_deferred").map((e) => e.loop),
+      eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["bugfix"],
       "the search-mode deferral logs its episode like any other",
     );
@@ -150,7 +150,7 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
     // backlog would have kept deferred, announced by a wake (reason inbox).
     submitRolePrompt(repo, "clean", "an explicit demand");
     await awaitSettledTick(repo, "clean", 2, "the demand's tick to finish");
-    const wake = eventsOfType(repo, "wake").find((e) => e.loop === "clean");
+    const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");
     assert.ok(wake, "the demand is announced with a wake event");
     assert.equal(wake?.reason, "inbox");
     assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");

@@ -98,3 +98,23 @@ test("normalizeLegacyEvent renames the restart drain fields and keeps new ones",
   const current = { type: "restart", finishedMs: 1, abortedRuns: 0, finishWindowMs: 3 };
   assert.deepEqual(normalizeLegacyEvent({ ...current }), current);
 });
+
+test("normalizeLegacyEvent moves loop to source and maps harness to tumwater", () => {
+  assert.deepEqual(normalizeLegacyEvent({ type: "wake", loop: "feature" }), { type: "wake", source: "feature" });
+  assert.deepEqual(normalizeLegacyEvent({ type: "warning", loop: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs
+  assert.deepEqual(normalizeLegacyEvent({ type: "warning", source: "harness" }), { type: "warning", source: "tumwater" }); // vocabulary-ok: legacy event source read from old logs
+});
+
+test("normalizeLegacyEvent moves a staged claim's payload source to origin before the writer id", () => {
+  const old = { type: "claim", loop: "feature", action: "assigned", source: "staged" };
+  assert.deepEqual(normalizeLegacyEvent(old), { type: "claim", source: "feature", action: "assigned", origin: "staged" });
+});
+
+test("logEvent writes source and no loop, even when the caller passes loop: harness", () => {
+  const repo = makeRepo();
+  logEvent(repo, { loop: "harness", type: "warning", message: "x" });
+  logEvent(repo, { source: "clean", type: "run_start", run: 1 });
+  const lines = fs.readFileSync(eventsLogPath(repo), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
+  assert.deepEqual(lines.map((l) => l.source), ["tumwater", "clean"]);
+  assert.ok(lines.every((l) => !("loop" in l)));
+});

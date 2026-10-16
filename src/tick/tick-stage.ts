@@ -200,7 +200,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
       action: "assigned",
       key: first.key,
       title: first.title,
-      source: "staged",
+      origin: "staged",
     });
   }
   const assignedMoved = s.claim ? assignedMovedFinding(s.claim.key, moved) : undefined;

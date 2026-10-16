@@ -229,7 +229,7 @@ test("a failed pin adoption is logged and queues nothing: the commit stays on th
     const warn = readEvents(root).find((e) => e.type === "warning");
     assert.ok(warn, "the adoption failure is logged as a warning event");
     assert.match(String(warn.message), /failed to adopt unpinned leftover/);
-    assert.equal(warn.loop, ROLE);
+    assert.equal(warn.source, ROLE);
   } finally {
     sh(root, "chmod", "-R", "u+w", ".git");
   }

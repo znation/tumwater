@@ -16,7 +16,7 @@ import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 // was never checked for an early stop — are what these tests pin.
 
 function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
-  return JSON.stringify({ ts, loop: "feature", type: "run_end", ...extra });
+  return JSON.stringify({ ts, source: "feature", type: "run_end", ...extra });
 }
 
 /** Write the rotated archive (events.jsonl.1) beside the fixture root's live log. */
@@ -60,7 +60,7 @@ test("a single-chunk log returns in-window events oldest-first and skips bad lin
     eventLine(oldest, { run: 1 }),
     "this line is not json", // torn/corrupt line: skipped
     "", // blank line: skipped
-    JSON.stringify({ ts: "not a number", loop: "feature", type: "run_end" }), // no numeric ts: skipped
+    JSON.stringify({ ts: "not a number", source: "feature", type: "run_end" }), // no numeric ts: skipped
     eventLine(tsDaysAgo(1), { run: 2 }),
     eventLine(tsDaysAgo(0), { run: 3 }),
   ]);
@@ -111,7 +111,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
   const recent = tsDaysAgo(1);
   writeEvents(within, [eventLine(recent, { run: 1 })]);
   assert.deepEqual(readWindowEvents(within, dayKey(tsDaysAgo(5))), {
-    events: [{ ts: recent, loop: "feature", type: "run_end", run: 1 }],
+    events: [{ ts: recent, source: "feature", type: "run_end", run: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(within),
     logState: "ok",
@@ -201,11 +201,11 @@ test("a window spanning the rotation boundary reads both files, oldest-first, in
 test("the report's per-day series sums to the seeded totals across the boundary", () => {
   const root = tmpdir();
   writeArchive(root, [
-    eventLine(tsDaysAgo(3), { run: 1, loop: "feature", tokens: 10 }),
-    eventLine(tsDaysAgo(3), { run: 2, loop: "bugfix", tokens: 20 }),
+    eventLine(tsDaysAgo(3), { run: 1, source: "feature", tokens: 10 }),
+    eventLine(tsDaysAgo(3), { run: 2, source: "bugfix", tokens: 20 }),
   ]);
   writeEvents(root, [
-    eventLine(tsDaysAgo(0), { run: 3, loop: "feature", tokens: 30 }),
+    eventLine(tsDaysAgo(0), { run: 3, source: "feature", tokens: 30 }),
   ]);
   const report = collectReport(root, 5);
   const totalTicks = report.series.reduce((n, d) => n + Object.values(d.runsByRole).reduce((a, b) => a + b, 0), 0);
@@ -239,8 +239,8 @@ test("the day report says so when even the archive starts inside the window", ()
   // and the failure digest both carry one, but the day report could undercount a window that
   // outran the single kept archive generation in silence.
   const root = tmpdir();
-  writeArchive(root, [eventLine(tsDaysAgo(3), { run: 1, loop: "feature", tokens: 10 })]);
-  writeEvents(root, [eventLine(tsDaysAgo(0), { run: 2, loop: "feature", tokens: 20 })]);
+  writeArchive(root, [eventLine(tsDaysAgo(3), { run: 1, source: "feature", tokens: 10 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { run: 2, source: "feature", tokens: 20 })]);
   const report = collectReport(root, 5);
   assert.equal(report.coversFullWindow, false, "both files' oldest events lie inside the window");
   assert.match(renderReportMarkdown(report), /older events may have rotated out/);
@@ -248,8 +248,8 @@ test("the day report says so when even the archive starts inside the window", ()
 
 test("the day report stays silent when the archive proves the window's coverage", () => {
   const root = tmpdir();
-  writeArchive(root, [eventLine(tsDaysAgo(6), { run: 1, loop: "feature", tokens: 10 })]);
-  writeEvents(root, [eventLine(tsDaysAgo(0), { run: 2, loop: "feature", tokens: 20 })]);
+  writeArchive(root, [eventLine(tsDaysAgo(6), { run: 1, source: "feature", tokens: 10 })]);
+  writeEvents(root, [eventLine(tsDaysAgo(0), { run: 2, source: "feature", tokens: 20 })]);
   const report = collectReport(root, 5);
   assert.equal(report.coversFullWindow, true, "the archive's day-6 event predates the window's first day");
   assert.ok(!renderReportMarkdown(report).includes("rotated out"), "a fully covered window claims no truncation");
@@ -263,8 +263,8 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   ]);
   assert.deepEqual(readWindowEvents(missingArchive, dayKey(tsDaysAgo(1))), {
     events: [
-      { ts: tsDaysAgo(1), loop: "feature", type: "run_end", run: 1 },
-      { ts: tsDaysAgo(1, 13), loop: "feature", type: "run_end", run: 2 },
+      { ts: tsDaysAgo(1), source: "feature", type: "run_end", run: 1 },
+      { ts: tsDaysAgo(1, 13), source: "feature", type: "run_end", run: 2 },
     ],
     coversFullWindow: false,
     liveEnd: liveEndOf(missingArchive),
@@ -275,7 +275,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   writeArchive(emptyArchive, []);
   writeEvents(emptyArchive, [eventLine(tsDaysAgo(1), { run: 1 })]);
   assert.deepEqual(readWindowEvents(emptyArchive, dayKey(tsDaysAgo(1))), {
-    events: [{ ts: tsDaysAgo(1), loop: "feature", type: "run_end", run: 1 }],
+    events: [{ ts: tsDaysAgo(1), source: "feature", type: "run_end", run: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(emptyArchive),
     logState: "ok",
@@ -331,7 +331,7 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
     eventLine(t0 - 120_000, { run: 1 }), // before the cutoff: the ts filter drops it (it sits
     // inside the cutoff's local day for every run except one within 2 minutes of midnight,
     // where the day key drops it instead — the assertion holds either way)
-    JSON.stringify({ ts: "not a number", loop: "feature", type: "run_end" }), // no numeric ts
+    JSON.stringify({ ts: "not a number", source: "feature", type: "run_end" }), // no numeric ts
     eventLine(t0 - 30_000, { run: 2 }), // inside the window
     eventLine(t0, { run: 3 }),
   ]);

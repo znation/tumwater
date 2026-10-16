@@ -77,7 +77,7 @@ test("pollFleetHold logs exactly one rate_limit_hold on the crossing, naming kin
   assert.equal(events.length, 1, "one event per crossing");
   const first = events[0]!;
   assert.equal(first.type, "rate_limit_hold");
-  assert.equal(first.loop, "harness");
+  assert.equal(first.source, "tumwater");
   assert.equal(first.kind, "rate-limit");
   assert.deepEqual(first.roles, ["clean", "coverage"]);
   assert.equal(first.holdMs, HOLD_BASE_MS);
@@ -118,7 +118,7 @@ test("pollFleetHold logs one rate_limit_resumed at the deadline, carrying the en
   const resumed = holdEvents(root).filter((e) => e.type === "rate_limit_resumed");
   assert.equal(resumed.length, 1);
   assert.equal(resumed[0]!.kind, "connection");
-  assert.equal(resumed[0]!.loop, "harness");
+  assert.equal(resumed[0]!.source, "tumwater");
   // The lifted provider STAYS in the map — its relapse memory — but no longer reads as held.
   assert.deepEqual([...heldProviders(new Map([[undefined, open]]))], []);
 });

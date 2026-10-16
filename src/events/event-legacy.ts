@@ -1,4 +1,4 @@
-import type { HarnessEvent } from "./events.js";
+import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 
 /** Old event lines read under today's names. `.tumwater/log/events.jsonl` (and its rotated
  * `events.jsonl.1`) outlive the build that wrote them, and a long-lived supervisor on an older
@@ -68,6 +68,24 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
           delete e[from];
         }
       }
+    },
+  },
+  {
+    // The writer's id rode `loop`, with "harness" for tumwater's own events. A staged-claim
+    // `claim` line also carried a payload `source: "staged"`, which moves to `origin` first. A
+    // call site that still passes `source: "harness"` (the warn helpers' callers) maps too.
+    name: "loop-to-source",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (typeof e.loop === "string") { // vocabulary-ok: legacy field name read from old logs
+        if (e.type === "claim" && e.source === "staged" && !("origin" in e)) {
+          e.origin = e.source;
+          delete e.source;
+        }
+        e.source = e.loop; // vocabulary-ok: legacy field name read from old logs
+        delete e.loop; // vocabulary-ok: legacy field name read from old logs
+      }
+      if (e.source === "harness") e.source = TUMWATER_SOURCE; // vocabulary-ok: legacy event source read from old logs
     },
   },
 ];

@@ -324,55 +324,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms event log, part 6/9: Write the source field and read it everywhere (planned 2026-10-16 by user; requires part 5/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/history/history-data.ts src/failure/time-spend.ts src/tick/ src/config/config-validation.ts test/)
-
-**Goal.** Stage 1 of "Widely used fields":
-- Every event is written with `source`: the runner id, or `"tumwater"` for tumwater's own events, which were formerly `"harness"`.
-- Every reader reads `source`.
-- `HarnessEventInput` still accepts the deprecated `loop`, so call sites can switch in parts 7/9 and 8/9.
-
-**Approach.**
-- src/events/events.ts:
-  - `HarnessEvent.source: string` replaces `loop`.
-  - Export `TUMWATER_SOURCE = "tumwater"`.
-  - `HarnessEventInput` takes exactly one of `source` or a `/** @deprecated use source */ loop`, written as a union of the two shapes beside the index signature.
-  - `warnEvent` and `warnEventBestEffort` name their parameter `source`.
-  - `logEventBestEffort`'s stderr fallback names `event.source ?? event.loop`.
-  - `bestEffortEventLogger().warn` uses `TUMWATER_SOURCE`.
-  - Nothing else in `logEvent` changes: part 1/9's write-side normalization turns `loop` into `source` and `"harness"` into `"tumwater"`.
-- Normalizer (src/events/event-legacy.ts): append a `source` rewrite for a line with a string `loop`.
-  1. A staged-claim `claim` line also carries a payload `source: "staged"`. Move that value to `origin` first.
-  2. Move `loop` to `source` and delete `loop`.
-  3. Map `source: "harness"` to `TUMWATER_SOURCE`.
-
-  Role ids are not touched; the role-ids series aliases them elsewhere (see part 1/9).
-- Collision: the staged-claim event in `stageTickLanding` (src/tick/tick-stage.ts) writes its payload as `origin: "staged"`. Nothing reads that field.
-- Readers. tsc misses most of these because the index signature is `unknown`, so grep for `.loop` on events:
-  - `eventRole`, `tickStartMap` and `tickSpanMs` (event-read.ts);
-  - `isNotifyFailure`, which compares against `TUMWATER_SOURCE`, and `spawnNotifyCommand`'s env value `event.source` (notify.ts);
-  - history-data.ts's `bucketLandingEvents`, `resolveQueuedResult` and `tickRows` role filter;
-  - `timeAndSpend`'s group keys (time-spend.ts);
-  - `readTickDetail`'s filter (tick-detail-data.ts).
-
-  Ignore `.loop` on objects that are not events: history rows, gui-styles.ts CSS names, and the API feed item key, which Plain terms scripting owns.
-- src/events/ writers switch here: notify.ts's `warnEventBestEffort` calls. In src/cli/notify-command.ts, `NOTIFY_TEST_LOOP` becomes `NOTIFY_TEST_SOURCE = TUMWATER_SOURCE`.
-- Edge: refuse a custom role named `tumwater` in src/config/config-validation.ts, because its events would be indistinguishable from tumwater's own. Name the reason in the message.
-- Tests:
-  - Read-back events' `.loop` becomes `.source`, and `"harness"` expectations become `"tumwater"`.
-  - `HarnessEvent`-typed literals use `source`.
-  - Update test/fakes/log.ts's builders and test/fixtures/log-fixtures.ts's helpers, for example `harnessWarnings`.
-  - Calls that still pass `loop:` to `logEvent` stay until part 9/9.
-- **Self-hosting:** safe in one part. The new build reads `loop` lines, which come from old logs, from the old build until it restarts, and from the long-lived supervisor process, which keeps the build it started on and writes `supervisor_exit` with `loop: "harness"`. That is why this rewrite is permanent. The old build reads no `source` line.
-
-**Files touched.** src/events/events.ts, src/events/event-legacy.ts, src/events/event-read.ts, src/events/notify.ts, src/cli/notify-command.ts, src/history/history-data.ts, src/failure/time-spend.ts, src/tick/tick-detail-data.ts, src/tick/tick-stage.ts, src/config/config-validation.ts; test/fakes/log.ts, test/fixtures/log-fixtures.ts, test/event-legacy.test.ts, test/notify.test.ts, test/history-data.test.ts, test/gui-server-api.test.ts, test/tick-detail.test.ts, test/event-format.test.ts, test/known-flakes.test.ts, test/config-validation*.test.ts, and the e2e/landing tests that read `.loop` on events.
-
-**Acceptance criteria.**
-- Every newly written event line has `source` and no `loop`. A role event carries the runner id, and tumwater's own events carry `"tumwater"`, even when the caller still passes `loop: "harness"`.
-- An old `{"loop":"harness",…}` line and an old staged-claim line read back as `source: "tumwater"`, and as `source: "<role>"` with `origin: "staged"`.
-- `logs --json` prints `source`. A notify failure warning is still recognized by `isNotifyFailure` and reported by `doctor`.
-- `customRoles` with a role named `tumwater` is refused with a message.
-- `npm run test` passes.
-
 ### Plain terms event log, part 7/9: Switch the run and merge path's event call sites to source (planned 2026-10-16 by user; requires part 6/9 landed; design in plans/terminology.md "Event log"; touches src/loop/ src/tick/ src/landing/ src/review/ src/verdict/ src/inbox/ src/git/ src/build/ src/baseline/ test/)
 
 **Goal.** Mechanical. Stage 2 of "Widely used fields", first directory group. Every event this group logs names its logger with `source:` and uses `TUMWATER_SOURCE` instead of `"harness"`. Nothing a reader sees changes.
@@ -2565,6 +2516,57 @@ This part makes every surface say which step each tier is on, why, and when it r
 - Test 2 passes.
 - `git diff --stat` shows only test/docs-links.test.ts and PLANS.md.
 - `npm run test` passes.
+
+### Plain terms event log, part 6/9: Write the source field and read it everywhere (planned 2026-10-16 by user; requires part 5/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/history/history-data.ts src/failure/time-spend.ts src/tick/ src/config/config-validation.ts test/) (done 2026-10-16)
+
+**Goal.** Stage 1 of "Widely used fields":
+- Every event is written with `source`: the runner id, or `"tumwater"` for tumwater's own events, which were formerly `"harness"`.
+- Every reader reads `source`.
+- `HarnessEventInput` still accepts the deprecated `loop`, so call sites can switch in parts 7/9 and 8/9.
+
+**Approach.**
+- src/events/events.ts:
+  - `HarnessEvent.source: string` replaces `loop`.
+  - Export `TUMWATER_SOURCE = "tumwater"`.
+  - `HarnessEventInput` takes exactly one of `source` or a `/** @deprecated use source */ loop`, written as a union of the two shapes beside the index signature.
+  - `warnEvent` and `warnEventBestEffort` name their parameter `source`.
+  - `logEventBestEffort`'s stderr fallback names `event.source ?? event.loop`.
+  - `bestEffortEventLogger().warn` uses `TUMWATER_SOURCE`.
+  - Nothing else in `logEvent` changes: part 1/9's write-side normalization turns `loop` into `source` and `"harness"` into `"tumwater"`.
+- Normalizer (src/events/event-legacy.ts): append a `source` rewrite for a line with a string `loop`.
+  1. A staged-claim `claim` line also carries a payload `source: "staged"`. Move that value to `origin` first.
+  2. Move `loop` to `source` and delete `loop`.
+  3. Map `source: "harness"` to `TUMWATER_SOURCE`.
+
+  Role ids are not touched; the role-ids series aliases them elsewhere (see part 1/9).
+- Collision: the staged-claim event in `stageTickLanding` (src/tick/tick-stage.ts) writes its payload as `origin: "staged"`. Nothing reads that field.
+- Readers. tsc misses most of these because the index signature is `unknown`, so grep for `.loop` on events:
+  - `eventRole`, `tickStartMap` and `tickSpanMs` (event-read.ts);
+  - `isNotifyFailure`, which compares against `TUMWATER_SOURCE`, and `spawnNotifyCommand`'s env value `event.source` (notify.ts);
+  - history-data.ts's `bucketLandingEvents`, `resolveQueuedResult` and `tickRows` role filter;
+  - `timeAndSpend`'s group keys (time-spend.ts);
+  - `readTickDetail`'s filter (tick-detail-data.ts).
+
+  Ignore `.loop` on objects that are not events: history rows, gui-styles.ts CSS names, and the API feed item key, which Plain terms scripting owns.
+- src/events/ writers switch here: notify.ts's `warnEventBestEffort` calls. In src/cli/notify-command.ts, `NOTIFY_TEST_LOOP` becomes `NOTIFY_TEST_SOURCE = TUMWATER_SOURCE`.
+- Edge: refuse a custom role named `tumwater` in src/config/config-validation.ts, because its events would be indistinguishable from tumwater's own. Name the reason in the message.
+- Tests:
+  - Read-back events' `.loop` becomes `.source`, and `"harness"` expectations become `"tumwater"`.
+  - `HarnessEvent`-typed literals use `source`.
+  - Update test/fakes/log.ts's builders and test/fixtures/log-fixtures.ts's helpers, for example `harnessWarnings`.
+  - Calls that still pass `loop:` to `logEvent` stay until part 9/9.
+- **Self-hosting:** safe in one part. The new build reads `loop` lines, which come from old logs, from the old build until it restarts, and from the long-lived supervisor process, which keeps the build it started on and writes `supervisor_exit` with `loop: "harness"`. That is why this rewrite is permanent. The old build reads no `source` line.
+
+**Files touched.** src/events/events.ts, src/events/event-legacy.ts, src/events/event-read.ts, src/events/notify.ts, src/cli/notify-command.ts, src/history/history-data.ts, src/failure/time-spend.ts, src/tick/tick-detail-data.ts, src/tick/tick-stage.ts, src/config/config-validation.ts; test/fakes/log.ts, test/fixtures/log-fixtures.ts, test/event-legacy.test.ts, test/notify.test.ts, test/history-data.test.ts, test/gui-server-api.test.ts, test/tick-detail.test.ts, test/event-format.test.ts, test/known-flakes.test.ts, test/config-validation*.test.ts, and the e2e/landing tests that read `.loop` on events.
+
+**Acceptance criteria.**
+- Every newly written event line has `source` and no `loop`. A role event carries the runner id, and tumwater's own events carry `"tumwater"`, even when the caller still passes `loop: "harness"`.
+- An old `{"loop":"harness",…}` line and an old staged-claim line read back as `source: "tumwater"`, and as `source: "<role>"` with `origin: "staged"`.
+- `logs --json` prints `source`. A notify failure warning is still recognized by `isNotifyFailure` and reported by `doctor`.
+- `customRoles` with a role named `tumwater` is refused with a message.
+- `npm run test` passes.
+
+**Done note.** `HarnessEventInput` is a union of `source` or the deprecated `loop`; the `loop-to-source` rewrite also maps a `source: "harness"` written by the warn helpers' callers. The test files that read events through a `HarnessEvent` type or the notify env use `source`; the redeploy sink test still reads `e.loop` because that sink receives the raw input until part 7/9.
 
 ### Plain terms event log, part 5/9: Rename the landing and drain payload values (planned 2026-10-16 by user; requires part 4/9 landed; design in plans/terminology.md "Event log"; touches src/build/build-check-events.ts src/landing/landing-merge.ts src/loop/ src/prompt/gate-prompts.ts src/redeploy/redeployer.ts src/events/ src/status/status-polls.ts src/failure/time-spend.ts test/) — done 2026-10-16
 

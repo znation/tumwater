@@ -220,7 +220,7 @@ test("the prompt line names who Enter sends to", () => {
 });
 
 test("activity and transcript lines take the tones of what they report", () => {
-  const ev = (type: string, extra: Record<string, unknown> = {}) => ({ ts: 1, loop: "qa", type, ...extra }) as Parameters<typeof eventTone>[0];
+  const ev = (type: string, extra: Record<string, unknown> = {}) => ({ ts: 1, source: "qa", type, ...extra }) as Parameters<typeof eventTone>[0];
   assert.equal(eventTone(ev("merged")), "green");
   assert.equal(eventTone(ev("run_end", { result: "error" })), "red");
   assert.equal(eventTone(ev("run_end", { result: "rejected" })), "yellow");

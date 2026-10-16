@@ -618,3 +618,10 @@ test("saveConfig refuses to persist invalid configs", () => {
   assert.ok(!fs.existsSync(path.join(dir, "tumwater.json")), "nothing written on invalid config");
 });
 
+
+test("validateConfig refuses a custom role named tumwater, naming why", () => {
+  assert.match(
+    validationError({ customRoles: [{ name: "tumwater", task: "Do something." }] }),
+    /customRoles\[0\]\.name "tumwater" is reserved: .*indistinguishable/,
+  );
+});

@@ -14,7 +14,7 @@ import type { HarnessEvent } from "../src/events/events.js";
 
 /** An event as logEvent would write it — ts and loop are always present, payload after. */
 function ev(fields: Record<string, unknown>): HarnessEvent {
-  return { ts: 0, loop: "harness", ...fields } as HarnessEvent;
+  return { ts: 0, source: "harness", ...fields } as HarnessEvent;
 }
 
 test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP caps the section", () => {

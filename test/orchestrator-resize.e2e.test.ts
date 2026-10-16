@@ -106,10 +106,10 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     const changes = eventsOfType(repo, "max_concurrent_changed");
     assert.equal(changes.length, 2);
     assert.deepEqual(
-      changes.map((c) => [c.loop, c.from, c.to]),
+      changes.map((c) => [c.source, c.from, c.to]),
       [
-        ["harness", 1, 2],
-        ["harness", 2, 1],
+        ["tumwater", 1, 2],
+        ["tumwater", 2, 1],
       ],
     );
   } finally {

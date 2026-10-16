@@ -10,7 +10,7 @@ const NOW = 1_700_000_000_000;
 const HOUR = 60 * 60 * 1000;
 
 function warning(message: string, ts = NOW): HarnessEvent {
-  return { ts, loop: "improve", type: "warning", message };
+  return { ts, source: "improve", type: "warning", message };
 }
 
 test("flakeKeys extracts the headline after the prefix and normalizes its volatile parts", () => {
@@ -24,9 +24,9 @@ test("flakeKeys extracts the headline after the prefix and normalizes its volati
 test("flakeKeys ignores non-warning events and warnings without the prefix", () => {
   const keys = flakeKeys(
     [
-      { ts: NOW, loop: "improve", type: "run_end" },
-      { ts: NOW, loop: "improve", type: "warning", message: "reviewer re-ran the suite" },
-      { ts: NOW, loop: "improve", type: "warning" },
+      { ts: NOW, source: "improve", type: "run_end" },
+      { ts: NOW, source: "improve", type: "warning", message: "reviewer re-ran the suite" },
+      { ts: NOW, source: "improve", type: "warning" },
     ],
     NOW,
   );

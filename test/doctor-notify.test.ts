@@ -27,7 +27,7 @@ test("checkNotify is ok when configured and no page failed", () => {
 
 test("checkNotify warns naming the count, the exit code, and the --test hint", () => {
   const root = readyRepo();
-  warnEvent(root, "harness", notifyExitWarning("budget_paused", 127, null) ?? "");
+  warnEvent(root, "tumwater", notifyExitWarning("budget_paused", 127, null) ?? "");
   const out = checkNotify(root, withNotify());
   assert.equal(out.level, "warn");
   assert.match(out.detail, /1 failed page /);
@@ -37,7 +37,7 @@ test("checkNotify warns naming the count, the exit code, and the --test hint", (
 
 test("checkNotify ignores a failure older than 24h", () => {
   const root = readyRepo();
-  warnEvent(root, "harness", notifyExitWarning("budget_paused", 1, null) ?? "");
+  warnEvent(root, "tumwater", notifyExitWarning("budget_paused", 1, null) ?? "");
   const out = checkNotify(root, withNotify(), Date.now() + 25 * 3600_000);
   assert.equal(out.level, "ok");
 });

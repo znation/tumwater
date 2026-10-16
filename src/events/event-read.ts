@@ -47,7 +47,7 @@ export function eventDayKey(ev: HarnessEvent): string | null {
 /** The loop id an event is filed under, or "?" when absent or empty — the guard the usage
  * report and the failure digest both apply when grouping by role. */
 export function eventRole(ev: HarnessEvent): string {
-  return typeof ev.loop === "string" && ev.loop !== "" ? ev.loop : "?";
+  return typeof ev.source === "string" && ev.source !== "" ? ev.source : "?";
 }
 
 /** The tick number an event names, or 0 when it is absent or non-finite. The one guard every
@@ -91,7 +91,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
   for (const e of events) {
     const ts = finiteNumber(e.ts, null);
-    if (e.type === "run_start" && ts !== null) starts.set(`${e.loop}#${e.run}`, ts);
+    if (e.type === "run_start" && ts !== null) starts.set(`${e.source}#${e.run}`, ts);
   }
   return starts;
 }
@@ -107,7 +107,7 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
  * (`tickSpanMs(ev, starts) ?? 0`) folded that NaN straight into its agent-hour totals —
  * `NaN ?? 0` is still NaN. */
 export function tickSpanMs(ev: HarnessEvent, starts: Map<string, number>): number | null {
-  const startTs = starts.get(`${ev.loop}#${ev.run}`);
+  const startTs = starts.get(`${ev.source}#${ev.run}`);
   const endTs = finiteNumber(ev.ts, null);
   return startTs === undefined || endTs === null ? null : Math.max(0, endTs - startTs);
 }

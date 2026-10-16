@@ -57,7 +57,7 @@ export function readTickDetail(root: string, role: string, tick: number): TickDe
   // and readTailText reads bytes proportional to the limit's line count — so the cap is also
   // the largest byte read one command can cost, and every read-only view scans under the
   // same bound.
-  const events = readEvents(root, HISTORY_SCAN_MAX_EVENTS).filter((e) => e.loop === role);
+  const events = readEvents(root, HISTORY_SCAN_MAX_EVENTS).filter((e) => e.source === role);
   // Newest run_start for this loop+tick: the block's lower bound.
   let startIdx = -1;
   for (let i = events.length - 1; i >= 0; i--) {

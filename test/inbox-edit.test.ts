@@ -38,7 +38,7 @@ test("editRolePrompt rewrites one queued prompt in place — same file, same sta
   // One prompt_edited event under the target loop, previewing the new text.
   const events = eventsOfType(root, "prompt_edited");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "bugfix");
+  assert.equal(events[0]?.source, "bugfix");
   assert.equal(String(events[0]?.preview), "fixed text");
 });
 
@@ -325,7 +325,7 @@ test("editQueuedFile rewrites one named queue file in place and returns the edit
 
   const events = eventsOfType(root, "prompt_edited");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "qa");
+  assert.equal(events[0]?.source, "qa");
 });
 
 test("editQueuedFile refuses a name failing queueFileNameProblem, touching nothing", () => {

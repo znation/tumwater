@@ -105,7 +105,7 @@ test("pollBootstrapGate: reaching the target latches, logs once, and lifts the h
   assert.equal(fs.existsSync(bootstrapLatchPath(root)), true, "the latch is written");
   const events = readEvents(root, 100).filter((e) => e.type === "bootstrap_complete");
   assert.equal(events.length, 1, "exactly one bootstrap_complete");
-  assert.equal(events[0]!.loop, "harness");
+  assert.equal(events[0]!.source, "tumwater");
   assert.equal(events[0]!.plansDone, 2);
   assert.equal(events[0]!.untilPlansDone, 2);
 

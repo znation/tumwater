@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import { fail, say } from "./cli-output.js";
 import { loadConfig } from "../config/config.js";
+import { TUMWATER_SOURCE } from "../events/events.js";
 import { notifyCommandEnv, notifyExitGloss } from "../events/notify.js";
 
 /** The one representative allowlisted event `tumwater notify --test` fires: a failed landing
- * with loop `harness`. Fixed and opinionated — the goal is to prove the hook runs, not to
+ * with source `tumwater`. Fixed and opinionated — the goal is to prove the hook runs, not to
  * replay a specific page, so there are no per-type or per-message flags. */
 const NOTIFY_TEST_TYPE = "merge_failed";
-const NOTIFY_TEST_LOOP = "harness";
+const NOTIFY_TEST_SOURCE = TUMWATER_SOURCE;
 const NOTIFY_TEST_MESSAGE = "tumwater notify --test";
 
 /** How long `tumwater notify --test` waits for the hook before giving up. A hook still running
@@ -64,7 +65,7 @@ export async function cmdNotify(root: string, args: string[]): Promise<void> {
   say(`running the notify hook (TUMWATER_EVENT_TYPE=${NOTIFY_TEST_TYPE}) …`);
   const result = await runNotifyHook(
     command,
-    notifyCommandEnv(NOTIFY_TEST_TYPE, NOTIFY_TEST_LOOP, NOTIFY_TEST_MESSAGE),
+    notifyCommandEnv(NOTIFY_TEST_TYPE, NOTIFY_TEST_SOURCE, NOTIFY_TEST_MESSAGE),
   );
   if ("timedOut" in result) {
     say(`notify hook did not finish within ${NOTIFY_TEST_TIMEOUT_MS / 1000}s and was killed`);

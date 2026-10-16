@@ -86,7 +86,7 @@ test("cancelPrompt removes by 1-based position and reports the cancelled text", 
   // Exactly one prompt_cancelled event under the director loop, like its enqueued sibling.
   const events = eventsOfType(dir, "prompt_cancelled");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "director");
+  assert.equal(events[0]?.source, "director");
   assert.equal(String(events[0]?.preview), "beta");
 });
 
@@ -325,7 +325,7 @@ test("submitRolePrompt and cancelRolePrompt log their events under the named loo
   submitRolePrompt(dir, "qa", "another");
   let events = eventsOfType(dir, "prompt_enqueued");
   assert.equal(events.length, 2);
-  assert.ok(events.every((e) => e.loop === "qa"));
+  assert.ok(events.every((e) => e.source === "qa"));
   assert.equal(String(events[0]?.preview), "check the flow");
 
   // Cancel is per-queue: position 1 in qa's queue is qa's first prompt.
@@ -333,7 +333,7 @@ test("submitRolePrompt and cancelRolePrompt log their events under the named loo
   assert.deepEqual(outcome, { status: "cancelled", text: "check the flow" });
   events = eventsOfType(dir, "prompt_cancelled");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "qa");
+  assert.equal(events[0]?.source, "qa");
 
   // Out-of-range positions throw with no side effects, exactly like the director's cancel.
   assert.throws(() => cancelRolePrompt(dir, "qa", 5), /no prompt at position 5/);

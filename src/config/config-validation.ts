@@ -23,6 +23,7 @@ import { isNonBlankString, tooLongMessage } from "../text/text.js";
 import { PREFILL_REASON } from "../text/phrases.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
 import { isAgentId, parseModelSelector } from "./model-selector.js";
+import { TUMWATER_SOURCE } from "../events/events.js";
 import { HARNESS_CLAUDE_FLAGS } from "../agent/claude/claude-args.js";
 import {
   AT_LEAST_ONE,
@@ -460,6 +461,10 @@ function checkSelectorValue(
         } else if (!CUSTOM_NAME_RE.test(name)) {
           problems.push(
             `${where}.name "${name}" is not a valid role name: start with a lowercase letter or digit, then at most 31 more of [a-z0-9_-]`,
+          );
+        } else if (name === TUMWATER_SOURCE) {
+          problems.push(
+            `${where}.name "${name}" is reserved: events tumwater writes about itself carry that source, so a role's events would be indistinguishable from them — pick another name`,
           );
         } else if (allRoleIds().includes(name)) {
           problems.push(`${where}.name "${name}" collides with a built-in role id — pick another name`);

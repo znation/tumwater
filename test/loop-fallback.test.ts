@@ -296,7 +296,7 @@ const FALLBACK = pair("groq", "llama-free");
  * `unknown`); narrowed here so the assertions read as the event's own payload. */
 interface FallbackEvent {
   ts: number;
-  loop: string;
+  source: string;
   type: string;
   provider?: string;
   model?: string;
@@ -376,7 +376,7 @@ test("dropping the pair ends an active episode, naming the primary and its durat
   h.fold(null, false, answered);
   const ended = onlyEvent(h.root);
   assert.equal(ended.type, "model_fallback_ended");
-  assert.equal(ended.loop, "feature");
+  assert.equal(ended.source, "feature");
   assert.equal(ended.provider, "anthropic");
   assert.equal(ended.model, "claude-primary");
   assert.ok((ended.durationMs ?? 0) >= before - 1_000, "duration is measured from the episode start");
@@ -397,7 +397,7 @@ test("the third provider failure starts the episode and logs the started event",
   h.fold(FALLBACK, false, rateLimited);
   const started = onlyEvent(h.root);
   assert.equal(started.type, "model_fallback_started");
-  assert.equal(started.loop, "feature");
+  assert.equal(started.source, "feature");
   assert.equal(started.provider, "groq", "the event names the pair ticks will run on");
   assert.equal(started.model, "llama-free");
   assert.equal(started.reason, "rate-limit");

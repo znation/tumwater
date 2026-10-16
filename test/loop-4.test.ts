@@ -198,7 +198,7 @@ test("a tick that posts a question merges it and emits question_posted with the 
       assert.equal(merged.length, 1);
       const posted = events.filter((e) => e.type === "question_posted");
       assert.equal(posted.length, 1, "exactly one new Open entry was posted");
-      assert.equal(posted[0]!.loop, "improve");
+      assert.equal(posted[0]!.source, "improve");
       assert.equal(posted[0]!.question, "Q1: which database?");
       // The question event lands alongside (after) the merged event for the same commit.
       assert.ok(

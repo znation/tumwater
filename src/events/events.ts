@@ -31,7 +31,8 @@ export function eventsRotationLabel(): string {
  * collectors) reads back. */
 export interface HarnessEvent {
   ts: number;
-  loop: string;
+  /** The runner id that wrote the event, or TUMWATER_SOURCE for tumwater's own events. */
+  source: string;
   type:
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "run_end"
@@ -113,11 +114,20 @@ export interface HarnessEvent {
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
  * are allowed via the index signature. Exported for modules that hand events to an injected
  * logger instead of calling logEvent directly (redeploy.ts). */
-export interface HarnessEventInput {
-  loop: string;
+export type HarnessEventInput = (
+  | { source: string; loop?: never }
+  | {
+      /** @deprecated use source */
+      loop: string;
+      source?: never;
+    }
+) & {
   type: HarnessEvent["type"];
   [key: string]: unknown;
-}
+};
+
+/** The `source` of events tumwater writes about itself rather than on a role's behalf. */
+export const TUMWATER_SOURCE = "tumwater";
 
 /** The usage fields an event carries, as a fragment with both omitted when zero — the
  * omit-when-zero convention the two usage-emitters apply (tick-finalize.ts's run_end,
@@ -159,10 +169,10 @@ export function logEvent(root: string, event: HarnessEventInput): HarnessEvent {
 }
 
 /** Log a warning event: the harness's "something is off but the loop continues" signal. The
- * single home of the `{ loop, type: "warning", message }` shape every warn site constructs —
+ * single home of the `{ source, type: "warning", message }` shape every warn site constructs —
  * without it, each caller restates the event object and a field can drift between them. */
-export function warnEvent(root: string, loop: string, message: string): HarnessEvent {
-  return logEvent(root, { loop, type: "warning", message });
+export function warnEvent(root: string, source: string, message: string): HarnessEvent {
+  return logEvent(root, { source, type: "warning", message });
 }
 
 /** logEvent for a caller on a path that cannot handle a throw — the orchestrator's
@@ -176,7 +186,7 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
     // A terminal display boundary like cli-output's say()/fail(): the loop id, event type, and
     // error text can carry model- or subprocess-supplied bytes, and stderr is a terminal. Strip
     // the control characters the same way so a fallback line cannot drive the operator's shell.
-    const detail = `${event.loop}: could not log ${event.type} event: ${errorMessage(err)}`;
+    const detail = `${event.source ?? event.loop}: could not log ${event.type} event: ${errorMessage(err)}`;
     process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
   }
 }
@@ -187,14 +197,14 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
  * caller's message (a spawn failure, a rejected tick) survives to be read. The single home of
  * the try-warn → message-bearing-stderr-fallback shape, so the notify hook and the launch pass
  * do not each carry a copy of it. */
-export function warnEventBestEffort(root: string, loop: string, message: string): void {
+export function warnEventBestEffort(root: string, source: string, message: string): void {
   try {
-    warnEvent(root, loop, message);
+    warnEvent(root, source, message);
   } catch (err) {
     // The warning's own text is very often model-supplied (a stalled tool call's label, a tick's
     // lastError) and the loop id can be a custom one, so this fallback is a terminal boundary:
     // sanitize exactly as say()/fail() do before the line reaches the operator's terminal.
-    const detail = `${loop}: ${message} (warning log unwritable: ${errorMessage(err)})`;
+    const detail = `${source}: ${message} (warning log unwritable: ${errorMessage(err)})`;
     process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
   }
 }
@@ -209,7 +219,7 @@ export function bestEffortEventLogger(root: string): {
 } {
   return {
     emit: (event) => logEventBestEffort(root, event),
-    warn: (message) => warnEventBestEffort(root, "harness", message),
+    warn: (message) => warnEventBestEffort(root, TUMWATER_SOURCE, message),
   };
 }
 

@@ -233,7 +233,7 @@ test("submitRolePromptAndWake queues the prompt and wakes only that role", () =>
   assert.equal(events.length, 1);
   const ev = events.at(0);
   assert.ok(ev);
-  assert.equal(ev.loop, "fix");
+  assert.equal(ev.source, "fix");
   assert.equal(ev.preview, "add a test");
   // …and the wake marker targets exactly that role.
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);

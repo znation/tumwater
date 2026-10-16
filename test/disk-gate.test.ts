@@ -59,7 +59,7 @@ test("pollDiskGate holds below the floor and one disk_low logs per crossing", ()
   assert.equal(pollDiskGate(root, 9.5 * BYTES_PER_GB, 10, state), true);
   assert.deepEqual(eventTypes(root), ["disk_low"]);
   const low = readEvents(root, 100)[0]!;
-  assert.equal(low.loop, "harness");
+  assert.equal(low.source, "tumwater");
   assert.equal(low.freeGB, 9);
   assert.equal(low.holdGB, 10);
 });

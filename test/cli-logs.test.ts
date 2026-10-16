@@ -49,7 +49,7 @@ function seedTickEvents(repo: string, count: number): void {
   const file = eventsLogPath(repo);
   const events = Array.from({ length: count }, (_, i) => ({
     ts: now - (count - i) * 1000,
-    loop: "clean",
+    source: "clean",
     type: "run_start",
     run: i + 1,
   }));
@@ -98,7 +98,7 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
     // the moment it streams instead of after a real poll interval. The fallback crosses that
     // frozen deadline only if the child never streams, so a regression fails the wait
     // deterministically rather than hanging it.
-    const live = { ts: Date.now(), loop: "clean", type: "run_start", run: 99 };
+    const live = { ts: Date.now(), source: "clean", type: "run_start", run: 99 };
     const clock = fakeClock();
     let injectedSleeps = 0;
     const liveWait = s.waitFor((out) => out.includes('"run":99'), "the live event as JSON", 30_000, {

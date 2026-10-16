@@ -57,7 +57,7 @@ test("a fleet that goes down unasked runs the notify hook once", async () => {
     const deadline = Date.now() + 10_000;
     while (lines().length < 1 && Date.now() < deadline) await new Promise((res) => setTimeout(res, 50));
     await new Promise((res) => setTimeout(res, 200));
-    assert.deepEqual(lines(), ["supervisor_exit|harness"]);
+    assert.deepEqual(lines(), ["supervisor_exit|tumwater"]);
   });
 });
 

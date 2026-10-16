@@ -47,7 +47,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
     await sleep(600);
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "a user-paused role starts no new ticks");
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "wake" && e.loop === "clean"),
+      !readEvents(repo).some((e) => e.type === "wake" && e.source === "clean"),
       "no wake logged for the blocked main move",
     );
     assert.ok(fs.existsSync(marker), "the pause marker is persistent state, not consumed");
@@ -174,7 +174,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     // One harness-level event per crossing, naming the role — not one per poll.
     const paused = eventsOfType(repo, "role_paused");
     assert.equal(paused.length, 1);
-    assert.equal(paused[0]?.loop, "harness");
+    assert.equal(paused[0]?.source, "tumwater");
     assert.equal(paused[0]?.role, "clean");
 
     // The director is NOT exempt from a per-role pause: its queued prompt waits in the inbox.
@@ -182,7 +182,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     enqueuePrompt(repo, "steer me while the director is paused");
     await sleep(600);
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "run_start" && e.loop === DIRECTOR_ROLE),
+      !readEvents(repo).some((e) => e.type === "run_start" && e.source === DIRECTOR_ROLE),
       "a paused director starts no ticks",
     );
     assert.ok(
@@ -195,7 +195,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     await awaitSettledTick(repo, "clean", 1, "the resumed role to tick");
     const resumed = eventsOfType(repo, "role_resumed");
     assert.equal(resumed.length, 1);
-    assert.equal(resumed[0]?.loop, "harness");
+    assert.equal(resumed[0]?.source, "tumwater");
     assert.equal(resumed[0]?.role, "clean");
   } finally {
     await stopOrchestrator(orch, restore);

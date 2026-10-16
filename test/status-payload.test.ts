@@ -458,7 +458,7 @@ test("the status payload names the project and carries the recent events as data
     assert.ok(payload.events[i]!.endsWith(" " + item.message), `line ${i} ends with its item's message`);
   }
   assert.equal(tail[1]!.message, `merged aaaaaaaa to main — Escape backlog bodies`);
-  assert.equal(formatEvent({ ts: tail[1]!.ts, loop: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" }), payload.events.at(-2));
+  assert.equal(formatEvent({ ts: tail[1]!.ts, source: "bugfix", type: "merged", commit: "a".repeat(40), summary: "Escape backlog bodies" }), payload.events.at(-2));
 });
 
 test("the status payload renders a corrupt event's loop as ? like the reports", async () => {

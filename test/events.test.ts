@@ -145,7 +145,7 @@ test("parseEventLine treats valid-JSON non-object lines as no data", () => {
   for (const line of ["null", "123", '"text"', "[1,2]", "true"]) {
     assert.equal(parseEventLine(line), null, line);
   }
-  assert.deepEqual(parseEventLine('{"loop":"x","type":"warning"}'), { loop: "x", type: "warning" });
+  assert.deepEqual(parseEventLine('{"loop":"x","type":"warning"}'), { source: "x", type: "warning" });
 });
 
 test("readEvents skips a valid-JSON non-object line", () => {

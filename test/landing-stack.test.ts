@@ -45,9 +45,9 @@ test("ffStackToMain fast-forwards main through the whole stack in one ff with pe
   assert.equal(mainSha(root), shaB, "main fast-forwarded to the stacked tip");
   const merged = eventsOfType(root, "merged");
   assert.equal(merged.length, 2, "one merged event per change, in queue order");
-  assert.equal(merged[0]!.loop, "alpha");
+  assert.equal(merged[0]!.source, "alpha");
   assert.equal(merged[0]!.commit, shaA, "the head's own sha");
-  assert.equal(merged[1]!.loop, "beta");
+  assert.equal(merged[1]!.source, "beta");
   assert.equal(merged[1]!.commit, shaB, "the stacked tip");
 
   // An empty stack is a no-op: nothing to fast-forward, nothing logged.
@@ -136,5 +136,5 @@ test("ffStackToMain emits question_posted for questions the stack adds, not pre-
     ["New question (asked by improve)"],
     "exactly one event for the added heading — the pre-existing entry is not re-posted",
   );
-  assert.equal(posted[0]!.loop, "alpha", "attributed to the batch's first change, like the single-change path");
+  assert.equal(posted[0]!.source, "alpha", "attributed to the batch's first change, like the single-change path");
 });

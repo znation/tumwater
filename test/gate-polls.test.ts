@@ -149,7 +149,7 @@ test("pollFleetGates: a budget reopen hands in-flight fallback ticks back to the
   assert.equal(events.filter((e) => e.type === "budget_resumed").length, 1);
   const handoff = events.filter((e) => e.type === "budget_handback");
   assert.equal(handoff.length, 1, "one event names every handed-back tick");
-  assert.equal(handoff[0]!.loop, "harness");
+  assert.equal(handoff[0]!.source, "tumwater");
   assert.deepEqual(handoff[0]!.roles, ["feature"]);
   assert.equal(handoff[0]!.provider, "free");
   assert.equal(handoff[0]!.model, "qwen-free");

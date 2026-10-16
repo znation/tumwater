@@ -20,7 +20,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
 
 function warnMessages(root: string): string[] {
   return readEvents(root)
-    .filter((e) => e.type === "warning" && e.loop === "harness")
+    .filter((e) => e.type === "warning" && e.source === "tumwater")
     .map((e) => (e as unknown as { message: string }).message);
 }
 

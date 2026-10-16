@@ -440,7 +440,7 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
     assert.match(runner.state.lastError ?? "", /read \/x\/shot\.png, but .* cannot read images/);
     const blinds = eventsOfType(repo, "image_blind");
     assert.equal(blinds.length, 1, "exactly one image_blind event");
-    assert.equal(blinds[0]!.loop, "improve");
+    assert.equal(blinds[0]!.source, "improve");
     assert.equal(blinds[0]!.path, "/x/shot.png");
     assert.equal(blinds[0]!.action, "fail", "an authoring run's blind read earns the fail action");
     assert.ok(typeof blinds[0]!.run === "number", "the event names the run");

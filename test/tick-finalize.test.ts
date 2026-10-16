@@ -64,7 +64,7 @@ test("finalizeTick folds the outcome onto the state, persists it, and logs run_e
   const ends = eventsOfType(root, "run_end");
   assert.equal(ends.length, 1);
   const end = ends[0]!;
-  assert.equal(end.loop, "organize");
+  assert.equal(end.source, "organize");
   assert.equal(end.result, "no_change");
   assert.equal(end.summary, "nothing to do");
   assert.equal(typeof end.durationMs, "number");
@@ -146,7 +146,7 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   await run(root, "organize", s, error(ERROR_STREAK_WARN));
   const warnings = eventsOfType(root, "warning");
   assert.equal(warnings.length, 1);
-  assert.equal(warnings[0]!.loop, "organize");
+  assert.equal(warnings[0]!.source, "organize");
   assert.match(warnings[0]!.message as string, /^3 runs failed in a row: boom 3$/);
   // Past the crossing the streak keeps counting without re-warning.
   await run(root, "organize", s, error(ERROR_STREAK_WARN + 1));

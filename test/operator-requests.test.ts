@@ -88,7 +88,7 @@ test("consumeResetRequest resets only the named roles and logs one loop event", 
   assert.equal(fs.existsSync(resetRequestPath(root)), false);
   const events = eventsOfType(root, "counters_reset");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "coverage");
+  assert.equal(events[0]?.source, "coverage");
 });
 
 test("consumeResetRequest resets every role and logs a harness event when the marker names several", () => {
@@ -101,7 +101,7 @@ test("consumeResetRequest resets every role and logs a harness event when the ma
   assert.equal(b.resets, 1);
   const events = eventsOfType(root, "counters_reset");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "harness");
+  assert.equal(events[0]?.source, "tumwater");
   assert.deepEqual(events[0]?.roles, ["coverage", "clean"]);
 });
 
@@ -142,7 +142,7 @@ test("consumeResetRequest zeroes a named role that has no live runner through it
   assert.equal(fs.existsSync(resetRequestPath(root)), false);
   const events = eventsOfType(root, "counters_reset");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "docs");
+  assert.equal(events[0]?.source, "docs");
 });
 
 test("consumeWakeRequest clears the schedule of a named role that has no live runner", () => {
@@ -162,7 +162,7 @@ test("consumeWakeRequest clears the schedule of a named role that has no live ru
   assert.ok((s?.nextRunAt ?? 0) > 0, "the wake pulls nextRunAt to the consume instant");
   const events = eventsOfType(root, "wake");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "docs");
+  assert.equal(events[0]?.source, "docs");
   assert.equal(events[0]?.reason, "operator");
 });
 
@@ -177,7 +177,7 @@ test("consumeWakeRequest wakes only the named roles and logs the operator reason
   assert.equal(fs.existsSync(wakeRequestPath(root)), false);
   const events = eventsOfType(root, "wake");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "clean");
+  assert.equal(events[0]?.source, "clean");
   assert.equal(events[0]?.reason, "operator");
 });
 
@@ -210,7 +210,7 @@ test("consumeWakeRequest consumes a scheduled wake at its deadline", () => {
   assert.equal(fs.existsSync(wakeRequestPath(root)), false);
   const events = eventsOfType(root, "wake");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "coverage");
+  assert.equal(events[0]?.source, "coverage");
 });
 
 test("consumeWakeRequest reads a non-numeric notBeforeMs as immediate", () => {
@@ -278,7 +278,7 @@ test("consumeAbortRequests aborts a running role's tick and logs run_aborted", (
   assert.equal(fs.existsSync(marker), false);
   const events = eventsOfType(root, "run_aborted");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "coverage");
+  assert.equal(events[0]?.source, "coverage");
 });
 
 test("consumeAbortRequests silently clears a marker for an idle role", () => {
@@ -460,7 +460,7 @@ test("consumeWakeRequest applies an immediate wake.json but leaves a future sche
   consumeWakeRequest(root, asRunners(feature, plan));
   assert.equal(feature.wakes, 1);
   assert.equal(fs.existsSync(file), false);
-  assert.ok(eventsOfType(root, "wake").some((e) => e.loop === "feature" && e.reason === "operator"));
+  assert.ok(eventsOfType(root, "wake").some((e) => e.source === "feature" && e.reason === "operator"));
 });
 
 test("consumeWakeRequest wakes everyone for a corrupt scheduled file and ignores tmp leftovers", () => {

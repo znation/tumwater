@@ -124,7 +124,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
     assert.equal(loadLoopState(repo, "director").ticks, 1, "the director ticked once");
     assert.equal(loadLoopState(repo, "clean").running, true, "the role tick still holds the only permit");
     assert.equal(
-      eventsOfType(repo, "run_end").some((e) => e.loop === "clean"),
+      eventsOfType(repo, "run_end").some((e) => e.source === "clean"),
       false,
       "the permit holder is still mid-tick while the director finishes",
     );
@@ -143,7 +143,7 @@ test("director: a fleet pause holds role ticks but not the director's queued pro
     await awaitSettledTick(repo, "director", 1, "the director's prompt tick under the pause");
     assert.equal(loadLoopState(repo, "director").ticks, 1, "the director ticked despite the pause");
     assert.equal(
-      eventsOfType(repo, "run_start").some((e) => e.loop === "clean"),
+      eventsOfType(repo, "run_start").some((e) => e.source === "clean"),
       false,
       "the paused role started no tick",
     );
@@ -217,7 +217,7 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
       "the hand-off announced the lapse before stopping",
     );
     assert.deepEqual(
-      eventsOfType(repo, "merge_failed").map((e) => `${e.loop}:${String(e.result)}`),
+      eventsOfType(repo, "merge_failed").map((e) => `${e.source}:${String(e.result)}`),
       ["clean:aborted"],
       "the outlived landing ended aborted, not merged",
     );

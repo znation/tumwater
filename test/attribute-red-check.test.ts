@@ -72,8 +72,8 @@ function reviewRejectedEvents(root: string): { loop: string; head: string; reaso
   return readEvents(root)
     .filter((e) => e.type === "review_rejected")
     .map((e) => {
-      const r = e as { loop: string; head?: string; reasons?: string[] };
-      return { loop: r.loop, head: r.head ?? "", reasons: r.reasons ?? [] };
+      const r = e as { source: string; head?: string; reasons?: string[] };
+      return { loop: r.source, head: r.head ?? "", reasons: r.reasons ?? [] };
     });
 }
 

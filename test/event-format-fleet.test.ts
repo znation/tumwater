@@ -18,7 +18,7 @@ import { formatTime } from "../src/text/datetime.js";
 test("formatEvent renders the budget warning with the spend phrase and the still-open gate", () => {
   const warned = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_warning",
     spentUsd: 40.005,
     capUsd: 50,
@@ -29,7 +29,7 @@ test("formatEvent renders the budget warning with the spend phrase and the still
 test("formatEvent renders the per-role cap warning naming the role and that it keeps running", () => {
   const warned = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "role_cap_warning",
     role: "docs",
     spentUsd: 0.85,
@@ -42,7 +42,7 @@ test("formatEvent renders the per-role cap warning naming the role and that it k
 test("formatEvent renders the budget transition events plainly with spend and cap", () => {
   const paused = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_paused",
     spentUsd: 50.123,
     capUsd: 50,
@@ -52,7 +52,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
 
   const resumed = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_resumed",
     spentUsd: 12.345,
     capUsd: 50,
@@ -64,7 +64,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   // siblings of the budget pause/resume above, so they live here too.
   const rolePaused = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "role_cap_paused",
     role: "docs",
     spentUsd: 0.5,
@@ -76,7 +76,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
 
   const roleResumed = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "role_cap_resumed",
     role: "docs",
   } as never);
@@ -86,23 +86,23 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   // handed back to the primary, so the resulting aborted ticks read as the budget reopening.
   const handback = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_handback",
     roles: ["steward", "plan"],
   } as never);
   assert.match(handback, /tumwater\s+budget reopened: handed steward, plan back to the primary/);
-  const bareHandback = formatEvent({ ts: 0, loop: "harness", type: "budget_handback" } as never);
+  const bareHandback = formatEvent({ ts: 0, source: "tumwater", type: "budget_handback" } as never);
   assert.match(bareHandback, /budget reopened: handed \? back to the primary/);
 
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
-  const bare = formatEvent({ ts: 0, loop: "harness", type: "budget_paused" } as never);
+  const bare = formatEvent({ ts: 0, source: "tumwater", type: "budget_paused" } as never);
   assert.match(bare, /budget paused — \$0\.00 of \$0\.00 daily cost reached/);
 
   // The cost n/a fallback (plans/fallback-model.md): a switch names the model that took over,
   // and a pause names a configured fallback the gate refused — the operator's next action.
   const fallback = formatEvent({
     ts: Date.UTC(2026, 0, 2, 3, 4, 5),
-    loop: "harness",
+    source: "tumwater",
     type: "budget_fallback",
     spentUsd: 10.5,
     capUsd: 10,
@@ -115,7 +115,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   );
   const refused = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_paused",
     spentUsd: 10.5,
     capUsd: 10,
@@ -126,7 +126,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   // the fleet retries it on its own — both belong on the line.
   const demoted = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "budget_paused",
     spentUsd: 10.5,
     capUsd: 10,
@@ -146,7 +146,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
 test("formatEvent renders the maxConcurrent change event plainly with from and to", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "max_concurrent_changed",
     from: 1,
     to: 4,
@@ -155,7 +155,7 @@ test("formatEvent renders the maxConcurrent change event plainly with from and t
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
-  const bare = formatEvent({ ts: 0, loop: "harness", type: "max_concurrent_changed" } as never);
+  const bare = formatEvent({ ts: 0, source: "tumwater", type: "max_concurrent_changed" } as never);
   assert.match(bare, /maxConcurrent changed:/);
 });
 
@@ -165,7 +165,7 @@ test("formatEvent renders the maxConcurrent change event plainly with from and t
 test("formatEvent renders the retention change event plainly with from and to", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "retention_changed",
     from: 30,
     to: 1,
@@ -174,7 +174,7 @@ test("formatEvent renders the retention change event plainly with from and to", 
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no payloads; the fallback must still render.
-  const bare = formatEvent({ ts: 0, loop: "harness", type: "retention_changed" } as never);
+  const bare = formatEvent({ ts: 0, source: "tumwater", type: "retention_changed" } as never);
   assert.match(bare, /sessionRetentionDays changed:/);
 });
 
@@ -183,7 +183,7 @@ test("formatEvent renders the retention change event plainly with from and to", 
 test("formatEvent renders the config change event plainly with the edited keys", () => {
   const line = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "config_changed",
     keys: ["provider", "thrashTurns"],
   } as never);
@@ -191,9 +191,9 @@ test("formatEvent renders the config change event plainly with the edited keys",
   assert.ok(!line.includes("warning"), "a routine state change is not a warning");
 
   // A torn or hand-edited event line could carry no keys; the fallback must still render.
-  const bare = formatEvent({ ts: 0, loop: "harness", type: "config_changed" } as never);
+  const bare = formatEvent({ ts: 0, source: "tumwater", type: "config_changed" } as never);
   assert.match(bare, /config changed$/);
-  const empty = formatEvent({ ts: 0, loop: "harness", type: "config_changed", keys: [] } as never);
+  const empty = formatEvent({ ts: 0, source: "tumwater", type: "config_changed", keys: [] } as never);
   assert.match(empty, /config changed$/);
 });
 // Operator-intent gate (src/orchestrator/orchestrator.ts): `tumwater pause`/`resume` log these once
@@ -201,7 +201,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
 // transition. Both are routine state changes an operator reads at a glance; the paused line
 // states the scope and the director exemption, the resumed line says role ticks are back.
 test("formatEvent renders the fleet pause and resume events plainly", () => {
-  const paused = formatEvent({ ts: 0, loop: "harness", type: "team_paused" } as never);
+  const paused = formatEvent({ ts: 0, source: "tumwater", type: "team_paused" } as never);
   assert.match(
     paused,
     /tumwater\s+team paused — roles start no new runs \(director keeps running\)$/,
@@ -209,7 +209,7 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
-  const resumed = formatEvent({ ts: 0, loop: "harness", type: "team_resumed" } as never);
+  const resumed = formatEvent({ ts: 0, source: "tumwater", type: "team_resumed" } as never);
   assert.match(resumed, /tumwater\s+team resumed — roles run again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });
@@ -218,7 +218,7 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
 // name the role, and the paused line states what stays running — every other role, the
 // director included.
 test("formatEvent renders the per-role pause and resume events with the role named", () => {
-  const paused = formatEvent({ ts: 0, loop: "harness", type: "role_paused", role: "docs" } as never);
+  const paused = formatEvent({ ts: 0, source: "tumwater", type: "role_paused", role: "docs" } as never);
   assert.match(
     paused,
     /tumwater\s+role docs paused — it starts no new runs \(the rest of the team keeps running\)$/,
@@ -226,7 +226,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   );
   assert.ok(!paused.includes("warning"), `a deliberate pause is routine, not a warning: ${paused}`);
 
-  const resumed = formatEvent({ ts: 0, loop: "harness", type: "role_resumed", role: "docs" } as never);
+  const resumed = formatEvent({ ts: 0, source: "tumwater", type: "role_resumed", role: "docs" } as never);
   assert.match(resumed, /tumwater\s+role docs resumed — it runs again$/, `resume line: ${resumed}`);
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 
@@ -235,7 +235,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   // the streak depth and how to lift it.
   const streakPaused = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "role_streak_paused",
     role: "docs",
     streak: 10,
@@ -255,7 +255,7 @@ test("formatEvent renders the per-role pause and resume events with the role nam
 test("formatEvent renders the 429 hold and its re-open plainly", () => {
   const hold = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "rate_limit_hold",
     roles: ["bugfix", "coverage"],
     holdMs: 60_000,
@@ -270,7 +270,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
 
   const relapse = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "rate_limit_hold",
     roles: ["dry", "feature"],
     holdMs: 15 * 60_000,
@@ -278,7 +278,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
   } as never);
   assert.match(relapse, /for 15m \(relapse 4\) \(director keeps running\)$/, `relapse line: ${relapse}`);
 
-  const resumed = formatEvent({ ts: 0, loop: "harness", type: "rate_limit_resumed" } as never);
+  const resumed = formatEvent({ ts: 0, source: "tumwater", type: "rate_limit_resumed" } as never);
   assert.match(resumed, /tumwater\s+provider limit lifted — roles on every provider run again$/, `resumed line: ${resumed}`);
 });
 
@@ -288,7 +288,7 @@ test("formatEvent renders the 429 hold and its re-open plainly", () => {
 test("formatEvent renders a backend hold with its kind, and keeps the 429 wording for rate limits", () => {
   const backend = formatEvent({
     ts: 0,
-    loop: "harness",
+    source: "tumwater",
     type: "rate_limit_hold",
     kind: "connection",
     roles: ["bugfix", "clean"],
@@ -301,14 +301,14 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
     `backend hold line: ${backend}`,
   );
   const modelLoad = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
+    ts: 0, source: "tumwater", type: "rate_limit_hold", kind: "model-load", roles: ["dry"], holdMs: 120_000, escalation: 1,
   } as never);
   assert.match(modelLoad, /waiting: backend failing \(model load failure\) — dry hit backend failures; roles on every provider start no new runs for 2m \(relapse 1\)/, `model-load line: ${modelLoad}`);
 
   // A timeout storm names its own phrase too — the digest pools plain and progressing tick
   // timeouts under this kind, and a timeout hold must not borrow a connection's wording.
   const timeout = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_hold", kind: "timeout", roles: ["tests"], holdMs: 60_000, escalation: 0,
+    ts: 0, source: "tumwater", type: "rate_limit_hold", kind: "timeout", roles: ["tests"], holdMs: 60_000, escalation: 0,
   } as never);
   assert.match(
     timeout,
@@ -316,7 +316,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
     `timeout hold line: ${timeout}`,
   );
   const timeoutResumed = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "timeout",
+    ts: 0, source: "tumwater", type: "rate_limit_resumed", kind: "timeout",
   } as never);
   assert.match(
     timeoutResumed,
@@ -327,7 +327,7 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   // The lift names what actually ended (BUGS.md 2026-09-29): the resumed event carries the
   // ended hold's kind, so a backend hold's re-open must not render as "429 hold lifted".
   const backendResumed = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "connection",
+    ts: 0, source: "tumwater", type: "rate_limit_resumed", kind: "connection",
   } as never);
   assert.match(
     backendResumed,
@@ -336,14 +336,14 @@ test("formatEvent renders a backend hold with its kind, and keeps the 429 wordin
   );
   // A rate-limit hold's lift (and a torn resumed line with no kind) keeps the historical wording.
   const rlResumed = formatEvent({
-    ts: 0, loop: "harness", type: "rate_limit_resumed", kind: "rate-limit",
+    ts: 0, source: "tumwater", type: "rate_limit_resumed", kind: "rate-limit",
   } as never);
   assert.match(rlResumed, /provider limit lifted — roles on every provider run again$/, `rate-limit resumed line: ${rlResumed}`);
 });
 
 test("formatEvent renders main_red_hold as its message with no warning prefix", () => {
   const message = "main abc1234 is red (test: x) — code merges blocked until main is green";
-  const line = formatEvent({ ts: 0, type: "main_red_hold", loop: "harness", message } as never);
+  const line = formatEvent({ ts: 0, type: "main_red_hold", source: "tumwater", message } as never);
   assert.ok(line.endsWith(message), `line: ${line}`);
   assert.ok(!line.includes("warning:"), `line: ${line}`);
 });
@@ -352,19 +352,19 @@ test("formatEvent renders main_red_hold as its message with no warning prefix", 
 // one-decimal. A torn or hand-edited event whose value is missing or non-numeric must read "0.0",
 // never "NaN", for freeGB, holdGB, and freedGB alike.
 test("formatEvent renders the disk-floor events' GB fields one-decimal and never NaN", () => {
-  const low = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: 12.34, holdGB: 5 } as never);
+  const low = formatEvent({ ts: 0, source: "tumwater", type: "disk_low", freeGB: 12.34, holdGB: 5 } as never);
   assert.match(low, /waiting: low disk — 12\.3 GB free on the workspaces volume \(floor 5\.0 GB\)/, `disk low line: ${low}`);
-  const ok = formatEvent({ ts: 0, loop: "harness", type: "disk_ok", freeGB: 12.34 } as never);
+  const ok = formatEvent({ ts: 0, source: "tumwater", type: "disk_ok", freeGB: 12.34 } as never);
   assert.match(ok, /disk recovered — 12\.3 GB free on the workspaces volume/, `disk ok line: ${ok}`);
   const reclaim = formatEvent({
-    ts: 0, loop: "harness", type: "disk_reclaim", mode: "pressure", worktrees: ["a", "b"], freedGB: 1.25, freeGB: 40,
+    ts: 0, source: "tumwater", type: "disk_reclaim", mode: "pressure", worktrees: ["a", "b"], freedGB: 1.25, freeGB: 40,
   } as never);
   assert.match(reclaim, /disk reclaim \(pressure\) — freed 1\.3 GB from a, b; 40\.0 GB free now/, `disk reclaim line: ${reclaim}`);
 
   // Corrupt values: each GB field falls back to 0.0 rather than interpolating NaN.
-  const torn = formatEvent({ ts: 0, loop: "harness", type: "disk_low", freeGB: "x", holdGB: null } as never);
+  const torn = formatEvent({ ts: 0, source: "tumwater", type: "disk_low", freeGB: "x", holdGB: null } as never);
   assert.match(torn, /waiting: low disk — 0\.0 GB free on the workspaces volume \(floor 0\.0 GB\)/, `torn disk low line: ${torn}`);
-  const tornReclaim = formatEvent({ ts: 0, loop: "harness", type: "disk_reclaim", freedGB: "x", freeGB: null } as never);
+  const tornReclaim = formatEvent({ ts: 0, source: "tumwater", type: "disk_reclaim", freedGB: "x", freeGB: null } as never);
   assert.match(tornReclaim, /freed 0\.0 GB from \?; 0\.0 GB free now/, `torn disk reclaim line: ${tornReclaim}`);
 });
 
@@ -376,7 +376,7 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
   const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
   const clock = formatTime(new Date(resetsAt));
   const warning = formatEvent({
-    ts: 0, loop: "harness", type: "claude_window_warning", windowType: "five_hour", resetsAt,
+    ts: 0, source: "tumwater", type: "claude_window_warning", windowType: "five_hour", resetsAt,
   } as never);
   assert.match(
     warning,
@@ -384,7 +384,7 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     `warning line: ${warning}`,
   );
   const limited = formatEvent({
-    ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour", resetsAt,
+    ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour", resetsAt,
   } as never);
   assert.match(
     limited,
@@ -392,10 +392,10 @@ test("formatEvent renders the subscription-window warning, limited, and reset li
     `limited line: ${limited}`,
   );
   assert.ok(!limited.includes("warning"), "a routine hold is not a warning");
-  const reset = formatEvent({ ts: 0, loop: "harness", type: "claude_window_reset" } as never);
+  const reset = formatEvent({ ts: 0, source: "tumwater", type: "claude_window_reset" } as never);
   assert.match(reset, /tumwater\s+claude subscription window reset — claude model jobs run again/, `reset line: ${reset}`);
 
   // A torn limited line with no resetsAt drops the clause instead of rendering NaN.
-  const torn = formatEvent({ ts: 0, loop: "harness", type: "claude_window_limited", windowType: "five_hour" } as never);
+  const torn = formatEvent({ ts: 0, source: "tumwater", type: "claude_window_limited", windowType: "five_hour" } as never);
   assert.ok(!torn.includes("resets"), `torn limited line: ${torn}`);
 });

@@ -263,7 +263,7 @@ test("a due reason other than scheduled/startup logs a wake event", async () => 
   await settle(c);
   const wakes = readEvents(c.root).filter((e) => e.type === "wake");
   assert.equal(wakes.length, 1, "one wake event for the operator reason");
-  assert.equal(wakes[0]!.loop, "organize");
+  assert.equal(wakes[0]!.source, "organize");
   const quiet = ctx({ reasons: new Map([[fakeRunner("clean"), "scheduled"]]) });
   launchDueTicks(quiet);
   await settle(quiet);

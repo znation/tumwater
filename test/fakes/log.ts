@@ -13,25 +13,25 @@ import { writeEvents } from "../fixtures/log-fixtures.js";
 /** A `run_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
  * `changed`. Overrides pass through (`tickEnd({ result: "error", error: "pi unreachable" })`). */
 export function tickEnd(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, source: "feature", type: "run_end", run: 1, result: "changed", ...over } as HarnessEvent;
 }
 
 /** A `run_start` event, the pairing half tickRows reads durations from. */
 export function tickStart(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
+  return { ts: 0, source: "feature", type: "run_start", run: 1, ...over } as HarnessEvent;
 }
 
 /** An approved `review_verdict` event over `head` (40 hex chars expected), with the
  * reviewer run's duration when given. */
 export function reviewVerdict(head: string, over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "harness", type: "review_verdict", head, ...over } as HarnessEvent;
+  return { ts: 0, source: "tumwater", type: "review_verdict", head, ...over } as HarnessEvent;
 }
 
 /** A `build_check` event: scope `gate`, status `passed`, the check's script and duration. */
 export function buildCheck(
   over: Partial<HarnessEvent> & { scope: string; status: string; script: string; durationMs: number },
 ): HarnessEvent {
-  return { ts: 0, loop: "harness", type: "build_check", ...over } as HarnessEvent;
+  return { ts: 0, source: "tumwater", type: "build_check", ...over } as HarnessEvent;
 }
 
 /** Write `events` as a well-formed harness event log under `root`'s .tumwater/log/

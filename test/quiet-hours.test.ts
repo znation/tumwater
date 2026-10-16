@@ -142,7 +142,7 @@ test("pollQuietHoursGate: one started/ended event per crossing, none while settl
 
   const events = readEvents(root, 100);
   const started = events.find((e) => e.type === "quiet_hours_started");
-  assert.equal(started?.loop, "harness");
+  assert.equal(started?.source, "tumwater");
   assert.equal(started?.window, "10:00-12:00");
 });
 

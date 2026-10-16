@@ -134,12 +134,12 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     assert.equal(swaps.length, 1);
     const events = readEvents(repo);
     assert.deepEqual(
-      events.filter((e) => e.type === "run_start").map((e) => e.loop),
+      events.filter((e) => e.type === "run_start").map((e) => e.source),
       [holder],
       "the parked waiter got the aborted holder's permit and released it without starting",
     );
     const ends = events.filter((e) => e.type === "run_end");
-    assert.deepEqual(ends.map((e) => [e.loop, e.result]), [[holder, "aborted"]]);
+    assert.deepEqual(ends.map((e) => [e.source, e.result]), [[holder, "aborted"]]);
     // abortedRuns is what the restart cut off — the one permit holder — not the reservation
     // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted run_ends).
     assert.equal(events.find((e) => e.type === "restart")!.abortedRuns, 1);
@@ -180,14 +180,14 @@ test("a tick parked through a restart hold does not start when the permit frees,
     const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && String(e.message).includes('fails its check');
     await waitFor(() => readEvents(repo).some(isRed), "the red verdict that lifts the hold", 20_000);
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "run_start" && e.loop === parked),
+      () => readEvents(repo).some((e) => e.type === "run_start" && e.source === parked),
       "the parked role to tick once the hold lifts",
       20_000,
     );
     const events = readEvents(repo);
     const red = events.findIndex(isRed);
-    const holderEnd = events.findIndex((e) => e.type === "run_end" && e.loop === holder);
-    const parkedStart = events.findIndex((e) => e.type === "run_start" && e.loop === parked);
+    const holderEnd = events.findIndex((e) => e.type === "run_end" && e.source === holder);
+    const parkedStart = events.findIndex((e) => e.type === "run_start" && e.source === parked);
     assert.ok(holderEnd >= 0 && red > holderEnd, "the holder freed its permit while the hold was still on");
     assert.ok(parkedStart > red, "the parked tick did not start inside the hold — only after it lifted");
     assert.deepEqual(swaps, []);

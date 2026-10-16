@@ -165,14 +165,14 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   const { landQueuedByLoop, outcomeByLoop } = bucketLandingEvents(allEvents);
   const rejectedByLoop = groupBy(
     allEvents.filter((e) => e.type === "review_rejected"),
-    (e) => e.loop,
+    (e) => e.source,
   );
   // A review_error landing kept its pin but left no message on its own merge_failed; the
   // matching review_failed event for the same loop+sha carries it, so the span prices under
   // the same cluster key the digest's review-failure section already counts.
   const reviewFailedByLoop = groupBy(
     allEvents.filter((e) => e.type === "review_failed"),
-    (e) => e.loop,
+    (e) => e.source,
   );
   const deadlineKilledByLoop = groupBy(
     allEvents.filter(
@@ -182,7 +182,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
         (e.scope === "merge" || e.scope === "batch") &&
         typeof e.timeoutMs === "number",
     ),
-    (e) => e.loop,
+    (e) => e.source,
   );
   // Queued run_ends resolve newest-first so each claims the newest pin at or before its end
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the

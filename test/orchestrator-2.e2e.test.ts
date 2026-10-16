@@ -51,7 +51,7 @@ test("a multi-role reset request zeroes every listed runner and logs one harness
     // Several roles → ONE harness-level event listing them, not one per role.
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
-    assert.equal(resets[0]?.loop, "harness");
+    assert.equal(resets[0]?.source, "tumwater");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
     await stopOrchestrator(orch, restore);
@@ -79,7 +79,7 @@ test("a corrupt reset marker resets every runner and is still consumed", async (
     }
     const resets = eventsOfType(repo, "counters_reset");
     assert.equal(resets.length, 1);
-    assert.equal(resets[0]?.loop, "harness", "a superset reset is filed harness-level with the roles list");
+    assert.equal(resets[0]?.source, "tumwater", "a superset reset is filed harness-level with the roles list");
     assert.deepEqual([...(resets[0]!.roles as string[])].sort(), ["clean", "dry"]);
   } finally {
     await stopOrchestrator(orch, restore);
@@ -116,7 +116,7 @@ test("a wake request makes a backed-off loop due within one poll and logs it und
     // The wake is visible as exactly one plain event filed under the role, not a warning.
     const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 1);
-    assert.equal(wakes[0]?.loop, "clean");
+    assert.equal(wakes[0]?.source, "clean");
     assert.equal(wakes[0]?.reason, "operator");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -188,7 +188,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
     await waitFor(() => loadLoopState(repo, "clean").ticks >= 2, "the queued prompt's tick");
     await waitFor(() => !loadLoopState(repo, "clean").running, "the queue-due tick to finish");
     // The wake event names the queue as the cause, like the director's inbox wake.
-    const wakes = eventsOfType(repo, "wake").filter((w) => w.loop === "clean");
+    const wakes = eventsOfType(repo, "wake").filter((w) => w.source === "clean");
     assert.equal(wakes.length, 1);
     assert.equal(wakes[0]?.reason, "inbox");
     // And the ordinary clock re-arms after the queue-due tick: no second tick.
@@ -227,7 +227,7 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
     // The demand must actually be consumed mid-tick — the wake event fired while running
     // holds — or the test would pass by waking an already-idle loop.
     await waitFor(
-      () => eventsOfType(repo, "wake").some((w) => w.loop === "feature") && loadLoopState(repo, "feature").running === true,
+      () => eventsOfType(repo, "wake").some((w) => w.source === "feature") && loadLoopState(repo, "feature").running === true,
       "the wake to be consumed mid-tick",
     );
     // The tick ends, its end-save runs — and the woken loop must come straight back.
@@ -270,7 +270,7 @@ test("a corrupt wake marker wakes every runner and is still consumed", async () 
     const wakes = eventsOfType(repo, "wake");
     assert.equal(wakes.length, 2, "one wake event per woken role");
     assert.deepEqual(
-      wakes.map((e) => e.loop).sort(),
+      wakes.map((e) => e.source).sort(),
       ["clean", "dry"],
     );
     for (const e of wakes) assert.equal(e.reason, "operator");
@@ -400,7 +400,7 @@ test("a tumwater.json that vanishes mid-run keeps the last-known-good config, wa
     fs.rmSync(path.join(repo, "tumwater.json"));
     await waitFor(() => warningsWith("tumwater.json missing").length === 1, "the missing-file warning");
     const warning = warningsWith("tumwater.json missing")[0]!;
-    assert.equal(warning.loop, "harness");
+    assert.equal(warning.source, "tumwater");
     assert.ok(
       (warning.message as string).includes(path.join(repo, "tumwater.json")),
       `the warning names the missing file: ${warning.message as string}`,
@@ -452,7 +452,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     saveConfig(repo, cfg);
     await waitFor(() => finished("docs-auditor"), "the new custom loop to tick");
     assert.ok(
-      readEvents(repo).some((e) => e.type === "run_start" && e.loop === "docs-auditor"),
+      readEvents(repo).some((e) => e.type === "run_start" && e.source === "docs-auditor"),
       "ticks under its own name",
     );
     // Owns its persistent worktree and branch like a built-in.

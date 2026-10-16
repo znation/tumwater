@@ -144,8 +144,8 @@ export function warningMessages(root: string): string[] {
   return warningMessagesOf(readEvents(root));
 }
 
-/** The harness's own warnings (loop "harness") — the events tests assert on when pinning that a
+/** The harness's own warnings (source "tumwater") — the events tests assert on when pinning that a
  * misbehavior was reported instead of silently swallowed. */
 export function harnessWarnings(root: string): HarnessEvent[] {
-  return eventsOfType(root, "warning").filter((e) => e.loop === "harness");
+  return eventsOfType(root, "warning").filter((e) => e.source === "tumwater");
 }

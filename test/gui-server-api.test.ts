@@ -88,7 +88,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["clean prompt"], "other queues untouched");
     const cancelled = readEvents(repo).filter((e) => e.type === "prompt_cancelled");
     assert.equal(cancelled.length, 1);
-    assert.equal(cancelled[0]!.loop, DIRECTOR_ROLE);
+    assert.equal(cancelled[0]!.source, DIRECTOR_ROLE);
     assert.equal(cancelled[0]!.preview, "first prompt");
 
     // Re-cancelling the same file — or one the loop already dequeued — is "gone" (200),
@@ -105,7 +105,7 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     assert.deepEqual(await res.json(), { ok: true, status: "cancelled", preview: "clean prompt" });
     assert.deepEqual(queuedRolePrompts(repo, "clean"), []);
     assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled").length, 2);
-    assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled" && e.loop === "clean").length, 1);
+    assert.equal(readEvents(repo).filter((e) => e.type === "prompt_cancelled" && e.source === "clean").length, 1);
 
     // A hostile or malformed file name is a user-input error: 400, nothing touched on disk.
     // "a\u0000.md" is the shape that once reached the fs layer and answered a 500: a NUL
@@ -143,13 +143,13 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
 // fabricated duration), and a merged event that tickRows must ignore.
 function historySeedEvents(): HarnessEvent[] {
   return [
-    { ts: 1_000, loop: "feature", type: "run_start", run: 1 } as HarnessEvent,
-    { ts: 46_000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
-    { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
-    { ts: 48_000, loop: "clean", type: "run_end", run: 7, result: "no_change" } as HarnessEvent,
-    { ts: 49_000, loop: "feature", type: "run_end", run: 2, result: "skipped" } as HarnessEvent,
-    { ts: 50_000, loop: "clean", type: "run_start", run: 9 } as HarnessEvent,
-    { ts: 96_000, loop: "clean", type: "run_end", run: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+    { ts: 1_000, source: "feature", type: "run_start", run: 1 } as HarnessEvent,
+    { ts: 46_000, source: "feature", type: "run_end", run: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
+    { ts: 47_000, source: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
+    { ts: 48_000, source: "clean", type: "run_end", run: 7, result: "no_change" } as HarnessEvent,
+    { ts: 49_000, source: "feature", type: "run_end", run: 2, result: "skipped" } as HarnessEvent,
+    { ts: 50_000, source: "clean", type: "run_start", run: 9 } as HarnessEvent,
+    { ts: 96_000, source: "clean", type: "run_end", run: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
   ];
 }
 
@@ -219,9 +219,9 @@ test("gui /api/history serves a trailing window from readTickRowsSince with its 
   const base = Date.now();
   const t = (mins: number) => base - mins * 60_000;
   const events: HarnessEvent[] = [
-    { ts: t(30), loop: "clean", type: "run_start", run: 9 } as HarnessEvent,
-    { ts: t(10), loop: "clean", type: "run_end", run: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
-    { ts: t(5), loop: "feature", type: "run_end", run: 1, result: "changed", summary: "later work" } as HarnessEvent,
+    { ts: t(30), source: "clean", type: "run_start", run: 9 } as HarnessEvent,
+    { ts: t(10), source: "clean", type: "run_end", run: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+    { ts: t(5), source: "feature", type: "run_end", run: 1, result: "changed", summary: "later work" } as HarnessEvent,
   ];
   writeEvents(repo, events);
   const { server, base: url } = await startLocalGui(repo);
@@ -313,8 +313,8 @@ test("gui /api/history grows its role-filtered scan window until it reaches the 
   const repo = makeRepo();
   await initProject(repo, "history api dilution");
   const events: HarnessEvent[] = [];
-  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "run_end", run: i + 1, result: "changed", summary: `qa fix ${i}` });
-  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "run_end", run: i + 1, result: "no_change" });
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, source: "qa", type: "run_end", run: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, source: "clean", type: "run_end", run: i + 1, result: "no_change" });
   writeEvents(repo, events);
   const { server, base } = await startLocalGui(repo);
   try {

@@ -59,7 +59,7 @@ test("a pi author and a claude reviewer run in one fleet and the change lands on
       const orch = startLiveOrchestrator(repo, 100);
       try {
         await waitFor(
-          () => readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "feature"),
+          () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "feature"),
           "the claude-vetted change landed on main",
         );
         // The author's run is in fake pi's argv log, the reviewer's in fake claude's.

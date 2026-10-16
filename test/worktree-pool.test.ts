@@ -430,7 +430,7 @@ test("a failing removal of a dropped slot is logged, not an unhandled rejection"
     if (dir === "/slots/a") throw new Error("EBUSY: resource busy or locked");
   });
   assert.deepEqual(attempted, ["/slots/a", "/slots/b"]);
-  const warnings = readEvents(root).filter((e) => e.type === "warning" && e.loop === "harness");
+  const warnings = readEvents(root).filter((e) => e.type === "warning" && e.source === "tumwater");
   assert.equal(warnings.length, 1);
   assert.match(
     String(warnings[0]?.message ?? ""),

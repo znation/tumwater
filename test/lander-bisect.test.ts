@@ -58,7 +58,7 @@ test("a stack of three whose second change breaks the check lands the first, rej
     assert.match(states.beta!.lastReview!.reasons[0]!, /^check failed \(.*\): planted failure: beta breaks the suite$/);
     assert.equal(states.beta!.unreviewFailures, 0);
     const rejected = eventsOfType(root, "review_rejected");
-    assert.deepEqual(rejected.map((e) => e.loop), ["beta"], "one review_rejected, for beta");
+    assert.deepEqual(rejected.map((e) => e.source), ["beta"], "one review_rejected, for beta");
     assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's ref");
     // gamma: unattempted — entry and ref kept for the next drain.
     assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
@@ -160,7 +160,7 @@ test("a doc-only stack that breaks backlog structure is blocked, not waved throu
     assert.equal(blocked.length, 2, JSON.stringify(eventsOfType(root, "warning")));
     assert.ok(blocked.every((e) => String(e.message).includes('"## Notes"')));
     assert.deepEqual(
-      [blocked[0]?.loop, blocked[1]?.loop],
+      [blocked[0]?.source, blocked[1]?.source],
       ["alpha", "beta"],
       "the stack's warning logs under the first entry's role, the fallback's under the blocked change's own",
     );
@@ -299,7 +299,7 @@ test("a vet reviews each pin rebased onto main's current tip, so no reviewer's c
       // race.
       const starts = eventsOfType(root, "review_start");
       assert.equal(starts.length, 2);
-      const heads = new Map(starts.map((e) => [e.loop, String(e.head)]));
+      const heads = new Map(starts.map((e) => [e.source, String(e.head)]));
       for (const role of ["alpha", "beta"] as const) {
         const head = heads.get(role)!;
         assert.notEqual(head, shas[role], `${role} was reviewed rebased, not as its stale pin`);
@@ -336,10 +336,10 @@ test("a vet's rebase conflict reviews the bare pin and the fallback's resolver l
     // re-reviewed before landing: two review_starts for alpha (bare pin, then resolved head),
     // one for beta. The fallback still re-reviews neither beta nor anything else.
     assert.equal(starts.length, 3, "one review per change plus the diverging resolution's re-review");
-    const alphaStarts = starts.filter((e) => e.loop === "alpha");
+    const alphaStarts = starts.filter((e) => e.source === "alpha");
     assert.equal(alphaStarts[0]!.head, shas.alpha!, "alpha's rebase conflicted: its gate judged the restored pin");
     assert.notEqual(alphaStarts[1]!.head, shas.alpha!, "the resolution left the reviewed diff: a re-review judged the resolved head");
-    const betaStarts = starts.filter((e) => e.loop === "beta");
+    const betaStarts = starts.filter((e) => e.source === "beta");
     assert.equal(betaStarts.length, 1);
     assert.notEqual(betaStarts[0]!.head, shas.beta!, "beta's clean rebase was reviewed synced");
     assert.equal(calls.length, 1, "one resolution run, for alpha's conflict with main");
@@ -394,7 +394,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
     assert.ok(states.alpha.lastError, "the git failure is recorded where the next tick's prompt reads it");
     assert.equal(folded.get("alpha"), undefined, "no reviewer run for the uncheckable pin");
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "beta and gamma landed");
-    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.loop), ["beta", "gamma"]);
+    assert.deepEqual(eventsOfType(root, "merged").map((e) => e.source), ["beta", "gamma"]);
   });
 });
 

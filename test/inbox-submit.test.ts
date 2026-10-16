@@ -21,7 +21,7 @@ test("submitPrompt trims, enqueues, and logs a prompt_enqueued event", () => {
   assert.equal(dequeuePrompt(dir), long);
   const events = eventsOfType(dir, "prompt_enqueued");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "director");
+  assert.equal(events[0]?.source, "director");
   assert.equal(
     String(events[0]?.preview),
     `${"x".repeat(79)}…`, // preview capped at 80 chars, ellipsis included (truncate)

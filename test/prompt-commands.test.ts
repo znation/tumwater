@@ -300,7 +300,7 @@ test("prompt --edit --role rewrites the entry in place and keeps its list positi
   // One prompt_edited event under the target loop per successful edit.
   const events = eventsOfType(root, "prompt_edited");
   assert.equal(events.length, 1);
-  assert.equal(events[0]?.loop, "bugfix");
+  assert.equal(events[0]?.source, "bugfix");
 });
 
 test("prompt --edit --file rewrites the entry from a file, keeping inner blank lines", async () => {

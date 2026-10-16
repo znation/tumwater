@@ -47,18 +47,18 @@ test("history grows the scan window to pair a run_start the first window's bound
   // re-read. The log holds the start, so the row must show its duration, not a dash.
   const repo = makeRepo();
   await initProject(repo, "cli history boundary");
-  const events: HarnessEvent[] = [{ ts: 1000, loop: "feature", type: "run_start", run: 1 } as HarnessEvent];
+  const events: HarnessEvent[] = [{ ts: 1000, source: "feature", type: "run_start", run: 1 } as HarnessEvent];
   // Unrelated events inflate the span between the two run_ends past the first window: 41
   // merged events put tick 1's end at depth 54 of a 55-event log, exactly one event short of
   // carrying its own start (window = 2*2+50 = 54).
-  for (let i = 0; i < 41; i++) events.push({ ts: 1001 + i, loop: "other", type: "merged" } as HarnessEvent);
+  for (let i = 0; i < 41; i++) events.push({ ts: 1001 + i, source: "other", type: "merged" } as HarnessEvent);
   events.push(
-    { ts: 5000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "work", tokens: 100, costUsd: 0.01 } as HarnessEvent,
+    { ts: 5000, source: "feature", type: "run_end", run: 1, result: "changed", summary: "work", tokens: 100, costUsd: 0.01 } as HarnessEvent,
   );
-  for (let i = 0; i < 10; i++) events.push({ ts: 5001 + i, loop: "other", type: "merged" } as HarnessEvent);
+  for (let i = 0; i < 10; i++) events.push({ ts: 5001 + i, source: "other", type: "merged" } as HarnessEvent);
   events.push(
-    { ts: 10000, loop: "feature", type: "run_start", run: 2 } as HarnessEvent,
-    { ts: 11000, loop: "feature", type: "run_end", run: 2, result: "changed", summary: "work 2" } as HarnessEvent,
+    { ts: 10000, source: "feature", type: "run_start", run: 2 } as HarnessEvent,
+    { ts: 11000, source: "feature", type: "run_end", run: 2, result: "changed", summary: "work 2" } as HarnessEvent,
   );
   writeEvents(repo, events);
   const r = await cli(repo, "history", "-n", "2");
@@ -103,8 +103,8 @@ test("history --role grows its scan window until it reaches the role's ticks", a
   const repo = makeRepo();
   await initProject(repo, "history dilution");
   const events: HarnessEvent[] = [];
-  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "run_end", run: i + 1, result: "changed", summary: `qa fix ${i}` });
-  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "run_end", run: i + 1, result: "no_change" });
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, source: "qa", type: "run_end", run: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, source: "clean", type: "run_end", run: i + 1, result: "no_change" });
   writeEvents(repo, events);
   const r = await cli(repo, "history", "--role", "qa", "-n", "5");
   assert.equal(r.code, 0);

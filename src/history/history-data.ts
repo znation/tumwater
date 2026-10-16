@@ -231,11 +231,11 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
 } {
   const landQueuedByLoop = groupBy(
     events.filter((e) => e.type === "merge_queued"),
-    (e) => e.loop,
+    (e) => e.source,
   );
   const outcomeByLoop = groupBy(
     events.filter((e) => e.type === "merge_done" || e.type === "merge_failed"), 
-    (e) => e.loop,
+    (e) => e.source,
   );
   return { landQueuedByLoop, outcomeByLoop };
 }
@@ -273,16 +273,16 @@ export function resolveQueuedResult(
   floorTs: number | null,
 ): { result: string; sha: string; pin: HarnessEvent; outcome: HarnessEvent } | null {
   if (floorTs !== null) {
-    const startTs = joinStarts.get(`${end.loop}#${end.run}`);
+    const startTs = joinStarts.get(`${end.source}#${end.run}`);
     if (startTs !== undefined && startTs < floorTs) return null;
   }
-  const queuedList = landQueuedByLoop.get(end.loop);
+  const queuedList = landQueuedByLoop.get(end.source);
   if (!queuedList || queuedList.length === 0) return null;
-  let top = claimTop.get(end.loop) ?? queuedList.length - 1;
+  let top = claimTop.get(end.source) ?? queuedList.length - 1;
   while (top >= 0 && queuedList[top]!.ts > end.ts) top--;
   if (top < 0) return null;
-  claimTop.set(end.loop, top - 1);
-  const outcomes = outcomeByLoop.get(end.loop) ?? [];
+  claimTop.set(end.source, top - 1);
+  const outcomes = outcomeByLoop.get(end.source) ?? [];
   // One change can span several pins: a retriable landing failure keeps the pin and leftover
   // recovery re-enqueues the ref for another attempt, so walk forward while the next pin is a
   // recovery re-enqueue and resolve to the last attempt's verdict. `findLast` picks the newest
@@ -333,7 +333,7 @@ export function tickRows(
   role: string | null,
   join?: TickRowJoin,
 ): TickRow[] {
-  const scoped = role === null ? events : events.filter((e) => e.loop === role);
+  const scoped = role === null ? events : events.filter((e) => e.source === role);
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
@@ -346,7 +346,7 @@ export function tickRows(
   const joinScoped = join
     ? role === null
       ? join.events
-      : join.events.filter((e) => e.loop === role)
+      : join.events.filter((e) => e.source === role)
     : scoped;
   const joinStarts = join ? tickStartMap(joinScoped) : starts;
   const floorTs = join ? join.floorTs : null;

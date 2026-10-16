@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { loadConfigSafe } from "../config/config.js";
-import { subscribeEvents, warnEventBestEffort, type HarnessEvent } from "./events.js";
+import { subscribeEvents, TUMWATER_SOURCE, warnEventBestEffort, type HarnessEvent } from "./events.js";
 import { formatEvent } from "./event-format.js";
 import { errorMessage, stripTerminalControls } from "../text/text.js";
 import { childEnv } from "../process/process.js";
@@ -75,7 +75,7 @@ const NOTIFY_FAILURE_PREFIX = "notify command ";
 
 /** True for a warning that spawnNotifyCommand logged for a failed page. */
 export function isNotifyFailure(ev: HarnessEvent): boolean {
-  return ev.type === "warning" && ev.loop === "harness" && typeof ev.message === "string" && ev.message.startsWith(NOTIFY_FAILURE_PREFIX);
+  return ev.type === "warning" && ev.source === TUMWATER_SOURCE && typeof ev.message === "string" && ev.message.startsWith(NOTIFY_FAILURE_PREFIX);
 }
 
 /** The warning for a notify hook that did not exit cleanly, or undefined for exit code 0.
@@ -107,7 +107,7 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent):
   try {
     const child = spawn(command, [], {
       shell: true,
-      env: notifyCommandEnv(event.type, event.loop, stripTerminalControls(formatEvent(event))),
+      env: notifyCommandEnv(event.type, event.source, stripTerminalControls(formatEvent(event))),
       stdio: "ignore",
       detached: true,
     });
@@ -116,16 +116,16 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent):
     // exceeds the OS arg limit): one warning names it and the listener keeps working. A
     // command that starts but exits nonzero is reported by the exit listener below.
     child.on("error", (err) => {
-      warnEventBestEffort(root, "harness", `${NOTIFY_FAILURE_PREFIX}could not start: ${err.message}`);
+      warnEventBestEffort(root, TUMWATER_SOURCE, `${NOTIFY_FAILURE_PREFIX}could not start: ${err.message}`);
     });
     // After unref() this listener does not keep the process alive: a hook that outlives the
     // caller logs nothing.
     child.on("exit", (code, signal) => {
       const message = notifyExitWarning(event.type, code, signal);
-      if (message) warnEventBestEffort(root, "harness", message);
+      if (message) warnEventBestEffort(root, TUMWATER_SOURCE, message);
     });
   } catch (err) {
-    warnEventBestEffort(root, "harness", `${NOTIFY_FAILURE_PREFIX}could not start: ${errorMessage(err)}`);
+    warnEventBestEffort(root, TUMWATER_SOURCE, `${NOTIFY_FAILURE_PREFIX}could not start: ${errorMessage(err)}`);
   }
 }
 
