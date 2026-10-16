@@ -97,6 +97,7 @@ function drawerEnv(opts: { status?: object | null; responses?: Record<string, un
     pill: (info: { tone: string; label: string }) => `<pill ${info.tone}:${info.label}>`,
     icon: iconStub,
     abortConfirming: () => false,
+    confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }),
     rolePauseMenuOpen: () => false,
     ROLE_PAUSE_CHOICES: [[3600, "1h"]],
     roleWakeMenuOpen: () => false,

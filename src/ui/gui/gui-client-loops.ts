@@ -8,8 +8,28 @@
 export const GUI_CLIENT_LOOPS_JS = String.raw`
   // ---- loops ----
   // row-actions:start
-  let confirmAbort = null; // { role, until } while an abort waits for its confirming click
-  const abortConfirming = (role) => Boolean(confirmAbort && confirmAbort.role === role && confirmAbort.until > Date.now());
+  // A two-click confirm, the confirmSlot shape the drawer's note-clear/entry-cancel also use:
+  // the first click stores a { id, title?, until } record and repaints; armed() fires a second
+  // click inside the 5 s window; a 5100 ms auto-disarm drops an unconfirmed record past its
+  // expiry. Defined here (the earliest consumer splice) so the loops' abort in this file, an
+  // earlier splice, and the drawer's notebook-clear/entry-cancel in a later splice all share
+  // one arm, guard, and disarm instead of three copies.
+  function confirmSlot(repaint) {
+    let confirm = null; // { id, title?, until }
+    return {
+      armed: (id, title) => Boolean(confirm && confirm.id === id && (title === undefined || confirm.title === title) && confirm.until > Date.now()),
+      disarm: () => { confirm = null; },
+      arm(id, title) {
+        confirm = { id, title, until: Date.now() + 5000 };
+        repaint();
+        setTimeout(() => { if (confirm && confirm.id === id && confirm.until <= Date.now()) { confirm = null; repaint(); } }, 5100);
+      },
+    };
+  }
+  // The abort slot: keyed by role, so arming is per loop — a second click on the same loop's
+  // abort fires, while a first click on another loop's abort re-arms instead of posting.
+  const confirmAbortSlot = confirmSlot(rerender);
+  const abortConfirming = (role) => confirmAbortSlot.armed(role);
   let roleChooser = null; // { role, action, until }: the one open duration chooser ("pause-for" or "wake-in")
   const roleChooserOpen = (role, action) => Boolean(roleChooser && roleChooser.role === role && roleChooser.action === action && roleChooser.until > Date.now());
   const rolePauseMenuOpen = (role) => roleChooserOpen(role, "pause-for");
@@ -26,9 +46,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       return;
     }
     if (action === "abort" && !abortConfirming(role)) {
-      confirmAbort = { role, until: Date.now() + 5000 };
-      rerender();
-      setTimeout(() => { if (confirmAbort && confirmAbort.role === role && confirmAbort.until <= Date.now()) { confirmAbort = null; rerender(); } }, 5100);
+      confirmAbortSlot.arm(role);
       return;
     }
     if ((action === "pause-for" || action === "wake-in") && forSeconds === undefined) {
@@ -36,7 +54,7 @@ export const GUI_CLIENT_LOOPS_JS = String.raw`
       rerender();
       return;
     }
-    confirmAbort = null;
+    confirmAbortSlot.disarm();
     roleChooser = null;
     const pausing = action === "pause" || action === "pause-for";
     const timed = action === "pause-for" && forSeconds > 0;

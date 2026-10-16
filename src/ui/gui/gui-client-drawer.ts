@@ -260,23 +260,9 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // confirming click like entry cancel: the first click arms it for 5 s, the second posts.
   let noteEditing = null; // { role, text }
   function repaintDrawerRole() { if (lastStatus) renderLoopDrawer(lastStatus); }
-  // A two-click confirm, the confirmAbort shape: the first click stores a { id, title?, until }
-  // record and repaints; the caller's armed() fires a second click inside the 5 s window; and a
-  // 5100 ms auto-disarm drops an unconfirmed record past its expiry. The notebook clear and the
-  // backlog entry cancel (and boot's handlers over them) each build one slot, so the arm,
-  // guard, and disarm logic lives once here.
-  function confirmSlot(repaint) {
-    let confirm = null; // { id, title?, until }
-    return {
-      armed: (id, title) => Boolean(confirm && confirm.id === id && (title === undefined || confirm.title === title) && confirm.until > Date.now()),
-      disarm: () => { confirm = null; },
-      arm(id, title) {
-        confirm = { id, title, until: Date.now() + 5000 };
-        repaint();
-        setTimeout(() => { if (confirm && confirm.id === id && confirm.until <= Date.now()) { confirm = null; repaint(); } }, 5100);
-      },
-    };
-  }
+  // The notebook clear and the backlog entry cancel each build a two-click confirm slot from
+  // the shared confirmSlot factory (defined in the loops splice, an earlier one), so the arm,
+  // guard, and disarm logic lives once.
   const noteClear = confirmSlot(repaintDrawerRole);
   const noteClearArmed = (role) => noteClear.armed(role);
   function armNoteClear(role) { noteClear.arm(role); }
