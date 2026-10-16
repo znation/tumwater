@@ -2241,6 +2241,24 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The TUI's backlog pane lists the newest done plans and fixed bugs after the answered questions, as the dashboard's Plans and Bugs tabs already do (planned 2026-10-16 by plan; independent of every other Planned entry. It edits src/ui/status-payload.ts, src/ui/tui/tui-backlog.ts, src/ui/tui/tui-pane.ts, test/tui-backlog.test.ts and one docs/cli.md sentence; it renames no payload key, so it does not touch what the Plain terms series own)
+
+**Goal.** The dashboard's Plans and Bugs tabs list the 5 newest done plans and fixed bugs (`donePlans`/`fixedBugs` in `statusPayload`, rendered by `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`), and the TUI's backlog pane lists the 5 newest answered questions. The pane does not list finished plans or bugs, so a TUI operator cannot see what the team finished lately without leaving for the CLI (`plan --list --done`). This plan adds two read-only sections to the pane's list mode.
+
+**Approach.**
+- `src/ui/status-payload.ts`: export `DASHBOARD_RECENT_FINISHED` and `recentFinished` (today module-private), unchanged, so the TUI reads the same cleaned titles and dates as the dashboard. No payload change.
+- `src/ui/tui/tui-backlog.ts` `backlogLines`: add a sixth parameter `finished: { done?: string[]; fixed?: string[] } = {}` (preformatted lines, like `answered`). After the `answered recently` section, a non-empty `done` appends `done recently (N):` plus its lines, then a non-empty `fixed` appends `fixed recently (N):` plus its lines. An empty list adds nothing, not even `(none)`. The all-empty single line (`(no planned features, open bugs, or open questions)`) is returned only when `done` and `fixed` are empty too. Update the doc comment to say so.
+- `src/ui/tui/tui-pane.ts` `paneBody` (kind `"backlog"`, list mode): build the lines with `recentFinished(donePlanEntries(root), DONE_DATE_RE)` and `recentFinished(fixedBugEntries(root), FIXED_DATE_RE)`, each row `${title} — done ${completedOn}` / `${title} — fixed ${completedOn}`, or the bare title when `completedOn` is null. Pass them to `backlogLines`. Extend the bold-subheader regex with `done recently|fixed recently`. These rows stay out of `labeledBacklogEntries`, so selection and the edit keys still reach only open entries (as the answered rows do; the comment above `answered` there says why).
+- `docs/cli.md`: in the `plan`/`bug` row's `--list --done` sentence, after "the dashboard's Plans and Bugs tabs also list the 5 newest done plans and fixed bugs", add that the TUI's backlog pane lists them too, read-only, after the answered questions.
+
+**Files touched.** src/ui/status-payload.ts, src/ui/tui/tui-backlog.ts, src/ui/tui/tui-pane.ts, test/tui-backlog.test.ts, docs/cli.md.
+
+**Acceptance criteria.**
+- A `backlogLines` unit test: with `{ done: ["P — done 2026-10-15"], fixed: ["B — fixed 2026-10-14"] }` the last four lines are `done recently (1):`, `P — done 2026-10-15`, `fixed recently (1):`, `B — fixed 2026-10-14`; with only `fixed` non-empty there is no `done recently` line; with every list empty except `done` the result is the full section layout, not the single "no planned features" line.
+- A `paneBody` test (modelled on "paneBody's backlog list shows the newest answered questions, read-only"): a temp project whose PLANS.md `## Done` holds 6 entries stamped `(planned …, done 2026-10-0N)` and whose BUGS.md `## Fixed` holds one shows `done recently (5):` with the newest entry's cleaned title and `done <date>` first and the oldest absent, shows `fixed recently (1):`, renders both subheaders bold, and with `selectedEntry` set the entry view shows an open entry, never a done or fixed one.
+- The existing tui-backlog tests pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### docs/config.md gains a settings table with one row per `tumwater.json` key, and a test keeps it in step with `TOP_LEVEL_KEYS` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/config.md and adds test/config-doc.test.ts, with no source change. Plain terms docs 5/5 edits one docs/config.md sentence about `TUMWATER_EVENT_LOOP` and Plain terms event log 4/9 edits the `notify` paragraph; this plan adds a new section below the existing prose and leaves those sentences alone; done 2026-10-16)
