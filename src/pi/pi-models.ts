@@ -27,11 +27,16 @@ export function piAgentDir(env: NodeJS.ProcessEnv = process.env, homeDir: string
   return dir;
 }
 
-interface PiModelDef {
+export interface PiModelDef {
   id: string;
   /** The model's declared cost — whatever the user's models.json holds, so read as unknown
    * and checked component by component rather than trusted. An absent field means unpriced. */
   cost?: unknown;
+  /** The input modalities pi's models.json declares for the model (e.g. `["text"]` or
+   * `["text","image"]`). Kept through readPiProviders so the seam image-input resolver
+   * (src/agent/image-input.ts) and the doctor's `image input` check can read it; absent — the
+   * common case for a hand-written catalog — means pi treats the model as text-only. */
+  input?: unknown;
 }
 
 /** The cost components pi's models.json may declare. */
@@ -67,6 +72,21 @@ const providersCache = new Map<string, StatKeyedValue<Map<string, PiModelDef[]>>
  * Exported for budget-gates.ts's per-tier resolution, which prices several candidate pairs
  * against the same snapshot instead of re-entering this cache per pair.
  */
+/** A provider/model pair's claimed image input from pi's definitions: `true` when the model
+ * declares `"image"` in its `input`, `false` when the pair resolves but declares no image
+ * support (input absent, or present without `"image"` — pi's own text-only default for the
+ * custom model), and `null` when the pair cannot be resolved at all (see resolveModelDef). The
+ * null case is left to the doctor's `tier models` check, which already fails such pairs. */
+export function piModelImageInput(
+  providers: Map<string, PiModelDef[]> | null,
+  provider: string | undefined,
+  model: string | undefined,
+): boolean | null {
+  const def = resolveModelDef(providers, provider, model);
+  if (!def) return null;
+  return Array.isArray(def.input) ? def.input.includes("image") : false;
+}
+
 export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> | null {
   return cachedByStat(
     providersCache,

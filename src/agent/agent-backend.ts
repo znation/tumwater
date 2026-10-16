@@ -137,6 +137,12 @@ export interface AgentBackend {
    * session file in the dir, claude resumes a ledger id from its recorded cwd. Optional — a
    * backend with no hook falls back to the session-file check. */
   resumable?(dir: string, opts: { kind: string; agent: string; cwd?: string }): boolean;
+  /** Whether a model this backend runs reads images (plans/image-input.md "Capability"). The
+   * claude adapter answers true (every Claude model reads images, and Claude Code's Read tool
+   * returns them as image blocks); a backend without the hook leaves the answer to its own
+   * model catalog — pi's rules live in src/agent/image-input.ts / pi-models.ts's
+   * `piModelImageInput`. */
+  imageInput?(model: string | undefined): boolean;
   /** Classify the exit's stderr into the run result's transient/config fields. */
   classifyExit(info: AgentExitInfo): AgentExitClassification;
 }

@@ -7,38 +7,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
-### Image input, part 1/5: tumwater knows which seams can read images, and `tumwater doctor` reports it (planned 2026-10-15 by user; design and decisions in plans/image-input.md; independent of every other entry — touches src/pi/pi-models.ts, src/agent/, src/config/config-views.ts and src/doctor/, and changes no runtime behavior)
-
-**Goal.** Give tumwater one answer to "can this seam read images?" and the tier a text-only seam would reroute to, and report both in doctor. Parts 2–5 build on this resolver. Nothing reads pi's `input` field today: `PiModelDef` (src/pi/pi-models.ts) keeps only `id` and `cost`.
-
-**Approach.** See plans/image-input.md "Capability" and "Doctor".
-- Keep `input` on `PiModelDef` in `readPiProviders`.
-- Add an optional `imageInput?(model): boolean` hook to `AgentBackend` (src/agent/agent-backend.ts). The claude adapter returns true; the pi adapter leaves the answer to models.json.
-- New src/agent/image-input.ts:
-  - `seamImageInput(seam, providers, probes?) → true | false | null`. For claude, the hook. For pi, `input` includes `"image"` → true; present without it, or absent → false (pi's own default for a custom model); pair not in models.json → null. The `probes` parameter is the part 2 seam; part 1 passes none.
-  - `imageRerouteTarget(config, role, regime) → ResolvedModelConfig | null`. Walk the role's seam tier through config-views.ts's `BORROW_ORDER` (export it), skipping the tier itself. Take the first tier whose top-level model (`withModelOverrides(config, tier, {})`, as `resolverConfig` does for strong) reads images. With `regime: "fallback"`, use only the tiers' free fallback pairs (`resolveTierFallbacks`).
-- New doctor check `image input` (src/doctor/doctor-model-checks.ts), registered after `tier models` in src/doctor/doctor.ts. It covers `seamPairs` plus the tiers' fallback pairs.
-  - ok lists the models that read images and, for each text-only enabled loop, where it would reroute.
-  - warn when an enabled loop's model is text-only with no target, or when no seam reads images.
-  - Unknown (`null`) pairs are left to `tier models`, which already fails them.
-
-**Files touched.**
-- src/pi/pi-models.ts, src/agent/agent-backend.ts, src/agent/claude/claude-backend.ts, src/pi/pi-backend.ts
-- new src/agent/image-input.ts
-- src/config/config-views.ts (export `BORROW_ORDER` or a tier-config builder)
-- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
-- tests: new test/image-input.test.ts, the doctor model-check tests
-
-**Acceptance criteria.**
-- Any claude seam reads true. A pi pair whose models.json `input` is `["text","image"]` reads true; `["text"]` or no `input` reads false; a pair missing from models.json reads null.
-- `imageRerouteTarget`:
-  - from default picks strong before small;
-  - from strong never picks small;
-  - returns null when no other tier reads images;
-  - with `regime: "fallback"`, considers only free fallback pairs, never a priced primary.
-- The doctor check is ok on an all-claude config and names the reroute (`default text-only (…) — reroutes to strong (…)`) on a text-only default with a vision strong. It warns when nothing reads images. It spawns no process.
-- No runtime behavior changes; the suite passes.
-
 ### Image input, part 2/5: `tumwater doctor` probes every model that claims image input with a real image (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Doctor"; touches src/doctor/, src/cli.ts, src/cli/help.ts, src/paths.ts, src/agent/image-input.ts, and the two doctor callers in src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts, a different area from part 3/5's stream and verdict files)
 
 **Goal.** A claim in pi's models.json is only a claim. Today's file claims image input for `huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra` but not for the same model without the pin, so at least one claim is wrong. With a wrong claim, pi sends images the model cannot read: the provider rejects them, or drops them silently and the model answers anyway. Doctor should show each claimed model a real image and check the answer.
@@ -522,6 +490,38 @@ README.md, and their tests.
 
 
 ## Done
+
+### Image input, part 1/5: tumwater knows which seams can read images, and `tumwater doctor` reports it (planned 2026-10-15 by user; design and decisions in plans/image-input.md; independent of every other entry — touches src/pi/pi-models.ts, src/agent/, src/config/config-views.ts and src/doctor/, and changes no runtime behavior) — done 2026-10-15
+
+**Goal.** Give tumwater one answer to "can this seam read images?" and the tier a text-only seam would reroute to, and report both in doctor. Parts 2–5 build on this resolver. Nothing reads pi's `input` field today: `PiModelDef` (src/pi/pi-models.ts) keeps only `id` and `cost`.
+
+**Approach.** See plans/image-input.md "Capability" and "Doctor".
+- Keep `input` on `PiModelDef` in `readPiProviders`.
+- Add an optional `imageInput?(model): boolean` hook to `AgentBackend` (src/agent/agent-backend.ts). The claude adapter returns true; the pi adapter leaves the answer to models.json.
+- New src/agent/image-input.ts:
+  - `seamImageInput(seam, providers, probes?) → true | false | null`. For claude, the hook. For pi, `input` includes `"image"` → true; present without it, or absent → false (pi's own default for a custom model); pair not in models.json → null. The `probes` parameter is the part 2 seam; part 1 passes none.
+  - `imageRerouteTarget(config, role, regime) → ResolvedModelConfig | null`. Walk the role's seam tier through config-views.ts's `BORROW_ORDER` (export it), skipping the tier itself. Take the first tier whose top-level model (`withModelOverrides(config, tier, {})`, as `resolverConfig` does for strong) reads images. With `regime: "fallback"`, use only the tiers' free fallback pairs (`resolveTierFallbacks`).
+- New doctor check `image input` (src/doctor/doctor-model-checks.ts), registered after `tier models` in src/doctor/doctor.ts. It covers `seamPairs` plus the tiers' fallback pairs.
+  - ok lists the models that read images and, for each text-only enabled loop, where it would reroute.
+  - warn when an enabled loop's model is text-only with no target, or when no seam reads images.
+  - Unknown (`null`) pairs are left to `tier models`, which already fails them.
+
+**Files touched.**
+- src/pi/pi-models.ts, src/agent/agent-backend.ts, src/agent/claude/claude-backend.ts, src/pi/pi-backend.ts
+- new src/agent/image-input.ts
+- src/config/config-views.ts (export `BORROW_ORDER` or a tier-config builder)
+- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
+- tests: new test/image-input.test.ts, the doctor model-check tests
+
+**Acceptance criteria.**
+- Any claude seam reads true. A pi pair whose models.json `input` is `["text","image"]` reads true; `["text"]` or no `input` reads false; a pair missing from models.json reads null.
+- `imageRerouteTarget`:
+  - from default picks strong before small;
+  - from strong never picks small;
+  - returns null when no other tier reads images;
+  - with `regime: "fallback"`, considers only free fallback pairs, never a priced primary.
+- The doctor check is ok on an all-claude config and names the reroute (`default text-only (…) — reroutes to strong (…)`) on a text-only default with a vision strong. It warns when nothing reads images. It spawns no process.
+- No runtime behavior changes; the suite passes.
 
 ### The landing pipeline's in-flight markers time each stage: `tumwater queue` and the fleet row say how long a landing has been in its CURRENT stage (planned 2026-10-14 by plan; independent of every other entry — the waiting series touches `src/report/` (failed-ticks-by-role) and `src/doctor/` (stale-queued-landing, which READS the queue and marker but changes no `src/landing/` file); this changes `setLandingStage`/`addLandingChange` and the two label renderers, and touches no `src/report`, `src/doctor`, or `src/ui/tui` file. It lands before or after the stale-queued doctor plan in either order: that plan reads only `readLandingMarker`/`queuedLandings` and iterates roles, which an added optional marker field does not disturb) — done 2026-10-15
 

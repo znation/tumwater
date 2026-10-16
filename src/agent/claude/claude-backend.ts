@@ -214,5 +214,11 @@ export const claudeBackend: AgentBackend = {
     return claudeResumableRecord(dir, opts) !== null;
   },
 
+  // Every Claude model reads images (Claude Code's Read tool returns them as image blocks), so
+  // a claude seam is always capable — the doctor probes nothing and never works around it.
+  imageInput(): boolean {
+    return true;
+  },
+
   classifyExit: classifyClaudeExit,
 };

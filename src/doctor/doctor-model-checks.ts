@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
 import { childEnv, releaseChildHandles, signalTree } from "../process/process.js";
-import { defaultConfig, loadConfigSafe } from "../config/config.js";
-import { fallbackPair, seamsInUse } from "../config/config-views.js";
-import { cacheReadUnpriced, fallbackModelPair, piModelsPath, readPiProviders } from "../pi/pi-models.js";
-import type { FallbackModelConfig, TumwaterConfig } from "../config/config-schema.js";
+import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
+import { configForRole, fallbackPair, resolveTierFallbacks, seamsInUse } from "../config/config-views.js";
+import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
+import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId } from "../config/model-selector.js";
+import { imageReroute, seamImageInput } from "../agent/image-input.js";
 import { claudeBackend } from "../agent/claude/claude-backend.js";
-import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
+import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, type ClaudeAccount, type ClaudeAuthStatus } from "../agent/claude/claude-account.js";
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
@@ -441,4 +442,82 @@ export async function checkTierModels(
       : found;
   if (fails.length > 0) return failOutcome(`${base}${ompNote}`);
   return (warns.length > 0 || ompVars.length > 0 ? warnOutcome : okOutcome)(`${base}${ompNote}`);
+}
+
+/** The doctor's image-input capability check (plans/image-input.md "Doctor", part 1/5): which
+ * of the fleet's seams claim to read images, and whether every text-only enabled loop can
+ * reroute to one that does. Part 1 reports the catalog claims only — the live probe is part
+ * 2/5 — so a claim here is a declared capability, never a verified one. It is read-only: it
+ * inspects the config and models.json, never a backend or the network, and spawns no process.
+ *
+ * Covers the same seams as `tier models` (seamPairs — the tiers, enabled roles and the
+ * reviewer) plus the tiers' fallback pairs (the reroute part picks its target among them, so a
+ * text-only fallback would promise a reroute no fallback can serve). `providers` and `account`
+ * are injectable so tests need no real pi install or account file. */
+export function checkImageInput(
+  root: string,
+  modelsPath: string = piModelsPath(),
+  providers: Map<string, PiModelDef[]> | null = readPiProviders(modelsPath),
+  account?: ClaudeAccount | null,
+): CheckOutcome {
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
+  // `tier models` already fails on a missing/unknown pair, so this check names only what it can
+  // answer; unknown (null) pairs are left to that check. A missing definitions file only blocks
+  // this check when a seam actually needs it — an all-claude fleet reads images without it.
+  const accountNow = account === undefined ? readClaudeAccount(root) : account;
+  const pairs = seamPairs(config);
+  const needsDefinitions = pairs.some((p) => (p.agent ?? "pi") !== "claude");
+  if (providers === null && needsDefinitions)
+    return warnOutcome(`cannot check — could not read pi's model definitions at ${modelsPath}`);
+  const label = (agent: string | undefined, provider: string | undefined, model: string | undefined) =>
+    agent === "claude" ? (model ?? "claude backend") : `${provider ?? "?"}/${model ?? "?"}`;
+  const readers = new Set<string>();
+  for (const pair of pairs) {
+    if (pair.model === undefined) continue;
+    if (seamImageInput(pair, providers) === true)
+      readers.add(label(pair.agent, pair.provider, pair.model));
+  }
+  // The tiers' fallback pairs: a reroute target must itself read images to help, and part 4's
+  // fallback regime picks among these, so a text-only fallback fleet is a coverage gap here.
+  const resolved = resolveTierFallbacks(config, (p: FallbackModelConfig) =>
+    piPairFree(providers, p.provider, p.model, accountNow),
+  );
+  for (const tier of MODEL_TIERS) {
+    const pair = resolved[tier].pair;
+    if (pair?.model === undefined) continue;
+    if (seamImageInput(pair, providers) === true)
+      readers.add(label(undefined, pair.provider, pair.model));
+  }
+  // Text-only enabled loops: which can reroute to a tier that reads images, and which cannot.
+  const reroutes: string[] = [];
+  const noTarget: string[] = [];
+  for (const role of enabledRoleIds(config)) {
+    const rc = configForRole(config, role);
+    if (rc.model === undefined) continue;
+    if (seamImageInput(rc, providers) !== false) continue; // reads images, or unknown (to tier models)
+    const rr = imageReroute(config, role, "primary", modelsPath, accountNow);
+    if (rr && seamImageInput(rr.config, providers) === true)
+      reroutes.push(
+        `${role} text-only (${label(rc.agent, rc.provider, rc.model)}) — reroutes to ${rr.tier} (${label(rr.config.agent, rr.config.provider, rr.config.model)})`,
+      );
+    else noTarget.push(`${role} text-only (${label(rc.agent, rc.provider, rc.model)})`);
+  }
+  // A fleet that declared no models at all leaves capability to pi's own defaults — the same
+  // "nothing configured" stance as tier models, informational rather than a warning.
+  const declared =
+    pairs.some((p) => p.model !== undefined) ||
+    MODEL_TIERS.some((t) => resolved[t].pair?.model !== undefined);
+  if (!declared) return okOutcome("no models declared — every seam uses pi's own default");
+  if (noTarget.length > 0)
+    return warnOutcome(
+      `${noTarget.join("; ")} — no configured model reads images, so a tick that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one`,
+    );
+  if (readers.size === 0)
+    return warnOutcome(
+      "no configured model reads images — a tick that reads an image fails; declare image input on a vision model in pi's models.json, or point a tier at one",
+    );
+  const detail = [`reads images: ${[...readers].sort().join(", ")}`, ...reroutes];
+  return okOutcome(detail.join("; "));
 }

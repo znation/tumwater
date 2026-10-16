@@ -6,6 +6,7 @@ import {
   checkClaudeAuth,
   checkClaudeVersion,
   checkFallbackModel,
+  checkImageInput,
   checkTierModels,
   piProviderAuth,
 } from "../src/doctor/doctor-model-checks.js";
@@ -14,6 +15,10 @@ import { tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { readyRepo } from "./fixtures/doctor-fixtures.js";
 import { writeScript } from "./fakes/fake-commands.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { registerAgentBackend } from "../src/agent/agent-backend.js";
+import { piBackend } from "../src/pi/pi-backend.js";
+import { claudeBackend } from "../src/agent/claude/claude-backend.js";
+import { allRoleIds } from "../src/roles/roles.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -492,4 +497,110 @@ test("piProviderAuth settles at its deadline and caps runaway output", { timeout
   const startedAt = Date.now();
   assert.equal(await piProviderAuth({} as TumwaterConfig, "local", binDir, 4000), "unknown");
   assert.ok(Date.now() - startedAt < 3000, "runaway output settles at the output cap, not the deadline");
+});
+
+// --- image input (plans/image-input.md "Doctor", part 1/5) ---
+
+// A models.json with text-only and vision models for the image-input check. Unpriced, so the
+// fallback pairs the check sweeps are free and resolved.
+function writeImageModels(): string {
+  const dir = tmpdir("doctor-image-input-");
+  const file = path.join(dir, "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        local: {
+          models: [
+            { id: "text" },
+            { id: "textlist", input: ["text"] },
+            { id: "vision", input: ["text", "image"] },
+          ],
+        },
+      },
+    }),
+  );
+  return file;
+}
+
+// Register the real claude/pi adapters so a claude seam reads true through the backend hook.
+registerAgentBackend(piBackend);
+registerAgentBackend(claudeBackend);
+
+/** A roles map enabling only `feature` (default tier), so the image-input check's loop sweep is
+ * predictable: the director and every maintenance role are switched off. */
+function onlyFeature(): Record<string, { enabled: boolean }> {
+  const roles: Record<string, { enabled: boolean }> = {};
+  for (const id of allRoleIds()) roles[id] = { enabled: false };
+  roles.feature = { enabled: true };
+  return roles;
+}
+
+test("checkImageInput is ok when every seam reads images (all-claude), naming them", () => {
+  const root = readyRepo();
+  writeConfig(root, {
+    agent: "claude",
+    model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" },
+    roles: onlyFeature(),
+  });
+  const outcome = checkImageInput(root, path.join(tmpdir(), "absent.json"));
+  assert.deepEqual(outcome, {
+    level: "ok",
+    detail: "reads images: claude-opus-5-5, claude-sonnet-5-5",
+  });
+});
+
+test("checkImageInput names the reroute for a text-only default with a vision strong", () => {
+  const models = writeImageModels();
+  const root = readyRepo();
+  writeConfig(root, { model: { default: "local/text", strong: "local/vision" }, roles: onlyFeature() });
+  const outcome = checkImageInput(root, models);
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /^reads images: local\/vision; /);
+  assert.match(
+    outcome.detail,
+    /feature text-only \(local\/text\) — reroutes to strong \(local\/vision\)/,
+  );
+});
+
+test("checkImageInput warns when no tier can read images and a text-only loop has no target", () => {
+  const models = writeImageModels();
+  const root = readyRepo();
+  writeConfig(root, { model: { default: "local/text", strong: "local/textlist" }, roles: onlyFeature() });
+  const outcome = checkImageInput(root, models);
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /^feature text-only \(local\/text\) — no configured model reads images/);
+  assert.match(outcome.detail, /declare image input on a vision model in pi's models\.json/);
+});
+
+test("checkImageInput warns when no seam reads images (models declared, all text-only)", () => {
+  const models = writeImageModels();
+  const root = readyRepo();
+  // All roles disabled, but a fleet with only a text-only model declared: nothing can read
+  // images, even though there is nothing enabled to run — the gap is still worth surfacing.
+  writeConfig(root, {
+    model: { default: "local/text" },
+    roles: Object.fromEntries(Object.entries(onlyFeature()).map(([id]) => [id, { enabled: false }])),
+  });
+  const outcome = checkImageInput(root, models);
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /^no configured model reads images/);
+});
+
+test("checkImageInput is informational when no models are declared at all", () => {
+  const root = readyRepo();
+  // No model map: capability is left to pi's own defaults, the same stance as tier models —
+  // informational, so a default-configured fleet still reads doctor as ready.
+  writeConfig(root, { roles: onlyFeature() });
+  const outcome = checkImageInput(root, writeImageModels());
+  assert.equal(outcome.level, "ok");
+  assert.match(outcome.detail, /^no models declared/);
+});
+
+test("checkImageInput cannot check when models.json is unreadable", () => {
+  const root = readyRepo();
+  writeConfig(root, { model: { default: "local/text", strong: "local/vision" }, roles: onlyFeature() });
+  const outcome = checkImageInput(root, path.join(tmpdir(), "absent.json"));
+  assert.equal(outcome.level, "warn");
+  assert.match(outcome.detail, /^cannot check — could not read pi's model definitions/);
 });

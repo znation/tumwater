@@ -87,8 +87,13 @@ export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelecto
  * key it overrides would.
  *
  * `tier` is the seam's effective tier, already resolved by the caller from any tier-name
- * override — so `o.model` here is always a selector string, never a tier reference. */
-function withModelOverrides(
+ * override — so `o.model` here is always a selector string, never a tier reference.
+ *
+ * Exported so imageRerouteTarget (src/agent/image-input.ts) can probe a peer tier's
+ * top-level model (`withModelOverrides(config, tier, {})`, the same shape resolverConfig
+ * builds strong with) and reshape a tier's fallback pair into a runnable config — the
+ * tier-config builder the plan names. */
+export function withModelOverrides(
   config: TumwaterConfig,
   tier: ModelTier,
   o: { provider?: string; model?: string; thinking?: string },
@@ -393,6 +398,11 @@ const BORROW_ORDER: Record<ModelTier, readonly ModelTier[]> = {
   default: ["default", "strong", "small"],
   strong: ["strong", "default"],
 };
+
+/** Exported for imageRerouteTarget (src/agent/image-input.ts), which walks a rerouting role's
+ * tier through the same borrow order the budget fallback uses (skipping the tier itself), and
+ * for the doctor's `image input` check naming the tier a text-only loop reroutes to. */
+export { BORROW_ORDER };
 
 /** A tier's OWN fallback pair — what the `fallback` key declares at that tier's map entry,
  * or (default only) the string form of `fallback` or the legacy `fallbackModel` object — or
