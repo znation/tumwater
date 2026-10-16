@@ -2101,6 +2101,51 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater retire --role <id>` accepts a role id that is no longer configured while its branch or merge ref remains (planned 2026-10-16 by plan; independent of the waiting series — touches src/operator/retire.ts, src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/retire.test.ts, and src/doctor/doctor-checks.ts plus test/doctor-checks.test.ts only when `checkLeftoverRoleBranches` is already on main)
+
+**Goal.** Lowering `roles.feature.instances` from 4 to 2 leaves `tumwater/feature-3` and `tumwater/feature-4` behind. The same happens to a custom role removed from `tumwater.json`. `tumwater retire --role feature-4` rejects these ids as `unknown role: feature-4`. The reason is that `cmdRetire` resolves its target through `requiredNamedRole` → `namedRole` (`src/operator/operator-commands.ts`), which accepts only `allRoleIds()` plus `knownRoleIds(loadConfig(root))`, and `knownRoleIds` adds only the configured `loopIds` instances. Retire exists to clean up the leftovers of a loop that no longer runs, so it should accept any well-formed id that still has a leftover branch or merge ref. `retireRole`'s rails need no change: `loopEnabled` is false for such an id, so the "still enabled" rail stays quiet, and the unmerged-commits, dirty, unusable-worktree, and mid-run rails apply as they do today.
+
+**Approach.**
+- `src/operator/retire.ts`: add `export async function hasRetirableLeftovers(root: string, role: string): Promise<boolean>`, with a doc comment saying it is the id gate for ids no config names. It returns true only when all of these hold:
+  - `CUSTOM_NAME_RE.test(role)` (`src/config/config-schema.ts`). That is the custom-role name pattern, and it also matches instance ids such as `feature-4`. It keeps `..` and `/` out of the `worktreePath`/`branchName` paths collectRetire builds.
+  - `role !== DIRECTOR_ROLE` (`src/roles/roles.ts`).
+  - Either `await branchExists(root, branchName(role))` is true or `await refSha(root, landingRefName(role)) !== null`. Both helpers are already imported there.
+  
+  This function is read-only.
+- `src/operator/operator-commands.ts`: add `async function retireTargetRole(root: string, args: string[]): Promise<string>` and use it in `cmdRetire` in place of `requiredNamedRole(root, args, "retire")`. Leave `namedRole`, `requiredNamedRole`, and their other callers (abort, resume, wake, reset-counters) unchanged. Behavior, in this order:
+  - `flagValue(args, "--role")` is `null` → fail with the same `retire requires --role <id> (e.g. \`--role feature\`)` text `requiredNamedRole` prints. Reuse `requiredNamedRole`'s message by calling it on this path, not by copying the string.
+  - Empty value → `fail(ROLE_VALUE_ERROR)` (from `src/cli/cli-flag-specs.ts`), as `parseRoleFlag` does.
+  - `allRoleIds().includes(role)` → return it. This keeps today's broken-config path: collectRetire then throws "cannot read tumwater.json".
+  - Else load `ids = knownRoleIds(loadConfig(root))`. On a load error, `fail(errorMessage(err))` as `namedRole` does. When `ids.includes(role)`, return it.
+  - Else, when `await hasRetirableLeftovers(root, role)` is true, return it.
+  - Else `fail(unknownRoleMessage(role, ids))` (`src/roles/roles.ts`). This is the same message as today, so `retire --role bogus` keeps printing `unknown role: bogus`.
+  - Update the `cmdRetire` comment that says the config exists only to validate the id so it also mentions the leftover-branch gate.
+- `src/cli/help.ts`: in the `tumwater retire --role <id>` stanza, replace the last line `changing nothing` with these three lines, using the same 35-column indent:
+  ```
+  changing nothing; an id no longer configured (`feature-4`
+  after lowering `instances`, a removed custom role) is
+  accepted while its branch or merge ref remains
+  ```
+- `docs/cli.md`: in the Control-the-roles row, change the `tumwater retire --role <id> [--dry-run]` parenthetical's clause "use after setting `enabled: false` for that role" to "use after setting `enabled: false` for that role, lowering `instances`, or removing a custom role — an id no longer in `tumwater.json` is accepted while its `tumwater/<id>` branch or merge ref remains". Leave the rest of the row alone.
+- Doctor follow-through. Do this only when `checkLeftoverRoleBranches` exists in `src/doctor/doctor-checks.ts` at implementation time. It is the in-flight "`tumwater doctor` names disabled roles that still keep a branch" entry, and its "unknown" part says retire rejects ids outside `knownRoleIds`, which stops being true after this change. Change its split so an id is retirable when `knownRoleIds(config).includes(id) || CUSTOM_NAME_RE.test(id)`. Every other id stays in the unknown part, with that part's wording unchanged. The check already has the branch, so it does not call `hasRetirableLeftovers`. In `test/doctor-checks.test.ts`, the test "checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director" changes in three ways:
+  - Its `tumwater/ghost` case now expects `ghost` among the retirable ids.
+  - Its unknown-branch assertion uses `tumwater/old.role` (the `.` fails `CUSTOM_NAME_RE`).
+  - Its `tumwater/feature-2` case expects `feature-2` among the retirable ids after `writeConfig(root, {})`.
+  
+  When `checkLeftoverRoleBranches` is not on main, skip this step entirely. The doctor entry is then implemented against the new `retireTargetRole`, and its implementer reads this plan's Done entry.
+
+**Files touched.** src/operator/retire.ts, src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/retire.test.ts, plus src/doctor/doctor-checks.ts and test/doctor-checks.test.ts when the doctor follow-through applies.
+
+**Acceptance criteria.**
+- New test in `test/retire.test.ts`, "retire accepts a leftover instance id above the configured instances and removes its branch". Use `initializedRepo()`. Write `roles.feature` with `instances: 2` the way the "retire refuses an enabled work instance id, not just its bare base role (part 5b/7)" test does. Create the branch with `sh(root, "git", "branch", branchName("feature-4"))`. Then `cli(root, "retire", "--role", "feature-4", "--json")` exits 0, `removed` includes `"branch"`, and `branchHead(root, branchName("feature-4"))` is `null` afterwards.
+- Same file: `retire --role feature-4 --dry-run` on that fixture, before the removal, exits 0 and prints `would remove the branch (tumwater/feature-4)`.
+- Same file: a leftover id whose branch holds a commit not on main is still refused with `/unmerged commit/` and keeps its branch. Make the commit with `git commit --allow-empty` on the branch via a worktree or `git commit-tree` + `git update-ref`, so main's checkout is untouched.
+- The test "retire validates its arguments like the other operator commands" still passes unchanged (`unknown role: bogus` when no `tumwater/bogus` branch exists). Add one assertion there: `retire --role ../x` fails with `/unknown role/` even after `git update-ref refs/heads/tumwater/x HEAD`. That covers the `CUSTOM_NAME_RE` gate keeping a path-like id out.
+- Unit test of `hasRetirableLeftovers`: false for `director` even with a `tumwater/director` branch, false for an id with no branch and no landing ref, and true for an id with only a landing ref (`setRef(root, landingRefName("gone"), mainSha(root))`).
+- `tumwater help retire` output contains `accepted while its branch or merge ref remains`. Extend the "tumwater help retire shows the command's usage stanza" test with that match.
+- When the doctor follow-through applied, its updated test passes as described above.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts) — done 2026-10-16
