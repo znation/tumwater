@@ -36,7 +36,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
     async () => {
       const config = defaultConfig();
       config.quietTimeoutSeconds = 3;
-      config.tickTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
+      config.runTimeoutSeconds = 3600; // The watchdog, not the tick timeout, must fire.
       const clock = watchdogClock(t);
       const runner = makeLoopRunner(repo, "improve", config);
       const before = mainSha(repo);
@@ -179,7 +179,7 @@ test("a zombie stream dripping content-free keepalive updates is killed as hung"
     async () => {
       const config = defaultConfig();
       config.quietTimeoutSeconds = 1;
-      config.tickTimeoutSeconds = 3600;
+      config.runTimeoutSeconds = 3600;
       const clock = watchdogClock(t);
       const controller = new AbortController();
       const runner = makeLoopRunner(repo, "improve", config, "main", controller.signal);

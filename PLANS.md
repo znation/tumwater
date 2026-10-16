@@ -55,41 +55,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/loop-ids.test.ts still passes, so the instance regex is unchanged in behavior.
 - `npm run test` passes.
 
-### Plain terms commands, part 2/6: Rename tickTimeoutSeconds and minTickIntervalSeconds to runTimeoutSeconds and minRunIntervalSeconds (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and the timeout and interval readers and tumwater.example.json plus tests)
-
-**Goal.** Mechanical. The run timeout and the minimum gap between runs get their plain names: top-level `runTimeoutSeconds`, and `minRunIntervalSeconds` both at the top level and in `roles.<id>`. Old spellings still load through part 1/6's alias table.
-
-**Approach.**
-- Add three rows to `CONFIG_KEY_RENAMES` (src/config/config-aliases.ts):
-  - `tickTimeoutSeconds` → `runTimeoutSeconds`, scope `"top"`;
-  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"top"`;
-  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"role"`. The both-set refusal and doctor's `config key names` check then cover `roles.<id>` with no further code.
-- Rename the fields in src/config/config-schema.ts: `TumwaterConfig.tickTimeoutSeconds`, `TumwaterConfig.minTickIntervalSeconds` and `RoleConfig.minTickIntervalSeconds`. Update the `TOP_LEVEL_KEYS` and `ROLE_ENTRY_KEYS` entries, `defaultConfig` and its seeded `roles.*` entries (src/config/config.ts), and the `checkNumber` calls in src/config/config-validation.ts, including the `roles.<id>.` one. Also update any message naming the key, such as the review `timeoutSeconds` cap.
-- Update every reader, which typecheck finds:
-  - src/scheduling/scheduling.ts and src/scheduling/backoff.ts;
-  - src/config/config-views.ts, config-fallbacks.ts and config-write.ts;
-  - src/loop/loop-tick.ts and src/tick/tick-apply.ts;
-  - src/request-timeouts.ts (its `Pick<TumwaterConfig, …>`), src/agent/run-agent.ts and src/pi/pi-watchdogs.ts;
-  - src/fleet/error-storm.ts, src/fleet/fleet-polls.ts and src/failure/failure-cluster.ts (comment);
-  - src/roles/role-view.ts.
-- Keep the `role --json` payload's key `minTickIntervalSeconds` in role-view.ts's `RolePayload`, now filled from the renamed field: payload keys belong to Plain terms scripting. Leave role-render.ts's "Min tick interval" wording to Plain terms text.
-- tumwater.example.json: rename the top-level key and the five `roles.*` entries.
-- Tests: rename the TypeScript field uses (test/fixtures/orchestrator-fixtures.ts, scheduling, backoff, config, config-views, config-write, config-unset-key, loop, pi-watchdogs, error-storm, review-followup and the rest that typecheck names). Leave tumwater.json JSON fixtures on the old keys only where a test is about the alias.
-- New cases in test/config-aliases.test.ts:
-  - `roles.qa.minTickIntervalSeconds` loads as `roles.qa.minRunIntervalSeconds`;
-  - a role entry with both is refused, naming `roles.qa.minTickIntervalSeconds` and `roles.qa.minRunIntervalSeconds`;
-  - `config set roles.qa.minTickIntervalSeconds 60` writes `roles.qa.minRunIntervalSeconds`;
-  - `config unset tickTimeoutSeconds` removes a file's old-spelled key.
-
-**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-views.ts, config-fallbacks.ts, config-write.ts; src/scheduling/scheduling.ts, backoff.ts; src/loop/loop-tick.ts; src/tick/tick-apply.ts; src/request-timeouts.ts; src/agent/run-agent.ts; src/pi/pi-watchdogs.ts; src/fleet/error-storm.ts, fleet-polls.ts; src/roles/role-view.ts, roles.ts (comment); tumwater.example.json. Tests: the suites typecheck names, plus test/config-aliases.test.ts.
-
-**Acceptance criteria.**
-- A file holding `"tickTimeoutSeconds": 600` and `"roles": {"qa": {"minTickIntervalSeconds": 60}}` loads with `runTimeoutSeconds` 600 and `roles.qa.minRunIntervalSeconds` 60. Doctor names both renames.
-- Setting both spellings at either level is refused, naming the pair.
-- `grep -rn "tickTimeoutSeconds\|minTickIntervalSeconds" src` finds only the alias rows, role-view.ts's payload key, and comments that name the old spelling as old.
-- `defaultConfig()` and tumwater.example.json use only the new names.
-- `npm run test` passes.
-
 ### Plain terms commands, part 3/6: Rename customLoops to customRoles including the director's config request (planned 2026-10-16 by user; requires part 2/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and src/prompt/prompt.ts and src/tick/ plus tests)
 
 **Goal.** Custom roles are declared under `customRoles`. Old files, and the director's `.tumwater-config-request.json`, may still say `customLoops`. A file or request that says both is refused.
@@ -3882,6 +3847,41 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms commands, part 2/6: Rename tickTimeoutSeconds and minTickIntervalSeconds to runTimeoutSeconds and minRunIntervalSeconds (planned 2026-10-16 by user; requires part 1/6 landed; design in plans/terminology.md "Commands and config"; touches src/config/ and the timeout and interval readers and tumwater.example.json plus tests) (done 2026-10-16)
+
+**Goal.** Mechanical. The run timeout and the minimum gap between runs get their plain names: top-level `runTimeoutSeconds`, and `minRunIntervalSeconds` both at the top level and in `roles.<id>`. Old spellings still load through part 1/6's alias table.
+
+**Approach.**
+- Add three rows to `CONFIG_KEY_RENAMES` (src/config/config-aliases.ts):
+  - `tickTimeoutSeconds` → `runTimeoutSeconds`, scope `"top"`;
+  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"top"`;
+  - `minTickIntervalSeconds` → `minRunIntervalSeconds`, scope `"role"`. The both-set refusal and doctor's `config key names` check then cover `roles.<id>` with no further code.
+- Rename the fields in src/config/config-schema.ts: `TumwaterConfig.tickTimeoutSeconds`, `TumwaterConfig.minTickIntervalSeconds` and `RoleConfig.minTickIntervalSeconds`. Update the `TOP_LEVEL_KEYS` and `ROLE_ENTRY_KEYS` entries, `defaultConfig` and its seeded `roles.*` entries (src/config/config.ts), and the `checkNumber` calls in src/config/config-validation.ts, including the `roles.<id>.` one. Also update any message naming the key, such as the review `timeoutSeconds` cap.
+- Update every reader, which typecheck finds:
+  - src/scheduling/scheduling.ts and src/scheduling/backoff.ts;
+  - src/config/config-views.ts, config-fallbacks.ts and config-write.ts;
+  - src/loop/loop-tick.ts and src/tick/tick-apply.ts;
+  - src/request-timeouts.ts (its `Pick<TumwaterConfig, …>`), src/agent/run-agent.ts and src/pi/pi-watchdogs.ts;
+  - src/fleet/error-storm.ts, src/fleet/fleet-polls.ts and src/failure/failure-cluster.ts (comment);
+  - src/roles/role-view.ts.
+- Keep the `role --json` payload's key `minTickIntervalSeconds` in role-view.ts's `RolePayload`, now filled from the renamed field: payload keys belong to Plain terms scripting. Leave role-render.ts's "Min tick interval" wording to Plain terms text.
+- tumwater.example.json: rename the top-level key and the five `roles.*` entries.
+- Tests: rename the TypeScript field uses (test/fixtures/orchestrator-fixtures.ts, scheduling, backoff, config, config-views, config-write, config-unset-key, loop, pi-watchdogs, error-storm, review-followup and the rest that typecheck names). Leave tumwater.json JSON fixtures on the old keys only where a test is about the alias.
+- New cases in test/config-aliases.test.ts:
+  - `roles.qa.minTickIntervalSeconds` loads as `roles.qa.minRunIntervalSeconds`;
+  - a role entry with both is refused, naming `roles.qa.minTickIntervalSeconds` and `roles.qa.minRunIntervalSeconds`;
+  - `config set roles.qa.minTickIntervalSeconds 60` writes `roles.qa.minRunIntervalSeconds`;
+  - `config unset tickTimeoutSeconds` removes a file's old-spelled key.
+
+**Files touched.** src/config/config-aliases.ts, config-schema.ts, config.ts, config-validation.ts, config-views.ts, config-fallbacks.ts, config-write.ts; src/scheduling/scheduling.ts, backoff.ts; src/loop/loop-tick.ts; src/tick/tick-apply.ts; src/request-timeouts.ts; src/agent/run-agent.ts; src/pi/pi-watchdogs.ts; src/fleet/error-storm.ts, fleet-polls.ts; src/roles/role-view.ts, roles.ts (comment); tumwater.example.json. Tests: the suites typecheck names, plus test/config-aliases.test.ts.
+
+**Acceptance criteria.**
+- A file holding `"tickTimeoutSeconds": 600` and `"roles": {"qa": {"minTickIntervalSeconds": 60}}` loads with `runTimeoutSeconds` 600 and `roles.qa.minRunIntervalSeconds` 60. Doctor names both renames.
+- Setting both spellings at either level is refused, naming the pair.
+- `grep -rn "tickTimeoutSeconds\|minTickIntervalSeconds" src` finds only the alias rows, role-view.ts's payload key, and comments that name the old spelling as old.
+- `defaultConfig()` and tumwater.example.json use only the new names.
+- `npm run test` passes.
 
 ### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests; done 2026-10-16)
 

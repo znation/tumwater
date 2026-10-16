@@ -144,7 +144,7 @@ export function roleSeamTier(config: TumwaterConfig, role: string): ModelTier {
 }
 
 /** The config as seen by one role: role-level provider/model/thinking overrides applied
- * over the top-level values, plus the per-role minTickIntervalSeconds (a slow clock for
+ * over the top-level values, plus the per-role minRunIntervalSeconds (a slow clock for
  * roles that should act rarely) falling back to the global value when unset. The role's
  * model resolves at its effective tier (roleSeamTier): a `model` map serves the tier the
  * catalog assigns (or `roles.<id>.model` names), a string form is the default tier. */
@@ -158,13 +158,13 @@ export function configForRole(config: TumwaterConfig, role: string): ResolvedMod
   if (!rc) return resolved;
   return {
     ...resolved,
-    minTickIntervalSeconds: rc.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+    minRunIntervalSeconds: rc.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
   };
 }
 
 /** The config a role's ticks SCHEDULE from: configForRole, except that while the new-project
  * bootstrap is active (plans/work-ratio.md, part 2/2) the plan role schedules on the GLOBAL
- * minTickIntervalSeconds rather than its per-role 3600 s slow clock, so a young project gets a
+ * minRunIntervalSeconds rather than its per-role 3600 s slow clock, so a young project gets a
  * steady stream of plans for feature. One home for the rule: isEligible enforces the same gap
  * when it decides whether plan may start, and loop-tick.ts hands this config to applyTickOutcome so
  * nextRunAt is scheduled from the same figure instead of the role default. */
@@ -175,7 +175,7 @@ export function scheduleConfigForRole(
 ): ResolvedModelConfig {
   const resolved = configForRole(config, role);
   if (bootstrapActive && baseRoleOf(role) === "plan") {
-    return { ...resolved, minTickIntervalSeconds: config.minTickIntervalSeconds };
+    return { ...resolved, minRunIntervalSeconds: config.minRunIntervalSeconds };
   }
   return resolved;
 }
@@ -226,14 +226,14 @@ export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 
 /** The config as seen by the gate's reviewer run: the reviewer's model wiring (reviewConfig)
  * with its own time budget — `review.timeoutSeconds`, default REVIEW_TIMEOUT_S — overriding
- * the tick's. A smaller tickTimeoutSeconds still wins. A still-progressing gate run gets one
+ * the tick's. A smaller runTimeoutSeconds still wins. A still-progressing gate run gets one
  * extension of the same length (src/pi/pi-watchdogs.ts), so the effective ceiling on a large
  * diff's review is twice this budget. */
 export function reviewRunConfig(config: TumwaterConfig): ResolvedModelConfig {
   const cfg = reviewConfig(config);
   return {
     ...cfg,
-    tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S),
+    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, config.review.timeoutSeconds ?? REVIEW_TIMEOUT_S),
   };
 }
 

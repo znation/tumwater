@@ -223,7 +223,7 @@ test("a timed-out director tick re-queues the user prompt (regression)", async (
   await withPi(`exec sleep 30`, async () => {
     enqueuePrompt(repo, "important request");
     const config = defaultConfig();
-    config.tickTimeoutSeconds = 1;
+    config.runTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "director", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
@@ -248,7 +248,7 @@ test("a timed-out tick reports an error and never commits partial work", async (
   const repo = await initializedRepo();
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
     const config = defaultConfig();
-    config.tickTimeoutSeconds = 1;
+    config.runTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "improve", config);
     const before = mainSha(repo);
     const outcome = await runner.tick();
@@ -276,7 +276,7 @@ test("a tick timeout that fires on a run still making progress is resumed like a
     ].join("\n"),
     async () => {
       const config = defaultConfig();
-      config.tickTimeoutSeconds = 2;
+      config.runTimeoutSeconds = 2;
       const runner = makeLoopRunner(repo, "improve", config);
       const before = mainSha(repo);
       const outcome = await runner.tick();
@@ -300,7 +300,7 @@ test("a timed-out run that emitted bytes but no progress event still discards (r
   // not demonstrably begun and keeps today's discard path.
   await withPi(`echo just bytes\nexec sleep 30`, async () => {
     const config = defaultConfig();
-    config.tickTimeoutSeconds = 1;
+    config.runTimeoutSeconds = 1;
     const runner = makeLoopRunner(repo, "improve", config);
     const before = mainSha(repo);
     const outcome = await runner.tick();

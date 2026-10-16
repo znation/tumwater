@@ -28,10 +28,10 @@ test("setConfigKey parses JSON values, keeps literal strings, and preserves othe
   saveConfig(dir, base);
 
   // A JSON-parseable value keeps its parsed type: numbers stay numbers, quoted text strings.
-  let r = setConfigKey(dir, "minTickIntervalSeconds", "45");
-  assert.deepEqual(r, { ok: true, value: 45, oldValue: defaultConfig().minTickIntervalSeconds });
+  let r = setConfigKey(dir, "minRunIntervalSeconds", "45");
+  assert.deepEqual(r, { ok: true, value: 45, oldValue: defaultConfig().minRunIntervalSeconds });
   let raw = readJson(path.join(dir, "tumwater.json")) as Record<string, unknown>;
-  assert.equal(raw.minTickIntervalSeconds, 45, "config set minTickIntervalSeconds=45 persists the parsed number 45");
+  assert.equal(raw.minRunIntervalSeconds, 45, "config set minRunIntervalSeconds=45 persists the parsed number 45");
   assert.equal(raw.maxConcurrent, 3, "other keys preserved");
 
   r = setConfigKey(dir, "model", '"gpt-5"');
@@ -81,9 +81,9 @@ test("setConfigKey rejects an unknown key and a type-invalid value, leaving the 
   }
 
   // A type-invalid value fails with validateConfig's own message.
-  r = setConfigKey(dir, "minTickIntervalSeconds", '"45"');
+  r = setConfigKey(dir, "minRunIntervalSeconds", '"45"');
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /minTickIntervalSeconds must be a number of 0 or more/);
+  if (!r.ok) assert.match(r.error, /minRunIntervalSeconds must be a number of 0 or more/);
 
   // Both failures left tumwater.json byte-identical.
   assert.equal(fs.readFileSync(file, "utf8"), before);
@@ -228,9 +228,9 @@ test("setConfigKey merges one roles.<id>.<field> entry; bad fields and role ids 
   assert.equal(fs.readFileSync(file, "utf8"), before, "both failures left the file byte-identical");
 
   // A type-invalid field value fails with validateConfig's own message.
-  r = setConfigKey(dir, "roles.qa.minTickIntervalSeconds", '"fast"');
+  r = setConfigKey(dir, "roles.qa.minRunIntervalSeconds", '"fast"');
   assert.equal(r.ok, false);
-  if (!r.ok) assert.match(r.error, /minTickIntervalSeconds must be a number of 0 or more/);
+  if (!r.ok) assert.match(r.error, /minRunIntervalSeconds must be a number of 0 or more/);
   assert.equal(fs.readFileSync(file, "utf8"), before);
 });
 

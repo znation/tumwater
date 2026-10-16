@@ -250,7 +250,7 @@ longer describe what runs.
   `~/.pi/agent/settings.json` —. Do not use `0` (fully disabled): a zombie socket then waits
   forever. The harness's `quietTimeoutSeconds` watchdog (default 30 min; kills a run when no
   *progress* — message, turn, and tool boundary events — happens, so content-free keepalives
-  cannot reset it) and `tickTimeoutSeconds` remain the layered hang guards.
+  cannot reset it) and `runTimeoutSeconds` remain the layered hang guards.
 - **Context accounting**: declare an honest `contextWindow` for the model in pi's `models.json` —
   it is what triggers pi's auto-compaction. With LM Studio's unified KV cache, concurrent requests
   share one context pool (declare pool ÷ slots); with unified KV off, each slot owns the full

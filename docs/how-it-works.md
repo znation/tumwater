@@ -54,7 +54,7 @@ merge step lands them, so other loops keep ticking while a change is under revie
   300) bounds every check, the detected `npm test` included.
 - **Review.** A fresh reviewer checks the diff against PRINCIPLES.md and replies
   `VERDICT: approve|reject`. Markdown-only diffs skip review, but the gate first rejects, md-only diffs included, an edit to the initial prompt block or to PRINCIPLES.md from any role but the director and steward, and a change that newly writes a secret environment variable's value, or a credential pi stores in `auth.json`/`models.json`, into a file (INV-G2). Each reviewer run is capped at
-  `review.timeoutSeconds` (default 900, never above `tickTimeoutSeconds`; at least 3600 while
+  `review.timeoutSeconds` (default 900, never above `runTimeoutSeconds`; at least 3600 while
   the budget fallback carries the fleet, since a slower free model needs as many turns); a
   reviewer still making progress at that deadline gets one extension of the same length before
   it is killed. One that runs over fails without a strike and the change re-lands on the

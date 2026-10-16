@@ -47,7 +47,7 @@ export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
 
 /** The config knob a shared cause points at, when one is known. Only the timeout cause is
  * mapped: `timed out after <dur>` is the reducer's pooled rendering of the tick-timeout errors
- * (src/agent/run-agent.ts's two `timed out after ${tickTimeoutSeconds}s` shapes, pooled into one
+ * (src/agent/run-agent.ts's two `timed out after ${runTimeoutSeconds}s` shapes, pooled into one
  * key by poolTimeoutKey — src/failure/failure-cluster.ts owns the two shapes and their
  * pooling), and a fleet-wide
  * run of it means the tick budget does not fit the serving model — the one cause with a knob
@@ -55,7 +55,7 @@ export const ERROR_STORM_QUIET: ErrorStorm = { key: null, roles: [] };
  * a knob for a cause no setting controls would send an operator turning the wrong dial.
  * Exported for its unit tests. */
 export function errorStormKnob(key: string): string | undefined {
-  return key === TICK_TIMEOUT_KEY ? "tickTimeoutSeconds" : undefined;
+  return key === TICK_TIMEOUT_KEY ? "runTimeoutSeconds" : undefined;
 }
 
 /** Step the storm by one orchestrator poll: from `prev` and every role's current streak,

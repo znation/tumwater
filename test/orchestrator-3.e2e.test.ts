@@ -77,7 +77,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
   // A long minimum interval: the aborted role must NOT start a second tick while the test
   // asserts the aftermath (a fresh tick would re-enqueue and re-pin and muddy the asserts).
   const cfg = fastConfig(["clean"]);
-  cfg.minTickIntervalSeconds = 300;
+  cfg.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
   // Author run: make a change and finish. Review run (its prompt contains VERDICT): touch the
   // marker, then hang until the abort kills it — the landing stays in flight for as long as
@@ -364,7 +364,7 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
   // Only clean ticks; a long backoff so the aborted loop stays idle while the no-op cases
   // below are asserted (no second tick can start and muddy the event count).
   const cfg = defaultConfig();
-  cfg.minTickIntervalSeconds = 0;
+  cfg.minRunIntervalSeconds = 0;
   cfg.idleBackoff = { initialSeconds: 30, factor: 1, maxSeconds: 30 };
   for (const id of Object.keys(cfg.roles)) cfg.roles[id]!.enabled = id === "clean";
   saveConfig(repo, cfg);
@@ -475,7 +475,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
   await initProject(repo, "vet abort e2e test");
   // A long minimum interval: nothing re-ticks while the test asserts the aftermath.
   const cfg = fastConfig(["clean", "dry"]);
-  cfg.minTickIntervalSeconds = 300;
+  cfg.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
   await seedLandQueue(repo, "clean", "dry");
   // The 300 s min-gap only throttles ticks AFTER the first: a never-run role has
@@ -605,7 +605,7 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   await initProject(repo, "vetting stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
   const cfg = { ...fastConfig(roles), maxConcurrent: 4 };
-  cfg.minTickIntervalSeconds = 300; // landings never tick; the seeded-queue drive needs no author runs
+  cfg.minRunIntervalSeconds = 300; // landings never tick; the seeded-queue drive needs no author runs
   saveConfig(repo, cfg);
   await seedLandQueue(repo, ...roles);
   const runDir = tmpdir();

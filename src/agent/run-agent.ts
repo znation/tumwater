@@ -304,7 +304,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const wd = startPiWatchdogs({
       progressCount: () => parser.progressCount,
       openToolCalls: () => parser.openToolCalls,
-      tickTimeoutMs: opts.config.tickTimeoutSeconds * 1000,
+      tickTimeoutMs: opts.config.runTimeoutSeconds * 1000,
       quietMs: opts.config.quietTimeoutSeconds * 1000,
       stallMs: Math.max(0, opts.config.toolCallStallSeconds) * 1000,
       // The run's backend id: claude never sends content updates, so the watchdog judges its

@@ -73,18 +73,18 @@ test("reviewConfig applies the review section's overrides over top-level pi sett
 
 test("reviewRunConfig gives the reviewer its own time budget over the reviewer wiring", () => {
   const config: TumwaterConfig = defaultConfig();
-  config.tickTimeoutSeconds = 54_000;
+  config.runTimeoutSeconds = 54_000;
   config.review.model = "strong-model";
   const run = reviewRunConfig(config);
-  assert.equal(run.tickTimeoutSeconds, REVIEW_TIMEOUT_S, "the tick's hours-long budget never reaches the reviewer");
+  assert.equal(run.runTimeoutSeconds, REVIEW_TIMEOUT_S, "the tick's hours-long budget never reaches the reviewer");
   assert.equal(run.model, "strong-model", "the run keeps the reviewer's model wiring");
   assert.equal(run.quietTimeoutSeconds, config.quietTimeoutSeconds, "only the wall-clock budget changes");
 
   // A configured review.timeoutSeconds replaces the default; a smaller tick budget still wins.
   config.review.timeoutSeconds = 120;
-  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 120);
-  config.tickTimeoutSeconds = 60;
-  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 60);
+  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 120);
+  config.runTimeoutSeconds = 60;
+  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 60);
 });
 
 test("fallbackPair resolves the fallback over the top-level values", () => {
@@ -136,22 +136,22 @@ test("applyFallbackModel raises the reviewer's time budget to the fallback floor
   // The budgeted model's 900 s review budget fit 4–7 local-model turns, so every fallback
   // review timed out and no code change landed until midnight (BUGS.md 2026-09-30).
   const config: TumwaterConfig = defaultConfig();
-  config.tickTimeoutSeconds = 54_000;
+  config.runTimeoutSeconds = 54_000;
   config.fallbackModel = { provider: "omlx", model: "local-free" };
-  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, REVIEW_TIMEOUT_S, "the budgeted model keeps its own budget");
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config).runTimeoutSeconds, REVIEW_TIMEOUT_S, "the budgeted model keeps its own budget");
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
 
   // A configured budget below the floor is raised only on the fallback; one above it stands.
   config.review.timeoutSeconds = 120;
-  assert.equal(reviewRunConfig(config).tickTimeoutSeconds, 120);
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
+  assert.equal(reviewRunConfig(config).runTimeoutSeconds, 120);
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, FALLBACK_REVIEW_TIMEOUT_S);
   config.review.timeoutSeconds = 7200;
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, 7200);
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 7200);
   assert.equal(config.review.timeoutSeconds, 7200, "the source config is untouched");
 
   // The tick's own budget still caps the reviewer, fallback or not.
-  config.tickTimeoutSeconds = 600;
-  assert.equal(reviewRunConfig(applyFallbackModel(config)).tickTimeoutSeconds, 600);
+  config.runTimeoutSeconds = 600;
+  assert.equal(reviewRunConfig(applyFallbackModel(config)).runTimeoutSeconds, 600);
 });
 
 test("selector strings for model parse into the provider/model/thinking triple", () => {
@@ -455,7 +455,7 @@ test("applyFallbackModel with a resolved map keeps tiers and drops raw overrides
   assert.equal(out.review.model, undefined);
   // The reviewer's time budget still rises to the fallback floor.
   assert.equal(
-    reviewRunConfig(out).tickTimeoutSeconds,
+    reviewRunConfig(out).runTimeoutSeconds,
     FALLBACK_REVIEW_TIMEOUT_S,
   );
   // A paused tier is left out of the map (it inherits default's entry).
@@ -525,8 +525,8 @@ test("fallbackRoleConfig resolves the role's tier pair and is null when it pause
   assert.equal(fb?.provider, "free");
   assert.equal(fb?.model, "f");
   assert.equal(
-    fb?.minTickIntervalSeconds,
-    config.roles.feature?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+    fb?.minRunIntervalSeconds,
+    config.roles.feature?.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
   );
   // A strong-tier role borrows the default tier's own fallback (BORROW_ORDER).
   config.roles.feature = { enabled: true, model: "strong" };

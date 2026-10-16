@@ -81,7 +81,7 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
   // Generous budgets: the follow-up turn must be capped at its own hard limits, never the
   // review run's budget.
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 100_000;
+  config.runTimeoutSeconds = 100_000;
   config.quietTimeoutSeconds = 100_000;
   const { ctx, root, captured } = makeCtx(config);
   const dir = touchSession(root);
@@ -95,7 +95,7 @@ test("requestVerdict continues the reviewer's session with capped budgets and th
   assert.equal(opts.kind, "gate", "a review follow-up demuxes as a gate run");
   assert.equal(opts.label, "review-verdict");
   assert.equal(opts.rawLogFile, piLogPath(root, "feature"));
-  assert.equal(opts.config.tickTimeoutSeconds, 900);
+  assert.equal(opts.config.runTimeoutSeconds, 900);
   assert.equal(opts.config.quietTimeoutSeconds, 300);
 });
 
@@ -128,12 +128,12 @@ test("a claude gate session resumes through the ledger without a pi session file
 
 test("requestVerdict honors a smaller configured budget and a disabled quiet timeout", async () => {
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 120; // below the cap: stands as configured
+  config.runTimeoutSeconds = 120; // below the cap: stands as configured
   config.quietTimeoutSeconds = 0; // disabled: the follow-up still gets its own cap
   const { ctx, root, captured } = makeCtx(config);
   touchSession(root);
   await requestVerdict(ctx);
-  assert.equal(captured.opts!.config.tickTimeoutSeconds, 120);
+  assert.equal(captured.opts!.config.runTimeoutSeconds, 120);
   assert.equal(captured.opts!.config.quietTimeoutSeconds, 300);
 });
 
@@ -147,7 +147,7 @@ test("requestNoRerun returns null when there is no session to continue", async (
 
 test("requestNoRerun names the repeated call, collects its own tool calls, and caps budgets", async () => {
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 100_000;
+  config.runTimeoutSeconds = 100_000;
   config.quietTimeoutSeconds = 100_000;
   const { ctx, root, captured } = makeCtx(config);
   const dir = touchSession(root);
@@ -162,7 +162,7 @@ test("requestNoRerun names the repeated call, collects its own tool calls, and c
   assert.equal(opts.prompt, buildNoRerunPrompt("bash: npm test"));
   assert.ok(opts.prompt.includes("bash: npm test")); // the nudge names the exact call
   assert.equal(opts.label, "review-rerun");
-  assert.equal(opts.config.tickTimeoutSeconds, 900);
+  assert.equal(opts.config.runTimeoutSeconds, 900);
   assert.equal(opts.config.quietTimeoutSeconds, 300);
 
   // The nudge turn's own started tool calls land in `calls` — the caller's repeat check

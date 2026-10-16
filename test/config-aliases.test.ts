@@ -6,7 +6,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { readJson } from "./helpers/json-read.js";
 import { canonicalConfigKey, normalizeConfigKeys } from "../src/config/config-aliases.js";
 import { loadConfig, loadConfigSafe } from "../src/config/config.js";
-import { setConfigKey } from "../src/config/config-write.js";
+import { setConfigKey, unsetConfigKey } from "../src/config/config-write.js";
 import { checkConfigKeyNames, checkInit } from "../src/doctor/doctor-checks.js";
 
 function writeConfig(dir: string, body: unknown): string {
@@ -56,4 +56,35 @@ test("an old-key file loads, config set migrates it, and both-set is refused", (
   const init = checkInit(dir);
   assert.equal(init.level, "fail");
   assert.match(init.detail, /keep maintenancePerWorkMerge/);
+});
+
+test("the run timeout and min run interval load from their old spellings, top level and per role", () => {
+  const dir = tmpdir();
+  writeConfig(dir, { tickTimeoutSeconds: 600, roles: { qa: { minTickIntervalSeconds: 60 } } });
+  const cfg = loadConfig(dir);
+  assert.equal(cfg.runTimeoutSeconds, 600);
+  assert.equal(cfg.roles.qa?.minRunIntervalSeconds, 60);
+  const detail = checkConfigKeyNames(dir).detail;
+  assert.match(detail, /tickTimeoutSeconds → runTimeoutSeconds/);
+  assert.match(detail, /roles\.qa\.minTickIntervalSeconds → roles\.qa\.minRunIntervalSeconds/);
+});
+
+test("a role entry setting both interval spellings is refused", () => {
+  const dir = tmpdir();
+  writeConfig(dir, { roles: { qa: { minTickIntervalSeconds: 60, minRunIntervalSeconds: 30 } } });
+  const { error } = loadConfigSafe(dir);
+  assert.match(error ?? "", /roles\.qa\.minTickIntervalSeconds and roles\.qa\.minRunIntervalSeconds are both set/);
+});
+
+test("config set and unset reach the renamed role and top-level keys", () => {
+  const dir = tmpdir();
+  const file = writeConfig(dir, { tickTimeoutSeconds: 600, roles: { qa: { minTickIntervalSeconds: 10 } } });
+  const r = setConfigKey(dir, "roles.qa.minTickIntervalSeconds", "60");
+  assert.ok(r.ok, JSON.stringify(r));
+  const written = readJson(file) as { roles: { qa: Record<string, unknown> } };
+  assert.equal(written.roles.qa.minRunIntervalSeconds, 60);
+  assert.ok(!("minTickIntervalSeconds" in written.roles.qa));
+  const u = unsetConfigKey(dir, "tickTimeoutSeconds");
+  assert.ok(u.ok, JSON.stringify(u));
+  assert.ok(!("tickTimeoutSeconds" in (readJson(file) as object)));
 });

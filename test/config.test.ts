@@ -31,8 +31,8 @@ const LONGEST_LEGITIMATE_TICK_S = 185 * 60;
 
 test("the shipped tick budget clears the longest legitimate observed tick", () => {
   assert.ok(
-    defaultConfig().tickTimeoutSeconds > LONGEST_LEGITIMATE_TICK_S,
-    `tickTimeoutSeconds ${defaultConfig().tickTimeoutSeconds}s must exceed the longest legitimate tick (${LONGEST_LEGITIMATE_TICK_S}s)`,
+    defaultConfig().runTimeoutSeconds > LONGEST_LEGITIMATE_TICK_S,
+    `runTimeoutSeconds ${defaultConfig().runTimeoutSeconds}s must exceed the longest legitimate tick (${LONGEST_LEGITIMATE_TICK_S}s)`,
   );
 });
 
@@ -54,27 +54,27 @@ test("defaultConfig enables every role including director, except the opt-in tel
 });
 
 test("defaultConfig gives the slow-clock roles their clocks and no other role one", () => {
-  // Regression: feature tick 49 set this via `roles.steward.minTickIntervalSeconds = …`,
+  // Regression: feature tick 49 set this via `roles.steward.minRunIntervalSeconds = …`,
   // which does not compile under noUncheckedIndexedAccess — a broken build landed on main.
   const config = defaultConfig();
-  assert.equal(configForRole(config, "steward").minTickIntervalSeconds, 21600);
-  assert.equal(configForRole(config, "qa").minTickIntervalSeconds, 7200);
-  assert.equal(configForRole(config, "telemetry").minTickIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
+  assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "telemetry").minRunIntervalSeconds, 7200);
   // The bookkeeping roles: readme batches landings into one sync per half hour, plan re-audits
   // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
-  assert.equal(configForRole(config, "readme").minTickIntervalSeconds, 1800);
-  assert.equal(configForRole(config, "plan").minTickIntervalSeconds, 3600);
+  assert.equal(configForRole(config, "readme").minRunIntervalSeconds, 1800);
+  assert.equal(configForRole(config, "plan").minRunIntervalSeconds, 3600);
   // Organize restructures at most hourly — at the global clock it reorganized the whole tree
   // one directory per tick.
-  assert.equal(configForRole(config, "organize").minTickIntervalSeconds, 3600);
+  assert.equal(configForRole(config, "organize").minRunIntervalSeconds, 3600);
   const slow = new Set(["steward", "qa", "telemetry", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
     if (slow.has(id)) continue;
     // Every other role falls back to the global interval.
     assert.equal(
-      configForRole(config, id).minTickIntervalSeconds,
-      config.minTickIntervalSeconds,
-      `role ${id} should inherit the global minTickIntervalSeconds`,
+      configForRole(config, id).minRunIntervalSeconds,
+      config.minRunIntervalSeconds,
+      `role ${id} should inherit the global minRunIntervalSeconds`,
     );
   }
 });
@@ -231,7 +231,7 @@ test("loadConfig enables qa with its slow clock when the file omits it", () => {
   );
   const config = loadConfig(dir);
   assert.equal(config.roles.qa?.enabled, true);
-  assert.equal(configForRole(config, "qa").minTickIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
 });
 
 test("saveConfig round-trips", () => {
@@ -505,7 +505,7 @@ test("a custom listed under roles with per-role settings has them applied like a
         { name: "perf-hunter", task: "Hunt perf wins." },
       ],
       roles: {
-        "docs-auditor": { enabled: false, instructions: "be careful", minTickIntervalSeconds: 90 },
+        "docs-auditor": { enabled: false, instructions: "be careful", minRunIntervalSeconds: 90 },
       },
     }),
   );
@@ -513,7 +513,7 @@ test("a custom listed under roles with per-role settings has them applied like a
   assert.equal(config.roles["docs-auditor"]?.enabled, false, "the file's overlay wins over the seeded default");
   // Per-role fields apply through configForRole exactly like for built-ins.
   const asSeen = configForRole(config, "docs-auditor");
-  assert.equal(asSeen.minTickIntervalSeconds, 90);
+  assert.equal(asSeen.minRunIntervalSeconds, 90);
   assert.equal(config.roles["docs-auditor"]?.instructions, "be careful");
   // A custom absent from `roles` stays enabled.
   assert.equal(config.roles["perf-hunter"]?.enabled, true);
@@ -690,11 +690,11 @@ test("seedConfig overlays a valid tumwater.example.json on the defaults", () => 
   const root = tmpdir();
   fs.writeFileSync(
     exampleConfigPath(root),
-    JSON.stringify({ minTickIntervalSeconds: 45, review: { enabled: false } }),
+    JSON.stringify({ minRunIntervalSeconds: 45, review: { enabled: false } }),
   );
   const seeded = seedConfig(root);
   const base = defaultConfig();
-  assert.equal(seeded.minTickIntervalSeconds, 45);
+  assert.equal(seeded.minRunIntervalSeconds, 45);
   // The template's partial review section merges over the default's, like loadConfig's would.
   assert.deepEqual(seeded.review, { ...base.review, enabled: false });
   // Untouched keys keep the defaults: the template is a baseline, not a whole config.
@@ -727,7 +727,7 @@ test("seedConfig falls back to the defaults with no example, a malformed one, or
   const invalid = tmpdir();
   fs.writeFileSync(
     exampleConfigPath(invalid),
-    JSON.stringify({ minTickIntervalSeconds: -5 }),
+    JSON.stringify({ minRunIntervalSeconds: -5 }),
   );
   assert.deepEqual(seedConfig(invalid), defaultConfig());
 });
@@ -737,7 +737,7 @@ test("exampleConfigProblem names a broken template and stays null on a usable on
   assert.equal(exampleConfigProblem(tmpdir()), null);
 
   const valid = tmpdir();
-  fs.writeFileSync(exampleConfigPath(valid), JSON.stringify({ minTickIntervalSeconds: 45 }));
+  fs.writeFileSync(exampleConfigPath(valid), JSON.stringify({ minRunIntervalSeconds: 45 }));
   assert.equal(exampleConfigProblem(valid), null);
 
   // A parse failure must name the example file, not leave a bare syntax error for the
@@ -749,10 +749,10 @@ test("exampleConfigProblem names a broken template and stays null on a usable on
   // A validation failure carries the full problem list under the example's name — the same
   // wording loadConfig throws for tumwater.json, relabeled so it cannot be misread.
   const invalid = tmpdir();
-  fs.writeFileSync(exampleConfigPath(invalid), JSON.stringify({ minTickIntervalSeconds: -5 }));
+  fs.writeFileSync(exampleConfigPath(invalid), JSON.stringify({ minRunIntervalSeconds: -5 }));
   const problem = exampleConfigProblem(invalid) ?? "";
   assert.match(problem, /invalid tumwater\.example\.json/);
-  assert.match(problem, /minTickIntervalSeconds/);
+  assert.match(problem, /minRunIntervalSeconds/);
 
   // A non-object template reads as invalid, not as "must be a JSON object" twice over.
   const nonObject = tmpdir();
@@ -764,7 +764,7 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   const root = tmpdir();
   fs.writeFileSync(
     exampleConfigPath(root),
-    JSON.stringify({ minTickIntervalSeconds: 45, mergeBatchMax: 2 }),
+    JSON.stringify({ minRunIntervalSeconds: 45, mergeBatchMax: 2 }),
   );
   // No local file yet: nothing to compare, so no drift.
   assert.deepEqual(exampleDrift(root), []);
@@ -772,11 +772,11 @@ test("exampleDrift names template keys the local config lacks, and nothing else"
   writeConfig(root, { mergeBatchMax: 3 });
   // Whole-key comparison: a key present in both files is the local file's business even when
   // the values differ; only keys the template sets and the file lacks are drift.
-  assert.deepEqual(exampleDrift(root), ["minTickIntervalSeconds"]);
+  assert.deepEqual(exampleDrift(root), ["minRunIntervalSeconds"]);
 
   fs.writeFileSync(
     path.join(root, "tumwater.json"),
-    JSON.stringify({ minTickIntervalSeconds: 20, mergeBatchMax: 3 }),
+    JSON.stringify({ minRunIntervalSeconds: 20, mergeBatchMax: 3 }),
   );
   assert.deepEqual(exampleDrift(root), []);
 

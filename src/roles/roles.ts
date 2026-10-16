@@ -31,7 +31,7 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 /** Observer roles (plans/observer-roles.md 1/2): a role whose product is an observation, not a
  * commit, and for which `no_change` means "checked, all well" rather than "found nothing to do".
  * The idle ladder's premise — a loop that keeps finding nothing stops burning model time — does
- * not hold for these, so their no_change tick schedules at `minTickIntervalSeconds` and leaves
+ * not hold for these, so their no_change tick schedules at `minRunIntervalSeconds` and leaves
  * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
  * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
  * event log for `telemetry`) is not a function of whether main moved. */

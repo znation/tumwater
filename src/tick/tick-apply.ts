@@ -76,7 +76,7 @@ export const QUIET_KILL_RESUME_LIMIT = 3;
  * promptly, which back off and on which ladder, how cut-off resumes are bounded — sits with
  * the other scheduling helpers here instead of inline in the tick lifecycle. Mutates `s` in place:
  * the caller's state object is authoritative across an in-flight tick (see resetCounters).
- * `cfg` is the role-resolved config (configForRole): its minTickIntervalSeconds carries any
+ * `cfg` is the role-resolved config (configForRole): its minRunIntervalSeconds carries any
  * per-role slow clock, and idleBackoff passes through it unchanged from the top level. */
 export function applyTickOutcome(
   s: LoopState,
@@ -241,7 +241,7 @@ export function applyTickOutcome(
   } else if (OBSERVER_ROLES.has(baseRoleOf(role))) {
     // An observer's no_change is a success ("checked, all well"), not an idle verdict: it must
     // not climb the idle ladder, which would punish the role monotonically for the product
-    // being healthy. With no ladder, minTickIntervalSeconds is the sole, honest cadence
+    // being healthy. With no ladder, minRunIntervalSeconds is the sole, honest cadence
     // (plans/observer-roles.md). The error/user_aborted arms above are untouched — a broken
     // toolchain and a deliberate operator stop still back off like any other role.
     s.backoffSeconds = 0;

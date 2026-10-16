@@ -115,8 +115,8 @@ test("an absent-entry unset is a true no-op: the minimal file keeps its exact by
   }
 
   // A role field the file never set but the defaults seed (roles.qa seeds
-  // minTickIntervalSeconds 7200): the reported oldValue must be undefined, not the default.
-  const seededField = unsetConfigKey(dir, "roles.qa.minTickIntervalSeconds");
+  // minRunIntervalSeconds 7200): the reported oldValue must be undefined, not the default.
+  const seededField = unsetConfigKey(dir, "roles.qa.minRunIntervalSeconds");
   assert.ok(seededField.ok && seededField.oldValue === undefined, JSON.stringify(seededField));
   assert.equal(fs.readFileSync(file, "utf8"), before, "a default-seeded role field leaves the file byte-identical");
 });
@@ -128,7 +128,7 @@ test("unsetConfigKey removes one role field, preserving siblings, and reverts an
     enabled: true,
     model: "m-qa",
     instructions: "test things",
-    minTickIntervalSeconds: 3600,
+    minRunIntervalSeconds: 3600,
   };
   saveConfig(dir, base);
   const file = path.join(dir, "tumwater.json");
@@ -146,10 +146,10 @@ test("unsetConfigKey removes one role field, preserving siblings, and reverts an
 
   // A field WITH a default reverts to it: the override leaves the file (the entry keeps its
   // seeded `enabled` but never a stale value) and the resolved value is the default again.
-  r = unsetConfigKey(dir, "roles.qa.minTickIntervalSeconds");
+  r = unsetConfigKey(dir, "roles.qa.minRunIntervalSeconds");
   assert.ok(r.ok && r.oldValue === 3600, JSON.stringify(r));
-  assert.ok(!("minTickIntervalSeconds" in (readJson(file) as { roles: Record<string, Record<string, unknown>> }).roles.qa!));
-  assert.equal(loadConfig(dir).roles.qa!.minTickIntervalSeconds, 7200, "the default applies again");
+  assert.ok(!("minRunIntervalSeconds" in (readJson(file) as { roles: Record<string, Record<string, unknown>> }).roles.qa!));
+  assert.equal(loadConfig(dir).roles.qa!.minRunIntervalSeconds, 7200, "the default applies again");
 });
 
 test("unsetConfigKey drops a roles entry it empties, keeping the rest of the section", () => {

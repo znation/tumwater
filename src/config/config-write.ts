@@ -301,7 +301,7 @@ function without<T extends Record<string, unknown>>(obj: T, key: string): T {
 
 /** The raw parsed tumwater.json as a plain object — the pre-defaults view `unsetConfigKey`'s
  * presence check needs, because the merged config always carries defaults a top-level key or a
- * `roles.<id>.<field>` (e.g. the seeded `minTickIntervalSeconds`) may never have been set to.
+ * `roles.<id>.<field>` (e.g. the seeded `minRunIntervalSeconds`) may never have been set to.
  * Read inside writeConfigMutation's lock; a missing or unparsable file is `{}` (loadConfig has
  * already rejected a broken file before a mutation runs, and an absent file is the bare
  * defaults — there is nothing to retract). */
@@ -345,9 +345,9 @@ function withSectionOrDropped(root: string, cfg: TumwaterConfig, key: string, se
  * preserving its siblings, so an operator retracts one role's override without re-typing the
  * rest. The containing map/`model` key is dropped when it empties, so the file never keeps an
  * empty object (a `roles.<id>` entry cannot empty through the CLI: loadConfig always seeds
- * `enabled`/`minTickIntervalSeconds`). Presence is judged against the raw FILE, not the merged
+ * `enabled`/`minRunIntervalSeconds`). Presence is judged against the raw FILE, not the merged
  * config: a key the file never set but the defaults fill in (a top-level `quietHours`/
- * `maxConcurrent`, a seeded `roles.<id>.minTickIntervalSeconds`) is nothing to remove, so the
+ * `maxConcurrent`, a seeded `roles.<id>.minRunIntervalSeconds`) is nothing to remove, so the
  * mutation returns the loaded config unchanged and writeConfigMutation skips the write — the
  * file's bytes stay identical rather than being re-serialized with the defaults expanded.
  * Legacy `provider`/`fallbackModel` unset normally — only

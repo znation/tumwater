@@ -171,17 +171,17 @@ test("a roles.<id>.instructions edit logs config_changed but no model_changed", 
   assert.equal(modelEvents(root).length, 0);
 });
 
-test("a minTickIntervalSeconds-only edit logs no model_changed", () => {
+test("a minRunIntervalSeconds-only edit logs no model_changed", () => {
   const config = defaultConfig();
   const { root, live } = liveReload(config);
   live.poll();
 
   const edited = cloneConfig(config);
-  edited.minTickIntervalSeconds = (edited.minTickIntervalSeconds ?? 0) + 1;
+  edited.minRunIntervalSeconds = (edited.minRunIntervalSeconds ?? 0) + 1;
   writeConfig(root, edited);
   live.poll();
 
-  assert.deepEqual(changedKeys(root), [["minTickIntervalSeconds"]]);
+  assert.deepEqual(changedKeys(root), [["minRunIntervalSeconds"]]);
   assert.equal(modelEvents(root).length, 0);
 });
 

@@ -146,7 +146,7 @@ test("a mixed fleet of plain and progressing tick timeouts pools into one digest
     { ts: at(0), loop: "clean", type: "tick_end", result: "error", error: "pi exited 1" },
   ]);
   const data = collectFailureReport(root, 1);
-  // One cause, one knob (tickTimeoutSeconds): both shapes are the same timeout, so the digest
+  // One cause, one knob (runTimeoutSeconds): both shapes are the same timeout, so the digest
   // reports one cluster — not two half-size rows a top-N cut can drop.
   const timeout = data.errors.clusters.find((c) => c.key.startsWith("timed out"));
   assert.ok(timeout, `the timeout cause is itemized: ${JSON.stringify(data.errors.clusters)}`);

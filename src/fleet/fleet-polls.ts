@@ -185,7 +185,7 @@ export function pollClaudeWindowWarning(
  * the fleet's evidence too), step the pure reducer, and log exactly one warning per episode,
  * like the per-role warning's once-per-streak-crossing shape: on the quiet→storm crossing,
  * naming the roles, the shared normalized cause, and the config knob when the cause has one
- * (a fleet timing out together means tickTimeoutSeconds does not fit the serving model).
+ * (a fleet timing out together means runTimeoutSeconds does not fit the serving model).
  * Storms clear silently — the members' own recoveries already tell that story — and the
  * reducer's `prev` pass-through keeps a held storm event-free. Returns the new storm for the
  * caller to keep. Exported as a unit-test seam, like pollFleetHold above. */

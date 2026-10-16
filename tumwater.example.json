@@ -1,6 +1,6 @@
 {
   "agents": { "pi": { "args": [] } },
-  "minTickIntervalSeconds": 20,
+  "minRunIntervalSeconds": 20,
   "maxConcurrentPerProvider": { "omlx": 1 },
   "mergeBatchMax": 3,
   "logMaxBytes": 16777216,
@@ -11,10 +11,10 @@
   "review": { "enabled": true, "exemptPaths": ["*.md", "docs/**"] },
   "customLoops": [],
   "roles": {
-    "steward": { "enabled": true, "minTickIntervalSeconds": 21600 },
-    "qa": { "enabled": true, "minTickIntervalSeconds": 7200 },
-    "telemetry": { "enabled": true, "minTickIntervalSeconds": 7200 },
-    "readme": { "enabled": true, "minTickIntervalSeconds": 1800 },
-    "plan": { "enabled": true, "minTickIntervalSeconds": 3600 }
+    "steward": { "enabled": true, "minRunIntervalSeconds": 21600 },
+    "qa": { "enabled": true, "minRunIntervalSeconds": 7200 },
+    "telemetry": { "enabled": true, "minRunIntervalSeconds": 7200 },
+    "readme": { "enabled": true, "minRunIntervalSeconds": 1800 },
+    "plan": { "enabled": true, "minRunIntervalSeconds": 3600 }
   }
 }

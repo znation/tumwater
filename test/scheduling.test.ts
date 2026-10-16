@@ -55,7 +55,7 @@ test("a running or recently-finished loop is not eligible", () => {
 test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   const r = runner("clean");
   const now = Date.now();
-  const gap = r.config.minTickIntervalSeconds * 1000;
+  const gap = r.config.minRunIntervalSeconds * 1000;
   r.state.ticks = 1;
   r.state.lastTickEndedAt = now - gap - 1000;
   r.state.nextRunAt = now + 60_000;
@@ -75,7 +75,7 @@ test("yield scaling stretches a quiet search role's gap — including the main-m
   // have passed since its last tick, even though nextRunAt is long past.
   const r = runner("clean");
   const now = Date.now();
-  const gap = configForRole(r.config, "clean").minTickIntervalSeconds * 1000; // 20 s
+  const gap = configForRole(r.config, "clean").minRunIntervalSeconds * 1000; // 20 s
   r.state.ticks = 1;
   r.state.lastTickEndedAt = now - 3 * gap; // past the plain gap, inside the stretched one
   r.state.nextRunAt = now + 60_000; // the main-moved branch is only reached past nextRunAt
@@ -120,7 +120,7 @@ test("yield scaling never applies to feature, plan, or the director", () => {
   const now = Date.now();
   for (const role of ["feature", "plan"]) {
     const r = runner(role);
-    const gap = configForRole(r.config, role).minTickIntervalSeconds * 1000;
+    const gap = configForRole(r.config, role).minRunIntervalSeconds * 1000;
     r.state.ticks = 1;
     r.state.lastTickEndedAt = now - gap - 1000; // past the PLAIN gap
     r.state.nextRunAt = now - 1000;
@@ -202,11 +202,11 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
 
   // Large per-role override over a small global: the loop stays ineligible inside its own
   // (long) window even though nextRunAt has passed AND main moved. If isEligible read
-  // config.minTickIntervalSeconds directly (20s), it would have woken here — sinceLast is
+  // config.minRunIntervalSeconds directly (20s), it would have woken here — sinceLast is
   // 21s, past the global gap.
   const slow = defaultConfig();
-  slow.minTickIntervalSeconds = 20;
-  slow.roles.steward!.minTickIntervalSeconds = 3600;
+  slow.minRunIntervalSeconds = 20;
+  slow.roles.steward!.minRunIntervalSeconds = 3600;
   const r1 = makeLoopRunner(makeRepo(), "steward", slow);
   r1.state.ticks = 1;
   r1.state.lastTickEndedAt = now - 21_000; // past the global gap, deep inside the role's own
@@ -219,11 +219,11 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   );
 
   // The inverse: a small override over a large global wakes at the shorter value. If
-  // isEligible read config.minTickIntervalSeconds directly (3600s), it would still be
+  // isEligible read config.minRunIntervalSeconds directly (3600s), it would still be
   // asleep here — sinceLast is only 21s.
   const fast = defaultConfig();
-  fast.minTickIntervalSeconds = 3600;
-  fast.roles.qa!.minTickIntervalSeconds = 20;
+  fast.minRunIntervalSeconds = 3600;
+  fast.roles.qa!.minRunIntervalSeconds = 20;
   const r2 = makeLoopRunner(makeRepo(), "qa", fast);
   r2.state.ticks = 1;
   r2.state.lastTickEndedAt = now - 21_000; // past the role's own gap, deep inside the global
@@ -254,7 +254,7 @@ test("bootstrap schedules plan on the global gap instead of its slow per-role de
   // During bootstrap the same tick schedules the global 20 s clock, and isEligible agrees.
   applyTickOutcome(r.state, scheduleConfigForRole(cfg, "plan", true), "plan", { result: "changed" });
   assert.ok(
-    r.state.nextRunAt - Date.now() <= cfg.minTickIntervalSeconds * 1000,
+    r.state.nextRunAt - Date.now() <= cfg.minRunIntervalSeconds * 1000,
     "plan schedules on the global gap during bootstrap",
   );
   const bootstrapping = isEligible(r, t0 + 21_000, "", 0, { bootstrapActive: true });

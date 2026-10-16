@@ -309,7 +309,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   // in, the custom loop present in roles) — the same shape the orchestrator's runners see —
   // not the overrides-only tumwater.json.
   const cfg = loadConfig(repo);
-  cfg.minTickIntervalSeconds = 25;
+  cfg.minRunIntervalSeconds = 25;
   cfg.customLoops.push({ name: "docs-sync", task: "keep the README examples current" });
   writeConfig(repo, cfg);
 
@@ -320,7 +320,7 @@ test("config prints the effective merged config as JSON, deep-equal to loadConfi
   // Role defaults the file never mentions are in the output (the merge is visible, not just
   // pass-through), and the custom loop is merged into roles exactly as the file's own
   // roles-override entries would be.
-  assert.equal(printed.minTickIntervalSeconds, 25);
+  assert.equal(printed.minRunIntervalSeconds, 25);
   assert.deepEqual(printed.roles["docs-sync"], { enabled: true });
   assert.ok(printed.roles.feature, "built-in role defaults are printed");
 });
@@ -329,11 +329,11 @@ test("config fails with validateConfig's message and prints no JSON for an inval
   const repo = makeRepo();
   await initProject(repo, "cli config invalid");
 
-  writeConfig(repo, { minTickIntervalSeconds: -1 });
+  writeConfig(repo, { minRunIntervalSeconds: -1 });
   const r = await cli(repo, "config");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /invalid tumwater.json/);
-  assert.match(r.stderr, /minTickIntervalSeconds must be a number of 0 or more/);
+  assert.match(r.stderr, /minRunIntervalSeconds must be a number of 0 or more/);
   assert.equal(r.stdout, "");
 });
 
@@ -384,12 +384,12 @@ test("config get/set roundtrip: set persists, get reads the resolved value", asy
   const repo = makeRepo();
   await initProject(repo, "cli config roundtrip");
 
-  let r = await cli(repo, "config", "set", "minTickIntervalSeconds", "45");
+  let r = await cli(repo, "config", "set", "minRunIntervalSeconds", "45");
   assert.equal(r.code, 0);
-  assert.match(r.stdout, /set minTickIntervalSeconds to 45/);
-  assert.equal(loadConfig(repo).minTickIntervalSeconds, 45);
+  assert.match(r.stdout, /set minRunIntervalSeconds to 45/);
+  assert.equal(loadConfig(repo).minRunIntervalSeconds, 45);
 
-  r = await cli(repo, "config", "get", "minTickIntervalSeconds");
+  r = await cli(repo, "config", "get", "minRunIntervalSeconds");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /^45\n?$/);
 
@@ -432,9 +432,9 @@ test("config set rejects unknown and type-invalid edits, leaving tumwater.json b
   assert.match(r.stderr, /unknown config key "modle" \(valid top-level keys: .+\) — did you mean `model`\?/);
 
   // A type-invalid value fails with validateConfig's own message; no tmp remnant.
-  r = await cli(repo, "config", "set", "minTickIntervalSeconds", '"45"');
+  r = await cli(repo, "config", "set", "minRunIntervalSeconds", '"45"');
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /minTickIntervalSeconds must be a number of 0 or more/);
+  assert.match(r.stderr, /minRunIntervalSeconds must be a number of 0 or more/);
   assert.equal(fs.readFileSync(`${repo}/tumwater.json`, "utf8"), before);
   assert.deepEqual(fs.readdirSync(repo).filter((f) => f.includes("tumwater.json")), ["tumwater.json"]);
 });

@@ -59,7 +59,7 @@ test("a stalled run is reported as quiet-killed, not timed out", async (t) => {
 // fire before the child's first bytes exist at all (fork/exec starved by the same load, or
 // bytes written but not yet drained — a firing timer phase precedes the poll phase that
 // delivers stdout). The fix gave a byte-silent run no quiet kill at all; BUGS.md 2026-09-29
-// replaced that unbounded exemption (which delegated its bound to tickTimeoutSeconds, and
+// replaced that unbounded exemption (which delegated its bound to runTimeoutSeconds, and
 // the live 54000 s config left a wedged run 15 hours in a slot) with a finite zero-byte
 // bound of max(two quiet windows, 30 min). This pins that ordinary startup latency — a
 // minute of byte-silence, far past the old single and doubled windows — still does not
@@ -89,7 +89,7 @@ test("a run that is slow to speak is not quiet-killed during startup", async (t)
 });
 
 // BUGS.md 2026-09-29: the 2026-09-23 zero-byte exemption was unbounded — a run that never
-// emits a byte was bounded only by tickTimeoutSeconds, which operators raise for unrelated
+// emits a byte was bounded only by runTimeoutSeconds, which operators raise for unrelated
 // reasons (the live config's 54000 s left a wedged model connection 15 hours in a
 // concurrency slot). The zero-byte bound is now max(two quiet windows, 30 min), independent
 // of the tick timeout. This pins that a byte-silent run is reaped by the quiet watchdog —
@@ -99,7 +99,7 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
   const dir = tmpdir();
   const config = defaultConfig();
   config.quietTimeoutSeconds = 2; // zero-byte bound = max(2 × 2 s, 30 min) = 30 min
-  config.tickTimeoutSeconds = 7200; // far beyond the zero-byte bound: it must not be the reaper
+  config.runTimeoutSeconds = 7200; // far beyond the zero-byte bound: it must not be the reaper
   const clock = watchdogClock(t);
   await withPi(
     // exec so SIGTERM reaches the sleeper directly and the run ends promptly; the script
@@ -125,7 +125,7 @@ test("a run that never emits a byte is quiet-killed at 30 minutes regardless of 
 test("a gate run still progressing at its deadline gets one extension and finishes", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 2;
+  config.runTimeoutSeconds = 2;
   config.quietTimeoutSeconds = 0; // the extension must not depend on the quiet watchdog
   const mid = path.join(dir, "mid");
   const finish = path.join(dir, "finish");
@@ -157,7 +157,7 @@ test("a gate run still progressing at its deadline gets one extension and finish
 test("a gate run that stopped progressing before its deadline is not extended", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 2;
+  config.runTimeoutSeconds = 2;
   const clock = watchdogClock(t, { timeouts: true });
   await withPi(
     [`printf '%s\n' '${assistantLine("reading the diff")}'`, `exec sleep 60`].join("\n"),
@@ -182,7 +182,7 @@ test("a gate run that stopped progressing before its deadline is not extended", 
 test("a gate run's extension is one-shot: the second deadline kills it at twice the budget", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 2;
+  config.runTimeoutSeconds = 2;
   const mid = path.join(dir, "mid");
   const clock = watchdogClock(t, { timeouts: true });
   await withPi(
@@ -211,7 +211,7 @@ test("a gate run's extension is one-shot: the second deadline kills it at twice 
 test("an authoring run is not extended even while it is progressing", async (t) => {
   const dir = tmpdir();
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 2;
+  config.runTimeoutSeconds = 2;
   const mid = path.join(dir, "mid");
   const clock = watchdogClock(t, { timeouts: true });
   await withPi(

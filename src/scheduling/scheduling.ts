@@ -33,7 +33,7 @@ interface EligibilityOptions {
    * per-role enablement are kept as-is. */
   once?: boolean;
   /** New-project bootstrap (plans/work-ratio.md, part 2/2): while active, the plan loop's
-   * min-tick gap is the GLOBAL `minTickIntervalSeconds` rather than its per-role default
+   * min-tick gap is the GLOBAL `minRunIntervalSeconds` rather than its per-role default
    * (3600 s), so a fresh project gets a steady stream of plans for feature instead of one an
    * hour. Every other role's gap is unchanged. */
   bootstrapActive?: boolean;
@@ -102,7 +102,7 @@ export function isEligible(
     runner.config,
     runner.role,
     opts.bootstrapActive === true,
-  ).minTickIntervalSeconds;
+  ).minRunIntervalSeconds;
   const minGap = opts.once ? 0 : minGapSeconds * 1000 * mult;
   const sinceLast = now - (s.lastTickEndedAt ?? 0);
   // An operator wake newer than the gap window's opening tick overrides the interval

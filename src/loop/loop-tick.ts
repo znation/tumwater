@@ -137,7 +137,7 @@ async function markerBearingFiles(wt: string): Promise<string[]> {
  * and observable. */
 export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   const s = ctx.state;
-  // This role's view of the config (per-role provider/model/thinking + minTickIntervalSeconds
+  // This role's view of the config (per-role provider/model/thinking + minRunIntervalSeconds
   // overrides): resolved once so every interval-based scheduling branch honors a slow
   // clock (e.g. the steward's ~6 h) and a live-reloaded config applies from this tick on.
   // New-project bootstrap (plans/work-ratio.md, part 2/2): while active, plan schedules on the
@@ -158,7 +158,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // so a plan on its model fallback during bootstrap still schedules on the global clock.
   let cfg =
     onFallback && fallback !== null
-      ? { ...fallback, minTickIntervalSeconds: primaryCfg.minTickIntervalSeconds }
+      ? { ...fallback, minRunIntervalSeconds: primaryCfg.minRunIntervalSeconds }
       : primaryCfg;
   // Image-input reroute (plans/image-input.md part 4/5). A pending one-shot marker means
   // THIS tick is the blind-read reroute: start directly on the image-capable target the

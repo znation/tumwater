@@ -13,6 +13,9 @@ interface ConfigKeyRename {
 const CONFIG_KEY_RENAMES: readonly ConfigKeyRename[] = [
   { from: "landBatchMax", to: "mergeBatchMax", scope: "top" },
   { from: "maintenancePerWorkLanding", to: "maintenancePerWorkMerge", scope: "top" },
+  { from: "tickTimeoutSeconds", to: "runTimeoutSeconds", scope: "top" },
+  { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "top" },
+  { from: "minTickIntervalSeconds", to: "minRunIntervalSeconds", scope: "role" },
 ];
 
 /** Move every old key of one object to its new name. Returns a copy when anything moved. */

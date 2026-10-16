@@ -40,7 +40,7 @@ async function untrackingBranch(root: string): Promise<string> {
 test("a landing that untracks the config preserves the live file byte-identical", async () => {
   const config =
     '{"provider":"o","model":"m","fallbackModel":{"provider":"f","model":"fm"},' +
-    '"maxConcurrent":3,"tickTimeoutSeconds":54000,"quietTimeoutSeconds":1800,' +
+    '"maxConcurrent":3,"runTimeoutSeconds":54000,"quietTimeoutSeconds":1800,' +
     '"idleBackoff":{"initialSeconds":120,"factor":2,"maxSeconds":36000}}\n';
   const root = trackedConfigRoot(config);
   const parsedBefore = loadConfig(root);

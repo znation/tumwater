@@ -171,8 +171,8 @@ test("an observation with no streak at all reads as healthy", () => {
   );
 });
 
-test("errorStormKnob names tickTimeoutSeconds for the timeout cause and nothing else", () => {
-  assert.equal(errorStormKnob(TIMEOUT_KEY), "tickTimeoutSeconds");
+test("errorStormKnob names runTimeoutSeconds for the timeout cause and nothing else", () => {
+  assert.equal(errorStormKnob(TIMEOUT_KEY), "runTimeoutSeconds");
   assert.equal(errorStormKnob("pi exited 1"), undefined);
   assert.equal(errorStormKnob("rebuild of <sha> failed"), undefined);
 });
@@ -197,8 +197,8 @@ test("pollErrorStorm logs exactly one warning on the crossing, naming the knob, 
   const events = stormEvents();
   assert.equal(events.length, 1);
   const first = events[0]!;
-  assert.equal((first as { knob?: string }).knob, "tickTimeoutSeconds");
-  assert.match(String(first.message), /tickTimeoutSeconds/);
+  assert.equal((first as { knob?: string }).knob, "runTimeoutSeconds");
+  assert.match(String(first.message), /runTimeoutSeconds/);
   assert.match(String(first.message), /clean, coverage, dry/);
 
   // Held, it is silent; a role recovering below the bar clears it silently too.
@@ -223,6 +223,6 @@ test("pollErrorStorm names the knob for a storm of progressing timeouts too", ()
   const storm = pollErrorStorm(root, ERROR_STORM_QUIET, runners);
   assert.equal(storm.key, TIMEOUT_KEY);
   const first = stormEvents()[0]!;
-  assert.equal((first as { knob?: string }).knob, "tickTimeoutSeconds");
-  assert.match(String(first.message), /tickTimeoutSeconds/);
+  assert.equal((first as { knob?: string }).knob, "runTimeoutSeconds");
+  assert.match(String(first.message), /runTimeoutSeconds/);
 });

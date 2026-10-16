@@ -107,7 +107,7 @@ test("once: a round started right after a productive daemon tick still ticks the
   // clock is a full interval away (scheduleAtMinInterval) and backoffSeconds is 0. The
   // round is an explicit demand for a round now, so the role must tick despite the fresh
   // clock — this is the scenario the once-mode clock override exists for (a real config's
-  // minTickIntervalSeconds made the old gap-only override a no-op here).
+  // minRunIntervalSeconds made the old gap-only override a no-op here).
   saveLoopState(repo, {
     ...freshLoopState("clean"),
     ticks: 1,

@@ -103,7 +103,7 @@ test("a run that exits normally leaves no backgrounded tool-call process behind 
   // A backstop, far beyond the test's span: were an orphan ever to hold 'close' open, the run
   // fails on the tick timeout instead of hanging the file.
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 30;
+  config.runTimeoutSeconds = 30;
   const restore = fakePi(
     [
       // The "tool call" runs in its own shell whose stdio is off pi's pipes, as a real tool
@@ -185,7 +185,7 @@ test("the end-of-run sweep reaches a detached tool call's cross-group orphan (re
   );
   // A backstop, far beyond the test's span: a wedged run fails on the tick timeout.
   const config = defaultConfig();
-  config.tickTimeoutSeconds = 30;
+  config.runTimeoutSeconds = 30;
   const restore = fakePi(
     [
       `node ${spawner} ${pidFile}`,

@@ -186,7 +186,7 @@ const PINNED = "a".repeat(40);
 
 /** A config with a small idle backoff so the assertions below stay readable. */
 function testConfig(): TumwaterConfig {
-  const cfg = defaultConfig(); // minTickIntervalSeconds: 20
+  const cfg = defaultConfig(); // minRunIntervalSeconds: 20
   cfg.idleBackoff = { initialSeconds: 30, factor: 2, maxSeconds: 3600 };
   return cfg;
 }
@@ -687,7 +687,7 @@ test("applyTickOutcome: other unproductive outcomes grow the idle backoff and cl
 test("applyTickOutcome: an observer's no_change schedules at its interval without climbing the idle ladder", () => {
   // plans/observer-roles.md 1/2: qa's no_change means "checked, all well", so it must not be
   // punished with a doubling sleep. The interval is the only cadence knob left for it.
-  const cfg = testConfig(); // minTickIntervalSeconds: 20
+  const cfg = testConfig(); // minRunIntervalSeconds: 20
   for (const role of OBSERVER_ROLES) {
     const s = freshLoopState(role);
     s.backoffSeconds = 300; // a grown backoff from an earlier episode — must reset, not build on it
@@ -696,7 +696,7 @@ test("applyTickOutcome: an observer's no_change schedules at its interval withou
     assert.equal(s.backoffSeconds, 0, `${role}: a passing check leaves no backoff`);
     assert.ok(
       s.nextRunAt >= before + 20_000 && s.nextRunAt <= Date.now() + 20_000,
-      `${role}: scheduled at minTickIntervalSeconds, not the idle ladder`,
+      `${role}: scheduled at minRunIntervalSeconds, not the idle ladder`,
     );
   }
   // A non-observer's no_change still climbs the idle ladder, byte-identical to before.

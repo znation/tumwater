@@ -129,7 +129,7 @@ test("a changed tick schedules its next run at the role's own interval, not the 
   // resolution are unit-covered; this pins the link between them — that tick() resolves
   // the per-role override once at the top and hands it to the scheduler. A role with a
   // slow clock (3600 s) over the fast global (20 s) must land its next run ~1 h out, not
-  // 20 s: a read of config.minTickIntervalSeconds directly would have scheduled it in seconds.
+  // 20 s: a read of config.minRunIntervalSeconds directly would have scheduled it in seconds.
   const repo = await initializedRepo();
   const script = [
     APPROVE_PI,
@@ -138,8 +138,8 @@ test("a changed tick schedules its next run at the role's own interval, not the 
   ].join("\n");
   await withPi(script, async () => {
     const config = defaultConfig();
-    assert.equal(config.minTickIntervalSeconds, 20, "the global stays fast");
-    config.roles.improve = { enabled: true, minTickIntervalSeconds: 3600 };
+    assert.equal(config.minRunIntervalSeconds, 20, "the global stays fast");
+    config.roles.improve = { enabled: true, minRunIntervalSeconds: 3600 };
     const runner = makeLoopRunner(repo, "improve", config);
     assert.equal((await runner.tick()).result, "queued");
     // The persisted state — what a restarted process would read — schedules ~1 h out.
@@ -361,7 +361,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
   await withPi([`printf '%s\n' '${assistantLine("starting work")}'`, `exec sleep 60`].join("\n"), async () => {
     const config = defaultConfig();
     config.quietTimeoutSeconds = 1;
-    config.tickTimeoutSeconds = 3600;
+    config.runTimeoutSeconds = 3600;
     const clock = watchdogClock(t);
     const runner = makeLoopRunner(repo, "improve", config);
     const warnings = () => eventsOfType(repo, "warning");

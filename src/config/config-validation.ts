@@ -58,7 +58,7 @@ import {
 /** The upper bound every seconds field that feeds a ×1000 duration shares: 2147483 s
  * × 1000 stays inside node's signed-32-bit setTimeout/setInterval range (2^31−1 ms,
  * about 24.8 days). Above it node clamps the delay to 1ms — a one-zero typo like
- * `"tickTimeoutSeconds": 1e300` became Infinity ms, and every pi run died the moment it
+ * `"runTimeoutSeconds": 1e300` became Infinity ms, and every pi run died the moment it
  * started (BUGS.md 2026-10-03). */
 const MAX_DURATION_SECONDS = 2147483;
 const DURATION_POSITIVE: NumberRule = {
@@ -109,7 +109,7 @@ function checkPerRoleMap(
 }
 
 /** Validate tumwater.json values, so a typo fails fast with an actionable message instead
- * of misbehaving at runtime — e.g. a non-numeric tickTimeoutSeconds becomes NaN and kills
+ * of misbehaving at runtime — e.g. a non-numeric runTimeoutSeconds becomes NaN and kills
  * every pi run instantly, a non-numeric logMaxBytes rotates the event log on every write, an
  * unknown role id (a misspelled entry under `roles`) spawns a phantom loop that errors every
  * tick, and an unknown key is silently ignored so the intended setting never takes effect.
@@ -237,8 +237,8 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   checkNumber(r, "", "mergeBatchMax", POSITIVE_INTEGER);
   checkNumber(r, "", "maxConcurrentChecks", POSITIVE_INTEGER);
   checkNumber(r, "", "worktreeSlots", POSITIVE_INTEGER);
-  checkNumber(r, "", "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
-  checkNumber(r, "", "tickTimeoutSeconds", DURATION_POSITIVE);
+  checkNumber(r, "", "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
+  checkNumber(r, "", "runTimeoutSeconds", DURATION_POSITIVE);
   checkNumber(r, "", "quietTimeoutSeconds", DURATION_OR_DISABLED);
   checkNumber(r, "", "toolCallStallSeconds", DURATION_OR_DISABLED);
   checkNumber(r, "", "logMaxBytes", POSITIVE);
@@ -523,7 +523,7 @@ function checkSelectorValue(
         checkModelTriple(o, `roles.${id}.`, "tier-name");
         checkSelectorHalves(o, `roles.${id}.`, "model", o.provider ?? r.provider, problems);
         checkBoolean(o, `roles.${id}.`, "enabled");
-        checkNumber(o, `roles.${id}.`, "minTickIntervalSeconds", DURATION_NON_NEGATIVE);
+        checkNumber(o, `roles.${id}.`, "minRunIntervalSeconds", DURATION_NON_NEGATIVE);
         // Only feature and bugfix may split (src/roles/loop-ids.ts INSTANCE_ROLES); an
         // instances count under any other role would never spawn a runner, so reject it
         // rather than let the operator believe it did something.

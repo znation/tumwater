@@ -378,13 +378,13 @@ test("gate does not discard the commit when the reviewer run itself fails", asyn
 
 test("a reviewer that outruns review.timeoutSeconds fails in its own budget: commit kept, no strike", async () => {
   // A wedged reviewer must not hold the land queue for a whole authoring tick: its own budget
-  // kills it long before tickTimeoutSeconds, and the kill is a failed RUN (like a dead backend),
+  // kills it long before runTimeoutSeconds, and the kill is a failed RUN (like a dead backend),
   // so the pin stays and the per-HEAD discard counter does not move.
   const { root, wt, head } = await gateFixture();
   await withPi(`exec sleep 60`, async () => { // exec so the kill signal reaches the sleeper directly
       const config = defaultConfig();
       config.review.timeoutSeconds = 2;
-      assert.ok(config.tickTimeoutSeconds > 60); // only the review budget can end this run in time
+      assert.ok(config.runTimeoutSeconds > 60); // only the review budget can end this run in time
       const state = freshLoopState(ROLE);
       const startedAt = Date.now();
       const result = await reviewAheadOfMain({ ...gateCtx(root, wt), config }, state);

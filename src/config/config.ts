@@ -47,29 +47,29 @@ export function defaultConfig(): ResolvedModelConfig {
   // The steward works on a slow clock (~6 h): whole-system curation, not shipping work.
   // Assign the full entry rather than mutating `roles.steward`: under
   // noUncheckedIndexedAccess that index access is `RoleConfig | undefined`.
-  roles.steward = { enabled: true, minTickIntervalSeconds: 21600 };
+  roles.steward = { enabled: true, minRunIntervalSeconds: 21600 };
   // QA exercises the product like a user on a ~2 h clock: user flows change slower than code.
-  roles.qa = { enabled: true, minTickIntervalSeconds: 7200 };
+  roles.qa = { enabled: true, minRunIntervalSeconds: 7200 };
   // Telemetry reads the event log on the same slow clock: the digest is a windowed view, so a
   // tick a couple of hours apart reads a new window rather than re-filing the same cluster.
   // It is the one opt-in role: its evidence is this harness's own event log and its charter
   // files only harness misbehavior, so on any other project every finding is a tumwater bug
   // filed into the wrong backlog, which that project's bugfix loop rightly rejects. Tumwater's
   // own tumwater.example.json enables it, so this repo's checkouts still get it at `init`.
-  roles.telemetry = { enabled: false, minTickIntervalSeconds: 7200 };
+  roles.telemetry = { enabled: false, minRunIntervalSeconds: 7200 };
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
   // nobody had touched. A 30 min readme clock batches a burst of landings into one sync; a 1 h
   // plan clock leaves the slots to the loops that ship. Both still wake early when main moves —
   // the clock only bounds how often.
-  roles.readme = { enabled: true, minTickIntervalSeconds: 1800 };
-  roles.plan = { enabled: true, minTickIntervalSeconds: 3600 };
+  roles.readme = { enabled: true, minRunIntervalSeconds: 1800 };
+  roles.plan = { enabled: true, minRunIntervalSeconds: 3600 };
   // Organize on a 1 h clock: at the global 20 s clock it landed 45 of 86 commits in four hours
   // (2026-10-05/06), a whole-tree reorg one directory at a time, each move conflicting with
   // every in-flight branch. Restructuring pays off at a slower rate than code changes, and
   // fewer, better-considered runs suit its larger changes (its scope is not the others').
-  roles.organize = { enabled: true, minTickIntervalSeconds: 3600 };
+  roles.organize = { enabled: true, minRunIntervalSeconds: 3600 };
   return {
     // The agent backend for bare selectors and the no-model default (plans/agent-backends.md
     // "Config"): pi, the historical backend.
@@ -86,12 +86,12 @@ export function defaultConfig(): ResolvedModelConfig {
     // Two suites at once: one landing can verify while the next author's gate check runs,
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,
-    minTickIntervalSeconds: 20,
+    minRunIntervalSeconds: 20,
     // Four hours: the largest tick a hosted model legitimately took and still landed work
     // measured 185 minutes (BUGS.md 2026-09-29), so 30 minutes discarded real work and burned
     // every resume before the task could finish. A run that stops making progress is still
     // bounded earlier by the quiet watchdog, not by this cap.
-    tickTimeoutSeconds: 4 * 60 * 60,
+    runTimeoutSeconds: 4 * 60 * 60,
     quietTimeoutSeconds: 1800,
     // Five minutes of command silence is well past any legitimate prefill or slow scan, and
     // lands long before the quiet watchdog's kill — the warning names what is hung while there

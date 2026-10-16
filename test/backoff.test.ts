@@ -189,7 +189,7 @@ test("scheduleAtMinInterval: the productive-side cadence is the role's own min i
   const s = freshLoopState("readme");
   const before = Date.now();
 
-  scheduleAtMinInterval(s, { minTickIntervalSeconds: 120 });
+  scheduleAtMinInterval(s, { minRunIntervalSeconds: 120 });
 
   assert.ok(s.nextRunAt >= before + 120_000);
   assert.ok(s.nextRunAt <= Date.now() + 120_000 + 50);

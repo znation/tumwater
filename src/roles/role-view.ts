@@ -281,7 +281,7 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     ...(account !== null ? { billing: account.billing } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
-    minTickIntervalSeconds: effective.minTickIntervalSeconds,
+    minTickIntervalSeconds: effective.minRunIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
     note,

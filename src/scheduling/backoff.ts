@@ -75,7 +75,7 @@ export function pushYieldOutcome(s: LoopState, result: TickResult): void {
 
 const YIELD_MAX = 8;
 
-/** The multiplier on a scalable role's minTickIntervalSeconds gap its recent yield earns:
+/** The multiplier on a scalable role's minRunIntervalSeconds gap its recent yield earns:
  * 1 while any of the last 10 counted ticks landed, otherwise doubling per 5 further empty
  * ticks — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8. `recent` is the ring's chars, oldest
  * first, as pushYieldOutcome recorded them. Pure; unit-tested beside the other ladder math.
@@ -127,11 +127,11 @@ export function scheduleBackoff(s: LoopState, ladder: BackoffConfig): void {
 }
 
 /** Schedule the loop's next tick at its minimum interval — the role-resolved config's
- * minTickIntervalSeconds (a per-role slow clock), converted seconds→ms here so every outcome
+ * minRunIntervalSeconds (a per-role slow clock), converted seconds→ms here so every outcome
  * arm that shares this cadence cannot drift apart. The productive-side counterpart of
  * scheduleBackoff: together the two own the whole "when does this loop run again" decision. */
-export function scheduleAtMinInterval(s: LoopState, cfg: { minTickIntervalSeconds: number }): void {
-  s.nextRunAt = Date.now() + cfg.minTickIntervalSeconds * 1000;
+export function scheduleAtMinInterval(s: LoopState, cfg: { minRunIntervalSeconds: number }): void {
+  s.nextRunAt = Date.now() + cfg.minRunIntervalSeconds * 1000;
 }
 
 /** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model

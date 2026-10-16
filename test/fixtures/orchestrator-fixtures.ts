@@ -71,16 +71,16 @@ export function readSamples(runDir: string): number[] {
  * wholesale, and configForRole prefers the per-role value — leaving them would put a
  * `fastConfig(["organize"])` fleet on a 1 h tick clock (2026-10-06 CI regression). Only
  * the SEEDED clocks are cleared, so a role without a default clock still inherits the
- * global `minTickIntervalSeconds` a caller sets afterwards (the vet-abort test's 300 s
+ * global `minRunIntervalSeconds` a caller sets afterwards (the vet-abort test's 300 s
  * freeze relies on that). */
 export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   const c = defaultConfig();
   if (model) c.model = model;
-  c.minTickIntervalSeconds = 0;
+  c.minRunIntervalSeconds = 0;
   c.idleBackoff = { initialSeconds: 1, factor: 1, maxSeconds: 1 };
   for (const id of Object.keys(c.roles)) {
     c.roles[id]!.enabled = roles.includes(id);
-    if (c.roles[id]!.minTickIntervalSeconds !== undefined) c.roles[id]!.minTickIntervalSeconds = 0;
+    if (c.roles[id]!.minRunIntervalSeconds !== undefined) c.roles[id]!.minRunIntervalSeconds = 0;
   }
   return c;
 }

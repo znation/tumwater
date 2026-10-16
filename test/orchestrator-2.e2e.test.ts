@@ -132,7 +132,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
   // hour in the past; this one seeds the fresh-tick shape the operator actually hits.
   const repo = await makeFastRepo("wake vs min gap test", ["clean"]);
   const cfg = loadConfig(repo);
-  cfg.roles.clean = { enabled: true, minTickIntervalSeconds: 3600 };
+  cfg.roles.clean = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
   // Ticked moments ago, productive clock hours out, not backing off, main unmoved.
   const seeded = freshLoopState("clean");
@@ -171,7 +171,7 @@ test("a queued per-role prompt pulls a slow-clock loop in even when its wake was
   // queued prompt is due on its own existence and the next poll runs it.
   const repo = await makeFastRepo("clobbered wake queue due test", ["clean"]);
   const cfg = loadConfig(repo);
-  cfg.roles.clean = { enabled: true, minTickIntervalSeconds: 3600 };
+  cfg.roles.clean = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
   // The in-flight tick just ended: fresh gap, hours-out clock, no wokenAt — the end-save
   // already won. The queued prompt is the only trace of the request.
@@ -208,7 +208,7 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
   // within a poll, exactly like a wake arriving after the tick ended.
   const repo = await makeFastRepo("mid-tick wake test", ["feature"]);
   const cfg = loadConfig(repo);
-  cfg.roles.feature = { enabled: true, minTickIntervalSeconds: 3600 };
+  cfg.roles.feature = { enabled: true, minRunIntervalSeconds: 3600 };
   saveConfig(repo, cfg);
   const seeded = freshLoopState("feature");
   seeded.lastMainHead = "";

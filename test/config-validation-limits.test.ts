@@ -130,7 +130,7 @@ test("maxDailyCostUsd rejects a finite-but-unrepresentable cap past MAX_SAFE_INT
 
 test("duration-seconds fields reject values whose milliseconds overflow node's timer range", () => {
   // BUGS.md 2026-10-03: the seconds rules admitted any finite number, so a one-zero typo
-  // (`{"tickTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/agent/run-agent.ts — and
+  // (`{"runTimeoutSeconds": 1e300}`) multiplied to Infinity ms in src/agent/run-agent.ts — and
   // node's setTimeout/setInterval clamp a delay that does not fit in a signed 32-bit integer
   // down to 1ms (verified: a setTimeout(1e300*1000) fired ~2ms later), killing every pi run the
   // moment it started. All seconds fields that feed a ×1000 duration share one bound:
@@ -138,8 +138,8 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
   const MAX_DURATION_SECONDS = 2147483;
   const tooBig = 1e300;
   assert.match(
-    validationError({ ...defaultConfig(), tickTimeoutSeconds: tooBig }),
-    new RegExp(`tickTimeoutSeconds must be a number greater than 0, at most ${MAX_DURATION_SECONDS}`),
+    validationError({ ...defaultConfig(), runTimeoutSeconds: tooBig }),
+    new RegExp(`runTimeoutSeconds must be a number greater than 0, at most ${MAX_DURATION_SECONDS}`),
   );
   assert.match(
     validationError({ ...defaultConfig(), quietTimeoutSeconds: tooBig }),
@@ -150,8 +150,8 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
     new RegExp(`toolCallStallSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS} \\(0 disables\\)`),
   );
   assert.match(
-    validationError({ ...defaultConfig(), minTickIntervalSeconds: tooBig }),
-    new RegExp(`minTickIntervalSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS}`),
+    validationError({ ...defaultConfig(), minRunIntervalSeconds: tooBig }),
+    new RegExp(`minRunIntervalSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS}`),
   );
   assert.match(
     validationError({ ...defaultConfig(), check: { command: "npm test", timeoutSeconds: tooBig } }),
@@ -166,7 +166,7 @@ test("duration-seconds fields reject values whose milliseconds overflow node's t
     new RegExp(`idleBackoff\\.initialSeconds must be a number of 0 or more, at most ${MAX_DURATION_SECONDS}`),
   );
   // The bound itself is representable: every default sits far inside it.
-  assert.equal(validateConfig({ ...defaultConfig(), tickTimeoutSeconds: MAX_DURATION_SECONDS }), undefined);
+  assert.equal(validateConfig({ ...defaultConfig(), runTimeoutSeconds: MAX_DURATION_SECONDS }), undefined);
   assert.equal(validateConfig({ ...defaultConfig() }), undefined);
 });
 

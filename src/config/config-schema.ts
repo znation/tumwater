@@ -60,7 +60,7 @@ export interface RoleConfig {
   thinking?: string;
   /** Minimum seconds between two ticks of THIS role, overriding the top-level value — a
    * slow clock for roles that should act rarely (the steward curates on ~6 h). */
-  minTickIntervalSeconds?: number;
+  minRunIntervalSeconds?: number;
   /** How many parallel runners this role may have (plans/parallel-work-instances.md, part
    * 5/7): the bare id is instance 1, and `feature-2`…`feature-N` are the rest. Integer 1–8,
    * valid only under the `INSTANCE_ROLES` (`feature`, `bugfix`); absent means 1. */
@@ -101,7 +101,7 @@ interface ReviewConfig {
   /** pi thinking-level override for reviewer runs; falls back to the top-level value. */
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
-   * tickTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
+   * runTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
    * so one wedged reviewer cannot hold the land queue for a whole authoring tick. A reviewer
    * (and the landing conflict resolver, which shares the gate's wiring) that is still making
    * progress at the deadline receives one extension of the same length before it is killed. */
@@ -257,9 +257,9 @@ export interface TumwaterConfig {
    * `maxConcurrent` is allowed — permit holders then wait for a slot to free. */
   worktreeSlots?: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */
-  minTickIntervalSeconds: number;
+  minRunIntervalSeconds: number;
   /** Hard cap on a single pi run, in seconds. */
-  tickTimeoutSeconds: number;
+  runTimeoutSeconds: number;
   /** Kill a pi run when it emits NO output for this many seconds (0 disables). A healthy
    * run streams events continuously even when slow; prolonged silence means a hung tool
    * (interactive command, zombie socket) that would otherwise burn the whole tick timeout. */
@@ -384,7 +384,7 @@ export interface TumwaterConfig {
 /** Every key tumwater.json may hold, by level. Anything else is a typo that would be
  * silently ignored at runtime — the intended setting falls back to its default with no
  * warning — so validation (config-validation.ts's checkKnownKeys, fed from these tables)
- * fails fast instead (e.g. `tickTimeoutSecondss` does nothing). Kept in sync with the
+ * fails fast instead (e.g. `runTimeoutSecondss` does nothing). Kept in sync with the
  * interfaces above in this same file: adding a key edits the interface and its level's
  * list side by side. */
 export const TOP_LEVEL_KEYS = [
@@ -402,8 +402,8 @@ export const TOP_LEVEL_KEYS = [
   "mergeBatchMax",
   "maxConcurrentChecks",
   "worktreeSlots",
-  "minTickIntervalSeconds",
-  "tickTimeoutSeconds",
+  "minRunIntervalSeconds",
+  "runTimeoutSeconds",
   "quietTimeoutSeconds",
   "toolCallStallSeconds",
   "logMaxBytes",
@@ -454,7 +454,7 @@ export const ROLE_ENTRY_KEYS = [
   "provider",
   "model",
   "thinking",
-  "minTickIntervalSeconds",
+  "minRunIntervalSeconds",
   "instances",
 ];
 

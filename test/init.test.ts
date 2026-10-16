@@ -595,7 +595,7 @@ test("initProject seeds the config from a tracked tumwater.example.json and keep
   const repo = makeRepo();
   fs.writeFileSync(
     exampleConfigPath(repo),
-    JSON.stringify({ minTickIntervalSeconds: 45, review: { enabled: false } }),
+    JSON.stringify({ minRunIntervalSeconds: 45, review: { enabled: false } }),
   );
   sh(repo, "git", "add", "-A");
   sh(repo, "git", "commit", "-m", "ship a template");
@@ -604,7 +604,7 @@ test("initProject seeds the config from a tracked tumwater.example.json and keep
 
   // Seeded from the template, with the same merge behavior loadConfig applies to a file.
   const cfg = loadConfig(repo);
-  assert.equal(cfg.minTickIntervalSeconds, 45);
+  assert.equal(cfg.minRunIntervalSeconds, 45);
   assert.deepEqual(cfg.review, { ...defaultConfig().review, enabled: false });
   assert.equal(cfg.maxConcurrent, defaultConfig().maxConcurrent);
 
@@ -624,7 +624,7 @@ test("initProject seeds defaults when the template is malformed", async () => {
   const result = await initProject(repo, "prompt");
   assert.ok(result.created.includes("tumwater.json"));
   // Seeding never throws: a bad template falls back to the defaults.
-  assert.equal(loadConfig(repo).minTickIntervalSeconds, defaultConfig().minTickIntervalSeconds);
+  assert.equal(loadConfig(repo).minRunIntervalSeconds, defaultConfig().minRunIntervalSeconds);
 });
 
 test("a repo that only gains a config reports it and stays uncommitted", async () => {

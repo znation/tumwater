@@ -163,7 +163,7 @@ test("a run killed before its result still flushes the last assistant message", 
     { extraScript: ['cat "$streamFile"', "exec sleep 60"] },
   async () => {
     const run = claudeRun(dir, {
-      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", tickTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
+      config: { ...defaultConfig(), agent: "claude", model: "claude-sonnet-5-5", runTimeoutSeconds: 5, quietTimeoutSeconds: 1 },
     });
     const result = await runAgent(run);
     assert.equal(result.ok, false, "the killed run is a failure");

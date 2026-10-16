@@ -268,7 +268,7 @@ test("unset of a default-carrying key or a default-seeded role field the file ne
   const root = makeRepo();
   // Minimal raw file: no trailing newline, no defaults expanded, so any write at all changes
   // the bytes. maxConcurrent and quietHours live only in the merged defaults; roles.qa seeds
-  // minTickIntervalSeconds 7200. None is in the file, so none is anything to remove.
+  // minRunIntervalSeconds 7200. None is in the file, so none is anything to remove.
   writeConfig(root, { maxDailyCostUsdPerRole: { qa: 2 } });
   const file = path.join(root, "tumwater.json");
   const before = fs.readFileSync(file, "utf8");
@@ -280,11 +280,11 @@ test("unset of a default-carrying key or a default-seeded role field the file ne
     assert.equal(fs.readFileSync(file, "utf8"), before, `${key}: the no-op left the file byte-identical`);
   }
 
-  const seeded = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.minTickIntervalSeconds"]));
+  const seeded = await attemptAsync(() => cmdConfig(root, ["unset", "roles.qa.minRunIntervalSeconds"]));
   assert.ok(!seeded.exited, seeded.stderr);
   assert.equal(
     seeded.stdout,
-    "unset roles.qa.minTickIntervalSeconds\n",
+    "unset roles.qa.minRunIntervalSeconds\n",
     "a default the operator never wrote reports no removed value",
   );
   assert.equal(fs.readFileSync(file, "utf8"), before, "the seeded-field no-op left the file byte-identical");

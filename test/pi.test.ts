@@ -93,7 +93,7 @@ test("runPi's spawn-error message names the resolved binary and its source", asy
  * collecting the stall warnings. `configure` mutates the watchdogs before the run; `during`
  * runs once the call is on the raw log — before the run ends — and receives the logical clock
  * and the warnings so far, so a test can advance time and inspect a warning mid-run. Set
- * `timeouts: true` to mock the tick deadline (config.tickTimeoutSeconds) too. Returns the run
+ * `timeouts: true` to mock the tick deadline (config.runTimeoutSeconds) too. Returns the run
  * result and the warnings. */
 async function withStalledToolCall(
   t: TestContext,
@@ -310,7 +310,7 @@ test("an unbuffered call silent past a minute warns in whole minutes", async (t)
     command: "sleep 999",
     timeouts: true,
     configure: (config) => {
-      config.tickTimeoutSeconds = 700; // the deadline ends the run after the warning
+      config.runTimeoutSeconds = 700; // the deadline ends the run after the warning
       config.quietTimeoutSeconds = 0; // the quiet kill must not win before the 2-minute warning
       config.toolCallStallSeconds = 120; // the first check to see silence is at ~2 min, past 60 s
     },
@@ -339,7 +339,7 @@ test("disabling both quiet and stall windows leaves only the tick deadline, with
     command: "sleep 999",
     timeouts: true,
     configure: (config) => {
-      config.tickTimeoutSeconds = 2;
+      config.runTimeoutSeconds = 2;
       config.quietTimeoutSeconds = 0;
       config.toolCallStallSeconds = 0;
     },

@@ -93,7 +93,7 @@ export function normalizeClusterKey(message: string): string {
 
 /** normalizeClusterKey's rendering of the two tick-timeout errors src/agent/run-agent.ts emits —
  * the plain kill and the still-making-progress variant (session and worktree edits preserved
- * for resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (tickTimeoutSeconds),
+ * for resume, BUGS.md 2026-09-29). Both are one cause pointing at one knob (runTimeoutSeconds),
  * so every consumer that counts by cluster key pools them under the plain one. */
 export const TICK_TIMEOUT_KEY = "timed out after <dur>";
 const TICK_TIMEOUT_PROGRESSING_KEY =

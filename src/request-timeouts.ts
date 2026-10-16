@@ -10,9 +10,9 @@ export function cappedRequestTimeouts(
   cfg: TumwaterConfig,
   tickCapS: number,
   quietCapS: number,
-): Pick<TumwaterConfig, "tickTimeoutSeconds" | "quietTimeoutSeconds"> {
+): Pick<TumwaterConfig, "runTimeoutSeconds" | "quietTimeoutSeconds"> {
   return {
-    tickTimeoutSeconds: Math.min(cfg.tickTimeoutSeconds, tickCapS),
+    runTimeoutSeconds: Math.min(cfg.runTimeoutSeconds, tickCapS),
     quietTimeoutSeconds:
       cfg.quietTimeoutSeconds > 0 ? Math.min(cfg.quietTimeoutSeconds, quietCapS) : quietCapS,
   };

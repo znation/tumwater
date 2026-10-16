@@ -25,7 +25,7 @@ test("show renders the offending value honestly and compactly", () => {
   assert.equal(show(Number.POSITIVE_INFINITY), "Infinity");
   assert.equal(show(Number.NEGATIVE_INFINITY), "-Infinity");
   assert.equal(show(Number.NaN), "NaN");
-  assert.match(validationError({ tickTimeoutSeconds: Number.POSITIVE_INFINITY }), /\(got Infinity\)/);
+  assert.match(validationError({ runTimeoutSeconds: Number.POSITIVE_INFINITY }), /\(got Infinity\)/);
   // An absent key and a present-but-short value keep their existing rendering.
   assert.equal(show(undefined), "missing");
   assert.equal(show("40"), '"40"');
@@ -45,8 +45,8 @@ test("validateConfig accepts defaults and fully valid overrides", () => {
       thinking: "high",
       piArgs: ["--foo"],
       maxConcurrent: 2,
-      minTickIntervalSeconds: 0,
-      tickTimeoutSeconds: 60,
+      minRunIntervalSeconds: 0,
+      runTimeoutSeconds: 60,
       logMaxBytes: 1024,
       sessionRetentionDays: 3,
       idleBackoff: { initialSeconds: 5, factor: 1.5, maxSeconds: 60 },
@@ -262,23 +262,23 @@ test("validateConfig rejects a backoff max below the initial it would clamp away
 test("validateConfig reports every invalid value in one error", () => {
   const msg = validationError({
     maxConcurrent: -3,
-    tickTimeoutSeconds: "90m",
+    runTimeoutSeconds: "90m",
     logMaxBytes: 0,
     piArgs: "--verbose",
     idleBackoff: { factor: 0 },
-    roles: { clean: { enabled: "false" }, feature: { minTickIntervalSeconds: -5 } },
+    roles: { clean: { enabled: "false" }, feature: { minRunIntervalSeconds: -5 } },
   });
   assert.match(msg, /^invalid tumwater\.json:/);
   for (const field of [
     "maxConcurrent must be an integer of at least 1 (got -3)",
-    'tickTimeoutSeconds must be a number greater than 0, at most 2147483 (got "90m")',
+    'runTimeoutSeconds must be a number greater than 0, at most 2147483 (got "90m")',
     "logMaxBytes must be a number greater than 0 (got 0)",
     'piArgs must be an array of strings (got "--verbose")',
     "idleBackoff.factor must be a number of at least 1 (got 0)",
     'roles.clean.enabled must be true or false (got "false")',
     // AC3 (plans/steward-role.md): the per-role slow clock is validated like its siblings —
     // a negative interval would schedule ticks in the past and spin the loop.
-    "roles.feature.minTickIntervalSeconds must be a number of 0 or more, at most 2147483 (got -5)",
+    "roles.feature.minRunIntervalSeconds must be a number of 0 or more, at most 2147483 (got -5)",
   ]) {
     assert.ok(msg.includes(field), `error message should mention: ${field}`);
   }
@@ -527,10 +527,10 @@ test("validateConfig guards the review section like its sibling sections", () =>
 
 test("validateConfig rejects unknown keys with the valid ones listed", () => {
   // A misspelled key would otherwise be silently ignored and the default used.
-  const top = validationError({ tickTimeoutSecondss: 90 });
-  assert.match(top, /unknown key "tickTimeoutSecondss" in tumwater\.json \(valid keys: .*tickTimeoutSeconds.*\)/);
+  const top = validationError({ runTimeoutSecondss: 90 });
+  assert.match(top, /unknown key "runTimeoutSecondss" in tumwater\.json \(valid keys: .*runTimeoutSeconds.*\)/);
   // The near miss gets the shared did-you-mean, same as `tumwater config set`.
-  assert.match(top, /— did you mean `tickTimeoutSeconds`\?/);
+  assert.match(top, /— did you mean `runTimeoutSeconds`\?/);
 
   const backoff = validationError({ idleBackoff: { factorr: 2 } });
   assert.match(backoff, /unknown key "factorr" in idleBackoff \(valid keys: initialSeconds, factor, maxSeconds\)/);
@@ -539,7 +539,7 @@ test("validateConfig rejects unknown keys with the valid ones listed", () => {
   const roleEntry = validationError({ roles: { feature: { enabed: true } } });
   assert.match(
     roleEntry,
-    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minTickIntervalSeconds, instances\)/,
+    /unknown key "enabed" in roles\.feature \(valid keys: enabled, instructions, provider, model, thinking, minRunIntervalSeconds, instances\)/,
   );
   assert.match(roleEntry, /— did you mean `enabled`\?/);
 

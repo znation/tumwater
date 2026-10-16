@@ -144,7 +144,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // but not yet drained (a firing timer phase precedes the poll phase that delivers
   // stdout, and a suspended machine resumes the same way). The 2026-09-23 fix therefore
   // gave a byte-silent run no quiet kill at all, delegating its bound to the tick timeout
-  // — which holds only while tickTimeoutSeconds is near the quiet window's scale (BUGS.md
+  // — which holds only while runTimeoutSeconds is near the quiet window's scale (BUGS.md
   // 2026-09-29: the live 54000 s config left a wedged model connection 15 hours in a
   // concurrency slot). A zero-byte run now gets a finite bound of its own, independent of
   // the tick timeout: max(two quiet windows, 30 min). Startup latency under healthy load

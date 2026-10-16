@@ -187,7 +187,7 @@ export function resolveTierFallbacks(
 /** The config a role's ticks run on while a model-fallback episode is active (PLANS.md "Model
  * failure fallback, part 1/2"): the role's tier pair from resolveTierFallbacks (the tier's own
  * pair, else BORROW_ORDER's borrow), shaped like configForRole — provider/model/thinking over
- * the role's own and top-level values, plus the role's minTickIntervalSeconds. Null when the
+ * the role's own and top-level values, plus the role's minRunIntervalSeconds. Null when the
  * tier resolves to pause (no fallback configured), so the feature stays off. Pure. */
 export function fallbackRoleConfig(config: TumwaterConfig, role: string): ResolvedModelConfig | null {
   const tier = roleSeamTier(config, role);
@@ -200,7 +200,7 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
       model: pair.model,
       thinking: pair.thinking,
     }),
-    minTickIntervalSeconds: rc?.minTickIntervalSeconds ?? config.minTickIntervalSeconds,
+    minRunIntervalSeconds: rc?.minRunIntervalSeconds ?? config.minRunIntervalSeconds,
   };
 }
 
@@ -382,7 +382,7 @@ function freeRoleModels(
  * reviewer's time budget, raised to at least FALLBACK_REVIEW_TIMEOUT_S: a budget sized for the
  * budgeted model's turns times out every review on a slower free one (a configured
  * `review.timeoutSeconds` above the floor stands, and reviewRunConfig still caps it at
- * tickTimeoutSeconds). Everything else (intervals, thresholds, exempt paths, the cap itself) is
+ * runTimeoutSeconds). Everything else (intervals, thresholds, exempt paths, the cap itself) is
  * unchanged when no fallback is configured. With a per-tier `resolved` map (resolveTierFallbacks,
  * part 5a/8) the model map is rewritten to the resolved pairs instead — each seam keeps its
  * tier: `model[tier]` becomes the tier's pair as a selector string, a tier resolved to pause

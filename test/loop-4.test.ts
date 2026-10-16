@@ -61,7 +61,7 @@ test("a transient timeout that also hits the harness timeout is not retried", as
     ].join("\n"),
     async () => {
       const config = defaultConfig();
-      config.tickTimeoutSeconds = 3;
+      config.runTimeoutSeconds = 3;
       // The tick timeout on logical time (watchdogClock with timeouts): it fires once the shim
       // has printed its error line — on the wall clock a 1s budget could expire during process
       // spawn under load, before the shim printed anything at all (BUGS.md 2026-09-18). A retry

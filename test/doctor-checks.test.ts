@@ -567,12 +567,12 @@ test("checkInit warns naming drifted template keys, never rewrites, and its reme
   const root = readyRepo();
   fs.writeFileSync(
     path.join(root, "tumwater.example.json"),
-    JSON.stringify({ minTickIntervalSeconds: 45, mergeBatchMax: 2 }),
+    JSON.stringify({ minRunIntervalSeconds: 45, mergeBatchMax: 2 }),
   );
   const before = fs.readFileSync(path.join(root, "tumwater.json"), "utf8");
   const warn = checkInit(root);
   assert.equal(warn.level, "warn");
-  assert.match(warn.detail, /minTickIntervalSeconds, mergeBatchMax/);
+  assert.match(warn.detail, /minRunIntervalSeconds, mergeBatchMax/);
   assert.match(warn.detail, /re-run `tumwater init`/);
   // Read-only: the warning never touches the local file.
   assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), before);
@@ -584,7 +584,7 @@ test("checkInit warns naming drifted template keys, never rewrites, and its reme
   const ok = checkInit(root);
   assert.equal(ok.level, "ok");
   assert.match(ok.detail, /roles enabled/);
-  assert.equal(loadConfig(root).minTickIntervalSeconds, 45);
+  assert.equal(loadConfig(root).minRunIntervalSeconds, 45);
 });
 
 test("checkInit warns on a template that cannot serve as one, naming the file and the fix", async () => {
@@ -605,13 +605,13 @@ test("checkInit warns on a template that cannot serve as one, naming the file an
   assert.match(invalid.detail, /invalid tumwater\.example\.json/);
 
   // The template problem outranks drift: the drift parse has already failed.
-  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ noSuchKey: true, minTickIntervalSeconds: 45 }));
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ noSuchKey: true, minRunIntervalSeconds: 45 }));
   const both = checkInit(root);
   assert.equal(both.level, "warn");
   assert.doesNotMatch(both.detail, /template drift/);
 
   // A valid template restores the ordinary paths: no warn, drift wording again.
-  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ minTickIntervalSeconds: 45 }));
+  fs.writeFileSync(path.join(root, "tumwater.example.json"), JSON.stringify({ minRunIntervalSeconds: 45 }));
   const healthy = checkInit(root);
   assert.equal(healthy.level, "warn"); // drift reappears: tumwater.json lacks the key again
   assert.match(healthy.detail, /template drift/);
