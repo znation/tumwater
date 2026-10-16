@@ -16,6 +16,10 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   let drawerRole = null; // the open loop's /api/role payload: { role, state: "loading"|"ok"|"error", view, message }
   const openEntryKey = () => (drawer && drawer.kind === "entry" ? drawer.file + ":" + drawer.index : null);
   const openLoopRole = () => (drawer && drawer.kind === "loop" ? drawer.role : null);
+  // One key/value row builder shared by the loop-metrics table (renderLoopDrawer) and the
+  // Configuration section (drawerConfigHtml): identical markup, formerly copy-pasted into two
+  // local consts (kv and row) so the row shape could drift between the two sections.
+  const kvRow = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
 
   function showDrawer(bodyHtml) {
     for (const id of ["drawerhead", "draweractions", "drawermeta", "drawerrole", "transcript", "entrybody"]) delete lastPaint[id];
@@ -136,7 +140,6 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     const why = resultWhy(l);
     const last = "<section><div class='sec-head'><h3>Last result</h3>" + (l.lastTickEndedAt ? "<span class='muted' style='font-size:13px'>" + esc(fmtAgo(l.lastTickEndedAt)) + "</span>" : "") +
       "</div><div class='note'>" + (r ? "<span class='res t-" + r.tone + "'>" + esc(r.label) + "</span>" + (why ? " — " + esc(why) : "") : "<span class='muted'>No completed ticks yet.</span>") + "</div></section>";
-    const kv = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
     const next = fmtNextRun(l, d.running);
     // fmtNextRun's shapes: "-", "now" (possibly with a " ×N" yield suffix), and a bare or
     // "backoff "-prefixed countdown. A backoff countdown keeps the label but as a suffix;
@@ -146,12 +149,12 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : next.startsWith("backoff ") ? "in " + next.slice(8) + " (backoff)"
       : "in " + next;
     const tickWord = info.live ? "this tick" : "last tick";
-    const stats = "<dl class='kv'>" + kv("Commits", String(l.commits)) + kv("Ticks", String(l.ticks)) +
-      kv("Tokens, " + tickWord, fmtTokens(l.generated)) + kv("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
-      kv("Spent today", fmtUsd(l.todayUsd)) + kv("Spent in total", fmtUsd(l.costUsd)) +
-      kv("Last tick ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
-      kv("Last landed", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
-      kv("Next run", nextNote) + "</dl>";
+    const stats = "<dl class='kv'>" + kvRow("Commits", String(l.commits)) + kvRow("Ticks", String(l.ticks)) +
+      kvRow("Tokens, " + tickWord, fmtTokens(l.generated)) + kvRow("Peak context, " + tickWord, fmtTokens(l.peakCtx)) +
+      kvRow("Spent today", fmtUsd(l.todayUsd)) + kvRow("Spent in total", fmtUsd(l.costUsd)) +
+      kvRow("Last tick ended", l.lastTickEndedAt ? fmtAgo(l.lastTickEndedAt) : "never", fmtLastTick(l.lastTickEndedAt)) +
+      kvRow("Last landed", l.lastLandedAt ? fmtAgo(l.lastLandedAt) : "never") +
+      kvRow("Next run", nextNote) + "</dl>";
     const ticks = drawerTicks === null
       ? "<p class='muted'>Loading…</p>"
       : drawerTicks.length
@@ -282,7 +285,6 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
   // role-render.ts's family; no backticks allowed here (this whole script is one big
   // String.raw template).
   function drawerConfigHtml(view) {
-    const row = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
     const pair = (p, m) => [p, m].filter(Boolean).join("/");
     const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
     // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
@@ -298,33 +300,33 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       : "";
     const modelLine = defaultLine !== "" ? defaultLine : pair(view.provider, view.model);
     if (modelLine !== "" || view.modelTier !== undefined) {
-      rows.push(row("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
+      rows.push(kvRow("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }
     if (view.providerKey !== undefined && view.providerCap !== undefined) {
-      rows.push(row("Provider", view.providerKey + " (cap " + view.providerCap + ")"));
+      rows.push(kvRow("Provider", view.providerKey + " (cap " + view.providerCap + ")"));
     }
     if (view.imageInput !== undefined) {
       const images = view.imageInput === true ? "yes"
         : view.imageInput === false ? (view.imageReroute ? "no — reruns on " + view.imageReroute : "no")
         : "unknown";
-      rows.push(row("Images", images));
+      rows.push(kvRow("Images", images));
     }
     if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
       const fb = view.modelFallback;
       const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";
-      rows.push(row("Model fallback", pair(fb.provider, fb.model) + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
+      rows.push(kvRow("Model fallback", pair(fb.provider, fb.model) + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
     }
     if (view.fallback && typeof view.fallback === "object" && view.fallback.model !== undefined) {
-      rows.push(row("Budget fallback", pair(view.fallback.provider, view.fallback.model) + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
+      rows.push(kvRow("Budget fallback", pair(view.fallback.provider, view.fallback.model) + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
     }
     if (view.billing !== undefined) {
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
-      rows.push(row("Billing", (view.billing === "api" ? "API" : view.billing) + window));
+      rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
-    if (typeof view.minTickIntervalSeconds === "number") rows.push(row("Min tick interval", view.minTickIntervalSeconds + "s"));
-    if (typeof view.inboxCount === "number") rows.push(row("Queued prompts", String(view.inboxCount)));
-    if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(row("Instructions override", clamp(view.instructions), view.instructions));
-    if (typeof view.find === "string" && view.find.trim() !== "") rows.push(row("Find text", clamp(view.find), view.find));
+    if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min tick interval", view.minTickIntervalSeconds + "s"));
+    if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
+    if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(kvRow("Instructions override", clamp(view.instructions), view.instructions));
+    if (typeof view.find === "string" && view.find.trim() !== "") rows.push(kvRow("Find text", clamp(view.find), view.find));
     return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";
   }
   // An open notebook edit holds the draft's starting text, not the live payload, so a poll
