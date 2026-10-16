@@ -3639,6 +3639,25 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater backlog --ready` shows only the plans and bugs no hold keeps from being picked (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/cli/cli-query-commands.ts` `cmdBacklog`, `src/backlog/backlog-render.ts`, `src/cli/cli-flag-specs.ts`, `src/cli/help.ts`, and `docs/cli.md`. The in-flight working-on-it-mark plan touches only `docs/cli.md`'s "Steer the project" row, and this one touches only its "Check state" row)
+
+**Goal.** `tumwater backlog` prints every planned plan and open bug with its full body. In this repo that is more than 100 plans, nearly all of them `[blocked: requires …]`, so the few entries a role could pick next are buried in thousands of lines. The holds are already computed (`backlogHolds` in `src/backlog/backlog-eligibility.ts`) and printed as heading marks. Nothing filters on them. An operator asking "what will feature or bugfix pick up next?" has to page through the whole listing or post-process `--json`.
+
+**Approach.**
+- `src/cli/cli-flag-specs.ts`: add `export const READY_FLAG: FlagSpec = { names: ["--ready"] };` beside `JSON_FLAG`, with a one-line doc comment in the style of its value-less siblings (`STAT_FLAG`, `SUMMARY_FLAG`).
+- `src/backlog/backlog-render.ts`: export `BacklogView` (today a local type) and add `export function readyBacklog(view: BacklogView): BacklogView`. It keeps plan `i` and bug `i` only when `view.holds?.plans[i]` / `view.holds?.bugs[i]` is `null`, and filters `holds` and `inProgress` with the same indexes so the arrays stay parallel. `questions` passes through unchanged, because questions carry no holds. An entry a role is working on has no hold, so it stays, together with its `[working on it: …]` mark. This matches how the planner counts eligible entries. A view without `holds` is returned unchanged. The doc comment says all of this.
+- `src/cli/cli-query-commands.ts` `cmdBacklog`: `rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG])`. When `args.includes("--ready")`, the thunk returns `readyBacklog(view)`, so `--json` and the Markdown view filter alike. The JSON shape stays the same: the same keys, with shorter arrays. In the Markdown branch only, and only with `--ready`, append one line after the sections: `_(<n> held entries hidden; run \`tumwater backlog\` to see them)_`, where `<n>` is the number of plans and bugs dropped. Leave the line out when `<n>` is 0. An emptied section still renders `_(none)_` through `renderSection`.
+- `src/cli/help.ts`: the stanza's usage becomes `tumwater backlog [--ready] [--json]`, and its prose gains: "--ready keeps only the planned plans and open bugs no hold keeps from being picked (entries a role is working on stay)". `completion.ts` derives its words from the usage line, so it needs no edit.
+- `docs/cli.md`, the "Check state" row: after the `tumwater backlog --json` clause, add "`tumwater backlog --ready` (only the plans and bugs no hold keeps from being picked, with entries a role is working on kept and a count of the hidden ones; composes with `--json`)".
+
+**Files touched.** `src/cli/cli-flag-specs.ts`, `src/backlog/backlog-render.ts`, `src/cli/cli-query-commands.ts`, `src/cli/help.ts`, `docs/cli.md`, `test/backlog-render.test.ts`.
+
+**Acceptance criteria.**
+- `test/backlog-render.test.ts`, unit: `readyBacklog` on a view with three plans (held `"refused"`, `null`, `{ blockedBy: ["Foo 1/2"] }`), two bugs (`null`, `"needs-review"`), `inProgress.plans` `[null, "feature-2", null]`, and one question returns the middle plan with `holds.plans` `[null]` and `inProgress.plans` `["feature-2"]`, the first bug only, and the question untouched. A view without `holds` comes back deep-equal to its input.
+- Same file, CLI via `runCli`: a PLANS.md with one refused plan and one eligible plan, and a BUGS.md with one open bug. `tumwater backlog --ready` exits 0, prints the eligible plan's and the bug's headings, does not print the refused plan's heading, and ends with `_(1 held entries hidden; run \`tumwater backlog\` to see them)_`. `tumwater backlog --ready --json` parses to `plans.length === 1`, `holds.plans` `[null]`, and `bugs.length === 1`. On a backlog with no held entries, `--ready` prints no hidden-count line.
+- The existing unknown-argument assertion in "tumwater backlog prints the backlog and rejects flags…" is updated to the gate's message listing both `--json` and `--ready`, and its comment no longer says `--json` is the only flag.
+- `npm run test` passes, including `test/help.test.ts`.
+
 ## Done
 
 ### The dashboard's Plans/Bugs tabs and the TUI's backlog pane show the `[working on it: …]` mark (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It touches only `src/backlog/backlog-eligibility.ts`, `docs/cli.md`, and two tests, none of which the in-flight commands 4/6 or stale-bugs plans edit; done 2026-10-16)
