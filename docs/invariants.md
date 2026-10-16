@@ -15,7 +15,7 @@ Each entry:
   guarantee, not merely touch the module; if a test is renamed or moved, update the citation in
   the same commit.
 
-**Keep it honest.** A landing that adds or changes a guarantee updates this file in the same
+**Keep it honest.** A merge that adds or changes a guarantee updates this file in the same
 commit, and every invariant keeps a resolvable test citation: a stale citation is a visible
 broken link, not silent drift. Do not state a guarantee here that no test pins — add the test
 with the entry, or leave the guarantee out.
@@ -26,17 +26,17 @@ When two surfaces show the same fact, one module computes it and both read that 
 Two independent derivations drift, and the drift is invisible until one surface contradicts the
 other.
 
-### INV-A1: one rule decides which agent binaries the fleet needs
+### INV-A1: one rule decides which backend binaries the team needs
 
-**Guarantee.** The set of agent backends the fleet will actually spawn is computed once by
+**Guarantee.** The set of backends the team will actually spawn is computed once by
 `agentsInUse`, so doctor checks exactly the binaries the startup gate would require — neither a
-binary the fleet never runs nor a missing one it does.
+binary the team never runs nor a missing one it does.
 
 **Binds.** `src/gates/startup-gate.ts` (`agentsInUse`), `src/doctor/doctor-checks.ts`
 (`checkAgentBinary`), `src/pi/pi-bin.ts` (`resolveAgentBin`).
 
 **Pinned by.** `test/doctor-checks.test.ts` — "checkAgentBinary checks the enabled seams'
-agents, not always pi" (a claude-only fleet passes with `claude` present and fails when it is
+agents, not always pi" (a claude-only team passes with `claude` present and fails when it is
 absent, rather than checking pi).
 
 ### INV-A2: both stall surfaces apply the same piped-hang threshold
@@ -124,7 +124,7 @@ absent, not as a stuck pin" and "a slot record's non-finite lease numbers read a
 top-level, a dotted per-role map/tier/agent key, and the budget setter both dashboards use —
 carries the raw file's `roles` section back exactly as it found it (and writes no section when
 the file had none); the director's config request (`applyConfigRequest`) does the same while
-stripping the entries of custom loops it removes. A dotted `roles.<id>.<field>` write updates
+stripping the entries of custom roles it removes. A dotted `roles.<id>.<field>` write updates
 only that field and leaves the file's other role entries untouched. No such edit re-expands the
 built-in catalog into tumwater.json; `roles` still merges per entry at load, so omission never
 disables a role and the dotted `roles.<id>.enabled false` is the disable verb.
@@ -145,7 +145,7 @@ at the path, a permission failure, or every complete line corrupt) reads `unread
 distinct from a missing or zero-byte feed's `empty`; an unreadable file outranks a readable
 sibling, so a readable rotated archive cannot mask an unreadable live log. The failure digest renders
 `log unreadable — evidence missing` for the unreadable case instead of `no events retained`, so
-the telemetry role can tell "the fleet was idle" from "I could not read the log"; a
+the telemetry role can tell "the team was idle" from "I could not read the log"; a
 newline-less trailing fragment remains a write in flight and never by itself makes a feed
 unreadable.
 
@@ -160,14 +160,14 @@ as empty, not unreadable" and "a readable archive does not mask an unreadable li
 `test/doctor-checks.test.ts` — "checkEventLog passes an absent log, fails an unreadable one, and
 passes a readable one".
 
-### INV-B5: an operator-filed entry is committed on main under the primary-worktree lock
+### INV-B5: an entry you filed is committed on main under the primary-worktree lock
 
 **Guarantee.** `tumwater bug`/`tumwater plan`, the dashboard's New form, the TUI's Ctrl+N, and
-`tumwater brief --file`/`--edit` and the dashboard's initial-prompt Save (the brief file, as `tumwater(operator): Edit brief`)
+`tumwater brief --file`/`--edit` and the dashboard's brief Save (the brief file, as `tumwater(operator): Edit brief`)
 commit the one file they wrote as `tumwater(operator): File <kind>: <title>` while
 holding the primary-worktree lock `ffMainTo` takes, so the entry reaches main and the primary
 checkout stays clean for the next fast-forward. Only that file is committed (other staged paths
-stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
+stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `questions answer`, and the dashboard and TUI equivalents) commit their file the same way, as `Cancel <kind>: <title>`, `Edit <kind>: <title>`, and `Answer question: <title>`; a refused or no-op write commits nothing. A question answer also wakes the role named in the heading's `(asked by <role> …)` clause when it is a known role, and wakes no role for an unknown or missing asker (`test/question-asker.test.ts`). When the primary is not on the base branch, or git fails, the commit is skipped
 (`commitOperatorBacklogEdit` returns false, never throws) and the entry stays written.
 
 **Binds.** `src/backlog/backlog-commit.ts` (`commitOperatorBacklogEdit`), `src/backlog/backlog-cli.ts`
@@ -177,7 +177,7 @@ stay staged). Operator cancel, edit, and question answer (`--cancel`, `--edit`, 
 
 ### INV-B6: a scheduled stop fires once, is consumed when it fires, and is cleared at a fresh `run`
 
-**Guarantee.** `tumwater stop --in` writes `.tumwater/stop-at.json`; the running fleet's
+**Guarantee.** `tumwater stop --in` writes `.tumwater/stop-at.json`; the running team's
 `armScheduledStopWatch` calls its stop closure exactly once when `until` passes and removes the
 marker first. A fresh unsupervised `tumwater run` clears a stale marker. `scheduledStopAt` never
 throws: a missing, torn, or non-finite marker reads as no stop.
@@ -192,11 +192,11 @@ When a classifier groups outcomes into classes, every result shape that belongs 
 be treated as that class. A shape added later is easy to leave behind, and the omission shows as
 a count that does not match the table it summarizes.
 
-### INV-C1: the error section itemizes the `error` and `main_red` tick outcomes
+### INV-C1: the error section itemizes the `error` and `main_red` run outcomes
 
-**Guarantee.** The failure report's error section selects exactly the tick outcomes whose
+**Guarantee.** The failure report's error section selects exactly the run outcomes whose
 `result` is `error` or `main_red` — caused or cause-less, with no error-text test — so its total
-equals the Outcome table's error column plus its `main_red` cells, and a tick counted in the
+equals the Outcome table's error column plus its `main_red` cells, and a run counted in the
 table never vanishes from the section built to itemize it.
 
 **Binds.** `src/failure/failure-data.ts` (`collectFailureReport`), `src/failure/failure-render.ts`
@@ -206,9 +206,9 @@ table never vanishes from the section built to itemize it.
 tick errors, not left a bare count" (asserts the section total equals the Outcome tables' error
 column plus `main_red` cells).
 
-### INV-C2: every failed landing prices its authoring span as error-class
+### INV-C2: every failed merge prices its authoring span as error-class
 
-**Guarantee.** The time-spend classifier prices a change whose landing failed — `rejected`,
+**Guarantee.** The time-spend classifier prices a change whose merge failed — `rejected`,
 `review_error`, and `merge_conflict` alike — as error-class authoring hours, and each such span
 is itemized under a loss cause matching its result: a review rejection as a `review-rejected`
 cause carrying its rejection reason, a `review_error` under the matching review-failure cluster,
@@ -219,7 +219,7 @@ names no rejection and is not invented as one.
 (`collectFailureReport`).
 
 **Pinned by.** `test/failure-time-spend.test.ts` — "a review-rejected change's authoring hours
-price into error-class, not landed" (its `coverage` fixture prices a rejected landing's span as
+price into error-class, not landed" (its `coverage` fixture prices a rejected merge's span as
 error-class under a `review-rejected` cause carrying the reason; its `organize` fixture prices
 the `merge_conflict` arm as error-class under a `merge-conflict` cause with the shared no-text
 placeholder, not a review-rejection), and "a review_error landing prices its authoring hours
@@ -229,7 +229,7 @@ under the matching review_failed cause".
 
 A bounded view and a terminal decision each owe the reader the same thing: what the view left
 out, and what the outcome was decided from. A silent cut reads as a complete list; a defaulted
-outcome reads as evidence the run never produced. Both rules are stated here so a landing that
+outcome reads as evidence the run never produced. Both rules are stated here so a merge that
 adds a capped view or a terminal outcome updates the record shape in the same commit.
 
 ### INV-D1: a capped failure-digest section discloses the count its cut dropped
@@ -271,7 +271,7 @@ by signal as a rejection even with output attached".
 
 ## Bounded waits: a step that produces no verdict cannot hold its caller forever
 
-A wait on something outside the harness — a spawned child, a probe — is bounded so a hang is
+A wait on something outside tumwater — a spawned child, a probe — is bounded so a hang is
 reported as a hang instead of stalling the caller. State the bound here so a later change
 cannot drop it silently.
 
@@ -288,10 +288,10 @@ the CLI alive.
 and reported, not awaited forever" and "runNotifyHook resolves a never-ending hook at the
 injected timeout".
 
-### INV-E2: a fleet that goes down unasked runs the configured notify hook once
+### INV-E2: a team that goes down unasked runs the configured notify hook once
 
 **Guarantee.** When the supervisor logs `supervisor_exit` (a generation died unasked or the
-crash-loop guard tripped), it runs the `notify` command from tumwater.json once, with no
+crash guard tripped), it runs the `notify` command from tumwater.json once, with no
 throttle; a missing or invalid tumwater.json or an absent `notify` pages nothing and never throws.
 A once round's `ONCE_FAILED_EXIT_CODE` is an asked-for ending and pages nothing.
 
@@ -304,8 +304,8 @@ once round's failed exit code passes through without paging".
 
 ### INV-E3: a notify hook that exits nonzero leaves a warning naming the paged type
 
-**Guarantee.** When the notify hook exits nonzero or is killed by a signal while the fleet is
-still running, one `warning` from loop `harness` names the paged event type and the exit code or
+**Guarantee.** When the notify hook exits nonzero or is killed by a signal while the team is
+still running, one `warning` from role `harness` names the paged event type and the exit code or
 signal; a clean exit logs nothing and the page is not retried.
 
 **Binds.** `src/events/notify.ts` (`notifyExitWarning` and the `exit` listener in
@@ -316,19 +316,19 @@ nonzero logs one warning naming the paged type".
 
 ## Hermetic, deterministic gating tests
 
-The gating tier (`npm test`'s `*.test.ts` files, which run on every landing) reads the host's
-state and time only through seams a test controls: a live probe or a real listener makes the
+The gating tier (`npm test`'s `*.test.ts` files, which run on every merge) reads the host's
+state and time only through hooks a test controls: a live probe or a real listener makes the
 suite answer the machine it happens to run on, and a live clock lets a loaded host report a
 spent budget as a product failure (the `no-repro` gap in BUGS.md). State the rule here so a new
-gating test reaches the host through the seam, not around it.
+gating test reaches the host through the hook, not around it.
 
-### INV-F1: the gating tier probes no live host and takes its clock from a seam
+### INV-F1: the gating tier probes no live host and takes its clock from a hook
 
 **Guarantee.** In the gating tier — every `test/*.test.ts` except the `*.e2e.test.ts`
 live-orchestrator files — a test probes no live host (it spawns no `lsof`/`top`/`sysctl` and
 reads no literal `/proc` path) and binds no real listener (no `.listen(`/`createServer(`),
 unless the guard's explicit allowlist names the file and why; and a test that asserts a
-deadline, window, backoff, or poll interval takes its clock from an injected seam
+deadline, window, retry delay, or poll interval takes its clock from an injected hook
 (`test/fakes/time.ts`'s `fakeClock`/`sleepRecorder`, `test/helpers/sleep-clock.ts`'s
 `scriptedSampler`, or `test/helpers/wait.ts`'s `watchdogClock`) rather than the live one, with a
 flake fixed by converting the failing case into a deterministic regression instead of widening
@@ -345,12 +345,12 @@ hold assertions wait on the injected breaker clock's own reads instead of a wall
 deadline-clock half and the remaining flake regressions are pinned by the cases the plan's parts
 2/5–5/5 add.
 
-## The landing gate's deterministic rejections
+## The merge gate's deterministic rejections
 
 The gate rejects some changes without running a reviewer, because the exempt fast path for
-markdown would otherwise land them unreviewed.
+markdown would otherwise merge them unreviewed.
 
-### INV-G1: a loop cannot land a change to the initial prompt block, or to PRINCIPLES.md unless it is the director or steward
+### INV-G1: a role cannot merge a change to the brief block, or to PRINCIPLES.md unless it is the director or steward
 
 **Guarantee.** A change that alters, removes, or deletes the text between the `tumwater:prompt`
 markers of README.md or TUMWATER.md (a block that merely moves passes), or that touches
@@ -364,7 +364,7 @@ rejects an md-only edit to the initial prompt block with no pi run" and "gate re
 PRINCIPLES.md edit except from the steward" — and `test/stage-check.test.ts` — "an uncommitted
 PRINCIPLES.md edit is a finding for a non-steward role only".
 
-### INV-G2: a loop cannot land a change that writes a secret environment variable's value or a credential pi stores in `auth.json`/`models.json` into a file
+### INV-G2: a role cannot merge a change that writes a secret environment variable's value or a credential pi stores in `auth.json`/`models.json` into a file
 
 **Guarantee.** A changed file whose content holds the value of a secret-named environment
 variable (name matching token, secret, password, credential, or key; value of 16+ characters, no
@@ -382,13 +382,13 @@ keys", "secretLeakReason names the pi models.json source, never the value" — `
 that writes a secret env value, with no pi run" — and `test/stage-check.test.ts` — "an uncommitted
 file holding a secret env value is a finding".
 
-## The harness owns every commit
+## Tumwater owns every commit
 
-### INV-H1: a tick's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the landed history
+### INV-H1: a run's authoring, SUMMARY follow-up, and stage-fix runs cannot add a commit of their own to the merged history
 
 **Guarantee.** Whatever commits an authoring, SUMMARY follow-up, or stage-fix run makes in its worktree are folded
-(`git reset --soft` to the pre-run HEAD) before the verdict is read, so they land inside the
-tick's single harness-stamped commit, and a clean tree after such a run is not `no_change`.
+(`git reset --soft` to the pre-run HEAD) before the verdict is read, so they end up inside the
+run's single tumwater-stamped commit, and a clean tree after such a run is not `no_change`.
 
 **Binds.** `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`.
 
@@ -398,12 +398,12 @@ two `foldCommitsSince` unit tests; `test/tick-stage.test.ts` — "a commit made 
 follow-up folds into the harness commit" and "a commit made in the over-long-SUMMARY follow-up folds
 into the harness commit".
 
-## The reviewer cannot author the landing
+## The reviewer cannot author the merge
 
 ### INV-I1: a gate exit that keeps the change leaves the worktree at the head the gate reviewed
 
 **Guarantee.** A gate exit that keeps the change after the reviewer ran (approved, or failed
-without discard) resets the worktree to the head the gate reviewed, so neither the landing pin
+without discard) resets the worktree to the head the gate reviewed, so neither the merge pin
 nor the next re-review can include a commit the reviewer made. The reject and strike-cap discard
 paths reset to main instead.
 
@@ -413,13 +413,13 @@ paths reset to main instead.
 worktree returns to the reviewed head" and "a reviewer's own commit is dropped when the review
 fails strike-free".
 
-## A blind image read cannot become an answered tick
+## A blind image read cannot become an answered run
 
-### INV-J1: a tick whose agent reads an image its model cannot see is stopped and fails
+### INV-J1: a run whose agent reads an image its model cannot see is stopped and fails
 
 **Guarantee.** When a pi authoring run's agent reads an image pi will strip from the request
-(a model that does not support images — pi's non-vision note, or a seam whose effective image
-input is false), the runner kills the run before its next event and the tick ends `error` with
+(a model that does not support images — pi's non-vision note, or a model job whose effective image
+input is false), the runner kills the run before its next event and the run ends `error` with
 `lastError` naming the file and the model gap. A gate run's blind read is not killed; it is
 recorded on the run and logged as `image_blind` with `action: "logged"`. An authoring run's
 blind read logs `image_blind` with `action: "fail"`, and `modelFallbackVerdict` scores it
@@ -435,22 +435,22 @@ that reads an image on a blind model is logged, not killed"; `test/tick-verdict.
 blind image read fails the tick with an error naming the file and the model";
 `test/loop-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".
 
-### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted tick never hops twice
+### INV-J2: a blind read on a tier with an image-capable peer reroutes to it, and a rerouted run never hops twice
 
 **Guarantee.** A blind read on a role whose tier has an image-capable reroute target (a peer
 tier in the borrow order — the free fallback pairs only while the budget gate is on fallback
-or the role is in a model-fallback episode) ends the tick `aborted` with the `image-reroute`
-resume cause and records a one-shot `LoopState.imageReroute` marker naming the target seam
-and the image. The next tick starts directly on the target in a FRESH session over the kept
+or the role is in a model-fallback episode) ends the run `aborted` with the `image-reroute`
+resume cause and records a one-shot `LoopState.imageReroute` marker naming the target model and backend
+and the image. The next run starts directly on the target in a FRESH session over the kept
 worktree — never `--continue` — carrying the handoff note that names the prior model and the
-image, and its `tick_start` is stamped `reroute: "image"`. A tick that already started on the
+image, and its `tick_start` is stamped `reroute: "image"`. A run that already started on the
 target (`imageRerouteActive` true, the marker consumed at its start) does not reroute again: a
 second blind read fails it. The marker is one-shot for the director too: a rerouted director
 prompt runs fresh on the target and is delivered exactly once, then the director is back on its
 own tier (its marker clears in `runTickPhase`, since the director never resumes and so never
 reaches planTickStart's image-reroute branch). A queued prompt attaching an image hops straight
-to the target at model choice when the loop's seam reads no images (`image_reroute`,
-`preflight: true`); with no target the tick errors without spawning pi.
+to the target at model choice when the role's model reads no images (`image_reroute`,
+`preflight: true`); with no target the run errors without spawning pi.
 
 **Binds.** `src/tick/tick-verdict.ts` (the reroute arm), `src/loop/loop-tick.ts` (model choice
 + attachment preflight), `src/loop/loop.ts` (`runConfig`), `src/tick/tick-resume.ts` (the

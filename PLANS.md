@@ -21,26 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms docs, part 4/5: Rewrite the invariants register in plain terms and mark the dated design docs as pre-rename (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches docs/invariants.md and docs/feature-*.md and docs/implementation-*.md and docs/code-metrics.md and docs/commit-history-analysis.md)
-
-**Goal.** docs/invariants.md states its guarantees in the glossary's words. The dated design records and reports under docs/ stay as written, each with one line that says so and points to docs/glossary.md.
-
-**Approach.**
-- docs/invariants.md: apply the "Glossary" and "Wording rules" tables to the intro, to the "Keep it honest" paragraph ("A landing that adds or changes a guarantee" → "A merge that …"), to each entry's title text after `### INV-…:` (for example "one rule decides which agent binaries the fleet needs" → "one rule decides which backend binaries the team needs"), and to the Guarantee, Binds and Pinned-by prose.
-- Keep verbatim everything test/invariants-doc.test.ts checks or that names code: each `### INV-…:` id, the `**Guarantee.**`/`**Binds.**`/`**Pinned by.**` labels, every backticked `src/…`, `test/…`, `docs/…` or `plans/…` path (the test requires each to exist), every identifier (`agentsInUse`, `checkAgentBinary`, `eventFeedItem`, …), and every quoted test title (they must match the test files, which the Plain terms code series renames). Also keep `slots.json`, `landedTotal` and `tick_start` for part 5/5, and the role id in "the telemetry role" for Plain terms role ids.
-- Historical documents stay as written (plans/terminology.md "Out of scope", the same rule as `plans/*.md`). The five docs/feature-*.md and five docs/implementation-*.md files are design records: the 2026-09-30 organize commit added them as implementation plans, and only plans/model-tiers.md and two source comments link to them. docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Under each of these twelve files' H1, add this one blockquote line and change nothing else:
-
-  > Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
-- Do not touch docs/code-metrics/ (scripts) or docs/gui.png.
-
-**Files touched.** docs/invariants.md, docs/feature-custom-roles.md, docs/feature-gui-audio-sound-effects.md, docs/feature-model-fallback.md, docs/feature-per-role-spending.md, docs/feature-project-templates.md, docs/implementation-custom-roles.md, docs/implementation-gui-audio-sound-effects.md, docs/implementation-model-fallback.md, docs/implementation-per-role-spending.md, docs/implementation-project-templates.md, docs/code-metrics.md, docs/commit-history-analysis.md. Reads (does not edit): test/invariants-doc.test.ts, docs/glossary.md.
-
-**Acceptance criteria.**
-- test/invariants-doc.test.ts passes unchanged: the same ids in the same order, all three labels per entry, and every cited path resolving.
-- Outside backticks and quoted test titles, docs/invariants.md has no whole-word hit for the vocabulary guard's retired words.
-- Each of the twelve historical files differs from main by exactly the added banner line (and the blank line after it).
-- `npm run test` passes.
-
 ### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
 
 **Goal.** The last old names in the current docs, the ones that name machine interfaces, now match the code: event types and fields, the notify environment, `--json` keys, `/api` routes, dashboard hashes, state paths and refs, and the `Run:` trailer. Role ids are not this part's: Plain terms role ids updates README.md and docs/invariants.md when it renames them.
@@ -2553,6 +2533,26 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The in-page link in docs/backends.md's intro resolves to the renamed heading's anchor.
 - Every `src/` path in DEVELOPMENT.md's Layout section still exists.
 - A case-insensitive whole-word grep of both files for the vocabulary guard's retired words finds only backticked paths, identifiers, test names and the names left for part 5/5.
+- `npm run test` passes.
+
+### Plain terms docs, part 4/5: Rewrite the invariants register in plain terms and mark the dated design docs as pre-rename (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Out of scope"; touches docs/invariants.md and docs/feature-*.md and docs/implementation-*.md and docs/code-metrics.md and docs/commit-history-analysis.md) (done 2026-10-16)
+
+**Goal.** docs/invariants.md states its guarantees in the glossary's words. The dated design records and reports under docs/ stay as written, each with one line that says so and points to docs/glossary.md.
+
+**Approach.**
+- docs/invariants.md: apply the "Glossary" and "Wording rules" tables to the intro, to the "Keep it honest" paragraph ("A landing that adds or changes a guarantee" → "A merge that …"), to each entry's title text after `### INV-…:` (for example "one rule decides which agent binaries the fleet needs" → "one rule decides which backend binaries the team needs"), and to the Guarantee, Binds and Pinned-by prose.
+- Keep verbatim everything test/invariants-doc.test.ts checks or that names code: each `### INV-…:` id, the `**Guarantee.**`/`**Binds.**`/`**Pinned by.**` labels, every backticked `src/…`, `test/…`, `docs/…` or `plans/…` path (the test requires each to exist), every identifier (`agentsInUse`, `checkAgentBinary`, `eventFeedItem`, …), and every quoted test title (they must match the test files, which the Plain terms code series renames). Also keep `slots.json`, `landedTotal` and `tick_start` for part 5/5, and the role id in "the telemetry role" for Plain terms role ids.
+- Historical documents stay as written (plans/terminology.md "Out of scope", the same rule as `plans/*.md`). The five docs/feature-*.md and five docs/implementation-*.md files are design records: the 2026-09-30 organize commit added them as implementation plans, and only plans/model-tiers.md and two source comments link to them. docs/code-metrics.md and docs/commit-history-analysis.md are dated reports. Under each of these twelve files' H1, add this one blockquote line and change nothing else:
+
+  > Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+- Do not touch docs/code-metrics/ (scripts) or docs/gui.png.
+
+**Files touched.** docs/invariants.md, docs/feature-custom-roles.md, docs/feature-gui-audio-sound-effects.md, docs/feature-model-fallback.md, docs/feature-per-role-spending.md, docs/feature-project-templates.md, docs/implementation-custom-roles.md, docs/implementation-gui-audio-sound-effects.md, docs/implementation-model-fallback.md, docs/implementation-per-role-spending.md, docs/implementation-project-templates.md, docs/code-metrics.md, docs/commit-history-analysis.md. Reads (does not edit): test/invariants-doc.test.ts, docs/glossary.md.
+
+**Acceptance criteria.**
+- test/invariants-doc.test.ts passes unchanged: the same ids in the same order, all three labels per entry, and every cited path resolving.
+- Outside backticks and quoted test titles, docs/invariants.md has no whole-word hit for the vocabulary guard's retired words.
+- Each of the twelve historical files differs from main by exactly the added banner line (and the blank line after it).
 - `npm run test` passes.
 
 ### Plain terms docs, part 1/5: Rewrite the README and the command and settings references in plain terms (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches README.md and docs/cli.md and docs/config.md) — done 2026-10-16

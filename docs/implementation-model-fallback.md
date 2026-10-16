@@ -1,5 +1,7 @@
 # Implementation plan: Model fallback on repeated backend failures
 
+> Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+
 ## Summary
 
 Add per-role fallback state machine (primary → fallback → probe → primary), an

@@ -1,5 +1,7 @@
 # Feature: Project templates
 
+> Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+
 ## Summary
 
 Give `tumwater init` a `--template` option offering curated project starting points

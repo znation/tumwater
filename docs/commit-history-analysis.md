@@ -1,5 +1,7 @@
 # Commit-history analysis: how a fleet-built history differs, and what it says to change
 
+> Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+
 **Effective date: 2026-09-29.** Git data runs through main `53745873` (1,905 commits,
 2026-08-20 → 2026-09-29). Fleet data comes from `.tumwater/log/events.jsonl` (19,559 events,
 3,827 ticks) through 2026-09-29 01:10 PDT. Every number below describes that snapshot; the fleet

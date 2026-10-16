@@ -1,5 +1,7 @@
 # Code metrics: Tumwater's code, Claude's code, and human-written open source
 
+> Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+
 **Effective date: 2026-09-30.** Every number describes the repositories at the commits below.
 Tumwater lands dozens of commits a day, so re-derive the numbers before relying on them later:
 [docs/code-metrics/](code-metrics/) holds the scripts that produced them, and

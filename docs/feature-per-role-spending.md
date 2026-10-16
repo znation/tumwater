@@ -1,5 +1,7 @@
 # Feature: Per-role spending tracking and budget gates
 
+> Written before the 2026-10-16 plain-terms rename, so it uses older words such as loop, tick, landing and fleet; [docs/glossary.md](glossary.md) maps them to today's terms.
+
 ## Summary
 
 Upgrade cost accounting from a single fleet-wide number to **per-role** accounting, and
