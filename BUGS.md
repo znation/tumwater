@@ -5,6 +5,37 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### After a Claude subscription window that ran into paid overage resets, Claude model jobs stay on the over-cap model until local midnight: the account file keeps the reset window's `isUsingOverage` (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md)
+
+- **Symptom:** not seen live, because no window has run out yet. In every `rate_limit_event` in the Claude native logs on disk, this account reports `overageStatus: "allowed"`. So when a window runs out, claude keeps running on paid extra usage, and each such run's cost counts toward `maxDailyCostUsd`. Once spend reaches the cap, `budget_fallback` moves Claude model jobs to the over-cap model, which is correct while the account is in overage. When that window's `resetsAt` passes, the subscription is free again. But the budget gate still treats Claude as priced and keeps those jobs on the over-cap model until local midnight, which can be hours of Claude capacity the team does not use.
+- **Reproduce:** against the built code on 2026-10-16, in a scratch root:
+  1. Write `.tumwater/state/claude-account.json` with `billing: "subscription"` and one `five_hour` window: `isUsingOverage: true`, `resetsAt` one minute in the past.
+  2. `readClaudeAccount(root, now)` returns that window as `{"status":"reset", …, "isUsingOverage":true}`.
+  3. `seamFree(null, { agent: "claude" }, account)` returns **false**. The same file without `isUsingOverage` returns true.
+- **Cause:**
+  - `readWindow` (src/agent/claude/claude-account.ts) changes a past-`resetsAt` window's status to `reset` but keeps its `isUsingOverage`.
+  - `accountUsesOverage` (src/pi/pi-models.ts:186) checks every window's `isUsingOverage`, including reset windows. So `seamFree` and `piPairFree` call subscription Claude not free.
+  - Only a Claude run rewrites the file (src/tick/tick-finalize.ts:151, src/landing/landing-slot.ts:439). At the cap no Claude role run starts, so nothing clears the flag until midnight reopens the gate.
+  - The same flag can also keep the `overage` marker on the window badge after the reset (src/ui/badges.ts:142).
+- **Expected / fix sketch:** a window whose status reads `reset` is not in overage. When `readWindow` changes the status to `reset`, it should drop `isUsingOverage` and `overageStatus` too, so every reader agrees: `accountUsesOverage`, the badge, doctor, and the hold, which already skips reset windows.
+  - Tests: the reading above makes `seamFree` true for a subscription Claude model job; a window still open and in overage keeps it false; and `checkClaudeWindow` and the badge show no `overage` for a reset window.
+  - plans/fallback-chain.md part 5/7 relies on this rule.
+
+### A director prompt sent while the Claude subscription window is rejected runs again on every poll, and after 10 failures the repeated-failure pause stops the director until you resume it by hand (found by operator session 2026-10-16 while assessing subscription-window fallback, plans/fallback-chain.md)
+
+- **Symptom:** read from the code, not seen live; no window has been rejected yet. The setup: `agent: "claude"` on a subscription without extra usage, a window `rejected`, and a prompt sent to the director.
+  - The run fails at once. Its prompt goes back to the inbox, and the director runs it again on the next poll, about 2 s later.
+  - The 10th failure in a row trips the repeated-failure pause (`ERROR_STREAK_BREAKER = 10`, src/tick/tick-apply.ts:59), which also applies to the director.
+  - The director then stays paused after the window resets, until `tumwater resume --role director`. Every other subscription Claude role just waits for the reset.
+- **Reproduce:** not run. In a loop test, use a fake claude that emits a `rate_limit_event` with `status: "rejected"` and a future `resetsAt`, then an error `result`. Queue a director prompt and drive the polls. The director runs about once per poll and is streak-paused after 10 runs, while a non-director role on the same seam is held after its first run.
+- **Cause:** the director skips each guard that stops other roles:
+  - Eligibility has no backoff for it: "a queued prompt runs as soon as the previous one finishes" (src/scheduling/scheduling.ts:58–61).
+  - The scheduler exempts it from every provider hold, including the `claude` subscription-window hold (src/orchestrator/orchestrator-scheduling.ts:301–305). The exemption's comment in src/gates/gate-polls.ts says the director keeps the per-run 429 retry, but that retry is skipped for a window rejection (`subscriptionWindowRejected`, src/loop/loop-pi.ts:282).
+  - The tick-verdict arm that turns a window rejection into a kept-worktree wait excludes the director (src/tick/tick-verdict.ts:137). Its run falls through to the plain error path, which puts the prompt back in the inbox.
+- **Expected / fix sketch:** while a subscription-window hold stands on the director's own provider (`seamHoldKey` of its resolved config is `claude`), the scheduler should not start the director, and the prompt stays in the inbox until the reset. Holds of the 429-storm and backend kinds keep the exemption, since the per-run retry still answers those.
+  - Test: the scenario above runs one director run, then no more until `resetsAt`. After the reset the director runs the prompt and is not streak-paused.
+  - plans/fallback-chain.md part 2/7 builds on this: when the director's tier has an available fallback, it moves there instead of waiting.
+
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.

@@ -443,6 +443,8 @@ model's minimum CLI version (`minVersion`), which matters doubly because fleet r
   - `claude_window_reset`, when the hold lifts.
 - Holding is right where the per-poll retry is not: a window that resets in three hours would
   otherwise burn a failed run per loop per poll.
+- Planned 2026-10-16 (plans/fallback-chain.md): a used-up window moves these jobs to their
+  tier's fallback, and the hold remains only for jobs with nowhere to go.
 
 **Display, in place of the daily spend.**
 

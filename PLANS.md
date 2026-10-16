@@ -5,6 +5,273 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
+### Fallback chain, part 1/7: A used-up Claude subscription window moves Claude model jobs to their tier's fallback instead of holding them (planned 2026-10-16 by user; design in plans/fallback-chain.md "What happens when a window is used up"; touches src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/gates/gate-polls.ts src/orchestrator/orchestrator.ts src/events/ docs/backends.md and their tests)
+
+**Goal.** Today a `rejected` claude.ai usage window (5-hour or weekly, with no extra usage) places a `claude` hold until `resetsAt`.
+
+- Every subscription Claude model job waits for the reset. For the weekly window that can be days.
+- With review on and a Claude reviewer, `reviewHeld` stops every role, including roles on pi.
+- A configured `fallback` is used only at the daily cap or after three provider failures in a row, so it never helps here.
+
+This part makes a used-up window a reason to move. While a window is rejected, each tier whose model job runs on subscription Claude runs on its tier's resolved free fallback (today's single fallback, `resolveTierFallbacks`), and returns when the window resets. With no fallback configured, nothing changes.
+
+**Approach.**
+- Add `claudeWindowUsedUp(account, now): { type: string; resetsAt: number } | null` to src/agent/claude/claude-account.ts.
+  - It returns the subscription account's window with status `rejected`, no `isUsingOverage`, and a `resetsAt` still in the future. Among several, it returns the one with the latest `resetsAt`.
+  - That is exactly the rule `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on today. Make `claudeWindowObservation` call it, so the hold and the move cannot disagree.
+- `pollBudgetGate` (src/gates/budget-gates.ts) already reads the account each poll. Compute `windowOut = claudeWindowUsedUp(account, now)`, then:
+  - **Fallback choice.** While `windowOut` is set, a subscription Claude pair is not a usable fallback: `pairFreeAt` refuses it. The resolution then falls through to the next tier's pair or pauses, exactly as it does for an unpriced pair.
+  - **When to derive the view.** Derive the role view when `reached || windowOut`; today it is derived only when `reached`.
+  - **Which jobs move.** The keep predicate passed to `applyFallbackModel` becomes "this model job's own model is available". While `windowOut` is set, no subscription Claude job is available. When `reached` is true, a job must also be free (`seamFree`, today's predicate). So below the cap a priced pi job keeps its primary, and only subscription Claude jobs move.
+  - **Cache.** Re-derive the cached view (`state.from`) when `windowOut` changes, as well as when the live config changes.
+  - **Return value.** Return `windowOut`, and the tiers it moved (`tierFallbackLabels` over the moved tiers), beside `gate`. `gate` keeps meaning the cap.
+- src/gates/gate-polls.ts: the per-runner assignment already installs `roleConfig`. Keep `r.budgetFallbackActive` as the cap's flag: a window move below the cap does not restrict image reroute targets.
+- src/orchestrator/orchestrator.ts: `reviewHeld` and `reviewHeldNow` read `seamHoldKey(reviewRunConfig(liveConfig))`. Read the reviewer's provider from the config merges actually review under, which is the derived `roleConfig` the poll returned. Otherwise a reviewer that has moved off Claude still holds the whole team on the `claude` hold.
+- Leave the `claude` hold as it is. It still stops whatever still routes to subscription Claude: a tier with no usable fallback, and the director.
+- **Return on reset.** On the poll where `windowOut` goes from set to null, hand back the in-flight non-director runs on the fallback pairs the window move used.
+  - Do it the way gate-polls.ts's `gateResumed` branch does for the cap: one `budget_handback` event per pair, with a new optional `reason: "window"` field, then `r.handBackTick()`.
+  - A window that resets while the team is over the cap hands back nothing, because the cap still holds.
+- **Events.** `claude_window_limited` (src/fleet/fleet-polls.ts) gains an optional `tiers` field naming where each moved tier's work went, passed in from the budget poll. src/events/event-format.ts renders it the way it renders `budget_fallback`'s `tiers`, and renders `budget_handback`'s `reason`.
+- The rejected run keeps its worktree as today (src/tick/tick-verdict.ts window arm). Its next run is on another backend, and src/tick/tick-resume.ts already turns that into a `handoff` resume. Nothing changes there; pin it with a test.
+- docs/backends.md: the paragraph on rejected windows says the work moves to the tier's fallback and returns at the reset, and with no fallback it waits.
+
+**Files touched.**
+- Source: src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator.ts, src/events/events.ts, src/events/event-format.ts.
+- Docs: docs/backends.md.
+- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/event-format-fleet.test.ts, and test/orchestrator-fallback.test.ts (or a sibling orchestrator test).
+
+**Acceptance criteria.**
+- `claudeWindowUsedUp`:
+  - A rejected window with a future `resetsAt` is returned.
+  - Overage, API billing, a past `resetsAt`, and an `allowed_warning` window all return null.
+  - Of two rejected windows, the later reset is returned.
+  - `claudeWindowObservation`'s existing tests pass unchanged.
+- `pollBudgetGate`, with `agent: "claude"`, a `fallback` naming a zero-priced pi pair, and spend under the cap:
+  - With a rejected `five_hour` window, `roleConfig` resolves every role, the reviewer and the resolver to the fallback pair, and `gate` is `open`.
+  - Without the rejected window, `roleConfig` is the live config object.
+  - A priced pi role beside the Claude roles keeps its primary below the cap.
+  - With no fallback configured, `roleConfig` is the live config, so today's hold applies.
+- Orchestrator test, with a fake claude and a fake pi:
+  - After a rejected run, the roles' next runs start on the fallback, with the fallback pair's `--provider`, and `claude_window_limited` is logged once with `tiers`.
+  - With review on and the reviewer on Claude, merges review on the fallback and `reviewHeld` blocks no role.
+  - After `resetsAt` passes, an in-flight fallback run is handed back (`budget_handback` with `reason: "window"`), and the next run starts on Claude.
+- The rejected run's next run is a `handoff` over the kept worktree.
+- Every existing budget, hold and window test passes, and `npm test` passes.
+
+### Fallback chain, part 2/7: The director follows a used-up Claude window to its tier's fallback (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Director"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/landing/landing-vetting.ts src/orchestrator/orchestrator-scheduling.ts docs/backends.md and their tests)
+
+**Goal.** The director keeps the live config whatever the gates say (`gateRoleConfig`), because your own prompt outranks the daily cap. That reasoning is about spend, not availability. While a subscription window is rejected, a director on subscription Claude cannot run at all.
+
+Today its prompt goes back to the inbox after each failed run and runs again on the next poll, until the repeated-failure pause stops it (BUGS.md 2026-10-16, "A director prompt sent while the Claude subscription window is rejected …"). After that bug fix it waits for the reset instead. This part moves it to its tier's fallback instead, when one is available.
+
+**Approach.**
+- If that BUGS.md entry is still under `## Open`, fix it first in this part, as its fix sketch says. The director then waits on the `claude` hold while its own model job is subscription Claude. Include its test, and move the entry to `## Fixed`.
+- Extend `gateRoleConfig(role, liveConfig, roleConfig)` (src/gates/budget-gates.ts) with the poll's window verdict.
+  - The director's config is the live config, except that while `windowOut` is set and its own model job is subscription Claude, its tier's resolved pair replaces it. Build it with `applyFallbackModel` over the live config, with a keep predicate that is false only for subscription Claude jobs.
+  - The cap still never moves the director: a priced director primary keeps its model over the cap, as today.
+- Both callers share the function, so the scheduler's assignment (src/gates/gate-polls.ts) and the merge-path author (`resolveAuthor` in src/landing/landing-vetting.ts) cannot drift.
+- With nowhere to go (no usable fallback for its tier), the director waits on the hold, as the bug fix made it.
+- docs/backends.md: one sentence saying a used-up window moves the director too, and the cap still never does.
+
+**Files touched.**
+- Source: src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/landing/landing-vetting.ts, and src/orchestrator/orchestrator-scheduling.ts (only if the bug fix is done here).
+- Docs: docs/backends.md.
+- Tests: test/budget-gates.test.ts, test/orchestrator-scheduling.test.ts, and an orchestrator test with a fake claude.
+
+**Acceptance criteria.**
+- Director on subscription Claude, with a rejected window and a zero-priced fallback: the director's run starts on the fallback pair, and its prompt is consumed.
+- The same setup at the cap, without a rejected window: the director keeps its Claude model (today's exemption).
+- No usable fallback: the director runs once, then waits until `resetsAt`, then runs the prompt and is not paused for repeated failures.
+- `npm test` passes.
+
+### Fallback chain, part 3/7: `fallback` takes an ordered list per tier, and each tier runs on the first usable step (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Terms" and "Config"; touches src/config/config-schema.ts src/config/config-validation.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
+
+**Goal.** Each tier has exactly one fallback today, borrowed from another tier when it has none. Chains of more than one were left out of plans/fallback-model.md. This part lets `fallback` list several model ids per tier, tried in order. The breaker that demotes a fallback after three failed runs then moves the tier to the next step instead of pausing it. For example, a local server that is down falls through to a second local server.
+
+Only free steps exist in this part (zero-priced pi models, and subscription Claude while its window is open). Part 4/7 adds priced steps.
+
+**Approach.**
+- src/config/config-schema.ts: change `fallback` to `FallbackChain | Partial<Record<ModelTier, FallbackChain | "pause">>`, with `FallbackChain = string | string[]`.
+- src/config/config-validation.ts:
+  - A list must be non-empty, and each element a non-empty model id.
+  - `"pause"` is a whole-tier value only, never a list element.
+  - The string and map forms validate exactly as today, and `fallback` with `fallbackModel` stays an error.
+- src/config/config-fallbacks.ts:
+  - `tierOwnFallback` becomes `tierOwnChain(config, tier): FallbackModelConfig[]`. It returns an empty list for no fallback or `"pause"`, and a one-element list for a string or the legacy `fallbackModel` object.
+  - `resolveTierFallbacks` returns the first `usable` step of the tier's own chain. Otherwise it walks `BORROW_ORDER`'s other tiers' own chains in order and takes the first usable step. Otherwise the tier pauses.
+  - `TierFallback` gains `step` (the 0-based index in the chain that supplied the pair) for surfaces.
+  - `fallbackRoleConfig` (the model-failure fallback) keeps taking the first step.
+  - `seamsInUse` lists every step of every tier's chain: `fallback:<tier>` for the first, `fallback:<tier>#<n>` for later ones. The startup gate and doctor then check every step's binary and credentials.
+- src/gates/budget-gates.ts: key the breaker map (`rekeyFallbackBreakers`) by every price-free step of every tier's chain, not only each tier's price-resolved winner.
+  - Otherwise a demoted step's successor has no breaker entry, so `fallbackServingPair` reads it as not serving.
+  - The handback `pairs` cover every step a run can be on.
+- docs/backends.md: a list example in the fallback section, and the rule that a tier runs its first usable step.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/config-validation-model.test.ts, test/config-views.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
+
+**Acceptance criteria.**
+- Resolution:
+  - With `[A, B]`, an unpriced A resolves to B.
+  - A demoted A also resolves to B.
+  - With both unusable, the tier borrows the next tier's chain.
+  - Strong never borrows small.
+  - `"pause"` pauses.
+  - A plain string resolves exactly as before.
+- Budget gate at the cap, with `fallback: [A, B]` (both zero-priced): after three failed runs on A, the default tier resolves to B, and the gate stays `fallback`. Today it reads `paused`.
+- Validation: `[]`, `[""]`, `["pause"]` and a non-string element are each rejected with a message naming `fallback`.
+- `seamsInUse` lists both steps.
+- Every existing fallback, tier and budget test passes unchanged, and `npm test` passes.
+
+### Fallback chain, part 4/7: Priced fallback steps with their own daily caps (planned 2026-10-16 by user; requires part 3/7 landed; design in plans/fallback-chain.md "When a step is available" and "Spend per step"; touches src/config/ src/loop/loop-state.ts src/budget/budget.ts src/tick/tick-usage.ts src/loop/loop-pi.ts src/gates/budget-gates.ts docs/backends.md and their tests)
+
+**Goal.** A fallback must be free today, because it only ever runs at the cap. Once a used-up window also moves work (part 1/7), the step after the subscription is often a paid one. For example, "spend up to $5 a day on HF Inference Providers, then go local". This part lets a step be an object with its own daily cap, and lets priced steps sit in a chain. A priced step is usable only while the team is under `maxDailyCostUsd` and the step is under its own cap, so no cap can be passed.
+
+**Approach.**
+- Config (src/config/config-schema.ts, config-validation.ts):
+  - A chain element may be `{ "model": "<model id>", "maxDailyCostUsd"?: number }`.
+  - Add `FALLBACK_STEP_KEYS`. `model` is required, and `maxDailyCostUsd` must be a positive number.
+  - A string element is the same as `{ "model": … }`.
+- src/loop/loop-state.ts: `LoopState.dayCostByPair?: Record<string, number>`.
+  - It holds real USD per `modelPairName` for the local day in `dayStamp`.
+  - It is healed on load like `dayCostUsd`: non-numbers and negatives drop, and a `__proto__` key is kept as an own property.
+- src/budget/budget.ts:
+  - `recordDailyCost(s, usd, now, pair?)` also folds into `dayCostByPair[pair]`, and the day rollover clears it.
+  - `pairDailyCost(states, pair, now)` sums it over roles.
+- src/tick/tick-usage.ts: `fold` passes the run's pair, built from the run's own resolved config. src/loop/loop-pi.ts already has `opts.config`; pass `modelPairName(opts.config)` beside the hold key. Estimated (subscription) spend never folds into it.
+- src/gates/budget-gates.ts: the usable predicate per step becomes:
+  - **Free step:** usable when its breaker is serving (today's rule).
+  - **Priced step:** usable when `!reached`, the step's pair spend is under its own cap (if it has one), and its breaker is serving.
+
+  At the cap only free steps remain usable, which is today's behavior. Priced steps also join the breaker map.
+- **Per-run cap.** `applyFallbackModel` records each moved tier's step cap on the derived config: `fallbackStepCaps?: Record<pairName, number>`, set only on the derived view and never read from tumwater.json.
+  - `authoringBudgetCap` (src/loop/loop-pi.ts) lowers an API-billed Claude run's `--max-budget-usd` to the step's remaining budget when its pair has one.
+  - Subscription runs still get no per-run cap.
+- docs/backends.md: the step-object form, the "priced steps never run past a cap" rule, and an example chain of subscription Claude, then HF capped at $5, then local.
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/loop/loop-state.ts, src/budget/budget.ts, src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/config-validation-model.test.ts, test/loop-state.test.ts, test/budget.test.ts, test/tick-usage.test.ts, test/budget-gates.test.ts, test/loop-pi-claude.test.ts, and test/orchestrator-fallback.test.ts.
+
+**Acceptance criteria.**
+- `recordDailyCost` with a pair:
+  - It accumulates per pair and resets at local midnight.
+  - A run with only estimated cost leaves `dayCostByPair` untouched.
+  - A corrupt stored map heals to `{}`.
+- Below the cap, with a rejected window and `fallback: [{ model: HF, maxDailyCostUsd: 5 }, LOCAL]`:
+  - The tier resolves to HF.
+  - Once the HF pair's spend reaches $5 it resolves to LOCAL.
+  - At the team cap it resolves to LOCAL, whatever the HF spend.
+- An API-billed Claude step with $2 left on its cap gets `--max-budget-usd 2` or less.
+- Existing configs with only free fallbacks resolve exactly as before, and `npm test` passes.
+
+### Fallback chain, part 5/7: Claude extra usage (overage) runs only on a step that declares it, with its own cap (planned 2026-10-16 by user; requires part 4/7 landed; design in plans/fallback-chain.md "Overage"; touches src/agent/claude/claude-account.ts src/config/ src/gates/budget-gates.ts docs/backends.md and their tests)
+
+**Goal.** This account allows extra usage (`overageStatus: "allowed"` in every recorded `rate_limit_event`). So today a used-up window does not stop Claude: runs continue on paid extra usage, and their whole cost counts toward the team cap, until `maxDailyCostUsd` moves Claude model jobs to the over-cap model.
+
+You can't put that spend in a chain position or give it its own cap. This part makes overage an explicit step: `{ "model": "claude/<id>", "overage": true, "maxDailyCostUsd": 10 }`. A plain subscription step (the primary included) then counts as used up once the account is in overage.
+
+This is a behavior change for accounts that allow extra usage: without an overage step, the team moves down its chain at the end of the window instead of spending extra usage up to the cap (plans/fallback-chain.md decision D1).
+
+**Approach.**
+- The fix in BUGS.md 2026-10-16, "After a Claude subscription window that ran into paid overage resets …", must be in. A reset window is not in overage. If that entry is still under `## Open`, fix it first here with its test, and move it to `## Fixed`.
+- `claudeWindowUsedUp` (src/agent/claude/claude-account.ts) also counts a window whose current reading has `isUsingOverage` as used up, and returns its `resetsAt`. The hold's observation keeps the rejected-only rule: overage never holds.
+- Config: a step object may carry `overage: true`, and only on a `claude/…` model id. Validation rejects it on any other model, and on a non-object step.
+- src/gates/budget-gates.ts: an `overage: true` step is usable when all of these hold:
+  - the account bills a subscription;
+  - the newest non-reset window's `overageStatus` is not `rejected`;
+  - no window is `rejected`;
+  - `!reached`;
+  - its pair spend is under its step cap;
+  - its breaker is serving.
+
+  It runs the same `claude` command as the primary. Its pair spend is that model's real (overage) spend, so the step cap caps overage directly.
+- The run that crosses into overage finishes in overage; tumwater cannot stop the CLI mid-run. The next poll moves on. Say so in docs/backends.md, along with the behavior change above.
+
+**Files touched.**
+- Source: src/agent/claude/claude-account.ts, src/pi/pi-models.ts (only if the bug fix is done here), src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/claude-account.test.ts, test/config-validation-model.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
+
+**Acceptance criteria.**
+- With the account in overage (a current window reports `isUsingOverage`), spend under the cap, and `fallback: [{ model: "claude/claude-sonnet-5-5", overage: true, maxDailyCostUsd: 10 }, LOCAL]`:
+  - The default tier resolves to the overage step.
+  - Once that pair's real spend reaches $10 it resolves to LOCAL.
+- The same account with `fallback: [LOCAL]` resolves the subscription Claude tiers to LOCAL on the next poll.
+- Once the window's `resetsAt` passes, the tiers return to the subscription.
+- `overage: true` on a pi model id fails validation, and `npm test` passes.
+
+### Fallback chain, part 6/7: `claudeWindowReserve` leaves part of each subscription window unused by the team (planned 2026-10-16 by user; requires part 1/7 landed; design in plans/fallback-chain.md "Reserve"; touches src/config/ src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/events/ docs/backends.md and their tests)
+
+**Goal.** The team and you share one claude.ai account. A team that uses up the weekly window by Tuesday leaves your own Claude Code sessions on extra usage, or locked out, until it resets.
+
+This part adds an optional reserve: `"claudeWindowReserve": { "seven_day": 0.8 }`. At or past that utilization, subscription Claude counts as used up for the team until the window resets. The team then moves down its chain (part 1/7), or waits if it has nowhere to go. It also lets the team leave the subscription before a run crosses into overage. The director is exempt: it runs your own prompts. Absent by default.
+
+**Approach.**
+- Config: an optional top-level `claudeWindowReserve: Record<string, number>`, mapping a window type to a fraction with 0 < f ≤ 1. Add it to the config schema, validation, the editable/known key lists and the example config.
+- `claudeWindowUsedUp(account, now, reserve?)` also returns a non-reset window whose `utilization >= reserve[type]`, with that window's `resetsAt`. It returns a `reason: "rejected" | "reserve"` beside it.
+- `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on a reserve crossing too, so subscription Claude jobs with no fallback wait. The observation carries `reserve: true`. Scheduling must not hold the director on it: the director hold the BUGS.md 2026-10-16 fix adds applies to a rejected window only.
+- The budget gate passes the live config's reserve. Part 2/7's director view ignores it.
+- A new `claude_window_reserved` event `{ windowType, utilization, reserve, resetsAt }` is logged once per window, with the same once-per-`type:resetsAt` memory as `pollClaudeWindowWarning`. src/events/event-format.ts renders it.
+- docs/backends.md: the key, an example, and the note that the team learns its utilization one run late (readings come only from runs).
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-keys.ts, src/config/config-editable-keys.ts, src/config/config-example.ts, src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/events/events.ts, src/events/event-format.ts.
+- Docs: docs/backends.md, tumwater.example.json.
+- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/config-validation*.test.ts, and test/event-format-fleet.test.ts.
+
+**Acceptance criteria.**
+- With `seven_day` utilization 0.85 and reserve 0.8:
+  - Subscription Claude role jobs move to the fallback.
+  - The director stays on Claude.
+  - `claude_window_reserved` is logged once.
+- At 0.75 nothing moves.
+- With no fallback, non-director Claude roles wait until `resetsAt` while the director still runs.
+- Validation rejects 0, 1.5, and a non-number.
+- Absent, every existing test passes unchanged, and `npm test` passes.
+
+### Fallback chain, part 7/7: Show the fallback chain in doctor, the status badge, the TUI, the dashboard and the role view (planned 2026-10-16 by user; requires parts 2/7, 5/7 and 6/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/doctor/ src/fleet/orchestrator-info.ts src/status/ src/ui/ src/roles/role-view.ts src/roles/role-render.ts src/events/ and their tests)
+
+**Goal.** After parts 1/7–6/7, the team can be on step 2 of a chain because the window is used up, because a step's cap is spent, or because a step was demoted. Several surfaces still describe the old world:
+
+- the window badge reads "claude seams held until 14:30" while the work runs on a fallback;
+- doctor's `claude window` check says subscription Claude jobs wait;
+- doctor's fallback row says "priced at zero (cost n/a), serving not verified", even when the local server is not running. On 2026-10-16 neither `qwenrunner` (127.0.0.1:8090) nor oMLX (:8000) was listening.
+
+This part makes every surface say which step each tier is on, why, and when it returns.
+
+**Approach.**
+- src/gates/budget-gates.ts, published through `publishInfoFields` into orchestrator.json (src/fleet/orchestrator-info.ts): a `chain` block with, per tier:
+  - the active step's pair, its `step` index, and the reason it is not on step 0: `window`, `reserve`, `cap`, `step-cap`, `overage` or `demoted`;
+  - when it returns: the window's `resetsAt`, or local midnight for a cap;
+  - for priced steps, the pair's spend and cap.
+- A `fallback_switched` event, logged on every poll where a tier's active step changes, with each changed tier's `from`, `to` and `reason`. src/events/event-format.ts renders it. src/ui/fleet-alerts.ts raises it while a tier is off step 0.
+- Status snapshot, badge and side card (src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/ui/gui/gui-client-operator.ts): name each tier that is off step 0, e.g. `default → DeepSeek-V4-Flash $3.10/$5 · Claude 5h resets 17:40`.
+  - The rejected-window text says "on fallback until …" when the chain moved the work, and keeps "held until …" only when nothing could move.
+  - The TUI renders the same badge string.
+- Role view (src/roles/role-view.ts, src/roles/role-render.ts): "running on fallback 2 of 3 (5h window used up, resets 17:40)".
+- Doctor (src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts):
+  - A "fallback chain" check lists each tier's steps and whether each is usable now, and why not.
+  - For a pi step whose provider's `baseUrl` in pi's `models.json` is on 127.0.0.1 or localhost, it does a `boundedProbe` `GET <baseUrl>/models` with a 2 s budget, and warns "not running" when it fails.
+  - `checkClaudeWindow` says the work moved, or names the tiers that wait.
+
+**Files touched.**
+- Source: src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/fleet/orchestrator-info.ts, src/events/events.ts, src/events/event-format.ts, src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/status-payload.ts, src/ui/gui/gui-client-operator.ts, src/roles/role-view.ts, src/roles/role-render.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts.
+- Tests: test/badges.test.ts, test/status-budget.test.ts, test/status-data-budget.test.ts, test/doctor-model-checks.test.ts, test/doctor-holds.test.ts, and test/event-format-fleet.test.ts.
+
+**Acceptance criteria.**
+- With a rejected window and a moved default tier:
+  - The badge names the tier, its step and the reset time, and contains no "held".
+  - `tumwater status --json` carries the `chain` block.
+  - `fallback_switched` is logged once with reason `window`.
+- Doctor:
+  - A local step on a closed port warns "not running", and an open one reads ok.
+  - A step over its cap reads "cap reached ($5.00/$5)".
+- With no fallback and nothing off step 0, every surface reads exactly as before, and `npm test` passes.
+
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
 
 **Refused 2026-10-14 by feature: prerequisite part 1/2 has not landed — `tui-editors.ts` does not exist (git ls-files and a grep under `src/`/`test/` for `tui-editors`/`createTuiEditors` find nothing) and the `tui-editors` entry is still under `## Planned`. This part 2/2's whole approach — `createTuiKeys` shrinking to an outer shell that constructs the `tui-editors` and `tui-panes` sub-factories, and the editors receiving `refreshPaneCache`/`refreshTrail`/`refreshQueued` as deps from `tui-panes` through `createTuiKeys` — builds on part 1/2 already having landed, which it has not. Land the `tui-editors` split first.

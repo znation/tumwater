@@ -127,3 +127,5 @@ src/events/event-format.ts, README.md, and their tests.
 
 Chains of more than one fallback; a paid-but-cheaper fallback (the cap could then still be
 exceeded — raise the cap instead); moving the director onto the fallback.
+
+Chains and capped paid steps are now planned in plans/fallback-chain.md (2026-10-16).
