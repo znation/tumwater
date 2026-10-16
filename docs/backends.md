@@ -171,7 +171,7 @@ midnight. pi 0.84.2 ships a built-in `huggingface` provider whose catalog predat
 `~/.pi/agent/models.json` (tumwater reads pi's files from `$PI_CODING_AGENT_DIR` when it is set, as pi does) adds just that model (declared at $0.30/$1.20 per million tokens — the
 highest rate among the providers the router auto-selects as of 2026-09-18, so the cap trips no
 later than real spend) and inherits the provider's base URL and env-based key. **The key is the
-one thing not in any config file: export `HF_TOKEN` in the environment that runs `tumwater run`**
+one thing not in any config file: export `HF_TOKEN` in the environment that runs `tumwater start`**
 (`pi auth check --provider huggingface --json` reports `ready` once it is set). The two models'
 context windows differ by an order of magnitude (1,048,576 vs 126,928); runs start a fresh pi
 session with a small prefill, so a switch mid-day is safe, but a role prompt written for the API

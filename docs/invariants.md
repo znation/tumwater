@@ -175,11 +175,11 @@ stay staged). Your cancel, edit, and question answer (`--cancel`, `--edit`, `que
 
 **Pinned by.** `test/backlog-commit.test.ts`, `test/brief-command.test.ts`, `test/gui-endpoints.test.ts`.
 
-### INV-B6: a scheduled stop fires once, is consumed when it fires, and is cleared at a fresh `run`
+### INV-B6: a scheduled stop fires once, is consumed when it fires, and is cleared at a fresh `start`
 
 **Guarantee.** `tumwater stop --in` writes `.tumwater/stop-at.json`; the running team's
 `armScheduledStopWatch` calls its stop closure exactly once when `until` passes and removes the
-marker first. A fresh unsupervised `tumwater run` clears a stale marker. `scheduledStopAt` never
+marker first. A fresh unsupervised `tumwater start` clears a stale marker. `scheduledStopAt` never
 throws: a missing, torn, or non-finite marker reads as no stop.
 
 **Binds.** `src/fleet/fleet-state.ts` (`scheduleStop`, `scheduledStopAt`, `cancelScheduledStop`), `src/cli/cli-run.ts` (`armScheduledStopWatch`).
