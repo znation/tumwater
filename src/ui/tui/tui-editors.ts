@@ -245,6 +245,22 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const busyFlash = (subject: string): string =>
     `finish or cancel the ${subject} first (Esc cancels)`;
 
+  /** Hand the recall line's current draft back into a caller's editor save slot and reset
+   * the recall state — the shared preamble of every mutually-exclusive editor that takes the
+   * prompt line. Mid-recall the line holds a history entry while the real draft sits in the
+   * recall state, so settle first: the editor saves (and later restores) the draft the
+   * operator was writing, with no stale index/draft crossing modes. The save slots are
+   * closure `let`s, so they are passed as setters rather than named. */
+  const settleDraft = (
+    saveInput: (text: string) => void,
+    saveCursor: (pos: number) => void,
+  ): void => {
+    const settled = settlePromptRecall(promptHistory, input, cursor);
+    promptHistory = settled.history;
+    saveInput(settled.text);
+    saveCursor(settled.cursor);
+  };
+
   // Leave budget-edit mode (Esc, Ctrl+B again, or Ctrl+T): restore the saved prompt text.
   const exitBudgetMode = (): void => {
     if (!budgetMode) return;
@@ -353,10 +369,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         // Mid-recall, hand the arrows' saved draft back before the cap editor takes the
         // line — the same settle the role editor does — so leaving budget mode restores
         // the draft, not a history entry, with no stale recall state riding along.
-        const settled = settlePromptRecall(promptHistory, input, cursor);
-        promptHistory = settled.history;
-        savedInput = settled.text;
-        savedCursor = settled.cursor;
+        settleDraft((t) => (savedInput = t), (n) => (savedCursor = n));
         budgetMode = true;
         input = currentCapUsd > 0 ? String(currentCapUsd) : "";
         cursor = input.length;
@@ -397,10 +410,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         // Mid-recall, hand the arrows' saved draft back before the defer editor takes the
         // line — the same settle the budget and role editors do — so leaving restores the
         // draft, not a history entry, with no stale recall state riding along.
-        const settled = settlePromptRecall(promptHistory, input, cursor);
-        promptHistory = settled.history;
-        deferSavedInput = settled.text;
-        deferSavedCursor = settled.cursor;
+        settleDraft((t) => (deferSavedInput = t), (n) => (deferSavedCursor = n));
         deferMode = true;
         input = deferMs === null ? "" : durationLabel(deferMs);
         cursor = input.length;
@@ -428,10 +438,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         } else {
           // An unpaused fleet opens the one-line editor: "[duration] [reason]", empty pauses
           // until resumed. A paused fleet resumes at once.
-          const settled = settlePromptRecall(promptHistory, input, cursor);
-          promptHistory = settled.history;
-          pauseSavedInput = settled.text;
-          pauseSavedCursor = settled.cursor;
+          settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
           pauseEditMode = true;
           input = "";
           cursor = 0;
@@ -455,10 +462,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         if (scheduledStopAt(root) !== undefined) {
           deps.flashMessage(cancelScheduledStopMessage(root));
         } else {
-          const settled = settlePromptRecall(promptHistory, input, cursor);
-          promptHistory = settled.history;
-          pauseSavedInput = settled.text;
-          pauseSavedCursor = settled.cursor;
+          settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
           pauseEditMode = true;
           pauseEditRole = null;
           pauseEditStop = true;
@@ -512,10 +516,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             // recall state: settle first, so the role editor saves (and later restores) the
             // draft the operator was writing, and no stale index/draft crosses modes —
             // otherwise Esc here would surface role-mode recalls on the director line.
-            const settled = settlePromptRecall(promptHistory, input, cursor);
-            promptHistory = settled.history;
-            roleSavedInput = settled.text;
-            roleSavedCursor = settled.cursor;
+            settleDraft((t) => (roleSavedInput = t), (n) => (roleSavedCursor = n));
             rolePromptFor = role;
             input = "";
             cursor = 0;
@@ -534,10 +535,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           } else {
             // An unpaused loop opens the one-line duration editor; nothing is written until
             // Enter. Empty pauses until resumed.
-            const settled = settlePromptRecall(promptHistory, input, cursor);
-            promptHistory = settled.history;
-            pauseSavedInput = settled.text;
-            pauseSavedCursor = settled.cursor;
+            settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
             pauseEditMode = true;
             pauseEditRole = role;
             input = "";
@@ -553,10 +551,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           );
         } else {
           // Ctrl+W opens the one-line wake editor; nothing is written until Enter. Empty wakes now.
-          const settled = settlePromptRecall(promptHistory, input, cursor);
-          promptHistory = settled.history;
-          pauseSavedInput = settled.text;
-          pauseSavedCursor = settled.cursor;
+          settleDraft((t) => (pauseSavedInput = t), (n) => (pauseSavedCursor = n));
           pauseEditMode = true;
           pauseEditRole = role;
           pauseEditWake = true;
@@ -585,10 +580,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         ctx.view === ctx.roleIds.length + 1 &&
         !budgetMode && !rolePromptFor && !searchMode && !deferMode && !pauseEditMode && !queuedEditFor && !answerFor && !entryEditFor
       ) {
-        const settled = settlePromptRecall(promptHistory, input, cursor);
-        promptHistory = settled.history;
-        entryEditSavedInput = settled.text;
-        entryEditSavedCursor = settled.cursor;
+        settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
         entryEditFor = { kind: "plan", position: null, title: "" };
         input = "";
         cursor = 0;
@@ -622,10 +614,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             // Mid-recall, the line holds a history entry while the real draft sits in the
             // recall state: settle first, so the queued editor saves (and later restores)
             // the draft the operator was writing.
-            const settled = settlePromptRecall(promptHistory, input, cursor);
-            promptHistory = settled.history;
-            queuedSavedInput = settled.text;
-            queuedSavedCursor = settled.cursor;
+            settleDraft((t) => (queuedSavedInput = t), (n) => (queuedSavedCursor = n));
             queuedEditFor = { role: row.role, file: row.file };
             input = body;
             cursor = body.length;
@@ -656,10 +645,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           deps.flashMessage("only an open question can be answered here");
         } else {
           const position = sel - entries.filter((e) => e.label !== "question").length + 1;
-          const settled = settlePromptRecall(promptHistory, input, cursor);
-          promptHistory = settled.history;
-          answerSavedInput = settled.text;
-          answerSavedCursor = settled.cursor;
+          settleDraft((t) => (answerSavedInput = t), (n) => (answerSavedCursor = n));
           answerFor = { position, title: entry.title };
           input = "";
           cursor = 0;
@@ -689,10 +675,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         } else {
           const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
           const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
-          const settled = settlePromptRecall(promptHistory, input, cursor);
-          promptHistory = settled.history;
-          entryEditSavedInput = settled.text;
-          entryEditSavedCursor = settled.cursor;
+          settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
           entryEditFor = { kind, position, title: picked.title };
           input = stripEntryStamp(picked.title);
           cursor = input.length;
@@ -714,10 +697,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       // line, so elsewhere it types into the prompt as today and a director draft is never
       // disturbed. Pre-fills the applied pattern so Enter re-submits it and the operator can
       // edit it; Esc cancels without applying.
-      const settled = settlePromptRecall(promptHistory, input, cursor);
-      promptHistory = settled.history;
-      searchSavedInput = settled.text;
-      searchSavedCursor = settled.cursor;
+      settleDraft((t) => (searchSavedInput = t), (n) => (searchSavedCursor = n));
       searchFor = ctx.view === 0 ? "activity" : "history";
       searchMode = true;
       input = (searchFor === "activity" ? ctx.activityGrep : ctx.historyGrep) ?? "";
