@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The TUI's History pane body: the completed-tick rows `tumwater history` prints (and the
  * dashboard's History view renders), one line each, newest first. history-data.ts already
  * builds the rows (`readTickRows`); this only renders them for the pane, so the TUI, the CLI,

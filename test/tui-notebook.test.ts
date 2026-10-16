@@ -6,7 +6,7 @@ import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { roleNotesPath } from "../src/paths.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
 
-// Ctrl+N notebook mode: on a loop's transcript, the pane swaps the live transcript for the
+// Ctrl+N notes mode: on a loop's transcript, the pane swaps the live transcript for the
 // loop's notebook and next tick's prompt (PLANS.md "Inspect a loop's notebook and next tick
 // prompt in the TUI"), and swaps back — the terminal view of what the dashboard drawer shows.
 
@@ -24,10 +24,10 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (the one enabled role: clean)
     assert.match(tui.lastFrame(), /Transcript: clean \(1\/1\)/);
-    assert.match(tui.lastFrame(), /Ctrl\+N notebook/); // the hint offers the switch
+    assert.match(tui.lastFrame(), /Ctrl\+N notes/); // the hint offers the switch
 
     tui.key(undefined, "n", { ctrl: true });
-    assert.match(tui.lastFrame(), /Notebook: clean \(1\/1\)/); // the tab strip names the mode
+    assert.match(tui.lastFrame(), /Notes: clean \(1\/1\)/); // the tab strip names the mode
     assert.match(tui.lastFrame(), /## Notes/);
     assert.match(tui.lastFrame(), /the scheduler lives in fleet\.ts/);
     assert.match(tui.lastFrame(), /## Next run's prompt/);
@@ -44,7 +44,7 @@ test("Ctrl+N shows the viewed loop's notebook and next tick prompt, and toggles 
 
     tui.key(undefined, "n", { ctrl: true });
     assert.match(tui.lastFrame(), /Transcript: clean \(1\/1\)/);
-    assert.match(tui.lastFrame(), /Ctrl\+N notebook/);
+    assert.match(tui.lastFrame(), /Ctrl\+N notes/);
 
     // Ctrl+T away and back also lands on the live transcript, not a stale notebook.
     tui.key(undefined, "t", { ctrl: true }); // → backlog
@@ -105,7 +105,7 @@ test("Ctrl+X twice in the notebook view clears the loop's notebook; the first pr
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true });
     tui.key(undefined, "n", { ctrl: true });
-    assert.match(tui.lastFrame(), /Ctrl\+X clear notebook/);
+    assert.match(tui.lastFrame(), /Ctrl\+X clear notes/);
     tui.key(undefined, "x", { ctrl: true });
     assert.equal(fs.readFileSync(roleNotesPath(repo, "clean"), "utf8"), "stale note\n");
     assert.match(tui.lastFrame(), /press Ctrl\+X again/);

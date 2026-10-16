@@ -189,11 +189,11 @@ test("parseDeferInput maps empty to no delay and validates durations against the
   const shape = parseDeferInput("junk");
   assert.equal(
     shape.ok ? "" : shape.error,
-    'defer needs a duration like 45s, 90m, 1h30m, or 2d (got "junk")',
+    'send later needs a duration like 45s, 90m, 1h30m, or 2d (got "junk")',
   );
   // The cap error is the same wording the dashboard composer's server check uses.
   const cap = parseDeferInput("91d");
-  assert.equal(cap.ok ? "" : cap.error, "defer is capped at 90d");
+  assert.equal(cap.ok ? "" : cap.error, "send later is capped at 90d");
 });
 
 test("parseBudgetInput maps empty to disabled and validates the rest", () => {
@@ -377,7 +377,7 @@ test("parseRoleWakeInput wakes now when empty, schedules a duration, cancels on 
   assert.deepEqual(parseRoleWakeInput("91d"), { ok: false, error: "wake is capped at 90d" });
   const bad = parseRoleWakeInput("soon");
   assert.equal(bad.ok, false);
-  assert.match(!bad.ok ? bad.error : "", /a loop wake takes a duration/);
+  assert.match(!bad.ok ? bad.error : "", /a role wake takes a duration/);
 });
 
 test("parseStopInInput takes a duration, refuses empty and junk, and caps at 90d", () => {

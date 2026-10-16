@@ -152,7 +152,7 @@ test("typing edits the prompt line; Enter queues it for the director", async () 
 
     // The flash confirms the queue and the event feed picks up the enqueue.
     const frame = tui.lastFrame();
-    assert.match(frame, /queued for the director loop/);
+    assert.match(frame, /added to the director's inbox/);
     assert.match(frame, /message added to the inbox: fix the bug/);
     // The input line is cleared after submit.
     assert.equal(tui.lines().at(-1), "director ›");
@@ -168,7 +168,7 @@ test("Up/Down recall the submitted prompts; the draft survives the round trip", 
   await withTui(repo, async (tui) => {
     for (const ch of "fix the bug") tui.key(ch, ch);
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /queued for the director loop/);
+    assert.match(tui.lastFrame(), /added to the director's inbox/);
 
     // Up recalls the just-submitted prompt; Down returns to the empty live line.
     tui.key(undefined, "up");
@@ -252,7 +252,7 @@ test("a failed prompt submit keeps the text and flashes the error instead of los
 
     const frame = tui.lastFrame();
     assert.match(frame, /error: ENOSPC/); // the reason is surfaced, not swallowed
-    assert.doesNotMatch(frame, /queued for the director loop/);
+    assert.doesNotMatch(frame, /added to the director's inbox/);
     // The text is kept so it can be resubmitted once the failure is fixed.
     assert.equal(tui.lines().at(-1), "director › fix the bug");
     const inbox = path.join(repo, ".tumwater", "inbox");
@@ -302,7 +302,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
     let frame = tui.lastFrame();
     assert.match(frame, /\[Transcript: clean \(1\/1\)\]/);
     // The loop's own keys ride the hint line while its transcript is up.
-    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notebook · Ctrl\+P pause\/resume/);
+    assert.match(frame, /Ctrl\+R prompt clean · Ctrl\+N notes · Ctrl\+P pause\/resume/);
     assert.match(frame, /tidied the imports/); // assistant text renders…
     assert.doesNotMatch(frame, /Build a thing/); // …but never the user's tick prompt
 
@@ -353,7 +353,7 @@ test("Ctrl+T cycles Activity → Transcript → Backlog → Usage → Failures �
 
     tui.key(undefined, "t", { ctrl: true }); // → queued
     frame = tui.lastFrame();
-    assert.match(frame, /\[Queued\]/);
+    assert.match(frame, /\[Inbox\]/);
 
     tui.key(undefined, "t", { ctrl: true }); // → health
     assert.match(tui.lastFrame(), /\[Health\]/);
@@ -374,13 +374,13 @@ test("the Queued pane shows a selected row's full prompt under a cancel header a
   await withTui(repo, async (tui) => {
     for (let i = 0; i < 7; i++) tui.key(undefined, "t", { ctrl: true }); // → Transcript → … → Queued
     let frame = tui.lastFrame();
-    assert.match(frame, /\[Queued\]/);
+    assert.match(frame, /\[Inbox\]/);
     assert.match(frame, /clean:/); // list mode shows the numbered section
     assert.doesNotMatch(frame, /Ctrl\+X to cancel/);
 
     tui.key(undefined, "down"); // select the clean prompt (its per-loop position 1)
     frame = tui.lastFrame();
-    assert.match(frame, /queued for clean #1 \(Ctrl\+X to cancel\)/);
+    assert.match(frame, /clean's inbox #1 \(Ctrl\+X to cancel\)/);
     assert.match(frame, /first line of the queued prompt/);
     assert.match(frame, /second line kept verbatim/);
 
@@ -392,8 +392,8 @@ test("the Queued pane shows a selected row's full prompt under a cancel header a
     tui.key(undefined, "down");
     tui.key(undefined, "x", { ctrl: true }); // cancel the selected prompt
     frame = tui.lastFrame();
-    assert.match(frame, /cancelled queued prompt #1 for clean/);
-    assert.match(frame, /\(no queued prompts\)/);
+    assert.match(frame, /cancelled inbox message #1 for clean/);
+    assert.match(frame, /\(inbox empty\)/);
     assert.equal(queuedListRows(repo, null, listWideScope(repo)).length, 0);
   });
 });
@@ -590,7 +590,7 @@ test("Ctrl+G scopes the Activity feed and `/` searches it, narrowing what the pa
     assert.match(fleet, /widget landed/);
     assert.match(fleet, /gizmo swept/);
     assert.match(fleet, /tidy imports/);
-    assert.match(fleet, /Ctrl\+G scope: fleet · \/ search/, "the hint names the fleet scope and the search key");
+    assert.match(fleet, /Ctrl\+G scope: team · \/ search/, "the hint names the fleet scope and the search key");
 
     // Ctrl+G scopes the feed to the roster's clean loop: the tab strip and hint name it, and
     // the feature loop's event leaves the pane.

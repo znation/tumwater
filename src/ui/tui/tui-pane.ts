@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The per-pane body builder for the TUI's render (extracted from src/ui/tui/tui.tsx): which
  * lines fill the lower pane for the view the frame shows — transcript, backlog, usage,
  * failures, history, pending, queued, health, brief, or activity. Pure with respect to
@@ -151,11 +152,11 @@ export function paneBody(
     // The tick trail (Ctrl+N) windows the cached renderTickDetail text; a null cache (the
     // read found no tick) paints the pane's own note rather than entryBodyWindow's placeholder.
     if (pane.trail) {
-      if (state.trailCache === null) return { body: [], emptyNote: "(no tick trail)" };
+      if (state.trailCache === null) return { body: [], emptyNote: "(no run trail)" };
       const win = entryBodyWindow(state.trailCache, state.paneScroll, eventBudget, width);
       return {
         body: win.lines.map((l) => toneLine(l, width)),
-        emptyNote: "(no tick trail)",
+        emptyNote: "(no run trail)",
       };
     }
     // historyPaneText returns "" when the log holds no completed ticks; return no lines
@@ -164,7 +165,7 @@ export function paneBody(
     const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
     return {
       body: win.lines.map((l) => toneLine(l, width)),
-      emptyNote: "(no ticks yet)",
+      emptyNote: "(no runs yet)",
     };
   }
   if (pane.kind === "pending") {
@@ -205,16 +206,16 @@ export function paneBody(
       const win = entryBodyWindow(row.text, state.paneScroll, entryBudget, width);
       return {
         body: [
-          toneLine(`queued for ${row.role} #${row.position} (Ctrl+X to cancel)`, width, "bold"),
+          toneLine(`${row.role}'s inbox #${row.position} (Ctrl+X to cancel)`, width, "bold"),
           ...win.lines.map((l) => toneLine(l, width)),
         ],
-        emptyNote: "(no queued prompts)",
+        emptyNote: "(inbox empty)",
       };
     }
     const win = state.paneCache ? entryBodyWindow(state.paneCache, state.paneScroll, eventBudget, width) : { lines: [] };
     return {
       body: win.lines.map((l) => toneLine(l, width)),
-      emptyNote: "(no queued prompts)",
+      emptyNote: "(inbox empty)",
     };
   }
   if (pane.kind === "usage" || pane.kind === "failures") {

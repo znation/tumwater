@@ -26,7 +26,7 @@ test("Ctrl+R opens the role-prompt editor; Enter queues for the viewed loop and 
     // `tumwater prompt --list --role clean`'s core — and the wake marker names it.
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
     assert.deepEqual(readJson<{ roles: string[] }>(wakeRequestPath(repo)).roles, ["clean"]);
-    assert.match(tui.lastFrame(), /queued for the clean loop/);
+    assert.match(tui.lastFrame(), /added to clean's inbox/);
     assert.equal(tui.lines().at(-1), "director ›");
 
     // A whitespace-only Enter queues nothing and stays in edit mode with the way out.
@@ -65,7 +65,7 @@ test("a throwing role-prompt submit flashes the error and keeps the editor open"
     tui.key("check the clean queue", "check the clean queue");
     tui.key(undefined, "return");
     assert.deepEqual(queuedRolePrompts(repo, "clean"), ["check the clean queue"]);
-    assert.match(tui.lastFrame(), /queued for the clean loop/);
+    assert.match(tui.lastFrame(), /added to clean's inbox/);
   });
 });
 

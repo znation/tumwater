@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The ink component tree that draws `tumwater tui`'s frame. Pure drawing: it takes the
  * frame tui.tsx's render step assembles — the same clipped StatusLines the tui-frame.ts
  * builders produce — and lays one line out per row, one styled Text per span. Ink

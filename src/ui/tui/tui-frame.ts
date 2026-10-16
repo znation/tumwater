@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** The pieces of a TUI frame, pure so they test without a terminal: the attention lines under the
  * header (fleet-alerts.ts's fleetAlerts — the dashboard's alert banners, one line each); the view
  * tab strip; the per-view key hints; the prompt line's target; and the tones of activity and
@@ -12,6 +13,7 @@ import { alertLines, clipSpans, toneLine, type StatusLine, type StatusSpan } fro
 export { alertLines, toneLine };
 import { eventResult } from "../../events/event-format.js";
 import { eventKind, resultTone, type Tone } from "../tone.js";
+import { roleLabel } from "../../roles/role-labels.js";
 import { displayWidth } from "../../text/text-width.js";
 import { stripTerminalControls } from "../../text/text.js";
 
@@ -46,14 +48,14 @@ export type TuiView =
  * Ctrl+T cycle can be seen rather than remembered. */
 export function tabStrip(view: TuiView, width: number): StatusLine {
   const tabs: Array<[TuiView["kind"], string]> = [
-    ["activity", view.kind === "activity" && view.role ? `Activity: ${view.role}` : "Activity"],
-    ["transcript", view.kind === "transcript" ? `${view.note ? "Notebook" : view.change ? "Change" : "Transcript"}: ${view.role} (${view.index}/${view.count})` : "Transcript"],
+    ["activity", view.kind === "activity" && view.role ? `Activity: ${roleLabel(view.role)}` : "Activity"],
+    ["transcript", view.kind === "transcript" ? `${view.note ? "Notes" : view.change ? "Change" : "Transcript"}: ${roleLabel(view.role)} (${view.index}/${view.count})` : "Transcript"],
     ["backlog", "Backlog"],
     ["usage", view.kind === "usage" && view.scope ? `Usage: ${view.scope}` : "Usage"],
     ["failures", view.kind === "failures" && view.scope ? `Failures: ${view.scope}` : "Failures"],
-    ["history", view.kind === "history" ? `${view.trail ? "Tick" : "History"}${view.role ? ": " + view.role : ""}` : "History"],
+    ["history", view.kind === "history" ? `${view.trail ? "Run" : "History"}${view.role ? ": " + roleLabel(view.role) : ""}` : "History"],
     ["pending", "Pending"],
-    ["queued", "Queued"],
+    ["queued", "Inbox"],
     ["health", "Health"],
     ["brief", "Brief"],
   ];
@@ -79,21 +81,21 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (view.kind === "transcript") {
-    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notebook"], ...(view.note ? [["Ctrl+X", "clear notebook"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "abort"],
+    keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+R", `prompt ${view.role}`], ["Ctrl+N", view.note ? "change" : view.change ? "transcript" : "notes"], ...(view.note ? [["Ctrl+X", "clear notes"] as [string, string]] : []), ["Ctrl+P", "pause/resume"], ["Ctrl+W", "wake"], ["Ctrl+A", "stop run"],
       ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   } else if (view.kind === "backlog") keys = [["Enter", "send"], ["↑↓", "open entries"], ["Ctrl+X", "cancel entry"], ["Ctrl+E", "edit entry"], ["Ctrl+N", "new plan/bug"], ["Ctrl+A", "answer question"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: fleet"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+N", view.trail ? "history" : "tick trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "usage" || view.kind === "failures") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.scope ? `scope: ${view.scope}` : "scope: team"], ["Ctrl+E", view.window ? `window: ${view.window}` : "window: default"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
+  else if (view.kind === "history") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["Ctrl+S", view.since ? `window: ${view.since}` : "window: default"], ["Ctrl+O", view.result ? `result: ${view.result}` : "result: all"], ["Ctrl+N", view.trail ? "history" : "run trail"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "pending") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "health" || view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: fleet"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause fleet"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name
   // their own keys and keep the line, so this only rides the view hints.
   if (!mode.deferMode && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
-    keys.push(["Ctrl+L", mode.defer ? `defer: ${mode.defer}` : "defer"]);
+    keys.push(["Ctrl+L", mode.defer ? `send later: ${mode.defer}` : "send later"]);
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
     if (i > 0) spans.push({ text: " · ", tone: "dim" });
@@ -110,10 +112,10 @@ export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | nu
   if (mode.queuedEditFor) return [{ text: `edit ${mode.queuedEditFor.role}`, tone: "brand" }, { text: " › " }];
   if (mode.pauseEditMode && mode.pauseEditStop) return [{ text: "stop in", tone: "brand" }, { text: " › " }];
   if (mode.pauseEditMode) return [{ text: mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause", tone: "brand" }, { text: " › " }];
-  if (mode.deferMode) return [{ text: "defer", tone: "brand" }, { text: " › " }];
-  // A pending delay is named beside the target (e.g. `director (defer 45m) › `), so the
-  // operator sees what the next Enter will schedule before pressing it.
-  const target = mode.defer ? `${mode.rolePromptFor ?? "director"} (defer ${mode.defer})` : (mode.rolePromptFor ?? "director");
+  if (mode.deferMode) return [{ text: "send later", tone: "brand" }, { text: " › " }];
+  // A pending delay is named beside the target (e.g. `director (in 45m) › `), so the
+  // user sees what the next Enter will schedule before pressing it.
+  const target = mode.defer ? `${mode.rolePromptFor ?? "director"} (in ${mode.defer})` : (mode.rolePromptFor ?? "director");
   return [{ text: target, tone: "brand" }, { text: " › " }];
 }
 
@@ -128,7 +130,7 @@ export function prefixWidth(prefix: readonly StatusSpan[]): number {
 export function eventTone(e: HarnessEvent): Tone | undefined {
   const result = eventResult(e);
   const kind = eventKind(e.type, result);
-  if (kind === "landing") return "green";
+  if (kind === "landing") return "green"; // vocabulary-ok: event kind code
   if (kind === "attention") return "magenta";
   if (kind === "problem") return (e.type === "tick_end" ? resultTone(result) : undefined) ?? "red";
   if (kind === "routine") return "dim";

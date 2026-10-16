@@ -67,58 +67,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Completion still offers every visible command and flag.
 - `npm run test` passes.
 
-### Plain terms text, part 9/19: The TUI's tabs and hints and editors use the glossary (planned 2026-10-16 by user; requires part 3/19, part 4/19, part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/tui/ + tests)
-
-**Goal.** The terminal UI names its views and keys the way the dashboard does: Inbox (not Queued), Notes, "scope: team", "pause team", and "send later" for Ctrl+L.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `tabStrip` (src/ui/tui/tui-frame.ts):
-  - "Queued" → "Inbox".
-  - The transcript tab's "Notebook: <role>" → "Notes: <role>".
-  - The history trail's "Tick: <role>" → "Run: <role>".
-  - Role names go through `roleLabel`.
-- `hintLine`:
-  - "scope: fleet" → "scope: team", in all three views.
-  - "pause fleet" → "pause team", and "tick trail" → "run trail".
-  - "notebook" → "notes", and "clear notebook" → "clear notes".
-  - Ctrl+A "abort" → "stop run".
-  - Ctrl+L "defer" → "send later", and "defer: 45m" → "send later: 45m".
-  - "interrupt director" stays.
-- `promptPrefix`: the editor's "defer" prefix → "send later", and "director (defer 45m) › " → "director (in 45m) › ".
-- `createTuiEditors` (src/ui/tui/tui-editors.ts):
-  - The send-later editor's prompt: "send later: a duration like 45m (empty sends now) — Enter to save, Esc to cancel".
-  - "defer cleared" → "send later cleared".
-  - The pause and stop editors: "pause the team: …", "stop the team later: … current runs finish, then the team stops".
-  - "fleet was not paused" and "fleet is already paused" say "team".
-  - Inbox messages match part 7/19's phrases: "added to <role>'s inbox — delivers in …", "edited inbox message for …", "the inbox message was already gone".
-  - "search ticks: …" → "search runs: …".
-- src/ui/tui/tui-input.ts:
-  - `parseDeferInput`'s error → "send later needs a duration like …".
-  - `parseRolePauseInput` → "a role pause takes only a duration … — reasons are team-wide, use Ctrl+F".
-  - `parseRoleWakeInput` → "a role wake …".
-- src/ui/tui/tui-keys.ts:
-  - "no runs with result …" and "no completed runs to inspect".
-  - "'s notes — any other key keeps them".
-  - "cancelled inbox message #N".
-- `paneBody` (src/ui/tui/tui-pane.ts): "(no run trail)", "(no runs yet)", "(inbox empty)", "<role>'s inbox".
-- `TuiView` kinds (`"queued"`, …) and other internal keys stay, marked. Add the header to every src/ui/tui module.
-
-**Files touched.**
-- src: src/ui/tui/tui-frame.ts, tui-editors.ts, tui-input.ts, tui-keys.ts, tui-pane.ts, tui.tsx, tui-app.tsx, tui-backlog.ts, tui-history.ts, tui-keymap.ts and tui-prompt-history.ts (the last five take the header only).
-- Tests: test/tui.test.ts, test/tui-frame.test.ts, test/tui-keys.test.ts, test/tui-input.test.ts, test/tui-notebook.test.ts, test/tui-operator-keys.test.ts, test/tui-backlog.test.ts, test/tui-history.test.ts, test/tui-role-prompt.test.ts, test/tui-budget.test.ts.
-
-**Acceptance criteria.**
-- The tab strip reads `Activity  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief`, and a role's notes view is labeled `Notes: feature #2 (…)`.
-- The footer shows `Ctrl+L send later`, or `send later: 45m` once a delay is set. The prompt prefix then reads `director (in 45m) › `.
-- The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
-- `npm run test` passes.
-
 ### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
 
 **Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
@@ -2866,6 +2814,58 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The same file adds a Bugs-tab case with one blocked bug, checking the `Blocked (1)` divider follows the pickable bug.
 - "an eligible Plans row is byte-identical whether or not the payload carries holds" still passes. A new assertion in it shows that `planBlocked: [false]` paints the same HTML as a payload without the key.
 - The existing backlog tests in `test/gui-client-fleet.test.ts` and `test/status-payload.test.ts` pass unchanged.
+- `npm run test` passes.
+
+### Plain terms text, part 9/19: The TUI's tabs and hints and editors use the glossary (planned 2026-10-16 by user; requires part 3/19, part 4/19, part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Wording rules"; touches src/ui/tui/ + tests) (done 2026-10-16)
+
+**Goal.** The terminal UI names its views and keys the way the dashboard does: Inbox (not Queued), Notes, "scope: team", "pause team", and "send later" for Ctrl+L.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `tabStrip` (src/ui/tui/tui-frame.ts):
+  - "Queued" → "Inbox".
+  - The transcript tab's "Notebook: <role>" → "Notes: <role>".
+  - The history trail's "Tick: <role>" → "Run: <role>".
+  - Role names go through `roleLabel`.
+- `hintLine`:
+  - "scope: fleet" → "scope: team", in all three views.
+  - "pause fleet" → "pause team", and "tick trail" → "run trail".
+  - "notebook" → "notes", and "clear notebook" → "clear notes".
+  - Ctrl+A "abort" → "stop run".
+  - Ctrl+L "defer" → "send later", and "defer: 45m" → "send later: 45m".
+  - "interrupt director" stays.
+- `promptPrefix`: the editor's "defer" prefix → "send later", and "director (defer 45m) › " → "director (in 45m) › ".
+- `createTuiEditors` (src/ui/tui/tui-editors.ts):
+  - The send-later editor's prompt: "send later: a duration like 45m (empty sends now) — Enter to save, Esc to cancel".
+  - "defer cleared" → "send later cleared".
+  - The pause and stop editors: "pause the team: …", "stop the team later: … current runs finish, then the team stops".
+  - "fleet was not paused" and "fleet is already paused" say "team".
+  - Inbox messages match part 7/19's phrases: "added to <role>'s inbox — delivers in …", "edited inbox message for …", "the inbox message was already gone".
+  - "search ticks: …" → "search runs: …".
+- src/ui/tui/tui-input.ts:
+  - `parseDeferInput`'s error → "send later needs a duration like …".
+  - `parseRolePauseInput` → "a role pause takes only a duration … — reasons are team-wide, use Ctrl+F".
+  - `parseRoleWakeInput` → "a role wake …".
+- src/ui/tui/tui-keys.ts:
+  - "no runs with result …" and "no completed runs to inspect".
+  - "'s notes — any other key keeps them".
+  - "cancelled inbox message #N".
+- `paneBody` (src/ui/tui/tui-pane.ts): "(no run trail)", "(no runs yet)", "(inbox empty)", "<role>'s inbox".
+- `TuiView` kinds (`"queued"`, …) and other internal keys stay, marked. Add the header to every src/ui/tui module.
+
+**Files touched.**
+- src: src/ui/tui/tui-frame.ts, tui-editors.ts, tui-input.ts, tui-keys.ts, tui-pane.ts, tui.tsx, tui-app.tsx, tui-backlog.ts, tui-history.ts, tui-keymap.ts and tui-prompt-history.ts (the last five take the header only).
+- Tests: test/tui.test.ts, test/tui-frame.test.ts, test/tui-keys.test.ts, test/tui-input.test.ts, test/tui-notebook.test.ts, test/tui-operator-keys.test.ts, test/tui-backlog.test.ts, test/tui-history.test.ts, test/tui-role-prompt.test.ts, test/tui-budget.test.ts.
+
+**Acceptance criteria.**
+- The tab strip reads `Activity  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief`, and a role's notes view is labeled `Notes: feature #2 (…)`.
+- The footer shows `Ctrl+L send later`, or `send later: 45m` once a delay is set. The prompt prefix then reads `director (in 45m) › `.
+- The scope hint reads `scope: team`, and the Ctrl+F hint reads `pause team`.
 - `npm run test` passes.
 
 ### `tumwater plan --list` shows each blocked series as one line, as the prompt's backlog index does, so an operator's list of 100+ planned entries fits on a screen and the eligible plans stand out (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `collapseBlockedSeries` and its helpers in `src/backlog/backlog-structure.ts`, the plans branch of `listAndAnnounce` in `src/backlog/backlog-cli.ts`, the `plan --list` stanza of `src/cli/help.ts`, and the `--list` clause of `docs/cli.md`'s "Steer the project" row. Plain terms text 7/19, in flight, rewords messages in these two backlog files; this plan adds a grouping helper and one list branch and rewords none of the existing messages. The `questions --answered` plan edits `cmdQuestions` and `question-answer.ts` instead) (done 2026-10-16)

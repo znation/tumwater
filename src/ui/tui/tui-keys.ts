@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { collectReport, collectReportSince } from "../../report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../../report/report-render.js";
 import { REPORT_DEFAULT_DAYS, REPORT_SINCE_MAX_MS, SPARSE_WINDOW_NOTE } from "../../events/event-window.js";
@@ -393,7 +394,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   // one home for the "written but NOT committed" warning every edit, file, cancel, and
   // answer arm shares.
   const commitBacklogEdit = (file: string, subject: string): void => {
-    void commitOperatorBacklogEdit(root, file, stampedSubject("operator", subject)).then((committed) => {
+    void commitOperatorBacklogEdit(root, file, stampedSubject("operator", subject)).then((committed) => { // vocabulary-ok: the tumwater(operator): commit prefix
       if (!committed) flashMessage(`${file} written but NOT committed to main — commit it before the next fast-forward`);
     });
   };
@@ -858,7 +859,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
         }
       } else {
         notesClearArmed = role;
-        flashMessage(`press Ctrl+X again to clear ${role}'s notebook — any other key keeps it`);
+        flashMessage(`press Ctrl+X again to clear ${role}'s notes — any other key keeps it`);
       }
       deps.requestRender();
       return;
@@ -882,8 +883,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // not a failure: flash it honestly and still refresh the listing.
           flashMessage(
             outcome.status === "cancelled"
-              ? `cancelled queued prompt #${row.position} for ${row.role}`
-              : `queued prompt #${row.position} for ${row.role} was already gone`,
+              ? `cancelled inbox message #${row.position} for ${row.role}`
+              : `inbox message #${row.position} for ${row.role} was already gone`,
           );
           refreshQueued();
         }

@@ -126,7 +126,7 @@ test("defer mode sets a one-shot delay applied to the next director or role prom
   for (const ch of "defer me") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().defer, null, "a successful submit clears the pending delay");
-  assert.equal(keys.state().flash, "queued for the director loop — delivers in 45m");
+  assert.equal(keys.state().flash, "added to the director's inbox — delivers in 45m");
   assert.equal(firstLine(directorQueue), notBeforeMarker(1_000_000 + 45 * 60_000).split("\n")[0]);
 
   // A pending delay also rides the next role submit; the role editor opens after it is saved.
@@ -139,7 +139,7 @@ test("defer mode sets a one-shot delay applied to the next director or role prom
   for (const ch of "role defer") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().defer, null);
-  assert.equal(keys.state().flash, "queued for the clean loop — delivers in 90m");
+  assert.equal(keys.state().flash, "added to clean's inbox — delivers in 90m");
   assert.equal(firstLine(roleQueue), notBeforeMarker(1_000_000 + 90 * 60_000).split("\n")[0]);
 });
 
@@ -170,19 +170,19 @@ test("defer mode is exclusive with the other prompt-line editors and survives vi
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().defer, null);
   assert.equal(keys.state().input, "draft");
-  assert.equal(keys.state().flash, "defer cleared");
+  assert.equal(keys.state().flash, "send later cleared");
 
   // An invalid spelling (and an over-cap value) flashes and keeps the editor open.
   keys.handleKey(undefined, { ctrl: true, name: "l" });
   for (const ch of "junk") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().deferMode, true, "an invalid duration keeps the editor open");
-  assert.match(keys.state().flash!, /defer needs a duration/);
+  assert.match(keys.state().flash!, /send later needs a duration/);
   keys.handleKey(undefined, { ctrl: true, name: "u" });
   for (const ch of "91d") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().deferMode, true);
-  assert.equal(keys.state().flash, "defer is capped at 90d");
+  assert.equal(keys.state().flash, "send later is capped at 90d");
   keys.handleKey(undefined, { name: "escape" });
 
   // Ctrl+B while the defer editor holds the line refuses and changes nothing.
@@ -190,7 +190,7 @@ test("defer mode is exclusive with the other prompt-line editors and survives vi
   keys.handleKey(undefined, { ctrl: true, name: "b" });
   assert.equal(keys.state().deferMode, true, "defer keeps the line; budget does not open");
   assert.equal(keys.state().budgetMode, false);
-  assert.match(keys.state().flash!, /finish or cancel the defer edit first/);
+  assert.match(keys.state().flash!, /finish or cancel the send-later edit first/);
   keys.handleKey(undefined, { name: "escape" });
 
   // Ctrl+L while another editor holds the line refuses and changes nothing.
@@ -1468,7 +1468,7 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   // Select the director row (index 0) and cancel its per-loop position 1.
   keys.handleKey(undefined, { name: "down" });
   keys.handleKey(undefined, { ctrl: true, name: "x" });
-  assert.match(keys.state().flash!, /cancelled queued prompt #1 for director/);
+  assert.match(keys.state().flash!, /cancelled inbox message #1 for director/);
   assert.equal(keys.state().queuedRows.length, 2);
   assert.deepEqual(keys.state().queuedRows.map((r) => r.role), ["clean", "clean"]);
   assert.equal(keys.state().selectedQueued, 0, "the selection clamps to the remaining rows");
@@ -1482,7 +1482,7 @@ test("the Queued pane selects rows, cancels through cancelRolePrompt, and clamps
   keys.handleKey(undefined, { name: "down" });
   assert.equal(keys.state().selectedQueued, 1);
   keys.handleKey(undefined, { ctrl: true, name: "x" });
-  assert.match(keys.state().flash!, /cancelled queued prompt #2 for clean/);
+  assert.match(keys.state().flash!, /cancelled inbox message #2 for clean/);
   assert.deepEqual(keys.state().queuedRows.map((r) => r.text), ["clean one"]);
 
   // Cancelling the last prompt empties the queue and clears the selection.
@@ -1508,7 +1508,7 @@ test("the Queued pane edits the selected prompt in place through editQueuedFile"
   assert.deepEqual(keys.state().queuedEditFor, { role: "clean", file: base });
   assert.equal(keys.state().input, "clean first", "the line is prefilled with the body minus the marker");
   assert.equal(keys.state().cursor, "clean first".length);
-  assert.match(keys.state().flash!, /editing queued prompt #1 for clean/);
+  assert.match(keys.state().flash!, /editing inbox message #1 for clean/);
 
   // Whitespace-only input flashes and stays in the editor.
   keys.handleKey(undefined, { ctrl: true, name: "u" });
@@ -1522,7 +1522,7 @@ test("the Queued pane edits the selected prompt in place through editQueuedFile"
   for (const ch of "clean edited") keys.handleKey(ch, { name: ch });
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().queuedEditFor, null, "a saved edit leaves the editor");
-  assert.match(keys.state().flash!, /edited queued prompt for clean/);
+  assert.match(keys.state().flash!, /edited inbox message for clean/);
   const row = keys.state().queuedRows.find((r) => r.role === "clean")!;
   assert.equal(row.file, base, "the same queue file was rewritten in place");
   assert.equal(row.position, 1, "the entry keeps its position");
@@ -1567,7 +1567,7 @@ test("the Queued edit editor is inert to Ctrl+T and a gone file flashes on save"
   fs.unlinkSync(path.join(root, ".tumwater", "inbox", "clean", base));
   keys.handleKey(undefined, { name: "return" });
   assert.equal(keys.state().queuedEditFor, null, "a gone file leaves the editor");
-  assert.match(keys.state().flash!, /queued prompt was already gone/);
+  assert.match(keys.state().flash!, /the inbox message was already gone/);
 });
 
 test("the Queued pane resets the selected row's within-body scroll when the selection moves", () => {

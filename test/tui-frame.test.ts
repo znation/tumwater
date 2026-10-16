@@ -86,51 +86,51 @@ test("attention lines mark each alert and fold the overflow into a count", () =>
 });
 
 test("the tab strip names every view and brackets the current one", () => {
-  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notebook: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: null, grep: null }, 200)), "[Activity]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "activity", role: "feature", grep: null }, 200)), "[Activity: feature]  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: false }, 200)), "Activity  [Transcript: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: true, change: false }, 200)), "Activity  [Notes: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "transcript", role: "qa", index: 3, count: 14, note: false, change: true }, 200)), "Activity  [Change: qa (3/14)]  Backlog  Usage  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
   const usage = tabStrip({ kind: "usage", scope: null, window: null }, 200);
   assert.deepEqual(usage.filter((s) => s.tone === "brand").map((s) => s.text), ["[Usage]"], "only the current view is bright");
-  assert.equal(plain(tabStrip({ kind: "usage", scope: "feature", window: "1h" }, 200)), "Activity  Transcript  Backlog  [Usage: feature]  Failures  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "failures", scope: "clean", window: null }, 200)), "Activity  Transcript  Backlog  Usage  [Failures: clean]  History  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "qa", grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick: qa]  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Tick]  Pending  Queued  Health  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "health" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  Queued  [Health]  Brief   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "brief" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  Queued  Health  [Brief]   Ctrl+T next");
-  assert.equal(plain(tabStrip({ kind: "queued" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  [Queued]  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "usage", scope: "feature", window: "1h" }, 200)), "Activity  Transcript  Backlog  [Usage: feature]  Failures  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "failures", scope: "clean", window: null }, 200)), "Activity  Transcript  Backlog  Usage  [Failures: clean]  History  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History]  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [History: feature]  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: "qa", grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Run: qa]  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }, 200)), "Activity  Transcript  Backlog  Usage  Failures  [Run]  Pending  Inbox  Health  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "health" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  [Health]  Brief   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "brief" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  Inbox  Health  [Brief]   Ctrl+T next");
+  assert.equal(plain(tabStrip({ kind: "queued" }, 200)), "Activity  Transcript  Backlog  Usage  Failures  History  Pending  [Inbox]  Health  Brief   Ctrl+T next");
   assert.ok(displayWidth(plain(tabStrip({ kind: "backlog" }, 20))) <= 20);
 });
 
 test("the hint line says what the keys do in each view and mode", () => {
   const hint = (view: Parameters<typeof hintLine>[0], budget = false, rolePromptFor: string | null = null, deferMode = false, defer: string | null = null, queuedEditFor: { role: string; file: string } | null = null, answerFor: { position: number; title: string } | null = null) => plain(hintLine(view, { budget, rolePromptFor, deferMode, defer, queuedEditFor, answerFor }, 300));
-  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: fleet · / search · Ctrl+T next view · Ctrl+F pause fleet · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L defer");
+  assert.equal(hint({ kind: "activity", role: null, grep: null }), "Enter send · ↑↓ history · PgUp/PgDn scroll · Ctrl+B daily cap · Ctrl+G scope: team · / search · Ctrl+T next view · Ctrl+F pause team · Ctrl+Q stop later · Ctrl+C interrupt director · Ctrl+D quit · Ctrl+L send later");
   // The Activity pane names its exact-loop scope and its text search, the raw id or the fleet
   // and "search" or the active pattern, matching the History pane's conventions.
   assert.match(hint({ kind: "activity", role: "feature", grep: null }), /Ctrl\+G scope: feature · \/ search/);
-  assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: fleet · \/ search: widget/);
+  assert.match(hint({ kind: "activity", role: null, grep: "widget" }), /Ctrl\+G scope: team · \/ search: widget/);
   // At the fake TTY's 100 columns the daily-cap key (placed before the new ones) stays visible.
   assert.match(plain(hintLine({ kind: "activity", role: null, grep: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 100)), /Ctrl\+B daily cap/);
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+T next view · Ctrl+D quit · Ctrl+L send later",
   );
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: true, change: false }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notebook · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N change · Ctrl+X clear notes · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+T next view · Ctrl+D quit · Ctrl+L send later",
   ); // the notebook's next step is the change view
   assert.equal(
     hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: true }),
-    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A abort · Ctrl+T next view · Ctrl+D quit · Ctrl+L defer",
+    "Enter send · ↑↓ history · Ctrl+R prompt qa · Ctrl+N transcript · Ctrl+P pause/resume · Ctrl+W wake · Ctrl+A stop run · Ctrl+T next view · Ctrl+D quit · Ctrl+L send later",
   ); // the cycle's last step names the way back
   assert.match(hint({ kind: "backlog" }), /↑↓ open entries · Ctrl\+X cancel entry · Ctrl\+E edit entry · Ctrl\+N new plan\/bug · Ctrl\+A answer question · PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "failures", scope: null, window: null }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "usage", scope: "feature", window: null }), /Ctrl\+G scope: feature/);
   assert.match(hint({ kind: "failures", scope: "clean", window: "1h" }), /Ctrl\+G scope: clean/);
-  assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+G scope: fleet/);
+  assert.match(hint({ kind: "usage", scope: null, window: null }), /Ctrl\+G scope: team/);
   // The Usage and Failures panes name their trailing report window in the Ctrl+E hint,
   // default or active; the two report panes share the same hint shape.
   assert.match(hint({ kind: "usage", scope: null, window: "1h" }), /Ctrl\+E window: 1h/);
@@ -152,7 +152,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   );
   assert.equal(hint({ kind: "activity", role: null, grep: null }, true), "Enter save the daily cap · Esc cancel · Ctrl+D quit");
   assert.equal(hint({ kind: "activity", role: null, grep: null }, false, null, true), "Enter save the delay · Esc cancel · Ctrl+D quit");
-  assert.match(hint({ kind: "activity", role: null, grep: null }, false, null, false, "45m"), /Ctrl\+L defer: 45m/);
+  assert.match(hint({ kind: "activity", role: null, grep: null }, false, null, false, "45m"), /Ctrl\+L send later: 45m/);
   assert.equal(hint({ kind: "transcript", role: "qa", index: 1, count: 2, note: false, change: false }, false, "qa"), "Enter send to qa · ↑↓ history · Esc cancel · Ctrl+D quit");
   // The History pane names its trailing window in the Ctrl+S hint, default or active.
   assert.match(hint({ kind: "history", since: "1h", result: null, role: null, grep: null, trail: false }), /Ctrl\+S window: 1h/);
@@ -162,12 +162,12 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+O result: all/);
   // The History pane names its exact-loop scope in the Ctrl+G hint, the raw id or the fleet.
   assert.match(hint({ kind: "history", since: null, result: null, role: "feature", grep: null, trail: false }), /Ctrl\+G scope: feature/);
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: fleet/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+G scope: team/);
   // The History pane names its free-text search in the `/` hint, "search" or the pattern.
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: "widget", trail: false }), /\/ search: widget/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /\/ search/);
   // The History pane names its tick-trail toggle in the Ctrl+N hint, the row list or the trail.
-  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N tick trail/);
+  assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }), /Ctrl\+N run trail/);
   assert.match(hint({ kind: "history", since: null, result: null, role: null, grep: null, trail: true }), /Ctrl\+N history/);
   // Every view names Ctrl+D as quit; the director prompt line additionally names Ctrl+C.
   for (const v of [
@@ -211,10 +211,10 @@ test("the prompt line names who Enter sends to", () => {
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "director › ");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "qa › ");
   assert.equal(plain(promptPrefix({ budget: true, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), "daily cap $ ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: true, defer: null, queuedEditFor: null, answerFor: null })), "defer › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: true, defer: null, queuedEditFor: null, answerFor: null })), "send later › ");
   // A pending delay is named beside the target; the defer editor's own prefix never repeats it.
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: "45m", queuedEditFor: null, answerFor: null })), "director (defer 45m) › ");
-  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: "1h", queuedEditFor: null, answerFor: null })), "qa (defer 1h) › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: "45m", queuedEditFor: null, answerFor: null })), "director (in 45m) › ");
+  assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: "qa", deferMode: false, defer: "1h", queuedEditFor: null, answerFor: null })), "qa (in 1h) › ");
   assert.equal(plain(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: { role: "clean", file: "a.md" }, answerFor: null })), "edit clean › ");
   assert.equal(prefixWidth(promptPrefix({ budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null })), 11);
 });

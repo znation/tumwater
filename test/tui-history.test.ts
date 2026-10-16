@@ -47,11 +47,11 @@ test("an empty history pane falls back to the no-ticks note, not entryBodyWindow
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const empty = paneBody({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
-  assert.equal(empty.emptyNote, "(no ticks yet)");
+  assert.equal(empty.emptyNote, "(no runs yet)");
 
   const rows = paneBody({ kind: "history", since: null, result: null, role: null, grep: null, trail: false }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: historyPaneText([row()]) } });
   assert.equal(rows.body.length, 1);
-  assert.equal(rows.emptyNote, "(no ticks yet)");
+  assert.equal(rows.emptyNote, "(no runs yet)");
 });
 
 test("a history pane's tick trail windows the cached detail and holds the no-trail note when null", () => {
@@ -59,24 +59,24 @@ test("a history pane's tick trail windows the cached detail and holds the no-tra
   const pane = { kind: "history", since: null, result: null, role: null, grep: null, trail: true } as const;
   const empty = paneBody(pane, { root: "/nonexistent", width: 300, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
-  assert.equal(empty.emptyNote, "(no tick trail)");
+  assert.equal(empty.emptyNote, "(no run trail)");
 
   const trail = "clean tick #1 — changed · 90s\n14:00 tick_start\n14:01 landed";
   const shown = paneBody(pane, { root: "/nonexistent", width: 300, eventBudget: 5, entryBudget: 4, state: { ...state, trailCache: trail } });
   assert.equal(shown.body.map((l) => l.map((s) => s.text).join("")).join("\n"), trail);
-  assert.equal(shown.emptyNote, "(no tick trail)");
+  assert.equal(shown.emptyNote, "(no run trail)");
 });
 
 test("a null queued cache falls back to the no-queued-prompts note, and a cache windows its lines", () => {
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: null, noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
-  assert.equal(empty.emptyNote, "(no queued prompts)");
+  assert.equal(empty.emptyNote, "(inbox empty)");
 
   const list = "director:\n1. steer the director\nclean:\n1. clean one";
   const shown = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: list } });
   assert.equal(shown.body.map((l) => l.map((s) => s.text).join("")).join("\n"), list);
-  assert.equal(shown.emptyNote, "(no queued prompts)");
+  assert.equal(shown.emptyNote, "(inbox empty)");
 });
 
 test("a null pending cache holds the loading note, and a resolved roster windows its text", () => {
@@ -108,12 +108,12 @@ test("an empty queued pane holds the no-prompts note, and a cached list windows 
   const state = { selectedEntry: null, entryScroll: 0, selectedQueued: null, queuedRows: [], paneCache: "", noteCache: null, changeCache: null, trailCache: null, paneScroll: 0, activityScroll: null };
   const empty = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state });
   assert.deepEqual(empty.body, []);
-  assert.equal(empty.emptyNote, "(no queued prompts)");
+  assert.equal(empty.emptyNote, "(inbox empty)");
 
   const list = "director:\n1. do the thing (queued 5m ago)\nclean:\n1. fix it (delivers in 1h)";
   const cached = paneBody({ kind: "queued" }, { root: "/nonexistent", width: 80, eventBudget: 5, entryBudget: 4, state: { ...state, paneCache: list } });
   assert.equal(cached.body.map((l) => l.map((s) => s.text).join("")).join("\n"), list);
-  assert.equal(cached.emptyNote, "(no queued prompts)");
+  assert.equal(cached.emptyNote, "(inbox empty)");
 });
 
 test("the health pane holds the loading note while uncached and windows the cached report once set", () => {

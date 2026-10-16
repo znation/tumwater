@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { parseDurationMs } from "../../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../../operator/operator-intent.js";
 import { cutSplitsSurrogatePair, gotSuffix } from "../../text/text.js";
@@ -182,10 +183,10 @@ export function parseDeferInput(
   if (t === "") return { ok: true, ms: null };
   const ms = parseDurationMs(t);
   if (ms === null)
-    return { ok: false, error: `defer needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}` };
+    return { ok: false, error: `send later needs a duration like 45s, 90m, 1h30m, or 2d${gotSuffix(text)}` };
   // The dashboard composer's server check caps the same duration at the same limit, so the
   // TUI refuses it inline with the identical wording instead of queueing a marker past the cap.
-  const over = overDurationCap(ms, "defer");
+  const over = overDurationCap(ms, "send later");
   if (over) return over;
   return { ok: true, ms };
 }
@@ -221,7 +222,7 @@ export function parseRolePauseInput(
   if (ms === null) {
     return {
       ok: false,
-      error: "a loop pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are fleet-wide, use Ctrl+F",
+      error: "a role pause takes only a duration like 45m or 2h (empty pauses until resumed) — reasons are team-wide, use Ctrl+F",
     };
   }
   const over = overDurationCap(ms, "pause");
@@ -242,7 +243,7 @@ export function parseRoleWakeInput(
   if (ms === null) {
     return {
       ok: false,
-      error: 'a loop wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now',
+      error: 'a role wake takes a duration like 45m or 2h, "cancel" to drop its scheduled wakes, or empty to wake now',
     };
   }
   const over = overDurationCap(ms, "wake");

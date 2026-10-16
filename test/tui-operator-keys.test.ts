@@ -26,7 +26,7 @@ test("Ctrl+P toggles the viewed loop's pause marker and flashes the CLI's wordin
   const repo = await makeTuiRepo();
   await withTui(repo, async (tui) => {
     tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
-    assert.match(tui.lastFrame(), /Ctrl\+N notebook · Ctrl\+P pause\/resume · Ctrl\+W wake/); // header hint (Ctrl+A clips at 100 cols)
+    assert.match(tui.lastFrame(), /Ctrl\+N notes · Ctrl\+P pause\/resume · Ctrl\+W wake/); // header hint (Ctrl+A clips at 100 cols)
 
     tui.key(undefined, "p", { ctrl: true }); // opens the duration editor
     assert.deepEqual(pausedRoles(repo), [], "the editor writes nothing until Enter");
@@ -97,7 +97,7 @@ test("Esc cancels the loop pause editor and restores the draft; an invalid entry
     for (const c of "later") tui.key(c, c);
     tui.key(undefined, "return");
     assert.deepEqual(pausedRoles(repo), []);
-    assert.match(tui.lastFrame(), /a loop pause takes only a duration/);
+    assert.match(tui.lastFrame(), /a role pause takes only a duration/);
     assert.match(tui.lines().at(-1)!, /^pause clean ›/);
   });
 });
@@ -219,7 +219,7 @@ test("Ctrl+W with an invalid entry flashes and stays in the editor; Esc restores
     tui.key(undefined, "w", { ctrl: true });
     typeText(tui, "soon");
     tui.key(undefined, "return");
-    assert.match(tui.lastFrame(), /a loop wake takes a duration/);
+    assert.match(tui.lastFrame(), /a role wake takes a duration/);
     assert.match(tui.lastFrame(), /wake clean ›/);
     tui.key(undefined, "escape");
     assert.match(tui.lastFrame(), /draft/);

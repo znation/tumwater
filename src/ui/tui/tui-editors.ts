@@ -1,3 +1,4 @@
+// vocabulary: plain
 import { setDailyBudgetUsd } from "../../config/config-write.js";
 import { promptLengthProblem, submitPrompt } from "../../inbox/inbox-submit.js";
 import { fileEntryWithBody, OPERATOR_FILE_KINDS, tryEditEntry } from "../../backlog/backlog-write.js";
@@ -257,7 +258,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       : pauseEditMode
         ? busyFlash("pause")
         : queuedEditFor
-          ? busyFlash("queued edit")
+          ? busyFlash("inbox edit")
           : answerFor
             ? busyFlash("answer")
             : entryEditFor
@@ -267,7 +268,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
                 : entering === "defer" && budgetMode
                   ? busyFlash("budget edit")
                   : entering === "budget" && deferMode
-                    ? busyFlash("defer edit")
+                    ? busyFlash("send-later edit")
                     : null;
 
   /** Hand the recall line's current draft back into a caller's editor save slot and reset
@@ -412,7 +413,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         deferMode = true;
         input = deferMs === null ? "" : durationLabel(deferMs);
         cursor = input.length;
-        deps.flashMessage("defer the next prompt: a duration like 45m (empty sends now) — Enter to save, Esc to cancel");
+        deps.flashMessage("send later: a duration like 45m (empty sends now) — Enter to save, Esc to cancel");
       }
       return true;
     }
@@ -432,7 +433,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       }
       try {
         if (isFleetPaused(root)) {
-          deps.flashMessage(resumeFleet(root) ? fleetResumePhrase() : "fleet was not paused");
+          deps.flashMessage(resumeFleet(root) ? fleetResumePhrase() : "team was not paused");
         } else {
           // An unpaused fleet opens the one-line editor: "[duration] [reason]", empty pauses
           // until resumed. A paused fleet resumes at once.
@@ -440,7 +441,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           pauseEditMode = true;
           input = "";
           cursor = 0;
-          deps.flashMessage('pause the fleet: [duration] [reason], e.g. "2h deploy freeze" (empty pauses until resumed) — Enter to pause, Esc to cancel');
+          deps.flashMessage('pause the team: [duration] [reason], e.g. "2h deploy freeze" (empty pauses until resumed) — Enter to pause, Esc to cancel');
         }
       } catch (err) {
         deps.flashError(err);
@@ -466,7 +467,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           pauseEditStop = true;
           input = "";
           cursor = 0;
-          deps.flashMessage('stop the fleet later: a duration, e.g. "2h" — in-flight ticks finish, then the fleet exits — Enter to schedule, Esc to cancel');
+          deps.flashMessage('stop the team later: a duration, e.g. "2h" — current runs finish, then the team stops — Enter to schedule, Esc to cancel');
         }
       } catch (err) {
         deps.flashError(err);
@@ -606,7 +607,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         if (row !== undefined) {
           const body = readQueuedPromptBody(root, row.role, row.file);
           if (body === null) {
-            deps.flashMessage(`queued prompt #${row.position} for ${row.role} is gone`);
+            deps.flashMessage(`inbox message #${row.position} for ${row.role} is gone`);
             deps.refreshQueued();
           } else {
             // Mid-recall, the line holds a history entry while the real draft sits in the
@@ -617,7 +618,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             input = body;
             cursor = body.length;
             deps.flashMessage(
-              `editing queued prompt #${row.position} for ${row.role} — Enter to save, Esc to cancel`,
+              `editing inbox message #${row.position} for ${row.role} — Enter to save, Esc to cancel`,
             );
           }
         }
@@ -700,7 +701,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       searchMode = true;
       input = (searchFor === "activity" ? ctx.activityGrep : ctx.historyGrep) ?? "";
       cursor = input.length;
-      deps.flashMessage(searchFor === "activity" ? "search events: Enter to filter, Esc to cancel" : "search ticks: Enter to filter, Esc to cancel");
+      deps.flashMessage(searchFor === "activity" ? "search events: Enter to filter, Esc to cancel" : "search runs: Enter to filter, Esc to cancel");
       return true;
     }
     if (key.name === "escape" && searchMode) {
@@ -849,7 +850,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             deps.flashMessage(
               changed || until !== undefined
                 ? `${fleetPausePhrase()}${forSuffix}${changed && fleet.reason ? `: ${fleet.reason}` : ""}`
-                : "fleet is already paused",
+                : "team is already paused",
             );
           } catch (err) {
             deps.flashError(err);
@@ -867,7 +868,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
           deferMs = parsed.ms;
           exitDeferMode();
           deps.flashMessage(
-            deferMs === null ? "defer cleared" : `next prompt delivers in ${durationLabel(deferMs)}`,
+            deferMs === null ? "send later cleared" : `next prompt delivers in ${durationLabel(deferMs)}`,
           );
         }
       } else if (rolePromptFor) {
@@ -897,8 +898,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             exitRolePromptMode();
             deps.flashMessage(
               pending === null
-                ? `queued for the ${role} loop`
-                : `queued for the ${role} loop — delivers in ${durationLabel(pending)}`,
+                ? `added to ${role}'s inbox`
+                : `added to ${role}'s inbox — delivers in ${durationLabel(pending)}`,
             );
           } catch (err) {
             deps.flashError(err);
@@ -998,8 +999,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             deps.refreshQueued();
             deps.flashMessage(
               outcome.status === "edited"
-                ? `edited queued prompt for ${target.role}`
-                : "queued prompt was already gone",
+                ? `edited inbox message for ${target.role}`
+                : "the inbox message was already gone",
             );
           } catch (err) {
             deps.flashError(err);
@@ -1021,8 +1022,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
             cursor = 0;
             deps.flashMessage(
               pending === null
-                ? "queued for the director loop"
-                : `queued for the director loop — delivers in ${durationLabel(pending)}`,
+                ? "added to the director's inbox"
+                : `added to the director's inbox — delivers in ${durationLabel(pending)}`,
             );
           } catch (err) {
             // The queue write failed (disk full, permissions): keep the operator's text so
