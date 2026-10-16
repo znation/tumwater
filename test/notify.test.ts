@@ -270,9 +270,16 @@ test("notifyExitWarning words a nonzero exit or kill and says nothing for a clea
   for (const part of ["code 127", "command not found", "budget_paused", "tumwater notify --test"]) {
     assert.ok(missing.includes(part), part);
   }
+  // sh's 126 (found but not executable) gets the same gloss as 127, so a chmod-less or
+  // directory notify command names its fix instead of a bare exit code.
+  const notExec = notifyExitWarning("land_failed", 126, null) ?? "";
+  for (const part of ["code 126", "found but not executable"]) {
+    assert.ok(notExec.includes(part), part);
+  }
   const three = notifyExitWarning("land_failed", 3, null) ?? "";
   assert.match(three, /code 3/);
   assert.doesNotMatch(three, /command not found/);
+  assert.doesNotMatch(three, /not executable/);
   assert.match(notifyExitWarning("land_failed", null, "SIGKILL") ?? "", /SIGKILL/);
 });
 

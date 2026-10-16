@@ -88,7 +88,11 @@ export function notifyExitWarning(
   if (code === 0) return undefined;
   const hint = "check it with `tumwater notify --test`";
   if (code === null) return `${NOTIFY_FAILURE_PREFIX}was killed by ${signal} paging ${type} — ${hint}`;
-  const gloss = code === 127 ? " (command not found)" : "";
+  // sh reports a command it could not launch as 127 (not found) or 126 (found but not
+  // executable) — most often the configured `notify` command is a typo or an uninstalled
+  // binary, so a bare "code 127" hides the fix that the gloss names.
+  const gloss =
+    code === 127 ? " (command not found)" : code === 126 ? " (found but not executable)" : "";
   return `${NOTIFY_FAILURE_PREFIX}exited with code ${code}${gloss} paging ${type} — ${hint}`;
 }
 
