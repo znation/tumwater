@@ -607,19 +607,56 @@ export function moveEntryToTop(root: string, kind: "bug" | "plan", n: number): {
   return withStateLock(primaryWorktreeLockPath(root), () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
     if (n === 1) fail(`${kind} #1 "${entry.title}" is already first`);
-    const first = findEntry(lines.join("\n"), sectionTitle, 1) as ActionableEntryRange;
-    const endsWithNewline = lines[lines.length - 1] === "";
-    const atEof = lines.slice(entry.end).every((l) => l.trim() === "");
-    const cut = lines.slice(entry.start - 1, entry.end);
-    trimTrailingBlankLines(cut);
-    lines.splice(entry.start - 1, entry.end - entry.start + 1);
-    if (atEof) {
-      trimTrailingBlankLines(lines);
-      if (endsWithNewline) lines.push("");
-    }
-    lines.splice(first.start - 1, 0, ...cut, "");
+    spliceEntryToTop(lines, sectionTitle, entry);
     writeTextAtomic(file, lines.join("\n"));
     return { file: fileName, title: entry.title };
+  });
+}
+
+/** Cut `entry` out of `lines` and put it at the head of the section, in place; shared by
+ * moveEntryToTop and tryMoveEntryToTop so their bytes cannot drift. */
+function spliceEntryToTop(lines: string[], sectionTitle: string, entry: ActionableEntryRange): void {
+  const first = findEntry(lines.join("\n"), sectionTitle, 1) as ActionableEntryRange;
+  const endsWithNewline = lines[lines.length - 1] === "";
+  const atEof = lines.slice(entry.end).every((l) => l.trim() === "");
+  const cut = lines.slice(entry.start - 1, entry.end);
+  trimTrailingBlankLines(cut);
+  lines.splice(entry.start - 1, entry.end - entry.start + 1);
+  if (atEof) {
+    trimTrailingBlankLines(lines);
+    if (endsWithNewline) lines.push("");
+  }
+  lines.splice(first.start - 1, 0, ...cut, "");
+}
+
+/** What `tryMoveEntryToTop` did: `moved_to_top` wrote the file; `gone`, `moved` and
+ * `already_first` refuse as data, writing nothing. */
+export type MoveEntryOutcome =
+  | { status: "moved_to_top"; file: string; title: string }
+  | { status: "gone" }
+  | { status: "moved"; title: string }
+  | { status: "already_first"; title: string };
+
+/** The non-exiting reorder the dashboard calls: moveEntryToTop's splice with tryReleaseEntry's
+ * title check, all decided inside the lock. */
+export function tryMoveEntryToTop(
+  root: string,
+  kind: "bug" | "plan",
+  n: number,
+  expectedTitle: string,
+): MoveEntryOutcome {
+  const { fileName, sectionTitle } = backlogTarget(kind);
+  return withStateLock(primaryWorktreeLockPath(root), () => {
+    const file = path.join(root, fileName);
+    const md = readTextIfExists(file) ?? "";
+    const entry = findEntry(md, sectionTitle, n);
+    if (entry === undefined) return { status: "gone" };
+    if (entry.title !== expectedTitle) return { status: "moved", title: entry.title };
+    if (n === 1) return { status: "already_first", title: entry.title };
+    const lines = md.split("\n");
+    spliceEntryToTop(lines, sectionTitle, entry);
+    writeTextAtomic(file, lines.join("\n"));
+    return { status: "moved_to_top", file: fileName, title: entry.title };
   });
 }
 

@@ -153,6 +153,19 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           ? "That entry carries no Refused note — refreshed"
           : "That entry was removed or moved — refreshed";
       });
+    } else if (act === "entry-top") {
+      const [file, index] = arg.split(":");
+      const title = entryTitleAt(file, index);
+      if (title === undefined) return;
+      postAction("/api/backlog-top", { kind: file === "bugs" ? "bug" : "plan", position: Number(index) + 1, title }, (d) => {
+        closeDrawer();
+        if (d && d.status === "moved_to_top") {
+          return "Moved “" + splitTitle(title).title + "” to the top of " + (file === "bugs" ? "BUGS.md" : "PLANS.md") + " — " + (file === "bugs" ? "bugfix" : "feature") + " takes it next" + uncommittedTail(d);
+        }
+        return d && d.status === "already_first"
+          ? "That entry is already first — refreshed"
+          : "That entry was removed or moved — refreshed";
+      });
     } else if (act === "entry-edit") {
       const [file, index] = arg.split(":");
       const title = entryTitleAt(file, index);

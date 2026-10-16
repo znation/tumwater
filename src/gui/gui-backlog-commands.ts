@@ -2,15 +2,15 @@
 /**
  * The dashboard's POST backlog/QUESTIONS command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts):
- * question-answer, backlog-file, backlog-cancel, backlog-release, and backlog-edit — the
- * `checkedBacklogKind`
- * / `checkedEntryPositionAndTitle` validators they share ride with them. Each handler adapts
+ * question-answer, backlog-file, backlog-cancel, backlog-release, backlog-top, and
+ * backlog-edit — the `checkedBacklogKind` / `checkedEntryPositionAndTitle` validators they share
+ * ride with them. Each handler adapts
  * HTTP onto the domain work one layer down (backlog-write, question-answer, backlog-commit)
  * and touches no socket beyond its own `res`.
  */
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
-import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryReleaseEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-write.js";
+import { fileEntryWithBody, normalizeEntryBody, OPERATOR_FILE_KINDS, tryCancelEntry, tryEditEntry, tryMoveEntryToTop, tryReleaseEntry, bodyStructureProblem, type CancelEntryOutcome, type EditEntryOutcome, type MoveEntryOutcome, type ReleaseEntryOutcome } from "../backlog/backlog-write.js";
 import { tryAnswerQuestion, UNCLOSED_FENCE_MESSAGE, type AnswerOutcome } from "../backlog/question-answer.js";
 import { promptLengthProblem } from "../inbox/inbox-submit.js";
 import { requestWake, submitRolePromptAndWake, wakeQuestionAsker } from "../operator/operator-intent.js";
@@ -33,10 +33,9 @@ function checkedBacklogKind(res: http.ServerResponse, body: Record<string, unkno
 
 /** Shared 400-validation for an entry-target body's `position` (a positive integer) and
  * `title` (a non-empty string) — the two fields every backlog/QUESTIONS entry drawer asks
- * for, so the question-answer, backlog-cancel, backlog-release, and backlog-edit endpoints
- * report the same
- * two errors and cannot drift on the messages. Sends the 400 and returns null on the first
- * bad field; the validated pair otherwise. */
+ * for, so the question-answer, backlog-cancel, backlog-release, backlog-top, and
+ * backlog-edit endpoints report the same two errors and cannot drift on the messages. Sends the
+ * 400 and returns null on the first bad field; the validated pair otherwise. */
 function checkedEntryPositionAndTitle(
   res: http.ServerResponse,
   body: Record<string, unknown>,
@@ -190,6 +189,35 @@ export async function handleBacklogRelease(req: http.IncomingMessage, res: http.
     sendJson(res, 200, { ok: true, status: "released", file: outcome.file, title: outcome.title, committed });
   } else if (outcome.status === "not_refused") {
     sendJson(res, 200, { ok: true, status: "not_refused", title: outcome.title });
+  } else {
+    okGone(res);
+  }
+}
+
+/** Handle POST /api/backlog-top: the entry drawer's Move to top — the same splice as
+ * `tumwater plan|bug --top <n>` through the non-exiting tryMoveEntryToTop. Body as
+ * backlog-cancel's. Reordering makes no entry newly eligible, so no role is woken; position 1
+ * answers status "already_first" with no write, and `gone` and `moved` answer okGone. */
+export async function handleBacklogTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"kind": "bug", "position": 2, "title": "<heading>"}');
+  if (!body) return;
+  const kind = checkedBacklogKind(res, body);
+  if (!kind) return;
+  const pair = checkedEntryPositionAndTitle(res, body);
+  if (!pair) return;
+  const { position, title } = pair;
+  let outcome: MoveEntryOutcome;
+  try {
+    outcome = tryMoveEntryToTop(root, kind, position, title);
+  } catch (err) {
+    badRequest(res, errorMessage(err));
+    return;
+  }
+  if (outcome.status === "moved_to_top") {
+    const committed = await commitOperatorBacklogEdit(root, outcome.file, stampedSubject("operator", `Prioritize ${kind}: ${outcome.title}`)); // vocabulary-ok: the commit prefix stays tumwater(operator):
+    sendJson(res, 200, { ok: true, status: "moved_to_top", file: outcome.file, title: outcome.title, committed });
+  } else if (outcome.status === "already_first") {
+    sendJson(res, 200, { ok: true, status: "already_first", title: outcome.title });
   } else {
     okGone(res);
   }

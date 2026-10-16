@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { moveEntryToTop } from "../src/backlog/backlog-write.js";
+import { moveEntryToTop, tryMoveEntryToTop } from "../src/backlog/backlog-write.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 // `tumwater plan --top <n>`: moveEntryToTop reorders one entry to the head of ## Planned,
@@ -62,4 +62,18 @@ test("position 1 and an out-of-range position fail and leave the file byte-ident
   assert.match(String(stderr.mock.calls[0]?.arguments[0]), /plan #1 "a" is already first/);
   assert.throws(() => moveEntryToTop(repo, "plan", 9), /exit 1/);
   assert.equal(fs.readFileSync(file, "utf8"), withDone);
+});
+
+test("tryMoveEntryToTop leaves the bytes moveEntryToTop leaves and refuses without writing", () => {
+  const a = seed(withDone);
+  const b = seed(withDone);
+  moveEntryToTop(a.repo, "plan", 3);
+  assert.deepEqual(tryMoveEntryToTop(b.repo, "plan", 3, "c"), { status: "moved_to_top", file: "PLANS.md", title: "c" });
+  assert.equal(fs.readFileSync(b.file, "utf8"), fs.readFileSync(a.file, "utf8"));
+
+  const c = seed(withDone);
+  assert.deepEqual(tryMoveEntryToTop(c.repo, "plan", 3, "wrong"), { status: "moved", title: "c" });
+  assert.deepEqual(tryMoveEntryToTop(c.repo, "plan", 9, "c"), { status: "gone" });
+  assert.deepEqual(tryMoveEntryToTop(c.repo, "plan", 1, "a"), { status: "already_first", title: "a" });
+  assert.equal(fs.readFileSync(c.file, "utf8"), withDone);
 });

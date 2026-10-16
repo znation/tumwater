@@ -359,6 +359,22 @@ test("the entry drawer offers Release this entry only on a refused entry", async
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
 });
 
+test("the entry drawer offers Move to top on every plan entry but the first", async () => {
+  const t = openDrawer(["toggleEntry"], {
+    status: { roles: [] },
+    responses: {
+      "/api/backlog?file=plans&index=0": { title: "A", body: "body", refused: false },
+      "/api/backlog?file=plans&index=1": { title: "B", body: "body", refused: false },
+    },
+  });
+  t.scope.toggleEntry("plans", 1);
+  await flush();
+  assert.match(t.paintedFor("entrybody"), /data-act='entry-top' data-arg='plans:1'/);
+  t.scope.toggleEntry("plans", 0);
+  await flush();
+  assert.doesNotMatch(t.paintedFor("entrybody"), /entry-top/);
+});
+
 test("an open question entry offers the composer's answer action, an empty body says so", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },

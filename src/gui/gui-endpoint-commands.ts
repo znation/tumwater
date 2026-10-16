@@ -12,7 +12,7 @@
  * brief-edit (gui/gui-operator-commands).
  */
 export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit } from "./gui-prompt-commands.js";
-export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogEdit } from "./gui-backlog-commands.js";
+export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-fleet-commands.js";
 export { handleResetCounters, handleRestart, handleReclaim, handleAbort, handleStopSchedule, handleRoleNotes, handleBriefEdit } from "./gui-operator-commands.js";

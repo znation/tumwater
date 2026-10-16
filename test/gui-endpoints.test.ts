@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -1117,6 +1117,41 @@ test("handleBacklogRelease lifts the Refused note, wakes the kind's role, and an
     assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
   }
   assert.equal(fs.readFileSync(bugsPath, "utf8"), bugsNow);
+});
+
+test("handleBacklogTop moves a plan or bug to the head, wakes no role, and answers already_first, gone, and 400s without writing", async () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "PLANS.md", [{ heading: "## Planned", body: "### p1\n\nbody\n\n### p2\n\nbody" }, { heading: "## Done" }]);
+  writeBacklogFile(root, "BUGS.md", [{ heading: "## Open", body: "### b1\n\nbody\n\n### b2\n\nbody" }, { heading: "## Fixed" }]);
+  const serve = (body: unknown) => captureJson((res) => handleBacklogTop(fakeReq(JSON.stringify(body)), res, root));
+  const plansPath = path.join(root, "PLANS.md");
+  const bugsPath = path.join(root, "BUGS.md");
+
+  const plan = await serve({ kind: "plan", position: 2, title: "p2" });
+  assert.deepEqual(plan.data, { ok: true, status: "moved_to_top", file: "PLANS.md", title: "p2", committed: false });
+  const plans = fs.readFileSync(plansPath, "utf8");
+  assert.ok(plans.indexOf("### p2") < plans.indexOf("### p1"));
+  const bug = await serve({ kind: "bug", position: 2, title: "b2" });
+  assert.deepEqual(bug.data, { ok: true, status: "moved_to_top", file: "BUGS.md", title: "b2", committed: false });
+  const bugs = fs.readFileSync(bugsPath, "utf8");
+  assert.ok(bugs.indexOf("### b2") < bugs.indexOf("### b1"));
+
+  const first = await serve({ kind: "plan", position: 1, title: "p2" });
+  assert.deepEqual(first.data, { ok: true, status: "already_first", title: "p2" });
+  const stale = await serve({ kind: "plan", position: 2, title: "other" });
+  assert.deepEqual(stale.data, { ok: true, status: "gone" });
+  assert.ok(!fs.existsSync(wakeRequestPath(root)));
+
+  for (const body of [
+    { kind: "todo", position: 1, title: "x" },
+    { kind: "bug", position: 0, title: "b1" },
+    { kind: "bug", position: 1 },
+    { kind: "bug", position: 1, title: "" },
+  ]) {
+    assert.equal((await serve(body)).captured.status, 400, JSON.stringify(body));
+  }
+  assert.equal(fs.readFileSync(bugsPath, "utf8"), bugs);
+  assert.equal(fs.readFileSync(plansPath, "utf8"), plans);
 });
 
 test("backlog 400s name the offending value, and stay terse when the field is missing", async () => {
