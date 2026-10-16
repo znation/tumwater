@@ -107,6 +107,7 @@ test("modelFallbackVerdict reads provider evidence from the run, not the tick", 
     aborted: false,
     quietKilled: false,
     timedOut: false,
+    imageBlind: undefined,
   };
   assert.equal(modelFallbackVerdict({ ...base, transientBackend: true }), "provider-failure");
   assert.equal(modelFallbackVerdict({ ...base, transientRateLimit: true }), "provider-failure");
@@ -118,6 +119,9 @@ test("modelFallbackVerdict reads provider evidence from the run, not the tick", 
   );
   assert.equal(modelFallbackVerdict({ ...base, aborted: true }), "inconclusive");
   assert.equal(modelFallbackVerdict({ ...base, timedOut: true }), "inconclusive");
+  // A blind image read is deliberate (the runner killed the authoring run), not a provider
+  // failure — inconclusive, so it never trips or ends a fallback episode.
+  assert.equal(modelFallbackVerdict({ ...base, imageBlind: { path: "/x/shot.png" } }), "inconclusive");
 });
 
 test("providerFailureReason names a 429 rate-limit and a backend kind", () => {

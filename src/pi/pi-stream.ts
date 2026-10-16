@@ -7,7 +7,7 @@ import {
   type OpenToolCall,
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
-import { objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../files/json-object.js";
+import { objectOrEmpty, nonNegativeNumber, parseJsonObject, isJsonObject } from "../files/json-object.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
@@ -91,6 +91,10 @@ interface PiStreamEvent {
   toolName?: string;
   args?: unknown;
   partialResult?: unknown;
+  /** tool_execution_end events only: the tool's final result (pi serializes the end's result
+   * under `result`, distinct from the updates' `partialResult`). The read tool's image/text
+   * blocks ride here. */
+  result?: unknown;
   /** A translator's explicit classification of an error-bearing event (claude). */
   tumwaterKind?: string;
   /** The transient backend failure kind, when tumwaterKind is `transientBackend`. */
@@ -113,6 +117,30 @@ interface PiStreamEvent {
 
 /** One content block's fields, each unknown until the consumer guards what it reads. */
 type ContentBlock = { type?: unknown; text?: unknown; name?: unknown };
+
+/** The text prefix of a pi `read` result that carries an image (plans/image-input.md
+ * "Detecting a blind read"): such a read's text block begins `Read image file [<path>…]`, and
+ * pi's non-vision note and its processing-failure notes sit inside that block. A text-only
+ * read (a code file) is not phrased this way. */
+const IMAGE_READ_PREFIX = "Read image file [";
+/** pi's note when the current model does not support images — the blind-read signal: the image
+ * is stripped from the request and the agent would answer about a picture it never saw. */
+const BLIND_IMAGE_NOTE = "[Current model does not support images";
+
+/** The `path` a read tool call's raw args name, or undefined when they carry none — the read
+ * tool opens a file by `path` (with optional `start`/`end` offsets), so the blind read blames
+ * the right file. A torn or foreign args object reads as no path (never throws). */
+function readPathOf(args: unknown): string | undefined {
+  if (!isJsonObject(args)) return undefined;
+  return typeof args.path === "string" && args.path ? args.path : undefined;
+}
+
+/** The text blocks of one tool-execution end's `result` (the same normalization
+ * messageContent applies to a message), or [] when the result is not an object. */
+function resultContent(result: unknown): ContentBlock[] {
+  if (!isJsonObject(result)) return [];
+  return messageContent(result as unknown as PiMessage);
+}
 
 /** The content blocks of one pi message, normalized: a `content` that is not an array (torn
  * or foreign wire JSON) reads as no blocks, and a non-object entry reads as an empty block,
@@ -352,6 +380,12 @@ export class PiStreamParser {
   rateWindows: RateWindow[] = [];
   /** True when any rate-limit reading reported the account spending into overage. */
   usedOverage = false;
+  /** The one `read` tool call this run made on an image the model cannot see (plans/
+   * image-input.md "Detecting a blind read"): the image path and the seam's effective image
+   * input are reported at once, so the runner can kill an authoring run instead of letting
+   * the agent answer about a picture it never saw. The FIRST blind read wins — later ones
+   * add nothing. */
+  imageBlind: { path: string } | undefined;
   /** True when the run's LAST assistant message carried no text and no tool call
    * (thinking-only or empty). A compliant finish always ends with a text block (the
    * SUMMARY/sentinel line), so this signals a generation cut off mid-stream — typically
@@ -383,13 +417,32 @@ export class PiStreamParser {
    * empty-content update right after start, and a content-free keepalive must not mask a hang.
    * Feeds runPi's stall warning; entries clear at tool_execution_end. */
   openToolCalls: OpenToolCall[] = [];
+  /** Read tool calls started but not yet ended, keyed by pi's toolCallId so concurrent reads
+   * attribute their end to the right start (pi runs one message's tool calls concurrently, so
+   * several can be open at once and end in completion order — the same rule
+   * openToolCalls tracks). The value is the call's `args.path`, captured at start so the
+   * result on end has a path to blame when the read was blind. */
+  private readonly readPaths = new Map<string, string>();
   private buffer = "";
 
   /** `onToolCallStart` observes every tool call as it starts, with pi's tool name ("" when pi
    * omitted it) and raw args — a hook for a caller that audits what a run did (the review
    * gate's suite-rerun tripwire, src/review/suite-rerun.ts) without the parser storing every
    * call of every run. */
-  constructor(private readonly onToolCallStart?: (toolName: string, args: unknown) => void) {}
+  constructor(
+    private readonly onToolCallStart?: (toolName: string, args: unknown) => void,
+    private readonly image: {
+      /** The seam's effective image input (plans/image-input.md "Detecting a blind read"): a
+       * text-only seam makes every image read blind even when pi adds no note (a claim its
+       * doctor probe proved false), while `null` (unknown, or reads images) leaves the pi note
+       * the only blind signal. */
+      imageInput?: boolean | null;
+      /** Called once, at the FIRST blind read, with its path — the runner's hook to kill an
+       * authoring run at once (src/agent/run-agent.ts) before the agent goes on working from
+       * a picture it never saw. */
+      onBlindRead?: (path: string) => void;
+    } = {},
+  ) {}
 
   /** Apply a translator-supplied `tumwaterKind`, trusted before the text regexes. An unknown
    * kind is ignored (the same forward-compatible policy as an unknown event type). */
@@ -448,6 +501,32 @@ export class PiStreamParser {
   private setRetryAfterSeconds(value: unknown): void {
     if (typeof value !== "number" || !Number.isFinite(value)) return;
     this.retryAfterSeconds = Math.max(0, Math.round(value));
+  }
+
+  /** Decide whether one finished `read` call returned an image the model cannot see, and if so
+   * record the FIRST such read and fire the `onBlindRead` hook (plans/image-input.md
+   * "Detecting a blind read"). An image read is a result whose content holds an `image` block,
+   * or a text block starting `Read image file [`; it is blind when that text carries pi's
+   * non-vision note, or when the runner told us the seam's effective image input is false —
+   * the second arm catches a claim doctor's probe proved false, where pi sends the image and
+   * adds no note. pi's processing-failure notes (`[Image omitted: could not be converted…]` /
+   * `…resized…`) are NOT blind on a vision-capable model: they name a conversion/file problem,
+   * not a capability gap (a non-vision model's read carries its own note, which IS blind). */
+  private detectBlindRead(path: string, result: unknown): void {
+    if (this.imageBlind) return; // the first blind read is the one that stops the run
+    const blocks = resultContent(result);
+    const isImageRead =
+      blocks.some((c) => c.type === "image") ||
+      blocks.some((c) => typeof c.text === "string" && c.text.startsWith(IMAGE_READ_PREFIX));
+    if (!isImageRead) return;
+    const text = blocks
+      .filter((c) => typeof c.text === "string")
+      .map((c) => c.text)
+      .join("\n");
+    const blind = text.includes(BLIND_IMAGE_NOTE) || this.image.imageInput === false;
+    if (!blind) return;
+    this.imageBlind = { path };
+    this.image.onBlindRead?.(path);
   }
 
   feed(chunk: string, onLine?: (line: string) => void): void {
@@ -560,6 +639,21 @@ export class PiStreamParser {
         command,
       );
       if (event.type === "tool_execution_start") this.onToolCallStart?.(event.toolName ?? "", event.args);
+      // The blind-read detector (plans/image-input.md "Detecting a blind read"): remember
+      // each read call's path from its start, and on its end decide whether the image it
+      // returned was one the model cannot see — so the runner can kill an authoring run
+      // instead of letting the agent answer about a picture it never saw.
+      if (event.type === "tool_execution_start" && event.toolName === "read") {
+        const p = readPathOf(event.args);
+        if (p !== undefined) this.readPaths.set(String(event.toolCallId), p);
+      } else if (event.type === "tool_execution_end") {
+        const id = String(event.toolCallId);
+        const p = this.readPaths.get(id);
+        if (p !== undefined) {
+          this.readPaths.delete(id);
+          this.detectBlindRead(p, event.result);
+        }
+      }
     }
     if (event.type !== "message_end" || event.message?.role !== "assistant") return;
     const msg = event.message;

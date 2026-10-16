@@ -24,6 +24,8 @@ import { DEFAULT_AGENT, agentBackend, registerAgentBackend, type AgentBackend } 
 import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
+import { seamImageInput } from "./image-input.js";
+import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 
 /** How many trailing stderr characters are carried into the next chunk's warning match, so a
  * warning split across two `data` events is still seen. The warnings are short lines, so a few
@@ -142,6 +144,12 @@ export interface PiRunOptions {
    * review, landing, and conflict-resolution runs leave it unset, so the tool never registers
    * there (src/pi-extension/role-notes.ts). Undefined: no notebook. */
   notesPath?: string;
+  /** Called at settle when this run read an image its model cannot see (plans/image-input.md
+   * "Detecting a blind read") — the caller's hook to log the `image_blind` event with its own
+   * loop/tick context. The action follows the run's kind: an authoring run was killed and
+   * carries `"fail"`, a gate run only records the read and carries `"logged"`. Called once,
+   * with the blameable path. */
+  onBlindRead?: (path: string, action: "fail" | "logged") => void;
   /** The remaining daily budget this run may spend, in USD, when the caller can cap it
    * (plans/agent-backends.md §7): the claude backend forwards it as `--max-budget-usd`, and
    * backends with no such flag ignore it. Undefined means no per-run cap. */
@@ -177,7 +185,28 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       if (opts.label) marker.label = opts.label;
       rawLog.stream.write(JSON.stringify(marker) + "\n");
     }
-    const parser = new PiStreamParser(opts.onToolCallStart);
+    // The first blind image read an authoring run made (plans/image-input.md "Detecting a
+    // blind read"): the path, plus an indirection to the child so the parser's parse-time
+    // callback (which fires during feed, after spawn) can kill it. Unset for a gate run,
+    // which only records the read. Declared before the parser so its onBlindRead closure
+    // (which assigns them at parse time, after spawn) can reference them.
+    let blindRead: string | undefined;
+    let terminateRun: (() => void) | undefined;
+    const parser = new PiStreamParser(opts.onToolCallStart, {
+      // The seam's effective image input (src/agent/image-input.ts): a text-only seam makes
+      // every image read blind even when pi adds no note — a claim its doctor probe proved
+      // false — which the parser checks against its own note rule.
+      imageInput: seamImageInput(opts.config, readPiProviders(piModelsPath())),
+      onBlindRead: (path) => {
+        // Kill an authoring run at once, before the agent goes on working from a picture it
+        // never saw (terminateChild is what the watchdogs use). Gate runs (reviewer,
+        // resolver) only record the read and keep going.
+        if (opts.kind === "author") {
+          blindRead = path;
+          terminateRun?.();
+        }
+      },
+    });
     // The run's cross-group attribution mark, minted before the spawn so the environment can
     // carry it and the exit sweep can name it.
     const runMarker = makeRunMarker();
@@ -265,6 +294,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       child.stdin?.on("error", () => {});
       child.stdin?.end(invocation.stdin);
     }
+    // Armed now that the child exists, so the parser's parse-time onBlindRead (fires during
+    // feed, always after spawn) can reach it.
+    terminateRun = () => terminateChild(child);
 
     // The run's two watchdog clocks (src/pi/pi-watchdogs.ts): the tick deadline and the quiet
     // watchdog (quiet-kill plus the stalled-tool-call warning). The flags their timers set
@@ -362,6 +394,13 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     const finish = (result: PiRunResult) => {
       if (settled) return;
       settled = true;
+      // A blind image read (plans/image-input.md "Detecting a blind read"): surface it to the
+      // caller once, at settle, with the action its kind earned — the authoring run was killed
+      // ("fail"), a gate run only recorded it ("logged"). The caller logs the image_blind event
+      // with its own loop/tick context.
+      if (parser.imageBlind) {
+        opts.onBlindRead?.(parser.imageBlind.path, opts.kind === "author" ? "fail" : "logged");
+      }
       // Best-effort: an unremovable scratch dir (read-only subdir, a straggler still writing) must
       // not throw out of the close handler before the run's result resolves.
       try {
@@ -486,7 +525,9 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // never closes with a later event.
       feedCanonical(decoder.end(), true);
       for (const canonical of translator.finalize?.() ?? []) parser.feed(canonical + "\n", onLine);
-      const killed = aborted || wd.timedOut || wd.quietKilled;
+      // A blind image read on an authoring run deliberately killed it (terminateRun above),
+      // so its exit is a kill like the watchdogs' — the half-done work is discarded.
+      const killed = aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;
       const failed =
         killed ||
         parser.stopReason === "error" ||
@@ -501,6 +542,19 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
         cls.transientPiCrash !== true &&
         stderrBackend === undefined &&
         (parser.configError || cls.configError === true);
+      // The blind-read failure names both the file and the model (plans/image-input.md
+      // "Failing the tick"): take it over any generic exit text so lastError is actionable.
+      const errorMessage = blindRead !== undefined
+        ? `read ${blindRead}, but ${opts.config.model ?? "the model"} cannot read images`
+        : aborted
+          ? "aborted by harness shutdown"
+          : wd.quietKilled
+            ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
+            : wd.timedOut
+              ? wd.timedOutProgressing
+                ? `timed out after ${wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
+                : `timed out after ${wd.timeoutBudgetMs / 1000}s`
+              : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined));
       finish(
         resultFromParser({
           ok: !failed,
@@ -508,15 +562,6 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
           transientBackend: parser.transientBackend || cls.transientBackend === true,
           backendKind: parser.backendFailureKind ?? stderrBackend,
           configError,
-          errorMessage: aborted
-            ? "aborted by harness shutdown"
-            : wd.quietKilled
-              ? `killed as hung: no pi progress for over ${opts.config.quietTimeoutSeconds}s`
-              : wd.timedOut
-                ? wd.timedOutProgressing
-                  ? `timed out after ${wd.timeoutBudgetMs / 1000}s while still making progress — session and worktree edits preserved for resume`
-                  : `timed out after ${wd.timeoutBudgetMs / 1000}s`
-                : (parser.errorMessage ?? (failed ? stderr.trim().slice(-500) || `pi exited ${code}` : undefined)),
           // Kept distinct on purpose: a hung tool call leaves its session and worktree edits
           // intact, so the loop resumes them (quiet_killed) instead of discarding them as an
           // unfulfilled timeout does. A deadline that fired on a run still making progress
@@ -524,6 +569,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
           timedOut: wd.timedOut,
           timedOutProgressing: wd.timedOut && wd.timedOutProgressing,
           quietKilled: wd.quietKilled,
+          imageBlind: parser.imageBlind,
+          errorMessage,
         }),
       );
     });

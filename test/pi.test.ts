@@ -728,3 +728,57 @@ test("runPi keeps a fallback-clone warning printed before a large stderr tail", 
   assert.equal(r.ok, true);
   assert.match(r.fallbackClone ?? "", /not found for provider "huggingface"/);
 });
+
+// --- Blind image reads (plans/image-input.md "Detecting a blind read") ---
+// A read whose result text carries pi's non-vision note is flagged blind; the runner kills
+// an AUTHORING run at once (before any further output), while a GATE run only records it.
+
+test("an authoring run that reads an image on a blind model is killed and fails", async () => {
+  const dir = tmpdir();
+  const calls: Array<[string, "fail" | "logged"]> = [];
+  // pi emits the read start, its end carrying the non-vision note, then would go on — but
+  // the runner must kill it before that next event.
+  await withPi(
+    [
+      `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/shot.png" } })}'`,
+      `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "r1", toolName: "read", result: { content: [{ type: "text", text: "Read image file [png]\\n[Current model does not support images. The image will be omitted from this request.]" }] }, isError: false })}'`,
+      `printf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
+    ].join("\n"),
+    async () => {
+      const result = await runPi(
+        runPiFixture(dir, {
+          kind: "author",
+          onBlindRead: (path, action) => calls.push([path, action]),
+        }),
+      );
+      assert.equal(result.ok, false, "the blind read fails the authoring run");
+      assert.deepEqual(result.imageBlind, { path: "/x/shot.png" });
+      assert.match(result.errorMessage ?? "", /read \/x\/shot\.png, but .* cannot read images/);
+      assert.deepEqual(calls, [["/x/shot.png", "fail"]], "the authoring run earned the fail action");
+    },
+  );
+});
+
+test("a gate run that reads an image on a blind model is logged, not killed", async () => {
+  const dir = tmpdir();
+  const calls: Array<[string, "fail" | "logged"]> = [];
+  await withPi(
+    [
+      `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/shot.png" } })}'`,
+      `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "r1", toolName: "read", result: { content: [{ type: "text", text: "Read image file [png]\\n[Current model does not support images. The image will be omitted from this request.]" }] }, isError: false })}'`,
+      `printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
+    ].join("\n"),
+    async () => {
+      const result = await runPi(
+        runPiFixture(dir, {
+          kind: "gate",
+          onBlindRead: (path, action) => calls.push([path, action]),
+        }),
+      );
+      // A gate run is NOT killed: it kept going and finished its verdict.
+      assert.equal(result.ok, true, "a gate blind read does not fail the run");
+      assert.deepEqual(result.imageBlind, { path: "/x/shot.png" }, "the read is still recorded");
+      assert.deepEqual(calls, [["/x/shot.png", "logged"]], "the gate run earned the logged action");
+    },
+  );
+});

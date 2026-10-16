@@ -11,6 +11,7 @@ import { dailyCost, fleetDailyCost } from "../budget/budget.js";
 import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
+import { logEventBestEffort } from "../events/events.js";
 import { nativeLogPath, piLogPath, roleNotesPath, sessionDir } from "../paths.js";
 import { piModelsPath } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -156,6 +157,19 @@ export class LoopPi {
       // The translator's unmapped-native-type and cost_unknown warnings reach the event feed
       // as their own warning events, once per run.
       onAgentWarning: (warning) => this.host.warn(`agent_unknown_event: ${warning}`),
+      // A run that read an image its model cannot see (plans/image-input.md "Detecting a
+      // blind read"): the runner killed the authoring run (action "fail") or a gate run
+      // merely recorded it ("logged") — each logged here with this loop's identity so the
+      // feed names who, on which tick, read which file on which blind model.
+      onBlindRead: (path, action) =>
+        logEventBestEffort(this.host.root, {
+          loop: this.host.role,
+          type: "image_blind",
+          tick: this.host.tickNumber(),
+          path,
+          model: resolved.model,
+          action,
+        }),
     };
   }
 

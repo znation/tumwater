@@ -97,6 +97,7 @@ export interface HarnessEvent {
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would
     | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
     | "model_fallback_ended" // a probe tick on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
+    | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the tick fails — carried as loop, tick, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
     | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green and compiling; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it

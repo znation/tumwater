@@ -119,6 +119,11 @@ export interface PiRunResult {
    * handoff (plans/agent-backends.md part 3c). Undefined on backends that report no such
    * signal. */
   resumeMissing?: boolean;
+  /** The one image this run's agent read that its model cannot see (plans/image-input.md
+   * "Detecting a blind read"): pi strips such an image from the request, so the agent was
+   * about to answer about a picture it never saw. The runner kills an authoring run at once;
+   * a gate run only records it. Undefined when the run read no blind image. */
+  imageBlind?: { path: string };
   /** How the run was paid for, from the backend's own report: a subscription window or API
    * credit (plans/agent-backends.md parts 3a and 6). Undefined when the backend names neither. */
   billing?: "subscription" | "api";

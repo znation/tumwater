@@ -400,6 +400,19 @@ export async function reviewAheadOfMain(
           reviewerCalls.push({ toolName, args });
         }
       : undefined,
+    // A gate run that read an image its model cannot see is logged, not killed (plans/
+    // image-input.md "Detecting a blind read"): the reviewer keeps working from what it CAN
+    // see, and the image_blind line names the file, the model, and this tick so the operator
+    // knows the diff was judged under a blind read.
+    onBlindRead: (path, action) =>
+      logEventBestEffort(root, {
+        loop: role,
+        type: "image_blind",
+        tick: ctx.tick,
+        path,
+        model: reviewCfg.model,
+        action,
+      }),
   });
 
   // A reviewer told the pre-check passed that re-ran the full suite anyway held the landing

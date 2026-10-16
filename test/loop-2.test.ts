@@ -418,3 +418,30 @@ test("a failed pin leaves the commit on the branch; the next tick recovers and l
     assert.equal(String(merged[0]!.summary), "recovered leftover work from improve: add hello file");
   });
 });
+
+// A tick whose authoring agent reads an image on a model that cannot see it stops and fails
+// (plans/image-input.md "Detecting a blind read" / "Failing the tick"): pi strips such an
+// image from the request, so the run is killed at the first read and the tick ends error
+// instead of answering about a picture it never saw. The fake pi emits the read start, its
+// end carrying pi's non-vision note, and nothing more — the runner must kill it before any
+// further output.
+test("a tick whose agent reads an image on a blind model stops and fails", async () => {
+  const repo = await initializedRepo();
+  const script = [
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_start", toolCallId: "r1", toolName: "read", args: { path: "/x/shot.png" } })}'`,
+    `printf '%s\\n' '${JSON.stringify({ type: "tool_execution_end", toolCallId: "r1", toolName: "read", result: { content: [{ type: "text", text: "Read image file [png]\\n[Current model does not support images. The image will be omitted from this request.]" }] }, isError: false })}'`,
+  ].join("\n");
+  await withPi(script, async () => {
+    const runner = makeLoopRunner(repo, "improve");
+    const outcome = await runner.tick();
+
+    assert.equal(outcome.result, "error", "the tick ends error on a blind image read");
+    assert.match(runner.state.lastError ?? "", /read \/x\/shot\.png, but .* cannot read images/);
+    const blinds = eventsOfType(repo, "image_blind");
+    assert.equal(blinds.length, 1, "exactly one image_blind event");
+    assert.equal(blinds[0]!.loop, "improve");
+    assert.equal(blinds[0]!.path, "/x/shot.png");
+    assert.equal(blinds[0]!.action, "fail", "an authoring run's blind read earns the fail action");
+    assert.ok(typeof blinds[0]!.tick === "number", "the event names the tick");
+  });
+});

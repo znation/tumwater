@@ -621,3 +621,105 @@ test("parser leaves the backend flags alone on unrelated errors", () => {
   assert.equal(mentions.transientBackend, false);
   assert.equal(mentions.backendFailureKind, undefined);
 });
+
+// --- Blind image-read detection (plans/image-input.md "Detecting a blind read") ---
+// pi's read tool returns a `result` whose content holds a text block starting
+// `Read image file [<mimeType>]` (plus an `image` block when the image was processed) and,
+// on a non-vision model, pi's note `[Current model does not support images. …]`. The parser
+// blames the blameable path from the matching start's args, keys concurrent reads by
+// toolCallId, and fires the runner hook once for the FIRST blind read.
+
+function readStart(id: string, path: string): string {
+  return JSON.stringify({ type: "tool_execution_start", toolCallId: id, toolName: "read", args: { path } });
+}
+function readEnd(id: string, content: unknown[]): string {
+  return JSON.stringify({ type: "tool_execution_end", toolCallId: id, toolName: "read", result: { content }, isError: false });
+}
+const NON_VISION_NOTE = "[Current model does not support images. The image will be omitted from this request.]";
+
+test("a read carrying pi's non-vision note is a blind read, and the runner hook fires once", () => {
+  const calls: string[] = [];
+  const parser = new PiStreamParser(undefined, { imageInput: true, onBlindRead: (p) => calls.push(p) });
+  parser.feed(readStart("r1", "/x/shot.png") + "\n");
+  parser.feed(
+    readEnd("r1", [
+      { type: "text", text: `Read image file [png]\n${NON_VISION_NOTE}` },
+      { type: "image", data: "aGk=", mimeType: "image/png" },
+    ]) + "\n",
+  );
+  assert.deepEqual(parser.imageBlind, { path: "/x/shot.png" });
+  assert.deepEqual(calls, ["/x/shot.png"], "the runner hook fires once with the blameable path");
+});
+
+test("a blind read is caught on a seam whose effective image input is false even with no note", () => {
+  const calls: string[] = [];
+  // No pi note: pi thinks the model reads images, but the seam's effective input is false (a
+  // claim the doctor's probe proved false) — still blind.
+  const parser = new PiStreamParser(undefined, { imageInput: false, onBlindRead: (p) => calls.push(p) });
+  parser.feed(readStart("r1", "/x/shot.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "Read image file [png]" }, { type: "image", data: "aGk=", mimeType: "image/png" }]) + "\n");
+  assert.deepEqual(parser.imageBlind, { path: "/x/shot.png" });
+  assert.deepEqual(calls, ["/x/shot.png"]);
+});
+
+test("an image read with no note is NOT blind on a seam that reads images", () => {
+  const calls: string[] = [];
+  const parser = new PiStreamParser(undefined, { imageInput: true, onBlindRead: (p) => calls.push(p) });
+  parser.feed(readStart("r1", "/x/shot.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "Read image file [png]" }, { type: "image", data: "aGk=", mimeType: "image/png" }]) + "\n");
+  assert.equal(parser.imageBlind, undefined);
+  assert.deepEqual(calls, []);
+});
+
+test("an unknown seam (null) is blind only when pi's note appears", () => {
+  const calls: string[] = [];
+  // Unknown (a model missing from models.json): pi's own default adds the note, so a
+  // note-less image read is not flagged — the note is the only signal for an unknown seam.
+  const parser = new PiStreamParser(undefined, { imageInput: null, onBlindRead: (p) => calls.push(p) });
+  parser.feed(readStart("r1", "/x/shot.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "Read image file [png]" }, { type: "image", data: "aGk=", mimeType: "image/png" }]) + "\n");
+  assert.equal(parser.imageBlind, undefined);
+  assert.deepEqual(calls, []);
+});
+
+test("a processing-failure note ([Image omitted…]) is not a blind read", () => {
+  const calls: string[] = [];
+  const parser = new PiStreamParser(undefined, { imageInput: true, onBlindRead: (p) => calls.push(p) });
+  // pi could not convert the image — a processing failure, not a capability gap, so it is
+  // not blind (a non-vision seam's read would ALSO carry its own note and be flagged).
+  parser.feed(readStart("r1", "/x/shot.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "Read image file [png]\n[Image omitted: could not be converted…]" }]) + "\n");
+  assert.equal(parser.imageBlind, undefined);
+  assert.deepEqual(calls, []);
+});
+
+test("a plain text read (no image) is not a blind read", () => {
+  const parser = new PiStreamParser(undefined, { imageInput: false });
+  parser.feed(readStart("r1", "/x/code.ts") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "export const x = 1;" }]) + "\n");
+  assert.equal(parser.imageBlind, undefined);
+});
+
+test("concurrent reads attribute each end to its own start by toolCallId", () => {
+  const calls: string[] = [];
+  const parser = new PiStreamParser(undefined, { imageInput: true, onBlindRead: (p) => calls.push(p) });
+  // A non-image read (r1) ends after an image read (r2) starts: each result blames its own
+  // path, out of completion order.
+  parser.feed(readStart("r1", "/a/code.ts") + "\n");
+  parser.feed(readStart("r2", "/b/shot.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: "some code" }]) + "\n");
+  parser.feed(readEnd("r2", [{ type: "text", text: `Read image file [png]\n${NON_VISION_NOTE}` }]) + "\n");
+  assert.deepEqual(parser.imageBlind, { path: "/b/shot.png" }, "the image read (r2) blames /b/shot.png");
+  assert.deepEqual(calls, ["/b/shot.png"]);
+});
+
+test("the first blind read wins; a later one does not re-fire the hook", () => {
+  const calls: string[] = [];
+  const parser = new PiStreamParser(undefined, { imageInput: true, onBlindRead: (p) => calls.push(p) });
+  parser.feed(readStart("r1", "/a.png") + "\n");
+  parser.feed(readEnd("r1", [{ type: "text", text: `Read image file [png]\n${NON_VISION_NOTE}` }]) + "\n");
+  parser.feed(readStart("r2", "/b.png") + "\n");
+  parser.feed(readEnd("r2", [{ type: "text", text: `Read image file [png]\n${NON_VISION_NOTE}` }]) + "\n");
+  assert.deepEqual(parser.imageBlind, { path: "/a.png" });
+  assert.deepEqual(calls, ["/a.png"], "only the first blind read reaches the hook");
+});

@@ -417,6 +417,18 @@ export function eventMessage(e: HarnessEvent): string {
     case "model_fallback_ended":
       // The return counterpart: names the pair ticks resume on and how long the episode ran.
       return `model fallback ended — back on ${textOr(e.provider, "pi's default")}/${textOr(e.model, "pi's default")} after ${minutes(e.durationMs)}m`;
+    case "image_blind": {
+      // Routine-with-explanation like the model-fallback events — no warning prefix: the
+      // run was stopped (or a gate run noted) because the model cannot see the image. Names
+      // the file, the model, and whether the tick failed on it or a gate run only logged it.
+      const action =
+        e.action === "logged"
+          ? " (gate run logged)"
+          : e.action === "fail"
+            ? " — tick failed"
+            : "";
+      return `blind image read: ${textOr(e.path)} on ${textOr(e.model, "the model")}${action}`;
+    }
     case "build_stale":
       // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves

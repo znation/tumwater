@@ -412,3 +412,25 @@ paths reset to main instead.
 **Pinned by.** `test/review.test.ts` — "a reviewer's own commit is dropped on approve: the
 worktree returns to the reviewed head" and "a reviewer's own commit is dropped when the review
 fails strike-free".
+
+## A blind image read cannot become an answered tick
+
+### INV-J1: a tick whose agent reads an image its model cannot see is stopped and fails
+
+**Guarantee.** When a pi authoring run's agent reads an image pi will strip from the request
+(a model that does not support images — pi's non-vision note, or a seam whose effective image
+input is false), the runner kills the run before its next event and the tick ends `error` with
+`lastError` naming the file and the model gap. A gate run's blind read is not killed; it is
+recorded on the run and logged as `image_blind` with `action: "logged"`. An authoring run's
+blind read logs `image_blind` with `action: "fail"`, and `modelFallbackVerdict` scores it
+inconclusive (never a provider failure or an "answered").
+
+**Binds.** `src/pi/pi-stream.ts` (`PiStreamParser.detectBlindRead`), `src/agent/run-agent.ts`
+(the kill + result), `src/tick/tick-verdict.ts` (the fail branch),
+`src/loop/model-fallback.ts` (`modelFallbackVerdict`).
+
+**Pinned by.** `test/pi-parser.test.ts` — the blind-read detection cases; `test/pi.test.ts` —
+"an authoring run that reads an image on a blind model is killed and fails" and "a gate run
+that reads an image on a blind model is logged, not killed"; `test/tick-verdict.test.ts` — "a
+blind image read fails the tick with an error naming the file and the model";
+`test/loop-2.test.ts` — "a tick whose agent reads an image on a blind model stops and fails".

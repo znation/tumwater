@@ -147,6 +147,19 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     return { result: "aborted", resumeCause: "budget-capped" };
   }
 
+  // A run the runner killed the moment its agent read an image its model cannot see
+  // (plans/image-input.md "Failing the tick"): pi strips such an image from the request, so
+  // the agent was about to answer about a picture it never saw. The run was deliberately
+  // stopped before it could work on, so its half-done edits are discarded exactly as a
+  // timed-out run's are — nothing to resume, and the prompt re-queues to run fresh on a
+  // model that CAN see (part 4 adds the reroute arm here). The error backoff and streak apply
+  // as for any error.
+  if (pi.imageBlind) {
+    s.lastError = pi.errorMessage ?? `read ${pi.imageBlind.path}, but the model cannot read images`;
+    ctx.pending.requeueUnfulfilled(ctx.userPrompt);
+    return { result: "error" };
+  }
+
   // A refusal is a decision, not a failure: even when pi's exit was abnormal, the sentinel
   // and any note it left are the run's verdict — classify what it left behind
   // (src/verdict/refusal.ts).

@@ -146,3 +146,23 @@ test("a role loop's prompt-less nothing-to-do is not treated as an answer", asyn
   assert.equal(outcome?.result, "no_change");
   assert.equal(outcome?.summary, undefined);
 });
+
+test("a blind image read fails the tick with an error naming the file and the model", async () => {
+  const { root, wt } = await initializedWorktree("improve");
+  // The runner killed the authoring run the moment its agent read an image its model cannot
+  // see (plans/image-input.md "Failing the tick"): pi strips such images, so the run must
+  // fail rather than let the agent answer about a picture it never saw.
+  const pi: PiRunResult = piRunResult({
+    ok: false,
+    imageBlind: { path: "/x/shot.png" },
+    errorMessage: "read /x/shot.png, but some-model cannot read images",
+  });
+
+  const { ctx, state, pending } = makeCtx(root, wt, "improve", { pi });
+  const outcome = await resolveTickVerdict(ctx);
+
+  assert.equal(outcome?.result, "error");
+  assert.match(state.lastError ?? "", /\/x\/shot\.png/, "lastError names the image file");
+  assert.match(state.lastError ?? "", /cannot read images/, "lastError names the model gap");
+  assert.equal(pending.get(), null, "an imageBlind run is not resume-armed (nothing to resume)");
+});

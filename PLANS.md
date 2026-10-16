@@ -45,34 +45,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `runDoctor` with the default option, as the TUI and GUI call it, never spawns a probe.
 - A claimed pi seam with a cached failed probe reads false from `seamImageInput`.
 
-### Image input, part 3/5: a tick whose agent reads an image on a model that cannot see it is stopped and fails (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Detecting a blind read" and "Failing the tick"; touches src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts, src/loop/model-fallback.ts, src/events/, a different area from part 2/5's doctor files)
-
-**Goal.** When the model's `input` lacks `"image"`, pi's read tool returns the image with the note `[Current model does not support images. The image will be omitted from this request.]` (pi 1.2.0 `dist/core/tools/read.js:40-45`), and pi-ai strips the image from the request. The run goes on and the agent works from a picture it never saw. `modelFallbackVerdict` even scores that run "answered". The tick should stop and fail instead.
-
-**Approach.**
-- `PiStreamParser.feedLine` (src/pi/pi-stream.ts) remembers each `read` call's `args.path` from `tool_execution_start`. On the matching `tool_execution_end`:
-  - it is an **image read** when `result.content` holds an `image` block, or a text block starting `Read image file [`;
-  - it is **blind** when that text carries the note, or when the runner told the parser the seam's effective image input is false (the part 2 probe catches a false claim, where pi adds no note);
-  - pi's `[Image omitted: could not be converted…]` / `…resized…` processing notes are not blind reads.
-- src/agent/run-agent.ts kills an authoring run on the first blind read through the watchdogs' `terminateChild`. Gate runs (reviewer, resolver) only record it.
-- `PiRunResult.imageBlind = { path }`, with the error message `read <path>, but <model> cannot read images`.
-- `resolveTickVerdict` (src/tick/tick-verdict.ts) gets a branch right after `budgetCapped`, before the refusal and dirty-tree checks. It ends the tick `error` with that `lastError`; backoff, streak, and prompt requeue work as for any error. Part 4 adds the reroute arm here.
-- `modelFallbackVerdict` (src/loop/model-fallback.ts) returns `"inconclusive"` for `imageBlind`.
-- New event `image_blind {loop, tick, path, model, action: "fail" | "logged"}` in src/events/events.ts, with a feed line in src/events/event-format.ts.
-
-**Files touched.**
-- src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts
-- src/tick/tick-verdict.ts, src/loop/model-fallback.ts
-- src/events/events.ts, src/events/event-format.ts
-- tests: the pi-stream, run-agent and tick-verdict tests, and a loop test driving the fake pi shim
-
-**Acceptance criteria.**
-- With a fake pi emitting a `read` start (`args.path: "/x/shot.png"`) and an end whose text carries the note, the authoring run is killed before its next event and the tick ends `error`. `lastError` names `/x/shot.png` and the model, and `image_blind` is logged.
-- The same `read` with an image block and no note does not count as blind on a seam that reads images. It does count when the seam's effective image input is false.
-- A processing-failure note (`[Image omitted: could not be converted…]`) is not blind.
-- A gate run's blind read is logged (`action: "logged"`) and not killed.
-- `modelFallbackVerdict` scores a blind run `"inconclusive"`.
-
 ### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/)
 
 **Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
@@ -434,6 +406,36 @@ README.md, and their tests.
 
 
 ## Done
+
+### Image input, part 3/5: a tick whose agent reads an image on a model that cannot see it is stopped and fails (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Detecting a blind read" and "Failing the tick"; touches src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts, src/loop/model-fallback.ts, src/events/, a different area from part 2/5's doctor files) — done 2026-10-15
+
+**Goal.** When the model's `input` lacks `"image"`, pi's read tool returns the image with the note `[Current model does not support images. The image will be omitted from this request.]` (pi 1.2.0 `dist/core/tools/read.js:40-45`), and pi-ai strips the image from the request. The run goes on and the agent works from a picture it never saw. `modelFallbackVerdict` even scores that run "answered". The tick should stop and fail instead.
+
+**Wiring note (landed 2026-10-15).** The `image_blind` event's emission lives with the caller that knows loop/tick — `LoopPi.loopPiOpts` (authoring, landing, and conflict-resolver runs) and the two review-gate run construction sites (`src/review/review.ts`, `src/review/review-followup.ts`), so a reviewer's blind read is logged (`action: "logged"`) too. The plan's files-touched list named only the event's declaration/format files; the emission sites are the reason the loop test and the gate-`logged` acceptance both pass.
+
+**Approach.**
+- `PiStreamParser.feedLine` (src/pi/pi-stream.ts) remembers each `read` call's `args.path` from `tool_execution_start`. On the matching `tool_execution_end`:
+  - it is an **image read** when `result.content` holds an `image` block, or a text block starting `Read image file [`;
+  - it is **blind** when that text carries the note, or when the runner told the parser the seam's effective image input is false (the part 2 probe catches a false claim, where pi adds no note);
+  - pi's `[Image omitted: could not be converted…]` / `…resized…` processing notes are not blind reads.
+- src/agent/run-agent.ts kills an authoring run on the first blind read through the watchdogs' `terminateChild`. Gate runs (reviewer, resolver) only record it.
+- `PiRunResult.imageBlind = { path }`, with the error message `read <path>, but <model> cannot read images`.
+- `resolveTickVerdict` (src/tick/tick-verdict.ts) gets a branch right after `budgetCapped`, before the refusal and dirty-tree checks. It ends the tick `error` with that `lastError`; backoff, streak, and prompt requeue work as for any error. Part 4 adds the reroute arm here.
+- `modelFallbackVerdict` (src/loop/model-fallback.ts) returns `"inconclusive"` for `imageBlind`.
+- New event `image_blind {loop, tick, path, model, action: "fail" | "logged"}` in src/events/events.ts, with a feed line in src/events/event-format.ts.
+
+**Files touched.**
+- src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts
+- src/tick/tick-verdict.ts, src/loop/model-fallback.ts
+- src/events/events.ts, src/events/event-format.ts
+- tests: the pi-stream, run-agent and tick-verdict tests, and a loop test driving the fake pi shim
+
+**Acceptance criteria.**
+- With a fake pi emitting a `read` start (`args.path: "/x/shot.png"`) and an end whose text carries the note, the authoring run is killed before its next event and the tick ends `error`. `lastError` names `/x/shot.png` and the model, and `image_blind` is logged.
+- The same `read` with an image block and no note does not count as blind on a seam that reads images. It does count when the seam's effective image input is false.
+- A processing-failure note (`[Image omitted: could not be converted…]`) is not blind.
+- A gate run's blind read is logged (`action: "logged"`) and not killed.
+- `modelFallbackVerdict` scores a blind run `"inconclusive"`.
 
 ### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow) — done 2026-10-15
 

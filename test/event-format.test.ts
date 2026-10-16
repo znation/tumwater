@@ -17,6 +17,29 @@ test("formatEvent renders provider_concurrency_changed like its maxConcurrent si
   assert.match(line, /concurrency for omlx changed: 1 → 2/);
 });
 
+test("formatEvent renders image_blind naming the file, the model, and the action", () => {
+  const fail = formatEvent({
+    ts: 0,
+    loop: "improve",
+    type: "image_blind",
+    tick: 7,
+    path: "/x/shot.png",
+    model: "huggingface/deepseek",
+    action: "fail",
+  } as never);
+  assert.match(fail, /blind image read: \/x\/shot\.png on huggingface\/deepseek — tick failed/);
+
+  const logged = formatEvent({
+    ts: 0,
+    loop: "improve",
+    type: "image_blind",
+    path: "/x/shot.png",
+    model: "huggingface/deepseek",
+    action: "logged",
+  } as never);
+  assert.match(logged, /blind image read: \/x\/shot\.png on huggingface\/deepseek \(gate run logged\)/);
+});
+
 test("formatEvent renders each type as one line", () => {
   const cases = [
     { ts: 0, loop: "clean", type: "tick_start", tick: 3 },
