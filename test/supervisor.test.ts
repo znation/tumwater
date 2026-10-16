@@ -482,6 +482,9 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
       `import { startParentDeathWatch } from ${JSON.stringify(supervisorUrl)};\n` +
         `import fs from "node:fs";\n` +
         `const [started, gone, expectedPpid] = process.argv.slice(2);\n` +
+        // Every poll appends the ppid it saw, so a failure can tell "reparent never visible"
+        // from "grandchild died without a verdict".
+        `const seen = gone + ".seen";\n` +
         // The watch's poll is driven by SIGUSR2 from the test, fired only after the supervisor
         // is dead and the grandchild reparented: the verdict follows the signal, not a real
         // poll budget, so a loaded host cannot stretch it. The handler is registered before
@@ -489,7 +492,7 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
         `startParentDeathWatch(() => { fs.writeFileSync(gone, "gone"); process.exit(0); }, {\n` +
         `  expectedPpid: Number(expectedPpid),\n` +
         `  poll: (check) => {\n` +
-        `    const onSignal = () => check();\n` +
+        `    const onSignal = () => { fs.appendFileSync(seen, process.ppid + " "); check(); };\n` +
         `    process.on("SIGUSR2", onSignal);\n` +
         `    return () => process.off("SIGUSR2", onSignal);\n` +
         `  },\n` +
@@ -525,15 +528,28 @@ test("startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with 
     // Advance the watch: each signal runs a poll in the grandchild, which sees its parent
     // changed and fires. A signal that lands before the reparent completes simply leaves the
     // watch armed, so retry within the bounded guard. A dropped watch never writes `gone`.
+    let signals = 0;
+    let brokeOnEsrch = false;
     for (let i = 0; i < 200 && !fs.existsSync(gone); i++) {
       try {
         process.kill(grandchildPid, "SIGUSR2");
+        signals += 1;
       } catch {
-        break; // the grandchild already exited
+        brokeOnEsrch = true; // the grandchild already exited
+        break;
       }
       await sleep(50);
     }
-    assert.ok(fs.existsSync(gone), "the orphaned grandchild's watch fired and ran its stop path");
+    // Look once more: the grandchild writes `gone` just before exiting, so an ESRCH break
+    // can race it.
+    const verdict = fs.existsSync(gone);
+    const seenPpids = fs.existsSync(`${gone}.seen`) ? fs.readFileSync(`${gone}.seen`, "utf8").trim() : "(none)";
+    assert.ok(
+      verdict,
+      `the orphaned grandchild's watch fired and ran its stop path; ` +
+        `${signals} SIGUSR2 sent, ${brokeOnEsrch ? "loop broke on ESRCH (grandchild exited without writing gone)" : "loop ran out of signals"}, ` +
+        `expected ppid ${supervisor.pid}, ppids the grandchild saw per poll: ${seenPpids}`,
+    );
   } finally {
     // The long self-exit timers above are only a leak guard for a crashed run; a passing
     // or failing test tears both processes down here, so nothing outlives the test.

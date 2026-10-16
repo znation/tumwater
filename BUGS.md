@@ -13,6 +13,7 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
   - the reparent was not visible to the grandchild's `process.ppid` within those signals;
   - the grandchild had already exited without writing `gone`, so the loop broke on ESRCH.
 - **Expected / fix sketch:** first make the failure name its case. Record whether the loop broke on ESRCH and how many signals were sent. Have the grandchild write the `ppid()` it saw on each poll. Then fix the case that fires. Re-check the 10-09 entry's mechanism, a watch armed against the wrong baseline, on the handed-down `expectedPpid` path.
+- **Progress 2026-10-16 (bugfix):** the test's failure message now names its case: signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (a `gone.seen` file). The cause is still unknown, so the entry stays open until the next flake reads out.
 
 ### `test/cli-gui.test.ts` "gui --all-interfaces --token prints the protected warning and token-bearing LAN URLs" timed out with no output at all, because `spawnCli.waitFor` keeps polling a gui that has already exited and never shows its stderr (found by operator session 2026-10-16 from dry's red merge check)
 
