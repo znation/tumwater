@@ -32,6 +32,7 @@ import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { enqueueLanding, headLanding, queueDepth } from "../src/landing/landing-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
+import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { LandingEntry } from "../src/landing/landing-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -62,7 +63,7 @@ test("landingUsage charges each run to both the authoring role and the landing's
   // fleets, part 2/4"), so the stub author must carry a config; these tests don't assert on
   // the stamp, only on the cost/token accounting, so a default config is enough.
   const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
-  const { usage, foldUsage } = landingUsage(author);
+  const { usage, foldUsage } = landingUsage(author, tmpdir());
 
   foldUsage(piRun(120, 0.5));
   foldUsage(piRun(80, 0.5));
@@ -82,7 +83,7 @@ test("landingUsage charges each run to both the authoring role and the landing's
 test("a subscription landing run folds as notional, and rides the event's notional field", () => {
   const root = makeRepo();
   const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
-  const { usage, foldUsage } = landingUsage(author);
+  const { usage, foldUsage } = landingUsage(author, tmpdir());
   foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
   foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));
 
@@ -97,6 +98,33 @@ test("a subscription landing run folds as notional, and rides the event's notion
   assert.ok(landed, "the landing logged a landed event");
   assert.equal(landed.costUsd, 0.1, "the event's cost is the real share only");
   assert.equal(landed.notionalCostUsd, 0.3, "the subscription share is notional");
+});
+
+// A claude reviewer's (or resolver's) five-hour window must reach claude-account.json when the
+// landing fold sees it, not wait for the pi author's next tick end — otherwise a mixed fleet's
+// reviewer readings are lost every time (PLANS.md "Mixed claude + pi fleets, part 3/4"). The
+// fold is best-effort like tick-finalize.ts's: a run with no billing/window reading leaves the
+// file untouched.
+test("a landing run's five_hour reading reaches claude-account.json at fold time", () => {
+  const root = makeRepo();
+  const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
+  const { foldUsage } = landingUsage(author, root);
+
+  assert.equal(readClaudeAccount(root), null, "no account file before any reading");
+  foldUsage(
+    piRunResult({
+      outputTokens: 100,
+      costUsd: 0.3,
+      billing: "subscription",
+      rateWindows: [{ type: "five_hour", status: "allowed", utilization: 0.4 }],
+    }),
+  );
+
+  const account = readClaudeAccount(root);
+  assert.ok(account, "the fold wrote the account file");
+  assert.equal(account.billing, "subscription", "the run's billing answer is recorded");
+  assert.equal(account.windows.five_hour?.status, "allowed", "the five_hour reading is recorded");
+  assert.equal(account.windows.five_hour?.utilization, 0.4);
 });
 
 test("a landing's nonzero usage rides its landed event and the entry is dropped", () => {

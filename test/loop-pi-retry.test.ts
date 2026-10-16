@@ -123,7 +123,7 @@ test("a 429 on a claude reviewer's final run folds the review seam through foldL
   cfg.model = "qwen";
   cfg.review = { ...cfg.review, provider: "claude", model: "claude-sonnet-5-5" };
   const author = new LoopRunner(root, "feature", cfg, "main");
-  const { foldUsage } = landingUsage(author);
+  const { foldUsage } = landingUsage(author, root);
   foldUsage(piRunResult({ ok: false, transientRateLimit: true }));
   assert.equal(
     author.lastRateLimit?.provider,

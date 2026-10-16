@@ -115,6 +115,28 @@ test("a top-level model edit logs one model_changed with the new label, edge-tri
   assert.equal(modelEvents(root).length, 1);
 });
 
+// A backend flip over a bare-id model (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7):
+// the label is agent-qualified, so moving `agent` pi→claude relabels the tier and the reload
+// logs model_changed — an edit that moves a bare id to another backend must not read as
+// "nothing changed".
+test("flipping agent over a bare-id model logs one model_changed", () => {
+  const config = cloneConfig(defaultConfig());
+  config.agent = "pi";
+  config.model = "claude-sonnet-5-5";
+  const { root, live } = liveReload(config);
+  live.poll();
+
+  const edited = cloneConfig(config);
+  edited.agent = "claude";
+  writeConfig(root, edited);
+  live.poll();
+
+  const models = modelEvents(root);
+  assert.equal(models.length, 1, "a backend flip over a bare id is a model change");
+  assert.equal(models[0]!.from, "claude-sonnet-5-5");
+  assert.equal(models[0]!.to, "claude/claude-sonnet-5-5");
+});
+
 test("a roles.<id>.model edit logs a model_changed carrying the per-role diff", () => {
   const config = defaultConfig();
   const { root, live } = liveReload(config);

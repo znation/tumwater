@@ -21,6 +21,7 @@ import {
   fallbackPair,
   modelFallbackView,
   resolvedModelFields,
+  reviewRunConfig,
   roleSeamTier,
   type ModelFallbackView,
 } from "../config/config-views.js";
@@ -123,9 +124,14 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
     throw new Error(unknownRoleMessage(role, knownRoleIds(cfg)));
   }
   const effective = configForRole(cfg, role);
-  // The claude billing answer, read only for a claude seam (the account file is claude's):
-  // its subscription window's primary type rides along for the renderer's label.
-  const account = effective.agent === "claude" ? readClaudeAccount(root) : null;
+  // The claude billing answer, read when a claude seam is in play — the role's OWN seam, or
+  // the review gate's when the reviewer runs claude (PLANS.md "Mixed claude + pi fleets, part
+  // 3/4" gap 7): a pi author on a claude reviewer still shows where its changes' spend lands.
+  // Its subscription window's primary type rides along for the renderer's label. The account
+  // file is fleet-global, so either seam reads the same answer.
+  const claudeInPlay =
+    effective.agent === "claude" || (cfg.review.enabled && reviewRunConfig(cfg).agent === "claude");
+  const account = claudeInPlay ? readClaudeAccount(root) : null;
   const billingWindow = account?.billing === "subscription" ? claudeWindowEntries(account)[0]?.type : undefined;
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`

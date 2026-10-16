@@ -47,6 +47,16 @@ test("budgetBadge names the fallback model only while it is carrying the fleet",
   );
 });
 
+// A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's provider
+// IS the backend id (`claude`), so it renders agent-qualified — `claude/claude-sonnet-5-5` —
+// the same form every other surface carries, never a bare `claude-sonnet-5-5`.
+test("budgetBadge agent-qualifies a claude fallback", () => {
+  assert.equal(
+    budgetBadge({ spentUsd: 50, capUsd: 50, capHitAt: null, free: false, fallback: { provider: "claude", model: "claude-sonnet-5-5" }, tiers: null }),
+    " · budget: $50.00/$50 today · fallback: claude/claude-sonnet-5-5 (cost n/a)",
+  );
+});
+
 test("budgetBadge lists the tiers when the fallback resolves to two or more distinct pairs", () => {
   // Part 7b/8: the snapshot's tier map stands exactly in that state, and the badge lists
   // each tier's pair in tier order, borrowed ones marked by their `(from …)` suffix.

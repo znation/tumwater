@@ -353,15 +353,40 @@ export function seamConcurrencyKey(
  * event: null when no tier resolves to a model (pi's own default), the single selector when
  * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`
  * list when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the
- * label. */
+ * label. Each tier's label is agent-qualified (agentQualifiedSelector), so flipping the
+ * top-level `agent` over a bare-id model relabels every tier and the reload now emits
+ * `model_changed` — a fleet's backend is part of what it runs (PLANS.md "Mixed claude + pi
+ * fleets, part 3/4"), and an edit that moves a bare id to another backend must not read as
+ * "nothing changed". */
 export function fleetModelLabel(config: TumwaterConfig): string | null {
   const entries = MODEL_TIERS.map((tier) => {
     const sel = tierModel(config, tier);
-    return sel ? { tier, label: formatModelSelector(sel) } : null;
+    if (!sel) return null;
+    const { agent } = routeModel(sel.provider, sel.model, config.agent ?? "pi", tier);
+    return { tier, label: agentQualifiedSelector({ ...sel, agent }) };
   }).filter((e): e is { tier: ModelTier; label: string } => e !== null);
   if (entries.length === 0) return null;
   if (entries.every((e) => e.label === entries[0]!.label)) return entries[0]!.label;
   return entries.map((e) => `${e.tier}=${e.label}`).join(", ");
+}
+
+/** One fallback pair rendered for display, agent-qualified (PLANS.md "Mixed claude + pi
+ * fleets, part 3/4" gap 7): a pair routed to a non-pi backend — its `provider` is that
+ * backend's id, per seamKeyedFallbackProvider, so `claude` — renders as `claude/claude-sonnet-5-5`,
+ * the same agent-qualified form every other surface carries; a pi pair keeps the bare model
+ * byte-identical to before (the badge, the fleet alert and `tumwater role` all name the
+ * model a pi fallback runs, never its provider). Falls back through the provider to the
+ * caller's `<agent> default` label when both halves are absent. One home so the three display
+ * surfaces cannot render one fallback two ways. */
+export function fallbackDisplayPair(
+  pair: { provider?: string; model?: string } | null,
+  agentDefault: string,
+): string {
+  const p = pair ?? {};
+  if (p.model !== undefined)
+    return p.provider !== undefined && isAgentId(p.provider) ? `${p.provider}/${p.model}` : p.model;
+  if (p.provider !== undefined) return p.provider;
+  return agentDefault;
 }
 
 /** The fleet-level fallback pair: the `default` tier's resolved pair under
@@ -558,6 +583,10 @@ export interface ModelFallbackView {
   provider?: string;
   model?: string;
   thinking?: string;
+  /** The backend the fallback pair routes to — its own id for a non-pi agent (`claude`),
+   * else `pi` — carried so the role view qualifies the pair the same way every other
+   * surface does (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7). */
+  agent?: string;
   since: number;
   reason: string;
 }
@@ -579,6 +608,7 @@ export function modelFallbackView(
   if (episodeConfig === null) return null;
   return {
     ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
+    ...(episodeConfig.agent !== undefined && episodeConfig.agent !== "pi" ? { agent: episodeConfig.agent } : {}),
     since: episode.since,
     reason: episode.reason,
   };

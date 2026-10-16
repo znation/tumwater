@@ -12,6 +12,7 @@ import { stripEntryStamp } from "../backlog/backlog-structure.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { pauseCountdown } from "./badges.js";
 import { fallbackTierEntries } from "../budget/budget.js";
+import { fallbackDisplayPair } from "../config/config-views.js";
 import { agree, pauseReasonSuffix, plural } from "../text/phrases.js";
 import { STALL_RE } from "./tick-progress-model.js";
 import { formatGB, usd, usdCap } from "../text/format.js";
@@ -82,7 +83,7 @@ export function fleetAlerts(
             // single-pair sentence.
             detail: b.tiers
               ? `${fallbackTierEntries(b.tiers).join(", ")} carry them at no cost until midnight.`
-              : `${b.fallback.model ?? b.fallback.provider ?? "The fallback"} carries them at no cost until midnight.`,
+              : `${fallbackDisplayPair(b.fallback, "The fallback")} carries them at no cost until midnight.`,
             actions: [{ label: "Raise the cap", act: "budget" }],
           }
         : {

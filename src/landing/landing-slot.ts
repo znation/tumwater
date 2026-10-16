@@ -4,6 +4,7 @@ import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
 import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
@@ -379,7 +380,7 @@ export type LandingUsage = { tokens: number; cost: number; notionalCost?: number
  * reviewPinnedChange), not inside LoopPi — loop-pi.ts stamps the retried first attempt; this
  * stamps the final run, which ends on a different seam when the reviewer runs on a
  * non-pi backend. */
-export function landingUsage(author: LoopRunner): {
+export function landingUsage(author: LoopRunner, root: string): {
   usage: LandingUsage;
   foldUsage: (run: PiRunResult) => void;
 } {
@@ -389,6 +390,18 @@ export function landingUsage(author: LoopRunner): {
     usage,
     foldUsage: (run) => {
       author.foldLandingUsage(run, reviewProvider);
+      // A claude reviewer's or resolver's billing/window readings reach the account file the
+      // moment this run folds, not at the author's next tick end — so a pi-author fleet's
+      // claude reviewer still updates the five-hour window before the author's next tick
+      // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like tick-finalize.ts's
+      // call; the file is a cache and an unwritable state dir must not fail the landing.
+      if (run.billing !== undefined || run.rateWindows !== undefined) {
+        try {
+          observeClaudeAccount(root, { billing: run.billing, rateWindows: run.rateWindows });
+        } catch {
+          // The next reporting run rewrites it; nothing this landing depends on is lost.
+        }
+      }
       usage.tokens += run.outputTokens;
       if (runCostIsReal(run)) usage.cost += run.costUsd;
       else usage.notionalCost = (usage.notionalCost ?? 0) + run.costUsd;

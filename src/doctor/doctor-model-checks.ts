@@ -281,6 +281,36 @@ export async function checkClaudeAuth(
   return okOutcome(`logged in — billing: ${billing}`);
 }
 
+/** The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): an operator
+ * who exports `ANTHROPIC_API_KEY` for pi's `anthropic` provider will silently move every claude
+ * seam to API billing — claude prefers the key over a claude.ai login — and subscription seams
+ * stop counting as free. Doctor warns when the key is set, some seam routes to claude, and
+ * `claude auth status` reports a claude.ai login (the subscription the key would override). It
+ * stays silent (ok) when no seam runs on claude, when the key is unset, or when claude reports
+ * an API-key login (then there is no subscription to lose). `env` is injectable so the check
+ * stays hermetic; a probe that cannot run warns rather than guesses like checkClaudeAuth. */
+export async function checkAnthroApiKey(
+  root: string,
+  env: NodeJS.ProcessEnv = process.env,
+  pathEnv: string = envPath(),
+  timeoutMs: number = AUTH_CHECK_TIMEOUT_MS,
+): Promise<CheckOutcome> {
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
+  if (!claudeSeamsInUse(config)) return okOutcome("no claude seams configured");
+  const apiKey = env.ANTHROPIC_API_KEY;
+  if (apiKey === undefined || apiKey === "") return okOutcome("no ANTHROPIC_API_KEY set");
+  const auth = await claudeAuthProbe(config, pathEnv, timeoutMs);
+  if (auth === null)
+    return warnOutcome("could not check — `claude auth status` did not run or its output was unreadable");
+  if (!auth.loggedIn || !claudeAuthUsesSubscription(auth))
+    return okOutcome("ANTHROPIC_API_KEY is set, but claude reports no claude.ai login");
+  return warnOutcome(
+    "ANTHROPIC_API_KEY is set while claude reports a claude.ai login — claude seams will bill the API key, not the subscription; unset it or route every anthropic seam on pi explicitly",
+  );
+}
+
 /** The dotted version in `claude --version`'s output, or undefined when it names none. */
 function parseClaudeCliVersion(output: string): string | undefined {
   return /(\d+\.\d+\.\d+)/.exec(output)?.[1];

@@ -347,6 +347,30 @@ test("an active model-fallback episode is reported with its pair and reason", ()
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Model fallback:/);
 });
 
+// A claude model-fallback episode (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7) renders
+// agent-qualified in `tumwater role` and carries the backend on the payload.
+test("a claude model-fallback episode renders as claude/model", () => {
+  const dir = root();
+  writeConfig(dir, { agent: "claude", fallbackModel: { model: "claude-haiku-5-5" } });
+  const state = freshLoopState("feature");
+  const since = Date.now() - 60_000;
+  state.modelFallback = {
+    failures: 0,
+    since,
+    probeAt: Date.now() + 600_000,
+    cooldownMs: 300_000,
+    reason: "Request timed out.",
+  };
+  saveLoopState(dir, state);
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.modelFallback?.agent, "claude");
+  assert.equal(p.modelFallback?.model, "claude-haiku-5-5");
+  assert.match(
+    renderRoleMarkdown(p),
+    /- Model fallback: claude\/claude-haiku-5-5 — on fallback since .* \(primary failing: Request timed out\.\)/,
+  );
+});
+
 test("agent labels: a claude seam names the backend, pi stays byte-identical", () => {
   // Part 4f/7: with agent claude and no model, configForRole fills the tier default and the
   // renderer names it agent-qualified; a seam with no model at all falls back to `<agent>
@@ -389,6 +413,27 @@ test("a claude seam's role view names its billing and subscription window", () =
 
   // A pi seam carries no billing line at all, whatever the account file says.
   writeConfig(dir, {});
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
+});
+
+// A pi author with a claude reviewer (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7):
+// the role's changes are reviewed on claude, so the role view names that billing too, not
+// just the role's own seam.
+test("a pi role with a claude reviewer shows claude billing; a pi reviewer does not", () => {
+  const dir = root();
+  writeConfig(dir, { review: { enabled: true, model: "claude/claude-sonnet-5-5" } });
+  writeClaudeAccount(dir, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "allowed", utilization: 0.5, observedAt: Date.now() } },
+  });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.agent, "pi", "the role's own seam is pi");
+  assert.equal(p.billing, "subscription", "the claude reviewer's billing is shown");
+  assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
+
+  // A pi reviewer leaves the role view without a billing line.
+  writeConfig(dir, { review: { enabled: true, model: "pi-prov/m" } });
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
 });
 

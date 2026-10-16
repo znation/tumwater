@@ -87,48 +87,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
 
-### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows)
-
-Design: plans/provider-concurrency.md §9, gaps 5–7.
-
-**Goal.**
-- A pi-author, claude-reviewer fleet keeps an up-to-date subscription window.
-- The operator is told when an exported API key moves claude off the subscription.
-- Every surface names a fallback or reviewer's backend, not just its bare model id.
-
-**Approach.**
-- `landingUsage`'s fold (src/landing/landing-slot.ts) calls `observeClaudeAccount` for a landing
-  run that carries `billing` or `rateWindows`. This is the same best-effort write tick-finalize.ts
-  makes at tick end, so a reviewer's or resolver's reading reaches
-  `.tumwater/state/claude-account.json` when the run ends.
-- Doctor gets a warning check: `ANTHROPIC_API_KEY` is set in the environment, `claude auth status`
-  reports a claude.ai login, and some seam runs on claude. The warning says claude seams will
-  bill the API key, not the subscription, and to unset it or route pi's anthropic seams
-  explicitly.
-- The display surfaces print agent-qualified selectors (`agentQualifiedSelector`):
-  - the budget badge's and fleet alert's fallback model (src/ui/badges.ts, src/ui/fleet-alerts.ts);
-  - `modelFallbackView` (src/config/config-views.ts) carries `agent`, so role-render.ts prints
-    `claude/…`;
-  - `fleetModelLabel` labels routed seams, so flipping `agent` with bare ids emits
-    `model_changed`;
-  - the role view (src/roles/role-view.ts) shows billing for any claude seam the role uses,
-    reviewer included.
-
-**Files touched.** src/landing/landing-slot.ts, src/doctor/ (the new check),
-src/agent/claude/claude-account.ts (only if a helper is needed), src/ui/badges.ts,
-src/ui/fleet-alerts.ts, src/config/config-views.ts, src/roles/role-render.ts,
-src/roles/role-view.ts, src/config/config-live.ts, and their tests.
-
-**Acceptance criteria (this part).**
-- A claude reviewer run that reports a `five_hour` reading updates `claude-account.json` before
-  the author's next tick starts, with the author on pi.
-- Doctor warns with `ANTHROPIC_API_KEY` set and a claude.ai login. It stays silent when no seam
-  runs on claude.
-- A claude fallback renders as `claude/claude-sonnet-5-5` in the badge, the fleet alert and
-  `tumwater role`.
-- Switching `agent` from `pi` to `claude` over a bare-id `model` logs `model_changed`.
-- `npm test` passes.
-
 ### Mixed claude + pi fleets, part 4/4: a bare `claude-…` model id runs on the claude CLI, and the docs show a mixed fleet (planned 2026-10-15 from an operator request; requires part 3/4 landed; last of the series)
 
 Design: plans/provider-concurrency.md §9 "Routing a bare Claude model id to claude".
@@ -324,6 +282,48 @@ README.md, and their tests.
 
 
 ## Done
+### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows) — done 2026-10-16
+
+Design: plans/provider-concurrency.md §9, gaps 5–7.
+
+**Goal.**
+- A pi-author, claude-reviewer fleet keeps an up-to-date subscription window.
+- The operator is told when an exported API key moves claude off the subscription.
+- Every surface names a fallback or reviewer's backend, not just its bare model id.
+
+**Approach.**
+- `landingUsage`'s fold (src/landing/landing-slot.ts) calls `observeClaudeAccount` for a landing
+  run that carries `billing` or `rateWindows`. This is the same best-effort write tick-finalize.ts
+  makes at tick end, so a reviewer's or resolver's reading reaches
+  `.tumwater/state/claude-account.json` when the run ends.
+- Doctor gets a warning check: `ANTHROPIC_API_KEY` is set in the environment, `claude auth status`
+  reports a claude.ai login, and some seam runs on claude. The warning says claude seams will
+  bill the API key, not the subscription, and to unset it or route pi's anthropic seams
+  explicitly.
+- The display surfaces print agent-qualified selectors (`agentQualifiedSelector`):
+  - the budget badge's and fleet alert's fallback model (src/ui/badges.ts, src/ui/fleet-alerts.ts);
+  - `modelFallbackView` (src/config/config-views.ts) carries `agent`, so role-render.ts prints
+    `claude/…`;
+  - `fleetModelLabel` labels routed seams, so flipping `agent` with bare ids emits
+    `model_changed`;
+  - the role view (src/roles/role-view.ts) shows billing for any claude seam the role uses,
+    reviewer included.
+
+**Files touched.** src/landing/landing-slot.ts, src/doctor/ (the new check),
+src/agent/claude/claude-account.ts (only if a helper is needed), src/ui/badges.ts,
+src/ui/fleet-alerts.ts, src/config/config-views.ts, src/roles/role-render.ts,
+src/roles/role-view.ts, src/config/config-live.ts, and their tests.
+
+**Acceptance criteria (this part).**
+- A claude reviewer run that reports a `five_hour` reading updates `claude-account.json` before
+  the author's next tick starts, with the author on pi.
+- Doctor warns with `ANTHROPIC_API_KEY` set and a claude.ai login. It stays silent when no seam
+  runs on claude.
+- A claude fallback renders as `claude/claude-sonnet-5-5` in the badge, the fleet alert and
+  `tumwater role`.
+- Switching `agent` from `pi` to `claude` over a bare-id `model` logs `model_changed`.
+- `npm test` passes.
+
 ### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow) — done 2026-10-15
 
 Design: plans/provider-concurrency.md §9, gaps 2–4 and "One key".

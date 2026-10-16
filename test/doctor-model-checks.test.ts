@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  checkAnthroApiKey,
   checkClaudeAuth,
   checkClaudeVersion,
   checkFallbackModel,
@@ -326,6 +327,43 @@ test("checkTierModels warns when pi's definitions name a reserved agent id", asy
   const outcome = await checkTierModels(root, file, async () => "ready");
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /declare provider "claude" — the name is reserved for an agent backend/);
+});
+
+// The subscription-vs-API billing trap (plans/provider-concurrency.md §9 gap 6): with
+// ANTHROPIC_API_KEY exported (for pi's anthropic provider) a claude seam prefers the key over a
+// claude.ai login, silently moving every claude run to API billing. Doctor warns only when the
+// key is set, a claude seam is in use, and claude reports a claude.ai login to lose; a pi-only
+// fleet, an unset key, an API-key login, or an unreadable probe all hold the warning.
+test("checkAnthroApiKey warns on API key + claude.ai login with a claude seam in use", async () => {
+  const root = readyRepo();
+  writeConfig(root, { agent: "claude" });
+  const bin = tmpdir("doctor-claude-key-");
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"authMethod":"claude.ai","subscriptionType":"team"}\'');
+  const env = { ANTHROPIC_API_KEY: "sk-ant-test" };
+  const warn = await checkAnthroApiKey(root, env, bin);
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /ANTHROPIC_API_KEY is set while claude reports a claude\.ai login/);
+  assert.match(warn.detail, /bill the API key, not the subscription/);
+
+  // Unset key: no trap, silent.
+  assert.deepEqual(await checkAnthroApiKey(root, {}, bin), { level: "ok", detail: "no ANTHROPIC_API_KEY set" });
+  // An API-key login means there is no subscription to lose: silent.
+  writeScript(path.join(bin, "claude"), 'echo \'{"loggedIn":true,"authMethod":"ANTHROPIC_API_KEY"}\'');
+  const apiLogin = await checkAnthroApiKey(root, env, bin);
+  assert.equal(apiLogin.level, "ok");
+  assert.match(apiLogin.detail, /no claude\.ai login/);
+});
+
+// No claude seam, no trap (gap 6's silence rule): a pi-only fleet never spawns claude, so the
+// key, however exported, cannot move a claude run off the subscription.
+test("checkAnthroApiKey stays silent without a claude seam", async () => {
+  const root = readyRepo();
+  writeConfig(root, { model: "local/free-model" });
+  const empty = tmpdir("doctor-claude-key-empty-");
+  assert.deepEqual(await checkAnthroApiKey(root, { ANTHROPIC_API_KEY: "sk-ant-test" }, empty), {
+    level: "ok",
+    detail: "no claude seams configured",
+  });
 });
 
 // The auth probe is pinned against a fake claude on PATH (never a real model) for each verdict.

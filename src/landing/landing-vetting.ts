@@ -156,7 +156,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
         release(); // stopping, or a restart / fleet hold closed the gate while it waited
         return;
       }
-      const { usage, foldUsage } = landingUsage(author);
+      const { usage, foldUsage } = landingUsage(author, root);
       let verdict: VetVerdict;
       const startedAt = Date.now();
       try {

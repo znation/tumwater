@@ -1,6 +1,7 @@
 import { agree } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
+import { isAgentId } from "../config/model-selector.js";
 import type { RoleViewPayload } from "./role-view.js";
 
 /** The terminal's view of one loop — what `tumwater role <id>` prints, rendered as Markdown
@@ -86,6 +87,27 @@ function modelLine(p: RoleViewPayload): string {
   return `${agent}${pair}${thinking}`;
 }
 
+/** A fallback pair as one readable token, agent-qualified exactly like modelLine — a non-pi
+ * backend (its `agent`, or a provider that names one, `claude`) is named as the selector's
+ * namespace; a pi pair keeps `provider/model`; neither half present falls back to the
+ * backend-default label. One home for the Model fallback and Budget fallback lines, so a
+ * claude fallback reads `claude/claude-sonnet-5-5`, not a bare id (PLANS.md "Mixed claude +
+ * pi fleets, part 3/4" gap 7). */
+function fallbackPairLabel(
+  fb: { provider?: string; model?: string; agent?: string },
+  agentDefault: string,
+): string {
+  const agentBackend =
+    (fb.agent !== undefined && fb.agent !== "pi" ? fb.agent : undefined) ??
+    (fb.provider !== undefined && isAgentId(fb.provider) ? fb.provider : undefined);
+  if (fb.model !== undefined) {
+    if (agentBackend !== undefined) return `${agentBackend}/${fb.model}`;
+    return fb.provider !== undefined ? `${fb.provider}/${fb.model}` : fb.model;
+  }
+  if (fb.provider !== undefined) return fb.provider;
+  return agentDefault;
+}
+
 /** Render one loop's inspection payload as Markdown. */
 export function renderRoleMarkdown(p: RoleViewPayload): string {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
@@ -97,13 +119,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   // Model failure fallback, part 2/2: name the off-model pair, when the episode began, and
   // the provider-class failure that tripped it, so `tumwater role <id>` explains the state.
   if (p.modelFallback) {
-    const pair = modelPair(p.modelFallback.provider, p.modelFallback.model) || agentDefault(p);
+    const pair = fallbackPairLabel(p.modelFallback, agentDefault(p));
     lines.push(
       `- Model fallback: ${pair} — on fallback since ${formatTimestamp(p.modelFallback.since)} (primary failing: ${p.modelFallback.reason})`,
     );
   }
   if (p.fallback) {
-    const pair = modelPair(p.fallback.provider, p.fallback.model) || agentDefault(p);
+    const pair = fallbackPairLabel(p.fallback, agentDefault(p));
     lines.push(`- Budget fallback: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
   // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on

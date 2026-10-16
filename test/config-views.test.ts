@@ -7,6 +7,7 @@ import {
   applyFallbackModel,
   configForRole,
   FALLBACK_REVIEW_TIMEOUT_S,
+  fallbackDisplayPair,
   fallbackPair,
   fallbackRoleConfig,
   fleetModelLabel,
@@ -237,6 +238,24 @@ test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => 
     fleetModelLabel(map),
     "small=prov-a/model-a, default=prov-a/model-a, strong=prov-s/model-s:high",
   );
+  // A bare-id model is agent-qualified by routing (PLANS.md "Mixed claude + pi fleets, part
+  // 3/4" gap 7): over `pi` it stays bare, over `claude` it names the backend — so a live
+  // `agent` flip relabels the tier and the reload logs model_changed.
+  const bare: TumwaterConfig = defaultConfig();
+  bare.agent = "pi";
+  bare.model = "claude-sonnet-5-5";
+  assert.equal(fleetModelLabel(bare), "claude-sonnet-5-5");
+  const onClaude: TumwaterConfig = defaultConfig();
+  onClaude.agent = "claude";
+  onClaude.model = "claude-sonnet-5-5";
+  assert.equal(fleetModelLabel(onClaude), "claude/claude-sonnet-5-5");
+});
+
+test("fallbackDisplayPair agent-qualifies a backend pair and keeps a pi pair bare", () => {
+  assert.equal(fallbackDisplayPair({ provider: "claude", model: "claude-sonnet-5-5" }, "pi default"), "claude/claude-sonnet-5-5");
+  assert.equal(fallbackDisplayPair({ provider: "omlx", model: "local-free" }, "pi default"), "local-free");
+  assert.equal(fallbackDisplayPair({ provider: "omlx" }, "pi default"), "omlx");
+  assert.equal(fallbackDisplayPair(null, "pi default"), "pi default");
 });
 
 test("configForRole resolves each seam's tier: plan and director strong, readme small, others default", () => {

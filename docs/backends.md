@@ -105,6 +105,14 @@ cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
+An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every claude seam
+prefer the key over a claude.ai login and bill the API, silently ending the subscription
+free ride. `tumwater doctor` warns when the key is set, a seam routes to claude, and `claude
+auth status` reports a claude.ai login. A claude reviewer's or resolver's window readings
+reach the account file when its run folds, not only at the author's next tick end, and the
+display surfaces (the budget badge, the fleet alert, `tumwater role`) name a claude
+fallback or reviewer by its backend (`claude/claude-sonnet-5-5`).
+
 **Per-run cap.** An API-billed claude authoring run carries `--max-budget-usd` set to what
 remains of the daily budget — the lower of the fleet cap (`maxDailyCostUsd` − fleet spend) and
 the role's own cap (`maxDailyCostUsdPerRole` − that role group's spend) when set — so one

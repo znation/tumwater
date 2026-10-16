@@ -37,6 +37,16 @@ test("a spent budget pauses the loops, or hands them to the free fallback", () =
   assert.equal(onFallback[0]?.key, "fallback");
   assert.equal(onFallback[0]?.tone, "blue", "the fleet keeps working, so it informs rather than alarms");
   assert.match(onFallback[0]?.detail ?? "", /^small-model carries them/);
+  // A claude fallback (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7): the pair's
+  // provider IS the backend id, so it renders agent-qualified, never a bare model id.
+  const claudeFallback = fleetAlerts(
+    { ...spent, budget: { ...spent.budget, fallback: { provider: "claude", model: "claude-sonnet-5-5" } } },
+    [],
+    [],
+    Date.now(),
+  )[0];
+  assert.equal(claudeFallback?.key, "fallback");
+  assert.match(claudeFallback?.detail ?? "", /claude\/claude-sonnet-5-5 carries them/);
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, free: true } }, [], [], Date.now()), [], "an all-free fleet has no cap to hit");
   assert.deepEqual(fleetAlerts({ ...spent, budget: { ...spent.budget, capUsd: 0 } }, [], [], Date.now()), [], "no cap, nothing spent against it");
 

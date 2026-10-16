@@ -2,6 +2,7 @@ import type { TestCounts } from "../build/build-check-counts.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import type { StatusSnapshot } from "../status/status-data.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
+import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
 import { pauseReasonSuffix } from "../text/phrases.js";
@@ -202,7 +203,7 @@ export function budgetBadge(
     fleetBudgetGate(budget) === "fallback"
       ? tierEntries.length >= 2
         ? ` · fallback: ${tierEntries.join(", ")} (cost n/a)`
-        : ` · fallback: ${budget.fallback?.model ?? budget.fallback?.provider ?? agentDefault} (cost n/a)`
+        : ` · fallback: ${fallbackDisplayPair(budget.fallback, agentDefault)} (cost n/a)`
       : "";
   const forecast =
     budget.capHitAt !== null
