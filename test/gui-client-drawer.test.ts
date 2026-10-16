@@ -540,3 +540,78 @@ test("a loop with no recent outcomes shows no Recent outcomes section", async ()
   await flush();
   assert.doesNotMatch(t.paintedFor("drawerrole"), /Recent outcomes/);
 });
+
+// The loop drawer's Configuration section mirrors `tumwater role <id>`'s field labels and
+// wording family from the same /api/role payload (rolePayload), so the page and the CLI read
+// one loop's configuration identically: model/tier, provider cap, image reading (with the
+// reroute target), model and budget fallback pairs, billing, min tick interval, queued
+// prompts, and the clamped instructions/find text. Absent fields render no row, so a
+// cap-less or notes-only payload keeps an empty section.
+test("the loop drawer renders the Configuration section from the role payload", async () => {
+  const now = Date.now();
+  const responses: Record<string, unknown> = {
+    "/api/role?role=clean": {
+      note: null,
+      nextPrompt: null,
+      model: "deepseek/deepseek-v4",
+      modelTier: "strong",
+      providerKey: "deepinfra",
+      providerCap: 2,
+      imageInput: false,
+      imageReroute: "strong (claude-opus-5-5)",
+      modelFallback: { provider: "omlx", model: "Qwen3.8", since: now - 120_000, reason: "http 429" },
+      fallback: { provider: "omlx", model: "Qwen3.8" },
+      fallbackFree: true,
+      billing: "subscription",
+      billingWindow: "five_hour",
+      minTickIntervalSeconds: 30,
+      inboxCount: 4,
+      instructions: "say the version on every reply\nkeep it short",
+      find: "look for redundant code",
+    },
+  };
+  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<h3>Configuration<\/h3>/);
+  assert.match(role, /<dt>Model<\/dt><dd[^>]*>deepseek\/deepseek-v4 \(strong tier\)<\/dd>/);
+  assert.match(role, /<dt>Provider<\/dt><dd[^>]*>deepinfra \(cap 2\)<\/dd>/);
+  assert.match(role, /<dt>Images<\/dt><dd[^>]*>no — reruns on strong \(claude-opus-5-5\)<\/dd>/);
+  assert.match(role, /<dt>Model fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 — on fallback since 2m ago \(primary failing: http 429\)<\/dd>/);
+  assert.match(role, /<dt>Budget fallback<\/dt><dd[^>]*>omlx\/Qwen3\.8 \(free\)<\/dd>/);
+  assert.match(role, /<dt>Billing<\/dt><dd[^>]*>subscription \(five_hour window\)<\/dd>/);
+  assert.match(role, /<dt>Min tick interval<\/dt><dd[^>]*>30s<\/dd>/);
+  assert.match(role, /<dt>Queued prompts<\/dt><dd[^>]*>4<\/dd>/);
+  // Instructions and find text clamp to one line with the verbatim text in the tooltip.
+  assert.match(role, /<dt>Instructions override<\/dt><dd title='say the version on every reply\nkeep it short'>say the version on every reply keep it short<\/dd>/);
+  assert.match(role, /<dt>Find text<\/dt><dd title='look for redundant code'>look for redundant code<\/dd>/);
+});
+
+test("the Configuration section omits absent fields (cap-less fleet, no fallback, image-\nyes, notes-only)", async () => {
+  // A cap-less fleet carries no provider row; no fallbacks, no images-reroute.
+  const partial = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": {
+      note: null, nextPrompt: null, model: "pi/default", modelTier: "default", imageInput: true,
+    } },
+  });
+  partial.scope.toggleLoop("clean");
+  await flush();
+  let role = partial.paintedFor("drawerrole");
+  assert.match(role, /<dt>Images<\/dt><dd[^>]*>yes<\/dd>/);
+  assert.doesNotMatch(role, /<dt>Provider<\/dt>/);
+  assert.doesNotMatch(role, /Model fallback/);
+  assert.doesNotMatch(role, /Budget fallback/);
+  assert.doesNotMatch(role, /<dt>Billing<\/dt>/);
+  assert.doesNotMatch(role, /Min tick interval/);
+
+  // A notes-only payload renders no Configuration section at all.
+  const minimal = openDrawer(["toggleLoop"], {
+    status: workingStatus(),
+    responses: { "/api/role?role=clean": { note: "a note", nextPrompt: null } },
+  });
+  minimal.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(minimal.paintedFor("drawerrole"), /Configuration/);
+});

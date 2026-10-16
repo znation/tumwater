@@ -267,9 +267,58 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
             return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +
               "<span class='clamp1' title='" + esc(detail) + "'><span class='res t-" + info.tone + "'>" + esc(info.label) + "</span>" + (detail ? " " + esc(detail) : "") + "</span>" +
               "<span class='when'>" + (o.durationMs == null ? "" : esc(fmtSpan(Number(o.durationMs)))) + "</span></li>";
-          }).join("") + "</ul></section>" : "");
+          }).join("") + "</ul></section>" : "") +
+        drawerConfigHtml(view);
     }
     return "<section>" + body + "</section>";
+  }
+  // A Configuration section built from the same /api/role payload the CLI's tumwater role
+  // <id> renders (rolePayload), so the drawer's and the terminal's rows read one document and
+  // cannot drift: what the loop RUNS ON (model/tier, provider cap, image reading, the
+  // fallback pairs, billing, min tick interval) and CARRIES (queued prompts, the instructions
+  // override, find text). Each row is guarded by a present/own check so an absent field
+  // renders no row — a cap-less fleet shows no Provider row, no fallback shows no fallback
+  // rows, and a notes-only payload adds an empty (omitted) section. Labels and wording mirror
+  // role-render.ts's family; no backticks allowed here (this whole script is one big
+  // String.raw template).
+  function drawerConfigHtml(view) {
+    const row = (k, v, title) => "<div><dt>" + esc(k) + "</dt><dd title='" + esc(title || v) + "'>" + esc(v) + "</dd></div>";
+    const pair = (p, m) => [p, m].filter(Boolean).join("/");
+    const singleLine = (s) => String(s).replace(/\s+/g, " ").trim();
+    // A verbatim value's single-line clamped rendering (80 chars + ellipsis) with the full
+    // text riding the title tooltip — the same clamp+tooltip idiom the tick summaries use.
+    const clamp = (t) => { const one = singleLine(t); return one.length > 80 ? one.slice(0, 80) + "…" : one; };
+    const rows = [];
+    const modelLine = pair(view.provider, view.model);
+    if (modelLine !== "" || view.modelTier !== undefined) {
+      rows.push(row("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
+    }
+    if (view.providerKey !== undefined && view.providerCap !== undefined) {
+      rows.push(row("Provider", view.providerKey + " (cap " + view.providerCap + ")"));
+    }
+    if (view.imageInput !== undefined) {
+      const images = view.imageInput === true ? "yes"
+        : view.imageInput === false ? (view.imageReroute ? "no — reruns on " + view.imageReroute : "no")
+        : "unknown";
+      rows.push(row("Images", images));
+    }
+    if (view.modelFallback && typeof view.modelFallback === "object" && view.modelFallback.model !== undefined) {
+      const fb = view.modelFallback;
+      const when = typeof fb.since === "number" ? " since " + fmtAgo(fb.since) : "";
+      rows.push(row("Model fallback", pair(fb.provider, fb.model) + " — on fallback" + when + " (primary failing: " + (fb.reason ?? "") + ")"));
+    }
+    if (view.fallback && typeof view.fallback === "object" && view.fallback.model !== undefined) {
+      rows.push(row("Budget fallback", pair(view.fallback.provider, view.fallback.model) + " (" + (view.fallbackFree ? "free" : "priced") + ")"));
+    }
+    if (view.billing !== undefined) {
+      const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
+      rows.push(row("Billing", (view.billing === "api" ? "API" : view.billing) + window));
+    }
+    if (typeof view.minTickIntervalSeconds === "number") rows.push(row("Min tick interval", view.minTickIntervalSeconds + "s"));
+    if (typeof view.inboxCount === "number") rows.push(row("Queued prompts", String(view.inboxCount)));
+    if (typeof view.instructions === "string" && view.instructions.trim() !== "") rows.push(row("Instructions override", clamp(view.instructions), view.instructions));
+    if (typeof view.find === "string" && view.find.trim() !== "") rows.push(row("Find text", clamp(view.find), view.find));
+    return rows.length ? "<section><div class='sec-head'><h3>Configuration</h3></div><dl class='kv'>" + rows.join("") + "</dl></section>" : "";
   }
   // An open notebook edit holds the draft's starting text, not the live payload, so a poll
   // refetch neither wipes the textarea nor changes the painted panel string. Clear waits for a
