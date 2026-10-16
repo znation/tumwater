@@ -26,7 +26,7 @@ export class OnceRound {
   constructor(runners: readonly LoopRunner[], active: boolean) {
     this.runners = runners;
     this.active = active;
-    for (const r of runners) this.tickSnapshots.set(r.role, r.state.ticks);
+    for (const r of runners) this.tickSnapshots.set(r.role, r.state.runs);
   }
 
   /** The runner's pre-round tick baseline. Snapshotted at construction for the startup
@@ -41,19 +41,19 @@ export class OnceRound {
   private snapshotOf(runner: LoopRunner): number {
     const known = this.tickSnapshots.get(runner.role);
     if (known !== undefined) return known;
-    this.tickSnapshots.set(runner.role, runner.state.ticks);
-    return runner.state.ticks;
+    this.tickSnapshots.set(runner.role, runner.state.runs);
+    return runner.state.runs;
   }
 
   /** A role is settled once it ran its tick or a settle reason was recorded for it. */
   isSettled(runner: LoopRunner): boolean {
-    return runner.state.ticks > this.snapshotOf(runner) || this.settled.has(runner.role);
+    return runner.state.runs > this.snapshotOf(runner) || this.settled.has(runner.role);
   }
 
   /** Ticks this round advanced the runner past its snapshot — the exit summary's per-role
    * count, exact even for a role the caller's own pre-round snapshot never named. */
   ticksRun(runner: LoopRunner): number {
-    return runner.state.ticks - this.snapshotOf(runner);
+    return runner.state.runs - this.snapshotOf(runner);
   }
 
   /** Record the role's once-round answer (why it ran no tick, or that it deferred). */

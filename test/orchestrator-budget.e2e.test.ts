@@ -62,12 +62,12 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     // past nextRunAt plus several (fast) poll cycles — an ungated loop would have ticked by then.
     const scheduled = loadLoopState(repo, "clean").nextRunAt;
     await waitFor(() => Date.now() >= scheduled + 1500, "the schedule to pass while paused");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a budget-paused role starts no new ticks");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "a budget-paused role starts no new ticks");
 
     // The director is exempt: a queued human prompt still runs while the fleet is paused.
     enqueuePrompt(repo, "steer me while the fleet is paused");
     await awaitSettledTick(repo, "director", 1, "the director to tick while budget-paused");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "still paused after the director's run");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "still paused after the director's run");
 
     // Raising the cap live resumes within a poll cycle: one transition event, then the role
     // ticks again. The director's spend counts toward the fleet total ($2 now), so this also
@@ -117,7 +117,7 @@ test("startup with spend already at the cap starts no role ticks", async () => {
     // ticked within the first poll. Several (fast) poll cycles pass with no role tick starting.
     await waitFor(() => readOrchestratorInfo(repo) !== null, "orchestrator state file");
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "a fleet at cap starts no role ticks");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "a fleet at cap starts no role ticks");
     // The pause is announced exactly once, with the spend and cap that closed the gate.
     const paused = eventsOfType(repo, "budget_paused");
     assert.equal(paused.length, 1);
@@ -149,7 +149,7 @@ test("a main-moved wake while budget-paused stays blocked", async () => {
     // …but the gate skips role runners before eligibility is even evaluated: several (fast)
     // poll cycles pass with no tick and no wake event.
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a main move cannot wake a budget-paused fleet");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "a main move cannot wake a budget-paused fleet");
     assert.ok(!readEvents(repo).some((e) => e.type === "wake"), "no wake logged for the blocked main move");
   } finally {
     await stopOrchestrator(orch, restore);
@@ -284,7 +284,7 @@ test("a fallback pi cannot price at zero is refused and the fleet pauses as befo
     // And it really is paused: several poll cycles past its schedule, no second tick.
     landWork(repo);
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "a refused fallback leaves the fleet paused");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "a refused fallback leaves the fleet paused");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -336,12 +336,12 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored loop backs off
     // 30 s, and a main move wakes it early.
     landWork(repo);
-    await waitFor(() => clean().ticks >= 2 && !clean().running, "the first fallback tick");
+    await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback tick");
     assert.equal(clean().lastResult, "error");
     assert.match(runFor(2), /model=local-free/);
     landWork(repo);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "the demotion to a pause");
-    assert.equal(clean().ticks, 3);
+    assert.equal(clean().runs, 3);
 
     // One transition event naming the demoted pair and the evidence — not a refusal: the price
     // was fine, the backend was not.
@@ -357,7 +357,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     // Paused means paused: a main move during the cool-down starts no role tick.
     landWork(repo);
     await sleep(400);
-    assert.equal(clean().ticks, 3, "no role tick starts while the fallback is demoted");
+    assert.equal(clean().runs, 3, "no role tick starts while the fallback is demoted");
 
     // The backend recovers. After the cool-down one probe tick finds out, the breaker closes, and
     // the fleet is back on the fallback — no restart and no config edit needed.
@@ -366,7 +366,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
       () => eventsOfType(repo, "budget_fallback").length >= 2,
       "the probe to restore the fallback",
     );
-    assert.equal(clean().ticks, 4, "one probe tick restored it");
+    assert.equal(clean().runs, 4, "one probe tick restored it");
     assert.match(runFor(4), /model=local-free/, "the probe runs on the free pair, never the spent one");
     assert.equal(readOrchestratorInfo(repo)?.fallbackDemoted, undefined, "the demotion is withdrawn");
     assert.deepEqual(snapshot(repo, models).budget.fallback, { provider: "local", model: "local-free" });

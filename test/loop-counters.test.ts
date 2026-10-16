@@ -23,7 +23,7 @@ async function runnerInRepo(role = "clean"): Promise<LoopRunner> {
 test("resetCounters zeroes the observation counters, preserves scheduling and wake fields, and persists both", async () => {
   const runner = await runnerInRepo();
   const s = runner.state;
-  s.ticks = 5;
+  s.runs = 5;
   s.commits = 2;
   s.generatedTokens = 1234;
   s.peakContextTokens = 900;
@@ -38,7 +38,7 @@ test("resetCounters zeroes the observation counters, preserves scheduling and wa
 
   runner.resetCounters();
 
-  assert.equal(s.ticks, 0);
+  assert.equal(s.runs, 0);
   assert.equal(s.commits, 0);
   assert.equal(s.generatedTokens, 0);
   assert.equal(s.peakContextTokens, 0, "the stale peak must not outlive the window");
@@ -50,7 +50,7 @@ test("resetCounters zeroes the observation counters, preserves scheduling and wa
   assert.equal(s.running, true, "an in-flight tick's running flag must survive");
 
   const disk = loadLoopState(runner.root, runner.role);
-  assert.equal(disk.ticks, 0, "the zeroed counters are persisted, not just in-memory");
+  assert.equal(disk.runs, 0, "the zeroed counters are persisted, not just in-memory");
   assert.equal(disk.nextRunAt, 1234567890, "the preserved scheduling fields are persisted too");
 });
 
@@ -58,7 +58,7 @@ test("resetCounters mutates the existing state object, so an in-flight tick's en
   const runner = await runnerInRepo();
   // The reference a mid-tick bookkeeping save would hold.
   const inflight = runner.state;
-  runner.state.ticks = 7;
+  runner.state.runs = 7;
 
   runner.resetCounters();
 
@@ -67,18 +67,18 @@ test("resetCounters mutates the existing state object, so an in-flight tick's en
   // Now the in-flight tick ends and saves ITS bookkeeping over the same object: the counter
   // it wrote and its own schedule must both reach disk, and the pre-reset values must not
   // resurrect (the documented wedged-loop failure mode).
-  inflight.ticks = 8;
+  inflight.runs = 8;
   inflight.nextRunAt = 42;
   saveLoopState(runner.root, inflight);
   const disk = loadLoopState(runner.root, runner.role);
-  assert.equal(disk.ticks, 8);
+  assert.equal(disk.runs, 8);
   assert.equal(disk.nextRunAt, 42);
 });
 
 test("wake clears backoff in memory and on disk, and only the backoff", async () => {
   const runner = await runnerInRepo();
   const s = runner.state;
-  s.ticks = 3;
+  s.runs = 3;
   s.backoffSeconds = 600;
   const before = Date.now();
   s.nextRunAt = before + 600_000;
@@ -90,7 +90,7 @@ test("wake clears backoff in memory and on disk, and only the backoff", async ()
     s.nextRunAt >= before && s.nextRunAt <= Date.now(),
     "nextRunAt moves to the wake time so eligibility reads due-now",
   );
-  assert.equal(s.ticks, 3, "wake clears the schedule, never the counters");
+  assert.equal(s.runs, 3, "wake clears the schedule, never the counters");
 
   // The orchestrator reads eligibility from the IN-MEMORY state, but the next save comes
   // from the same object — the cleared backoff must already be on disk.

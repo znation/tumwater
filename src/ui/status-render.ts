@@ -344,7 +344,7 @@ export function renderStatusSpans(
       // Merge queue 4/5 — the landing role's phase label (the marker-driven record, filtered to
       // this role by loopPhase's `landing` argument above) rides this same phase string.
       [...stateSpans, { text: roleQueued(s.role) }, ...(wakeMark ? [{ text: wakeMark, tone: "blue" as const }] : [])],
-      cell(String(s.ticks)),
+      cell(String(s.runs)),
       cell(String(s.commits)),
       cell(compactTokens(m.generated)),
       cell(compactTokens(m.peakCtx)),

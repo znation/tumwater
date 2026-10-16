@@ -376,7 +376,7 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
 
 test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), ticks: 3 };
+  const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
@@ -413,7 +413,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
 
 test("a tick with a SUMMARY still enqueues its landing when the events feed is unwritable", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), ticks: 3 };
+  const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
   const { ctx } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
@@ -582,7 +582,7 @@ test("an aborted follow-up finalizes through the loop and queues nothing", async
 
 test("a tick past both friction thresholds is flagged, warned, and marked in the landing", async () => {
   const { root, wt } = await setup();
-  const state: LoopState = { ...freshLoopState("improve"), ticks: 5 };
+  const state: LoopState = { ...freshLoopState("improve"), runs: 5 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "SUMMARY: hard work\n",
     config: (c) => {

@@ -51,7 +51,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   fs.appendFileSync(path.join(wt, "seed.txt"), "bad\n");
   fs.writeFileSync(path.join(wt, "broken.ts"), "export const broken = true;\n");
 
-  const state: LoopState = { ...freshLoopState("improve"), ticks: 7 };
+  const state: LoopState = { ...freshLoopState("improve"), runs: 7 };
   const { ctx, merges } = makeCtx(root);
   const outcome = await handleRefusal(ctx, state, wt, refusedPi({ refusedReason: "it would delete user data" }));
 

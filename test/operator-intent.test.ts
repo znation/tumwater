@@ -97,7 +97,7 @@ test("requestResetCounters zeroes the named roles' counters and preserves schedu
     saveLoopState(root, {
       ...loadLoopState(root, role),
       role,
-      ticks: 7,
+      runs: 7,
       commits: 3,
       generatedTokens: 1234,
       totalCostUsd: 0.5,
@@ -109,7 +109,7 @@ test("requestResetCounters zeroes the named roles' counters and preserves schedu
   const msg = requestResetCounters(root, ["fix", "docs"]);
   for (const role of ["fix", "docs"]) {
     const s = stateOf(root, role);
-    for (const k of ["ticks", "commits", "generatedTokens", "totalCostUsd", "peakContextTokens"]) {
+    for (const k of ["runs", "commits", "generatedTokens", "totalCostUsd", "peakContextTokens"]) {
       assert.equal(s[k], 0, `${role}.${k} must be zeroed`);
     }
     assert.equal(s.nextRunAt, 555, "scheduling must survive the reset");
@@ -128,7 +128,7 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
     role: "fix",
     backoffSeconds: 300,
     nextRunAt: Date.now() + 300_000,
-    ticks: 4,
+    runs: 4,
     commits: 2,
     lastMainHead: "abc",
   });
@@ -139,7 +139,7 @@ test("requestWake clears backoff and pulls nextRunAt to now, leaving counters al
   assert.equal(s.backoffSeconds, 0);
   assert.equal(s.nextRunAt, now, "the wake must make the role eligible at the marker's instant");
   assert.equal(s.wokenAt, now, "wokenAt lets isEligible honor the demand over the min-tick interval");
-  assert.equal(s.ticks, 4, "counters are observation-window state; wake must not touch them");
+  assert.equal(s.runs, 4, "counters are observation-window state; wake must not touch them");
   assert.equal(s.lastMainHead, "abc");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "wake.json"))?.roles, ["fix"]);
   assert.match(msg, /^wake requested for fix — /);
@@ -190,7 +190,7 @@ test("requestResetCounters leaves a live fleet's state file to the orchestrator 
   saveLoopState(root, {
     ...loadLoopState(root, "fix"),
     role: "fix",
-    ticks: 7,
+    runs: 7,
     commits: 3,
     nextRunAt: 555,
     lastMainHead: "abc",
@@ -202,7 +202,7 @@ test("requestResetCounters leaves a live fleet's state file to the orchestrator 
   // the runner in memory and it saves. A direct CLI rewrite here is a second writer racing
   // those saves with a snapshot it may have moved past — the lost update this pins away.
   assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
-  assert.equal(stateOf(root, "fix").ticks, 7, "the counter is left for the orchestrator to zero");
+  assert.equal(stateOf(root, "fix").runs, 7, "the counter is left for the orchestrator to zero");
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "reset-counters.json"))?.roles, ["fix"]);
   assert.match(msg, /the running team picks this up/);
 });

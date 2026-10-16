@@ -65,7 +65,7 @@ test("pauseFleet and resumeFleet write the pause marker and report whether state
 test("saveLoopState creates the state dir and round-trips without leaving a temp file", () => {
   const dir = tmpdir();
   const s = freshLoopState("feature");
-  s.ticks = 7;
+  s.runs = 7;
   s.generatedTokens = 123456;
   s.lastResult = "changed";
   saveLoopState(dir, s); // .tumwater/ does not exist yet
@@ -142,7 +142,7 @@ test("loadLoopState fills fields missing from an older or partial file", () => {
   // A state file written before generatedTokens/lastMainHead existed.
   fs.writeFileSync(file, JSON.stringify({ role: "clean", ticks: 3, commits: 1 }));
   const s = loadLoopState(dir, "clean");
-  assert.equal(s.ticks, 3);
+  assert.equal(s.runs, 3);
   assert.equal(s.commits, 1);
   // tick-usage.ts folds generatedTokens/peakContextTokens; scheduling/backoff.ts advances
   // backoffSeconds; tick-finalize.ts records lastMainHead. Undefined would turn numbers to NaN.
@@ -191,7 +191,7 @@ test("loadLoopState heals a corrupt persisted numeric field", () => {
   );
   const s = loadLoopState(dir, "dirty");
   for (const key of [
-    "ticks",
+    "runs",
     "commits",
     "nextRunAt",
     "backoffSeconds",
@@ -356,7 +356,7 @@ test("loadLoopState recovers from torn or non-object JSON", () => {
 
 test("zeroCounters zeroes the accumulated counters and preserves everything else", () => {
   const s = freshLoopState("feature");
-  s.ticks = 12;
+  s.runs = 12;
   s.commits = 5;
   s.generatedTokens = 987654;
   s.totalCostUsd = 3.14;
@@ -372,7 +372,7 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   s.dayCostUsd = 12.5;
 
   const z = zeroCounters(s);
-  assert.equal(z.ticks, 0);
+  assert.equal(z.runs, 0);
   assert.equal(z.commits, 0);
   assert.equal(z.generatedTokens, 0);
   assert.equal(z.totalCostUsd, 0);
@@ -392,7 +392,7 @@ test("zeroCounters zeroes the accumulated counters and preserves everything else
   assert.equal(z.dayStamp, s.dayStamp);
   assert.equal(z.dayCostUsd, 12.5);
   // Pure: the input is unchanged and the result is a new object.
-  assert.equal(s.ticks, 12);
+  assert.equal(s.runs, 12);
   assert.notEqual(z, s);
 });
 
@@ -437,4 +437,27 @@ test("loadLoopState heals dayCostByPair: bad entries drop, a non-object becomes 
   assert.ok(Object.hasOwn(c, "__proto__"));
   assert.equal(Object.getPrototypeOf(c), Object.prototype);
   assert.equal(loadLoopState(dir, "fresh").dayCostByPair, undefined, "an absent map stays absent");
+});
+
+test("loadLoopState maps a legacy `ticks` key to `runs`, and the next save writes only `runs`", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "qa");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 7 })); // vocabulary-ok: legacy state key read from old files
+  const s = loadLoopState(dir, "qa");
+  assert.equal(s.runs, 7);
+  saveLoopState(dir, s);
+  const onDisk = readJson<Record<string, unknown>>(file);
+  assert.equal(onDisk.runs, 7);
+  assert.equal("ticks" in onDisk, false);
+});
+
+test("loadLoopState keeps `runs` and drops `ticks` when a file holds both", () => {
+  const dir = tmpdir();
+  const file = statePath(dir, "qa");
+  ensureParentDir(file);
+  fs.writeFileSync(file, JSON.stringify({ role: "qa", ticks: 3, runs: 9 })); // vocabulary-ok: legacy state key read from old files
+  const s = loadLoopState(dir, "qa");
+  assert.equal(s.runs, 9);
+  assert.equal("ticks" in s, false);
 });

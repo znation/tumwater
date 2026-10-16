@@ -102,7 +102,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     // new tick can start meanwhile, since admission reads the tripped breaker.
     await waitFor(() => roleTicksInFlight(repo) === 0, "the pre-trip stragglers to finish");
     const runsAtTrip = onFallback();
-    const ticksAt = (role: string) => loadLoopState(repo, role).ticks;
+    const ticksAt = (role: string) => loadLoopState(repo, role).runs;
     const ticksAtTrip = { feature: ticksAt("feature"), helper: ticksAt("helper") };
 
     // Read the deadline the orchestrator itself published rather than guessing from sleeps:

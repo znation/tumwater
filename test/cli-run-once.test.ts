@@ -32,8 +32,8 @@ test("run --once --role ticks only the scoped role through the real CLI and exit
     assert.match(r.stdout, /once: 1 run — 1 no_change/,
       `the summary counts only the scoped role's tick: ${r.stdout}`);
     assert.doesNotMatch(r.stdout, /\bdry\b/, `the unscoped role must be invisible: ${r.stdout}`);
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "the scoped role ticked exactly once");
-    assert.equal(loadLoopState(repo, "dry").ticks, 0, "the unscoped role never ran");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "the scoped role ticked exactly once");
+    assert.equal(loadLoopState(repo, "dry").runs, 0, "the unscoped role never ran");
   });
 });
 

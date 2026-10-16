@@ -184,7 +184,7 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
     assert.equal(onDisk.generatedTokens, 7);
     assert.equal(onDisk.peakContextTokens, 7);
     // Lifetime counters are untouched by the per-tick reset.
-    assert.equal(runner.state.ticks, 2);
+    assert.equal(runner.state.runs, 2);
     assert.equal(runner.state.commits, 2);
   });
 });

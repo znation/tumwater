@@ -30,7 +30,7 @@ import { todayStamp } from "../src/budget/budget.js";
 
 test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving everything else", () => {
   const s = freshLoopState("clean");
-  s.ticks = 12;
+  s.runs = 12;
   s.commits = 5;
   s.generatedTokens = 987654;
   s.totalCostUsd = 3.14;
@@ -48,7 +48,7 @@ test("clearBackoff zeroes the backoff and pulls nextRunAt to now, preserving eve
   assert.equal(w.nextRunAt, now);
   // Waking is a scheduling operation, not an observation-window reset: counters, wake
   // tracking, last-result fields, and the daily budget window are untouched.
-  assert.equal(w.ticks, 12);
+  assert.equal(w.runs, 12);
   assert.equal(w.commits, 5);
   assert.equal(w.generatedTokens, 987654);
   assert.equal(w.totalCostUsd, 3.14);

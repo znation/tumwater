@@ -184,7 +184,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
       () =>
         ["clean", "dry"].every((role) => {
           const s = loadLoopState(repo, role);
-          return s.ticks >= 1 && !s.running;
+          return s.runs >= 1 && !s.running;
         }),
       "both startup ticks to finish",
     );
@@ -210,7 +210,7 @@ test("runOrchestrator ticks enabled roles and cleans up on shutdown", async () =
     assert.ok(types.includes("orchestrator_stop"));
     // Both enabled roles got their startup tick.
     for (const role of ["clean", "dry"])
-      assert.ok(loadLoopState(repo, role).ticks >= 1, `${role} should have ticked`);
+      assert.ok(loadLoopState(repo, role).runs >= 1, `${role} should have ticked`);
   } finally {
     restore();
     controller.abort();
@@ -232,10 +232,10 @@ test("runOrchestrator starts one runner per loop id and an unclaimed extra insta
     await waitFor(() => readOrchestratorInfo(repo)?.roles.includes("feature-3") === true, "all three runners registered");
     assert.deepEqual([...readOrchestratorInfo(repo)!.roles].sort(), ["feature", "feature-2", "feature-3"]);
     await waitFor(
-      () => loadLoopState(repo, "feature").ticks >= 1 && loadLoopState(repo, "feature-2").ticks >= 1,
+      () => loadLoopState(repo, "feature").runs >= 1 && loadLoopState(repo, "feature-2").runs >= 1,
       "the two claimed instances tick",
     );
-    assert.equal(loadLoopState(repo, "feature-3").ticks, 0, "the extra instance with no claim does not tick");
+    assert.equal(loadLoopState(repo, "feature-3").runs, 0, "the extra instance with no claim does not tick");
     // Ticks lease pooled slots: no per-role worktree is created for the instance.
     assert.equal(fs.existsSync(worktreePath(repo, "feature-2")), false, "no feature-2 role worktree");
     controller.abort();
@@ -335,7 +335,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     // Several poll cycles pass with the interval long since due — still exactly one run.
     await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
-    assert.equal(loadLoopState(repo, "organize").ticks, 1);
+    assert.equal(loadLoopState(repo, "organize").runs, 1);
 
     // Work lands: the deferred tick starts within one poll and finishes. (This is also the
     // verdict-cache flip case: the earlier false verdict over this range must not be cached.)
@@ -391,7 +391,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     assert.equal(deferred.length, 2, "both episodes announced, the second not swallowed");
     // And the second episode still defers: no third tick while it holds.
     await sleep(500);
-    assert.equal(loadLoopState(repo, "organize").ticks, 2, "the second episode defers, it does not tick");
+    assert.equal(loadLoopState(repo, "organize").runs, 2, "the second episode defers, it does not tick");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -419,7 +419,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
     await sleep(1000);
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
-    assert.equal(loadLoopState(repo, "organize").ticks, 1);
+    assert.equal(loadLoopState(repo, "organize").runs, 1);
 
     // The bugfix role fixes the last open bug: its landing drains BUGS.md `## Open` (and
     // counts as work) — the deferred tick starts within one poll of either conjunct flipping.
@@ -451,7 +451,7 @@ test("a maintenance role deferred past DEFER_MAX_MS ticks anyway, despite an ope
   // Seed the loop exactly as a long-deferred no_change tick looks on disk: its scheduled time
   // is already past the cap. The fix must let it run; the pre-fix predicate deferred it forever.
   const state = freshLoopState("organize");
-  state.ticks = 1;
+  state.runs = 1;
   state.lastResult = "no_change";
   state.lastMainHead = headSha(repo);
   state.lastTickEndedAt = Date.now() - 60_000;
@@ -677,8 +677,8 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // so at most 1 is expected — without in-memory zeroing this would read >= 3.
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
     assert.ok(
-      loadLoopState(repo, "clean").ticks <= 1,
-      `counters start from zero after consumption (got ${loadLoopState(repo, "clean").ticks})`,
+      loadLoopState(repo, "clean").runs <= 1,
+      `counters start from zero after consumption (got ${loadLoopState(repo, "clean").runs})`,
     );
 
     // The reset survives tick boundaries: the next completed tick counts from zero — a stale
@@ -686,7 +686,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // deferred role for that post-reset tick.
     landWork(repo);
     await waitFor(
-      () => loadLoopState(repo, "clean").ticks === 1 && !loadLoopState(repo, "clean").running,
+      () => loadLoopState(repo, "clean").runs === 1 && !loadLoopState(repo, "clean").running,
       "a post-reset tick to finish",
     );
 
@@ -728,8 +728,8 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
 
     // Counters stayed zeroed: no resurrection from the pre-reset in-memory copy.
     assert.ok(
-      loadLoopState(repo, "clean").ticks <= 1,
-      `counters start from zero after a mid-tick reset (got ${loadLoopState(repo, "clean").ticks})`,
+      loadLoopState(repo, "clean").runs <= 1,
+      `counters start from zero after a mid-tick reset (got ${loadLoopState(repo, "clean").runs})`,
     );
 
     // And the loop keeps ticking: a post-reset tick runs to completion.
@@ -749,7 +749,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let one poll pass so the divergence watch is seeded against the startup branch.
-    await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "the startup tick to run");
+    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the startup tick to run");
 
     // A human checks out something else in the primary checkout mid-run: one warning names
     // the divergence, and the fleet keeps merging into the branch it resolved at startup.

@@ -18,7 +18,7 @@ test("a role is unsettled at snapshot and settled once its tick count advances",
   const runner = makeLoopRunner(repo, "improve");
   const round = new OnceRound([runner], true);
   assert.equal(round.isSettled(runner), false);
-  runner.state.ticks++;
+  runner.state.runs++;
   assert.equal(round.isSettled(runner), true);
 });
 
@@ -90,15 +90,15 @@ test("a runner appended mid-round is snapshotted at first sight, not settled by 
   const runners: LoopRunner[] = [first];
   const round = new OnceRound(runners, true);
   const late = makeLoopRunner(repo, "clean");
-  late.state.ticks = 5; // history, not this round
+  late.state.runs = 5; // history, not this round
   runners.push(late);
   assert.equal(round.isSettled(late), false);
   const quiet = { roleTicks: 0, directorTicks: 0, landings: 0, queuedLandings: 0 };
   assert.equal(round.exitReady(quiet), false); // the late role holds the round open
-  late.state.ticks++; // its one tick this round
+  late.state.runs++; // its one tick this round
   assert.equal(round.isSettled(late), true);
   assert.equal(round.ticksRun(late), 1); // exactly the round's tick, not the history
-  first.state.ticks++;
+  first.state.runs++;
   assert.equal(round.exitReady(quiet), false); // first quiet poll
   assert.equal(round.exitReady(quiet), true);
 });
@@ -107,7 +107,7 @@ test("exitReady fires only on the second consecutive quiet poll of an active rou
   const repo = makeRepo();
   const runner = makeLoopRunner(repo, "improve");
   const round = new OnceRound([runner], true);
-  runner.state.ticks++; // ran its one tick
+  runner.state.runs++; // ran its one tick
   const quiet = { roleTicks: 0, directorTicks: 0, landings: 0, queuedLandings: 0 };
   assert.equal(round.exitReady(quiet), false); // first quiet poll: hold
   assert.equal(round.exitReady(quiet), true); // second: fire
@@ -117,7 +117,7 @@ test("exitReady stays false while work is in flight and resets the quiet streak"
   const repo = makeRepo();
   const runner = makeLoopRunner(repo, "improve");
   const round = new OnceRound([runner], true);
-  runner.state.ticks++;
+  runner.state.runs++;
   assert.equal(round.exitReady({ roleTicks: 1, directorTicks: 0, landings: 0, queuedLandings: 0 }), false);
   assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 1, landings: 0, queuedLandings: 0 }), false);
   assert.equal(round.exitReady({ roleTicks: 0, directorTicks: 0, landings: 1, queuedLandings: 0 }), false);
@@ -130,7 +130,7 @@ test("exitReady stays false while work is in flight and resets the quiet streak"
 test("exitReady is inert in an inactive round even when everything is quiet", () => {
   const repo = makeRepo();
   const runner = makeLoopRunner(repo, "improve");
-  runner.state.ticks++; // ran its one tick
+  runner.state.runs++; // ran its one tick
   const round = new OnceRound([runner], false);
   const quiet = { roleTicks: 0, directorTicks: 0, landings: 0, queuedLandings: 0 };
   assert.equal(round.exitReady(quiet), false);
@@ -142,7 +142,7 @@ test("exitReady stays false until every runner is settled", () => {
   const ran = makeLoopRunner(repo, "improve");
   const idle = makeLoopRunner(repo, "clean");
   const round = new OnceRound([ran, idle], true);
-  ran.state.ticks++; // ran its one tick
+  ran.state.runs++; // ran its one tick
   const quiet = { roleTicks: 0, directorTicks: 0, landings: 0, queuedLandings: 0 };
   assert.equal(round.exitReady(quiet), false); // clean has not settled yet
   round.settleSkipped(idle);

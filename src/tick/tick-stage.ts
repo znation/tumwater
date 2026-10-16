@@ -133,7 +133,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
       summary = extractSummary(followUp.finalText);
       body = body ?? extractCommitBody(followUp.finalText);
     }
-    if (summary === null) summary = fallbackSummary(await changedFiles(ctx.wt), ctx.role, s.ticks);
+    if (summary === null) summary = fallbackSummary(await changedFiles(ctx.wt), ctx.role, s.runs);
     ctx.warn(
       `reply had no SUMMARY line — ` +
         (followUp && extractSummary(followUp.finalText) !== null
@@ -264,7 +264,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     body,
     commitTrailer(
       ctx.role,
-      s.ticks,
+      s.runs,
       authoringTurns,
       s.peakContextTokens,
       highFriction ? minutes : undefined,
@@ -294,7 +294,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   enqueueLanding(ctx.root, {
     role: ctx.role,
     sha: commit,
-    tick: s.ticks,
+    tick: s.runs,
     summary,
     body: body ? formatCommitBody(body) : undefined,
     highFriction: highFriction || undefined,

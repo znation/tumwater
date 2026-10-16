@@ -54,7 +54,7 @@ export function eventRole(ev: HarnessEvent): string {
  * display surface applies to the loosened `tick` field: an event log is read without a shape
  * filter, so a torn or hand-edited line can carry no tick (String(undefined) printed "#undefined"
  * in the feed) or a non-numeric one (String(Number(…)) printed "#NaN" in history). Ticks are
- * 1-based — the loop increments state.ticks before logging its first tick — so 0 is visibly not
+ * 1-based — the loop increments state.runs before logging its first tick — so 0 is visibly not
  * a real tick, the same corrupt-value-reads-as-0 rule gigabytes and the failure digest's
  * aheadCommits apply, kept finite so a JSON consumer never sees NaN's null stand-in. */
 export function eventTick(ev: HarnessEvent): number {

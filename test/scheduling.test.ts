@@ -56,7 +56,7 @@ test("a sleeping loop wakes when main moves, respecting the min gap", () => {
   const r = runner("clean");
   const now = Date.now();
   const gap = r.config.minRunIntervalSeconds * 1000;
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastTickEndedAt = now - gap - 1000;
   r.state.nextRunAt = now + 60_000;
   r.state.lastMainHead = "old";
@@ -76,7 +76,7 @@ test("yield scaling stretches a quiet search role's gap — including the main-m
   const r = runner("clean");
   const now = Date.now();
   const gap = configForRole(r.config, "clean").minRunIntervalSeconds * 1000; // 20 s
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastTickEndedAt = now - 3 * gap; // past the plain gap, inside the stretched one
   r.state.nextRunAt = now + 60_000; // the main-moved branch is only reached past nextRunAt
   r.state.lastMainHead = "old";
@@ -93,7 +93,7 @@ test("yield scaling stretches a quiet search role's gap — including the main-m
 test("yield scaling: a wake and a queued prompt bypass the stretch; observers scale too", () => {
   const r = runner("clean");
   const now = Date.now();
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastTickEndedAt = now - 1000; // deep inside any stretched gap
   r.state.nextRunAt = now + 60_000;
   r.state.recentOutcomes = "n".repeat(20); // ×8
@@ -109,7 +109,7 @@ test("yield scaling: a wake and a queued prompt bypass the stretch; observers sc
   r.state.wokenAt = undefined;
   // The observers are scalable: qa's two-hour clock stretches to sixteen hours at ×8.
   const q = runner("qa");
-  q.state.ticks = 1;
+  q.state.runs = 1;
   q.state.lastTickEndedAt = now - 2 * 3600_000; // past qa's plain clock
   q.state.nextRunAt = now + 3600_000;
   q.state.recentOutcomes = "n".repeat(20);
@@ -121,7 +121,7 @@ test("yield scaling never applies to feature, plan, or the director", () => {
   for (const role of ["feature", "plan"]) {
     const r = runner(role);
     const gap = configForRole(r.config, role).minRunIntervalSeconds * 1000;
-    r.state.ticks = 1;
+    r.state.runs = 1;
     r.state.lastTickEndedAt = now - gap - 1000; // past the PLAIN gap
     r.state.nextRunAt = now - 1000;
     r.state.recentOutcomes = "n".repeat(20); // would be ×8 if the role scaled
@@ -135,7 +135,7 @@ test("an operator wake newer than the last tick overrides the min gap", () => {
   // (and a queued per-role prompt's auto-wake) must be able to pull out of.
   const r = runner("qa");
   const now = Date.now();
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastTickEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
   r.state.backoffSeconds = 0;
@@ -153,7 +153,7 @@ test("a wake older than the last tick restores the ordinary min gap", () => {
   // stale wake must not keep exempting every later gap window.
   const r = runner("qa");
   const now = Date.now();
-  r.state.ticks = 2;
+  r.state.runs = 2;
   r.state.wokenAt = now - 10 * 60 * 1000;
   r.state.lastTickEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
@@ -170,7 +170,7 @@ test("a queued per-role prompt is due by itself, past every schedule gate", () =
   // queued request on the first poll after its current tick ends.
   const r = runner("qa");
   const now = Date.now();
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastTickEndedAt = now - 5 * 60 * 1000;
   r.state.nextRunAt = now + 2 * 3600 * 1000;
   r.state.lastMainHead = "abc";
@@ -208,7 +208,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   slow.minRunIntervalSeconds = 20;
   slow.roles.steward!.minRunIntervalSeconds = 3600;
   const r1 = makeLoopRunner(makeRepo(), "steward", slow);
-  r1.state.ticks = 1;
+  r1.state.runs = 1;
   r1.state.lastTickEndedAt = now - 21_000; // past the global gap, deep inside the role's own
   r1.state.nextRunAt = now - 1000; // its schedule has passed too
   r1.state.lastMainHead = "old";
@@ -225,7 +225,7 @@ test("isEligible gates on the role's own interval, not the global knob", () => {
   fast.minRunIntervalSeconds = 3600;
   fast.roles.qa!.minRunIntervalSeconds = 20;
   const r2 = makeLoopRunner(makeRepo(), "qa", fast);
-  r2.state.ticks = 1;
+  r2.state.runs = 1;
   r2.state.lastTickEndedAt = now - 21_000; // past the role's own gap, deep inside the global
   r2.state.nextRunAt = now + 60_000; // schedule NOT passed — only a main-moved wake can run it
   r2.state.lastMainHead = "old";
@@ -238,7 +238,7 @@ test("bootstrap schedules plan on the global gap instead of its slow per-role de
   const cfg = defaultConfig(); // global 20 s, plan's per-role default 3600 s
   const t0 = Date.now();
   const r = makeLoopRunner(makeRepo(), "plan", cfg);
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.lastMainHead = ""; // no main-moved wake to confuse the case
 
   // A productive tick schedules nextRunAt from the gap applyTickOutcome is handed. Outside
@@ -267,7 +267,7 @@ test("an interrupted tick resumes promptly on restart despite the min gap", () =
   const now = Date.now();
   // Aborted (or crashed) moments ago — far inside the role's min gap, which would otherwise
   // hold its half-finished work for a full interval (e.g. the steward's ~6 h).
-  r.state.ticks = 5;
+  r.state.runs = 5;
   r.state.lastTickEndedAt = now - 1000;
   r.state.nextRunAt = now - 1000; // aborted ticks schedule at "now"
   r.state.resumePending = true;
@@ -279,7 +279,7 @@ test("an interrupted tick resumes promptly on restart despite the min gap", () =
 test("a cut-off resume still waits out its interval even with the min-gap bypass", () => {
   const r = runner("clean");
   const now = Date.now();
-  r.state.ticks = 5;
+  r.state.runs = 5;
   r.state.lastTickEndedAt = now - 1000; // inside the min gap
   r.state.nextRunAt = now + 60_000; // cut-off ticks schedule one interval out
   r.state.resumePending = true;
@@ -566,7 +566,7 @@ test("once mode overrides the scheduled clock, not just the min gap", () => {
   // must not gate the round: overriding only the gap check would leave the same interval
   // enforced through nextRunAt and the round would do nothing.
   Object.assign(r.state, {
-    ticks: 1,
+    runs: 1,
     lastResult: "changed",
     lastTickEndedAt: now - 5_000,
     lastMainHead: "abc",
@@ -584,7 +584,7 @@ test("once mode still honors a raised backoff, which shares nextRunAt with the c
   // A backed-off role (error or idle ladder): nextRunAt in the future AND backoffSeconds
   // raised — the only way to tell a backoff deadline from the scheduled clock.
   Object.assign(r.state, {
-    ticks: 3,
+    runs: 3,
     lastResult: "error",
     lastTickEndedAt: now - 5_000,
     nextRunAt: now + 60_000,

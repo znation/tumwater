@@ -231,7 +231,7 @@ export async function stopOrchestrator(
 
 /** Poll until `role`'s persisted loop state has completed at least `n` ticks and is idle
  * (not mid-tick) — the live-orchestrator e2e tests' shared "a tick finished" gate, the
- * `waitFor(() => loadLoopState(repo, role).ticks >= n && !loadLoopState(repo, role).running,
+ * `waitFor(() => loadLoopState(repo, role).runs >= n && !loadLoopState(repo, role).running,
  * what)` idiom that recurred verbatim across the suite. Reads the state file fresh each
  * poll, exactly like the inline form; `ms` forwards to waitFor's deadline (default when
  * omitted). Tests that wait for the tick to start but not finish, or that assert on the
@@ -246,7 +246,7 @@ export async function awaitSettledTick(
   await waitFor(
     () => {
       const s = loadLoopState(repo, role);
-      return s.ticks >= n && !s.running;
+      return s.runs >= n && !s.running;
     },
     what,
     ms,

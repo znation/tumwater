@@ -161,39 +161,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms state, part 1/5: Rename LoopState ticks to runs (planned 2026-10-16 by user; requires Plain terms event log 9/9 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/verdict/ src/cli/cli-run.ts src/scheduling/ src/ui/ test/)
-
-**Goal.** Mechanical. The per-role state file `.tumwater/state/<id>.json` stores its run counter as `runs`. A file the old build wrote, with `ticks`, loads unchanged and is saved back as `runs`. The JSON key equals the TypeScript property, with no alias.
-
-**Approach.**
-- src/loop/loop-state.ts:
-  - `LoopState.runs` replaces `ticks`, including in `freshLoopState`, `zeroCounters` and `loadLoopState`'s heal.
-  - Add a `LEGACY_STATE_KEYS` table (old key → new key).
-  - `loadLoopState` applies the table to the parsed object before the spread onto the fresh state. Copy the old key's value to the new key when the new key is absent, then delete the old key in every case, so a file holding both keeps the new value and `saveLoopState` writes only new keys.
-  - This part adds `ticks → runs`.
-  - If the vocabulary guard flags a legacy key literal, end its line with `// vocabulary-ok: legacy state key read from old files`.
-- Every reader goes through `loadLoopState`: `loopStateForPoll` (status-polls.ts), retire.ts and `LoopRunner`'s constructor. Nothing else needs a fallback.
-- Consumers: tsc lists ~28 src sites in ~11 files, among them:
-  - loop.ts and loop-tick.ts (`s.ticks + 1`);
-  - tick-stage.ts and refusal.ts (the trailer's number);
-  - cli-run.ts's `ticksBefore`/`ticksThisRound`;
-  - once-round.ts;
-  - scheduling.ts and tick-verdict.ts;
-  - status-payload.ts, where the `--json` key is already `runs` from Plain terms scripting and only the right-hand side changes;
-  - status-render.ts.
-
-  Keep other identifiers that contain "tick" (`ticksBefore`, `ticksRun`, `tickNumber`); Plain terms code run renames them.
-- Tests: ~221 typed sites in ~39 files, mostly `.ticks` on a `LoopState` and `ticks:` in `LoopState` literals. JSON state fixtures written straight to `state/<id>.json` keep `ticks` and now exercise the loader. Add loader cases to test/loop-state.test.ts.
-- **Self-hosting:** safe in one part. The old build saves `ticks` until it exits, and the new build's loader maps it before any use. The old build never loads a file the new build saved, because the CLI and the orchestrator share one dist. The exception is a standalone dashboard still on the old build, which shows 0 runs until it restarts (display only).
-
-**Files touched.** src/loop/loop-state.ts, src/loop/loop.ts, src/loop/loop-tick.ts, src/tick/tick-stage.ts, src/tick/tick-verdict.ts, src/verdict/refusal.ts, src/cli/cli-run.ts, src/scheduling/once-round.ts, src/scheduling/scheduling.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the ~39 test files tsc lists.
-
-**Acceptance criteria.**
-- `{ "role": "qa", "ticks": 7 }` loads as `runs: 7`, and the next save writes `runs` with no `ticks` key.
-- A file holding both `ticks: 3` and `runs: 9` loads `runs: 9` and drops `ticks`.
-- The next run of a role whose state the old build wrote is numbered from the old counter: run 8 after `ticks: 7`.
-- `npm run test` passes.
-
 ### Plain terms state, part 2/5: Rename the remaining tick and landing fields of LoopState (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/landing/ src/scheduling/ src/orchestrator/orchestrator-scheduling.ts src/roles/role-view.ts src/status/status-polls.ts src/ui/ test/)
 
 **Goal.** The state file's other old keys follow the "State and git" table, and old files load through the same legacy-key table:
@@ -2185,6 +2152,39 @@ This part makes every surface say which step each tier is on, why, and when it r
 - Unit (`test/backlog-write-top.test.ts`, modeled on "tryReleaseEntry leaves the bytes releaseEntry leaves and refuses without writing" in `test/backlog-write-cancel.test.ts`): seed two repos with `withDone`. `moveEntryToTop(a, "plan", 3)` and `tryMoveEntryToTop(b, "plan", 3, "c")` leave byte-identical PLANS.md, and the latter returns `{ status: "moved_to_top", file: "PLANS.md", title: "c" }`. On a fresh seed, `tryMoveEntryToTop` with a wrong title returns `{ status: "moved", title: … }`, position 9 returns `{ status: "gone" }`, and position 1 returns `{ status: "already_first", title: "a" }`. Each of those three leaves the file unchanged.
 - Endpoint (`test/gui-endpoints.test.ts`, modeled on "handleBacklogRelease lifts the Refused note, wakes the kind's role, and answers gone, not_refused, and 400s without writing"): a plan at position 2 answers `{ ok: true, status: "moved_to_top", file: "PLANS.md", title: "p2", committed: false }`, and p2's heading now precedes p1's. The same for a bug. Position 1 answers `already_first`, and a stale title answers `{ ok: true, status: "gone" }`. `wakeRequestPath(root)` does not exist after any of these. The four bad bodies used by the release test answer 400 without writing.
 - Client: in `test/gui-client-drawer.test.ts`, a test like "the entry drawer offers Release this entry only on a refused entry" shows `data-act='entry-top' data-arg='plans:1'` for index 1 and no `entry-top` for index 0. In `test/gui-client-boot.test.ts`, a test like "entry-release posts the release at once for plans and bugs" shows `runAct("entry-top", "plans:1")` and `runAct("entry-top", "bugs:0")` posting `["/api/backlog-top", { kind: "plan", position: 2, title: "B" }]` and `["/api/backlog-top", { kind: "bug", position: 1, title: "C" }]`.
+- `npm run test` passes.
+
+### Plain terms state, part 1/5: Rename LoopState ticks to runs (done 2026-10-16; planned 2026-10-16 by user; requires Plain terms event log 9/9 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/verdict/ src/cli/cli-run.ts src/scheduling/ src/ui/ test/)
+
+**Goal.** Mechanical. The per-role state file `.tumwater/state/<id>.json` stores its run counter as `runs`. A file the old build wrote, with `ticks`, loads unchanged and is saved back as `runs`. The JSON key equals the TypeScript property, with no alias.
+
+**Approach.**
+- src/loop/loop-state.ts:
+  - `LoopState.runs` replaces `ticks`, including in `freshLoopState`, `zeroCounters` and `loadLoopState`'s heal.
+  - Add a `LEGACY_STATE_KEYS` table (old key → new key).
+  - `loadLoopState` applies the table to the parsed object before the spread onto the fresh state. Copy the old key's value to the new key when the new key is absent, then delete the old key in every case, so a file holding both keeps the new value and `saveLoopState` writes only new keys.
+  - This part adds `ticks → runs`.
+  - If the vocabulary guard flags a legacy key literal, end its line with `// vocabulary-ok: legacy state key read from old files`.
+- Every reader goes through `loadLoopState`: `loopStateForPoll` (status-polls.ts), retire.ts and `LoopRunner`'s constructor. Nothing else needs a fallback.
+- Consumers: tsc lists ~28 src sites in ~11 files, among them:
+  - loop.ts and loop-tick.ts (`s.ticks + 1`);
+  - tick-stage.ts and refusal.ts (the trailer's number);
+  - cli-run.ts's `ticksBefore`/`ticksThisRound`;
+  - once-round.ts;
+  - scheduling.ts and tick-verdict.ts;
+  - status-payload.ts, where the `--json` key is already `runs` from Plain terms scripting and only the right-hand side changes;
+  - status-render.ts.
+
+  Keep other identifiers that contain "tick" (`ticksBefore`, `ticksRun`, `tickNumber`); Plain terms code run renames them.
+- Tests: ~221 typed sites in ~39 files, mostly `.ticks` on a `LoopState` and `ticks:` in `LoopState` literals. JSON state fixtures written straight to `state/<id>.json` keep `ticks` and now exercise the loader. Add loader cases to test/loop-state.test.ts.
+- **Self-hosting:** safe in one part. The old build saves `ticks` until it exits, and the new build's loader maps it before any use. The old build never loads a file the new build saved, because the CLI and the orchestrator share one dist. The exception is a standalone dashboard still on the old build, which shows 0 runs until it restarts (display only).
+
+**Files touched.** src/loop/loop-state.ts, src/loop/loop.ts, src/loop/loop-tick.ts, src/tick/tick-stage.ts, src/tick/tick-verdict.ts, src/verdict/refusal.ts, src/cli/cli-run.ts, src/scheduling/once-round.ts, src/scheduling/scheduling.ts, src/ui/status-payload.ts, src/ui/status-render.ts; test/loop-state.test.ts and the ~39 test files tsc lists.
+
+**Acceptance criteria.**
+- `{ "role": "qa", "ticks": 7 }` loads as `runs: 7`, and the next save writes `runs` with no `ticks` key.
+- A file holding both `ticks: 3` and `runs: 9` loads `runs: 9` and drops `ticks`.
+- The next run of a role whose state the old build wrote is numbered from the old counter: run 8 after `ticks: 7`.
 - `npm run test` passes.
 
 ### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (done 2026-10-16; planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)

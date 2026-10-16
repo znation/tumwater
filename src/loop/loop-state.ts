@@ -27,7 +27,7 @@ export const REVIEW_RESUME_LIMIT = 2;
 /** Persisted per-loop state in .tumwater/state/<role>.json. */
 export interface LoopState {
   role: string;
-  ticks: number;
+  runs: number;
   commits: number;
   /** Epoch ms before which the loop must not run again. */
   nextRunAt: number;
@@ -327,7 +327,7 @@ const SKIP_REASONS: readonly string[] = [
 export function freshLoopState(role: string): LoopState {
   return {
     role,
-    ticks: 0,
+    runs: 0,
     commits: 0,
     nextRunAt: 0,
     backoffSeconds: 0,
@@ -387,6 +387,22 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
   return value;
 }
 
+/** Keys an older build wrote, mapped to their current names. loadLoopState copies the old key's
+ * value to the new key when the new key is absent and always drops the old key, so a file holding
+ * both keeps the new value and the next save writes only current keys. */
+const LEGACY_STATE_KEYS: Readonly<Record<string, string>> = {
+  ticks: "runs", // vocabulary-ok: legacy state key read from old files
+};
+
+/** Apply LEGACY_STATE_KEYS to a parsed state object in place. */
+function migrateLegacyStateKeys(saved: Record<string, unknown>): void {
+  for (const [oldKey, newKey] of Object.entries(LEGACY_STATE_KEYS)) {
+    if (!(oldKey in saved)) continue;
+    if (!(newKey in saved)) saved[newKey] = saved[oldKey];
+    delete saved[oldKey];
+  }
+}
+
 /** Load the loop's persisted state; never throws — a missing or unreadable file yields a
  * fresh state, fields absent from an older file fall back to defaults, and a numeric field
  * (top-level or nested) that is present but not a finite non-negative number is healed to 0,
@@ -398,8 +414,9 @@ function healRecord<T extends object>(value: T | undefined, heal: (v: T) => void
  * stay absent, so an older state file's shape is preserved. */
 export function loadLoopState(root: string, role: string): LoopState {
   const saved = readJsonFile<Partial<LoopState>>(statePath(root, role));
+  if (saved !== undefined && saved !== null && isJsonObject(saved)) migrateLegacyStateKeys(saved);
   const s: LoopState = { ...freshLoopState(role), ...(saved ?? {}) };
-  s.ticks = healNumber(s.ticks, 0);
+  s.runs = healNumber(s.runs, 0);
   s.commits = healNumber(s.commits, 0);
   s.nextRunAt = healNumber(s.nextRunAt, 0);
   s.backoffSeconds = healNumber(s.backoffSeconds, 0);
@@ -507,7 +524,7 @@ export function saveLoopState(root: string, state: LoopState): void {
   writeJsonAtomic(statePath(root, state.role), state);
 }
 
-/** Zero the accumulated counters (ticks, commits, tokens, cost) so a fresh observation
+/** Zero the accumulated counters (runs, commits, tokens, cost) so a fresh observation
  * window can begin. Pure: returns a new state and preserves everything else — scheduling
  * fields (nextRunAt, backoffSeconds), wake tracking (lastMainHead), and the last-result
  * fields. peakContextTokens is zeroed too: under per-tick semantics it holds the loop's
@@ -517,7 +534,7 @@ export function saveLoopState(root: string, state: LoopState): void {
  * window — zeroing today's spend would let the cap be bypassed by running reset-counters.
  */
 export function zeroCounters(s: LoopState): LoopState {
-  return { ...s, ticks: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
+  return { ...s, runs: 0, commits: 0, generatedTokens: 0, peakContextTokens: 0, totalCostUsd: 0 };
 }
 
 /** The skip reason a loop's persisted state yields when it does not run this round: a pending

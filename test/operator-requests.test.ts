@@ -132,12 +132,12 @@ test("consumeResetRequest zeroes a named role that has no live runner through it
   // A disabled role keeps its persisted state but has no runner, so the CLI (which writes only
   // the marker while a fleet is live) can reach it only here: the consumer is the state file's
   // single writer while the fleet runs.
-  saveLoopState(root, { ...loadLoopState(root, "docs"), role: "docs", ticks: 7, commits: 3 });
+  saveLoopState(root, { ...loadLoopState(root, "docs"), role: "docs", runs: 7, commits: 3 });
   writeMarker(resetRequestPath(root), { roles: ["docs"] });
   consumeResetRequest(root, asRunners(a));
   assert.equal(a.resets, 0);
-  const s = readJsonFile<{ ticks: number; commits: number }>(statePath(root, "docs"));
-  assert.equal(s?.ticks, 0, "the runnerless role's counters are zeroed on disk");
+  const s = readJsonFile<{ runs: number; commits: number }>(statePath(root, "docs"));
+  assert.equal(s?.runs, 0, "the runnerless role's counters are zeroed on disk");
   assert.equal(s?.commits, 0);
   assert.equal(fs.existsSync(resetRequestPath(root)), false);
   const events = eventsOfType(root, "counters_reset");

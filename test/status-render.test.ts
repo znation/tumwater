@@ -107,7 +107,7 @@ test("status table leads an idle instance row with its claimed entry", () => {
 
 test("narrow-width clipping still holds when a custom loop is marked", () => {
   const snap = snapshotWith([
-    { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), ticks: 7 },
+    { role: "nightly", custom: true, lastResult: "changed", lastSummary: "x".repeat(120), runs: 7 },
     { role: "clean" },
   ]);
   for (const width of [40, 60]) {
@@ -123,7 +123,7 @@ test("renderStatus with maxWidth clips every line and truncates wide cells", () 
       role: "improve",
       lastResult: "changed",
       lastSummary: "an extremely long tick summary that would normally blow the table out past eighty columns easily",
-      ticks: 3,
+      runs: 3,
       commits: 1,
     },
     { role: "clean" },
@@ -139,7 +139,7 @@ test("renderStatus with maxWidth clips every line and truncates wide cells", () 
 
 test("narrow terminals never receive a wrapping line even below column minimums", () => {
   const snap = snapshotWith([
-    { role: "organize", lastResult: "changed", lastSummary: "x".repeat(120), ticks: 12, commits: 9 },
+    { role: "organize", lastResult: "changed", lastSummary: "x".repeat(120), runs: 12, commits: 9 },
   ]);
   for (const width of [40, 60]) {
     for (const line of renderStatus(tmpdir(), snap, width).split("\n")) {
@@ -498,7 +498,7 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
   const state = freshLoopState("clean");
-  state.ticks = 3;
+  state.runs = 3;
   state.commits = 2;
   state.lastResult = "changed";
   state.lastSummary = "tidy something";
@@ -506,7 +506,7 @@ test("snapshot and renderStatus cover all enabled loops", async () => {
 
   const snap = snapshot(repo);
   assert.equal(snap.running, false);
-  assert.ok(snap.loops.some((l) => l.role === "clean" && l.ticks === 3));
+  assert.ok(snap.loops.some((l) => l.role === "clean" && l.runs === 3));
   const text = renderStatus(repo, snap);
   assert.match(text, /not running/);
   assert.match(text, /tidy something/);

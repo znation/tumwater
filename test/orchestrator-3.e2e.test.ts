@@ -118,7 +118,7 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     assert.equal(failed.length, 1, "the aborted landing logged its failure");
     assert.equal(failed[0]!.result, "aborted");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0);
-    assert.equal(loadLoopState(repo, "clean").ticks, 1);
+    assert.equal(loadLoopState(repo, "clean").runs, 1);
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -148,7 +148,7 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
     // entry stays in the queue until the landing settles, and the interlock covers both the
     // queued and the in-flight phases with that one check.
     await sleep(1_200);
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "no second tick while its own landing is in flight");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "no second tick while its own landing is in flight");
     assert.equal(queueDepth(repo), 1, "the entry stays queued until the landing settles");
     // The pending change is not a completed result: the role's first tick had no prior one,
     // so the persisted last-result pair stays empty through the whole window (BUGS.md
@@ -532,8 +532,8 @@ test("an abort for one queued role stops only that role's vet and discards its p
     assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean landed on main");
     assert.ok(!fs.existsSync(path.join(repo, "dry.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no tick was running");
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "the interlock held: no tick ever started");
-    assert.equal(loadLoopState(repo, "dry").ticks, 0);
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "the interlock held: no tick ever started");
+    assert.equal(loadLoopState(repo, "dry").runs, 0);
   } finally {
     fs.writeFileSync(release, ""); // never leave a review parked
     await stopOrchestrator(orch, restore);
@@ -567,9 +567,9 @@ test("a role rejected in its vet ticks again while another queued change is stil
   try {
     await waitFor(() => fs.existsSync(held), "dry's review to be in flight — clean's verdict is already in", 60_000);
     // The interlock frees clean while dry's review is still parked: its due tick runs.
-    await waitFor(() => loadLoopState(repo, "clean").ticks >= 1, "the rejected role's fix tick to start mid-landing", 30_000);
+    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-landing", 30_000);
     assert.ok(!fs.existsSync(release), "dry's landing is still in flight: its review never returned");
-    assert.equal(loadLoopState(repo, "dry").ticks, 0, "dry's entry is still queued, so the interlock still holds it");
+    assert.equal(loadLoopState(repo, "dry").runs, 0, "dry's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
         .filter((e) => e.type === "merge_failed")

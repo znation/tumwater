@@ -121,7 +121,7 @@ test("director: a queued prompt runs without a permit even while the only slot i
       }
     };
     await waitFor(() => samplesText().includes("director:2"), "the director's run sampling two loops in flight");
-    assert.equal(loadLoopState(repo, "director").ticks, 1, "the director ticked once");
+    assert.equal(loadLoopState(repo, "director").runs, 1, "the director ticked once");
     assert.equal(loadLoopState(repo, "clean").running, true, "the role tick still holds the only permit");
     assert.equal(
       eventsOfType(repo, "run_end").some((e) => e.source === "clean"),
@@ -141,13 +141,13 @@ test("director: a fleet pause holds role ticks but not the director's queued pro
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await awaitSettledTick(repo, "director", 1, "the director's prompt tick under the pause");
-    assert.equal(loadLoopState(repo, "director").ticks, 1, "the director ticked despite the pause");
+    assert.equal(loadLoopState(repo, "director").runs, 1, "the director ticked despite the pause");
     assert.equal(
       eventsOfType(repo, "run_start").some((e) => e.source === "clean"),
       false,
       "the paused role started no tick",
     );
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "the paused role ran nothing");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "the paused role ran nothing");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -177,7 +177,7 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
     assert.ok(reviewIdx >= 0, "the queued change was vetted with a review run");
     assert.ok(tickIdx >= 0, "clean eventually ran its own tick");
     assert.ok(reviewIdx < tickIdx, "the review ran before the role's tick — the interlock held the role back");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "exactly the post-interlock tick ran");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "exactly the post-interlock tick ran");
   } finally {
     await stopOrchestrator(orch, restore);
   }

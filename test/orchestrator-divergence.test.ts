@@ -30,7 +30,7 @@ function divergenceWarnings(repo: string): { message: string }[] {
  * least once with the checkout still on `main`, so any warning found later is attributable. */
 async function awaitFirstTick(repo: string, role: string): Promise<void> {
   await waitFor(
-    () => loadLoopState(repo, role).ticks >= 1 && !loadLoopState(repo, role).running,
+    () => loadLoopState(repo, role).runs >= 1 && !loadLoopState(repo, role).running,
     `${role}'s first tick settled`,
   );
 }

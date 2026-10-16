@@ -117,7 +117,7 @@ export function statusPayload(root: string, now = Date.now()): object {
       // What a working loop is doing right now (first assistant text of the in-flight run).
       // Null when idle — never show a stale item from a finished tick.
       currentWork: live?.currentWork ?? null,
-      runs: s.ticks,
+      runs: s.runs,
       commits: s.commits,
       generated,
       peakCtx,

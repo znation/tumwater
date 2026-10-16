@@ -75,7 +75,7 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
         role: "feature",
         running: true,
         lastTickStartedAt: Date.now() - 5_000,
-        ticks: 3,
+        runs: 3,
         commits: 1,
         lastResult: "changed",
         lastSummary: "y".repeat(120),

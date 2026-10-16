@@ -27,8 +27,8 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --rol/);
   assert.match(r.stderr, /--role <id>/);
-  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
-  assert.equal(loadLoopState(repo, "clean").ticks, 7, "no reset happened");
+  assert.equal(loadLoopState(repo, "feature").runs, 7, "no reset happened");
+  assert.equal(loadLoopState(repo, "clean").runs, 7, "no reset happened");
   assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written");
 
   // A misspelled --port used to be ignored: gui would serve on the default port.
@@ -75,7 +75,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   r = await cli(repo, "reset-counters", "--role", "feature", "extra");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: extra/);
-  assert.equal(loadLoopState(repo, "feature").ticks, 7, "no reset happened");
+  assert.equal(loadLoopState(repo, "feature").runs, 7, "no reset happened");
 
   // Valid combinations still work.
   r = await cli(repo, "logs", "-n", "3", "--role", "clean");

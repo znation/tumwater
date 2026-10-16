@@ -144,7 +144,7 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted run_ends).
     assert.equal(events.find((e) => e.type === "restart")!.abortedRuns, 1);
     assert.deepEqual(started(), [holder], "the parked role's pi never ran");
-    assert.equal(loadLoopState(repo, parked).ticks, 0, "no state write for a tick that never started");
+    assert.equal(loadLoopState(repo, parked).runs, 0, "no state write for a tick that never started");
   } finally {
     await stop();
     restore();

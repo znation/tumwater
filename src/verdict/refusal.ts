@@ -134,7 +134,7 @@ export async function handleRefusal(
     const message = buildCommitMessage(
       stampedSubject(baseRoleOf(ctx.role), `refuse — ${reason}`),
       null,
-      commitTrailer(ctx.role, state.ticks, ctx.turns, state.peakContextTokens),
+      commitTrailer(ctx.role, state.runs, ctx.turns, state.peakContextTokens),
     );
     commit = (await commitPathsAndDiscardRest(wt, message, notes)) ?? undefined;
   }

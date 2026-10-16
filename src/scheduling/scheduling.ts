@@ -115,7 +115,7 @@ export function isEligible(
   // backoff deadline, not the scheduled clock, and is honored; at zero it is the clock a
   // productive tick scheduled, and the explicit round demand overrides it.
   if (now >= s.nextRunAt || (opts.once && s.backoffSeconds === 0)) {
-    return { run: true, reason: s.ticks === 0 ? "startup" : "scheduled" };
+    return { run: true, reason: s.runs === 0 ? "startup" : "scheduled" };
   }
   // The world changed under a sleeping loop: main moved since its last tick. The stretched
   // gap above gates this wake too (the gap check runs first), so a role whose recent ticks

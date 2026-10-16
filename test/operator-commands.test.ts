@@ -59,7 +59,7 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
   const root = tmpdir();
   saveLoopState(root, {
     ...freshLoopState("coverage"),
-    ticks: 9,
+    runs: 9,
     commits: 4,
     generatedTokens: 1200,
     peakContextTokens: 900,
@@ -71,7 +71,7 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
   const { stdout } = await expectOk(() => cmdResetCounters(root, ["--role", "coverage"]));
   assert.match(stdout, /counters reset for coverage/);
   const after = loadLoopState(root, "coverage");
-  assert.equal(after.ticks, 0);
+  assert.equal(after.runs, 0);
   assert.equal(after.commits, 0);
   assert.equal(after.generatedTokens, 0);
   assert.equal(after.peakContextTokens, 0);
@@ -88,10 +88,10 @@ test("cmdResetCounters with --role zeroes that loop's counters and preserves its
 test("cmdResetCounters without --role targets every role in the config", async () => {
   const root = tmpdir();
   const roles = Object.keys(defaultConfig().roles);
-  saveLoopState(root, { ...freshLoopState("coverage"), ticks: 5 });
+  saveLoopState(root, { ...freshLoopState("coverage"), runs: 5 });
   const { stdout } = await expectOk(() => cmdResetCounters(root, []));
   assert.deepEqual(readJson<Record<string, unknown>>(resetRequestPath(root))["roles"], roles);
-  assert.equal(loadLoopState(root, "coverage").ticks, 0);
+  assert.equal(loadLoopState(root, "coverage").runs, 0);
   assert.ok(stdout.startsWith("counters reset for "));
 });
 
@@ -102,7 +102,7 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
   const before = Date.now();
   saveLoopState(root, {
     ...freshLoopState("clean"),
-    ticks: 7,
+    runs: 7,
     backoffSeconds: 3600,
     nextRunAt: Date.now() + 999_999,
   });
@@ -111,7 +111,7 @@ test("cmdWake clears the named loop's backoff and pulls nextRunAt to now, leavin
   const after = loadLoopState(root, "clean");
   assert.equal(after.backoffSeconds, 0);
   assert.ok(after.nextRunAt >= before && after.nextRunAt <= Date.now(), `nextRunAt ${after.nextRunAt} not pulled to now`);
-  assert.equal(after.ticks, 7); // observation-window counters are not this command's job
+  assert.equal(after.runs, 7); // observation-window counters are not this command's job
   assert.deepEqual(readJson<Record<string, unknown>>(wakeRequestPath(root))["roles"], ["clean"]);
 });
 
@@ -145,7 +145,7 @@ test("marker commands with --role <builtin> work while tumwater.json is malforme
 
   const reset = await expectOk(() => cmdResetCounters(root, ["--role", "feature"]));
   assert.match(reset.stdout, /counters reset for feature/);
-  assert.equal(loadLoopState(root, "feature").ticks, 0);
+  assert.equal(loadLoopState(root, "feature").runs, 0);
 
   markLive(root);
   const abort = await expectOk(() => cmdAbort(root, ["--role", "feature"]));

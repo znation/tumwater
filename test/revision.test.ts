@@ -324,7 +324,7 @@ test("stageTickLanding carries the revision round onto the entry and clears stat
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
     ...freshLoopState("improve"),
-    ticks: 5,
+    runs: 5,
     revision: { sha: "a".repeat(40), round: 1, at: Date.now() },
   };
   const ctx = stageCtx(root, wt, {
@@ -344,7 +344,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "user-change.ts"), "export const userChange = true;\n");
   const revision = { sha: "a".repeat(40), round: 1, at: Date.now() };
-  const state = { ...freshLoopState("improve"), ticks: 5, revision };
+  const state = { ...freshLoopState("improve"), runs: 5, revision };
   const ctx = stageCtx(root, wt, {
     state,
     userPrompt: "please do the user thing",

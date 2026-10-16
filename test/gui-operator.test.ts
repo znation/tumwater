@@ -489,7 +489,7 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
   await initProject(repo, "gui reset test");
   const seed = () => {
     const s = freshLoopState("feature");
-    s.ticks = 7;
+    s.runs = 7;
     saveLoopState(repo, s);
   };
   seed();
@@ -497,12 +497,12 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
     let res = await postJson(base, "/api/reset-counters", { role: "feature" });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { ok: true, message: requestResetCounters(repo, ["feature"]) });
-    assert.equal(loadLoopState(repo, "feature").ticks, 0);
+    assert.equal(loadLoopState(repo, "feature").runs, 0);
 
     seed();
     res = await fetch(base + "/api/reset-counters", { method: "POST", body: "{}" });
     assert.equal(res.status, 200);
-    assert.equal(loadLoopState(repo, "feature").ticks, 0, "{} targets every configured role");
+    assert.equal(loadLoopState(repo, "feature").runs, 0, "{} targets every configured role");
 
     seed();
     const bad = await fetch(base + "/api/reset-counters", { method: "POST", body: '{"role": "bogus"}' });
@@ -510,7 +510,7 @@ test("POST /api/reset-counters zeroes counters like `tumwater reset-counters` an
     assert.match(((await bad.json()) as { error: string }).error, /valid ids:/);
     const malformed = await fetch(base + "/api/reset-counters", { method: "POST", body: "not json" });
     assert.equal(malformed.status, 400);
-    assert.equal(loadLoopState(repo, "feature").ticks, 7, "rejected bodies leave the counters untouched");
+    assert.equal(loadLoopState(repo, "feature").runs, 7, "rejected bodies leave the counters untouched");
   });
 });
 

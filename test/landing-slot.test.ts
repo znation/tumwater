@@ -132,7 +132,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
   state.phase = "review"; // an in-flight landing marker from the tick lifecycle
-  state.ticks = entry.tick;
+  state.runs = entry.tick;
 
   writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
 

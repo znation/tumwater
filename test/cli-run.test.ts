@@ -132,9 +132,9 @@ test("armDeadlineTimer fires a short duration on schedule and clear() retracts i
 
 test("counts the round's ticks and buckets them by last result, sorted by key", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { ticks: 2, lastResult: "changed" }));
-  saveLoopState(root, state("docs", { ticks: 1, lastResult: "no_change" }));
-  saveLoopState(root, state("qa", { ticks: 3, lastResult: "error" }));
+  saveLoopState(root, state("clean", { runs: 2, lastResult: "changed" }));
+  saveLoopState(root, state("docs", { runs: 1, lastResult: "no_change" }));
+  saveLoopState(root, state("qa", { runs: 3, lastResult: "error" }));
 
   const line = onceSummary(
     root,
@@ -153,7 +153,7 @@ test("counts the round's ticks and buckets them by last result, sorted by key", 
 
 test("one advanced tick reads singular; zero ticks read `nothing ran`", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { ticks: 1, lastResult: "no_change" }));
+  saveLoopState(root, state("clean", { runs: 1, lastResult: "no_change" }));
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
     "once: 1 run — 1 no_change",
@@ -169,7 +169,7 @@ test("a skipped role reports the orchestrator's settle reason verbatim, not a st
   const root = makeRepo();
   // clean's state would read as idle by derivation (past nextRunAt, no pause marker) — the
   // pre-fix mislabel the 2026-09-25 BUGS.md entry records; the settle map says deferred.
-  saveLoopState(root, state("clean", { ticks: 4, nextRunAt: Date.now() - 60_000 }));
+  saveLoopState(root, state("clean", { runs: 4, nextRunAt: Date.now() - 60_000 }));
 
   const line = onceSummary(
     root,
@@ -183,9 +183,9 @@ test("a skipped role reports the orchestrator's settle reason verbatim, not a st
 
 test("skip reasons are reported verbatim and in role order", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { ticks: 1 }));
-  saveLoopState(root, state("docs", { ticks: 1 }));
-  saveLoopState(root, state("qa", { ticks: 1 }));
+  saveLoopState(root, state("clean", { runs: 1 }));
+  saveLoopState(root, state("docs", { runs: 1 }));
+  saveLoopState(root, state("qa", { runs: 1 }));
 
   const line = onceSummary(
     root,
@@ -208,7 +208,7 @@ test("skip reasons are reported verbatim and in role order", () => {
 test("a role the settle map lacks falls back to state, via the pause marker", () => {
   const root = makeRepo();
   pauseFleet(root);
-  saveLoopState(root, state("clean", { ticks: 1 }));
+  saveLoopState(root, state("clean", { runs: 1 }));
 
   const line = onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map());
 
@@ -220,7 +220,7 @@ test("a role enabled mid-round counts by the round's ticks-run map, not its whol
   // The role joined the runners array after the round's start (live config reload), so it is
   // in neither `roles` nor ticksBefore: its persisted ticks (5) are not this round's, and
   // only the orchestrator's ticks-run map knows it ran exactly one (BUGS.md 2026-09-25).
-  saveLoopState(root, state("improve", { ticks: 6, lastResult: "changed" }));
+  saveLoopState(root, state("improve", { runs: 6, lastResult: "changed" }));
 
   const line = onceSummary(
     root,
@@ -241,7 +241,7 @@ test("a ran role with no recorded last result buckets as no_change", () => {
   // A tick that advanced the counter without writing lastResult — the field is optional on
   // LoopState — still counts, bucketed under the same `no_change` key a recorded no-change
   // tick uses, rather than dropping out of the counts line.
-  saveLoopState(root, state("clean", { ticks: 1 }));
+  saveLoopState(root, state("clean", { runs: 1 }));
 
   assert.equal(
     onceSummary(root, ["clean"], new Map([["clean", 0]]), undefined),
@@ -254,8 +254,8 @@ test("a role the round's ticks-run map lacks counts zero and settles, not its hi
   // The mid-round map is the source of truth for who ran: a role listed in `roles` but
   // absent from it ran zero ticks this round — its persisted history (ticks 4) must not
   // leak into the summary, and it reports the settle reason like any skipped role.
-  saveLoopState(root, state("clean", { ticks: 4 }));
-  saveLoopState(root, state("improve", { ticks: 1, lastResult: "changed" }));
+  saveLoopState(root, state("clean", { runs: 4 }));
+  saveLoopState(root, state("improve", { runs: 1, lastResult: "changed" }));
 
   const line = onceSummary(
     root,
@@ -277,7 +277,7 @@ test("the fallback reads a scheduled-clock wait as idle, not backoff", () => {
   // as "backoff".
   saveLoopState(
     root,
-    state("clean", { ticks: 1, backoffSeconds: 0, nextRunAt: Date.now() + 600_000 }),
+    state("clean", { runs: 1, backoffSeconds: 0, nextRunAt: Date.now() + 600_000 }),
   );
 
   assert.equal(
@@ -290,7 +290,7 @@ test("the fallback reads a raised backoffSeconds as backoff", () => {
   const root = makeRepo();
   saveLoopState(
     root,
-    state("qa", { ticks: 1, backoffSeconds: 42, nextRunAt: Date.now() + 42_000 }),
+    state("qa", { runs: 1, backoffSeconds: 42, nextRunAt: Date.now() + 42_000 }),
   );
 
   assert.equal(
@@ -306,7 +306,7 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
   // idle — both hide that half-finished work is pending).
   saveLoopState(
     root,
-    state("improve", { ticks: 1, resumePending: true, nextRunAt: Date.now() + 600_000 }),
+    state("improve", { runs: 1, resumePending: true, nextRunAt: Date.now() + 600_000 }),
   );
 
   assert.equal(
@@ -317,7 +317,7 @@ test("the fallback reads a pending resume as pending work, not backoff or idle",
 
 test("onceFailures reports roles that ticked this round and ended in a failure result", () => {
   const root = makeRepo();
-  saveLoopState(root, state("clean", { ticks: 1, lastResult: "error" }));
+  saveLoopState(root, state("clean", { runs: 1, lastResult: "error" }));
   assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result: "error" }]);
   assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 0]])), [], "did not tick this round");
   assert.deepEqual(onceFailures(root, ["clean"], new Map([["clean", 0]])), [{ role: "clean", result: "error" }]);
@@ -328,11 +328,11 @@ test("onceFailures reports roles that ticked this round and ended in a failure r
 test("onceFailures reports every ONCE_FAILURE_RESULTS member and ignores the rest", () => {
   const root = makeRepo();
   for (const result of ONCE_FAILURE_RESULTS) {
-    saveLoopState(root, state("clean", { ticks: 1, lastResult: result }));
+    saveLoopState(root, state("clean", { runs: 1, lastResult: result }));
     assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [{ role: "clean", result }]);
   }
   for (const result of ["rejected", "refused", "no_change", "changed"] as const) {
-    saveLoopState(root, state("clean", { ticks: 1, lastResult: result }));
+    saveLoopState(root, state("clean", { runs: 1, lastResult: result }));
     assert.deepEqual(onceFailures(root, ["clean"], new Map(), new Map([["clean", 1]])), [], result);
   }
 });

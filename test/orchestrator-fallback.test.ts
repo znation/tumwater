@@ -89,10 +89,10 @@ test("ticks on the engaged fallback feed the breaker: three dead-backend errors 
     assert.equal(info?.fallbackDemoted?.failures, 3);
 
     // And the demoted pause actually holds: no further role tick starts while it stands.
-    const ticksAtTrip = loadLoopState(repo, "feature").ticks;
+    const ticksAtTrip = loadLoopState(repo, "feature").runs;
     await sleep(600);
     assert.equal(
-      loadLoopState(repo, "feature").ticks,
+      loadLoopState(repo, "feature").runs,
       ticksAtTrip,
       "a demoted fallback pauses role ticks — the probe waits out its cool-down",
     );

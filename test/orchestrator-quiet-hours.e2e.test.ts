@@ -44,12 +44,12 @@ test("quiet hours block role ticks while the director runs; emptying the window 
 
     // Several (fast) poll cycles pass: clean starts no tick while the window holds.
     await sleep(600);
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "a quiet-hours role starts no ticks");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "a quiet-hours role starts no ticks");
 
     // The director is exempt: a queued human prompt still runs during the window.
     enqueuePrompt(repo, "steer me during quiet hours");
     await awaitSettledTick(repo, "director", 1, "the director to tick during quiet hours");
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "still quiet after the director's run");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "still quiet after the director's run");
 
     // Emptying the window live (what `tumwater config set quietHours ""` does) ends the
     // hold on the next poll: one ended event, then the blocked role ticks without a restart.

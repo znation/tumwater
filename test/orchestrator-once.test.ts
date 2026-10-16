@@ -35,8 +35,8 @@ test("once: an idle fleet exits on its own, ticks each role exactly once, and re
     assert.ok(exit.ticksRun instanceof Map, "once mode returns the per-role ticks-run map");
     assert.equal(exit.ticksRun?.get("clean"), 1, "clean ticked once in the round");
     assert.equal(exit.ticksRun?.get("dry"), 1, "dry ticked once in the round");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "clean's persisted state agrees with the round's count");
-    assert.equal(loadLoopState(repo, "dry").ticks, 1, "dry's persisted state agrees with the round's count");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "clean's persisted state agrees with the round's count");
+    assert.equal(loadLoopState(repo, "dry").runs, 1, "dry's persisted state agrees with the round's count");
   });
 });
 
@@ -94,7 +94,7 @@ test("once: a per-role-paused loop settles as paused and runs no tick", async ()
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the loop's round answer, not silence");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the paused loop ran no tick");
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "nothing ticked past the fresh state");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the pause");
   });
 });
@@ -106,7 +106,7 @@ test("once: a role in error backoff settles as backoff and runs no tick", async 
   // no poll of the round changes that — the round's answer is the skip reason, not silence.
   saveLoopState(repo, {
     ...freshLoopState("clean"),
-    ticks: 1,
+    runs: 1,
     lastResult: "no_change" as const,
     backoffSeconds: 30,
     nextRunAt: Date.now() + 60_000,
@@ -116,7 +116,7 @@ test("once: a role in error backoff settles as backoff and runs no tick", async 
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "backoff", "the backoff is the loop's round answer");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the backing-off loop ran no tick");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the backoff");
   });
 });
@@ -132,7 +132,7 @@ test("once: the director with an empty inbox settles as idle and runs no tick", 
       "an empty inbox is the director's round answer — the one role whose idleness is ordinary",
     );
     assert.equal(exit.ticksRun?.get("director"), 0, "the director ran no tick with nothing queued");
-    assert.equal(loadLoopState(repo, "director").ticks, 0, "nothing ticked past the fresh state");
+    assert.equal(loadLoopState(repo, "director").runs, 0, "nothing ticked past the fresh state");
     assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started for the idle director");
   });
 });
@@ -144,7 +144,7 @@ test("once: a queued per-role prompt makes its loop due on its own and logs the 
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the queued prompt makes the loop due without the clock");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "the tick really ran");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "the tick really ran");
     assert.equal(queuedRolePromptCount(repo, "clean"), 0, "the tick consumed the queued prompt");
     const wake = eventsOfType(repo, "wake").find((e) => e.source === "clean");
     assert.ok(wake, "the demand is announced with a wake event, not a silent start");

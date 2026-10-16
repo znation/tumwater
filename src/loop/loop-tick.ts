@@ -198,7 +198,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
           logEventBestEffort(ctx.root, {
             source: ctx.role,
             type: "image_reroute",
-            run: s.ticks + 1,
+            run: s.runs + 1,
             from: primaryCfg.model,
             to: target.config.model,
             tier: target.tier,
@@ -221,7 +221,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // back when the budget gate reopens (PLANS.md "Mixed claude + pi fleets, part 2/4").
   ctx.setTickPair({ provider: seamHoldKey(cfg), model: cfg.model });
   ctx.setHandedBack(false);
-  s.ticks += 1;
+  s.runs += 1;
   // gen / peak ctx are per-tick windows, not lifetime totals (user decision 2026-08-25):
   // reset before the start-of-tick save so a working loop's columns grow live from 0 and
   // an idle loop's show its last completed tick. The loop's pi plumbing accumulates every pi
@@ -236,7 +236,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   ctx.resetTickAbort();
   s.running = true;
   s.lastTickStartedAt = Date.now();
-  const tick = s.ticks;
+  const tick = s.runs;
   const tickStartedAt = s.lastTickStartedAt;
   ctx.save();
   // The selector this tick's runs start on (plans/model-tiers.md "Observability"): with
@@ -455,7 +455,7 @@ async function tickWithWorktreePhase(
       root: ctx.root,
       role: ctx.role,
       mainBranch: ctx.mainBranch,
-      tick: s.ticks,
+      tick: s.runs,
       wt,
       mergeConflicts: s.mergeConflicts,
       conflictHandback: s.conflictHandback,
@@ -631,7 +631,7 @@ async function tickWithWorktreePhase(
   }
 
   const tickBase = await headOf(wt, "HEAD");
-  const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.ticks}`, resuming, cfg);
+  const pi = await ctx.pi.runAuthoringPi(wt, prompt, `tumwater-${ctx.role}-${s.runs}`, resuming, cfg);
   // The harness owns every commit (INV-H1): fold any the agent made into the tick's one commit.
   await foldAgentCommitsSince(ctx, wt, tickBase);
   // Fold the authoring run's verdict into the role's model-fallback episode NOW, before the
@@ -659,7 +659,7 @@ async function mergePhase(ctx: LoopTickContext, wt: string, summary: string): Pr
       mainBranch: ctx.mainBranch,
       exemptPaths: ctx.config.review.exemptPaths,
       config: ctx.config,
-      tick: ctx.state.ticks,
+      tick: ctx.state.runs,
       runPi: (w, prompt, sessionName, config) => ctx.pi.runRolePi(w, prompt, sessionName, false, config),
     },
     wt,

@@ -22,7 +22,7 @@ interface FinalizeTickDeps {
   state: LoopState;
   outcome: TickOutcome;
   /** The tick number run_start announced, captured at tick start — NOT re-read from
-   * `state.ticks` here: `resetCounters` zeroes `state.ticks` in place mid-tick (the
+   * `state.runs` here: `resetCounters` zeroes `state.runs` in place mid-tick (the
    * documented running-fleet reset), so a finalize-time re-read could emit a run_end
    * numbered 0 (or a later tick's number) under a run_start that announced the real one. */
   tick: number;

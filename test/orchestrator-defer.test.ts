@@ -46,7 +46,7 @@ import { waitFor } from "./helpers/wait.js";
 function idleDueState(repo: string) {
   return {
     ...freshLoopState("clean"),
-    ticks: 1,
+    runs: 1,
     lastResult: "no_change" as const,
     lastMainHead: readBranchHead(repo, "main") ?? "",
     nextRunAt: Date.now() - 1000, // due: the deferral, not the clock, keeps it from running
@@ -70,7 +70,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
     assert.equal(exit.restart, false);
     assert.equal(exit.settled?.get("clean"), "deferred", "the deferral is the role's round answer, not idle");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the deferred role ran no tick");
-    assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["clean"],
@@ -106,7 +106,7 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
     const exit = await onceRound(repo);
     assert.equal(exit.restart, false);
     assert.equal(exit.ticksRun?.get("clean"), 1, "the demand runs the tick the backlog would have deferred");
-    assert.equal(loadLoopState(repo, "clean").ticks, 2, "the tick really ran");
+    assert.equal(loadLoopState(repo, "clean").runs, 2, "the tick really ran");
     assert.deepEqual(eventsOfType(repo, "run_deferred"), [], "no deferral episode: the demand preempted it");
   });
 });
@@ -128,7 +128,7 @@ test("once: bugfix in search mode defers on the work-landed verdict alone, backl
       "an idle search tick with nothing new on main defers even with the backlog empty",
     );
     assert.equal(exit.ticksRun?.get("bugfix"), 0, "the searching bugfix ran no tick");
-    assert.equal(loadLoopState(repo, "bugfix").ticks, 1, "nothing ticked past the seeded history");
+    assert.equal(loadLoopState(repo, "bugfix").runs, 1, "nothing ticked past the seeded history");
     assert.deepEqual(
       eventsOfType(repo, "run_deferred").map((e) => e.source),
       ["bugfix"],
@@ -159,7 +159,7 @@ test("live: an inbox demand ends a deferral episode silently, and the next defer
     // scheduled tick defers again — and that fresh episode logs its own run_deferred: the
     // stale in-memory episode flag must not swallow it.
     await waitFor(() => eventsOfType(repo, "run_deferred").length >= 2, "the fresh deferral episode");
-    assert.equal(loadLoopState(repo, "clean").ticks, 2, "still deferred: the backlog holds");
+    assert.equal(loadLoopState(repo, "clean").runs, 2, "still deferred: the backlog holds");
   } finally {
     await stopOrchestrator(orch, restore);
   }

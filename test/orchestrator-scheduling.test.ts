@@ -38,7 +38,7 @@ function fakeRunner(role: string, config: TumwaterConfig): LoopRunner {
     state: {
       role,
       running: false,
-      ticks: 0,
+      runs: 0,
       nextRunAt: 0,
       resumePending: false,
       lastMainHead: "",
@@ -346,7 +346,7 @@ test("a sibling held by an unclaimed mid-entry runner records claim-hold, cleare
 test("a deferred maintenance role records its deferral once per episode", async () => {
   const root = tmpdir("tumwater-scheduling-skip-deferred-");
   const clean = fakeRunner("clean", defaultConfig());
-  clean.state.ticks = 1;
+  clean.state.runs = 1;
   clean.state.lastResult = "no_change";
   clean.state.lastMainHead = "abc"; // a deferral needs a prior head to compare against
   const ctx = () => ({
@@ -462,7 +462,7 @@ test("a run_deferred event survives an unwritable events feed", async () => {
   const runner = fakeRunner("clean", defaultConfig());
   runner.state.lastResult = "no_change";
   runner.state.lastMainHead = "abc";
-  runner.state.ticks = 1;
+  runner.state.runs = 1;
   unwritableEvents(root);
   const c = schedulingCtx(root, [runner], new Map([["clean", undefined]]));
   c.workBacklogOpen = true;
@@ -631,7 +631,7 @@ const ONE_REFUSED_PLAN = [
 
 function tickedFeature(config: TumwaterConfig, role = "feature"): LoopRunner {
   const r = fakeRunner(role, config);
-  r.state.ticks = 1;
+  r.state.runs = 1;
   r.state.nextRunAt = T0;
   r.state.backoffSeconds = 30;
   return r;
@@ -685,7 +685,7 @@ test("a nothing-eligible feature runner is still admitted on demand, startup, re
   };
   assert.equal(await admitted(() => {}), false, "control: stands down");
   assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
-  assert.equal(await admitted((r) => { r.state.ticks = 0; }), true, "startup");
+  assert.equal(await admitted((r) => { r.state.runs = 0; }), true, "startup");
   assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "feature", "hi"); }), true, "queued prompt");
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
   assert.equal(await admitted(() => {}, TWO_PLANS), true, "an eligible plan");
@@ -724,7 +724,7 @@ test("a held-only bugfix runner is still admitted on demand, startup, revision, 
   };
   assert.equal(await admitted(() => {}), false, "control: stands down");
   assert.equal(await admitted((r) => { r.state.wokenAt = T0 + 5; r.state.lastTickEndedAt = T0; }), true, "wake");
-  assert.equal(await admitted((r) => { r.state.ticks = 0; }), true, "startup");
+  assert.equal(await admitted((r) => { r.state.runs = 0; }), true, "startup");
   assert.equal(await admitted((_r, root) => { enqueueRolePrompt(root, "bugfix", "hi"); }), true, "queued prompt");
   assert.equal(await admitted((r) => { r.state.revision = { feedback: "fix" } as never; }), true, "revision");
   assert.equal(await admitted(() => {}, bugsFile(REFUSED_BUG, OPEN_BUG)), true, "an eligible bug");

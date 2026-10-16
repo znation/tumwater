@@ -193,7 +193,7 @@ export function seedCounters(repo: string, ...roles: string[]): void {
 
 function seedOneCounter(repo: string, role: string): void {
   const s = freshLoopState(role);
-  s.ticks = 7;
+  s.runs = 7;
   s.commits = 3;
   s.generatedTokens = 424242;
   s.totalCostUsd = 1.5;

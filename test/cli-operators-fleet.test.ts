@@ -46,7 +46,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   r = await cli(repo, "reset-counters", "--role", "docs-sync");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /counters reset for docs-sync/);
-  assert.equal(loadLoopState(repo, "docs-sync").ticks, 0);
+  assert.equal(loadLoopState(repo, "docs-sync").runs, 0);
 
   // abort --role <custom> passes validation (no live fleet: it fails on the alive check,
   // which proves the id was accepted rather than rejected).
@@ -73,7 +73,7 @@ test("reset-counters zeroes counters in every role's state file and writes the f
 
   for (const role of ["feature", "clean"]) {
     const s = loadLoopState(repo, role);
-    assert.equal(s.ticks, 0, `${role} ticks`);
+    assert.equal(s.runs, 0, `${role} ticks`);
     assert.equal(s.commits, 0, `${role} commits`);
     assert.equal(s.generatedTokens, 0, `${role} tokens`);
     assert.equal(s.totalCostUsd, 0, `${role} cost`);
@@ -105,9 +105,9 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   assert.equal(r.code, 0);
   assert.match(r.stdout, /counters reset for feature/);
   const f = loadLoopState(repo, "feature");
-  assert.equal(f.ticks, 0);
+  assert.equal(f.runs, 0);
   assert.equal(f.commits, 0);
-  assert.equal(loadLoopState(repo, "clean").ticks, 7, "other roles untouched");
+  assert.equal(loadLoopState(repo, "clean").runs, 7, "other roles untouched");
   const marker = readJson(resetRequestPath(repo)) as { roles: string[] };
   assert.deepEqual(marker.roles, ["feature"]);
 
@@ -116,8 +116,8 @@ test("reset-counters --role targets one loop; unknown or missing role fails with
   r = await cli(repo, "reset-counters", "--role", "bogus");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown role: bogus \(valid ids: feature, bugfix/);
-  assert.equal(loadLoopState(repo, "feature").ticks, 0, "already-reset role unchanged");
-  assert.equal(loadLoopState(repo, "clean").ticks, 7, "other roles untouched on failure");
+  assert.equal(loadLoopState(repo, "feature").runs, 0, "already-reset role unchanged");
+  assert.equal(loadLoopState(repo, "clean").runs, 7, "other roles untouched on failure");
   assert.ok(!fs.existsSync(resetRequestPath(repo)), "no marker written on failure");
 
   // A bare --role fails cleanly too.
@@ -167,7 +167,7 @@ test("wake clears backoff in every role's state file and writes the fleet marker
       `${role} is immediately due (nextRunAt ${s.nextRunAt})`,
     );
     // Waking touches ONLY the schedule: counters and wake tracking stay as they were.
-    assert.equal(s.ticks, 7, `${role} counters preserved`);
+    assert.equal(s.runs, 7, `${role} counters preserved`);
     assert.equal(s.commits, 3, `${role} commits preserved`);
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
   }

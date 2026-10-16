@@ -130,18 +130,18 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   const repo = makeRepo();
   await initProject(repo, "test project");
   const state = freshLoopState("clean");
-  state.ticks = 3;
+  state.runs = 3;
   saveLoopState(repo, state);
-  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3); // populates the cache
+  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 3); // populates the cache
 
   withCountedReads(
     (reads) => {
       const snap = snapshot(repo);
-      assert.equal(snap.loops.find((l) => l.role === "clean")!.ticks, 3); // unchanged — served from cache
+      assert.equal(snap.loops.find((l) => l.role === "clean")!.runs, 3); // unchanged — served from cache
       assert.equal(reads(), 0); // no re-read of the state file at all
       // Each poll still gets its own objects: mutating one snapshot must not poison later ones.
-      snap.loops.find((l) => l.role === "clean")!.ticks = 99;
-      assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 3);
+      snap.loops.find((l) => l.role === "clean")!.runs = 99;
+      assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 3);
     },
     (file) => typeof file === "string" && file.endsWith(`${path.sep}state${path.sep}clean.json`),
   );
@@ -150,10 +150,10 @@ test("snapshot serves unchanged loop state from the stat-keyed cache without re-
   // length identical, so utimes forces a distinct mtime regardless of filesystem timestamp
   // granularity (two fast writes could otherwise share one on coarse-grained filesystems).
   const bumped = freshLoopState("clean");
-  bumped.ticks = 4;
+  bumped.runs = 4;
   saveLoopState(repo, bumped);
   backdate(path.join(repo, ".tumwater", "state", "clean.json"), -5000);
-  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.ticks, 4);
+  assert.equal(snapshot(repo).loops.find((l) => l.role === "clean")!.runs, 4);
 });
 
 test("snapshot reads the orchestrator info file once per poll", async () => {

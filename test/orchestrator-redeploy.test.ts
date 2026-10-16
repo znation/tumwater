@@ -102,11 +102,11 @@ test("a redeploy hold starts no new ticks, and its lift resumes them", async () 
     // clock-free: an ungated fleet would have ticked on the very first polls (the startup
     // tick is due immediately — the divergence test awaits one inside a few poll periods).
     await waitFor(() => polls() >= 4, "the orchestrator to poll through the hold");
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "a hold starts no new ticks, director included");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "a hold starts no new ticks, director included");
 
     // The hold lifts: the role's pending tick runs on the next polls.
     await waitFor(
-      () => loadLoopState(repo, "clean").ticks >= 1 && !loadLoopState(repo, "clean").running,
+      () => loadLoopState(repo, "clean").runs >= 1 && !loadLoopState(repo, "clean").running,
       "the tick after the hold lifts",
     );
   } finally {
@@ -131,7 +131,7 @@ test("a restart verdict ends the run with restart: true, before any tick starts"
   try {
     const exit = await withHangGuard(done, "restart verdict did not end the run");
     assert.deepEqual(exit, { restart: true }, "the daemon exit names the restart for the caller");
-    assert.equal(loadLoopState(repo, "clean").ticks, 0, "the first poll's verdict leaves no tick started");
+    assert.equal(loadLoopState(repo, "clean").runs, 0, "the first poll's verdict leaves no tick started");
   } finally {
     controller.abort();
     restore();
@@ -205,7 +205,7 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
     );
     // The tick was started but never completed: the cut-off reservation hands itself back
     // with no run_end of its own to record.
-    assert.ok(loadLoopState(repo, "clean").running || loadLoopState(repo, "clean").ticks >= 1,
+    assert.ok(loadLoopState(repo, "clean").running || loadLoopState(repo, "clean").runs >= 1,
       "the tick was in flight when the restart landed");
   } finally {
     controller.abort();

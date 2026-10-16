@@ -206,7 +206,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       logEventBestEffort(ctx.root, {
         source: ctx.role,
         type: "image_reroute",
-        run: s.ticks,
+        run: s.runs,
         from,
         to: target.config.model,
         tier: target.tier,

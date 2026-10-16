@@ -208,7 +208,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   const unsubscribe = subscribeEvents((e) => say(formatEvent(e)));
   // Snapshot each role's tick counter so the once summary can tell this round's ticks from
   // the persisted history (the state file accumulates across rounds).
-  const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).ticks] as const));
+  const ticksBefore = new Map(roles.map((role) => [role, loadLoopState(root, role).runs] as const));
   let exit;
   try {
     exit = await (await import("../orchestrator/orchestrator.js")).runOrchestrator({
@@ -340,12 +340,12 @@ export const ONCE_FAILURE_RESULTS: ReadonlySet<TickResult> = new Set<TickResult>
 ]);
 
 function ticksThisRound(
-  s: { ticks: number },
+  s: { runs: number },
   role: string,
   ticksBefore: Map<string, number>,
   ticksRun?: ReadonlyMap<string, number>,
 ): number {
-  return ticksRun ? (ticksRun.get(role) ?? 0) : s.ticks - (ticksBefore.get(role) ?? 0);
+  return ticksRun ? (ticksRun.get(role) ?? 0) : s.runs - (ticksBefore.get(role) ?? 0);
 }
 
 /** The roles that ticked this round and whose last result is in ONCE_FAILURE_RESULTS. */
