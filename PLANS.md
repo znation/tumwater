@@ -21,36 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms groundwork, part 1/4: Write docs/glossary.md with every older name mapped to its plain term (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Glossary"; touches docs/glossary.md)
-
-**Goal.** One page a newcomer, a reviewer and an agent can all check user-visible text against: the plain terms with their meanings, the internal words the code keeps, and a translation table from every older word and machine name to its new one, so readers of history, old logs and old scripts can follow.
-
-**Approach.**
-- Create `docs/glossary.md`. Prose only: no code, no test, no other file changes. Write it in the plain terms it defines.
-- Section **Terms**: a table `Term | Meaning | Older names`, one row per term of plans/terminology.md's "Glossary" table, with the one-line meaning and its "Replaces" words in the last column. Keep the `feature #2` (id `feature-2`) example on **role** and **instance**.
-- Section **Status words**: a table `Word | Meaning`, built from the "Write instead" column of the "Wording rules" table: due, waiting to merge, waiting: <reason>, blocked (with its `[blocked: …]` forms), sleeping, stalled, paused (only a pause you set), update available, restart N, priority, over-cap model, fallback, model jobs, model id, workspace, running N of M, waiting to start, finishing up, repeated-failure pause, stopped by you, interrupted, your checkout, estimated spend, main's check is failing, send later, TUI. One line each; this is the vocabulary the dashboards and CLI output will use.
-- Section **In the code**: one line each for the words listed under "Kept in code" in "Code names" (seam, operator, harness, slot, hold, backoff, drain, reclaim, director, orchestrator) saying what each means internally, plus **runner** (one instance of a role, the code word for `feature-2`). Close with one sentence on how identifiers follow the glossary: fleet → team, loop → runner, tick → run, landing/land/lander/vet → merge, notebook → notes, initialPrompt → brief, customLoop → customRole, the config `agent` → backend.
-- Section **Older names**, one sub-table per family, columns `Older name | Current name | Old name still accepted?`. Copy the rows from plans/terminology.md; do not invent new ones:
-  - **Words** — every "Replaces" word from "Glossary" and every "Today" phrase from "Wording rules".
-  - **Commands** — the "Commands and config" command table (`run` → `start`, `tick <role> <n>` → `history <role> <n>`, `--result changes` → `--result merged`); accepted: yes, as hidden aliases.
-  - **Config keys** — the "Commands and config" key table, plus `agentBin`/`piArgs` → `backends.pi.bin`/`.args`; accepted: yes, and `tumwater doctor` names the rename.
-  - **Role ids and titles** — the "Role names" table; old ids accepted on read.
-  - **Event log** — every row of "Event log" (types, the `loop` → `source` field, payload fields and values, `TUMWATER_EVENT_LOOP` → `TUMWATER_EVENT_SOURCE`); old lines are read as new ones.
-  - **Script interfaces** — every row of "Script interfaces" (`--json` keys, `/api` routes and payload keys, dashboard hashes, alert `act`); accepted: no, except the old dashboard hashes.
-  - **State and git** — every row of "State and git" (state fields, `.tumwater/land-queue/`, `state/landing.json` and its statuses, `slots.json` purpose, the `refs/tumwater/landing/` refs, the `Tick:` trailer); old data is read and migrated.
-  - **Code identifiers** — the "Code names" family rules and file moves, for readers of old commits; accepted: no.
-- Close with one short paragraph naming what keeps the older words on purpose (plans/terminology.md "Out of scope": PLANS.md `## Done`, BUGS.md, QUESTIONS.md answers, `plans/*.md`, git history and commit subjects, the `tumwater(operator):` prefix, `tumwater/<id>` branches) and that this table translates them.
-- The PRINCIPLES.md line from "Guards" ("User-visible text uses the terms in docs/glossary.md.") is a manual step for the user after this series lands. Do not edit PRINCIPLES.md.
-
-**Files touched.** docs/glossary.md (new). Reads (does not edit): plans/terminology.md.
-
-**Acceptance criteria.**
-- docs/glossary.md has the sections Terms, Status words, In the code and Older names, in that order.
-- Every term of the "Glossary" table and every word in its "Replaces" column appears in the file.
-- Every old name in the "Commands and config", "Role names", "Event log", "Script interfaces" and "State and git" tables appears in an Older names row beside its new name.
-- No file other than docs/glossary.md changes.
-- `npm run test` passes.
-
 ### Plain terms groundwork, part 2/4: Add the vocabulary guard test for modules that opt in to plain terms (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Guards"; touches test/vocabulary.test.ts)
 
 **Goal.** A deterministic test that fails when user-visible text in an opted-in `src/` module uses a retired word, so the text series can convert modules one group at a time and keep them converted. With no module opted in yet it passes. Its own self-tests prove what it flags and what it ignores.
@@ -4118,6 +4088,36 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `tumwater diff --role <id>`'s header and `tumwater diff`'s fleet roster name each loop's lag with a `, N commits behind` suffix when its branch base is behind main, and omit it (byte-identical today's wording) when it is not.
 - The behind count is the exact mirror range of the existing ahead count, computed through the shared `countCommitsInRange` in the same `collectRoleChange` call — one git read for both counts, no new I/O path; `no-base` and `absent` loops report `behind: 0` and degrade exactly as today.
 - `tumwater diff --json` carries `behind` on each role alongside `ahead`, and the fleet roster drops it nowhere (a `--json` consumer can compare the two per loop). `npm run test` passes with the existing "N commits ahead… / M uncommitted file(s)" render goldens unchanged for `behind: 0`.
+
+### Plain terms groundwork, part 1/4: Write docs/glossary.md with every older name mapped to its plain term (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Glossary"; touches docs/glossary.md; done 2026-10-16)
+
+**Goal.** One page a newcomer, a reviewer and an agent can all check user-visible text against: the plain terms with their meanings, the internal words the code keeps, and a translation table from every older word and machine name to its new one, so readers of history, old logs and old scripts can follow.
+
+**Approach.**
+- Create `docs/glossary.md`. Prose only: no code, no test, no other file changes. Write it in the plain terms it defines.
+- Section **Terms**: a table `Term | Meaning | Older names`, one row per term of plans/terminology.md's "Glossary" table, with the one-line meaning and its "Replaces" words in the last column. Keep the `feature #2` (id `feature-2`) example on **role** and **instance**.
+- Section **Status words**: a table `Word | Meaning`, built from the "Write instead" column of the "Wording rules" table: due, waiting to merge, waiting: <reason>, blocked (with its `[blocked: …]` forms), sleeping, stalled, paused (only a pause you set), update available, restart N, priority, over-cap model, fallback, model jobs, model id, workspace, running N of M, waiting to start, finishing up, repeated-failure pause, stopped by you, interrupted, your checkout, estimated spend, main's check is failing, send later, TUI. One line each; this is the vocabulary the dashboards and CLI output will use.
+- Section **In the code**: one line each for the words listed under "Kept in code" in "Code names" (seam, operator, harness, slot, hold, backoff, drain, reclaim, director, orchestrator) saying what each means internally, plus **runner** (one instance of a role, the code word for `feature-2`). Close with one sentence on how identifiers follow the glossary: fleet → team, loop → runner, tick → run, landing/land/lander/vet → merge, notebook → notes, initialPrompt → brief, customLoop → customRole, the config `agent` → backend.
+- Section **Older names**, one sub-table per family, columns `Older name | Current name | Old name still accepted?`. Copy the rows from plans/terminology.md; do not invent new ones:
+  - **Words** — every "Replaces" word from "Glossary" and every "Today" phrase from "Wording rules".
+  - **Commands** — the "Commands and config" command table (`run` → `start`, `tick <role> <n>` → `history <role> <n>`, `--result changes` → `--result merged`); accepted: yes, as hidden aliases.
+  - **Config keys** — the "Commands and config" key table, plus `agentBin`/`piArgs` → `backends.pi.bin`/`.args`; accepted: yes, and `tumwater doctor` names the rename.
+  - **Role ids and titles** — the "Role names" table; old ids accepted on read.
+  - **Event log** — every row of "Event log" (types, the `loop` → `source` field, payload fields and values, `TUMWATER_EVENT_LOOP` → `TUMWATER_EVENT_SOURCE`); old lines are read as new ones.
+  - **Script interfaces** — every row of "Script interfaces" (`--json` keys, `/api` routes and payload keys, dashboard hashes, alert `act`); accepted: no, except the old dashboard hashes.
+  - **State and git** — every row of "State and git" (state fields, `.tumwater/land-queue/`, `state/landing.json` and its statuses, `slots.json` purpose, the `refs/tumwater/landing/` refs, the `Tick:` trailer); old data is read and migrated.
+  - **Code identifiers** — the "Code names" family rules and file moves, for readers of old commits; accepted: no.
+- Close with one short paragraph naming what keeps the older words on purpose (plans/terminology.md "Out of scope": PLANS.md `## Done`, BUGS.md, QUESTIONS.md answers, `plans/*.md`, git history and commit subjects, the `tumwater(operator):` prefix, `tumwater/<id>` branches) and that this table translates them.
+- The PRINCIPLES.md line from "Guards" ("User-visible text uses the terms in docs/glossary.md.") is a manual step for the user after this series lands. Do not edit PRINCIPLES.md.
+
+**Files touched.** docs/glossary.md (new). Reads (does not edit): plans/terminology.md.
+
+**Acceptance criteria.**
+- docs/glossary.md has the sections Terms, Status words, In the code and Older names, in that order.
+- Every term of the "Glossary" table and every word in its "Replaces" column appears in the file.
+- Every old name in the "Commands and config", "Role names", "Event log", "Script interfaces" and "State and git" tables appears in an Older names row beside its new name.
+- No file other than docs/glossary.md changes.
+- `npm run test` passes.
 
 ### `tumwater role <id>` and the GUI loop drawer show the loop's own spend and token use, so a per-loop inspection names how much the loop burned over its retained event window (planned 2026-10-16 by plan; independent of every other eligible Planned entry — the paused-resumes plan touches `src/ui/status-model.ts`/`test/status-model.test.ts` and the CLI-banners plan touches `src/ui/status-render.ts` + `src/ui/tui/tui-frame.ts`, and this touches none of them: only `src/roles/role-view.ts`, `src/roles/role-render.ts`, `src/ui/gui/gui-client-drawer.ts`, and their tests. The sources it reuses — `eventUsage` in src/events/event-read.ts and `usd`/`compactTokens` in src/text/format.ts — are read, not edited; no `src/status`, `src/ui/status-*`, `src/report`, `src/loop`, or `src/tick` edit — done 2026-10-16)
 
