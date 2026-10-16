@@ -289,7 +289,14 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // text riding the title tooltip — the same clamp+tooltip idiom the tick summaries use.
     const clamp = (t) => { const one = singleLine(t); return one.length > 80 ? one.slice(0, 80) + "…" : one; };
     const rows = [];
-    const modelLine = pair(view.provider, view.model);
+    // A role that runs on pi's own saved default carries no provider/model but a piDefault
+    // selector (rolePayload's resolvedModelFields leaves both undefined), and the CLI's
+    // Model line names that default (<agent> default (<selector>), agentDefault). Mirror
+    // that branch so the drawer names the model a default pi fleet actually runs on.
+    const defaultLine = typeof view.piDefault === "string"
+      ? (view.agent && view.agent !== "pi" ? view.agent : "pi") + " default (" + view.piDefault + ")"
+      : "";
+    const modelLine = defaultLine !== "" ? defaultLine : pair(view.provider, view.model);
     if (modelLine !== "" || view.modelTier !== undefined) {
       rows.push(row("Model", (modelLine !== "" ? modelLine + " " : "") + (view.modelTier !== undefined ? "(" + view.modelTier + " tier)" : "").trim()));
     }

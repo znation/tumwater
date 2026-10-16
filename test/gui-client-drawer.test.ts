@@ -615,3 +615,26 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
   await flush();
   assert.doesNotMatch(minimal.paintedFor("drawerrole"), /Configuration/);
 });
+
+// A default pi fleet runs on pi's own saved default model: rolePayload sets `piDefault`
+// (a formatted selector) and leaves `provider`/`model` undefined, and the CLI's role view
+// names that default in its Model line (modelLine's `pi default (…)` branch). The
+// Configuration section must render the same model for such a loop, so the page and
+// `tumwater role <id>` agree on what the loop runs on even in the no-explicit-model case.
+test("the Configuration Model row names pi's saved default when no explicit model is set", async () => {
+  const responses: Record<string, unknown> = {
+    "/api/role?role=clean": {
+      note: null,
+      nextPrompt: null,
+      agent: "pi",
+      piDefault: "deepseek/deepseek-v4",
+      modelTier: "default",
+    },
+  };
+  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<h3>Configuration<\/h3>/);
+  assert.match(role, /<dt>Model<\/dt><dd[^>]*>pi default \(deepseek\/deepseek-v4\) \(default tier\)<\/dd>/);
+});
