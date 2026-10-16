@@ -1,3 +1,4 @@
+// vocabulary: plain
 /** Shell completion derived from the help text. The spec is parsed from the same HELP stanzas
  * `tumwater help <command>` and the unknown-command suggestion use, so a new command or flag
  * completes the moment it gains a help stanza and can never drift from the listing. */

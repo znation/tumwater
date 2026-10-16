@@ -21,52 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms text, part 8/19: Help and completion prose use the glossary (planned 2026-10-16 by user; requires part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches src/cli/help.ts + src/cli/completion.ts + tests)
-
-**Goal.** `tumwater help`, every `tumwater help <command>` topic, the did-you-mean suggestion and the shell completion derived from HELP read in plain terms. They match the output that parts 1/19–7/19 now produce.
-
-**Approach.**
-- Rules for every Plain terms text part:
-  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
-  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
-  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
-  - Strings that name a renamed command or config key use its new name.
-  - Rename no identifier, JSON key, event type, config key, command or file.
-- `HELP` (src/cli/help.ts):
-  - The first line "tumwater — autonomous development harness built on pi" → "tumwater — an autonomous development team, built on pi".
-  - Every stanza follows the Glossary and Wording rules:
-
-    | Today | New |
-    | --- | --- |
-    | loop | role |
-    | tick | run |
-    | landing | merge |
-    | fleet | team |
-    | land queue | merge queue |
-    | operator | you |
-    | observer TUI | TUI |
-    | initial prompt | brief |
-    | notebook | notes |
-    | standing prompt | instructions |
-    | drains | finishes current work |
-    | mach ports | macOS port leak |
-
-  - The output samples it quotes match what parts 2/19–7/19 print: `[merging 2m · reviewing]`, `[approved, waiting to merge]`, `merge queue empty`, and the result classes.
-- The commands series already rewrote the lines for `start`, `history <role> <n>`, `--result merged` and the renamed config keys. Keep those lines, and keep the hidden aliases out of help.
-- HELP is one template literal, so a trailing `// vocabulary-ok:` comment cannot sit inside it; it would become help text. Interpolate each machine name that must stay verbatim from a named constant declared on its own line ending `// vocabulary-ok: <reason>`. These are `--json` key lists such as `{ loops, total }` until the scripting series, event-type codes, and the `tumwater(operator):` prefix.
-- Re-wrap to the existing two-column layout: descriptions start at the same column and stanzas keep their shape. `helpStanzas`, `helpTopic`, `suggestCommand` and src/cli/completion.ts all parse it.
-- Add the header to help.ts and completion.ts. Completion's one flagged literal is a shell snippet naming the hidden `tick` alias: mark it, or drop `tick` if the commands series already did.
-
-**Files touched.**
-- src: src/cli/help.ts, src/cli/completion.ts.
-- Tests: test/help.test.ts, test/cli-help.test.ts, test/completion.test.ts, and any suite that snapshots a help topic (grep `helpTopic(`).
-
-**Acceptance criteria.**
-- The guard passes on help.ts with its header. Apart from the interpolated machine names, `tumwater help` and every topic contain no retired word.
-- `tumwater help queue` describes the merge queue and its `[merging …]` and `[approved, waiting to merge]` tags. `tumwater help doctor` lists part 4/19's check names.
-- Completion still offers every visible command and flag.
-- `npm run test` passes.
-
 ### Plain terms text, part 18/19: Role instructions and backlog hold marks (planned 2026-10-16 by user; requires part 9/19, part 10/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules"; touches src/roles/role-catalog.ts + src/roles/role-guidance.ts + holdMark in src/backlog/backlog-eligibility.ts + tests)
 
 **Goal.** Each built-in role's instructions use the glossary. Models act on this text every run, so it speaks of roles, runs, merges, the team, the brief, notes and the user. The backlog index and `tumwater backlog` mark every held entry `[blocked: …]`, and the instructions that tell roles to skip held entries describe those marks.
@@ -2816,6 +2770,53 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New CLI test: `tumwater backlog` on a repo whose PLANS.md has a three-part series with parts 2 and 3 waiting on earlier parts prints the series heading once. `tumwater backlog --json` on the same repo still lists all three parts in `plans`, with `holds.plans` parallel to them.
 - The existing tests in `test/backlog-render.test.ts` pass unchanged. Their fixtures have no series with two blocked parts.
 - `npm run test` passes.
+
+### Plain terms text, part 8/19: Help and completion prose use the glossary (planned 2026-10-16 by user; requires part 7/19, Plain terms groundwork 4/4 and Plain terms commands 6/6 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches src/cli/help.ts + src/cli/completion.ts + tests; done 2026-10-16)
+
+**Goal.** `tumwater help`, every `tumwater help <command>` topic, the did-you-mean suggestion and the shell completion derived from HELP read in plain terms. They match the output that parts 1/19–7/19 now produce.
+
+**Approach.**
+- Rules for every Plain terms text part:
+  - Rewrite each user-visible string literal in the modules below by plans/terminology.md "Glossary" and "Wording rules", and add a `// vocabulary: plain` header line to each module this part converts.
+  - Machine strings that a later series renames stay as they are, each on a line ending `// vocabulary-ok: <reason>`: event type codes, the `"harness"` event source, persisted state values, `--json` keys, `/api` routes, and the `tumwater(operator):` prefix. The guard's word list starts without `dry` and `telemetry` (the role ids series adds them), so those ids and `--dry-run` need no marker in this series.
+  - Print role ids through `roleLabel` and raw event/result codes through `eventTypeLabel`.
+  - Strings that name a renamed command or config key use its new name.
+  - Rename no identifier, JSON key, event type, config key, command or file.
+- `HELP` (src/cli/help.ts):
+  - The first line "tumwater — autonomous development harness built on pi" → "tumwater — an autonomous development team, built on pi".
+  - Every stanza follows the Glossary and Wording rules:
+
+    | Today | New |
+    | --- | --- |
+    | loop | role |
+    | tick | run |
+    | landing | merge |
+    | fleet | team |
+    | land queue | merge queue |
+    | operator | you |
+    | observer TUI | TUI |
+    | initial prompt | brief |
+    | notebook | notes |
+    | standing prompt | instructions |
+    | drains | finishes current work |
+    | mach ports | macOS port leak |
+
+  - The output samples it quotes match what parts 2/19–7/19 print: `[merging 2m · reviewing]`, `[approved, waiting to merge]`, `merge queue empty`, and the result classes.
+- The commands series already rewrote the lines for `start`, `history <role> <n>`, `--result merged` and the renamed config keys. Keep those lines, and keep the hidden aliases out of help.
+- HELP is one template literal, so a trailing `// vocabulary-ok:` comment cannot sit inside it; it would become help text. Interpolate each machine name that must stay verbatim from a named constant declared on its own line ending `// vocabulary-ok: <reason>`. These are `--json` key lists such as `{ loops, total }` until the scripting series, event-type codes, and the `tumwater(operator):` prefix.
+- Re-wrap to the existing two-column layout: descriptions start at the same column and stanzas keep their shape. `helpStanzas`, `helpTopic`, `suggestCommand` and src/cli/completion.ts all parse it.
+- Add the header to help.ts and completion.ts. Completion's one flagged literal is a shell snippet naming the hidden `tick` alias: mark it, or drop `tick` if the commands series already did.
+
+**Files touched.**
+- src: src/cli/help.ts, src/cli/completion.ts.
+- Tests: test/help.test.ts, test/cli-help.test.ts, test/completion.test.ts, and any suite that snapshots a help topic (grep `helpTopic(`).
+
+**Acceptance criteria.**
+- The guard passes on help.ts with its header. Apart from the interpolated machine names, `tumwater help` and every topic contain no retired word.
+- `tumwater help queue` describes the merge queue and its `[merging …]` and `[approved, waiting to merge]` tags. `tumwater help doctor` lists part 4/19's check names.
+- Completion still offers every visible command and flag.
+- `npm run test` passes.
+
 
 ### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused; done 2026-10-16)
 

@@ -108,10 +108,10 @@ test("HELP still lists the per-command help form itself", () => {
 // daily spend cap cannot be reset past — the help must not promise it zeroes today's spend.
 test("reset-counters help says what is zeroed and that today's budget spend is kept", () => {
   const topic = helpTopic("reset-counters")!;
-  assert.match(topic, /Zero lifetime ticks\/commits\/tokens\/cost/);
+  assert.match(topic, /Zero lifetime runs\/commits\/tokens\/cost/);
   assert.match(topic, /today's budget spend is kept/);
   // The old overpromise must not come back.
-  assert.doesNotMatch(topic, /Zero ticks\/commits\/tokens\/cost/);
+  assert.doesNotMatch(topic, /Zero runs\/commits\/tokens\/cost/);
 });
 
 test("helpTopicForArgs answers a --help flag-only invocation with the command's topic", () => {
@@ -146,4 +146,12 @@ test("run is a hidden alias of start: same topic, no listing", () => {
   assert.equal(helpTopic("run"), helpTopic("start"));
   assert.doesNotMatch(HELP, /tumwater run\b/);
   assert.equal(suggestCommand("run"), null);
+});
+
+test("help text uses plain terms: the merge queue tags and no retired words", () => {
+  const queue = helpTopic("queue")!;
+  assert.match(queue, /\[merging 2m · reviewing\]/);
+  assert.match(queue, /\[approved, waiting to merge\]/);
+  assert.match(queue, /merge queue empty/);
+  assert.doesNotMatch(HELP, /\b(fleet|tick|landing|operator|notebook|drain)/i);
 });

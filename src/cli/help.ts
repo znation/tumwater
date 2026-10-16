@@ -5,7 +5,12 @@
  * topic can never drift out of sync with the full listing. */
 import { suggestClosest } from "../text/suggest.js";
 
-export const HELP = `tumwater — autonomous development harness built on pi
+// vocabulary: plain
+
+/** Machine names HELP quotes verbatim; the scripting series renames them. */
+const SUMMARY_JSON_KEYS = "{ loops, total }"; // vocabulary-ok: --json keys until the scripting series
+
+export const HELP = `tumwater — an autonomous development team, built on pi
 
 Usage:
   tumwater init <prompt...>        Initialize this repo (--file <prompt.md>, --adopt: brief in
@@ -27,29 +32,29 @@ Usage:
                                    --gui also serves the browser dashboard at
                                    http://127.0.0.1:7180 (the \`tumwater gui\`
                                    defaults — see that command for --port and --token);
-                                   --tui also hosts the observer TUI in this terminal
+                                   --tui also hosts the TUI in this terminal
                                    (the \`tumwater tui\` view — quitting it stops the
                                    team like Ctrl+C)
-  tumwater tui                     Dashboard + prompt input (observes a running \`tumwater start\`)
+  tumwater tui                     Dashboard + inbox input (watches a running \`tumwater start\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,
                                    localhost only; --all-interfaces serves the whole
                                    network — without --token there is no auth, anyone
-                                   reaching it can prompt the director)
+                                   reaching it can message the director)
   tumwater status [--json]         One-shot status table (--json prints machine-readable
-                                   fleet state — the GUI's /api/status payload minus the
+                                   team state — the GUI's /api/status payload minus the
                                    serving process's serverBuildSha)
   tumwater report [--days N] [--role <id>] [--json]
-                                   Markdown usage report — tokens/ticks/commits per day (default
-                                   14 days); totals also include landing runs (reviewer + conflict
-                                   resolution); --role <id> scopes the report to one loop's ticks,
-                                   tokens, cost, and commits (landing runs and backlog tallies
+                                   Markdown usage report — tokens/runs/commits per day (default
+                                   14 days); totals also include merge runs (reviewer + conflict
+                                   resolution); --role <id> scopes the report to one role's runs,
+                                   tokens, cost, and commits (merge runs and backlog tallies
                                    omitted); --json prints machine-readable usage data — the
                                    collector's own payload, not the Markdown render
   tumwater report --failures [--days N] [--since <duration>] [--role <id>] [--json]
-                                   Markdown failure digest — tick outcomes, deltas,
-                                   clustered errors, and fleet state changes (default
-                                   14 days); --role <id> scopes the digest to one loop's
+                                   Markdown failure digest — run outcomes, deltas,
+                                   clustered errors, and team state changes (default
+                                   14 days); --role <id> scopes the digest to one role's
                                    rows; --since windows the digest over a trailing
                                    span (capped at 7d)
   tumwater report --failures --since <duration> [--role <id>] [--json]
@@ -57,14 +62,14 @@ Usage:
                                    against the equal-length window before it
   tumwater report --since <duration> [--role <id>] [--json]
                                    Totals over a trailing window (capped at 7d) —
-                                   tokens/ticks/commits/cost since a point in time; totals
-                                   also include landing runs (reviewer + conflict
-                                   resolution); --role <id> scopes the totals to one loop
-                                   (landing runs and backlog tallies omitted); not
+                                   tokens/runs/commits/cost since a point in time; totals
+                                   also include merge runs (reviewer + conflict
+                                   resolution); --role <id> scopes the totals to one role
+                                   (merge runs and backlog tallies omitted); not
                                    combinable with --days
   tumwater doctor [--json] [--reprobe]
                                    Pre-flight check: node, git, repo, config, fallback
-                                   model, pi, locks, build, orphans, mach ports
+                                   model, pi, locks, update, orphans, macOS port leak
                                    (read-only; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict; probes image-input models — --reprobe
@@ -85,7 +90,7 @@ Usage:
                                    disable a role with roles.<id>.enabled false, not by
                                    omitting it
   tumwater logs [-f/--follow] [-n N] [--since <duration>] [--grep <text>] [--type <event type>] [--count] [--json]
-                                   Show (and follow) harness events; --since shows the
+                                   Show (and follow) tumwater events; --since shows the
                                    events of the past window (capped at 7d); --grep shows
                                    only events whose type or rendered line matches,
                                    case-insensitively (-n bounds the scanned window, not
@@ -99,16 +104,16 @@ Usage:
                                    as stored in the log, instead of the rendered text
                                    (with --count, one JSON object mapping type \u2192 count)
   tumwater logs --role <id> [-f/--follow] [-n N] [--prompt]
-                                   Show (and follow) that loop's pi transcript
+                                   Show (and follow) that role's pi transcript
                                    (--prompt also shows each run's exact prompt text)
   tumwater notify --test          Run the configured notify hook once with a synthetic event
                                    so the command can be checked before a real page
   tumwater history [--role <id>] [-n N] [--since <duration>] [--grep <text>]
                    [--result <merged|none|problems>] [--summary] [--json]
-                                   One row per completed tick, newest first — time, loop,
-                                   tick number, result, duration, tokens/cost, and the
+                                   One row per completed run, newest first — time, role,
+                                   run number, result, duration, tokens/cost, and the
                                    summary (or error), each row one line; --since <duration>
-                                   shows the window's ticks instead of the last N (capped at
+                                   shows the window's runs instead of the last N (capped at
                                    7d, like logs --since); --grep <text> keeps only rows whose
                                    line matches, case-insensitively (like logs --grep);
                                    --result <class> narrows to one outcome class — merged
@@ -116,9 +121,9 @@ Usage:
                                    problems (everything else) — composed with --role, --since,
                                    -n, and --grep; --json prints the rows as
                                    machine-readable history data — ts, tokens, and costUsd
-                                   kept raw, the GUI's /api/history payload; --summary prints one line per loop
-                                   counting its ticks by outcome class, with the time of its newest change (and a total line)
-                                   instead of the rows; with --json, { loops, total }
+                                   kept raw, the GUI's /api/history payload; --summary prints one line per role
+                                   counting its runs by outcome class, with the time of its newest change (and a total line)
+                                   instead of the rows; with --json, ${SUMMARY_JSON_KEYS}
   tumwater history <role> [<n>] [--last] [--stat] [--json]
                                    One run's full event trail — a summary header (result, or
                                    in flight, with duration, tokens and cost, and the commit)
@@ -128,25 +133,25 @@ Usage:
                                    shows the role's newest finished run instead of numbering
                                    one; --stat appends the commit's per-file git show --stat
                                    summary; --json prints the collector's payload
-  tumwater diff [--json]           One line per loop holding pending work — the ahead-of-main
+  tumwater diff [--json]           One line per role holding pending work — the ahead-of-main
                                    commit count and uncommitted-file count, no patch; roles
                                    with no worktree or nothing pending are skipped, and a
                                    missing baseline prints the per-role view's degradation
                                    line; --json prints the {mainBranch, roles} roster
   tumwater diff --role <id> [--stat] [--json]
-                                   Show the change that loop holds: its branch's unlanded
+                                   Show the change that role holds: its branch's unmerged
                                    commits (one line each, plus the ahead-of-main patch) and
                                    its worktree's uncommitted edits (the file list, plus the
-                                   patch — staged and unstaged alike); a loop with no worktree
+                                   patch — staged and unstaged alike); a role with no workspace
                                    yet prints \`no worktree for <id>\`; --stat prints each patch's per-file
                                    \`git diff --stat\` summary instead; --json prints the
                                    collector's payload as machine-readable data
-  tumwater queue [--json]          List the durable land queue in execution order (oldest
-                                   first): one line per waiting landing — position, loop, tick
+  tumwater queue [--json]          List the durable merge queue in execution order (oldest
+                                   first): one line per waiting merge — position, role, run
                                    number, short pinned sha, age, and summary — plus a bracketed
-                                   \`[landing 2m · reviewing]\` / \`[vetted, awaiting merge]\`
-                                   label while a running fleet works on it; an empty queue
-                                   prints \`land queue empty\`, and any torn/foreign queue file
+                                   \`[merging 2m · reviewing]\` / \`[approved, waiting to merge]\`
+                                   label while a running team works on it; an empty queue
+                                   prints \`merge queue empty\`, and any torn/foreign queue file
                                    the reader skipped is counted on a trailing line; --json
                                    prints the collector's own {entries, unreadable} document
                                    (raw sha and numeric enqueuedAt, not the render's age)
@@ -162,17 +167,17 @@ Usage:
                                    planned plans and open bugs no hold keeps from being
                                    picked (entries a role is working on stay)
   tumwater bug "<symptom>" [--json]
-                                   File a bug into BUGS.md ## Open as the operator (stamped
-                                   with today's date) and wake the bugfix loop; --json prints
+                                   File a bug into BUGS.md ## Open as you (stamped
+                                   with today's date) and wake the bugfix role; --json prints
                                    the {file, title, stamp} payload as data
   tumwater bug --file <path> [--json]
                                    File a bug from a markdown file ("-" reads stdin): the first
                                    non-blank line is the symptom, the rest is the body kept
-                                   line for line; wakes the bugfix loop
+                                   line for line; wakes the bugfix role
   tumwater bug --release <n> [--json]
                                    Lift the Refused note from the Nth entry in BUGS.md ## Open
                                    (as \`tumwater bug --list\` lists it), commit it on main,
-                                   and wake the bugfix loop; --json prints {file, title}
+                                   and wake the bugfix role; --json prints {file, title}
   tumwater bug --cancel <n> [--json]
                                    Remove the Nth entry in BUGS.md ## Open (as \`tumwater
                                    bug --list\` lists it); no wake; --json prints {file, title}
@@ -202,18 +207,18 @@ Usage:
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
   tumwater plan "<title>" [body...] [--json]
-                                   File a plan request into PLANS.md ## Planned as the operator
-                                   (stamped with today's date; the feature loop fleshes the stub
-                                   out on pickup) and wake the feature loop; --json prints the
+                                   File a plan request into PLANS.md ## Planned as you
+                                   (stamped with today's date; the feature role fleshes the stub
+                                   out on pickup) and wake the feature role; --json prints the
                                    {file, title, stamp} payload as data
   tumwater plan --file <path> [--json]
                                    File a plan request from a markdown file ("-" reads stdin):
                                    the first non-blank line is the title, the rest is the body
-                                   kept line for line; wakes the feature loop
+                                   kept line for line; wakes the feature role
   tumwater plan --release <n> [--json]
                                    Lift the Refused note from the Nth entry in PLANS.md ## Planned
                                    (as \`tumwater plan --list\` lists it), commit it on main,
-                                   and wake the feature loop; --json prints {file, title}
+                                   and wake the feature role; --json prints {file, title}
   tumwater plan --cancel <n> [--json]
                                    Remove the Nth entry in PLANS.md ## Planned (as \`tumwater
                                    plan --list\` lists it); no wake; --json prints {file, title}
@@ -256,7 +261,7 @@ Usage:
                                    entry and moves it to ## Answered with your decision.
                                    --json prints the result as data and must precede <n>:
                                    a --json after the decision is recorded as part of it;
-                                   loops read the answer at their next tick
+                                   roles read the answer at their next run
   tumwater questions answer [--json] <n> --file <path>
                                    Read the decision from the file (- for stdin) with its
                                    lines kept; a ## or ### heading line outside a code fence,
@@ -264,97 +269,97 @@ Usage:
   tumwater questions answer [--json] <n>
                                    With no decision, open the question in $VISUAL/$EDITOR;
                                    only the text above the marker line is recorded
-  tumwater brief [--json]          Show the project's initial prompt and the file that holds it
+  tumwater brief [--json]          Show the project's brief and the file that holds it
   tumwater brief --file <path> [--json]
-                                   Replace the initial prompt with the file's text (- for
+                                   Replace the brief with the file's text (- for
                                    stdin), refused when empty, over the length cap, or
                                    containing a tumwater:prompt marker; commits that one
                                    file on main; no wake
-  tumwater brief --edit [--json]   Open the initial prompt in $VISUAL/$EDITOR and save it as
+  tumwater brief --edit [--json]   Open the brief in $VISUAL/$EDITOR and save it as
                                    --file would; an unchanged buffer writes nothing
-  tumwater role <id> [--json]      Show one loop's standing prompt and resolved settings — its
-                                   find text, the roles.<id>.instructions override, the resolved
+  tumwater role <id> [--json]      Show one role's instructions and resolved
+                                   settings — its built-in instructions, the roles.<id>.instructions override, the resolved
                                    provider/model (naming the budget fallback pair when one is
-                                   configured), the min-tick interval, enabled/paused state, and
-                                   the next tick's assembled prompt (the oldest queued prompt appears in it
-                                   and is NOT consumed — one is dequeued per tick); --json prints the collector's payload
+                                   configured), the min-run interval, enabled/paused state, and
+                                   the next run's assembled prompt (the oldest inbox message appears in it
+                                   and is NOT consumed — one is dequeued per run); --json prints the collector's payload
                                    as machine-readable data
-  tumwater role <id> --clear-notes Clear that loop's notebook
+  tumwater role <id> --clear-notes Clear that role's notes
   tumwater role <id> --notes-file <path>
-                                   Replace that loop's notebook from a file ("-" reads stdin;
-                                   4 KB cap); a tick running at that moment may still
+                                   Replace that role's notes from a file ("-" reads stdin;
+                                   4 KB cap); a run in progress at that moment may still
                                    overwrite it through its own role_notes call
-  tumwater prompt <text...>        Queue a prompt for the director loop
-  tumwater prompt --file <path>    Queue a prompt read from a file ("-" reads stdin)
+  tumwater prompt <text...>        Send a message to the director's inbox
+  tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
-                                   Queue a prompt for that loop's next tick (wakes it)
+                                   Send a message to that role's inbox for its next run (wakes it)
   tumwater prompt --at <duration> <text...>
-                                   Queue a prompt that stays hidden until the duration has
+                                   Send a message that stays hidden until the duration has
                                    passed (45s, 90m, 1h30m, 1d; capped at 90d — listed and
-                                   cancellable while it waits, delivered to the tick only
+                                   cancellable while it waits, delivered to the run only
                                    once due)
   tumwater prompt --attach <path> <text...>
-                                   Queue a prompt with an image attached (repeat up to 4
+                                   Send a message with an image attached (repeat up to 4
                                    images: png, jpg, jpeg, gif, webp, bmp; each at most 5
-                                   MiB — saved beside the queue file for the loop's next
-                                   tick)
-  tumwater prompt --list [--json]  Show queued prompts, numbered, grouped by loop
+                                   MiB — saved beside the inbox file for the role's next
+                                   run)
+  tumwater prompt --list [--json]  Show inbox messages, numbered, grouped by role
                                    (--json prints the {prompts} array as
                                    machine-readable data)
-  tumwater prompt --cancel <n>     Remove the Nth queued prompt as --list shows them; when
-                                   several loops show that N, name one with --role <id>
+  tumwater prompt --cancel <n>     Remove the Nth inbox message as --list shows them; when
+                                   several roles show that N, name one with --role <id>
   tumwater prompt --edit <n> <text...> [--attach <path>]
-                                   Replace the Nth queued prompt's text in place (position,
-                                   enqueue age, and a pending --at deferral are kept; as
+                                   Replace the Nth inbox message's text in place (position,
+                                   age in the inbox, and a pending --at deferral are kept; as
                                    shown by --list); --attach (repeat up to 4) appends images
-                                   after any the prompt already carries; when several loops
+                                   after any the prompt already carries; when several roles
                                    show that N, name one with --role <id>
   tumwater prompt --edit <n> --file <path> [--attach <path>]
-                                   Replace the Nth queued prompt's text with the file's
+                                   Replace the Nth inbox message's text with the file's
                                    contents ("-" reads stdin), kept line for line; position,
                                    age, and a pending --at deferral are kept, and --role <id>
                                    disambiguates like --edit
   tumwater prompt --edit <n> [--attach <path>]
-                                   Open the Nth queued prompt in $VISUAL/$EDITOR and save it
+                                   Open the Nth inbox message in $VISUAL/$EDITOR and save it
                                    as the text form would; an unchanged buffer writes
                                    nothing; --role <id> disambiguates like --edit
   tumwater reset-counters [--role <id>]
-                                   Zero lifetime ticks/commits/tokens/cost (fresh
+                                   Zero lifetime runs/commits/tokens/cost (fresh
                                    observation window; today's budget spend is kept — the
                                    daily cap cannot be reset past)
   tumwater wake [--role <id>] [--in <dur> | --cancel | --list [--json]]
-                                   Wake a backed-off fleet — the named roles (or all) tick
+                                   Wake sleeping roles — the named roles (or all) run
                                    within one poll; --in schedules the wake for later;
                                    --cancel drops pending scheduled wakes;
                                    --list shows every pending scheduled wake, earliest first
                                    (--json for scripts)
-  tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every harness
-                                   worktree; --dry-run lists each candidate with its idle age
+  tumwater reclaim [--dry-run]     Reclaim gitignored build outputs from every
+                                   workspace; --dry-run lists each candidate with its idle age
                                    and ignored-path count and cleans nothing
-  tumwater abort --role <id>       Abort that loop's in-flight tick (work discarded; the loop
-                                   keeps running)
+  tumwater abort --role <id>       Stop that role's run in progress (work discarded; the role
+                                   keeps going)
   tumwater pause [--role <id>] [--for <dur>] [--reason <text>]
-                                   Stop role loops (or just the named loop) starting new
-                                   ticks; --reason states why the whole FLEET is paused (no
+                                   Stop roles (or just the named role) starting new
+                                   runs; --reason states why the whole team is paused (no
                                    per-role reason); --for auto-resumes (capped at 90d)
-  tumwater resume [--role <id>]    Lift a fleet or per-role pause
-  tumwater retire --role <id>      Remove a disabled loop's worktree, branch, and per-role
-                                   state (landing ref, pause marker); --force overrides the
+  tumwater resume [--role <id>]    Lift a team or per-role pause
+  tumwater retire --role <id>      Remove a disabled role's workspace, branch, and per-role
+                                   state (merge ref, pause marker); --force overrides the
                                    safety rails; --json prints what was removed;
                                    --dry-run lists what would be removed and any objections,
                                    changing nothing
   tumwater stop [--in <duration> | --cancel]
-                                   Stop a running fleet (drains in-flight ticks, like Ctrl+C);
+                                   Stop a running team (finishes current work, like Ctrl+C);
                                    --in schedules the stop, --cancel drops it
   tumwater completion <bash|zsh>   Print a shell completion script (eval "$(tumwater completion zsh)" in your rc)
-  tumwater completion --roles      Print the loop ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
+  tumwater completion --roles      Print the role ids --role completes (this repo's; the catalog when tumwater.json is unreadable)
   tumwater completion --config-keys  Print the keys config get/set/unset complete (this repo's role keys; the catalog's when tumwater.json is unreadable)
   tumwater help [<command>]        Show all commands, or one command's usage
   tumwater version                 Print the version
 
-The harness runs inside a git repo. Each role loop owns a persistent worktree and branch
-under .tumwater/, does one task per tick with pi, commits, and merges to main. Loops back
-off while the project is quiet and wake when main moves. Everything is local: no remotes.
+tumwater runs inside a git repo. Each role owns a persistent workspace and branch
+under .tumwater/, does one task per run with pi, commits, and merges to main. Roles
+sleep while there is nothing to do and wake when main moves. Everything is local: no remotes.
 `;
 
 /** The listed command closest to a mistyped one, or null when nothing is close enough to

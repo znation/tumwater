@@ -294,7 +294,7 @@ test("stop takes only --in and --cancel and appears in the help table", async ()
 
   const help = await cli(repo, "help");
   assert.equal(help.code, 0);
-  assert.match(help.stdout, /tumwater stop \[--in <duration> \| --cancel\]\s+Stop a running fleet/);
+  assert.match(help.stdout, /tumwater stop \[--in <duration> \| --cancel\]\s+Stop a running team/);
 });
 
 // --- config: print the effective merged config as JSON ---
