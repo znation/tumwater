@@ -14,7 +14,14 @@ import {
 import { changeBaseRev, fileContentAt } from "../git/git.js";
 import { allLiveClaims } from "../loop/loop-state.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
-import { entryHoldAgainst, holdMark, plannedPartKeys } from "./backlog-eligibility.js";
+import {
+  entryHoldAgainst,
+  holdMark,
+  plannedPartKeys,
+  seriesPart,
+  type EntryHold,
+  type PartRef,
+} from "./backlog-eligibility.js";
 import { plannedPlanEntries } from "./backlog.js";
 
 /** Deterministic structural checks on the backlog markdown (PLANS.md, BUGS.md, QUESTIONS.md) —
@@ -402,6 +409,118 @@ interface IndexEntry {
 /** Per-file cache of the parsed actionable entries (indexSectionCache). */
 const indexSectionCache = new Map<string, StatKeyedValue<IndexEntry[]>>();
 
+/** One actionable entry as the index renders it into a line before series-collapsing: the
+ * 1-based range, the verbatim heading, its eligibility hold, and the live claimer (if any).
+ * collapseBlockedSeries groups these; renderIndexRow turns one into a buffer line. */
+interface IndexRow {
+  start: number;
+  end: number;
+  title: string;
+  hold: EntryHold;
+  mark: string;
+  claimer: string | undefined;
+}
+
+/** One `IndexRow` as an ordinary index line: range, truncated stamp-free title, hold mark, and
+ * the in-flight suffix when a live claim names it. The collapsed-series line is built by
+ * collapseBlockedSeries, returned alongside these. */
+function renderIndexRow(row: IndexRow): string {
+  return `- ${row.start}-${row.end}: ${indexTitle(row.title)}${row.mark}${row.claimer ? ` [in flight by ${row.claimer}]` : ""}`;
+}
+
+/** True when `row` is a candidate for series-collapsing: it is a series part held only by an
+ * unlanded prerequisite (`{ blockedBy }`, not a Refused/needs-review/needs-replan note) and no
+ * live claim names it. Returns the row's series part when it collapses, else null. */
+function collapsibleSeriesPart(row: IndexRow): PartRef | null {
+  if (row.claimer !== undefined) return null;
+  if (typeof row.hold !== "object" || row.hold === null) return null;
+  return seriesPart(row.title);
+}
+
+/** The collapsed part list for a series' blocked parts: each part as `i/n`, with a run of
+ * consecutive numeric parts (same total, adjacent values) joined into one en-dash range
+ * (`2/5–5/5`) and each lettered part (`2a`) listed singly. */
+function partsLabel(rows: readonly IndexRow[]): string {
+  const refs = rows.map((r) => seriesPart(r.title)!);
+  const pieces: string[] = [];
+  let start: PartRef | null = null;
+  let prev: PartRef | null = null;
+  const numeric = (p: string): boolean => /^\d+$/.test(p);
+  const flush = (): void => {
+    if (start === null || prev === null) return;
+    pieces.push(
+      start.part === prev.part
+        ? `${start.part}/${start.of}`
+        : `${start.part}/${start.of}–${prev.part}/${prev.of}`,
+    );
+    start = null;
+    prev = null;
+  };
+  for (const ref of refs) {
+    if (
+      prev !== null &&
+      numeric(ref.part) &&
+      numeric(prev.part) &&
+      Number(ref.part) === Number(prev.part) + 1 &&
+      ref.of === prev.of
+    ) {
+      prev = ref;
+      continue;
+    }
+    flush();
+    start = ref;
+    prev = ref;
+  }
+  flush();
+  return pieces.join(", ");
+}
+
+/** Renders `rows` to index lines, collapsing a multi-part series' blocked parts to one line
+ * per series (this plan, "Compact backlog index, part 1/1"): a long series' chain of held
+ * parts would otherwise fill every loop prompt with lines no role can act on. An entry
+ * collapses when it is a series part held only by an unlanded prerequisite and no live claim
+ * names it; a series with two or more such parts renders as one line at the position of its
+ * first collapsed part, spanning from that part's start to the last's end, with the part list
+ * (`2/4–4/4`) and a `[blocked: each waits on an earlier part]` mark. A series with a single
+ * blocked part, an eligible part, a note-held (Refused/needs-review/needs-replan) part and a
+ * claimed part keep their ordinary lines, so the eligibility rules the feature role's charter
+ * teaches are unchanged; the collapsed mark keeps the `[blocked: …]` prefix it already skips. */
+function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
+  // Group the collapsible rows by series, keyed on the lowercased series name.
+  const bySeries = new Map<string, IndexRow[]>();
+  for (const row of rows) {
+    const part = collapsibleSeriesPart(row);
+    if (part === null) continue;
+    const key = part.series.toLowerCase();
+    const list = bySeries.get(key) ?? [];
+    list.push(row);
+    bySeries.set(key, list);
+  }
+  // Only a series with two or more blocked parts collapses; a lone blocked part keeps its
+  // exact `requires` line.
+  const collapse = new Set<string>();
+  for (const [key, list] of bySeries) if (list.length >= 2) collapse.add(key);
+  const lines: string[] = [];
+  const skipped = new Set<IndexRow>();
+  for (const row of rows) {
+    if (skipped.has(row)) continue;
+    const part = collapsibleSeriesPart(row);
+    if (part !== null && collapse.has(part.series.toLowerCase())) {
+      const group = bySeries.get(part.series.toLowerCase())!;
+      const first = group[0]!;
+      const last = group[group.length - 1]!;
+      lines.push(
+        `- ${first.start}-${last.end}: ${indexTitle(part.series)}, ${group.length} blocked parts ` +
+          `(${partsLabel(group)}) [blocked: each waits on an earlier part]`,
+      );
+      for (const g of group) skipped.add(g);
+      continue;
+    }
+    lines.push(renderIndexRow(row));
+  }
+  return lines;
+}
+
 /** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md
  * ## Open, QUESTIONS.md ## Open) with its 1-based line range, rendered from the primary
  * checkout `root`. Replaces the per-tick `grep -n '^##'` heading map, whose pattern also matched
@@ -448,17 +567,27 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     );
     if (entries === null || entries.length === 0) continue;
     listed.push(`${file} ## ${section}`);
-    for (const e of entries) {
-      const mark = holdMark(entryHoldAgainst({ title: e.title, body: e.body }, plannedParts));
+    // Build the rows once per section, then collapse a PLANS.md series' blocked parts (this
+    // plan) — BUGS.md and QUESTIONS.md sections keep every entry on its own line.
+    const rows: IndexRow[] = entries.map((e) => {
+      const hold = entryHoldAgainst({ title: e.title, body: e.body }, plannedParts);
       const key = collapseWhitespace(stripEntryStamp(e.title)).toLowerCase();
-      const claimer = claimed.get(key);
-      listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}${mark}${claimer ? ` [in flight by ${claimer}]` : ""}`);
-    }
+      return {
+        start: e.start,
+        end: e.end,
+        title: e.title,
+        hold,
+        mark: holdMark(hold),
+        claimer: claimed.get(key),
+      };
+    });
+    const isPlans = file === "PLANS.md" && section === "Planned";
+    listed.push(...(isPlans ? collapseBlockedSeries(rows) : rows.map(renderIndexRow)));
   }
   if (listed.length === 0) return undefined;
   return `Actionable backlog — each entry with the 1-based line range it occupies in its file.
 Read the entries you need by those ranges; the files' closed sections make a full heading map
-grow with every tick.
+grow with every tick. Blocked parts of a multi-part series are shown as one line per series.
 <backlog-index>
 ${listed.join("\n")}
 </backlog-index>`;

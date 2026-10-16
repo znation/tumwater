@@ -39,42 +39,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `alertLines`/`toneLine`/`ALERT_MARKS` live in `src/ui/status-render.ts`, exported, and `tui-frame.ts` re-imports them; the TUI attention-line/`alertLines` tests pass unchanged, proving the move is behavior-neutral.
 - New test in `test/status-render.test.ts`: a fixture snapshot with a spent budget and an open question renders the corresponding banner line(s), and the alert-free fixture keeps the old output; `npm run test` passes.
 
-### Compact backlog index, part 1/1: Show the blocked parts of a series as one line in the backlog index (planned 2026-10-16 by user; must land before the Plain terms series, whose first parts require it; touches src/backlog/backlog-structure.ts and test/backlog-structure.test.ts)
-
-**Goal.** Every role's prompt carries the `<backlog-index>` block (`renderBacklogIndexBlock` in src/backlog/backlog-structure.ts, rendered by src/tick/tick-prompt.ts). Today it lists every `## Planned` entry on its own line, including entries held by an unlanded prerequisite. A long multi-part series therefore fills every prompt with lines no role can act on. The Plain terms series filed on 2026-10-16 has 116 parts, which grows the block from about 600 to about 22,000 characters. Each model turn re-reads that. After this change, a series' blocked parts render as one line per series, and the block stays roughly as large as the number of series plus the takeable entries.
-
-**Approach.** Render only. Nothing changes about which entries are eligible: `eligibleEntries`, `entryHoldAgainst`, `holdMark` and the claim allocator are untouched.
-- In `renderBacklogIndexBlock`, while rendering the PLANS.md `## Planned` section, collapse an entry when all three hold:
-  - its hold is `{ blockedBy }`, meaning an unlanded prerequisite;
-  - its heading is a series part (`seriesPart(e.title)` from src/backlog/backlog-eligibility.ts is non-null);
-  - no live claim names it (the `claimed.get(key)` lookup the loop already does).
-- Group the collapsed entries by series, keyed by the lowercased series name as `seriesPart` returns it. Only a series with **two or more** such entries collapses; a series with one keeps its ordinary line, so a single blocked part still shows its exact `requires` detail.
-- A collapsed series renders one line, at the position of its first collapsed entry:
-  `- <firstStart>-<lastEnd>: <Series>, <N> blocked parts (<parts>) [blocked: each waits on an earlier part]`
-  - `<firstStart>-<lastEnd>` spans from the first collapsed entry's start to the last one's end, so a role that wants the series' text can read it by range.
-  - `<parts>` lists the collapsed part tokens in order, joining consecutive numeric parts into an en-dash range: `2/5–5/5`, `2/5, 4/5–5/5`. Lettered parts such as `2a` are listed singly.
-  - The mark keeps the `[blocked: …]` prefix the feature role's charter already tells it to skip (src/roles/role-catalog.ts: "Skip entries the index block marks `[blocked: …]`"), so no prompt text changes.
-- Never collapse an entry that:
-  - is eligible;
-  - carries a `[refused]`, `[needs review]` or `[needs replan]` mark (roles act on those);
-  - is claimed (`[in flight by …]`);
-  - lives in BUGS.md or QUESTIONS.md.
-  These keep their lines exactly as today.
-- Add one sentence to the block's lead-in text: blocked parts of a multi-part series are shown as one line per series, spanning the line range of their entries. The existing lead-in otherwise stays.
-- Put the grouping in a small pure helper in the same module, for example `collapseBlockedSeries(rows)`, over the already-computed `{ start, end, title, mark, claimer, hold }` rows. Keep it unexported so test/exports.test.ts needs no change. Its doc comment names this plan.
-
-**Files touched.** src/backlog/backlog-structure.ts, test/backlog-structure.test.ts. Reads (does not edit): src/backlog/backlog-eligibility.ts (`seriesPart`, `holdMark`), src/roles/role-catalog.ts (the feature role's skip rule).
-
-**Acceptance criteria.**
-- New tests in test/backlog-structure.test.ts:
-  - Series `S` with part 1/4 eligible and parts 2/4–4/4 each requiring the previous part renders `- <a>-<b>: S, part 1/4: …` followed by one line `- <c>-<d>: S, 3 blocked parts (2/4–4/4) [blocked: each waits on an earlier part]`, where `<c>` is part 2's start and `<d>` is part 4's end.
-  - Non-contiguous blocked parts render as `(2/5, 4/5–5/5)`.
-  - A blocked part carrying a Refused note keeps its own `[refused]` line, and a claimed blocked part keeps its `[in flight by …]` line. Neither is counted in the collapsed line.
-  - A BUGS.md entry blocked by a plan keeps its own line.
-- The existing test "renderBacklogIndexBlock marks a held entry as blocked, refused or needing review" passes unchanged: its series has a single blocked part.
-- Rendered over this repo's PLANS.md as filed on 2026-10-16 (116 Plain terms parts), the block is under 4,000 characters. Check this by hand; it is not a committed test.
-- `npm run test` passes.
-
 ### Plain terms groundwork, part 1/4: Write docs/glossary.md with every older name mapped to its plain term (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Glossary"; touches docs/glossary.md)
 
 **Goal.** One page a newcomer, a reviewer and an agent can all check user-visible text against: the plain terms with their meanings, the internal words the code keeps, and a translation table from every older word and machine name to its new one, so readers of history, old logs and old scripts can follow.
@@ -4153,6 +4117,42 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `tumwater role --json` carries `usage` with `tokens`/`costUsd`/`notionalCostUsd` when any is nonzero, and omits the field entirely otherwise.
 - The GUI loop drawer shows the same `Spend` row for the opened loop.
 - The sum is derived from the same single `readEvents` call `recentOutcomes` uses (one event-log read per `rolePayload`), so the two per-loop facts cover the same window; a torn `tick_end` line contributes nothing. `npm run test` passes with old role-view/role-render goldens unchanged for the no-usage case.
+
+### Compact backlog index, part 1/1: Show the blocked parts of a series as one line in the backlog index (planned 2026-10-16 by user; must land before the Plain terms series, whose first parts require it; touches src/backlog/backlog-structure.ts and test/backlog-structure.test.ts) — done 2026-10-16
+
+**Goal.** Every role's prompt carries the `<backlog-index>` block (`renderBacklogIndexBlock` in src/backlog/backlog-structure.ts, rendered by src/tick/tick-prompt.ts). Today it lists every `## Planned` entry on its own line, including entries held by an unlanded prerequisite. A long multi-part series therefore fills every prompt with lines no role can act on. The Plain terms series filed on 2026-10-16 has 116 parts, which grows the block from about 600 to about 22,000 characters. Each model turn re-reads that. After this change, a series' blocked parts render as one line per series, and the block stays roughly as large as the number of series plus the takeable entries.
+
+**Approach.** Render only. Nothing changes about which entries are eligible: `eligibleEntries`, `entryHoldAgainst`, `holdMark` and the claim allocator are untouched.
+- In `renderBacklogIndexBlock`, while rendering the PLANS.md `## Planned` section, collapse an entry when all three hold:
+  - its hold is `{ blockedBy }`, meaning an unlanded prerequisite;
+  - its heading is a series part (`seriesPart(e.title)` from src/backlog/backlog-eligibility.ts is non-null);
+  - no live claim names it (the `claimed.get(key)` lookup the loop already does).
+- Group the collapsed entries by series, keyed by the lowercased series name as `seriesPart` returns it. Only a series with **two or more** such entries collapses; a series with one keeps its ordinary line, so a single blocked part still shows its exact `requires` detail.
+- A collapsed series renders one line, at the position of its first collapsed entry:
+  `- <firstStart>-<lastEnd>: <Series>, <N> blocked parts (<parts>) [blocked: each waits on an earlier part]`
+  - `<firstStart>-<lastEnd>` spans from the first collapsed entry's start to the last one's end, so a role that wants the series' text can read it by range.
+  - `<parts>` lists the collapsed part tokens in order, joining consecutive numeric parts into an en-dash range: `2/5–5/5`, `2/5, 4/5–5/5`. Lettered parts such as `2a` are listed singly.
+  - The mark keeps the `[blocked: …]` prefix the feature role's charter already tells it to skip (src/roles/role-catalog.ts: "Skip entries the index block marks `[blocked: …]`"), so no prompt text changes.
+- Never collapse an entry that:
+  - is eligible;
+  - carries a `[refused]`, `[needs review]` or `[needs replan]` mark (roles act on those);
+  - is claimed (`[in flight by …]`);
+  - lives in BUGS.md or QUESTIONS.md.
+  These keep their lines exactly as today.
+- Add one sentence to the block's lead-in text: blocked parts of a multi-part series are shown as one line per series, spanning the line range of their entries. The existing lead-in otherwise stays.
+- Put the grouping in a small pure helper in the same module, for example `collapseBlockedSeries(rows)`, over the already-computed `{ start, end, title, mark, claimer, hold }` rows. Keep it unexported so test/exports.test.ts needs no change. Its doc comment names this plan.
+
+**Files touched.** src/backlog/backlog-structure.ts, test/backlog-structure.test.ts. Reads (does not edit): src/backlog/backlog-eligibility.ts (`seriesPart`, `holdMark`), src/roles/role-catalog.ts (the feature role's skip rule).
+
+**Acceptance criteria.**
+- New tests in test/backlog-structure.test.ts:
+  - Series `S` with part 1/4 eligible and parts 2/4–4/4 each requiring the previous part renders `- <a>-<b>: S, part 1/4: …` followed by one line `- <c>-<d>: S, 3 blocked parts (2/4–4/4) [blocked: each waits on an earlier part]`, where `<c>` is part 2's start and `<d>` is part 4's end.
+  - Non-contiguous blocked parts render as `(2/5, 4/5–5/5)`.
+  - A blocked part carrying a Refused note keeps its own `[refused]` line, and a claimed blocked part keeps its `[in flight by …]` line. Neither is counted in the collapsed line.
+  - A BUGS.md entry blocked by a plan keeps its own line.
+- The existing test "renderBacklogIndexBlock marks a held entry as blocked, refused or needing review" passes unchanged: its series has a single blocked part.
+- Rendered over this repo's PLANS.md as filed on 2026-10-16 (116 Plain terms parts), the block is under 4,000 characters. Check this by hand; it is not a committed test.
+- `npm run test` passes.
 
 ### The CLI `tumwater status` per-loop row shows when an individually timed-paused loop resumes, mirroring the GUI loop-list's `· resumes in <time>` (planned 2026-10-16 by plan; independent of every other Planned entry — the three eligible waiting entries touch `gui-endpoints.ts`'s `handleHistory` + `gui-client-history.ts` (history summary), `gui-client-fleet.ts` (fleet tally), and `gui-client-drawer.ts` (drawer configuration), and this touches none of them: only `src/ui/status-model.ts` and `test/status-model.test.ts`. The GUI twin it mirrors, `gui-client-loops.ts`'s `phaseDetail`, is read, not edited; the browser view-model `gui-client-model.ts`'s `phaseInfo` lands in the same change (a review finding — without it the new phase string reclassified to an idle "other" and the GUI's countdown guard went dead), with their tests; no `src/gui`, `src/cli`, `src/loop`, `src/tick`, `src/ui/status-*`'s render/payload, or `src/ui/tui` edit) — done 2026-10-16
 

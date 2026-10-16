@@ -539,6 +539,125 @@ test("renderBacklogIndexBlock marks an entry a parallel-work instance has claime
   assert.match(block, /- 3-4: Volume slider \[in flight by feature-2\]/);
 });
 
+test("renderBacklogIndexBlock collapses a multi-part series' blocked parts to one line", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### S, part 1/4: ready (planned 2026-10-01)",
+      "body",
+      "### S, part 2/4: b (planned 2026-10-02; requires S 1/4 landed)",
+      "body",
+      "### S, part 3/4: c (planned 2026-10-03; requires S 2/4 landed)",
+      "body",
+      "### S, part 4/4: d (planned 2026-10-04; requires S 3/4 landed)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  // part 1/4 stays eligible on its own line; the three blocked parts collapse to one line that
+  // spans from part 2's start (5) to part 4's end (10).
+  assert.match(block, /- 3-4: S, part 1\/4: ready\n/);
+  assert.match(block, /- 5-10: S, 3 blocked parts \(2\/4–4\/4\) \[blocked: each waits on an earlier part\]/);
+  assert.doesNotMatch(block, /part 2\/4: b/);
+  assert.doesNotMatch(block, /part 3\/4: c/);
+  assert.doesNotMatch(block, /part 4\/4: d/);
+});
+
+test("renderBacklogIndexBlock joins non-contiguous blocked parts into separate ranges", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### S, part 1/5: a (planned 2026-10-01)",
+      "body",
+      "### S, part 2/5: b (planned 2026-10-02; requires S 1/5 landed)",
+      "body",
+      "### S, part 3/5: c (planned 2026-10-03)",
+      "body",
+      "### S, part 4/5: d (planned 2026-10-04; requires S 3/5 landed)",
+      "body",
+      "### S, part 5/5: e (planned 2026-10-05; requires S 4/5 landed)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /- 3-4: S, part 1\/5: a\n/);
+  assert.match(block, /- 7-8: S, part 3\/5: c\n/);
+  assert.match(block, /- 5-12: S, 3 blocked parts \(2\/5, 4\/5–5\/5\) \[blocked: each waits on an earlier part\]/);
+});
+
+test("renderBacklogIndexBlock keeps a refused and a claimed blocked part out of the collapsed line", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    [
+      "# Plans",
+      "## Planned",
+      "### T, part 1/6: a (planned 2026-10-01)",
+      "body",
+      "### T, part 2/6: b (planned 2026-10-02; requires T 1/6 landed)",
+      "**Refused 2026-10-07 by feature: no**",
+      "### T, part 3/6: c (planned 2026-10-03; requires T 2/6 landed)",
+      "body",
+      "### T, part 4/6: d (planned 2026-10-04; requires T 3/6 landed)",
+      "body",
+      "### T, part 5/6: e (planned 2026-10-05; requires T 4/6 landed)",
+      "body",
+      "### T, part 6/6: f (planned 2026-10-06; requires T 5/6 landed)",
+      "body",
+      "## Done",
+      "_None._",
+    ].join("\n"),
+  );
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n_None yet._\n## Fixed\n_None._\n");
+  // The parallel-work instance `feature` owns part 3/6, so it must keep its own in-flight line
+  // instead of being swallowed by the collapsed series.
+  const owner = {
+    ...loadLoopState(dir, "feature"),
+    claim: { file: "PLANS.md", key: "t, part 3/6: c", title: "T, part 3/6: c", at: 1, source: "assigned" } as const,
+  };
+  saveLoopState(dir, owner);
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /- 3-4: T, part 1\/6: a\n/);
+  // The refused part and the claimed part keep their own lines and are not counted.
+  assert.match(block, /- 5-6: T, part 2\/6: b \[refused\]/);
+  assert.match(block, /- 7-8: T, part 3\/6: c \[blocked: requires T 2\/6\] \[in flight by feature\]/);
+  assert.match(block, /- 9-14: T, 3 blocked parts \(4\/6–6\/6\) \[blocked: each waits on an earlier part\]/);
+});
+
+test("renderBacklogIndexBlock does not collapse a BUGS.md entry blocked by a plan", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n### Base, part 1/2: x (planned 2026-10-01)\nbody\n## Done\n_None._\n",
+  );
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    [
+      "# Bugs",
+      "## Open",
+      "### SomeBug, part 1/2: b (reported 2026-10-02; requires Base 1/2 landed)",
+      "repro",
+      "### SomeBug, part 2/2: c (reported 2026-10-03; requires Base 1/2 landed)",
+      "repro",
+      "## Fixed",
+      "_None._",
+    ].join("\n"),
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /BUGS\.md ## Open\n- 3-4: SomeBug, part 1\/2: b \[blocked: requires Base 1\/2\]/);
+  assert.match(block, /- 5-6: SomeBug, part 2\/2: c \[blocked: requires Base 1\/2\]/);
+});
+
 test("renderBacklogIndexBlock returns undefined when the actionable sections are empty", () => {
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n");
