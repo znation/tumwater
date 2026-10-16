@@ -2822,6 +2822,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater backlog` prints each blocked series as one heading with no body, so the plans a role can pick are not buried under thousands of lines of blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `renderBacklogMarkdown` in `src/backlog/backlog-render.ts` and reuses `groupBlockedSeries`/`partsLabel` from `src/backlog/backlog-structure.ts` unchanged; the dashboard plan edits only `src/ui/`)
+
+**Goal.** `tumwater backlog` (`cmdBacklog` in `src/cli/cli-query-commands.ts`) prints every `## Planned` entry with its full body. In this repo, more than 80 parts of the Plain terms series are blocked, each waiting on an earlier part, and together they fill thousands of lines. `plan --list` (`listAndAnnounce` in `src/backlog/backlog-cli.ts`) and the prompt's backlog index (`collapseBlockedSeries`) already show such a series as one line through `groupBlockedSeries`. `tumwater backlog` should do the same. Each series with two or more blocked parts becomes one heading with no body, placed where the first of those parts would have been. Every other entry prints as it does today. `--json` is unchanged, so scripts still get every entry.
+
+**Approach.**
+1. `src/backlog/backlog-render.ts`: import `groupBlockedSeries` and `partsLabel` from `./backlog-structure.js` (both are already exported). Add a `renderPlannedSection(entries, holds, inProgress)` beside `renderSection`. With no `holds`, it returns `renderSection("Planned features", entries, undefined, inProgress)`, so output is identical to today. With `holds`, it builds rows `{ index: i, title: entry.title, hold: holds[i] ?? null, claimer: inProgress?.[i] ?? undefined }` and maps `groupBlockedSeries(rows)`:
+   - A `row` group prints exactly what `renderSection`'s loop prints for entry `index`: the heading with `holdMark` and `inProgressMark`, a blank line, the body indented two spaces, and a blank line. Move that per-entry block into a small `renderEntry(entry, hold, runner)` helper that both functions call, so the two cannot drift.
+   - A `series` group prints `### ${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`, followed by one blank line. It has no body. The wording is the same as `plan --list`'s line.
+   - When at least one series group was printed, add one line after the section's entries: `_(each blocked series is one heading; \`tumwater plan --show <n>\` prints a part, \`tumwater backlog --json\` lists every entry)_`, followed by a blank line.
+   - An empty `entries` still prints `_(none)_`.
+2. `renderBacklogMarkdown` calls `renderPlannedSection` for the Planned section. The Open bugs and Open questions sections keep `renderSection`. Bugs are not series in practice, and `plan --list` groups only plans too.
+3. `cmdBacklog` needs no change. Its view already carries `holds` and `inProgress`. `--ready` removes every held entry through `readyBacklog` before rendering, so nothing can group in that mode, and its "held entries hidden" count is unchanged.
+4. Help and docs: in `src/cli/help.ts`, add one clause to the `tumwater backlog [--ready] [--json]` stanza: "a series with two or more blocked parts prints as one heading (--json still lists every entry)". Add the same clause to the `tumwater backlog` text in `docs/cli.md`'s "Check state" row.
+
+**Files touched.** `src/backlog/backlog-render.ts`, `src/cli/help.ts`, `docs/cli.md`, `test/backlog-render.test.ts`.
+
+**Acceptance criteria.**
+- New test in `test/backlog-render.test.ts`: "renderBacklogMarkdown prints a blocked series as one heading". The plans are `[Ready, S 1/3, S 2/3, S 3/3, Other]`, with holds `[null, null, {blockedBy:["S 1/3"]}, {blockedBy:["S 2/3"]}, null]`. Assert that the output holds the full headings and bodies for Ready, `S, part 1/3`, and Other; holds `### S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]` once, after part 1/3's body and before Other; leaves out the bodies of parts 2/3 and 3/3; and ends the section with the `_(each blocked series is one heading; …)_` line.
+- The same test checks that a part named by `inProgress` stays a full entry carrying its `[working on it: …]` mark. A lone blocked part, and a series whose second part is `"refused"`, also keep full entries, and with no series grouped there is no footer line.
+- `renderBacklogMarkdown(payload)` with no `holds` returns the same string as before this change. The existing "no holds leaves the document unchanged" test still passes.
+- New CLI test: `tumwater backlog` on a repo whose PLANS.md has a three-part series with parts 2 and 3 waiting on earlier parts prints the series heading once. `tumwater backlog --json` on the same repo still lists all three parts in `plans`, with `holds.plans` parallel to them.
+- The existing tests in `test/backlog-render.test.ts` pass unchanged. Their fixtures have no series with two blocked parts.
+- `npm run test` passes.
+
 ## Done
 
 ### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused; done 2026-10-16)
