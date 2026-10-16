@@ -253,6 +253,10 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** The `--ready` flag spec, accepted by `backlog`: keep only the entries no hold keeps from
+ * being picked. Value-less, like STAT_FLAG. */
+export const READY_FLAG: FlagSpec = { names: ["--ready"] };
+
 /** Force re-probing of every claimed image-input model in `tumwater doctor` (part 2/5),
  * bypassing the 7-day cache: `--reprobe` (a value-less flag like JSON_FLAG). */
 export const REPROBE_FLAG: FlagSpec = { names: ["--reprobe"] };

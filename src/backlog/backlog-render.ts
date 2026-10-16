@@ -62,3 +62,27 @@ export function renderBacklogMarkdown(payload: BacklogView): string {
   lines.push(...renderSection("Open questions", payload.questions));
   return lines.join("\n").trimEnd();
 }
+
+/** The view with only the plans and bugs no hold keeps from being picked: entry `i` stays when
+ * `holds.plans[i]` / `holds.bugs[i]` is null, and `holds` and `inProgress` are filtered by the
+ * same indexes so the arrays stay parallel. An entry a role is working on has no hold, so it
+ * stays with its in-progress mark. Questions carry no holds and pass through; a view without
+ * `holds` is returned unchanged. */
+export function readyBacklog(view: BacklogView): BacklogView {
+  const holds = view.holds;
+  if (!holds) return view;
+  const keep = (hs: readonly EntryHold[], n: number): number[] =>
+    Array.from({ length: n }, (_, i) => i).filter((i) => (hs[i] ?? null) === null);
+  const plan = keep(holds.plans, view.plans.length);
+  const bug = keep(holds.bugs, view.bugs.length);
+  const pick = <T>(xs: readonly T[] | undefined, idx: number[]): T[] => idx.map((i) => xs?.[i] as T);
+  return {
+    ...view,
+    plans: pick(view.plans, plan),
+    bugs: pick(view.bugs, bug),
+    holds: { plans: pick(holds.plans, plan), bugs: pick(holds.bugs, bug) },
+    ...(view.inProgress
+      ? { inProgress: { plans: pick(view.inProgress.plans, plan), bugs: pick(view.inProgress.bugs, bug) } }
+      : {}),
+  };
+}

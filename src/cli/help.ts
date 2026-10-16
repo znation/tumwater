@@ -150,12 +150,15 @@ Usage:
                                    the reader skipped is counted on a trailing line; --json
                                    prints the collector's own {entries, unreadable} document
                                    (raw sha and numeric enqueuedAt, not the render's age)
-  tumwater backlog [--json]        Show planned features, open bugs, and open questions (the
+  tumwater backlog [--ready] [--json]
+                                   Show planned features, open bugs, and open questions (the
                                    dashboards' backlog view); --json prints machine-readable
                                    backlog data — the three entry arrays as {title, body}, the
                                    same data the Markdown view renders; an entry a role is
                                    working on carries \`[working on it: feature #2]\` (--json:
-                                   an \`inProgress\` key parallel to the arrays)
+                                   an \`inProgress\` key parallel to the arrays); --ready keeps only the
+                                   planned plans and open bugs no hold keeps from being
+                                   picked (entries a role is working on stay)
   tumwater bug "<symptom>" [--json]
                                    File a bug into BUGS.md ## Open as the operator (stamped
                                    with today's date) and wake the bugfix loop; --json prints

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { backlogPayload } from "../src/backlog/backlog.js";
-import { renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
+import { readyBacklog, renderBacklogMarkdown } from "../src/backlog/backlog-render.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { runCli } from "./helpers/cli-harness.js";
@@ -101,11 +101,11 @@ test("tumwater backlog prints the backlog and rejects flags; works outside a rea
   assert.match(ok.out, /### Logs rotate too often \(reported 2026-09-25\)/);
   assert.match(ok.out, /## Planned features\n\n_\(none\)_/);
 
-  // --json is the command's only flag: an unknown one still fails fast like every other
-  // command, whether alone or beside the valid one.
+  // --json and --ready are the command's only flags: an unknown one still fails fast like
+  // every other command, whether alone or beside a valid one.
   const bad = await runCli(root, "backlog", "--nope");
   assert.notEqual(bad.code, 0);
-  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json\)/);
+  assert.match(bad.out, /unknown argument: --nope \(valid flags for tumwater backlog: --json, --ready\)/);
   const badPair = await runCli(root, "backlog", "--json", "--nope");
   assert.notEqual(badPair.code, 0);
   assert.match(badPair.out, /unknown argument: --nope/);
@@ -245,7 +245,7 @@ test("tumwater backlog marks holds in Markdown and shapes holds arrays in --json
 
 test("tumwater help lists the backlog command", async () => {
   const help = await runCli(makeRepo(), "help");
-  assert.match(help.out, /^  tumwater backlog \[--json\] {8}Show planned features, open bugs/m);
+  assert.match(help.out, /^  tumwater backlog \[--ready\] \[--json\]\n {35}Show planned features, open bugs/m);
 });
 
 test("renderBacklogMarkdown puts the working-on-it mark after the hold mark", () => {
@@ -280,4 +280,50 @@ test("tumwater backlog shows the working-on-it mark and --json carries inProgres
   assert.equal(doc.inProgress.plans.length, doc.plans.length);
   assert.equal(doc.inProgress.bugs.length, doc.bugs.length);
   assert.deepEqual(doc.inProgress.plans.filter((x) => x !== null), ["feature-2"]);
+});
+
+test("readyBacklog keeps only unheld entries and their parallel arrays", () => {
+  const e = (title: string) => ({ title, body: "b" });
+  const view = {
+    plans: [e("A"), e("B"), e("C")],
+    bugs: [e("X"), e("Y")],
+    questions: [e("Q")],
+    holds: { plans: ["refused" as const, null, { blockedBy: ["Foo 1/2"] }], bugs: [null, "needs-review" as const] },
+    inProgress: { plans: [null, "feature-2", null], bugs: [null, null] },
+  };
+  const out = readyBacklog(view);
+  assert.deepEqual(out.plans.map((p) => p.title), ["B"]);
+  assert.deepEqual(out.holds?.plans, [null]);
+  assert.deepEqual(out.inProgress?.plans, ["feature-2"]);
+  assert.deepEqual(out.bugs.map((b) => b.title), ["X"]);
+  assert.deepEqual(out.holds?.bugs, [null]);
+  assert.deepEqual(out.questions, view.questions);
+  const bare = { plans: [e("A")], bugs: [], questions: [] };
+  assert.deepEqual(readyBacklog(bare), bare);
+});
+
+test("tumwater backlog --ready hides held entries and counts them", async () => {
+  const root = makeRepo();
+  fs.writeFileSync(path.join(root, "PLANS.md"), [
+    "# Plans", "## Planned",
+    "### Refused plan (planned 2026-10-03)", "**Refused 2026-10-07 by feature: no**",
+    "### Ready plan (planned 2026-10-04)", "body",
+    "## Done", "_None._",
+  ].join("\n"));
+  fs.writeFileSync(path.join(root, "BUGS.md"), [
+    "# Bugs", "## Open", "### Real bug (reported 2026-10-02)", "repro", "## Fixed", "_None._",
+  ].join("\n"));
+  const ok = await runCli(root, "backlog", "--ready");
+  assert.equal(ok.code, 0);
+  assert.match(ok.out, /### Ready plan/);
+  assert.match(ok.out, /### Real bug/);
+  assert.doesNotMatch(ok.out, /Refused plan/);
+  assert.ok(ok.out.trimEnd().endsWith("_(1 held entries hidden; run `tumwater backlog` to see them)_"));
+  const json = JSON.parse((await runCli(root, "backlog", "--ready", "--json")).out);
+  assert.equal(json.plans.length, 1);
+  assert.deepEqual(json.holds.plans, [null]);
+  assert.equal(json.bugs.length, 1);
+  fs.writeFileSync(path.join(root, "PLANS.md"), "# Plans\n## Planned\n### Ready plan (planned 2026-10-04)\nbody\n## Done\n_None._\n");
+  const none = await runCli(root, "backlog", "--ready");
+  assert.doesNotMatch(none.out, /hidden/);
 });

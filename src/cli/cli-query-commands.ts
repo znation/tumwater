@@ -6,7 +6,7 @@
 
 import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
 import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
-import { JSON_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
+import { JSON_FLAG, READY_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
@@ -15,7 +15,7 @@ import { statusPayload } from "../ui/status-payload.js";
 import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
-import { renderBacklogMarkdown } from "../backlog/backlog-render.js";
+import { readyBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
 import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
@@ -135,7 +135,7 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
 export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate: the entry readers degrade to [] on a missing file, so the
   // command prints three empty sections in any directory (report's rationale, not config's).
-  rejectUnknownArgs("backlog", args, [JSON_FLAG]);
+  rejectUnknownArgs("backlog", args, [JSON_FLAG, READY_FLAG]);
   // Machine-readable backlog — the three entry arrays the Markdown view renders and the
   // GUI's /api/backlog serves (status --json's "print the endpoint's payload" pattern),
   // plus `holds.plans`/`holds.bugs` parallel to the entry arrays so a skipped entry's
@@ -143,10 +143,21 @@ export async function cmdBacklog(root: string, args: string[]): Promise<void> {
   // never prose. The payload is a thunk, so whichever branch runs reads the three entry
   // files through their stat caches once — the Markdown renderer consumes the same arrays
   // the JSON document prints.
+  // --ready filters both branches through readyBacklog; the Markdown branch adds a count of
+  // the held entries it hid.
+  const ready = args.includes("--ready");
+  let hidden = 0;
   sayJsonOrRender(
     args,
-    () => ({ ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) }),
-    renderBacklogMarkdown,
+    () => {
+      const view = { ...backlogPayload(root), holds: backlogHolds(root), inProgress: backlogInProgress(root) };
+      if (!ready) return view;
+      const kept = readyBacklog(view);
+      hidden = view.plans.length + view.bugs.length - kept.plans.length - kept.bugs.length;
+      return kept;
+    },
+    (v) => renderBacklogMarkdown(v) + (hidden > 0
+      ? `\n\n_(${hidden} held entries hidden; run \`tumwater backlog\` to see them)_` : ""),
   );
 }
 
