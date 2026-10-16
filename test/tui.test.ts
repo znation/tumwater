@@ -675,7 +675,7 @@ test("queued prompts render numbered above the activity pane and shrink its budg
   const repo = await makeTuiRepo();
   // Seed enough events that the recent-activity pane is full at the default budget, so a
   // shrinking budget visibly drops body lines instead of just showing fewer than it could.
-  for (let i = 1; i <= 30; i++) logEvent(repo, { loop: "clean", type: "run_start", run: i });
+  for (let i = 1; i <= 30; i++) logEvent(repo, { source: "clean", type: "run_start", run: i });
 
   await withTui(repo, async (tui) => {
     // Nothing queued → no numbered lines anywhere in the frame.

@@ -112,9 +112,23 @@ test("normalizeLegacyEvent moves a staged claim's payload source to origin befor
 
 test("logEvent writes source and no loop, even when the caller passes loop: harness", () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "harness", type: "warning", message: "x" });
+  logEvent(repo, { loop: "harness", type: "warning", message: "x" } as unknown as HarnessEventInput); // vocabulary-ok: legacy caller input
   logEvent(repo, { source: "clean", type: "run_start", run: 1 });
   const lines = fs.readFileSync(eventsLogPath(repo), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>);
   assert.deepEqual(lines.map((l) => l.source), ["tumwater", "clean"]);
   assert.ok(lines.every((l) => !("loop" in l)));
+});
+
+test("an old loop-keyed line reads back as source from the live log and from the archive", () => {
+  const repo = makeRepo();
+  const live = eventsLogPath(repo);
+  ensureParentDir(live);
+  const line = (loop: string) => JSON.stringify({ ts: Date.now(), loop, type: "warning", message: "m" }); // vocabulary-ok: legacy field name read from old logs
+  fs.writeFileSync(live, line("feature") + "\n");
+  fs.writeFileSync(eventsArchivePath(repo), line("clean") + "\n");
+  const live1 = readEvents(repo, 10);
+  assert.equal(live1[0]?.source, "feature");
+  const win = readWindowEvents(repo, dayKey(Date.now() - 86_400_000 * 400));
+  assert.deepEqual(win.events.map((e) => e.source).sort(), ["clean", "feature"]);
+  assert.ok(win.events.every((e) => !("loop" in e)));
 });

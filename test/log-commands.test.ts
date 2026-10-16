@@ -42,7 +42,7 @@ test("logs -f follows a missing event log without creating it, then picks up app
 
     // A real event appended while following is rendered through the same formatter as the
     // one-shot path.
-    logEvent(repo, { loop: "clean", type: "run_start", run: 1 });
+    logEvent(repo, { source: "clean", type: "run_start", run: 1 });
     t.mock.timers.tick(500);
     assert.match(cap.out(), /clean\s+run #1 started/);
     assert.equal(followError, null);

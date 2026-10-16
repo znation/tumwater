@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { checkNotify } from "../src/doctor/doctor-notify.js";
-import { logEvent, warnEvent } from "../src/events/events.js";
+import { logEvent, TUMWATER_SOURCE, warnEvent } from "../src/events/events.js";
 import { notifyExitWarning } from "../src/events/notify.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { defaultConfig } from "../src/config/config.js";
@@ -46,6 +46,6 @@ test("checkNotify does not count other loops' warnings or non-warning events", (
   const root = readyRepo();
   const message = notifyExitWarning("budget_paused", 1, null) ?? "";
   warnEvent(root, "feature", message);
-  logEvent(root, { loop: "harness", type: "run_start", message });
+  logEvent(root, { source: TUMWATER_SOURCE, type: "run_start", message });
   assert.equal(checkNotify(root, withNotify()).level, "ok");
 });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, isNotifyFailure, notifyExitWarning, notifyFleetDown } from "../src/events/notify.js";
-import { logEvent, subscribeEvents } from "../src/events/events.js";
+import { TUMWATER_SOURCE, logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
 import { validateConfig } from "../src/config/config-validation.js";
@@ -88,7 +88,7 @@ test("an allowlisted event spawns the notify command once with the three env var
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    const event = logEvent(root, { loop: "feature", type: "budget_paused" });
+    const event = logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "budget_paused");
@@ -109,7 +109,7 @@ test("a posted question spawns the notify command once with the posting role and
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    const event = logEvent(root, { loop: "feature", type: "question_posted", question: "Which storage?" });
+    const event = logEvent(root, { source: "feature", type: "question_posted", question: "Which storage?" });
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "question_posted");
@@ -127,7 +127,7 @@ test("a main_red_hold spawns the notify command once with the harness loop and t
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "harness", type: "main_red_hold", sha: "abc1234", script: "test", message: "main abc1234 is red (test: x) — code merges blocked until main is green" });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "main_red_hold", sha: "abc1234", script: "test", message: "main abc1234 is red (test: x) — code merges blocked until main is green" });
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "main_red_hold");
@@ -145,14 +145,14 @@ test("claude window events each spawn the notify command with the rendered line"
   notifier.update({ notify: recorderCommand(out) });
   try {
     const resetsAt = Date.now() + 3_600_000;
-    const event = logEvent(root, { loop: "harness", type: "claude_window_limited", windowType: "five_hour", resetsAt });
+    const event = logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_limited", windowType: "five_hour", resetsAt });
     await waitFor(() => recordedLines(out).length === 1, "one recorded line");
     const line = parseLine(recordedLines(out)[0] ?? "");
     assert.equal(line.type, "claude_window_limited");
     assert.equal(line.loop, "tumwater");
     assert.equal(line.message, formatEvent(event));
     // A different type is not suppressed by the limited page's throttle slot.
-    logEvent(root, { loop: "harness", type: "claude_window_warning", windowType: "five_hour", resetsAt });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_warning", windowType: "five_hour", resetsAt });
     await waitFor(() => recordedLines(out).length === 2, "a second recorded line");
     assert.equal(parseLine(recordedLines(out)[1] ?? "").type, "claude_window_warning");
   } finally {
@@ -166,15 +166,15 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "feature", type: "run_end", run: 1, result: "no_change" });
-    logEvent(root, { loop: "harness", type: "warning", message: "not page-worthy" });
-    logEvent(root, { loop: "feature", type: "merge_done" });
-    logEvent(root, { loop: "harness", type: "claude_window_reset", windowType: "five_hour" });
+    logEvent(root, { source: "feature", type: "run_end", run: 1, result: "no_change" });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "warning", message: "not page-worthy" });
+    logEvent(root, { source: "feature", type: "merge_done" });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "claude_window_reset", windowType: "five_hour" });
     await sleep(400);
     assert.equal(recordedLines(out).length, 0, "off-allowlist events must spawn nothing");
     // Empty string means off — the same disabled state as an absent key.
     notifier.update({ notify: "" });
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await sleep(400);
     assert.equal(recordedLines(out).length, 0, "an empty notify must spawn nothing");
   } finally {
@@ -193,12 +193,12 @@ test("the throttle suppresses same-type events within the gap, per type", async 
   const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => clock);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     clock += NOTIFY_MIN_GAP_MS - 1;
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length === 1, "the first spawn");
     clock += 1; // exactly one gap after the first spawn
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length >= 2, "the post-gap spawn");
     // A second spawn that escaped the throttle would have been started before the post-gap
     // one, so it has had at least as long to land: two lines means it was suppressed.
@@ -206,7 +206,7 @@ test("the throttle suppresses same-type events within the gap, per type", async 
     assert.equal(recordedLines(out).length, 2, "the same-type event inside the gap must be suppressed");
     // Per-type keying: a merge_failed right after the budget_paused page spawns on its own —
     // one type's throttle never suppresses another's.
-    logEvent(root, { loop: "feature", type: "merge_failed" });
+    logEvent(root, { source: "feature", type: "merge_failed" });
     await waitFor(() => recordedLines(out).some((l) => parseLine(l).type === "merge_failed"), "the other-type spawn");
   } finally {
     notifier.dispose();
@@ -253,7 +253,7 @@ test("a notify command whose spawn fails logs one warning and does not throw out
   const notifier = newNotifier(root);
   notifier.update({ notify: `echo ${"x".repeat(2_000_000)}` });
   try {
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => warnings.length > 0, "the spawn-failure warning");
     assert.match(warnings[0] ?? "", /notify command could not start/);
     await sleep(300);
@@ -296,7 +296,7 @@ test("a notify hook that exits nonzero logs one warning naming the paged type", 
     const notifier = newNotifier(root);
     notifier.update({ notify });
     try {
-      logEvent(root, { loop: "feature", type: "budget_paused" });
+      logEvent(root, { source: "feature", type: "budget_paused" });
       await waitFor(() => warnings.some((w) => pattern.test(w)), `the exit warning for ${notify}`);
       await sleep(200);
       assert.equal(warnings.length, 1);
@@ -317,7 +317,7 @@ test("a notify hook that exits 0 records its line and logs no warning", async ()
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length > 0, "the recorded line");
     await sleep(300);
     assert.deepEqual(warnings, []);
@@ -348,7 +348,7 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
   try {
     // A command line past every platform's per-argument limit makes node emit `error`.
     notifier.update({ notify: `echo ${"x".repeat(2_000_000)}` });
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(
       () => stderr.err().includes('notify command could not start'),
       "the stderr fallback for the unwritable warning",
@@ -370,12 +370,12 @@ test("setting notify live takes effect on the next update(liveConfig) poll, no r
   const out = path.join(root, "notify-out.txt");
   const notifier = newNotifier(root);
   try {
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await sleep(400);
     assert.equal(recordedLines(out).length, 0, "no command configured yet — nothing spawns");
     // What the orchestrator's poll loop does with each freshly reloaded config.
     notifier.update({ notify: recorderCommand(out) });
-    logEvent(root, { loop: "feature", type: "budget_paused" });
+    logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length === 1, "the post-update spawn");
   } finally {
     notifier.dispose();

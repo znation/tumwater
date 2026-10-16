@@ -204,31 +204,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-
-### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)
-
-**Goal.** Stage 3 of "Widely used fields". `HarnessEventInput` requires `source`, and `loop` is gone from every TypeScript type, so a new call site cannot reintroduce it. Old lines still read through the normalizer.
-
-**Approach.**
-- In `HarnessEventInput` (src/events/events.ts), replace the source-or-loop union with a required `source: string`. Remove the `event.loop` arm of `logEventBestEffort`'s stderr fallback.
-- Keep the normalizer's `loop` → `source` and `"harness"` → `"tumwater"` rewrite, and `logEvent`'s write-side normalization. Old logs and a still-running old supervisor need them permanently. Say so in the rewrite's comment.
-- tsc then lists the remaining callers, nearly all tests:
-  - the `logEvent(root, { loop: … })` seeds in test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/status-payload.test.ts and a few more (~85 lines);
-  - the `HarnessEventInput[]` captures in test/fixtures/redeploy-fixtures.ts and test/redeploy-*.test.ts;
-  - `warnEvent(root, "harness", …)` in test/doctor-notify.test.ts.
-
-  Switch them to `source:` and `TUMWATER_SOURCE`. Untyped on-disk fixtures stay as they are.
-- Add one regression test: an old `loop` line, both from the live log and from events.jsonl.1, still reads as `source`.
-- **Self-hosting:** safe. Only the input type changes, and the write path's output and the read path are unchanged from part 8/9.
-
-**Files touched.** src/events/events.ts; test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/doctor-notify.test.ts, test/status-payload.test.ts, test/fixtures/redeploy-fixtures.ts, test/redeploy-escalation.test.ts, test/redeploy-wiring.test.ts, test/event-legacy.test.ts and the few others tsc lists.
-
-**Acceptance criteria.**
-- `HarnessEventInput` has no `loop` member, and `logEvent(root, { loop: "x", type: "warning" })` fails typecheck.
-- An old `loop`-keyed line, in the live log or the archive, reads back with `source`.
-- `grep -rnE '\bloop: ' test/*.ts` finds no `logEvent` input.
-- `npm run test` passes.
-
 ### Plain terms state, part 1/5: Rename LoopState ticks to runs (planned 2026-10-16 by user; requires Plain terms event log 9/9 landed; design in plans/terminology.md "State and git"; touches src/loop/ src/tick/ src/verdict/ src/cli/cli-run.ts src/scheduling/ src/ui/ test/)
 
 **Goal.** Mechanical. The per-role state file `.tumwater/state/<id>.json` stores its run counter as `runs`. A file the old build wrote, with `ticks`, loads unchanged and is saved back as `runs`. The JSON key equals the TypeScript property, with no alias.
@@ -2226,6 +2201,30 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (done 2026-10-16; planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)
+
+**Goal.** Stage 3 of "Widely used fields". `HarnessEventInput` requires `source`, and `loop` is gone from every TypeScript type, so a new call site cannot reintroduce it. Old lines still read through the normalizer.
+
+**Approach.**
+- In `HarnessEventInput` (src/events/events.ts), replace the source-or-loop union with a required `source: string`. Remove the `event.loop` arm of `logEventBestEffort`'s stderr fallback.
+- Keep the normalizer's `loop` → `source` and `"harness"` → `"tumwater"` rewrite, and `logEvent`'s write-side normalization. Old logs and a still-running old supervisor need them permanently. Say so in the rewrite's comment.
+- tsc then lists the remaining callers, nearly all tests:
+  - the `logEvent(root, { loop: … })` seeds in test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/status-payload.test.ts and a few more (~85 lines);
+  - the `HarnessEventInput[]` captures in test/fixtures/redeploy-fixtures.ts and test/redeploy-*.test.ts;
+  - `warnEvent(root, "harness", …)` in test/doctor-notify.test.ts.
+
+  Switch them to `source:` and `TUMWATER_SOURCE`. Untyped on-disk fixtures stay as they are.
+- Add one regression test: an old `loop` line, both from the live log and from events.jsonl.1, still reads as `source`.
+- **Self-hosting:** safe. Only the input type changes, and the write path's output and the read path are unchanged from part 8/9.
+
+**Files touched.** src/events/events.ts; test/events.test.ts, test/log-commands-views.test.ts, test/notify.test.ts, test/cli-history-views.test.ts, test/doctor-checks.test.ts, test/doctor-notify.test.ts, test/status-payload.test.ts, test/fixtures/redeploy-fixtures.ts, test/redeploy-escalation.test.ts, test/redeploy-wiring.test.ts, test/event-legacy.test.ts and the few others tsc lists.
+
+**Acceptance criteria.**
+- `HarnessEventInput` has no `loop` member, and `logEvent(root, { loop: "x", type: "warning" })` fails typecheck.
+- An old `loop`-keyed line, in the live log or the archive, reads back with `source`.
+- `grep -rnE '\bloop: ' test/*.ts` finds no `logEvent` input.
+- `npm run test` passes.
 
 ### The dashboard's Settings view can send a test notification: a "Send test" button on the Notify hook row runs what `tumwater notify --test` runs (planned 2026-10-16 by plan; independent of every other entry — touches src/cli/notify-command.ts, src/gui/gui-config-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts, docs/cli.md, docs/invariants.md and their tests) (done 2026-10-16)
 

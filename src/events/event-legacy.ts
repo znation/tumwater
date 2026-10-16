@@ -74,6 +74,8 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
     // The writer's id rode `loop`, with "harness" for tumwater's own events. A staged-claim
     // `claim` line also carried a payload `source: "staged"`, which moves to `origin` first. A
     // call site that still passes `source: "harness"` (the warn helpers' callers) maps too.
+    // Kept permanently though no TypeScript type accepts `loop` any more: old logs and a
+    // still-running old supervisor keep writing it, so the read path and logEvent need this.
     name: "loop-to-source",
     apply(ev) {
       const e = ev as Record<string, unknown>;

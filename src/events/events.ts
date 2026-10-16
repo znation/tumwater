@@ -114,14 +114,8 @@ export interface HarnessEvent {
 /** An event to log. `logEvent` stamps `ts`; event-specific extra fields (tick, summary, …)
  * are allowed via the index signature. Exported for modules that hand events to an injected
  * logger instead of calling logEvent directly (redeploy.ts). */
-export type HarnessEventInput = (
-  | { source: string; loop?: never }
-  | {
-      /** @deprecated use source */
-      loop: string;
-      source?: never;
-    }
-) & {
+export interface HarnessEventInput {
+  source: string;
   type: HarnessEvent["type"];
   [key: string]: unknown;
 };
@@ -186,7 +180,7 @@ export function logEventBestEffort(root: string, event: HarnessEventInput): void
     // A terminal display boundary like cli-output's say()/fail(): the loop id, event type, and
     // error text can carry model- or subprocess-supplied bytes, and stderr is a terminal. Strip
     // the control characters the same way so a fallback line cannot drive the operator's shell.
-    const detail = `${event.source ?? event.loop}: could not log ${event.type} event: ${errorMessage(err)}`;
+    const detail = `${event.source}: could not log ${event.type} event: ${errorMessage(err)}`;
     process.stderr.write(`tumwater: ${stripTerminalControls(detail)}\n`);
   }
 }

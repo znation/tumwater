@@ -30,7 +30,7 @@ import { allRoleIds } from "../src/roles/roles.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir, twoPlansDoc, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { logEvent } from "../src/events/events.js";
+import { TUMWATER_SOURCE, logEvent } from "../src/events/events.js";
 import { writeSlotsState } from "../src/git/slots-state.js";
 import { bootstrapLatchPath, slotWorktreePath, worktreesDir } from "../src/paths.js";
 import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
@@ -869,7 +869,7 @@ test("checkBootstrap reports an active bootstrap, and stands down without config
 test("checkWorktreePool sums the last day of slot_wait events and warns at ten minutes", () => {
   const root = readyRepo();
   const wait = (role: string, purpose: string, waitedMs: number) =>
-    logEvent(root, { loop: "harness", type: "slot_wait", message: "waited", role, purpose, waitedMs });
+    logEvent(root, { source: TUMWATER_SOURCE, type: "slot_wait", message: "waited", role, purpose, waitedMs });
   wait("feature", "tick", 45_000);
   wait("clean", "vet", 90_000);
   const quiet = checkWorktreePool(root);
@@ -891,14 +891,14 @@ test("checkFlakyChecks stays quiet for no flake and for a single one-off flake",
   assert.deepEqual(checkFlakyChecks(quiet), { level: "ok", detail: "no check flapped more than once in the last 24h" });
 
   const one = readyRepo();
-  logEvent(one, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}test failed on flaky network` });
+  logEvent(one, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}test failed on flaky network` });
   assert.deepEqual(checkFlakyChecks(one), { level: "ok", detail: "no check flapped more than once in the last 24h" });
 });
 
 test("checkFlakyChecks warns naming a check that flapped twice and aggregates across a duration difference", () => {
   const root = readyRepo();
   const flake = (headline: string) =>
-    logEvent(root, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+    logEvent(root, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
   // Same normalized check, different durations: two firings must read as one check's count of 2.
   flake("test failed after 3s");
   flake("test failed after 9s");
@@ -910,7 +910,7 @@ test("checkFlakyChecks warns naming a check that flapped twice and aggregates ac
 test("checkFlakyChecks warns naming both when two distinct checks flapped, most frequent first", () => {
   const root = readyRepo();
   const flake = (headline: string) =>
-    logEvent(root, { loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+    logEvent(root, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
   flake("network test failed");
   flake("network test failed");
   flake("database test failed");

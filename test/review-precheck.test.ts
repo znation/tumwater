@@ -415,7 +415,7 @@ test("a repeat failure matching a recorded flake keeps the commit and counts no 
   seedGreenMain(root);
   // The gate logged this exact failure as a flake earlier in the window (its re-run passed).
   logEvent(root, {
-    loop: "organize",
+    source: "organize",
     type: "warning",
     message: `gate check failed then passed on retry — flaky: ${flakyHeadline}`,
   });
