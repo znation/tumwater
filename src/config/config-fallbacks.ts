@@ -267,7 +267,7 @@ export interface ModelFallbackView {
   /** The backend the fallback pair routes to — its own id for a non-pi agent (`claude`),
    * else `pi` — carried so the role view qualifies the pair the same way every other
    * surface does (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7). */
-  agent?: string;
+  backend?: string;
   since: number;
   reason: string;
 }
@@ -289,7 +289,7 @@ export function modelFallbackView(
   if (episodeConfig === null) return null;
   return {
     ...resolvedModelFields(episodeConfig.provider, episodeConfig.model, episodeConfig.thinking),
-    ...(episodeConfig.agent !== undefined && episodeConfig.agent !== "pi" ? { agent: episodeConfig.agent } : {}),
+    ...(episodeConfig.agent !== undefined && episodeConfig.agent !== "pi" ? { backend: episodeConfig.agent } : {}),
     since: episode.since,
     reason: episode.reason,
   };

@@ -30,9 +30,9 @@ test("outcome classes fold per role: landed, no_change, error; unknown results c
     {
       role: "coverage",
       classes: {
-        landed: { ticks: 1, ms: 1000, costUsd: 0.1 },
-        no_change: { ticks: 1, ms: 500, costUsd: 0.2 },
-        error: { ticks: 1, ms: 2000, costUsd: 0.3 },
+        merged: { runs: 1, ms: 1000, costUsd: 0.1 },
+        no_change: { runs: 1, ms: 500, costUsd: 0.2 },
+        error: { runs: 1, ms: 2000, costUsd: 0.3 },
       },
     },
   ]);
@@ -48,9 +48,9 @@ test("duration source chain: own durationMs, else the tick_start pairing, else 0
     [ev({ ts: 1000, type: "tick_start", tick: 1 })],
   );
   assert.deepEqual(timeSpend[0]!.classes, {
-    landed: { ticks: 1, ms: 1000, costUsd: 0 },
-    no_change: { ticks: 1, ms: 500, costUsd: 0 },
-    error: { ticks: 1, ms: 0, costUsd: 0 },
+    merged: { runs: 1, ms: 1000, costUsd: 0 },
+    no_change: { runs: 1, ms: 500, costUsd: 0 },
+    error: { runs: 1, ms: 0, costUsd: 0 },
   });
 });
 
@@ -102,14 +102,14 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
   );
   // The authoring tick's transient queued result resolves to the landing gate's rejection,
   // so its agent-hours leave the landed cell the queued label suggested.
-  assert.deepEqual(timeSpend[0]!.classes.error, { ticks: 1, ms: 5000, costUsd: 0.25 });
-  assert.deepEqual(timeSpend[0]!.classes.landed, { ticks: 0, ms: 0, costUsd: 0 });
+  assert.deepEqual(timeSpend[0]!.classes.error, { runs: 1, ms: 5000, costUsd: 0.25 });
+  assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
   assert.deepEqual(lossCauses, [
     {
       kind: "review-rejected",
       roles: ["coverage"],
       example: "type error: foo is not defined",
-      ticks: 1,
+      runs: 1,
       ms: 5000,
       costUsd: 0.25,
     },
@@ -124,7 +124,7 @@ test("a queued tick with no visible landing outcome keeps the conservative queue
     [queued],
     [queued, ev({ ts: 95, type: "land_queued", commit: "abc1234" })],
   );
-  assert.deepEqual(timeSpend[0]!.classes.landed, { ticks: 1, ms: 1000, costUsd: 0 });
+  assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 1000, costUsd: 0 });
   assert.deepEqual(lossCauses, []);
 });
 
@@ -147,12 +147,12 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
     ],
   );
   assert.deepEqual(timeSpend.map((r) => [r.role, r.classes.error]), [
-    ["feature", { ticks: 1, ms: 6000, costUsd: 0.1 }],
-    ["coverage", { ticks: 1, ms: 5000, costUsd: 0.25 }],
+    ["feature", { runs: 1, ms: 6000, costUsd: 0.1 }],
+    ["coverage", { runs: 1, ms: 5000, costUsd: 0.25 }],
   ]);
   assert.deepEqual(lossCauses, [
-    { kind: "merge-blocked", roles: ["feature"], example: "(no error text recorded)", ticks: 1, ms: 6000, costUsd: 0.1 },
-    { kind: "merge-conflict", roles: ["coverage"], example: "(no error text recorded)", ticks: 1, ms: 5000, costUsd: 0.25 },
+    { kind: "merge-blocked", roles: ["feature"], example: "(no error text recorded)", runs: 1, ms: 6000, costUsd: 0.1 },
+    { kind: "merge-conflict", roles: ["coverage"], example: "(no error text recorded)", runs: 1, ms: 5000, costUsd: 0.25 },
   ]);
   assert.equal(lossCausesHidden, 0, "both merge causes are owned, not hidden");
 });
@@ -189,8 +189,8 @@ test("a queued tick that failed retriably, was rebased, and recovered into a lan
       ev({ ts: 180, loop: "feature", type: "landed", commit: "sha2", result: "changed" }),
     ],
   );
-  assert.deepEqual(timeSpend[0]!.classes.landed, { ticks: 1, ms: 5000, costUsd: 0.25 });
-  assert.deepEqual(timeSpend[0]!.classes.error, { ticks: 0, ms: 0, costUsd: 0 });
+  assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 5000, costUsd: 0.25 });
+  assert.deepEqual(timeSpend[0]!.classes.error, { runs: 0, ms: 0, costUsd: 0 });
   assert.deepEqual(lossCauses, []);
 });
 
@@ -213,7 +213,7 @@ test("an error cluster pools its members' time across roles and its example ride
       kind: "error-cluster",
       roles: ["coverage", "qa"], // unique, sorted
       example: "pi exited 1: boom 7", // the newest verbatim occurrence, not the first-seen one
-      ticks: 3,
+      runs: 3,
       ms: 3500,
       costUsd: 0.5,
     },
@@ -226,7 +226,7 @@ test("a no_change tick's loss cause is its role, with an empty example", () => {
     [],
   );
   assert.deepEqual(lossCauses, [
-    { kind: "no_change", roles: ["steward"], example: "", ticks: 1, ms: 400, costUsd: 0 },
+    { kind: "no_change", roles: ["steward"], example: "", runs: 1, ms: 400, costUsd: 0 },
   ]);
 });
 
@@ -246,7 +246,7 @@ test("a clustered failure that records no error text still itemizes a loss cause
       kind: "error-cluster",
       roles: ["bugfix", "feature"],
       example: "(no error text recorded)",
-      ticks: 2,
+      runs: 2,
       ms: 660_000,
       costUsd: 0.5,
     },

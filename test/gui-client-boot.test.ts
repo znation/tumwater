@@ -269,7 +269,7 @@ test("note-save posts the textarea, note-clear needs a second click, note-discar
   const scope = clientScope<{ runAct(a: string, b: string): void }>(
     ["run-act"], ["runAct"],
     {
-      drawerRole: { role: "feature", state: "ok", view: { note: "old" } },
+      drawerRole: { role: "feature", state: "ok", view: { notes: "old" } },
       $: (id: string) => (id === "noteedittext" ? { value: "new\ntext" } : null),
       startNoteEdit: (r: string, t: string) => events.push(`edit ${r} ${t}`),
       stopNoteEdit: () => events.push("stop"),

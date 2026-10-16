@@ -82,7 +82,7 @@ interface SeamRow {
 export interface DoctorReport {
   header: string;
   checks: Array<{ name: string } & CheckOutcome>;
-  seams: SeamRow[];
+  routing: SeamRow[];
   verdict: string;
 }
 

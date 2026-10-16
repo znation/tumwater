@@ -129,7 +129,7 @@ test("renderDoctor prints one padded line per check between the header and the v
       { name: "merge lock", level: "warn", detail: "stale — will be broken on next merge" },
       { name: "repo", level: "fail", detail: "not a git repository (run `git init` first)" },
     ],
-    seams: [],
+    routing: [],
     verdict: "1 problem",
   });
   assert.equal(
@@ -152,7 +152,7 @@ test("renderDoctor widens the name column to the longest check name so details a
       { name: "backlog headings", level: "warn", detail: "D2" },
       { name: "update", level: "ok", detail: "D3" },
     ],
-    seams: [],
+    routing: [],
     verdict: "v",
   });
   const lines = rendered.split("\n");
@@ -168,7 +168,7 @@ test("renderDoctor prints the routing table and runDoctor lists a fallback seam"
   const rendered = renderDoctor({
     header: "h",
     checks: [],
-    seams: [{ label: "fallback:default", selector: "claude/claude-sonnet-5-5", backend: "claude" }],
+    routing: [{ label: "fallback:default", selector: "claude/claude-sonnet-5-5", backend: "claude" }],
     verdict: "v",
   });
   assert.match(rendered, /routing:/);
@@ -180,8 +180,8 @@ test("renderDoctor prints the routing table and runDoctor lists a fallback seam"
   writeConfig(root, { model: "local/free-model", fallback: "claude/claude-sonnet-5-5" });
   const report = await runDoctor(root, fakeBins("git", "pi"), noProcesses);
   assert.ok(
-    report.seams.some((s) => s.label === "fallback:default" && s.backend === "claude"),
-    `the routing table lists the fallback claude seam: ${JSON.stringify(report.seams)}`,
+    report.routing.some((s) => s.label === "fallback:default" && s.backend === "claude"),
+    `the routing table lists the fallback claude seam: ${JSON.stringify(report.routing)}`,
   );
 });
 

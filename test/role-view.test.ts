@@ -71,14 +71,14 @@ test("the config file's role overrides resolve: instructions, model pair, interv
   assert.equal(p.provider, "prov-b"); // the role override, not the top-level value
   assert.equal(p.model, "model-b");
   assert.equal(p.thinking, "high");
-  assert.equal(p.minTickIntervalSeconds, 300);
+  assert.equal(p.minRunIntervalSeconds, 300);
   // A role without overrides resolves to the top-level pair and the global interval
   // (bugfix carries no clock override of its own in the defaults).
   const bugfix = rolePayload(dir, "bugfix", NO_MODELS);
   assert.equal(bugfix.provider, "prov-a");
   assert.equal(bugfix.model, "model-a");
   assert.equal(bugfix.instructions, null);
-  assert.equal(bugfix.minTickIntervalSeconds, 20); // defaultConfig's global value
+  assert.equal(bugfix.minRunIntervalSeconds, 20); // defaultConfig's global value
 });
 
 test("a configured fallback pair is reported, with its freeness verdict from pi's definitions", () => {
@@ -252,12 +252,12 @@ test("a role's notes renders verbatim, or reads as none yet", () => {
   fs.writeFileSync(notes, "the scheduler lives in team.ts\n");
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /## Notes\n\n```\nthe scheduler lives in team\.ts\n```/);
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, "the scheduler lives in team.ts\n");
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, "the scheduler lives in team.ts\n");
 
   // Empty or missing degrades to the placeholder, never a throw or a blank section.
   fs.writeFileSync(notes, "");
   const blank = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
-  assert.equal(rolePayload(dir, "feature", NO_MODELS).note, null);
+  assert.equal(rolePayload(dir, "feature", NO_MODELS).notes, null);
   assert.match(blank, /## Notes\n\n_\(none yet/);
 });
 
@@ -388,7 +388,7 @@ test("a claude model-fallback episode renders as claude/model", () => {
   };
   saveLoopState(dir, state);
   const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.modelFallback?.agent, "claude");
+  assert.equal(p.modelFallback?.backend, "claude");
   assert.equal(p.modelFallback?.model, "claude-haiku-5-5");
   assert.match(
     renderRoleMarkdown(p),
@@ -403,7 +403,7 @@ test("agent labels: a claude model job names the backend, pi stays byte-identica
   const dir = root();
   writeConfig(dir, { agent: "claude" });
   const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.agent, "claude");
+  assert.equal(p.backend, "claude");
   assert.equal(p.model, "claude-sonnet-5-5", "routeModel fills the default tier's model");
   assert.match(renderRoleMarkdown(p), /- Model: claude\/claude-sonnet-5-5 \(default tier\)/m);
   assert.match(
@@ -453,7 +453,7 @@ test("a pi role with a claude reviewer shows claude billing; a pi reviewer does 
     windows: { five_hour: { status: "allowed", utilization: 0.5, observedAt: Date.now() } },
   });
   const p = rolePayload(dir, "feature", NO_MODELS);
-  assert.equal(p.agent, "pi", "the role's own model job is pi");
+  assert.equal(p.backend, "pi", "the role's own model job is pi");
   assert.equal(p.billing, "subscription", "the claude reviewer's billing is shown");
   assert.match(renderRoleMarkdown(p), /- Billing: subscription \(5h window\)/m);
 
@@ -684,7 +684,7 @@ test("role payload and render surface the role's schedule from persisted state",
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.nextRunAt, now + 300_000);
   assert.equal(p.backoffSeconds, 120);
-  assert.equal(p.lastTickEndedAt, now - 180_000);
+  assert.equal(p.lastRunEndedAt, now - 180_000);
   const md = renderRoleMarkdown(p, now);
   assert.match(md, /- Next run: sleeping in 5m/); // sleeping prefix while backing off
   // Last tick: the absolute local stamp reusing formatTimestamp, plus the humanSeconds age.
@@ -709,7 +709,7 @@ test("role payload and render surface the role's schedule from persisted state",
   const fresh = rolePayload(freshDir, "feature", NO_MODELS);
   assert.equal(fresh.nextRunAt, 0);
   assert.equal(fresh.backoffSeconds, 0);
-  assert.equal(fresh.lastTickEndedAt, undefined);
+  assert.equal(fresh.lastRunEndedAt, undefined);
   const freshMd = renderRoleMarkdown(fresh, now);
   assert.match(freshMd, /- Next run: not scheduled yet/);
   assert.match(freshMd, /- Last run: never/);

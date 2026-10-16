@@ -40,40 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms scripting, part 1/5: Rename the doctor and retire and role and failure-digest JSON keys (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Script interfaces"; touches src/doctor and src/operator/retire.ts and src/roles and src/failure and the dashboard drawer)
-
-**Goal.** `doctor --json` and `/api/doctor` carry `routing` instead of `seams`. `retire --json` names the `mergeRef` artifact. `role --json` and `/api/role` carry `backend`, `minRunIntervalSeconds`, `notes` and `lastRunEndedAt`. `report --failures --json` counts `runs` and `merged`. The old keys are gone, with no alias (plans/terminology.md decision 3).
-
-**Approach.**
-- Doctor: rename `DoctorReport.seams` to `routing` in src/doctor/doctor-checks.ts, in `runDoctor` (src/doctor/doctor.ts) where it is built, and in `renderDoctor` (src/doctor/doctor-render.ts) where it is read. The `SeamRow` fields (`label`, `selector`, `backend`) keep their names. The rendered header text belongs to the text series.
-- Retire (src/operator/retire.ts): the `ARTIFACTS` entry `"landingRef"` becomes `"mergeRef"`, together with its key in `previewRetire`'s `there` map and its `artifactPhrase` case. `RetireStatus.landingRefPresent` becomes `mergeRefPresent`, and `midTick` becomes `midRun`. `landingRefName` and the ref path keep their names, because Plain terms state moves the ref.
-- Role (`RoleViewPayload` and `rolePayload` in src/roles/role-view.ts, `inspectMarkdownLines` and `renderRoleMarkdown` in src/roles/role-render.ts): `agent` becomes `backend`, `minTickIntervalSeconds` becomes `minRunIntervalSeconds`, `note` becomes `notes`, and `lastTickEndedAt` becomes `lastRunEndedAt`. `ModelFallbackView.agent` (src/config/config-fallbacks.ts) also becomes `backend`. That view rides both `role --json`'s `modelFallback` and the status rows' `fallback`. The config field these values are read from is not a payload key, so leave it as Plain terms commands left it.
-- The dashboard reads `/api/role` as `view.note` in two places: `drawerRoleSection` (src/ui/gui/gui-client-drawer.ts) and the `note-edit` action (src/ui/gui/gui-client-boot.ts). Change both to `view.notes`. The `note` that `/api/history` returns is a different key (the sparse-window notice) and stays.
-- Failure digest: these renames apply in `FailureReportData`, `DeltaRow` and `PromptStatRow` (src/failure/failure-data.ts), in `SpendCell`, `LossCause`, `LossDraft`, `TimeSpendRow` and `OUTCOME_CLASS` (src/failure/time-spend.ts), and in the reader `renderFailureMarkdown` (src/failure/failure-render.ts):
-  - `ticks` → `runs`
-  - `prevTicks` → `prevRuns`
-  - `landed` → `merged`
-  - `landedTotal` → `mergedTotal`
-  - the outcome-class key `"landed"` → `"merged"`, in `TimeSpendRow.classes`, in `OUTCOME_CLASS`'s values and in `timeAndSpend`'s accumulator; rename `LANDED_TOP` to `MERGED_TOP` with them.
-  `OUTCOME_CLASS` is also read by src/report/report-data.ts. That module compares only to `"error"`, so it needs no change. Result codes in `OutcomeRow.counts` stay, because codes stay in `--json`.
-- Event-type comparisons (`e.type === "landed"`, `"land_failed"`, `"tick_end"`) belong to Plain terms event log. Leave them.
-- On each line you change, delete any `// vocabulary-ok:` marker whose reason was the old key name.
-- Tests:
-  - doctor: test/doctor.test.ts, test/tui-keys.test.ts and test/gui-endpoints.test.ts (their `DoctorReport` literals)
-  - retire: test/retire.test.ts
-  - role: test/role-view.test.ts, test/gui-endpoints.test.ts (`/api/role`), and the `/api/role` fixtures in test/gui-client-drawer.test.ts and test/gui-client-boot.test.ts (`{ note: … }` → `{ notes: … }`)
-  - failure digest: test/failure-render.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts, test/failure-state-change.test.ts
-
-**Files touched.** Source: src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/operator/retire.ts, src/roles/role-view.ts, src/roles/role-render.ts, src/config/config-fallbacks.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, src/failure/failure-data.ts, src/failure/time-spend.ts, src/failure/failure-render.ts. Tests: those listed above. Reads (does not edit): plans/terminology.md "Script interfaces".
-
-**Acceptance criteria.**
-- `tumwater doctor --json` prints the top-level keys `header`, `checks`, `routing` and `verdict` (test/doctor.test.ts).
-- `tumwater retire --role <id> --dry-run --json` lists `mergeRef` in `wouldRemove` or `skipped`, and never `landingRef` (test/retire.test.ts).
-- `rolePayload` returns `backend`, `minRunIntervalSeconds` and `notes`, plus `lastRunEndedAt` once the role has run. It returns none of `agent`, `minTickIntervalSeconds`, `note` or `lastTickEndedAt`. During a model-fallback episode, `modelFallback.backend` is set (test/role-view.test.ts).
-- The dashboard drawer still shows, edits and clears a role's notes from `/api/role` (test/gui-client-drawer.test.ts).
-- `collectFailureReport`'s JSON carries `runs`, `merged` and `mergedTotal`, each delta row's `prevRuns`/`runs`, and the time-spend classes `merged`, `no_change` and `error`. No key `ticks`, `prevTicks`, `landed` or `landedTotal` remains at any depth (test/failure-render.test.ts walks the keys).
-- `npm run test` passes.
-
 ### Plain terms scripting, part 2/5: Rename the report --json keys and add the script-keys guard (planned 2026-10-16 by user; requires part 1/5 landed; design in plans/terminology.md "Script interfaces"; touches src/report and the dashboard Usage and Team views and test/script-keys.test.ts)
 
 **Goal.** Mechanical: `report --json`, `report --since <d> --json` and `/api/report` count runs and merges. A new test, test/script-keys.test.ts, fails if the dashboard script still reads a retired payload key.
@@ -2528,6 +2494,40 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms scripting, part 1/5: Rename the doctor and retire and role and failure-digest JSON keys (planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Script interfaces"; touches src/doctor and src/operator/retire.ts and src/roles and src/failure and the dashboard drawer) — done 2026-10-16
+
+**Goal.** `doctor --json` and `/api/doctor` carry `routing` instead of `seams`. `retire --json` names the `mergeRef` artifact. `role --json` and `/api/role` carry `backend`, `minRunIntervalSeconds`, `notes` and `lastRunEndedAt`. `report --failures --json` counts `runs` and `merged`. The old keys are gone, with no alias (plans/terminology.md decision 3).
+
+**Approach.**
+- Doctor: rename `DoctorReport.seams` to `routing` in src/doctor/doctor-checks.ts, in `runDoctor` (src/doctor/doctor.ts) where it is built, and in `renderDoctor` (src/doctor/doctor-render.ts) where it is read. The `SeamRow` fields (`label`, `selector`, `backend`) keep their names. The rendered header text belongs to the text series.
+- Retire (src/operator/retire.ts): the `ARTIFACTS` entry `"landingRef"` becomes `"mergeRef"`, together with its key in `previewRetire`'s `there` map and its `artifactPhrase` case. `RetireStatus.landingRefPresent` becomes `mergeRefPresent`, and `midTick` becomes `midRun`. `landingRefName` and the ref path keep their names, because Plain terms state moves the ref.
+- Role (`RoleViewPayload` and `rolePayload` in src/roles/role-view.ts, `inspectMarkdownLines` and `renderRoleMarkdown` in src/roles/role-render.ts): `agent` becomes `backend`, `minTickIntervalSeconds` becomes `minRunIntervalSeconds`, `note` becomes `notes`, and `lastTickEndedAt` becomes `lastRunEndedAt`. `ModelFallbackView.agent` (src/config/config-fallbacks.ts) also becomes `backend`. That view rides both `role --json`'s `modelFallback` and the status rows' `fallback`. The config field these values are read from is not a payload key, so leave it as Plain terms commands left it.
+- The dashboard reads `/api/role` as `view.note` in two places: `drawerRoleSection` (src/ui/gui/gui-client-drawer.ts) and the `note-edit` action (src/ui/gui/gui-client-boot.ts). Change both to `view.notes`. The `note` that `/api/history` returns is a different key (the sparse-window notice) and stays.
+- Failure digest: these renames apply in `FailureReportData`, `DeltaRow` and `PromptStatRow` (src/failure/failure-data.ts), in `SpendCell`, `LossCause`, `LossDraft`, `TimeSpendRow` and `OUTCOME_CLASS` (src/failure/time-spend.ts), and in the reader `renderFailureMarkdown` (src/failure/failure-render.ts):
+  - `ticks` → `runs`
+  - `prevTicks` → `prevRuns`
+  - `landed` → `merged`
+  - `landedTotal` → `mergedTotal`
+  - the outcome-class key `"landed"` → `"merged"`, in `TimeSpendRow.classes`, in `OUTCOME_CLASS`'s values and in `timeAndSpend`'s accumulator; rename `LANDED_TOP` to `MERGED_TOP` with them.
+  `OUTCOME_CLASS` is also read by src/report/report-data.ts. That module compares only to `"error"`, so it needs no change. Result codes in `OutcomeRow.counts` stay, because codes stay in `--json`.
+- Event-type comparisons (`e.type === "landed"`, `"land_failed"`, `"tick_end"`) belong to Plain terms event log. Leave them.
+- On each line you change, delete any `// vocabulary-ok:` marker whose reason was the old key name.
+- Tests:
+  - doctor: test/doctor.test.ts, test/tui-keys.test.ts and test/gui-endpoints.test.ts (their `DoctorReport` literals)
+  - retire: test/retire.test.ts
+  - role: test/role-view.test.ts, test/gui-endpoints.test.ts (`/api/role`), and the `/api/role` fixtures in test/gui-client-drawer.test.ts and test/gui-client-boot.test.ts (`{ note: … }` → `{ notes: … }`)
+  - failure digest: test/failure-render.test.ts, test/failure-time-spend.test.ts, test/time-spend.test.ts, test/failure-state-change.test.ts
+
+**Files touched.** Source: src/doctor/doctor-checks.ts, src/doctor/doctor.ts, src/doctor/doctor-render.ts, src/operator/retire.ts, src/roles/role-view.ts, src/roles/role-render.ts, src/config/config-fallbacks.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, src/failure/failure-data.ts, src/failure/time-spend.ts, src/failure/failure-render.ts. Tests: those listed above. Reads (does not edit): plans/terminology.md "Script interfaces".
+
+**Acceptance criteria.**
+- `tumwater doctor --json` prints the top-level keys `header`, `checks`, `routing` and `verdict` (test/doctor.test.ts).
+- `tumwater retire --role <id> --dry-run --json` lists `mergeRef` in `wouldRemove` or `skipped`, and never `landingRef` (test/retire.test.ts).
+- `rolePayload` returns `backend`, `minRunIntervalSeconds` and `notes`, plus `lastRunEndedAt` once the role has run. It returns none of `agent`, `minTickIntervalSeconds`, `note` or `lastTickEndedAt`. During a model-fallback episode, `modelFallback.backend` is set (test/role-view.test.ts).
+- The dashboard drawer still shows, edits and clears a role's notes from `/api/role` (test/gui-client-drawer.test.ts).
+- `collectFailureReport`'s JSON carries `runs`, `merged` and `mergedTotal`, each delta row's `prevRuns`/`runs`, and the time-spend classes `merged`, `no_change` and `error`. No key `ticks`, `prevTicks`, `landed` or `landedTotal` remains at any depth (test/failure-render.test.ts walks the keys).
+- `npm run test` passes.
 
 ### Plain terms docs, part 3/5: Rewrite the backends guide and DEVELOPMENT.md in plain terms (done 2026-10-16; planned 2026-10-16 by user; requires Plain terms commands 6/6 and Plain terms text 1/19–19/19 landed; design in plans/terminology.md "Glossary" and "Wording rules" and "Commands and config"; touches docs/backends.md and DEVELOPMENT.md)
 

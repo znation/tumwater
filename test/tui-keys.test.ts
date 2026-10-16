@@ -1980,7 +1980,7 @@ test("Ctrl+N off the Backlog view does not open the new-entry editor", () => {
 
 test("the Health tab caches renderDoctor of the seam's report, ignores a late resolution, and flashes a rejection", async () => {
   const root = makeRoot();
-  const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], seams: [], verdict: "healthy" } as DoctorReport;
+  const report: DoctorReport = { header: "doctor", checks: [{ level: "ok", name: "node", detail: "fine" }], routing: [], verdict: "healthy" } as DoctorReport;
   let resolveDoctor!: (r: DoctorReport) => void;
   let reject = false;
   let renders = 0;

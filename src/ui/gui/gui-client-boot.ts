@@ -163,7 +163,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
           : "That entry was removed or moved — refreshed";
       });
     } else if (act === "note-edit") {
-      const note = drawerRole && drawerRole.view && typeof drawerRole.view.note === "string" ? drawerRole.view.note : "";
+      const note = drawerRole && drawerRole.view && typeof drawerRole.view.notes === "string" ? drawerRole.view.notes : "";
       startNoteEdit(arg, note);
     } else if (act === "note-discard") {
       stopNoteEdit();

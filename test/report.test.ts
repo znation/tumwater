@@ -948,10 +948,10 @@ test("report --failures --json prints the digest's collected data; --since --jso
   // it a stable shape), so --failures --json prints the collector's own payload — the
   // report --json and doctor --json precedent — instead of refusing the combination.
   const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as {
-    ticks: number;
+    runs: number;
     lossCauses: unknown[];
   };
-  assert.equal(parsed.ticks, 0);
+  assert.equal(parsed.runs, 0);
   assert.deepEqual(parsed.lossCauses, []);
 
   // --since --json stays legal: --json composes with every report shape.

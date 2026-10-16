@@ -1,6 +1,6 @@
 /** Collection half of the failure digest: read the harness's event log over a 2×-day window
  * and distill it into a `FailureReportData` — outcome tallies, window deltas, clustered
- * failure messages, landed commits, and the harness's own state transitions, each bounded at
+ * failure messages, merged commits, and the harness's own state transitions, each bounded at
  * collection time. The Markdown rendering of this data lives in failure-render.ts, a pure
  * function of it; the split keeps "what happened" (clustering rules, window math, bounds)
  * apart from "how it prints" (column layout, cell wording), which change for different
@@ -24,13 +24,13 @@ import { nonNegativeNumber } from "../files/json-object.js";
 import { eventsLogPath } from "../paths.js";
 
 /** Caps that keep the digest bounded regardless of how bad the window was — the top-N
- * clusters, one trimmed example each, and the newest N landed commits. See the render-doc
+ * clusters, one trimmed example each, and the newest N merged commits. See the render-doc
  * byte bound below for what these buy. */
 const ERROR_TOP = 7;
 const WARNING_TOP = 7;
 const REVIEW_FAILURE_TOP = 5;
 const REJECTION_TOP = 5;
-const LANDED_TOP = 10;
+const MERGED_TOP = 10;
 const SUMMARY_MAX = 100;
 
 /** One clustered section of the digest: the top-N clusters it itemizes, plus what the cut
@@ -57,17 +57,17 @@ export interface OutcomeRow {
  * field existed yields no rows, so old digests render unchanged. */
 interface PromptStatRow {
   role: string;
-  ticks: number; // tick_end events with a promptTokens reading
+  runs: number; // tick_end events with a promptTokens reading
   medianPromptTokens: number;
   preEditShare: number; // sum(preEditPromptTokens) / sum(promptTokens), in [0, 1]
 }
 
-/** One role's current-vs-preceding-window metrics. A zero side means the role had no ticks
+/** One role's current-vs-preceding-window metrics. A zero side means the role had no runs
  * there ("new" for a role absent from the preceding window). */
 interface DeltaRow {
   role: string;
-  prevTicks: number;
-  ticks: number;
+  prevRuns: number;
+  runs: number;
   prevErrors: number;
   errors: number;
   prevQuietKills: number;
@@ -76,8 +76,8 @@ interface DeltaRow {
   rejections: number;
 }
 
-/** A commit that landed (a `merged` event) inside the window. */
-interface LandedCommit {
+/** A commit that merged (a `merged` event) inside the window. */
+interface MergedCommit {
   ts: number;
   commit: string;
   summary: string;
@@ -100,7 +100,7 @@ export interface FailureReportData {
   to: string; // today
   sinceMs?: number; // trailing-window length; set only by collectFailureReportSince
   fromIso?: string; // cutoff instant as ISO; set only by collectFailureReportSince
-  ticks: number; // tick_end events in the current window
+  runs: number; // tick_end events in the current window
   hasEvents: boolean; // any event in either window (a day-key read can reach past them)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
   logState: EventLogState; // the read outcome: "ok" (parseable events), "empty", or "unreadable"
@@ -108,7 +108,7 @@ export interface FailureReportData {
   oldestEventDate: string | null; // when partial/empty: the oldest retained event's local date
   outcomes: OutcomeRow[];
   deltas: DeltaRow[];
-  timeSpend: TimeSpendRow[]; // per role × outcome class: ticks, summed wall-clock ms, cost
+  timeSpend: TimeSpendRow[]; // per role × outcome class: runs, summed wall-clock ms, cost
   lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, review-rejected and merge-conflict/merge-blocked authoring
   lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
   promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no tick_end carries them
@@ -116,8 +116,8 @@ export interface FailureReportData {
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
   rejections: ClusterSection;
-  landed: LandedCommit[];
-  landedTotal: number; // all merges in the window, before the newest-LANDED_TOP cut
+  merged: MergedCommit[];
+  mergedTotal: number; // all merges in the window, before the newest-MERGED_TOP cut
   stateChanges: StateChange[];
   stateChangesTotal: number; // all transitions in the window, before the newest-N cut
 }
@@ -172,10 +172,10 @@ function messageSection(
   );
 }
 
-/** One role's window metrics, used for the delta row: ticks/errors/quiet kills from
+/** One role's window metrics, used for the delta row: runs/errors/quiet kills from
  * `tick_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
 interface RoleStats {
-  ticks: number;
+  runs: number;
   errors: number;
   quietKills: number;
   rejections: number;
@@ -184,7 +184,7 @@ interface RoleStats {
 function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const byRole = new Map<string, RoleStats>();
   const statsFor = (role: string): RoleStats =>
-    getOrCreate(byRole, role, () => ({ ticks: 0, errors: 0, quietKills: 0, rejections: 0 }));
+    getOrCreate(byRole, role, () => ({ runs: 0, errors: 0, quietKills: 0, rejections: 0 }));
   for (const ev of events) {
     // Ticks are tick_end events; a rejection is now recorded by the landing slot, AFTER the
     // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
@@ -192,7 +192,7 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
     // tick_end result no production path emits — is the rejection source.
     if (ev.type === "tick_end") {
       const stats = statsFor(eventRole(ev));
-      stats.ticks++;
+      stats.runs++;
       if (ev.result === "error") stats.errors++;
       else if (ev.result === "quiet_killed") stats.quietKills++;
     } else if (ev.type === "review_rejected") {
@@ -346,12 +346,12 @@ function assembleFailureReport(
     (row) => row.role,
   );
 
-  // Time and spend: the same ticks priced by wall-clock span and cost, per role × outcome
+  // Time and spend: the same runs priced by wall-clock span and cost, per role × outcome
   // class, plus the loss ranking that weighs causes by agent-hours rather than tick counts.
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(tickEvents, allEvents);
 
   // Prompt-token telemetry: per role, the median prompt tokens a tick sent and how much of
-  // the prompt budget went out before the first edit. Only ticks carrying the field count, so
+  // the prompt budget went out before the first edit. Only runs carrying the field count, so
   // a pre-feature log leaves the section off entirely.
   const promptStats = promptStatsFor(tickEvents);
 
@@ -361,12 +361,12 @@ function assembleFailureReport(
   const roles = [...new Set([...curStats.keys(), ...prevStats.keys()])];
   const deltas: DeltaRow[] = roles
     .map((role) => {
-      const c = curStats.get(role) ?? { ticks: 0, errors: 0, quietKills: 0, rejections: 0 };
-      const p = prevStats.get(role) ?? { ticks: 0, errors: 0, quietKills: 0, rejections: 0 };
+      const c = curStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
+      const p = prevStats.get(role) ?? { runs: 0, errors: 0, quietKills: 0, rejections: 0 };
       return {
         role,
-        prevTicks: p.ticks,
-        ticks: c.ticks,
+        prevRuns: p.runs,
+        runs: c.runs,
         prevErrors: p.errors,
         errors: c.errors,
         prevQuietKills: p.quietKills,
@@ -377,12 +377,12 @@ function assembleFailureReport(
     })
     .sort(
       (a, b) =>
-        b.ticks - a.ticks ||
-        b.prevTicks - a.prevTicks ||
+        b.runs - a.runs ||
+        b.prevRuns - a.prevRuns ||
         a.role.localeCompare(b.role),
     );
 
-  // Only ticks that ENDED as errors carry a tick error: `state.lastError` is shared state the
+  // Only runs that ENDED as errors carry a tick error: `state.lastError` is shared state the
   // lander also writes, so a successful tick's `tick_end` can carry a leftover landing failure's
   // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
   // — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
@@ -433,10 +433,10 @@ function assembleFailureReport(
   // failing without misreading it as a tick error (BUGS.md 2026-09-21).
   const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
 
-  // The newest LANDED_TOP merges, newest first. The pre-slice count rides along, as it does for
+  // The newest MERGED_TOP merges, newest first. The pre-slice count rides along, as it does for
   // the state changes below, so the render can name what the cut left out — a busy window must
-  // not read as a LANDED_TOP-merge day (BUGS.md 2026-09-23).
-  const allLanded: LandedCommit[] = current
+  // not read as a MERGED_TOP-merge day (BUGS.md 2026-09-23).
+  const allMerged: MergedCommit[] = current
     .filter((ev) => ev.type === "merged")
     .map((ev) => ({
       ts: ev.ts,
@@ -445,7 +445,7 @@ function assembleFailureReport(
         typeof ev.summary === "string" ? truncateExample(ev.summary, SUMMARY_MAX) : "",
     }))
     .sort((a, b) => b.ts - a.ts);
-  const landed = allLanded.slice(0, LANDED_TOP);
+  const merged = allMerged.slice(0, MERGED_TOP);
 
   // The harness's own decisions, newest STATE_CHANGE_TOP kept in chronological order. The
   // description is bounded at collection so render stays a pure function of this data. The
@@ -475,7 +475,7 @@ function assembleFailureReport(
   return {
     ...window,
     ...(base === undefined ? {} : { role: base }),
-    ticks: tickEvents.length,
+    runs: tickEvents.length,
     hasEvents,
     emptyLog: !hasEvents && !coversFullWindow,
     logState,
@@ -491,8 +491,8 @@ function assembleFailureReport(
     warnings,
     reviewFailures,
     rejections,
-    landed,
-    landedTotal: allLanded.length,
+    merged,
+    mergedTotal: allMerged.length,
     stateChanges,
     stateChangesTotal: allStateChanges.length,
   };
@@ -511,14 +511,14 @@ function median(values: number[]): number {
  * nonNegativeNumber like every other event-log number: a torn or hand-edited line whose
  * `promptTokens` is `1e999` (JSON parses to Infinity) would otherwise land in the median and
  * the `preEditSum / promptSum` ratio as a non-finite value no report can render. */
-function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
+function promptStatsFor(runs: HarnessEvent[]): PromptStatRow[] {
   interface Acc {
     prompts: number[];
     promptSum: number;
     preEditSum: number;
   }
   const byRole = new Map<string, Acc>();
-  for (const ev of ticks) {
+  for (const ev of runs) {
     const prompt = nonNegativeNumber(ev.promptTokens, 0);
     const preEdit = nonNegativeNumber(ev.preEditPromptTokens, 0);
     if (prompt === 0 && preEdit === 0) continue;
@@ -534,7 +534,7 @@ function promptStatsFor(ticks: HarnessEvent[]): PromptStatRow[] {
     .filter(([, acc]) => acc.promptSum > 0)
     .map(([role, acc]) => ({
       role,
-      ticks: acc.prompts.length,
+      runs: acc.prompts.length,
       medianPromptTokens: median(acc.prompts),
       preEditShare: acc.preEditSum / acc.promptSum,
     }))

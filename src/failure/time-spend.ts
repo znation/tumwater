@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each one into
- * the per-role × outcome-class table (ticks, summed wall-clock ms, cost) plus the loss-cause
+ * the per-role × outcome-class table (runs, summed wall-clock ms, cost) plus the loss-cause
  * ranking that weighs causes by agent-hours rather than tick counts. Split from
  * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas,
  * clustered sections) and calls into timeAndSpend here; the Markdown rendering of both stays in
@@ -14,14 +14,14 @@ import { nonNegativeNumber, stringList } from "../files/json-object.js";
 import { getOrCreate, groupBy, rankByCount } from "../collections.js";
 
 /** How the Outcome table's results collapse for costing:
- * "landed" made progress, "no_change" spent a tick and landed nothing, and every remaining
+ * "merged" made progress, "no_change" spent a tick and merged nothing, and every remaining
  * result is "error-class" — it burned agent time without landing, whether the cause was a
  * hard failure or the review gate. Typed as a full Record so a result added to
  * src/tick/tick-outcome.ts and forgotten here is a compile error, like RESULT_ORDER in
  * src/failure/failure-render.ts. */
-export const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error"> = {
-  changed: "landed", // vocabulary-ok: OUTCOME_CLASS union value, renamed by the code series
-  queued: "landed", // vocabulary-ok: OUTCOME_CLASS union value, renamed by the code series
+export const OUTCOME_CLASS: Record<TickResult, "merged" | "no_change" | "error"> = {
+  changed: "merged",
+  queued: "merged",
   no_change: "no_change",
   refused: "no_change",
   skipped: "no_change",
@@ -36,12 +36,12 @@ export const OUTCOME_CLASS: Record<TickResult, "landed" | "no_change" | "error">
   user_aborted: "error",
 };
 
-/** One cell of the time-and-spend table: the ticks that ended on one outcome class, their
+/** One cell of the time-and-spend table: the runs that ended on one outcome class, their
  * summed wall-clock span (start→end) and cost. `ms` is 0 when no duration is known — an old
  * `tick_end` whose `tick_start` rotated out of the retained log — so the cell still counts
  * the tick but prices no time it cannot attest. */
 export interface SpendCell {
-  ticks: number;
+  runs: number;
   ms: number;
   costUsd: number;
 }
@@ -50,11 +50,11 @@ export interface SpendCell {
  * when empty so the render's columns never shift per row. */
 export interface TimeSpendRow {
   role: string;
-  classes: Record<"landed" | "no_change" | "error", SpendCell>;
+  classes: Record<"merged" | "no_change" | "error", SpendCell>;
 }
 
 /** One ranked loss cause: an error cluster — the digest's
- * own clustering, applied to the ticks that burned time — a role's total "no_change" spend,
+ * own clustering, applied to the runs that burned time — a role's total "no_change" spend,
  * the quiet loss no cluster names, or a role's total authoring spend on changes the landing
  * gate rejected (BUGS.md 2026-09-30), or a landing that failed to merge (BUGS.md 2026-10-10).
  * `example` is the newest verbatim occurrence for a cluster (the one at lastSeen, BUGS.md
@@ -65,7 +65,7 @@ export interface LossCause {
   kind: "error-cluster" | "no_change" | "review-rejected" | "merge-conflict" | "merge-blocked" | "refused";
   roles: string[]; // unique, sorted
   example: string;
-  ticks: number;
+  runs: number;
   ms: number;
   costUsd: number;
 }
@@ -73,7 +73,7 @@ export interface LossCause {
 /** A row's summed wall-clock span across its outcome classes — the sort key that puts the
  * burning role first, the way the usage report ranks its cost lines. */
 function sumMs(classes: TimeSpendRow["classes"]): number {
-  return classes.landed.ms + classes.no_change.ms + classes.error.ms;
+  return classes.merged.ms + classes.no_change.ms + classes.error.ms;
 }
 
 /** The loss-cause cut, like ERROR_TOP above: the five most expensive causes by time. */
@@ -95,7 +95,7 @@ interface LossDraft {
   roles: Set<string>;
   lastSeen: number;
   example: string;
-  ticks: number;
+  runs: number;
   ms: number;
   costUsd: number;
 }
@@ -129,13 +129,13 @@ function tickDurationMs(ev: HarnessEvent, starts: Map<string, number>): number {
   return tickSpanMs(ev, starts) ?? 0;
 }
 
-/** Add one tick to a {ticks, ms, costUsd} accumulator — the single home of the fold shared
+/** Add one tick to a {runs, ms, costUsd} accumulator — the single home of the fold shared
  * by the time-and-spend table's outcome cells (SpendCell) and the loss-cause drafts
  * (LossDraft), so the two tallies cannot drift apart in what they count or price. The
  * caller passes one event's already-computed durationMs and usage, so folding an event
  * into both a cell and a draft parses the usage and pairs the span exactly once. */
-function tally(target: { ticks: number; ms: number; costUsd: number }, durationMs: number, usage: { costUsd: number }): void {
-  target.ticks++;
+function tally(target: { runs: number; ms: number; costUsd: number }, durationMs: number, usage: { costUsd: number }): void {
+  target.runs++;
   target.ms += durationMs;
   target.costUsd += usage.costUsd;
 }
@@ -146,9 +146,9 @@ function tally(target: { ticks: number; ms: number; costUsd: number }, durationM
  * join runs over that same whole read too (BUGS.md 2026-09-30): a queued tick_end resolves
  * through its own land_queued pin to the later landed/land_failed outcome for the same
  * loop+sha — history-data.ts's exact join — so an authoring tick whose landing was rejected
- * prices into the error-class cell its contract names instead of the landed cell its
+ * prices into the error-class cell its contract names instead of the merged cell its
  * transient queued result suggested. A landing still in the pipeline, or an outcome event
- * matching no pin, keeps the queued→landed reading: the conservative fallback. */
+ * matching no pin, keeps the queued→merged reading: the conservative fallback. */
 export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent[]): {
   timeSpend: TimeSpendRow[];
   lossCauses: LossCause[];
@@ -157,8 +157,8 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
   lossCausesHidden: number;
 } {
   const starts = tickStartMap(allEvents);
-  const emptyCell = (): SpendCell => ({ ticks: 0, ms: 0, costUsd: 0 });
-  const byRole = new Map<string, Record<"landed" | "no_change" | "error", SpendCell>>();
+  const emptyCell = (): SpendCell => ({ runs: 0, ms: 0, costUsd: 0 });
+  const byRole = new Map<string, Record<"merged" | "no_change" | "error", SpendCell>>();
   const losses = new Map<string, LossDraft>();
   // The landing evidence rides history-data.ts's bucketLandingEvents — the same buckets
   // history's rows read — so the digest's join cannot drift from the rows' join.
@@ -210,7 +210,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     const usage = eventUsage(ev);
     const durationMs = tickDurationMs(ev, starts);
     const row = getOrCreate(byRole, role, () => ({
-      landed: emptyCell(),
+      merged: emptyCell(),
       no_change: emptyCell(),
       error: emptyCell(),
     }));
@@ -300,7 +300,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
         roles: new Set<string>(),
         lastSeen: ev.ts,
         example,
-        ticks: 0,
+        runs: 0,
         ms: 0,
         costUsd: 0,
       };
@@ -325,11 +325,11 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       kind: d.kind,
       roles: sortedRoles(d.roles),
       example: d.example,
-      ticks: d.ticks,
+      runs: d.runs,
       ms: d.ms,
       costUsd: d.costUsd,
     }))
-    .sort((a, b) => b.ms - a.ms || b.ticks - a.ticks || a.example.localeCompare(b.example));
+    .sort((a, b) => b.ms - a.ms || b.runs - a.runs || a.example.localeCompare(b.example));
   const lossCauses = rankedLosses.slice(0, LOSS_TOP);
   return { timeSpend, lossCauses, lossCausesHidden: Math.max(0, rankedLosses.length - LOSS_TOP) };
 }

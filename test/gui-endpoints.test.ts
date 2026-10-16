@@ -420,7 +420,7 @@ test("the live server routes GET /api/logs to the slice handler", async () => {
 });
 
 test("handleDoctor answers the run's DoctorReport and passes it the root", async () => {
-  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], seams: [], verdict: "v" };
+  const report = { header: "h", checks: [{ name: "Node", level: "ok" as const, detail: "d" }], routing: [], verdict: "v" };
   let seen = "";
   const out = await captureJson((res) => handleDoctor(res, "/some/root", async (r) => ((seen = r), report)));
   assert.equal(out.captured.status, 200);
@@ -576,9 +576,9 @@ test("handleRole serves a role's notes and next prompt, refusing a missing or un
   // The body is rolePayload's own collection — the note and the assembled next prompt
   // `tumwater role <id>` renders — so the dashboard and the CLI cannot drift.
   const payload = rolePayload(root, "feature");
-  const d = data as { note: string | null; nextPrompt: string | null };
-  assert.equal(d.note, payload.note);
-  assert.equal(d.note, "the scheduler lives in team.ts\n");
+  const d = data as { notes: string | null; nextPrompt: string | null };
+  assert.equal(d.notes, payload.notes);
+  assert.equal(d.notes, "the scheduler lives in team.ts\n");
   assert.equal(d.nextPrompt, payload.nextPrompt);
   assert.match(d.nextPrompt ?? "", /Implement the SINGLE most valuable planned feature in PLANS\.md/);
 

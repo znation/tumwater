@@ -36,7 +36,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
   const r = await cli(root, "retire", "--role", "improve", "--json");
   assert.equal(r.code, 0, r.stderr);
   const payload = JSON.parse(r.stdout) as { role: string; removed: string[]; skipped: string[] };
-  assert.deepEqual(payload.removed, ["worktree", "branch", "landingRef"]);
+  assert.deepEqual(payload.removed, ["worktree", "branch", "mergeRef"]);
   assert.deepEqual(payload.skipped, ["pausedMarker"]);
   assert.ok(!fs.existsSync(worktreePath(root, "improve")), "worktree directory gone");
   assert.equal(
@@ -96,7 +96,7 @@ test("retire refuses a dirty worktree and a mid-tick loop before removing anythi
   assert.match(r2.stderr, /run is in progress/);
   assert.ok(fs.existsSync(wt), "mid-tick refusal removes nothing");
   const status: RetireStatus = await collectRetire(root, "improve");
-  assert.equal(status.midTick, true);
+  assert.equal(status.midRun, true);
 });
 
 test("retire refuses an unusable worktree it cannot check for uncommitted changes", async () => {
@@ -129,7 +129,7 @@ test("a second retire is idempotent: skipped artifacts, exit 0", async () => {
   assert.equal(second.code, 0, second.stderr);
   const payload = JSON.parse(second.stdout) as { removed: string[]; skipped: string[] };
   assert.deepEqual(payload.removed, []);
-  assert.deepEqual(payload.skipped, ["worktree", "branch", "landingRef", "pausedMarker"]);
+  assert.deepEqual(payload.skipped, ["worktree", "branch", "mergeRef", "pausedMarker"]);
 
   // The human-readable form says what was already gone, in lines, not an error.
   const text = await cli(root, "retire", "--role", "improve");
@@ -310,7 +310,7 @@ test("retire --dry-run previews the removal and changes nothing", async () => {
     objections: string[];
   };
   assert.equal(payload.dryRun, true);
-  assert.deepEqual(payload.wouldRemove, ["worktree", "branch", "landingRef"]);
+  assert.deepEqual(payload.wouldRemove, ["worktree", "branch", "mergeRef"]);
   assert.deepEqual(payload.skipped, ["pausedMarker"]);
   assert.deepEqual(payload.objections, []);
   assert.ok(fs.existsSync(worktreePath(root, "improve")), "worktree directory kept");

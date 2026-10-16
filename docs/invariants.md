@@ -241,7 +241,7 @@ line whose dropped count is derived from the same list the section itemized, so 
 never reads as a complete itemization of the window.
 
 **Binds.** `src/failure/failure-data.ts` (the `*_TOP` caps, and the `hiddenClusters` /
-`lossCausesHidden` / `stateChangesTotal` / `landedTotal` fields the render reads),
+`lossCausesHidden` / `stateChangesTotal` / `mergedTotal` fields the render reads),
 `src/failure/failure-render.ts` (`renderFailureMarkdown`, `renderClusters`), `src/failure/time-spend.ts`
 (`LOSS_TOP`), `src/failure/failure-state-change.ts` (`STATE_CHANGE_TOP`).
 

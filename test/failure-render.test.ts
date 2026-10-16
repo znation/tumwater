@@ -28,7 +28,7 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
   ]);
   const third = collectFailureReport(root, 1);
   assert.notEqual(third, first, "a changed log re-derives the digest");
-  assert.equal(third.ticks, 2, "the re-derived digest sees the appended tick");
+  assert.equal(third.runs, 2, "the re-derived digest sees the appended tick");
 });
 
 test("collectFailureReport tallies tick_end results per role", () => {
@@ -41,7 +41,7 @@ test("collectFailureReport tallies tick_end results per role", () => {
     { ts: at(0), loop: "", type: "tick_end", result: "queued" }, // empty loop id → "?"
   ]);
   const data = collectFailureReport(root, 1);
-  assert.equal(data.ticks, 5);
+  assert.equal(data.runs, 5);
   const feature = data.outcomes.find((o) => o.role === "feature");
   assert.deepEqual(feature?.counts, { changed: 2, error: 1 });
   const bugfix = data.outcomes.find((o) => o.role === "bugfix");
@@ -344,8 +344,8 @@ test("deltas report new roles as absent, not an infinite increase", () => {
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.deltas.find((d) => d.role === "feature");
-  assert.equal(feature?.prevTicks, 0);
-  assert.equal(feature?.ticks, 1);
+  assert.equal(feature?.prevRuns, 0);
+  assert.equal(feature?.runs, 1);
   assert.equal(feature?.errors, 1);
   const md = renderFailureMarkdown(data);
   assert.match(md, /\| feature \| — → 1 \| — → 100% \|/);
@@ -378,8 +378,8 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   const data = collectFailureReport(root, 1);
 
   const feature = data.deltas.find((d) => d.role === "feature")!;
-  assert.equal(feature.prevTicks, 4);
-  assert.equal(feature.ticks, 2);
+  assert.equal(feature.prevRuns, 4);
+  assert.equal(feature.runs, 2);
   assert.equal(feature.prevQuietKills, 1);
   assert.equal(feature.quietKills, 1);
   assert.equal(feature.prevRejections, 1);
@@ -388,7 +388,7 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   // A role absent from the preceding window carries its current counts, with "—" on the
   // previous side of every column rather than an infinite increase.
   const bugfix = data.deltas.find((d) => d.role === "bugfix")!;
-  assert.equal(bugfix.prevTicks, 0);
+  assert.equal(bugfix.prevRuns, 0);
   assert.equal(bugfix.quietKills, 1);
   assert.equal(bugfix.rejections, 1);
 
@@ -711,10 +711,33 @@ test("report --failures --json prints the digest's collected data", async () => 
   ]);
   const ok = await runCli(root, "report", "--failures", "--json");
   assert.equal(ok.code, 0);
-  const parsed = JSON.parse(ok.out) as { ticks: number; timeSpend: unknown[]; lossCauses: unknown[] };
-  assert.equal(parsed.ticks, 1);
+  const parsed = JSON.parse(ok.out) as { runs: number; timeSpend: unknown[]; lossCauses: unknown[] };
+  assert.equal(parsed.runs, 1);
   assert.ok(Array.isArray(parsed.timeSpend) && parsed.timeSpend.length === 1, "the time-and-spend table rides the JSON");
   assert.ok(Array.isArray(parsed.lossCauses) && parsed.lossCauses.length === 1, "the loss ranking rides the JSON");
+});
+
+test("the digest's JSON carries no retired key at any depth", async () => {
+  const root = makeRepo();
+  writeEvents(root, [
+    { ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
+  ]);
+  const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as unknown;
+  const keys = new Set<string>();
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v !== null && typeof v === "object") {
+      for (const [k, child] of Object.entries(v)) {
+        keys.add(k);
+        walk(child);
+      }
+    }
+  };
+  walk(parsed);
+  for (const retired of ["ticks", "prevTicks", "landed", "landedTotal"]) assert.ok(!keys.has(retired), retired);
+  for (const key of ["runs", "merged", "mergedTotal", "prevRuns"]) assert.ok(keys.has(key), key);
+  const row = (parsed as { timeSpend: { classes: Record<string, unknown> }[] }).timeSpend[0]!;
+  assert.deepEqual(Object.keys(row.classes).sort(), ["error", "merged", "no_change"]);
 });
 
 test("collectFailureReportSince counts only the trailing window and compares the equal prior window", () => {
@@ -726,13 +749,13 @@ test("collectFailureReportSince counts only the trailing window and compares the
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.sinceMs, 6 * HOUR);
-  assert.equal(data.ticks, 1, "only the 1h-old tick is inside the window");
+  assert.equal(data.runs, 1, "only the 1h-old tick is inside the window");
   assert.equal(data.errors.total, 1, "the current window clusters only its own errors");
   // The 8h-old event falls in the prior window [12h, 6h), so it is the prior side of the deltas.
   const feature = data.deltas.find((d) => d.role === "feature");
   assert.deepEqual(
-    { prevTicks: feature?.prevTicks, ticks: feature?.ticks, prevErrors: feature?.prevErrors, errors: feature?.errors },
-    { prevTicks: 1, ticks: 1, prevErrors: 1, errors: 1 },
+    { prevRuns: feature?.prevRuns, runs: feature?.runs, prevErrors: feature?.prevErrors, errors: feature?.errors },
+    { prevRuns: 1, runs: 1, prevErrors: 1, errors: 1 },
     "the 8h-old event is the preceding equal window's side",
   );
 
@@ -762,7 +785,7 @@ test("an empty since window ignores earlier same-day events outside both windows
     { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "tick_end", result: "changed" },
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
-  assert.equal(data.ticks, 0);
+  assert.equal(data.runs, 0);
   assert.equal(data.hasEvents, false, "the out-of-window event is not a window event");
   assert.equal(data.partial, false);
   const md = renderFailureMarkdown(data);
@@ -846,9 +869,9 @@ test("the digest reports per-role prompt-token medians and the pre-edit share", 
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
-  assert.deepEqual(feature, { role: "feature", ticks: 2, medianPromptTokens: 200, preEditShare: 0.15 });
+  assert.deepEqual(feature, { role: "feature", runs: 2, medianPromptTokens: 200, preEditShare: 0.15 });
   const bugfix = data.promptStats.find((r) => r.role === "bugfix");
-  assert.deepEqual(bugfix, { role: "bugfix", ticks: 1, medianPromptTokens: 50, preEditShare: 1 });
+  assert.deepEqual(bugfix, { role: "bugfix", runs: 1, medianPromptTokens: 50, preEditShare: 1 });
 
   const md = renderFailureMarkdown(data);
   assert.match(md, /^## Prompt tokens by role$/m);
@@ -869,7 +892,7 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
-  assert.deepEqual(feature, { role: "feature", ticks: 1, medianPromptTokens: 100, preEditShare: 0 });
+  assert.deepEqual(feature, { role: "feature", runs: 1, medianPromptTokens: 100, preEditShare: 0 });
 });
 
 test("a log without prompt-token fields renders no prompt section", () => {
@@ -912,7 +935,7 @@ test("collectFailureReport scopes every section to one base role", () => {
   assert.deepEqual(scoped.warnings.clusters.map((c) => c.roles), [["qa"]]);
   assert.deepEqual(scoped.errors.clusters.map((c) => c.roles), [["qa"]]);
   assert.deepEqual(scoped.rejections.clusters.map((c) => c.roles), [["qa"]]);
-  assert.deepEqual(scoped.landed.map((c) => c.commit), ["bbbbbbb"]);
+  assert.deepEqual(scoped.merged.map((c) => c.commit), ["bbbbbbb"]);
   assert.deepEqual(scoped.stateChanges.map((s) => s.description), [
     "role qa paused — 3 runs failed in a row",
   ]);

@@ -66,7 +66,7 @@ export async function runDoctor(
   // the backend it routes to — read from the same one list the checks sweep, so an operator
   // sees (and the checks cover) a claude fallback exactly like a primary seam. A broken config
   // keeps it empty (the init check reports that separately).
-  const seams: DoctorReport["seams"] = config
+  const routing: DoctorReport["routing"] = config
     ? seamsInUse(config).map((s) => ({
         label: s.label,
         selector: s.model !== undefined ? agentQualifiedSelector({ ...s, model: s.model }) : "no model declared",
@@ -136,5 +136,5 @@ export async function runDoctor(
     { name: "macOS port leak", ...(await checkLaunchServicesPorts(probe)) },
   ];
   const problems = checks.filter((c) => c.level === "fail").length;
-  return { header, checks, seams, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
+  return { header, checks, routing, verdict: problems === 0 ? "ready to run" : plural(problems, "problem") };
 }

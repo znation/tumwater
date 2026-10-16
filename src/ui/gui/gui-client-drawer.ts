@@ -244,7 +244,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     else if (r.state === "error") body = "<p class='muted'>" + esc(r.message || "Notes and prompt unavailable") + "</p>";
     else {
       const view = r.view && typeof r.view === "object" ? r.view : {};
-      const note = typeof view.note === "string" && view.note.trim() !== "" ? view.note : null;
+      const note = typeof view.notes === "string" && view.notes.trim() !== "" ? view.notes : null;
       const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
       const outcomes = Array.isArray(view.recentOutcomes) ? view.recentOutcomes : [];
       const canEdit = r.role !== "director";
@@ -297,7 +297,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     // Model line names that default (<agent> default (<selector>), agentDefault). Mirror
     // that branch so the drawer names the model a default pi fleet actually runs on.
     const defaultLine = typeof view.piDefault === "string"
-      ? (view.agent && view.agent !== "pi" ? view.agent : "pi") + " default (" + view.piDefault + ")"
+      ? (view.backend && view.backend !== "pi" ? view.backend : "pi") + " default (" + view.piDefault + ")"
       : "";
     const modelLine = defaultLine !== "" ? defaultLine : pair(view.provider, view.model);
     if (modelLine !== "" || view.modelTier !== undefined) {
@@ -324,7 +324,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const window = view.billing === "subscription" && view.billingWindow ? " (" + view.billingWindow + " window)" : "";
       rows.push(kvRow("Billing", (view.billing === "api" ? "API" : view.billing) + window));
     }
-    if (typeof view.minTickIntervalSeconds === "number") rows.push(kvRow("Min run interval", view.minTickIntervalSeconds + "s"));
+    if (typeof view.minRunIntervalSeconds === "number") rows.push(kvRow("Min run interval", view.minRunIntervalSeconds + "s"));
     // The windows governing the loop, worded like role-render.ts's Quiet hours line; the end time
     // mirrors quietWindowEnd (browser code cannot import it).
     if (Array.isArray(view.quietHours)) view.quietHours.forEach(function (w) {

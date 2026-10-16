@@ -376,7 +376,7 @@ test("role --clear-notes and --notes-file write the role's notes", async () => {
   assert.match(r.stdout, /feature: notes cleared/);
   assert.equal(fs.readFileSync(notes, "utf8"), "");
   r = await cli(repo, "role", "feature", "--json");
-  assert.equal((JSON.parse(r.stdout) as { note: string | null }).note, null);
+  assert.equal((JSON.parse(r.stdout) as { notes: string | null }).notes, null);
 
   for (const [args, msg] of [
     [["feature", "--clear-notes", "--notes-file", "x"], /not both/],

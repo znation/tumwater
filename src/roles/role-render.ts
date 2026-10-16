@@ -45,7 +45,7 @@ export function inspectMarkdownLines(p: RoleViewPayload): string[] {
   lines.push(
     ...fencedOrNone(
       "Notes",
-      p.note,
+      p.notes,
       "none yet — the role's own earlier runs write them, and the director has none",
     ),
   );
@@ -72,7 +72,7 @@ function modelPair(provider: string | undefined, model: string | undefined): str
 /** The backend's own-default label when no model resolves: `<agent> default` — pi's
  * historical `pi default` for the pi backend, `claude default` for claude (part 4f/7). */
 function agentDefault(p: RoleViewPayload): string {
-  return `${p.agent !== "pi" ? p.agent : "pi"} default`;
+  return `${p.backend !== "pi" ? p.backend : "pi"} default`;
 }
 
 /** The provider/model wiring as one readable token: `provider/model` when both resolve,
@@ -87,7 +87,7 @@ function modelLine(p: RoleViewPayload): string {
   const pair = modelPair(p.provider, p.model);
   const thinking = p.thinking ? ` (thinking: ${p.thinking})` : "";
   if (!pair) return `${agentDefault(p)}${thinking}`;
-  const agent = p.agent !== "pi" ? `${p.agent}/` : "";
+  const agent = p.backend !== "pi" ? `${p.backend}/` : "";
   return `${agent}${pair}${thinking}`;
 }
 
@@ -98,11 +98,11 @@ function modelLine(p: RoleViewPayload): string {
  * claude fallback reads `claude/claude-sonnet-5-5`, not a bare id (PLANS.md "Mixed claude +
  * pi fleets, part 3/4" gap 7). */
 function fallbackPairLabel(
-  fb: { provider?: string; model?: string; agent?: string },
+  fb: { provider?: string; model?: string; backend?: string },
   agentDefault: string,
 ): string {
   const agentBackend =
-    (fb.agent !== undefined && fb.agent !== "pi" ? fb.agent : undefined) ??
+    (fb.backend !== undefined && fb.backend !== "pi" ? fb.backend : undefined) ??
     (fb.provider !== undefined && isAgentId(fb.provider) ? fb.provider : undefined);
   if (fb.model !== undefined) {
     if (agentBackend !== undefined) return `${agentBackend}/${fb.model}`;
@@ -159,8 +159,8 @@ function scheduleLine(p: RoleViewPayload, now: number): string[] {
     next = nextRunPhrase(remain, p.backoffSeconds > 0, "due now", true) + suffix;
   }
   const last =
-    p.lastTickEndedAt !== undefined
-      ? `${formatTimestamp(p.lastTickEndedAt)} (${humanSeconds(secondsSince(p.lastTickEndedAt, now))} ago)`
+    p.lastRunEndedAt !== undefined
+      ? `${formatTimestamp(p.lastRunEndedAt)} (${humanSeconds(secondsSince(p.lastRunEndedAt, now))} ago)`
       : "never";
   return [`- Next run: ${next}`, `- Last run: ${last}`, ...(p.quietHours ?? []).map(quietHoursLine)];
 }
@@ -214,7 +214,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
       p.billing === "subscription" && p.billingWindow ? ` (${claudeWindowLabel(p.billingWindow)} window)` : "";
     lines.push(`- Billing: ${p.billing === "api" ? "API" : p.billing}${window}`);
   }
-  lines.push(`- Min run interval: ${p.minTickIntervalSeconds}s`);
+  lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
   lines.push(`- Inbox: ${p.inboxCount}`);
   // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
   // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,

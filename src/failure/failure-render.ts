@@ -50,21 +50,21 @@ function columns(outcomes: OutcomeRow[]): TickResult[] {
   return [...present].sort((a, b) => RESULT_ORDER[a] - RESULT_ORDER[b] || a.localeCompare(b));
 }
 
-/** A delta cell: `prev → cur`, with "—" on a side where the role had no ticks (the "new role"
+/** A delta cell: `prev → cur`, with "—" on a side where the role had no runs (the "new role"
  * case for the preceding window), so an absence is never rendered as an infinite increase.
  * The displayed halves may be raw counts (stringified here) or pre-rendered rate strings —
  * the tick-count halves exist only to decide the "—", not to be printed. */
-function deltaCell(prevTicks: number, prev: string | number, ticks: number, cur: string | number): string {
-  return `${prevTicks === 0 ? "—" : prev} → ${ticks === 0 ? "—" : cur}`;
+function deltaCell(prevRuns: number, prev: string | number, runs: number, cur: string | number): string {
+  return `${prevRuns === 0 ? "—" : prev} → ${runs === 0 ? "—" : cur}`;
 }
 
 /** The rejections column's cell. It cannot reuse deltaCell: a rejection is logged by the
  * landing slot, so its authoring tick_end can fall in the other window — a role with a
  * rejection must show it even when its tick count is 0. Presence is judged on the rejection
- * count itself (the role is "absent" from the column only with neither ticks nor rejections). */
-function rejectionCell(prevTicks: number, prevRejections: number, ticks: number, rejections: number): string {
-  const prev = prevTicks === 0 && prevRejections === 0 ? "—" : String(prevRejections);
-  const cur = ticks === 0 && rejections === 0 ? "—" : String(rejections);
+ * count itself (the role is "absent" from the column only with neither runs nor rejections). */
+function rejectionCell(prevRuns: number, prevRejections: number, runs: number, rejections: number): string {
+  const prev = prevRuns === 0 && prevRejections === 0 ? "—" : String(prevRejections);
+  const cur = runs === 0 && rejections === 0 ? "—" : String(rejections);
   return `${prev} → ${cur}`;
 }
 
@@ -93,11 +93,11 @@ function edgePercent(pct: number, edgeWhole: string, edge: string): string {
   return oneDecimal === edgeWhole ? edge : `${oneDecimal}%`;
 }
 
-/** An error rate as a whole percent, or "—" when the role ran no ticks (an absence is not
+/** An error rate as a whole percent, or "—" when the role ran no runs (an absence is not
  * a 0% rate, for the same reason deltaCell says "—"). */
-function rate(errors: number, ticks: number): string {
-  if (ticks === 0) return "—";
-  return percent(errors, ticks);
+function rate(errors: number, runs: number): string {
+  if (runs === 0) return "—";
+  return percent(errors, runs);
 }
 
 /** One time-and-spend cell: `x.x h · $y.yy`, or "—" when the role ended no tick on that
@@ -105,7 +105,7 @@ function rate(errors: number, ticks: number): string {
  * Hours carry one decimal: the digest prices agent-hours, and whole-hour rounding would
  * erase the difference between ten 200-ms errors and one 30-minute timeout. */
 function spendCell(cell: SpendCell): string {
-  if (cell.ticks === 0) return "—";
+  if (cell.runs === 0) return "—";
   return `${hoursPhrase(cell.ms)} · ${usd(cell.costUsd)}`;
 }
 
@@ -121,12 +121,12 @@ function hoursPhrase(ms: number): string {
  * src/tick/tick-outcome.ts), and the time-and-spend section's LOSS_TOP loss-cause lines (fixed by
  * the cut), and every free string is capped — cluster examples at 120 chars (plus a `… (+N
  * chars)` cut marker when truncated, so a marked cut can never read as a complete message —
- * BUGS.md 2026-09-30), landed summaries at 100 under the same rule, a cluster's role list at 4
+ * BUGS.md 2026-09-30), merged summaries at 100 under the same rule, a cluster's role list at 4
  * names plus a remainder count, and any loop id sliced to 32 chars (config validation already
  * refuses longer custom-loop ids, so the slice is a guard rather than the real bound). Cluster
  * counts are capped at top-N, and the Fleet state changes section is capped at STATE_CHANGE_TOP
  * lines with each payload at STATE_CHANGE_MAX and each free field at STATE_CHANGE_FIELD_MAX; the
- * landed list at LANDED_TOP lines, each capped section closing with one remainder line when its cut
+ * merged list at MERGED_TOP lines, each capped section closing with one remainder line when its cut
  * dropped anything. Nothing here grows with how bad the window was: measured 6,017 bytes at the
  * CLI's default 14 days on the live fleet, and the worst-case byte-bound fixture in
  * test/failure-render.test.ts covers transition events too. Pure function of FailureReportData: no
@@ -140,8 +140,8 @@ export function renderFailureMarkdown(data: FailureReportData): string {
   // day-window line. The empty branch follows the same split so neither claims the other's unit.
   lines.push(
     data.sinceMs !== undefined
-      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.ticks} runs`
-      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.ticks} runs`,
+      ? `${sinceWindowLine(durationLabel(data.sinceMs), data.fromIso!)} · ${data.runs} runs`
+      : `${reportWindow(data.from, data.to, data.days, eventsRotationLabel())} · ${data.runs} runs`,
   );
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   if (data.logState === "unreadable") lines.push("log unreadable — evidence missing");
@@ -191,7 +191,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
     );
   }
 
-  // The same ticks priced by what they cost, so a 30-minute timeout outranks ten 200-ms
+  // The same runs priced by what they cost, so a 30-minute timeout outranks ten 200-ms
   // errors that the Outcome table above weighs equally. Two parts: the role × class table of
   // hours and dollars, then the top loss causes by time (an error cluster, a role's
   // no_change total — the quiet loss no cluster names, a review-rejected authoring span, or a
@@ -207,7 +207,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
         ["role", "merged", "no change", "error"],
         data.timeSpend.map((row) => [
           roleCell(row.role),
-          spendCell(row.classes.landed),
+          spendCell(row.classes.merged),
           spendCell(row.classes.no_change),
           spendCell(row.classes.error),
         ]),
@@ -229,7 +229,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
                 : c.kind === "merge-conflict" || c.kind === "merge-blocked"
                   ? `${c.kind} authoring on ${roleCell(c.roles[0] ?? "?")}${c.example ? ` — ${c.example}` : ""}`
                   : `${c.example} (${roleList(c.roles)})`;
-        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.ticks, "run")}: ${cause}`);
+        lines.push(`- ${hoursPhrase(c.ms)} · ${usd(c.costUsd)} — ${plural(c.runs, "run")}: ${cause}`);
       }
       // Mark the top-5 cut the way the cluster sections mark theirs: a capped ranking that
       // stays silent reads as a complete itemization of the window's loss (BUGS.md 2026-10-01).
@@ -267,10 +267,10 @@ export function renderFailureMarkdown(data: FailureReportData): string {
         ["role", "runs", "error rate", "stalls", "rejections"],
         data.deltas.map((d) => [
           roleCell(d.role),
-          deltaCell(d.prevTicks, d.prevTicks, d.ticks, d.ticks),
-          deltaCell(d.prevTicks, rate(d.prevErrors, d.prevTicks), d.ticks, rate(d.errors, d.ticks)),
-          deltaCell(d.prevTicks, d.prevQuietKills, d.ticks, d.quietKills),
-          rejectionCell(d.prevTicks, d.prevRejections, d.ticks, d.rejections),
+          deltaCell(d.prevRuns, d.prevRuns, d.runs, d.runs),
+          deltaCell(d.prevRuns, rate(d.prevErrors, d.prevRuns), d.runs, rate(d.errors, d.runs)),
+          deltaCell(d.prevRuns, d.prevQuietKills, d.runs, d.quietKills),
+          rejectionCell(d.prevRuns, d.prevRejections, d.runs, d.rejections),
         ]),
       ),
     );
@@ -287,13 +287,13 @@ export function renderFailureMarkdown(data: FailureReportData): string {
 
   lines.push("");
   lines.push("## Merged in the window");
-  if (data.landed.length === 0) {
+  if (data.merged.length === 0) {
     lines.push("_nothing merged in the window_");
   } else {
-    for (const c of data.landed) lines.push(`- ${shortSha(c.commit)} — ${c.summary}`);
+    for (const c of data.merged) lines.push(`- ${shortSha(c.commit)} — ${c.summary}`);
     // Like the transitions' remainder line: a cut list says so, so a busy window's newest ten
     // are not mistaken for everything that merged.
-    const hidden = data.landedTotal - data.landed.length;
+    const hidden = data.mergedTotal - data.merged.length;
     if (hidden > 0) lines.push(`+${hidden} older merges not listed`);
   }
 

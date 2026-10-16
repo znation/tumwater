@@ -25,7 +25,7 @@ test("time and spend: one 30-minute timeout outranks ten 1-second errors", () =>
   assert.equal(data.lossCauses[0]?.kind, "error-cluster");
   assert.equal(data.lossCauses[0]?.example, "Request timed out", "the timeout ranks first by hours, not by count");
   assert.equal(data.lossCauses[0]?.ms, 1_800_000);
-  assert.equal(data.lossCauses[1]?.ticks, 10, "the ten 1-second errors rank behind it");
+  assert.equal(data.lossCauses[1]?.runs, 10, "the ten 1-second errors rank behind it");
   assert.equal(data.lossCauses[1]?.ms, 10_000);
   assert.equal((data.lossCauses[1]?.costUsd ?? 0).toFixed(2), "0.10", "the ten errors' summed cost");
   const md = renderFailureMarkdown(data);
@@ -51,10 +51,10 @@ test("time and spend folds role × outcome class, pairing old events with tick_s
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.timeSpend.find((r) => r.role === "feature");
-  assert.deepEqual(feature?.classes.landed, { ticks: 1, ms: 3_600_000, costUsd: 0.2 });
+  assert.deepEqual(feature?.classes.merged, { runs: 1, ms: 3_600_000, costUsd: 0.2 });
   const bugfix = data.timeSpend.find((r) => r.role === "bugfix");
-  assert.deepEqual(bugfix?.classes.no_change, { ticks: 1, ms: 3_600_000, costUsd: 0.3 });
-  assert.deepEqual(bugfix?.classes.error, { ticks: 1, ms: 0, costUsd: 0 }, "unpaired: counted, not priced");
+  assert.deepEqual(bugfix?.classes.no_change, { runs: 1, ms: 3_600_000, costUsd: 0.3 });
+  assert.deepEqual(bugfix?.classes.error, { runs: 1, ms: 0, costUsd: 0 }, "unpaired: counted, not priced");
   // A no_change role is a loss cause even with no error cluster.
   assert.deepEqual(
     data.lossCauses.map((c) => [c.kind, c.example]),
@@ -98,19 +98,19 @@ test("a review-rejected change's authoring hours price into error-class, not lan
   ]);
   const data = collectFailureReport(root, 1);
   const coverage = data.timeSpend.find((r) => r.role === "coverage");
-  assert.deepEqual(coverage?.classes.error, { ticks: 1, ms: 3_600_000, costUsd: 1.0 }, "the authoring span prices as error-class, not the landing's own 60s");
-  assert.equal(coverage?.classes.landed.ticks, 0);
+  assert.deepEqual(coverage?.classes.error, { runs: 1, ms: 3_600_000, costUsd: 1.0 }, "the authoring span prices as error-class, not the landing's own 60s");
+  assert.equal(coverage?.classes.merged.runs, 0);
   const feature = data.timeSpend.find((r) => r.role === "feature");
-  assert.deepEqual(feature?.classes.landed, { ticks: 1, ms: 1_800_000, costUsd: 0.2 }, "a landed change stays landed");
+  assert.deepEqual(feature?.classes.merged, { runs: 1, ms: 1_800_000, costUsd: 0.2 }, "a merged change stays merged");
   const bugfix = data.timeSpend.find((r) => r.role === "bugfix");
-  assert.deepEqual(bugfix?.classes.landed, { ticks: 1, ms: 600_000, costUsd: 0.1 }, "an unresolved landing keeps the conservative fallback");
+  assert.deepEqual(bugfix?.classes.merged, { runs: 1, ms: 600_000, costUsd: 0.1 }, "an unresolved landing keeps the conservative fallback");
   const organize = data.timeSpend.find((r) => r.role === "organize");
-  assert.deepEqual(organize?.classes.error, { ticks: 1, ms: 1_200_000, costUsd: 0.3 }, "a merge conflict's authoring span prices as error-class too");
+  assert.deepEqual(organize?.classes.error, { runs: 1, ms: 1_200_000, costUsd: 0.3 }, "a merge conflict's authoring span prices as error-class too");
 
   const rejected = data.lossCauses.find((c) => c.kind === "review-rejected");
   assert.deepEqual(
-    rejected && { roles: rejected.roles, example: rejected.example, ticks: rejected.ticks, ms: rejected.ms, costUsd: rejected.costUsd },
-    { roles: ["coverage"], example: "too big", ticks: 1, ms: 3_600_000, costUsd: 1.0 },
+    rejected && { roles: rejected.roles, example: rejected.example, runs: rejected.runs, ms: rejected.ms, costUsd: rejected.costUsd },
+    { roles: ["coverage"], example: "too big", runs: 1, ms: 3_600_000, costUsd: 1.0 },
     "the rejection ranks as its own cause, exemplified by the review_rejected reason",
   );
   assert.equal(
@@ -123,11 +123,11 @@ test("a review-rejected change's authoring hours price into error-class, not lan
     conflict && {
       roles: conflict.roles,
       example: conflict.example,
-      ticks: conflict.ticks,
+      runs: conflict.runs,
       ms: conflict.ms,
       costUsd: conflict.costUsd,
     },
-    { roles: ["organize"], example: "(no error text recorded)", ticks: 1, ms: 1_200_000, costUsd: 0.3 },
+    { roles: ["organize"], example: "(no error text recorded)", runs: 1, ms: 1_200_000, costUsd: 0.3 },
     "the merge conflict's authoring span owns a cause named by its result (BUGS.md 2026-10-10)",
   );
   const md = renderFailureMarkdown(data);
@@ -156,7 +156,7 @@ test("a mixed fleet of plain and progressing tick timeouts pools into one digest
   // The loss ranking sums both shapes' agent-hours under the pooled cause.
   const loss = data.lossCauses.find((c) => c.example.startsWith("timed out"));
   assert.ok(loss, `the loss table carries the pooled cause: ${JSON.stringify(data.lossCauses)}`);
-  assert.equal(loss?.ticks, 2);
+  assert.equal(loss?.runs, 2);
   assert.equal(loss?.ms, 5_400_000);
   assert.ok(Math.abs((loss?.costUsd ?? 0) - 0.3) < 1e-9, `summed cost: ${loss?.costUsd}`);
 });
@@ -199,13 +199,13 @@ test("a review_error landing prices its authoring hours under the matching revie
   const data = collectFailureReport(root, 1);
   assert.deepEqual(
     data.timeSpend.find((r) => r.role === "bugfix")?.classes.error,
-    { ticks: 1, ms: 3_600_000, costUsd: 0.5 },
+    { runs: 1, ms: 3_600_000, costUsd: 0.5 },
     "the authoring span prices as error-class, not the landing's own 60s",
   );
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
   assert.ok(loss, `the review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
   assert.equal(loss?.kind, "error-cluster");
-  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.runs, 1);
   assert.equal(loss?.ms, 3_600_000);
   assert.equal(loss?.costUsd, 0.5);
   assert.match(loss?.example ?? "", /^timed out after 900s/, "exemplified by the matching review_failed message");
@@ -233,7 +233,7 @@ test("a rebased review_error landing prices under its review_failed message, not
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
   assert.ok(loss, `the rebased review_error tick owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
-  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.runs, 1);
   assert.equal(loss?.ms, 3_600_000);
   assert.match(loss?.example ?? "", /^timed out after 900s/, `the message labels the span, not the placeholder: ${JSON.stringify(loss)}`);
   assert.notEqual(loss?.example, "(no error text recorded)");
@@ -257,7 +257,7 @@ test("a rebased review-rejected landing names its reason, not an empty example",
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.kind === "review-rejected");
   assert.ok(loss, `the rebased rejection owns a loss cause: ${JSON.stringify(data.lossCauses)}`);
-  assert.equal(loss?.ticks, 1);
+  assert.equal(loss?.runs, 1);
   assert.equal(loss?.ms, 3_600_000);
   assert.equal(loss?.example, "too big", `the reason labels the cause: ${JSON.stringify(loss)}`);
 });
@@ -286,7 +286,7 @@ test("a main_red tick prices its red-main cause into the loss ranking, not only 
   assert.ok(blank, `the cause-less main_red itemizes under the placeholder: ${JSON.stringify(data.lossCauses)}`);
   assert.deepEqual(blank?.roles, ["improve"]);
   assert.equal(
-    data.lossCauses.reduce((n, c) => n + c.ticks, 0),
+    data.lossCauses.reduce((n, c) => n + c.runs, 0),
     2,
     "both main_red spans are owned by a loss cause",
   );
@@ -312,16 +312,16 @@ test("a refused tick prices its own loss cause, not no_change", () => {
   assert.ok(refused, `a refusal names its own loss cause: ${JSON.stringify(data.lossCauses)}`);
   assert.deepEqual(refused?.roles, ["feature"]);
   assert.equal(refused?.example, "record: refusal-verdict reason at head", "the example is the refusal's summary");
-  assert.equal(refused?.ticks, 1);
+  assert.equal(refused?.runs, 1);
   assert.equal(refused?.ms, 3_600_000);
   assert.ok(Math.abs((refused?.costUsd ?? 0) - 0.5) < 1e-9, `the refusal's cost is priced: ${refused?.costUsd}`);
   const idle = data.lossCauses.find((c) => c.kind === "no_change");
   assert.ok(idle, `the idling tick stays its own no_change cause: ${JSON.stringify(data.lossCauses)}`);
-  assert.equal(idle?.ticks, 1, "the idle and refused ticks are not merged");
+  assert.equal(idle?.runs, 1, "the idle and refused runs are not merged");
   assert.equal(idle?.example, "", "no_change keeps its empty example");
   // The outcome table still folds the refusal under no_change, its class contract unchanged.
   const feature = data.timeSpend.find((r) => r.role === "feature");
-  assert.deepEqual(feature?.classes.no_change, { ticks: 2, ms: 5_400_000, costUsd: 0.8 });
-  assert.deepEqual(feature?.classes.landed, { ticks: 0, ms: 0, costUsd: 0 });
-  assert.deepEqual(data.lossCauses.reduce((n, c) => n + c.ticks, 0), 2, "both ticks are owned by a loss cause");
+  assert.deepEqual(feature?.classes.no_change, { runs: 2, ms: 5_400_000, costUsd: 0.8 });
+  assert.deepEqual(feature?.classes.merged, { runs: 0, ms: 0, costUsd: 0 });
+  assert.deepEqual(data.lossCauses.reduce((n, c) => n + c.runs, 0), 2, "both runs are owned by a loss cause");
 });

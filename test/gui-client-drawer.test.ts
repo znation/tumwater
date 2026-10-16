@@ -442,8 +442,8 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
   const t = openDrawer(["toggleLoop", "renderLoopDrawer"], {
     status: { running: true, pausedRoles: [], loops: [loop("clean"), loop("bugfix")] },
     responses: {
-      "/api/role?role=clean": { note: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
-      "/api/role?role=bugfix": { note: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
+      "/api/role?role=clean": { notes: "clean keeps the tree tidy", nextPrompt: "the clean next prompt" },
+      "/api/role?role=bugfix": { notes: "bugfix watches the open bugs", nextPrompt: "the bugfix next prompt" },
     },
   });
   t.scope.toggleLoop("clean");
@@ -473,7 +473,7 @@ test("the loop drawer renders its notebook and next prompt, refetching when the 
 });
 
 test("the drawer's Notebook section offers Edit and Clear with a note, Edit alone without, and an edit holds its captured text", async () => {
-  const responses: Record<string, unknown> = { "/api/role?role=clean": { note: "first note", nextPrompt: null } };
+  const responses: Record<string, unknown> = { "/api/role?role=clean": { notes: "first note", nextPrompt: null } };
   const t = openDrawer(["toggleLoop", "renderLoopDrawer", "startNoteEdit", "stopNoteEdit", "loadDrawerRole"], { status: workingStatus(), responses });
   t.scope.toggleLoop("clean");
   await flush();
@@ -488,7 +488,7 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   assert.match(role, /data-act='note-save'/);
   assert.match(role, /data-act='note-discard'/);
   const paints = t.painted.filter(([id]) => id === "drawerrole").length;
-  responses["/api/role?role=clean"] = { note: "someone else's note", nextPrompt: null };
+  responses["/api/role?role=clean"] = { notes: "someone else's note", nextPrompt: null };
   await t.scope.loadDrawerRole("clean");
   t.scope.renderLoopDrawer(workingStatus());
   assert.equal(t.paintedFor("drawerrole"), role);
@@ -499,8 +499,8 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   t.scope.stopNoteEdit();
   assert.match(t.paintedFor("drawerrole"), /someone else&#39;s note/);
 
-  // No note: Edit only.
-  responses["/api/role?role=clean"] = { note: null, nextPrompt: null };
+  // No notes: Edit only.
+  responses["/api/role?role=clean"] = { notes: null, nextPrompt: null };
   await t.scope.loadDrawerRole("clean");
   role = t.paintedFor("drawerrole");
   assert.match(role, /data-act='note-edit'/);
@@ -514,7 +514,7 @@ test("the loop drawer shows the recent tick outcomes from the role payload", asy
   const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
-      note: null,
+      notes: null,
       nextPrompt: null,
       recentOutcomes: [
         { ts: now - 60_000, result: "changed", durationMs: 30_000, summary: "added a thing" },
@@ -551,7 +551,7 @@ test("the loop drawer renders the Configuration section from the role payload", 
   const now = Date.now();
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
-      note: null,
+      notes: null,
       nextPrompt: null,
       model: "deepseek/deepseek-v4",
       modelTier: "strong",
@@ -564,7 +564,7 @@ test("the loop drawer renders the Configuration section from the role payload", 
       fallbackFree: true,
       billing: "subscription",
       billingWindow: "five_hour",
-      minTickIntervalSeconds: 30,
+      minRunIntervalSeconds: 30,
       inboxCount: 4,
       instructions: "say the version on every reply\nkeep it short",
       find: "look for redundant code",
@@ -591,7 +591,7 @@ test("the loop drawer renders the Configuration section from the role payload", 
 test("the Configuration section paints a Quiet hours row per window, worded like the CLI", async () => {
   const mk = (extra: object) => openDrawer(["toggleLoop"], {
     status: workingStatus(),
-    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, model: "pi/default", modelTier: "default", minTickIntervalSeconds: 30, ...extra } },
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", minRunIntervalSeconds: 30, ...extra } },
   });
   const t = mk({ quietHours: [
     { scope: "role", window: "23:00-07:00", inWindow: true },
@@ -613,7 +613,7 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
   const partial = openDrawer(["toggleLoop"], {
     status: workingStatus(),
     responses: { "/api/role?role=clean": {
-      note: null, nextPrompt: null, model: "pi/default", modelTier: "default", imageInput: true,
+      notes: null, nextPrompt: null, model: "pi/default", modelTier: "default", imageInput: true,
     } },
   });
   partial.scope.toggleLoop("clean");
@@ -629,7 +629,7 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
   // A notes-only payload renders no Configuration section at all.
   const minimal = openDrawer(["toggleLoop"], {
     status: workingStatus(),
-    responses: { "/api/role?role=clean": { note: "a note", nextPrompt: null } },
+    responses: { "/api/role?role=clean": { notes: "a note", nextPrompt: null } },
   });
   minimal.scope.toggleLoop("clean");
   await flush();
@@ -642,7 +642,7 @@ test("the Configuration section omits absent fields (cap-less fleet, no fallback
 test("the loop drawer renders a Spend row from the role payload's usage", async () => {
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
-      note: null,
+      notes: null,
       nextPrompt: null,
       inboxCount: 0,
       usage: { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 },
@@ -657,7 +657,7 @@ test("the loop drawer renders a Spend row from the role payload's usage", async 
   // A zero notional omits the notional suffix.
   const noNotional = openDrawer(["toggleLoop"], {
     status: workingStatus(),
-    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0, usage: { tokens: 1200, costUsd: 0.01, notionalCostUsd: 0 } } },
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0, usage: { tokens: 1200, costUsd: 0.01, notionalCostUsd: 0 } } },
   });
   noNotional.scope.toggleLoop("clean");
   await flush();
@@ -666,7 +666,7 @@ test("the loop drawer renders a Spend row from the role payload's usage", async 
   // No usage on the payload: no Spend row.
   const none = openDrawer(["toggleLoop"], {
     status: workingStatus(),
-    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0 } },
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
   none.scope.toggleLoop("clean");
   await flush();
@@ -678,7 +678,7 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
     status: workingStatus(),
     responses: {
       "/api/role?role=clean": {
-        note: null,
+        notes: null,
         nextPrompt: null,
         inboxCount: 0,
         dailyCap: { capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["clean", "clean-2"] },
@@ -693,7 +693,7 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
   );
   const none = openDrawer(["toggleLoop"], {
     status: workingStatus(),
-    responses: { "/api/role?role=clean": { note: null, nextPrompt: null, inboxCount: 0 } },
+    responses: { "/api/role?role=clean": { notes: null, nextPrompt: null, inboxCount: 0 } },
   });
   none.scope.toggleLoop("clean");
   await flush();
@@ -708,9 +708,9 @@ test("the loop drawer renders a Daily cap row only when the payload has a dailyC
 test("the Configuration Model row names pi's saved default when no explicit model is set", async () => {
   const responses: Record<string, unknown> = {
     "/api/role?role=clean": {
-      note: null,
+      notes: null,
       nextPrompt: null,
-      agent: "pi",
+      backend: "pi",
       piDefault: "deepseek/deepseek-v4",
       modelTier: "default",
     },

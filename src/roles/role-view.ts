@@ -61,7 +61,7 @@ export interface RoleViewPayload {
   /** The backend this seam routes to (configForRole's `agent`, plans/agent-backends.md):
    * `pi` unless a selector's provider names another agent or the top-level `agent` does.
    * Drives the renderer's `<agent> default` label and the agent-qualified selector string. */
-  agent: string;
+  backend: string;
   /** The provider key this role's admission lease acquires (seamConcurrencyKey, the same
    * pure call the orchestrator's admission uses) — the key whose cap bounds the role's
    * concurrent ticks (plans/provider-concurrency.md §8). Absent for a seam whose key
@@ -98,7 +98,7 @@ export interface RoleViewPayload {
    * reading that reported a window — the renderer's "(5h window)". */
   billingWindow?: string;
   /** The effective min-tick interval: the role's override or the global value. */
-  minTickIntervalSeconds: number;
+  minRunIntervalSeconds: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
   instructions: string | null;
   /** The role's own find-something-to-do text verbatim (a custom loop's `task`), or null
@@ -106,7 +106,7 @@ export interface RoleViewPayload {
   find: string | null;
   /** The role's notebook (PLANS.md "Role notebook"): the note its own earlier ticks wrote, or
    * null when there is none (missing, empty, or unreadable). Always null for the director. */
-  note: string | null;
+  notes: string | null;
   /** Prompts currently queued for this loop (the director's count includes the shared
    * inbox, which IS its queue). */
   inboxCount: number;
@@ -133,7 +133,7 @@ export interface RoleViewPayload {
   yieldMultiplier: number;
   /** When the loop's last tick ended, epoch ms — absent for a never-ticked loop, so the
    * JSON shape stays unchanged until the loop has acted. */
-  lastTickEndedAt?: number;
+  lastRunEndedAt?: number;
   /** The loop's recent tick outcomes — the newest up to 8 `tick_end` results read from the
    * event log, ordered newest-first, each with its time, result, duration, and summary.
    * Absent when the loop has no `tick_end` events, so the JSON shape is unchanged for a
@@ -314,7 +314,7 @@ export function rolePayload(
           }),
         }
       : {}),
-    agent: effective.agent ?? "pi",
+    backend: effective.agent ?? "pi",
     ...(providerKey !== undefined ? { providerKey } : {}),
     ...(providerCap !== undefined ? { providerCap } : {}),
     fallback,
@@ -323,10 +323,10 @@ export function rolePayload(
     ...(account !== null ? { billing: account.billing } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
-    minTickIntervalSeconds: effective.minRunIntervalSeconds,
+    minRunIntervalSeconds: effective.minRunIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,
     find: role === DIRECTOR_ROLE ? null : resolved.find,
-    note,
+    notes: note,
     inboxCount: queuedRolePromptCount(root, role),
     // The preview seam: the queued prompt (if any) is read, not consumed, so an inspection
     // never costs the loop its queued work — the property the tick-prompt test pins.
@@ -340,12 +340,12 @@ export function rolePayload(
       })?.prompt ?? null,
     // The loop's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the model-fallback episode and the next-tick preview, so no new
-    // read path exists and the collector stays one loadLoopState per role. `lastTickEndedAt`
+    // read path exists and the collector stays one loadLoopState per role. `lastRunEndedAt`
     // is omitted (JSON unchanged) until the loop has actually ticked.
     nextRunAt: state.nextRunAt,
     backoffSeconds: state.backoffSeconds,
     yieldMultiplier: yieldMultiplierFor(state),
-    ...(state.lastTickEndedAt !== undefined ? { lastTickEndedAt: state.lastTickEndedAt } : {}),
+    ...(state.lastTickEndedAt !== undefined ? { lastRunEndedAt: state.lastTickEndedAt } : {}),
     ...(quietHours.length > 0 ? { quietHours } : {}),
     ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
     ...(usage.tokens !== 0 || usage.costUsd !== 0 || usage.notionalCostUsd !== 0 ? { usage } : {}),

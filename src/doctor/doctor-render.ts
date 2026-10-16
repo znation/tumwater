@@ -16,10 +16,10 @@ export function renderDoctor(report: DoctorReport): string {
   const nameWidth = report.checks.reduce((w, c) => Math.max(w, c.name.length), 12);
   const lines = [report.header];
   for (const c of report.checks) lines.push(`${c.level.padEnd(5)} ${c.name.padEnd(nameWidth)} ${c.detail}`);
-  if (report.seams.length > 0) {
-    const width = report.seams.reduce((w, s) => Math.max(w, s.label.length), "job".length);
+  if (report.routing.length > 0) {
+    const width = report.routing.reduce((w, s) => Math.max(w, s.label.length), "job".length);
     lines.push("routing: job · model · backend");
-    for (const s of report.seams)
+    for (const s of report.routing)
       lines.push(`  ${s.label.padEnd(width)}  ${s.selector}  (${s.backend})`);
   }
   lines.push(report.verdict);

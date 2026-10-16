@@ -33,7 +33,7 @@ export interface RetireStatus {
   /** The directory passes isUsableWorktree's probe (a real git worktree we can inspect). */
   worktreeUsable: boolean;
   branchPresent: boolean;
-  landingRefPresent: boolean;
+  mergeRefPresent: boolean;
   /** Commits on the role branch not on main — unlanded work the branch would take with it. */
   aheadOfMain: number;
   /** Uncommitted changes (staged, modified, or untracked) in the worktree. */
@@ -41,7 +41,7 @@ export interface RetireStatus {
   /** The role is enabled in tumwater.json — retire expects it disabled first. */
   enabledInConfig: boolean;
   /** The loop's persisted state says a tick is in flight (best-effort; cleared on start). */
-  midTick: boolean;
+  midRun: boolean;
 }
 
 /** Collect what exists today for `role`, with every probe tolerant of partial state — a retired
@@ -81,11 +81,11 @@ export async function collectRetire(root: string, role: string): Promise<RetireS
     worktreePresent: present,
     worktreeUsable: usable,
     branchPresent: branchThere,
-    landingRefPresent: landing !== null,
+    mergeRefPresent: landing !== null,
     aheadOfMain: ahead + pinnedUnlanded,
     dirty,
     enabledInConfig: loopEnabled(config.config, role),
-    midTick: loadLoopState(root, role).running === true,
+    midRun: loadLoopState(root, role).running === true,
   };
 }
 
@@ -98,7 +98,7 @@ export interface RetireResult {
 }
 
 /** The artifacts retire manages, in removal order. */
-const ARTIFACTS = ["worktree", "branch", "landingRef", "pausedMarker"] as const;
+const ARTIFACTS = ["worktree", "branch", "mergeRef", "pausedMarker"] as const;
 
 /** The safety rails: each returns a one-line objection, or null when the state is clean. */
 function objections(status: RetireStatus): string[] {
@@ -114,7 +114,7 @@ function objections(status: RetireStatus): string[] {
       "the worktree is unusable and cannot be checked for uncommitted changes — remove it manually or use --force",
     );
   if (status.dirty) reasons.push("the worktree has uncommitted changes");
-  if (status.midTick) reasons.push("a run is in progress for this role");
+  if (status.midRun) reasons.push("a run is in progress for this role");
   return reasons;
 }
 
@@ -164,10 +164,10 @@ export async function retireRole(root: string, role: string, { force }: { force?
     await git(root, "branch", "-D", branchName(status.role));
     mark("branch", true);
   } else mark("branch", false);
-  if (status.landingRefPresent) {
+  if (status.mergeRefPresent) {
     await deleteRef(root, landingRefName(status.role));
-    mark("landingRef", true);
-  } else mark("landingRef", false);
+    mark("mergeRef", true);
+  } else mark("mergeRef", false);
   mark("pausedMarker", resumeRole(root, status.role));
   return { status, removed, skipped };
 }
@@ -187,7 +187,7 @@ export async function previewRetire(root: string, role: string): Promise<RetireP
   const there: Record<(typeof ARTIFACTS)[number], boolean> = {
     worktree: status.worktreePresent,
     branch: status.branchPresent,
-    landingRef: status.landingRefPresent,
+    mergeRef: status.mergeRefPresent,
     pausedMarker: pausedRoles(root).includes(role),
   };
   return {
@@ -207,7 +207,7 @@ export function artifactPhrase(name: string, role: string): string {
       return `the worktree`;
     case "branch":
       return `the branch (${branchName(role)})`;
-    case "landingRef":
+    case "mergeRef":
       return `the merge ref (${landingRefName(role)})`;
     case "pausedMarker":
       return `the paused-state marker`;
