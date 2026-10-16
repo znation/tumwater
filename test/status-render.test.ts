@@ -17,7 +17,7 @@ import { snapshot, type StatusSnapshot } from "../src/status/status-data.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { initProject } from "../src/init/init.js";
 import { orchestratorStatePath } from "../src/paths.js";
-import { tmpdir, makeRepo } from "./fixtures/repo-fixtures.js";
+import { tmpdir, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 import {
@@ -680,4 +680,25 @@ test("renderStatus shows the run --for countdown only on a running windowed flee
   assert.match(headerOf(renderStatus(tmpdir(), snap)), /\(pid 4242\) · stops in 2h/);
   snap.running = false;
   assert.doesNotMatch(headerOf(renderStatus(tmpdir(), snap)), /stops in/);
+});
+
+test("status renders the fleet-attention banners for a spent budget and an open question", () => {
+  const root = tmpdir();
+  writeBacklogFile(root, "QUESTIONS.md", [{ heading: "## Open", body: "### Should we ship it? (asked 2026-10-01 by user)\n\nBody." }]);
+  const snap = snapshotWith([{ role: "feature" }], { spentUsd: 60, capUsd: 50, capHitAt: null, free: false, fallback: null });
+  const lines = renderStatus(root, snap).split("\n");
+  // The banner block sits between the header's blank line and the table: one line per alert,
+  // its mark and title in the alert's tone, then the detail — the exact wording the
+  // dashboard and TUI draw from the same fleetAlerts source.
+  assert.match(lines[2] ?? "", /^! Today's budget is spent, so the role loops are paused — Spent \$60\.00 of the \$50 cap\. They resume at midnight, or as soon as you raise the cap\.$/);
+  assert.match(lines[3] ?? "", /^\? 1 question needs your answer — Should we ship it\?$/);
+});
+
+test("status renders no banner block on an alert-free fleet", () => {
+  const snap = snapshotWith([{ role: "clean" }]);
+  const lines = renderStatus(tmpdir(), snap).split("\n");
+  // Header at 0, its blank line at 1, then the table's header/separator at 2+ — a healthy
+  // fleet keeps the banner block empty, so the output is byte-identical to a pre-banner status.
+  assert.equal(lines[1], "");
+  assert.match(lines[2] ?? "", /^loop\b/, "the line after the header blank is the table, not a banner");
 });

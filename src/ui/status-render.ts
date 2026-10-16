@@ -11,6 +11,9 @@ import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByS
 import { tickProgress } from "./tick-progress-model.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
+import { fleetAlerts } from "./fleet-alerts.js";
+import type { FleetAlert } from "./fleet-alerts.js";
+import { openQuestions } from "../backlog/backlog.js";
 
 /** The status RENDER layer: time/token cell formatters and the width-aware table shared by
  * `tumwater status` and the TUI. The labels, badges, and metrics it draws come from the shared
@@ -143,6 +146,36 @@ export function clipSpans(line: readonly StatusSpan[], width: number): StatusSpa
     else out.push({ text: "…" });
   }
   return out;
+}
+
+/** The attention line's mark and tone, per alert tone — shared by the TUI and `tumwater
+ * status` (status-render.ts alertLines), so the two surfaces draw the same banner glyphs. */
+const ALERT_MARKS: Record<FleetAlert["tone"], { mark: string; tone: Tone | undefined }> = {
+  red: { mark: "!", tone: "red" },
+  amber: { mark: "!", tone: "yellow" },
+  indigo: { mark: "?", tone: "magenta" },
+  blue: { mark: "i", tone: "blue" },
+  gray: { mark: "i", tone: "dim" },
+};
+
+/** A plain line clipped to a width, in one tone. */
+export function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {
+  return clipSpans([{ text, ...(tone ? { tone } : {}) }], width);
+}
+
+/** The attention lines under a header: one per alert — its mark and title in its tone, then
+ * the detail — at most `max` of them, the rest counted on a last line. This is the banner
+ * block the TUI draws under its header and `tumwater status` pushes under its own, so the two
+ * surfaces render the same wording from the one shared alert source (fleet-alerts.ts). */
+export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3): StatusLine[] {
+  const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
+  const lines = shown.map((a) => {
+    const { mark, tone } = ALERT_MARKS[a.tone];
+    const t = tone ? { tone } : {};
+    return clipSpans([{ text: `${mark} `, ...t }, { text: a.title, ...t }, { text: a.detail ? ` — ${a.detail}` : "" }], width);
+  });
+  if (shown.length < alerts.length) lines.push(toneLine(`  +${alerts.length - shown.length} more — the dashboard lists them all`, width, "dim"));
+  return lines;
 }
 
 /** A header badge (" · land queue: 2", ", build abc…") as a plain separator plus its toned
@@ -389,15 +422,6 @@ export function renderStatusSpans(
     }
     return out;
   };
-  const separator: StatusLine = [{ text: widths.map((w) => "-".repeat(w)).join("  "), tone: "dim" }];
-  lines.push(fmt(cols.map((c) => cell(c)), "dim"));
-  lines.push(separator);
-  for (const r of rows) lines.push(fmt(r));
-  lines.push(separator);
-  lines.push(fmt(totalsRow, "bold"));
-  // One footnote under the table when any custom loop exists — explains the asterisk without
-  // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
-  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
   const loops = withMetrics.map(({ s, phase, live }) => ({
     role: s.role,
     phase,
@@ -410,6 +434,15 @@ export function renderStatusSpans(
     imageInput: s.imageInput,
     imageReroute: s.imageRerouteLabel,
   }));
+  const separator: StatusLine = [{ text: widths.map((w) => "-".repeat(w)).join("  "), tone: "dim" }];
+  lines.push(fmt(cols.map((c) => cell(c)), "dim"));
+  lines.push(separator);
+  for (const r of rows) lines.push(fmt(r));
+  lines.push(separator);
+  lines.push(fmt(totalsRow, "bold"));
+  // One footnote under the table when any custom loop exists — explains the asterisk without
+  // taking a column. Absent (byte-identical table) on a fleet with no user-defined loops.
+  if (snap.loops.some((l) => l.custom)) lines.push([{ text: "* user-defined loop", tone: "dim" }]);
   // The header line (and any residual overflow past the columns' minimums) is clipped too,
   // so no status line ever wraps in a terminal of `maxWidth` columns.
   return { lines: maxWidth === undefined ? lines : lines.map((l) => clipSpans(l, maxWidth)), loops };
@@ -419,5 +452,18 @@ export function renderStatusSpans(
  * renderStatusSpans). When `maxWidth` is given, wide cells are clipped so no line exceeds it
  * (terminal rows never wrap). */
 export function renderStatus(root: string, snap: StatusSnapshot, maxWidth?: number): string {
-  return renderStatusSpans(root, snap, maxWidth).lines.map(plainText).join("\n");
+  const { lines, loops } = renderStatusSpans(root, snap, maxWidth);
+  // The fleet-attention banners (fleet-alerts.ts) drop under the header's blank line here, on
+  // the CLI-only plain-text surface — the same spelled-out banners the dashboard and TUI draw,
+  // from the one shared source, so the CLI/GUI/TUI cannot drift on wording. One QUESTIONS.md
+  // read (openQuestions) for the pending-questions alert — the dashboard's cadence. The CLI
+  // omits the not-running banner: the header's first line already spells out the fleet's state,
+  // so a `status` run on a stopped fleet does not lead with a banner that duplicates it.
+  // Composed here, NOT inside renderStatusSpans: the TUI re-slices that function's shared
+  // `lines` (lines[0], its own attention block, then lines.slice(1)), so a banner embedded
+  // there would render twice in the TUI.
+  const alerts = fleetAlerts(snap, openQuestions(root), loops, Date.now()).filter((a) => a.key !== "stopped");
+  const banner = alertLines(alerts, maxWidth ?? Number.MAX_SAFE_INTEGER, alerts.length).map(plainText);
+  const text = lines.map(plainText);
+  return [...text.slice(0, 2), ...banner, ...text.slice(2)].join("\n");
 }

@@ -5,17 +5,15 @@
  * Transcript, Backlog, Usage, Failures, History, Pending), the same alert wording, the same
  * status colors — drawn in the terminal's base colors, so they follow its theme. */
 import type { HarnessEvent } from "../../events/events.js";
-import { clipSpans, type StatusLine, type StatusSpan } from "../status-render.js";
+import { alertLines, clipSpans, toneLine, type StatusLine, type StatusSpan } from "../status-render.js";
+// Re-export the attention-banner helpers so the TUI's consumers (tui.tsx, tui-pane.ts, and
+// the tui-frame tests) keep importing them from this module; their definitions now live with
+// the other shared status renderers and the `tumwater status` banner block.
+export { alertLines, toneLine };
 import { eventResult } from "../../events/event-format.js";
 import { eventKind, resultTone, type Tone } from "../tone.js";
-import type { FleetAlert } from "../fleet-alerts.js";
 import { displayWidth } from "../../text/text-width.js";
 import { stripTerminalControls } from "../../text/text.js";
-
-/** A plain line clipped to the pane, in one tone. */
-export function toneLine(text: string, width: number, tone?: StatusSpan["tone"]): StatusLine {
-  return clipSpans([{ text, ...(tone ? { tone } : {}) }], width);
-}
 
 /** Strip terminal control characters from every span of a composed frame — the TUI's single
  * terminal boundary, applied in tui.tsx to the whole line list (status table, attention
@@ -28,26 +26,6 @@ export function sanitizeFrameLines(lines: readonly StatusLine[]): StatusLine[] {
   return lines.map((line) => line.map((span) => ({ ...span, text: stripTerminalControls(span.text) })));
 }
 
-const ALERT_MARKS: Record<FleetAlert["tone"], { mark: string; tone: Tone | undefined }> = {
-  red: { mark: "!", tone: "red" },
-  amber: { mark: "!", tone: "yellow" },
-  indigo: { mark: "?", tone: "magenta" },
-  blue: { mark: "i", tone: "blue" },
-  gray: { mark: "i", tone: "dim" },
-};
-
-/** The attention lines under the header: one per alert — its mark and title in its tone, then
- * the detail — at most `max` of them, the rest counted on a last line. */
-export function alertLines(alerts: readonly FleetAlert[], width: number, max = 3): StatusLine[] {
-  const shown = alerts.length > max ? alerts.slice(0, max - 1) : alerts;
-  const lines = shown.map((a) => {
-    const { mark, tone } = ALERT_MARKS[a.tone];
-    const t = tone ? { tone } : {};
-    return clipSpans([{ text: `${mark} `, ...t }, { text: a.title, ...t }, { text: a.detail ? ` — ${a.detail}` : "" }], width);
-  });
-  if (shown.length < alerts.length) lines.push(toneLine(`  +${alerts.length - shown.length} more — the dashboard lists them all`, width, "dim"));
-  return lines;
-}
 
 /** Which pane the TUI shows: the activity feed, one loop's transcript, the backlog, the usage
  * report, the failure digest, the completed-tick history, the pending-change roster, or the
