@@ -7,6 +7,168 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 ## Planned
 
 
+### Image input, part 1/5: tumwater knows which seams can read images, and `tumwater doctor` reports it (planned 2026-10-15 by user; design and decisions in plans/image-input.md; independent of every other entry — touches src/pi/pi-models.ts, src/agent/, src/config/config-views.ts and src/doctor/, and changes no runtime behavior)
+
+**Goal.** Give tumwater one answer to "can this seam read images?" and the tier a text-only seam would reroute to, and report both in doctor. Parts 2–5 build on this resolver. Nothing reads pi's `input` field today: `PiModelDef` (src/pi/pi-models.ts) keeps only `id` and `cost`.
+
+**Approach.** See plans/image-input.md "Capability" and "Doctor".
+- Keep `input` on `PiModelDef` in `readPiProviders`.
+- Add an optional `imageInput?(model): boolean` hook to `AgentBackend` (src/agent/agent-backend.ts). The claude adapter returns true; the pi adapter leaves the answer to models.json.
+- New src/agent/image-input.ts:
+  - `seamImageInput(seam, providers, probes?) → true | false | null`. For claude, the hook. For pi, `input` includes `"image"` → true; present without it, or absent → false (pi's own default for a custom model); pair not in models.json → null. The `probes` parameter is the part 2 seam; part 1 passes none.
+  - `imageRerouteTarget(config, role, regime) → ResolvedModelConfig | null`. Walk the role's seam tier through config-views.ts's `BORROW_ORDER` (export it), skipping the tier itself. Take the first tier whose top-level model (`withModelOverrides(config, tier, {})`, as `resolverConfig` does for strong) reads images. With `regime: "fallback"`, use only the tiers' free fallback pairs (`resolveTierFallbacks`).
+- New doctor check `image input` (src/doctor/doctor-model-checks.ts), registered after `tier models` in src/doctor/doctor.ts. It covers `seamPairs` plus the tiers' fallback pairs.
+  - ok lists the models that read images and, for each text-only enabled loop, where it would reroute.
+  - warn when an enabled loop's model is text-only with no target, or when no seam reads images.
+  - Unknown (`null`) pairs are left to `tier models`, which already fails them.
+
+**Files touched.**
+- src/pi/pi-models.ts, src/agent/agent-backend.ts, src/agent/claude/claude-backend.ts, src/pi/pi-backend.ts
+- new src/agent/image-input.ts
+- src/config/config-views.ts (export `BORROW_ORDER` or a tier-config builder)
+- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
+- tests: new test/image-input.test.ts, the doctor model-check tests
+
+**Acceptance criteria.**
+- Any claude seam reads true. A pi pair whose models.json `input` is `["text","image"]` reads true; `["text"]` or no `input` reads false; a pair missing from models.json reads null.
+- `imageRerouteTarget`:
+  - from default picks strong before small;
+  - from strong never picks small;
+  - returns null when no other tier reads images;
+  - with `regime: "fallback"`, considers only free fallback pairs, never a priced primary.
+- The doctor check is ok on an all-claude config and names the reroute (`default text-only (…) — reroutes to strong (…)`) on a text-only default with a vision strong. It warns when nothing reads images. It spawns no process.
+- No runtime behavior changes; the suite passes.
+
+### Image input, part 2/5: `tumwater doctor` probes every model that claims image input with a real image (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Doctor"; touches src/doctor/, src/cli.ts, src/cli/help.ts, src/paths.ts, src/agent/image-input.ts, and the two doctor callers in src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts, a different area from part 3/5's stream and verdict files)
+
+**Goal.** A claim in pi's models.json is only a claim. Today's file claims image input for `huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra` but not for the same model without the pin, so at least one claim is wrong. With a wrong claim, pi sends images the model cannot read: the provider rejects them, or drops them silently and the model answers anyway. Doctor should show each claimed model a real image and check the answer.
+
+**Approach.** See plans/image-input.md "Doctor".
+- New src/doctor/image-probe.ts:
+  - A PNG of a random 4-digit code, drawn with a built-in 5×7 digit bitmap scaled up, black on white. Encode it with `zlib.deflateSync` and a hand-rolled CRC-32 (`zlib.crc32` is newer than the `>=20.3` node floor). No new dependency.
+  - The probe runs the resolved pi binary in a run's environment: `pi --print --mode json --no-session --no-tools --no-mcp --provider P --model M --thinking <level> @<png> "Reply with only the 4-digit number shown in the image."`. First confirm that `@image` reaches the model in `--print` mode; if it does not, say so in a `**Needs replan**` note rather than improvising another transport.
+  - Pass: the final text contains the code.
+  - A wrong answer retries once with a fresh code. Two wrong answers, or a 4xx, fail.
+  - A timeout, spawn failure, 429, 5xx, or connection error is "could not verify" and is not cached.
+  - The probe's process is bounded like `boundedProbe` (process-group kill at the deadline), with a longer deadline (90 s) because a local model may need to load.
+- Cache at `.tumwater/state/image-probes.json` (path in src/paths.ts), keyed agent/provider/model, holding `{verdict, detail, at, claim}`. A verdict is valid for 7 days while the claim is unchanged.
+- `runDoctor` gains `probeImages: "missing" | "all" | "never"`, defaulting to `"never"`:
+  - the CLI passes `"missing"`, or `"all"` with the new `--reprobe` flag;
+  - the TUI Health tab and the GUI doctor endpoint keep `"never"` and show cached verdicts ("not verified yet — run `tumwater doctor`").
+- claude seams are not probed; they report "reads images (claude backend)".
+- `seamImageInput` honors a cached failed probe: a claimed pi seam whose probe failed reads false.
+- Check levels:
+  - fail when a claimed model failed, naming its answer or error and the fix: remove `"image"` from `input` in models.json or fix the endpoint, then `tumwater doctor --reprobe`;
+  - warn when a probe could not run;
+  - ok shows the verified date.
+
+**Files touched.**
+- new src/doctor/image-probe.ts
+- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
+- src/paths.ts, src/agent/image-input.ts
+- src/cli.ts, src/cli/help.ts, docs/cli.md (`--reprobe`)
+- src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts (explicit `"never"`)
+- tests: new test/image-probe.test.ts, the doctor tests (with a fake pi shim on PATH)
+
+**Acceptance criteria.**
+- The generated PNG is valid: signature, IHDR/IDAT/IEND, correct CRCs. Inflating IDAT reproduces the drawn digit pixels.
+- A fake pi that echoes the code passes and writes the cache. A fake pi that answers wrong twice fails, naming the model and the models.json fix. A fake pi that exits with a 5xx-shaped error warns and caches nothing.
+- A second `tumwater doctor` within 7 days spawns no probe. `--reprobe` spawns one per claimed model. Changing a model's `input` claim invalidates its entry.
+- `runDoctor` with the default option, as the TUI and GUI call it, never spawns a probe.
+- A claimed pi seam with a cached failed probe reads false from `seamImageInput`.
+
+### Image input, part 3/5: a tick whose agent reads an image on a model that cannot see it is stopped and fails (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Detecting a blind read" and "Failing the tick"; touches src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts, src/tick/tick-verdict.ts, src/loop/model-fallback.ts, src/events/, a different area from part 2/5's doctor files)
+
+**Goal.** When the model's `input` lacks `"image"`, pi's read tool returns the image with the note `[Current model does not support images. The image will be omitted from this request.]` (pi 1.2.0 `dist/core/tools/read.js:40-45`), and pi-ai strips the image from the request. The run goes on and the agent works from a picture it never saw. `modelFallbackVerdict` even scores that run "answered". The tick should stop and fail instead.
+
+**Approach.**
+- `PiStreamParser.feedLine` (src/pi/pi-stream.ts) remembers each `read` call's `args.path` from `tool_execution_start`. On the matching `tool_execution_end`:
+  - it is an **image read** when `result.content` holds an `image` block, or a text block starting `Read image file [`;
+  - it is **blind** when that text carries the note, or when the runner told the parser the seam's effective image input is false (the part 2 probe catches a false claim, where pi adds no note);
+  - pi's `[Image omitted: could not be converted…]` / `…resized…` processing notes are not blind reads.
+- src/agent/run-agent.ts kills an authoring run on the first blind read through the watchdogs' `terminateChild`. Gate runs (reviewer, resolver) only record it.
+- `PiRunResult.imageBlind = { path }`, with the error message `read <path>, but <model> cannot read images`.
+- `resolveTickVerdict` (src/tick/tick-verdict.ts) gets a branch right after `budgetCapped`, before the refusal and dirty-tree checks. It ends the tick `error` with that `lastError`; backoff, streak, and prompt requeue work as for any error. Part 4 adds the reroute arm here.
+- `modelFallbackVerdict` (src/loop/model-fallback.ts) returns `"inconclusive"` for `imageBlind`.
+- New event `image_blind {loop, tick, path, model, action: "fail" | "logged"}` in src/events/events.ts, with a feed line in src/events/event-format.ts.
+
+**Files touched.**
+- src/pi/pi-stream.ts, src/pi/pi-run-result.ts, src/agent/run-agent.ts
+- src/tick/tick-verdict.ts, src/loop/model-fallback.ts
+- src/events/events.ts, src/events/event-format.ts
+- tests: the pi-stream, run-agent and tick-verdict tests, and a loop test driving the fake pi shim
+
+**Acceptance criteria.**
+- With a fake pi emitting a `read` start (`args.path: "/x/shot.png"`) and an end whose text carries the note, the authoring run is killed before its next event and the tick ends `error`. `lastError` names `/x/shot.png` and the model, and `image_blind` is logged.
+- The same `read` with an image block and no note does not count as blind on a seam that reads images. It does count when the seam's effective image input is false.
+- A processing-failure note (`[Image omitted: could not be converted…]`) is not blind.
+- A gate run's blind read is logged (`action: "logged"`) and not killed.
+- `modelFallbackVerdict` scores a blind run `"inconclusive"`.
+
+### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/)
+
+**Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
+
+**Approach.**
+- In part 3's verdict branch, when a target exists:
+  - end the tick `aborted` with a new resume cause, `image-reroute`. Add it to `ResumeCause` (src/prompt/prompt-followup.ts), `TickOutcome.resumeCause` (src/tick/tick-outcome.ts) and `LoopState.resumeCause` (src/loop/loop-state.ts);
+  - set a one-shot `LoopState.imageReroute = { tier, model, from, path }` (healed like `modelFallback`);
+  - set `nextRunAt` to now and requeue the prompt via `requeueForResume`.
+- The next tick:
+  - `tickPhase` (src/loop/loop-tick.ts:139-153) picks the target's config over the primary/fallback choice, as do `LoopRunner.runConfig` (src/loop/loop.ts) and `setTickPair`;
+  - the field clears at tick start, and `tick_start` carries `reroute: "image"`;
+  - the run is always a fresh session over the kept worktree, via the `budget-capped` handoff path in src/tick/tick-resume.ts, never `--continue`. `buildHandoffPrompt` gets an `image-reroute` note: an earlier run on <model> stopped when it read <path>, because that model cannot read images; its edits are in your worktree, so review `git diff` and finish or discard them; this model can read images, so read the image again;
+  - director ticks never resume, so the requeued prompt runs fresh on the target.
+- One hop only: a blind read during a rerouted tick takes part 3's `error` path.
+- **Preflight:** at model choice, peek at the loop's next prompt (`peekPrompt` / `peekRolePrompt`).
+  - If it carries `[image attached: …]` lines and the seam reads no images, start on the target and log `image_reroute` with `preflight: true`.
+  - With no target, end the tick `error` without spawning a run.
+- New event `image_reroute {loop, tick, from, to, tier, preflight}`. The `resume` renderer in src/events/event-format.ts learns `image-reroute`; today it special-cases only `cut-off` and `handoff`.
+
+**Files touched.**
+- src/loop/loop-tick.ts, src/loop/loop.ts, src/loop/loop-state.ts
+- src/tick/tick-verdict.ts, src/tick/tick-outcome.ts, src/tick/tick-apply.ts, src/tick/tick-resume.ts
+- src/prompt/prompt-followup.ts
+- src/events/events.ts, src/events/event-format.ts
+- tests: loop tests with the fake pi shim, and the tick-resume, tick-apply and prompt-followup tests
+
+**Acceptance criteria.**
+- With a text-only default tier and a vision strong tier (fake pi), a blind read on a default-tier loop ends the tick `aborted`/`image-reroute`. The next tick runs immediately on the strong model in a fresh session over the kept worktree; its prompt carries the handoff note naming the path, and its `tick_start` has `reroute: "image"`. The tick after that is back on default.
+- A blind read during the rerouted tick ends it `error`, with no second reroute.
+- A queued prompt with an `[image attached: …]` line on a text-only loop starts directly on the target (`image_reroute`, `preflight: true`) with no failed tick. With no target, the tick errors without spawning pi.
+- With the budget gate on fallback, a reroute only ever lands on a free fallback pair; with none that reads images, the tick errors.
+- A rerouted director prompt runs fresh on the target and is delivered exactly once.
+
+### Image input, part 5/5: the dashboard, the TUI, and prompt attachments say which loops cannot read images (planned 2026-10-15 by user; requires part 4/5 landed; design and decisions in plans/image-input.md "Surfaces" and "Attachments"; touches src/status/, src/ui/, src/roles/role-render.ts, src/inbox/, src/gui/gui-prompt-commands.ts, and the docs)
+
+**Goal.** An operator should know without running doctor that a loop's model cannot read images, and what happens when one of its ticks tries. An attachment no configured model can read should be refused when it is submitted, not discovered at tick time.
+
+**Approach.** See plans/image-input.md "Surfaces".
+- Status: add per-loop `imageInput: true | false | null` and `imageReroute: "<tier> (<model>)" | null`, plus the cached probe failures, to the snapshot and `status --json` (src/status/status-roles.ts and the payload).
+- A new `images` alert in `fleetAlerts` (src/ui/fleet-alerts.ts), shared by the dashboard banner and the TUI attention lines:
+  - **blue** when every text-only loop has a target: "<roles> run on models that can't read images" — "A tick that reads an image stops and reruns on <tier> (<model>)."
+  - **amber** when some text-only loop has none: "No configured model can read images for <roles>" — "A tick that reads an image fails, and image attachments to these loops are refused. Declare image input on a vision model in pi's models.json, or point a tier at one."
+  - **amber** when a model claims images but failed doctor's probe.
+  - **No alert** when every enabled loop reads images.
+- Role page (src/roles/role-render.ts, `tumwater role <id>` and the dashboard panel): `Images: no — reruns on strong (…)`.
+- Submit gate in `submitRolePrompt` (src/inbox/inbox-submit.ts), reached by the GUI endpoint and `tumwater prompt --attach`:
+  - refuse images when the target loop's seam reads none and it has no target, naming the fix;
+  - otherwise return a notice the CLI prints and the composer shows under the image chips (src/ui/gui/gui-client-composer.ts), e.g. "feature's model can't read images; this prompt runs on strong (claude-opus-5-5)".
+- Docs: README.md (`prompt --attach`), docs/cli.md (`doctor --reprobe`, the image input check), docs/backends.md (image input: claims, probe, reroute).
+
+**Files touched.**
+- src/status/status-roles.ts and the status payload, src/ui/fleet-alerts.ts, src/roles/role-render.ts
+- src/inbox/inbox-submit.ts, src/inbox/prompt-commands.ts, src/gui/gui-prompt-commands.ts, src/ui/gui/gui-client-composer.ts
+- README.md, docs/cli.md, docs/backends.md
+- tests: fleet-alerts, status, role-render, inbox-submit, GUI prompt endpoint, and gui-client tests
+
+**Acceptance criteria.**
+- With an all-claude config there is no `images` alert, and every loop reports `imageInput: true`.
+- With a text-only default and a vision strong, the alert is blue and names the default-tier loops and the strong model. With nothing able to read images, it is amber. A cached probe failure raises the amber probe alert.
+- `tumwater prompt --attach x.png` to a loop with no reroute target exits non-zero naming the fix, and queues nothing (no image file left behind). To a loop with a target, it queues the prompt and prints where it will run. The GUI endpoint behaves the same, and the composer shows the notice.
+- `tumwater role feature` shows the `Images:` line.
+
+
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
 
 **Refused 2026-10-14 by feature: prerequisite part 1/2 has not landed — `tui-editors.ts` does not exist (git ls-files and a grep under `src/`/`test/` for `tui-editors`/`createTuiEditors` find nothing) and the `tui-editors` entry is still under `## Planned`. This part 2/2's whole approach — `createTuiKeys` shrinking to an outer shell that constructs the `tui-editors` and `tui-panes` sub-factories, and the editors receiving `refreshPaneCache`/`refreshTrail`/`refreshQueued` as deps from `tui-panes` through `createTuiKeys` — builds on part 1/2 already having landed, which it has not. Land the `tui-editors` split first.
