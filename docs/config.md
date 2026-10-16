@@ -15,7 +15,11 @@ fresh `tumwater wake <role>` or a queued prompt for one admits a single tick any
 `quietHours` window (e.g. `"23:00-07:00"` local time) during
 which role loops start no new ticks (the director is exempt), with optional per-role windows
 `quietHoursPerRole` — a loop inside its own window starts no new ticks, whether or not the
-fleet-wide window covers now — a `diskHoldGB` free-space floor (default 10; when the volume
+fleet-wide window covers now — an optional `maxConcurrentPerProvider` map of per-provider
+concurrency caps (each value a positive integer keyed by provider; a run starts only when both
+its provider and `maxConcurrent` have headroom, and a full provider never holds back a run on
+another — see [plans/provider-concurrency.md](../plans/provider-concurrency.md)) — a
+`diskHoldGB` free-space floor (default 10; when the volume
 holding the worktrees drops below it, no new work starts until free space recovers 5 GB above it;
 0 disables), a `diskReclaimGB` pressure-reclaim threshold (default 40; below it idle worktrees
 drop their gitignored build outputs before the hold engages; 0 disables), and a

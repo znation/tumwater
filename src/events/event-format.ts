@@ -392,6 +392,10 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine state change, like counters_reset — no warning prefix.
       return `maxConcurrent changed: ${textOr(e.from)} → ${textOr(e.to)}`;
     }
+    case "provider_concurrency_changed": {
+      // Routine state change, its maxConcurrent sibling's per-provider form — no warning prefix.
+      return `concurrency for ${textOr(e.provider)} changed: ${textOr(e.from)} → ${textOr(e.to)}`;
+    }
     case "retention_changed": {
       // Routine state change, like its maxConcurrent sibling — no warning prefix.
       return `sessionRetentionDays changed: ${textOr(e.from)} → ${textOr(e.to)}`;

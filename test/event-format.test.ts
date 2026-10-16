@@ -5,6 +5,18 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { formatTimestamp } from "../src/text/datetime.js";
 import { displayWidth } from "../src/text/text-width.js";
 
+test("formatEvent renders provider_concurrency_changed like its maxConcurrent sibling", () => {
+  const line = formatEvent({
+    ts: 0,
+    loop: "harness",
+    type: "provider_concurrency_changed",
+    provider: "omlx",
+    from: 1,
+    to: 2,
+  } as never);
+  assert.match(line, /concurrency for omlx changed: 1 → 2/);
+});
+
 test("formatEvent renders each type as one line", () => {
   const cases = [
     { ts: 0, loop: "clean", type: "tick_start", tick: 3 },

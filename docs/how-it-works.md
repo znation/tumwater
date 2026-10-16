@@ -116,6 +116,11 @@ discards a role's in-flight landing.
   `tumwater doctor`'s `work instances` check warns on a claim whose entry is gone or stale.
 - `maxConcurrent` caps parallel ticks and landing vets together. Landings get slots first, then
   work roles (feature, bugfix, plan), then maintenance roles.
+- `maxConcurrentPerProvider` (optional) caps how many of those runs each model provider serves
+  at once, beside the fleet total: a run starts only when BOTH its provider and the fleet have
+  headroom, and a full provider never holds back a run on another (plans/provider-concurrency.md
+  §1). A role tick's key is the provider its authoring seam resolves to (a claude seam's own id,
+  else the pi provider, or pi's saved default for a seam that names no model).
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: gate, landing, batch, and main-baseline checks share it, the rest queue, and landings go
   first.

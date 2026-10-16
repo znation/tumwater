@@ -574,6 +574,32 @@ function checkSelectorValue(
     if (!parsed.ok) problems.push(parsed.error);
   });
 
+  // Per-provider concurrency caps (plans/provider-concurrency.md §1): a map from provider
+  // key to a positive integer. Unlike the per-role maps above, an unknown provider name is
+  // NOT a validation error — providers live in pi's models.json, which validation does not
+  // read, and a fallback's provider may only come into use later (doctor warns in part 5/5).
+  // Each value must be a positive integer under a non-empty key.
+  if (r.maxConcurrentPerProvider !== undefined) {
+    const map = r.maxConcurrentPerProvider;
+    if (!isJsonObject(map)) {
+      problems.push(
+        `maxConcurrentPerProvider must be an object mapping provider names to concurrency caps (got ${show(map)})`,
+      );
+    } else {
+      for (const [provider, value] of Object.entries(map)) {
+        if (provider.trim() === "") {
+          problems.push(`maxConcurrentPerProvider.<empty> — a provider key must not be empty`);
+          continue;
+        }
+        if (typeof value !== "number" || !Number.isFinite(value) || !POSITIVE_INTEGER.ok(value)) {
+          problems.push(
+            `maxConcurrentPerProvider.${provider} must be ${POSITIVE_INTEGER.what} (got ${show(value)})`,
+          );
+        }
+      }
+    }
+  }
+
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
   // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards

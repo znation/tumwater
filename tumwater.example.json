@@ -1,6 +1,7 @@
 {
   "agents": { "pi": { "args": [] } },
   "minTickIntervalSeconds": 20,
+  "maxConcurrentPerProvider": { "omlx": 1 },
   "landBatchMax": 3,
   "logMaxBytes": 16777216,
   "sessionRetentionDays": 7,

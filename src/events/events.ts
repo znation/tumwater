@@ -90,6 +90,7 @@ export interface HarnessEvent {
     | "claude_window_limited" // a rejected claude.ai subscription window placed the provider-wide hold; claude seams start nothing new until resetsAt; carries the window type and resetsAt; once per window
     | "claude_window_reset" // the subscription window hold reached resetsAt and lifted; claude seams tick again; once per window
     | "max_concurrent_changed" // a live tumwater.json edit resized the concurrency cap (from → to)
+    | "provider_concurrency_changed" // a live tumwater.json edit changed one provider's concurrency cap (provider, from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
     | "model_changed" // a live tumwater.json edit changed the fleet's model wiring; carries from/to (fleetModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed

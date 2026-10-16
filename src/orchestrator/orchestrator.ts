@@ -33,6 +33,7 @@ import {
   consumeWakeRequest,
 } from "../operator/operator-requests.js";
 import { piModelsPath } from "../pi/pi-models.js";
+import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { Semaphore } from "../concurrency/semaphore.js";
 import { orchestratorStatePath } from "../paths.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
@@ -122,6 +123,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const { root, config, mainBranch, signal: externalSignal } = opts;
   const pollMs = opts.pollMs ?? POLL_MS;
   const modelsPath = opts.modelsPath ?? piModelsPath();
+  // pi's saved default model — the same stat-cached read status-roles.ts makes — used as the
+  // fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2).
+  const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), root);
   const breakerPolicy = opts.fallbackBreakerPolicy ?? FALLBACK_BREAKER_POLICY;
   const breakerNow = opts.breakerNow ?? Date.now;
   // Parallel work instances (part 5b/7): the runner list is every loop id the config enables
@@ -168,6 +172,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // resolver — landing-drain.ts) all hold a permit; see its LandingPipelineContext for why a
   // landing is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
+  // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
+  // §7): a role tick's lease is bounded by its provider key from the first launch onward, not
+  // just after a live edit. A config without the key passes an empty map, the no-change case.
+  semaphore.setKeyCaps(config.maxConcurrentPerProvider ?? {});
 
   const infoFile = orchestratorStatePath(root);
   const info: OrchestratorInfo = { pid: process.pid, startedAt: Date.now(), roles: enabled };
@@ -539,6 +547,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         probeRoles,
         budgetActive,
         semaphore,
+        piDefault,
         rolePermitHolders,
         roleInFlight,
         directorInFlight,

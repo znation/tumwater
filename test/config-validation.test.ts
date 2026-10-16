@@ -211,6 +211,21 @@ test("maxConcurrentChecks is validated like maxConcurrent: a positive integer", 
   assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentChecks: 1 }));
 });
 
+test("maxConcurrentPerProvider is an optional map of positive integers under non-empty keys", () => {
+  // Absent passes (the default), and unknown provider names are NOT errors (doctor warns).
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig() }));
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), maxConcurrentPerProvider: { omlx: 3, claude: 6 } }));
+  // 0, -1, a fraction and a non-object each fail naming the dotted key.
+  for (const [bad, shown] of [[0, "0"], [-1, "-1"], [1.5, "1\\.5"]] as const) {
+    assert.match(
+      validationError({ maxConcurrentPerProvider: { omlx: bad } }),
+      new RegExp(`maxConcurrentPerProvider\\.omlx must be an integer of at least 1 \\(got ${shown}\\)`),
+    );
+  }
+  assert.match(validationError({ maxConcurrentPerProvider: [] }), /maxConcurrentPerProvider must be an object mapping provider names to concurrency caps/);
+  assert.match(validationError({ maxConcurrentPerProvider: { "": 2 } }), /maxConcurrentPerProvider\.<empty> — a provider key must not be empty/);
+});
+
 test("worktreeSlots is validated like maxConcurrent: a positive integer", () => {
   // 0 would leave the pool with no slots at all and every lease waiting forever, a negative
   // or fractional cap means nothing, and a string is a typo — each fails naming the key.

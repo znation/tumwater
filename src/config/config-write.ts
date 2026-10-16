@@ -20,7 +20,7 @@ import { typoSuffix } from "../text/suggest.js";
 import { writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, objectOrEmpty } from "../files/json-object.js";
 import { withStateLock } from "../concurrency/lock.js";
-import { show } from "./config-field-checks.js";
+import { POSITIVE_INTEGER, show } from "./config-field-checks.js";
 import { validateConfig } from "./config-validation.js";
 import { loadConfig, parseJsonConfig, collapseAgentAliases } from "./config.js";
 import { parseQuietHours } from "../scheduling/quiet-hours.js";
@@ -42,6 +42,19 @@ export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): st
     value > Number.MAX_SAFE_INTEGER
   )
     return `${key} must be a number of 0 or more, at most ${Number.MAX_SAFE_INTEGER}, 0 disables (got ${show(value)})`;
+  return null;
+}
+
+/** One definition of "a valid per-provider concurrency cap" (plans/provider-concurrency.md
+ * §1): a positive integer, accepted for any (possibly unknown) provider name — a fallback's
+ * provider may only come into use later, so the key is not checked against a catalog. The one
+ * validation both `config set maxConcurrentPerProvider.<provider>` and validateConfig show,
+ * so they cannot drift apart on what a valid cap is. `key` names the config key in the error,
+ * defaulting to the map name; the dotted map passes `maxConcurrentPerProvider.<provider>`
+ * so a rejected entry names the key actually set. */
+function checkProviderConcurrencyCap(value: unknown, key = "maxConcurrentPerProvider"): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 1)
+    return `${key} must be ${POSITIVE_INTEGER.what} (got ${show(value)})`;
   return null;
 }
 
@@ -151,9 +164,12 @@ export function setDailyBudgetUsd(
 
 /** The per-role maps `config get/set` reaches with dotted keys: each names ONE entry
  * (`maxDailyCostUsdPerRole.<role>`, `quietHoursPerRole.<role>`) that merges into the
- * existing map, so raising one role's cap never requires re-typing another's. The per-key
- * value validator runs before the write, the same screening a bare top-level key gets. */
-export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole"] as const;
+ * existing map, so raising one role's cap never requires re-typing another's. The
+ * `maxConcurrentPerProvider` map is dotted the same way (`maxConcurrentPerProvider.<provider>`);
+ * its keys are provider names, not role ids, so its per-key validation skips the role-catalog
+ * check the per-role maps apply. The per-key value validator runs before the write, the same
+ * screening a bare top-level key gets. */
+export const DOTTED_MAP_KEYS = ["maxDailyCostUsdPerRole", "quietHoursPerRole", "maxConcurrentPerProvider"] as const;
 
 /** The valid first segments of a dotted config key — the per-role maps plus the `roles.` and
  * `model.` sections. The generic dotted-shape error suggests against these so a typo'd head
@@ -288,7 +304,12 @@ export function setConfigKey(
       // Name the key the operator actually typed (`maxDailyCostUsdPerRole.qa`), not the
       // fleet-wide field the shared validator's message would otherwise default to.
       const label = `${parsed.map}.${parsed.role}`;
-      const validator = parsed.map === "maxDailyCostUsdPerRole" ? checkDailyBudgetUsd : checkQuietHours;
+      const validator =
+        parsed.map === "maxDailyCostUsdPerRole"
+          ? checkDailyBudgetUsd
+          : parsed.map === "maxConcurrentPerProvider"
+            ? checkProviderConcurrencyCap
+            : checkQuietHours;
       const problem = validator(value, label);
       if (problem) return fail(problem);
     }

@@ -116,3 +116,88 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     await stopOrchestrator(orch, restore);
   }
 });
+
+test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs its own event", async () => {
+  // plans/provider-concurrency.md §7: config-live re-applies the key caps on an edit and fires
+  // provider_concurrency_changed per changed provider. All three roles share omlx with cap 1,
+  // so a second omlx tick is always parked; growing the cap to 2 admits it (overlap appears)
+  // within a poll, and shrinking to 1 preempts nothing (semaphore unit tests pin the
+  // never-preempt contract).
+  const repo = makeRepo();
+  await initProject(repo, "live per-provider cap resize");
+  const cfg = fastConfig(["feature", "bugfix", "clean"]);
+  cfg.maxConcurrent = 4;
+  cfg.maxConcurrentPerProvider = { omlx: 1 };
+  cfg.review!.enabled = false;
+  cfg.roles.feature!.provider = "omlx";
+  cfg.roles.feature!.model = "m";
+  cfg.roles.bugfix!.provider = "omlx";
+  cfg.roles.bugfix!.model = "m";
+  cfg.roles.clean!.provider = "omlx";
+  cfg.roles.clean!.model = "m";
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `f=$(mktemp "$d/run.XXXXXX")`,
+      `n=0; for x in "$d"/run.*; do n=$((n+1)); done`,
+      `printf '%s\\n' "$n" >> "${runDir}/samples.log"`,
+      `echo change >> change.txt`,
+      `sleep 1.5`,
+      `rm -f "$f"`,
+      `printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo);
+  try {
+    // Phase 1 (omlx cap 1): three roles on one omlx slot — no overlap, and one is always parked.
+    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "landed"), "several omlx runs and a landing", 150_000);
+    assert.ok(
+      readSamples(runDir).every((n) => n <= 1),
+      `peak stays 1 while the second omlx tick waits on its cap (samples: ${readSamples(runDir)})`,
+    );
+
+    // Phase 2 (omlx cap 2): the live edit admits the parked tick — overlap appears, no restart.
+    const grow = fastConfig(["feature", "bugfix", "clean"]);
+    grow.maxConcurrent = 4;
+    grow.maxConcurrentPerProvider = { omlx: 2 };
+    grow.review!.enabled = false;
+    grow.roles.feature!.provider = "omlx";
+    grow.roles.feature!.model = "m";
+    grow.roles.bugfix!.provider = "omlx";
+    grow.roles.bugfix!.model = "m";
+    grow.roles.clean!.provider = "omlx";
+    grow.roles.clean!.model = "m";
+    saveConfig(repo, grow);
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "provider_concurrency_changed" && e.provider === "omlx" && e.to === 2),
+      "the provider_concurrency_changed grow event",
+    );
+    await waitFor(() => readSamples(runDir).some((n) => n >= 2), "overlapping omlx runs after the grow", 150_000);
+
+    // Phase 3 (omlx cap 1 again): a shrink logs its event and preempts nothing.
+    const shrink = fastConfig(["feature", "bugfix", "clean"]);
+    shrink.maxConcurrent = 4;
+    shrink.maxConcurrentPerProvider = { omlx: 1 };
+    shrink.review!.enabled = false;
+    shrink.roles.feature!.provider = "omlx";
+    shrink.roles.feature!.model = "m";
+    shrink.roles.bugfix!.provider = "omlx";
+    shrink.roles.bugfix!.model = "m";
+    shrink.roles.clean!.provider = "omlx";
+    shrink.roles.clean!.model = "m";
+    saveConfig(repo, shrink);
+    await waitFor(
+      () => readEvents(repo).some((e) => e.type === "provider_concurrency_changed" && e.provider === "omlx" && e.to === 1),
+      "the provider_concurrency_changed shrink event",
+    );
+    const changes = eventsOfType(repo, "provider_concurrency_changed").filter((e) => e.provider === "omlx");
+    assert.deepEqual(
+      changes.map((c) => [c.from, c.to]),
+      [[1, 2], [2, 1]],
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});

@@ -18,13 +18,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 import { launchDueTicks } from "../src/orchestrator/orchestrator-launch.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { FleetGateStates } from "../src/gates/gate-polls.js";
 import { IDLE_FALLBACK_BREAKER, rekeyFallbackBreaker, FALLBACK_BREAKER_POLICY, type FallbackBreaker } from "../src/budget/fallback-breaker.js";
 import { Semaphore } from "../src/concurrency/semaphore.js";
-import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsLogPath } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -66,6 +66,7 @@ function ctx(overrides: Partial<Parameters<typeof launchDueTicks>[0]>) {
     probeRoles: new Set<string>(),
     budgetActive: false,
     semaphore: new Semaphore(4),
+    piDefault: null,
     rolePermitHolders: new Set<LoopRunner>(),
     roleInFlight: new Set<Promise<void>>(),
     directorInFlight: new Set<Promise<void>>(),
@@ -92,6 +93,31 @@ test("a due role tick parks, holds a permit, releases it, and folds its duration
   assert.equal(c.rolePermitHolders.size, 0, "the permit was released at tick end");
   assert.equal(c.roleInFlight.size, 0, "the finished task left the in-flight bucket");
   assert.equal(c.roleTickDurationsMs.length, 1, "one work-bearing tick duration was sampled");
+});
+
+test("a role tick's semaphore lease is keyed by its authoring seam's provider", async () => {
+  // Part 2/5 (plans/provider-concurrency.md §4): the launch pass replaces the bare acquire
+  // with acquireLease(roleTier, seamConcurrencyKey(runConfig, piDefault)), so a tick counts
+  // against its provider while it holds the permit. While the tick is in flight the pool's
+  // per-key view shows the provider's slot consumed; on release it drains.
+  let releaseTick!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseTick = resolve;
+  });
+  const runner = fakeRunner("organize", async () => {
+    await gate;
+    return { result: "changed" };
+  }, { provider: "omlx", model: "m", agent: "pi" });
+  const c = ctx({ reasons: new Map([[runner, "scheduled"]]) });
+  c.semaphore.setKeyCaps({ omlx: 1 });
+  launchDueTicks(c);
+  await waitFor(() => c.rolePermitHolders.size === 1, "the tick to hold the permit");
+  const snap = c.semaphore.snapshot().byKey;
+  assert.equal(snap.omlx?.inUse, 1, "the in-flight tick consumes the omlx slot");
+  assert.equal(snap.omlx?.limit, 1);
+  releaseTick();
+  await settle(c);
+  assert.equal(c.semaphore.snapshot().byKey.omlx?.inUse, 0, "the omlx slot drains on release");
 });
 
 test("the director never queues behind the semaphore and never samples the role drain window", async () => {

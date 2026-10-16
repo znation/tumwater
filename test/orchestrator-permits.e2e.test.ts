@@ -27,6 +27,23 @@ function readOrder(runDir: string): string[] {
   }
 }
 
+/** The provider-caps fake pi's census: one `provider providerInFlight totalInFlight` line per
+ * run, reading back as the per-provider and whole-fleet in-flight snapshots at that run's start. */
+function readProviderSamples(runDir: string): Array<{ provider: string; providerInFlight: number; totalInFlight: number }> {
+  try {
+    return fs
+      .readFileSync(path.join(runDir, "samples.log"), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => {
+        const [provider, a, b] = line.split(" ");
+        return { provider: provider ?? "", providerInFlight: Number(a), totalInFlight: Number(b) };
+      });
+  } catch {
+    return [];
+  }
+}
+
 test("a landing's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
   // BUGS.md 2026-09-18: the landing drain ran its reviewer outside the author semaphore, so
   // maxConcurrent + 1 landing + 1 director was the real ceiling and a single-GPU backend saw
@@ -191,3 +208,68 @@ test("the director's tick starts immediately while every maxConcurrent slot is b
 });
 
 // --- Reset counters while running (tumwater reset-counters marker) ---
+
+test("maxConcurrentPerProvider caps role-tick admission per provider while others run beside (part 2/5)", async () => {
+  // plans/provider-concurrency.md §4: the launch pass acquires a keyed lease on the authoring
+  // seam's provider, so maxConcurrentPerProvider caps role-tick admission on that provider
+  // alone. With maxConcurrent 4 and { omlx: 1 }, two omlx roles must never overlap, while a
+  // huggingface role runs beside them, and nothing exceeds the fleet total. Disabled review
+  // keeps every pi process here a role tick, so the shim's in-flight census is the role
+  // census this part owns (vets count against their provider from part 3/5).
+  const repo = makeRepo();
+  await initProject(repo, "per-provider concurrency caps");
+  const cfg = fastConfig(["feature", "bugfix", "clean"]);
+  cfg.maxConcurrent = 4;
+  cfg.maxConcurrentPerProvider = { omlx: 1 };
+  cfg.review!.enabled = false;
+  cfg.roles.feature!.provider = "omlx";
+  cfg.roles.feature!.model = "m";
+  cfg.roles.bugfix!.provider = "omlx";
+  cfg.roles.bugfix!.model = "m";
+  cfg.roles.clean!.provider = "huggingface";
+  cfg.roles.clean!.model = "hf";
+  saveConfig(repo, cfg);
+  const runDir = tmpdir();
+  const restore = fakePi(
+    [
+      `d="${runDir}/runs"; mkdir -p "$d"`,
+      `prov=""; prev=""; for a in "$@"; do if [ "$prev" = "--provider" ]; then prov="$a"; fi; prev="$a"; done`,
+      `[ -n "$prov" ] || prov=unknown`,
+      `f=$(mktemp "$d/run.\${prov}.XXXXXX")`,
+      `n=0; for x in "$d"/run.\${prov}.*; do n=$((n+1)); done`,
+      `t=0; for x in "$d"/run.*; do t=$((t+1)); done`,
+      `printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
+      leasedRoleShell(),
+      `echo change >> change.txt`,
+      `sleep 1.5`,
+      `rm -f "$f"`,
+      `printf '%s\\n' '${assistantLine("do the work\\nSUMMARY: add a change")}'`,
+    ].join("\n"),
+  );
+  const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
+  try {
+    await waitFor(
+      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "landed"),
+      "several role runs across both providers, and a landing",
+      150_000,
+    );
+    const samples = readProviderSamples(runDir);
+    const omlxCounts = samples.filter((s) => s.provider === "omlx").map((s) => s.providerInFlight);
+    const totals = samples.map((s) => s.totalInFlight);
+    assert.ok(
+      omlxCounts.every((n) => n <= 1),
+      `at most one omlx role run in flight at a time (samples: ${JSON.stringify(samples)})`,
+    );
+    assert.ok(
+      totals.every((n) => n <= 4),
+      `nothing exceeds the fleet total (samples: ${JSON.stringify(samples)})`,
+    );
+    assert.ok(
+      samples.some((s) => s.provider === "huggingface" && s.totalInFlight >= 2),
+      `a huggingface role ran beside an omlx run (samples: ${JSON.stringify(samples)})`,
+    );
+  } finally {
+    await stopOrchestrator(orch, restore);
+  }
+});
+

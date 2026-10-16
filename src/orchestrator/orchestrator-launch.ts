@@ -24,6 +24,8 @@ import type { LoopRunner } from "../loop/loop.js";
 import { fairOrder } from "../scheduling/scheduling.js";
 import { modelPairName } from "../budget/budget.js";
 import type { Semaphore } from "../concurrency/semaphore.js";
+import { seamConcurrencyKey } from "../config/config-views.js";
+import type { ModelSelector } from "../config/model-selector.js";
 import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleTick } from "../tick/tick-timing.js";
 
@@ -67,6 +69,9 @@ interface LaunchContext {
   budgetActive: boolean;
   /** The fleet's tick semaphore; the director never queues behind it. */
   semaphore: Semaphore;
+  /** pi's saved default model (the caller's stat-cached readPiDefaultModel result): the
+   * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2). */
+  piDefault: ModelSelector | null;
   /** Role ticks actually holding a permit — the redeployer's in-flight count and the
    * restart abort's target. */
   rolePermitHolders: Set<LoopRunner>;
@@ -96,6 +101,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
     probeRoles,
     budgetActive,
     semaphore,
+    piDefault,
     rolePermitHolders,
     roleInFlight,
     directorInFlight,
@@ -139,12 +145,20 @@ export function launchDueTicks(ctx: LaunchContext): void {
     // Whether runner.tick() was ever called — false when the start gate (or a shutdown)
     // turned the tick away at its permit.
     let started = false;
+    // The tick's keyed semaphore lease (plans/provider-concurrency.md §4): acquired on the
+    // authoring seam's provider key and released in place of the bare fleet release, so the
+    // cap is real for role ticks from part 2/5 on. The director never queues, so its lease is
+    // never created here.
+    let lease: Awaited<ReturnType<Semaphore["acquireLease"]>> | null = null;
     const task = (async () => {
       durationMs = await runTimedRoleTick(
         signal,
         usesSlot
           ? async () => {
-              await semaphore.acquire(roleTier(runner.role));
+              // The key is the authoring seam's concurrency key, computed here at admission
+              // (runConfig applies any budget or model-failure fallback already in force).
+              const cfg = runner.role === DIRECTOR_ROLE ? null : runner.runConfig(Date.now());
+              lease = await semaphore.acquireLease(roleTier(runner.role), cfg ? seamConcurrencyKey(cfg, piDefault) : undefined);
               // Permit granted: the tick is now an active, permit-holding state until the
               // release below. A tick the start gate turns away releases within the same
               // microtask chain, so no poll ever counts it as a permit holder.
@@ -155,7 +169,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
         usesSlot
           ? () => {
               rolePermitHolders.delete(runner);
-              semaphore.release();
+              lease!.release();
             }
           : () => {},
         async () => {

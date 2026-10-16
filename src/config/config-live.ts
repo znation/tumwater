@@ -60,6 +60,10 @@ export function newLiveConfigReload(deps: {
   // The cap last applied to the semaphore (live-resized on each reload), so a change logs
   // exactly one event per distinct value — not once per poll.
   let lastMaxConcurrent = Math.max(1, deps.config.maxConcurrent);
+  // The per-provider caps last applied to the semaphore (live-resized on each reload), so a
+  // change logs exactly one event per distinct value — not once per poll. Seeded from the
+  // startup config, so the first poll of an unchanged file emits nothing.
+  let lastKeyCaps: Record<string, number> = deps.config.maxConcurrentPerProvider ?? {};
 
   // Roots this process has already attempted a live-edit claude-account seed for (see the
   // reload block below), so repeated polls of a config that keeps a claude seam cannot respawn
@@ -152,6 +156,26 @@ export function newLiveConfigReload(deps: {
           emit({ loop: "harness", type: "max_concurrent_changed", from: lastMaxConcurrent, to: newMaxConcurrent });
           lastMaxConcurrent = newMaxConcurrent;
         }
+        // Live-resize the per-provider caps (plans/provider-concurrency.md §7): an edit
+        // re-applies the whole map to the pool, and each changed provider fires its own
+        // `provider_concurrency_changed` event. setKeyCaps never preempts — shrinking only
+        // withholds future grants on that key until releases drain it under the new cap.
+        const nextKeyCaps = reloaded.config.maxConcurrentPerProvider ?? {};
+        deps.semaphore.setKeyCaps(nextKeyCaps);
+        for (const provider of new Set([...Object.keys(lastKeyCaps), ...Object.keys(nextKeyCaps)])) {
+          const from = lastKeyCaps[provider];
+          const to = nextKeyCaps[provider];
+          if (from !== to) {
+            emit({
+              loop: "harness",
+              type: "provider_concurrency_changed",
+              provider,
+              from: from ?? 0,
+              to: to ?? 0,
+            });
+          }
+        }
+        lastKeyCaps = nextKeyCaps;
         const nowEnabled = loopIds(reloaded.config);
         // Enabling a role — or raising `roles.<id>.instances` — mid-run starts it: create the
         // runner for each newly present loop id (its persisted state survives). A lowered

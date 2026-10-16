@@ -290,62 +290,6 @@ test/doctor-model-checks.test.ts.
   A config-views test pins this.
 - `npm test` passes.
 
-### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow)
-
-Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
-§4. This part makes the cap real for role ticks, the bulk of the load. Vets, the resolver and the
-director keep today's keyless permits until part 3/5.
-
-**Goal.** The operator writes `"maxConcurrentPerProvider": { "omlx": 3 }`. From then on no more
-than three role ticks run on `omlx` at once, while ticks on other providers fill the rest of
-`maxConcurrent`. The cap applies live.
-
-**Approach.**
-- Config (src/config/config-schema.ts, config-validation.ts):
-  - add the optional map `maxConcurrentPerProvider`;
-  - validate each value as a positive integer under a non-empty key;
-  - accept unknown provider names (doctor warns in part 5/5).
-- Writers (src/config/config-write.ts):
-  - `config set|unset maxConcurrentPerProvider.<provider>` merges or removes one entry;
-  - `DOTTED_MAP_KEYS` gets a provider-keyed branch that skips the role-catalog check that
-    `maxDailyCostUsdPerRole` uses;
-  - completion's config-key list picks the new key up.
-- The launch pass (src/orchestrator/orchestrator-launch.ts) calls
-  `semaphore.acquireLease(roleTier(role), key)`:
-  - the key is `seamConcurrencyKey(runner.runConfig(now), piDefault)`;
-  - `piDefault` is `readPiDefaultModel(piSettingsPath(piModelsPath()), root)`, which is
-    stat-cached and is the same read status-roles.ts makes;
-  - the lease's `release` replaces the bare `semaphore.release()`.
-- The orchestrator seeds the pool's key caps at startup. config-live.ts calls `setKeyCaps` on an
-  edit and emits `provider_concurrency_changed` `{ provider, from, to }` for each changed key.
-  event-format.ts renders it like `max_concurrent_changed`.
-- `changedConfigKeys` (src/config/config.ts) skips the key, as it skips `maxConcurrent`.
-- Docs: tumwater.example.json, docs/config.md, and docs/how-it-works.md's `maxConcurrent`
-  bullet.
-
-**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
-src/config/config-write.ts, src/config/config.ts, src/config/config-live.ts,
-src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-launch.ts,
-src/events/event-format.ts, tumwater.example.json, docs/config.md, docs/how-it-works.md, and
-tests: test/config-validation.test.ts, test/config-write.test.ts, test/config-live.test.ts,
-test/event-format.test.ts, and e2e cases in test/orchestrator-permits.e2e.test.ts and
-test/orchestrator-resize.e2e.test.ts.
-
-**Acceptance criteria (this part).**
-- With `maxConcurrent` 4 and `{ "omlx": 1 }`, plus fake-pi roles on `omlx/…` and
-  `huggingface/…`:
-  - at most one omlx run is in flight at a time;
-  - the huggingface roles run beside it;
-  - nothing exceeds the total.
-- A config without the key schedules exactly as before: the existing orchestrator suites pass
-  unchanged.
-- A live edit from `{ "omlx": 1 }` to `{ "omlx": 2 }` admits a parked omlx tick within one poll
-  and logs `provider_concurrency_changed`. A shrink preempts nothing.
-- Validation rejects `0`, `-1`, `1.5` and a non-object, naming the dotted key.
-  `config set maxConcurrentPerProvider.omlx 3` and `config unset maxConcurrentPerProvider.omlx`
-  round-trip.
-- `npm test` passes.
-
 ### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow)
 
 Design: plans/provider-concurrency.md §4 "Who holds a lease" and §6 "Priority headroom and the
@@ -490,6 +434,63 @@ README.md, and their tests.
 
 
 ## Done
+
+### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow) — done 2026-10-15
+
+Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
+§4. This part makes the cap real for role ticks, the bulk of the load. Vets, the resolver and the
+director keep today's keyless permits until part 3/5.
+
+**Goal.** The operator writes `"maxConcurrentPerProvider": { "omlx": 3 }`. From then on no more
+than three role ticks run on `omlx` at once, while ticks on other providers fill the rest of
+`maxConcurrent`. The cap applies live.
+
+**Approach.**
+- Config (src/config/config-schema.ts, config-validation.ts):
+  - add the optional map `maxConcurrentPerProvider`;
+  - validate each value as a positive integer under a non-empty key;
+  - accept unknown provider names (doctor warns in part 5/5).
+- Writers (src/config/config-write.ts):
+  - `config set|unset maxConcurrentPerProvider.<provider>` merges or removes one entry;
+  - `DOTTED_MAP_KEYS` gets a provider-keyed branch that skips the role-catalog check that
+    `maxDailyCostUsdPerRole` uses;
+  - completion's config-key list picks the new key up.
+- The launch pass (src/orchestrator/orchestrator-launch.ts) calls
+  `semaphore.acquireLease(roleTier(role), key)`:
+  - the key is `seamConcurrencyKey(runner.runConfig(now), piDefault)`;
+  - `piDefault` is `readPiDefaultModel(piSettingsPath(piModelsPath()), root)`, which is
+    stat-cached and is the same read status-roles.ts makes;
+  - the lease's `release` replaces the bare `semaphore.release()`.
+- The orchestrator seeds the pool's key caps at startup. config-live.ts calls `setKeyCaps` on an
+  edit and emits `provider_concurrency_changed` `{ provider, from, to }` for each changed key.
+  event-format.ts renders it like `max_concurrent_changed`.
+- `changedConfigKeys` (src/config/config.ts) skips the key, as it skips `maxConcurrent`.
+- Docs: tumwater.example.json, docs/config.md, and docs/how-it-works.md's `maxConcurrent`
+  bullet.
+
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
+src/config/config-write.ts, src/config/config.ts, src/config/config-live.ts,
+src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-launch.ts,
+src/events/event-format.ts, tumwater.example.json, docs/config.md, docs/how-it-works.md, and
+tests: test/config-validation.test.ts, test/config-write.test.ts, test/config-live.test.ts,
+test/event-format.test.ts, and e2e cases in test/orchestrator-permits.e2e.test.ts and
+test/orchestrator-resize.e2e.test.ts.
+
+**Acceptance criteria (this part).**
+- With `maxConcurrent` 4 and `{ "omlx": 1 }`, plus fake-pi roles on `omlx/…` and
+  `huggingface/…`:
+  - at most one omlx run is in flight at a time;
+  - the huggingface roles run beside it;
+  - nothing exceeds the total.
+- A config without the key schedules exactly as before: the existing orchestrator suites pass
+  unchanged.
+- A live edit from `{ "omlx": 1 }` to `{ "omlx": 2 }` admits a parked omlx tick within one poll
+  and logs `provider_concurrency_changed`. A shrink preempts nothing.
+- Validation rejects `0`, `-1`, `1.5` and a non-object, naming the dotted key.
+  `config set maxConcurrentPerProvider.omlx 3` and `config unset maxConcurrentPerProvider.omlx`
+  round-trip.
+- `npm test` passes.
+
 
 ### Image input, part 1/5: tumwater knows which seams can read images, and `tumwater doctor` reports it (planned 2026-10-15 by user; design and decisions in plans/image-input.md; independent of every other entry — touches src/pi/pi-models.ts, src/agent/, src/config/config-views.ts and src/doctor/, and changes no runtime behavior) — done 2026-10-15
 

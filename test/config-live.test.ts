@@ -178,6 +178,29 @@ test("a maxConcurrent edit live-resizes the semaphore and logs its own event", (
   assert.deepEqual(changedKeys(root), []);
 });
 
+test("a maxConcurrentPerProvider edit re-applies key caps and logs one event per changed provider", () => {
+  const config = { ...defaultConfig(), maxConcurrentPerProvider: { omlx: 1 } };
+  const { root, sem, live } = liveReload(config);
+  live.poll();
+  // The startup config seeds the pool's caps.
+  assert.equal(sem.snapshot().byKey.omlx?.limit, 1);
+
+  const edited = cloneConfig(config);
+  edited.maxConcurrentPerProvider = { omlx: 2, claude: 3 };
+  writeConfig(root, edited);
+
+  assert.equal(live.poll().maxConcurrentPerProvider?.claude, 3);
+  const snap = sem.snapshot().byKey;
+  assert.equal(snap.omlx?.limit, 2);
+  assert.equal(snap.claude?.limit, 3);
+  const caps = eventsOfType(root, "provider_concurrency_changed");
+  assert.equal(caps.length, 2);
+  const byProvider = Object.fromEntries(caps.map((e) => [e.provider as string, { from: e.from, to: e.to }]));
+  assert.deepEqual(byProvider, { omlx: { from: 1, to: 2 }, claude: { from: 0, to: 3 } });
+  // Each provider cap has its own event, so config_changed must not repeat the key.
+  assert.deepEqual(changedKeys(root), []);
+});
+
 test("a missing tumwater.json keeps the last-known-good config and warns once per vanish", () => {
   const config = defaultConfig();
   const { root, live } = liveReload(config);

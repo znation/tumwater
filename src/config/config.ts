@@ -342,11 +342,13 @@ function stableJson(value: unknown): string {
 
 /** Sorted names of the config settings whose value differs between two loaded configs, for the
  * orchestrator's live-reload event. `maxConcurrent` and `sessionRetentionDays` are skipped: each
- * already has its own, more informative event. The `roles` map is never reported whole — only
+ * already has its own, more informative event. `maxConcurrentPerProvider` is skipped too — each
+ * changed provider fires its own `provider_concurrency_changed` event. The `roles` map is never
+ * reported whole — only
  * each differing `roles.<id>` — so a `customLoops` add/remove names both the section and the
  * affected role. */
 export function changedConfigKeys(prev: TumwaterConfig, next: TumwaterConfig): string[] {
-  const skip = new Set(["maxConcurrent", "sessionRetentionDays", "roles"]);
+  const skip = new Set(["maxConcurrent", "maxConcurrentPerProvider", "sessionRetentionDays", "roles"]);
   const keys: string[] = [];
   const prevRecord = prev as unknown as Record<string, unknown>;
   const nextRecord = next as unknown as Record<string, unknown>;

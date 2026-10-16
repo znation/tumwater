@@ -233,6 +233,15 @@ export interface TumwaterConfig {
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
   maxConcurrent: number;
+  /** Per-provider concurrency caps (plans/provider-concurrency.md §1): how many runs each
+   * model provider serves at once, beside the fleet-wide `maxConcurrent`. A map from provider
+   * key (§2: a backend's own id for claude, else the pi provider) to a positive integer. A
+   * role tick, a landing vet or a conflict resolver starts when BOTH its provider and the
+   * fleet have headroom; providers never wait on each other. An absent key is uncapped —
+   * bounded by `maxConcurrent` alone — and a config without the key behaves exactly as
+   * before. Unknown provider names are accepted (doctor warns in part 5/5); an entry at or
+   * above `maxConcurrent` is legal but inert. Optional and absent by default. */
+  maxConcurrentPerProvider?: Record<string, number>;
   /** Max vetted changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
    * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
    * fast-forwarded to main in one ff. 1 lands every vetted change on its own (no coalescing). */
@@ -389,6 +398,7 @@ export const TOP_LEVEL_KEYS = [
   "check",
   "piArgs",
   "maxConcurrent",
+  "maxConcurrentPerProvider",
   "landBatchMax",
   "maxConcurrentChecks",
   "worktreeSlots",
