@@ -360,6 +360,8 @@ export const GUI_STYLES = String.raw`
   .list-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); }
   .list-item:last-child { border-bottom: 0; }
   .list-item:hover { background: var(--surface-2); }
+  .list-divider { padding: 6px 16px; background: var(--surface-2); }
+  .list-divider:hover { background: var(--surface-2); }
   .list-item.active { background: var(--accent-bg); }
   .li-icon { color: var(--t, var(--text-4)); padding-top: 2px; }
   .li-open { flex: 1; min-width: 0; display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; }

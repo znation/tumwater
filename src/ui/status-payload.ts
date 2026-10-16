@@ -1,6 +1,6 @@
 // vocabulary: plain
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
-import { backlogMarks } from "../backlog/backlog-eligibility.js";
+import { backlogHolds, backlogMarks } from "../backlog/backlog-eligibility.js";
 import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
@@ -38,6 +38,7 @@ export function statusPayload(root: string, now = Date.now()): object {
   // the prompt's backlog index and `tumwater backlog` render, projected to the mark each
   // surface appends. Read once here, consumed as the parallel planHolds/bugHolds arrays below.
   const marks = backlogMarks(root);
+  const holds = backlogHolds(root);
   const loops = snap.loops.map((s) => {
     // loopRowCells single-homes the per-loop tail read + metrics + phase derivation the
     // TUI table (status-render.ts's renderStatus) repeats, so the two dashboards cannot
@@ -282,6 +283,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // mark without a separate eligibility check.
     planHolds: marks.plans,
     bugHolds: marks.bugs,
+    // Whether each entry carries any eligibility hold (parallel to plans/bugs): the dashboard
+    // lists unblocked rows first and gathers the rest under a Blocked divider.
+    planBlocked: holds.plans.map((h) => h !== null),
+    bugBlocked: holds.bugs.map((h) => h !== null),
     questions,
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.

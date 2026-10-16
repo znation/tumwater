@@ -338,7 +338,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       // the same tab position the click sends): empty for eligible rows so their markup is
       // unchanged, and the Questions tab carries no holds.
       const holds = key === "plans" ? (d.planHolds || []) : key === "bugs" ? (d.bugHolds || []) : [];
-      html = list.map((title, i) => {
+      // Blocked entries (a hold of any kind) paint after the pickable ones under one divider;
+      // each row keeps its original data-index so the drawer and Answer still address it.
+      const blocked = key === "plans" ? (d.planBlocked || []) : key === "bugs" ? (d.bugBlocked || []) : [];
+      const rows = list.map((title, i) => {
         const t = splitTitle(title);
         const mark = holds[i] || "";
         return "<div class='list-item t-" + tone + (open === key + ":" + i ? " active" : "") + "'><span class='li-icon'>" + icon(ic) + "</span>" +
@@ -346,7 +349,10 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
           (t.meta ? "<span class='li-meta'>" + esc(t.meta) + "</span>" : "") +
           (mark ? "<span class='li-meta'>" + esc(mark.trim()) + "</span>" : "") + "</button>" +
           (key === "questions" ? "<button type='button' class='btn btn-sm backloglink' data-file='questions' data-index='" + i + "'>Answer</button>" : "") + "</div>";
-      }).join("");
+      });
+      const ready = rows.filter((r, i) => !blocked[i]);
+      const held = rows.filter((r, i) => blocked[i]);
+      html = ready.join("") + (held.length ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + held.length + ")</span></div>" + held.join("") : "");
     }
     if (key === "plans" || key === "bugs") {
       const kind = key === "plans" ? "plan" : "bug";

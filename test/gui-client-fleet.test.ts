@@ -161,6 +161,34 @@ test("an eligible Plans row is byte-identical whether or not the payload carries
   const without = backlogScope("plans");
   without.scope.renderBacklog(payload);
   assert.equal(withHolds.panels["backlog"], without.panels["backlog"]);
+  const unblocked = backlogScope("plans");
+  unblocked.scope.renderBacklog({ ...payload, planHolds: [""], planBlocked: [false] });
+  assert.equal(unblocked.panels["backlog"], without.panels["backlog"]);
+});
+
+test("the Plans tab lists pickable rows first and blocked rows under a Blocked divider", () => {
+  const base = { questions: [], plans: [], bugs: [], planHolds: [], bugHolds: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  const plans = backlogScope("plans");
+  plans.scope.renderBacklog({
+    ...base,
+    plans: ["Alpha", "Bravo", "Charlie", "Delta"],
+    planHolds: [" [refused]", "", " [refused]", ""],
+    planBlocked: [true, false, true, false],
+  });
+  const html = plans.panels["backlog"] ?? "";
+  const at = (s: string) => html.indexOf(s);
+  assert.ok(at("Bravo") > 0 && at("Bravo") < at("Delta"));
+  assert.ok(at("Delta") < at("Blocked (2)"));
+  assert.ok(at("Blocked (2)") < at("Alpha"));
+  assert.ok(at("Alpha") < at("Charlie"));
+  assert.match(html, /data-file='plans' data-index='0'><span class='li-title'>Alpha/);
+  assert.match(html, /data-file='plans' data-index='2'><span class='li-title'>Charlie/);
+
+  const bugs = backlogScope("bugs");
+  bugs.scope.renderBacklog({ ...base, bugs: ["Dead", "Live"], bugHolds: [" [refused]", ""], bugBlocked: [true, false] });
+  const bugsHtml = bugs.panels["backlog"] ?? "";
+  assert.ok(bugsHtml.indexOf("Live") < bugsHtml.indexOf("Blocked (1)"));
+  assert.ok(bugsHtml.indexOf("Blocked (1)") < bugsHtml.indexOf("Dead"));
 });
 
 // The "In flight" stat tile counts the running set, not just the permit holders: a running

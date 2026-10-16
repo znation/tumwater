@@ -2822,7 +2822,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused)
+## Done
+
+### The dashboard's Plans and Bugs tabs list the entries a role can pick first and gather blocked ones under a "Blocked (N)" divider, so the few ready plans are not buried among 100+ blocked parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `statusPayload` in `src/ui/status-payload.ts` and `renderBacklog` in `src/ui/gui/gui-client-fleet.ts`, with tests in `test/status-payload.test.ts` and `test/gui-client-fleet.test.ts`. The `plan --list` grouping plan edits `src/backlog/backlog-structure.ts` and `src/backlog/backlog-cli.ts`, `questions --answered` edits `cmdQuestions` and `question-answer.ts`, and Plain terms text 7/19 rewords backlog command output and the role page; none touches these files. The TUI's backlog list is left alone, because Plain terms text 9/19 owns the TUI tabs and the tui-panes split is refused; done 2026-10-16)
 
 **Goal.** The dashboard's Plans tab paints `## Planned` in file order. Here that is well over 100 rows. The refused tui-panes plan comes first, then text 7/19, then about 100 blocked Plain terms parts, and the newest plans that roles can pick sit at the very bottom. Each row already shows its hold mark (`planHolds`), but an operator still has to scroll past every blocked row to find the plans that will run next. Show the rows a role can pick first, then the blocked rows under one divider. Every row keeps its click address.
 
@@ -2841,8 +2843,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - "an eligible Plans row is byte-identical whether or not the payload carries holds" still passes. A new assertion in it shows that `planBlocked: [false]` paints the same HTML as a payload without the key.
 - The existing backlog tests in `test/gui-client-fleet.test.ts` and `test/status-payload.test.ts` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater plan --list` shows each blocked series as one line, as the prompt's backlog index does, so an operator's list of 100+ planned entries fits on a screen and the eligible plans stand out (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `collapseBlockedSeries` and its helpers in `src/backlog/backlog-structure.ts`, the plans branch of `listAndAnnounce` in `src/backlog/backlog-cli.ts`, the `plan --list` stanza of `src/cli/help.ts`, and the `--list` clause of `docs/cli.md`'s "Steer the project" row. Plain terms text 7/19, in flight, rewords messages in these two backlog files; this plan adds a grouping helper and one list branch and rewords none of the existing messages. The `questions --answered` plan edits `cmdQuestions` and `question-answer.ts` instead) (done 2026-10-16)
 

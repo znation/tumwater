@@ -264,7 +264,7 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
     },
     { heading: "## Fixed" },
   ]);
-  const payload = statusPayload(repo) as { plans: string[]; bugs: string[]; planHolds: string[]; bugHolds: string[] };
+  const payload = statusPayload(repo) as { plans: string[]; bugs: string[]; planHolds: string[]; bugHolds: string[]; planBlocked: boolean[]; bugBlocked: boolean[] };
   assert.deepEqual(payload.plans, [
     "Worktree pool, part 2/5: first step (planned 2026-10-01)",
     "Worktree pool, part 3/5: second step (planned 2026-10-01; requires part 2/5 landed)",
@@ -281,6 +281,8 @@ test("status payload carries planHolds and bugHolds parallel to plans and bugs",
   assert.deepEqual(payload.bugs, ["Live bug (reported 2026-10-01)", "Dead bug (reported 2026-10-01)"]);
   assert.equal(payload.bugHolds.length, payload.bugs.length, "one hold per bug");
   assert.deepEqual(payload.bugHolds, ["", " [refused]"]);
+  assert.deepEqual(payload.planBlocked, [false, true, true, false]);
+  assert.deepEqual(payload.bugBlocked, [false, true]);
 });
 
 test("status payload's planHolds carries the working-on-it mark for a claimed plan", () => {
@@ -293,8 +295,9 @@ test("status payload's planHolds carries the working-on-it mark for a claimed pl
     ...loadLoopState(repo, "feature-2"),
     claim: { file: "PLANS.md", key: "volume slider", title: "Volume slider", at: 1, source: "assigned" },
   });
-  const payload = statusPayload(repo) as { planHolds: string[] };
+  const payload = statusPayload(repo) as { planHolds: string[]; planBlocked: boolean[] };
   assert.deepEqual(payload.planHolds, [" [working on it: feature #2]"]);
+  assert.deepEqual(payload.planBlocked, [false]);
 });
 
 // Open questions (QUESTIONS.md) drive the dashboard's `questions: N` header badge and its
