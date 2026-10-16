@@ -41,11 +41,11 @@ Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 cd your-project                 # a new or existing directory
 tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                                 # --template, --file, and --adopt pick a starting point (see docs/cli.md)
-tumwater run                    # start the loops (Ctrl+C to stop)
-tumwater run --gui              # ... and serve the browser dashboard at http://127.0.0.1:7180
-tumwater run --tui              # ... and attach the terminal TUI in the same window
-tumwater run --for 2h           # run for a bounded window, then drain, summarize, and exit
-tumwater run --once             # one round of ticks for cron/CI; exits 3 if a loop's tick failed
+tumwater start                  # start the team (Ctrl+C to stop); `tumwater run` is an alias
+tumwater start --gui            # ... and serve the browser dashboard at http://127.0.0.1:7180
+tumwater start --tui            # ... and attach the terminal TUI in the same window
+tumwater start --for 2h         # run for a bounded window, then drain, summarize, and exit
+tumwater start --once           # one round of runs for cron/CI; exits 3 if a run failed
 ```
 
 A fresh or empty project is seeded with `"bootstrap": {"untilPlansDone": 5}`, which holds the
@@ -71,12 +71,12 @@ same list, and `tumwater completion bash|zsh` prints shell completion. Settings 
 `tumwater.json` and edits apply live while the fleet runs; see [docs/config.md](docs/config.md).
 
 **Backends:** any OpenAI-compatible model pi can reach works, chosen by `model` in `tumwater.json`
-with a `fallback` that a failing role switches to. `agent: "claude"` runs bare selectors on Claude
+with a `fallback` that a failing role switches to. `backend: "claude"` runs bare selectors on Claude
 Code instead. Requirements, the fallback and usage-window behavior, and how subscription runs are
 billed (as notional spend, outside the daily cap) are in [docs/backends.md](docs/backends.md).
 
 **Mixing providers:** a bare model id that starts with `claude-` runs on the claude CLI even
-under the default `agent: "pi"`, so one config can mix a Claude strong tier with pi providers:
+under the default `backend: "pi"`, so one config can mix a Claude strong tier with pi providers:
 
 ```json
 {
