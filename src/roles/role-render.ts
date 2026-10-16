@@ -1,4 +1,4 @@
-import { agree } from "../text/phrases.js";
+import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { formatTimestamp } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
 import { isAgentId } from "../config/model-selector.js";
@@ -108,6 +108,20 @@ function fallbackPairLabel(
   return agentDefault;
 }
 
+/** One recent tick outcome as a Markdown bullet line — `<time> · <result> · <span> —
+ * <summary>` — so `tumwater role <id>` and the TUI notebook view read a loop's discrete
+ * outcomes at a glance. `time` is the same local `YYYY-MM-DD HH:MM:SS` stamp the model-
+ * fallback `since` prints (formatTimestamp); `span` is the same short-duration phrasing
+ * shortSpanPhrase renders for holdPhrase and the event feed's countdowns; the summary is
+ * appended when the event carried one. Unset halves are dropped, never printed as a literal
+ * `undefined`. */
+function recentOutcomeLine(o: { ts: number; result: string; durationMs?: number; summary?: string }): string {
+  let line = `${formatTimestamp(o.ts)} · ${o.result}`;
+  if (o.durationMs !== undefined) line += ` · ${shortSpanPhrase(o.durationMs)}`;
+  if (o.summary) line += ` — ${o.summary}`;
+  return line;
+}
+
 /** Render one loop's inspection payload as Markdown. */
 export function renderRoleMarkdown(p: RoleViewPayload): string {
   const lines: string[] = [`# tumwater role: ${p.id}`, ""];
@@ -151,6 +165,13 @@ export function renderRoleMarkdown(p: RoleViewPayload): string {
   }
   lines.push(`- Min tick interval: ${p.minTickIntervalSeconds}s`);
   lines.push(`- Queued prompts: ${p.inboxCount}`);
+  // The loop's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):
+  // one line per outcome so `tumwater role <id>` shows what the loop has been DOING, not just
+  // what it is. Absent (never ticked) renders nothing new, so old goldens are byte-identical.
+  if (p.recentOutcomes && p.recentOutcomes.length > 0) {
+    lines.push("", "## Recent tick outcomes", "");
+    for (const o of p.recentOutcomes) lines.push(`- ${recentOutcomeLine(o)}`);
+  }
   lines.push("");
   lines.push(...fencedOrNone("Instructions override", p.instructions));
   lines.push(

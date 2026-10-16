@@ -17,6 +17,7 @@ import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
+import { writeEvents } from "./fixtures/log-fixtures.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 
@@ -511,4 +512,57 @@ test("role payload reports image input and the renderer's Images line", () => {
   const unknown = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(unknown.imageInput, null);
   assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
+});
+
+// Recent tick outcomes (the `tumwater role <id>` section): the loop's last few tick_end
+// results, read from the event log so the command answers with the fleet stopped. Newest
+// first, at most 8, each with its time, result, duration, and summary.
+test("role payload surfaces the newest tick_end outcomes ordered newest-first", () => {
+  const dir = root();
+  const now = Date.now();
+  // Seed 10 tick_end events (oldest first in file order); only the newest 8 should surface.
+  writeEvents(
+    dir,
+    Array.from({ length: 10 }, (_, i) => ({
+      ts: now - (10 - i) * 60_000, // i=0 oldest (10m ago) … i=9 newest (1m ago)
+      loop: "feature",
+      type: "tick_end",
+      tick: i + 1,
+      result: i % 2 === 0 ? "changed" : "no_change",
+      durationMs: 30_000,
+      summary: "tick " + (i + 1),
+    })),
+  );
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.recentOutcomes!.length, 8); // capped at 8, not all 10
+  assert.equal(p.recentOutcomes![0]!.ts, now - 60_000); // newest first
+  assert.equal(p.recentOutcomes![0]!.result, "no_change"); // i=9 (odd)
+  assert.equal(p.recentOutcomes![0]!.summary, "tick 10");
+  assert.equal(p.recentOutcomes![0]!.durationMs, 30_000); // durations ride along
+  assert.equal(p.recentOutcomes![7]!.ts, now - 8 * 60_000); // the 8th newest is i=2
+  assert.equal(p.recentOutcomes![7]!.result, "changed");
+  // Only this role's events count: another role with no events carries no recentOutcomes.
+  assert.equal(rolePayload(dir, "bugfix", NO_MODELS).recentOutcomes, undefined);
+});
+
+test("a role with no tick_end events carries no recentOutcomes", () => {
+  const dir = root();
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.recentOutcomes, undefined);
+  assert.ok(!renderRoleMarkdown(p).includes("Recent tick outcomes"));
+});
+
+test("role markdown renders the Recent tick outcomes section before the instructions", () => {
+  const dir = root();
+  const now = Date.now();
+  writeEvents(dir, [
+    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", durationMs: 30_000, summary: "added a thing" },
+    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", summary: "nothing to do" },
+  ]);
+  const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
+  assert.match(md, /## Recent tick outcomes/);
+  assert.match(md, /- .* · changed · 30s — added a thing/);
+  // A durationless outcome omits the span, keeping the summary after the result.
+  assert.match(md, /- .* · no_change — nothing to do/);
+  assert.ok(md.indexOf("## Recent tick outcomes") < md.indexOf("## Instructions override"));
 });

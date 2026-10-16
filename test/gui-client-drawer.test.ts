@@ -504,3 +504,37 @@ test("the drawer's Notebook section offers Edit and Clear with a note, Edit alon
   assert.match(role, /data-act='note-edit'/);
   assert.doesNotMatch(role, /note-clear/);
 });
+
+// Recent tick outcomes (the `tumwater role <id>` section) ripple into the loop drawer's
+// role panel: the payload's recentOutcomes render as a Recent outcomes list with each
+// outcome's relative age, result label, summary, and duration.
+test("the loop drawer shows the recent tick outcomes from the role payload", async () => {
+  const now = Date.now();
+  const responses: Record<string, unknown> = {
+    "/api/role?role=clean": {
+      note: null,
+      nextPrompt: null,
+      recentOutcomes: [
+        { ts: now - 60_000, result: "changed", durationMs: 30_000, summary: "added a thing" },
+        { ts: now - 120_000, result: "no_change", summary: "nothing to do" },
+      ],
+    },
+  };
+  const t = openDrawer(["toggleLoop"], { status: workingStatus(), responses });
+  t.scope.toggleLoop("clean");
+  await flush();
+  const role = t.paintedFor("drawerrole");
+  assert.match(role, /<h3>Recent outcomes/);
+  assert.match(role, /Landed/); // result "changed" renders as its labeled word
+  assert.match(role, /added a thing/);
+  assert.match(role, /30s/); // the duration span
+  assert.match(role, /No change/); // result "no_change"
+  assert.match(role, /nothing to do/);
+});
+
+test("a loop with no recent outcomes shows no Recent outcomes section", async () => {
+  const t = openDrawer(["toggleLoop"], { status: workingStatus() });
+  t.scope.toggleLoop("clean");
+  await flush();
+  assert.doesNotMatch(t.paintedFor("drawerrole"), /Recent outcomes/);
+});

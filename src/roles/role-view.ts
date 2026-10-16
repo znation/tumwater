@@ -31,6 +31,7 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { claudeWindowEntries, readClaudeAccount, type ClaudeBilling } from "../agent/claude/claude-account.js";
 import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
+import { eventRole, readEvents } from "../events/event-read.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -103,6 +104,12 @@ export interface RoleViewPayload {
   /** The next tick's assembled prompt, verbatim, through the preview seam — or null when
    * the loop has nothing to run (a director with an empty inbox). */
   nextPrompt: string | null;
+  /** The loop's recent tick outcomes — the newest up to 8 `tick_end` results read from the
+   * event log, ordered newest-first, each with its time, result, duration, and summary.
+   * Absent when the loop has no `tick_end` events, so the JSON shape is unchanged for a
+   * never-ticked loop. Read straight from the event log so the command runs with the fleet
+   * stopped and never touches the live state. */
+  recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
 }
 
 /** Collect one loop's inspection payload. `modelsPath` overrides pi's model definitions location
@@ -159,6 +166,22 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
   // One state read serves both the model-fallback episode and the next-tick preview below.
   const state = loadLoopState(root, role);
   const episode = state.modelFallback;
+  // The loop's recent tick outcomes, read from the event log (readEvents) so the command
+  // answers with the fleet stopped and never touches live state. readEvents returns the log's
+  // newest events in file (chronological) order, so filtering to this role's tick_end events
+  // and taking the last 8 yields the newest 8, reversed to newest-first. Durations and
+  // summaries ride along only when the event carried them (a torn or empty line drops them),
+  // and an empty result is omitted so a never-ticked loop carries no `recentOutcomes` at all.
+  const recentOutcomes = readEvents(root)
+    .filter((ev) => ev.type === "tick_end" && eventRole(ev) === role)
+    .slice(-8)
+    .map((ev) => ({
+      ts: ev.ts as number,
+      result: ev.result as string,
+      ...(ev.durationMs !== undefined && ev.durationMs !== null ? { durationMs: ev.durationMs as number } : {}),
+      ...(typeof ev.summary === "string" && ev.summary !== "" ? { summary: ev.summary } : {}),
+    }))
+    .reverse();
   // The role's notebook, read for display. The same degradation as every other read here: a
   // missing, empty, or unreadable file is simply "no note yet". The director has none.
   let note: string | null = null;
@@ -205,5 +228,6 @@ export function rolePayload(root: string, role: string, modelsPath = piModelsPat
         state,
         preview: true,
       })?.prompt ?? null,
+    ...(recentOutcomes.length > 0 ? { recentOutcomes } : {}),
   };
 }

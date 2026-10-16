@@ -241,6 +241,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
       const view = r.view && typeof r.view === "object" ? r.view : {};
       const note = typeof view.note === "string" && view.note.trim() !== "" ? view.note : null;
       const nextPrompt = typeof view.nextPrompt === "string" && view.nextPrompt.trim() !== "" ? view.nextPrompt : null;
+      const outcomes = Array.isArray(view.recentOutcomes) ? view.recentOutcomes : [];
       const canEdit = r.role !== "director";
       const editing = canEdit && noteEditing && noteEditing.role === r.role;
       const buttons = !canEdit ? "" : "<span style='margin-left:auto'><button type='button' class='btn btn-sm' data-act='note-edit' data-arg='" + esc(r.role) + "'>Edit</button>" +
@@ -251,7 +252,21 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
           "<button type='button' class='btn btn-sm' data-act='note-discard' data-arg='" + esc(r.role) + "'>Discard</button></div>"
         : note ? "<pre class='mono'>" + esc(note) + "</pre>" : "<p class='muted'>No notebook yet.</p>";
       body = "<div class='sec-head'><h3>Notebook</h3>" + (editing ? "" : buttons) + "</div>" + noteBody +
-        "<details><summary>Next tick prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>";
+        "<details><summary>Next tick prompt</summary>" + (nextPrompt ? "<pre class='mono'>" + esc(nextPrompt) + "</pre>" : "<p class='muted'>Nothing to run (empty inbox).</p>") + "</details>" +
+        // The loop's recent tick outcomes (rolePayload's recentOutcomes, read from the event
+        // log), rendered like the Recent ticks list above: each with its relative age, result
+        // label, summary, and duration. Mirrors the Recent tick outcomes section of
+        // tumwater role <id> — no backticks allowed here (this whole script is one big
+        // String.raw template), so the page and the CLI read one loop's outcomes identically.
+        (outcomes.length ? "<section><div class='sec-head'><h3>Recent outcomes" +
+          "<span class='muted' style='font-size:13px'>· " + outcomes.length + "</span></h3></div>" +
+          "<ul class='ticks'>" + outcomes.map((o) => {
+            const info = resultInfo(o.result);
+            const detail = typeof o.summary === "string" && o.summary.trim() !== "" ? o.summary : "";
+            return "<li><span class='when' title='" + esc(new Date(Number(o.ts)).toLocaleString()) + "'>" + esc(fmtAgo(Number(o.ts))) + "</span>" +
+              "<span class='clamp1' title='" + esc(detail) + "'><span class='res t-" + info.tone + "'>" + esc(info.label) + "</span>" + (detail ? " " + esc(detail) : "") + "</span>" +
+              "<span class='when'>" + (o.durationMs == null ? "" : esc(fmtSpan(Number(o.durationMs)))) + "</span></li>";
+          }).join("") + "</ul></section>" : "");
     }
     return "<section>" + body + "</section>";
   }
