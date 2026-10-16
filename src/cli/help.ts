@@ -232,7 +232,8 @@ Usage:
                                    read half of --edit/--cancel), each with its eligibility
                                    mark; --json prints the {entries} array — position, title,
                                    body, hold, inProgress — as data; \`[working on it: …]\`
-                                   marks an entry a role is working on
+                                   marks an entry a role is working on; a series' blocked
+                                   parts show as one line naming their positions
   tumwater plan --list --done [-n <count>] [--json]
                                    List the newest entries in PLANS.md ## Done, newest first
                                    (default 10); --json prints {entries, older}, each entry

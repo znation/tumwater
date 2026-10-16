@@ -2897,7 +2897,9 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater plan --list` shows each blocked series as one line, as the prompt's backlog index does, so an operator's list of 100+ planned entries fits on a screen and the eligible plans stand out (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `collapseBlockedSeries` and its helpers in `src/backlog/backlog-structure.ts`, the plans branch of `listAndAnnounce` in `src/backlog/backlog-cli.ts`, the `plan --list` stanza of `src/cli/help.ts`, and the `--list` clause of `docs/cli.md`'s "Steer the project" row. Plain terms text 7/19, in flight, rewords messages in these two backlog files; this plan adds a grouping helper and one list branch and rewords none of the existing messages. The `questions --answered` plan edits `cmdQuestions` and `question-answer.ts` instead)
+## Done
+
+### `tumwater plan --list` shows each blocked series as one line, as the prompt's backlog index does, so an operator's list of 100+ planned entries fits on a screen and the eligible plans stand out (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `collapseBlockedSeries` and its helpers in `src/backlog/backlog-structure.ts`, the plans branch of `listAndAnnounce` in `src/backlog/backlog-cli.ts`, the `plan --list` stanza of `src/cli/help.ts`, and the `--list` clause of `docs/cli.md`'s "Steer the project" row. Plain terms text 7/19, in flight, rewords messages in these two backlog files; this plan adds a grouping helper and one list branch and rewords none of the existing messages. The `questions --answered` plan edits `cmdQuestions` and `question-answer.ts` instead) (done 2026-10-16)
 
 **Goal.** `tumwater plan --list` prints every `## Planned` entry on its own numbered line. Today that is well over 100 lines, and most are blocked parts of the Plain terms series. The prompt's `<backlog-index>` already groups those parts into one line per series (`collapseBlockedSeries`, from "Compact backlog index, part 1/1"). The operator's list should group them the same way. Numbering is unchanged: a grouped line names the positions it covers, so `--show <n>`, `--edit <n>` and `--cancel <n>` still reach every part.
 
@@ -2937,8 +2939,6 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - The existing `plan --list` and `bug --list` tests in `test/backlog-write-list.test.ts` pass unchanged. None of their fixtures has two blocked parts of one series, so their output is the same as before.
 - The `help topics name the --list forms` test still passes, and `tumwater help plan` shows the new clause.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater questions --answered [-n <count>]` lists the newest answered questions with their decisions, so an operator sees what they and the director decided lately without opening QUESTIONS.md (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `src/backlog/backlog.ts` (one new reader beside `openQuestionEntries`), `src/backlog/question-answer.ts`, `cmdQuestions` in `src/cli/cli-query-commands.ts`, the `questions` stanza of `src/cli/help.ts`, and `docs/cli.md`'s "Answer open questions" row. The `plan/bug --list --done` plan edits `listAndAnnounce` in `src/backlog/backlog-cli.ts` and the "Steer the project" row instead. Plain terms text 6/19, in flight, rewords messages in `src/cli/cli-query-commands.ts`; this plan adds a branch to `cmdQuestions` and changes none of its existing messages except the unknown-flag list, done 2026-10-16)
 

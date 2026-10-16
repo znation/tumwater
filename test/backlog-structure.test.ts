@@ -11,6 +11,7 @@ import {
   renderBacklogStructureBlock,
   actionableEntryRanges,
   renderBacklogIndexBlock,
+  groupBlockedSeries,
   type StrandedPlanEntry,
 } from "../src/backlog/backlog-structure.js";
 import { ensureWorktree } from "../src/git/worktree.js";
@@ -662,4 +663,27 @@ test("renderBacklogIndexBlock returns undefined when the actionable sections are
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n");
   assert.equal(renderBacklogIndexBlock(dir), undefined);
+});
+
+test("groupBlockedSeries groups a series' blocked parts and leaves other rows alone", () => {
+  const blocked = { blockedBy: ["x"] };
+  const row = (title: string, hold: unknown = blocked, claimer?: string) => ({
+    title,
+    hold: hold as never,
+    claimer,
+  });
+  const rows = [
+    row("S, part 1/4: a", null),
+    row("S, part 2/4: b"),
+    row("S, part 3/4: c"),
+    row("S, part 4/4: d"),
+    row("T, part 2/3: lone"),
+    row("U, part 2/3: claimed", blocked, "feature-2"),
+  ];
+  const groups = groupBlockedSeries(rows);
+  assert.equal(groups.length, 4);
+  assert.deepEqual(groups[0], { kind: "row", row: rows[0] });
+  assert.deepEqual(groups[1], { kind: "series", series: "S", rows: rows.slice(1, 4) });
+  assert.deepEqual(groups[2], { kind: "row", row: rows[4] });
+  assert.deepEqual(groups[3], { kind: "row", row: rows[5] });
 });

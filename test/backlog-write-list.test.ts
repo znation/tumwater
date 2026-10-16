@@ -251,3 +251,56 @@ test("plan --list marks the entry a role is working on, and --json carries inPro
   };
   assert.deepEqual(j.entries.map((e) => e.inProgress), ["feature-2", null]);
 });
+
+test("plan --list shows a blocked series as one line with its positions", async () => {
+  const repo = makeRepo();
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    [
+      "# Plans",
+      "",
+      "## Planned",
+      "",
+      "### Unrelated plan (planned 2026-10-01)",
+      "",
+      "b",
+      "",
+      "### S, part 1/3: one (planned 2026-10-01)",
+      "",
+      "b",
+      "",
+      "### S, part 2/3: two (planned 2026-10-01) (requires S 1/3 landed)",
+      "",
+      "b",
+      "",
+      "### S, part 3/3: three (planned 2026-10-01) (requires S 2/3 landed)",
+      "",
+      "b",
+      "",
+      "### Final plan (planned 2026-10-01)",
+      "",
+      "b",
+      "",
+      "## Done",
+      "",
+      "_None yet._",
+      "",
+    ].join("\n"),
+  );
+  const r = await cli(repo, "plan", "--list");
+  assert.equal(r.code, 0);
+  const lines = r.stdout.split("\n");
+  assert.match(lines[1]!, /^1\. Unrelated plan/);
+  assert.match(lines[2]!, /^2\. S, part 1\/3: one/);
+  assert.equal(lines[3], "3–4. S, 2 blocked parts (2/3–3/3) [blocked: each waits on an earlier part]");
+  assert.match(lines[4]!, /^5\. Final plan/);
+  assert.equal(
+    lines[5],
+    "(each blocked series is one line; --show <n> prints a part, --json lists every entry)",
+  );
+  assert.match((await cli(repo, "plan", "--show", "4")).stdout, /S, part 3\/3: three/);
+  const json = JSON.parse((await cli(repo, "plan", "--list", "--json")).stdout) as {
+    entries: { position: number }[];
+  };
+  assert.deepEqual(json.entries.map((e) => e.position), [1, 2, 3, 4, 5]);
+});

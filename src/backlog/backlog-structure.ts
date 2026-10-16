@@ -412,14 +412,25 @@ const indexSectionCache = new Map<string, StatKeyedValue<IndexEntry[]>>();
 /** One actionable entry as the index renders it into a line before series-collapsing: the
  * 1-based range, the verbatim heading, its eligibility hold, and the live claimer (if any).
  * collapseBlockedSeries groups these; renderIndexRow turns one into a buffer line. */
-interface IndexRow {
+interface IndexRow extends SeriesRow {
   start: number;
   end: number;
+  mark: string;
+}
+
+/** The fields series-grouping reads from a backlog row: its heading, eligibility hold and live
+ * claimer. The index's `IndexRow` and `plan --list`'s numbered rows both extend it. */
+interface SeriesRow {
   title: string;
   hold: EntryHold;
-  mark: string;
   claimer: string | undefined;
 }
+
+/** One place in a grouped list: an ordinary row, or a series' blocked parts (two or more) at
+ * the position of the first. */
+type SeriesGroup<T extends SeriesRow> =
+  | { kind: "row"; row: T }
+  | { kind: "series"; series: string; rows: T[] };
 
 /** One `IndexRow` as an ordinary index line: range, truncated stamp-free title, hold mark, and
  * the in-flight suffix when a live claim names it. The collapsed-series line is built by
@@ -431,7 +442,7 @@ function renderIndexRow(row: IndexRow): string {
 /** True when `row` is a candidate for series-collapsing: it is a series part held only by an
  * unlanded prerequisite (`{ blockedBy }`, not a Refused/needs-review/needs-replan note) and no
  * live claim names it. Returns the row's series part when it collapses, else null. */
-function collapsibleSeriesPart(row: IndexRow): PartRef | null {
+function collapsibleSeriesPart(row: SeriesRow): PartRef | null {
   if (row.claimer !== undefined) return null;
   if (typeof row.hold !== "object" || row.hold === null) return null;
   return seriesPart(row.title);
@@ -440,7 +451,7 @@ function collapsibleSeriesPart(row: IndexRow): PartRef | null {
 /** The collapsed part list for a series' blocked parts: each part as `i/n`, with a run of
  * consecutive numeric parts (same total, adjacent values) joined into one en-dash range
  * (`2/5–5/5`) and each lettered part (`2a`) listed singly. */
-function partsLabel(rows: readonly IndexRow[]): string {
+export function partsLabel(rows: readonly SeriesRow[]): string {
   const refs = rows.map((r) => seriesPart(r.title)!);
   const pieces: string[] = [];
   let start: PartRef | null = null;
@@ -485,9 +496,12 @@ function partsLabel(rows: readonly IndexRow[]): string {
  * blocked part, an eligible part, a note-held (Refused/needs-review/needs-replan) part and a
  * claimed part keep their ordinary lines, so the eligibility rules the feature role's charter
  * teaches are unchanged; the collapsed mark keeps the `[blocked: …]` prefix it already skips. */
-function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
+/** The grouping half of collapseBlockedSeries, on any rows carrying a title, hold and claimer:
+ * each series with two or more collapsible blocked parts becomes one `series` group at its first
+ * part's place; every other row stays a `row` group in order. */
+export function groupBlockedSeries<T extends SeriesRow>(rows: readonly T[]): SeriesGroup<T>[] {
   // Group the collapsible rows by series, keyed on the lowercased series name.
-  const bySeries = new Map<string, IndexRow[]>();
+  const bySeries = new Map<string, T[]>();
   for (const row of rows) {
     const part = collapsibleSeriesPart(row);
     if (part === null) continue;
@@ -500,25 +514,32 @@ function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
   // exact `requires` line.
   const collapse = new Set<string>();
   for (const [key, list] of bySeries) if (list.length >= 2) collapse.add(key);
-  const lines: string[] = [];
-  const skipped = new Set<IndexRow>();
+  const groups: SeriesGroup<T>[] = [];
+  const skipped = new Set<T>();
   for (const row of rows) {
     if (skipped.has(row)) continue;
     const part = collapsibleSeriesPart(row);
     if (part !== null && collapse.has(part.series.toLowerCase())) {
       const group = bySeries.get(part.series.toLowerCase())!;
-      const first = group[0]!;
-      const last = group[group.length - 1]!;
-      lines.push(
-        `- ${first.start}-${last.end}: ${indexTitle(part.series)}, ${group.length} blocked parts ` +
-          `(${partsLabel(group)}) [blocked: each waits on an earlier part]`,
-      );
+      groups.push({ kind: "series", series: part.series, rows: group });
       for (const g of group) skipped.add(g);
       continue;
     }
-    lines.push(renderIndexRow(row));
+    groups.push({ kind: "row", row });
   }
-  return lines;
+  return groups;
+}
+
+function collapseBlockedSeries(rows: readonly IndexRow[]): string[] {
+  return groupBlockedSeries(rows).map((g) => {
+    if (g.kind === "row") return renderIndexRow(g.row);
+    const first = g.rows[0]!;
+    const last = g.rows[g.rows.length - 1]!;
+    return (
+      `- ${first.start}-${last.end}: ${indexTitle(g.series)}, ${g.rows.length} blocked parts ` +
+      `(${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`
+    );
+  });
 }
 
 /** The `<backlog-index>` prompt block: each actionable entry (PLANS.md ## Planned, BUGS.md

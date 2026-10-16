@@ -20,6 +20,7 @@ import {
   filingDate,
 } from "./backlog.js";
 import { backlogHolds, backlogInProgress, holdMark, inProgressMark } from "./backlog-eligibility.js";
+import { groupBlockedSeries, partsLabel } from "./backlog-structure.js";
 import { numberedList } from "../text/markdown.js";
 import { collapseWhitespace } from "../text/text.js";
 import { JSON_FLAG, rejectUnknownArgs } from "../cli/cli-flag-specs.js";
@@ -253,6 +254,19 @@ export async function releaseAndAnnounce(
   }
 }
 
+/** Ascending positions as runs: consecutive ones join with an en dash (`13–17`), runs separate
+ * with commas (`13–15, 18`). */
+function positionRuns(positions: readonly number[]): string {
+  const runs: string[] = [];
+  for (let i = 0; i < positions.length; ) {
+    let j = i;
+    while (j + 1 < positions.length && positions[j + 1] === positions[j]! + 1) j++;
+    runs.push(j > i ? `${positions[i]}–${positions[j]}` : `${positions[i]}`);
+    i = j + 1;
+  }
+  return runs.join(", ");
+}
+
 /** The shared shell of the `bug --list` and `plan --list` CLI cases — the read half of the
  * operator queue whose `--edit`/`--cancel` flags address entries by position. Reads the same
  * entries, in the same file order, that locateEntry numbers for `--edit`/`--cancel`, pairs
@@ -264,7 +278,8 @@ export async function releaseAndAnnounce(
  *
  * `--done [-n <count>]` (each once; `-n` needs `--done`) lists the newest finished entries
  * instead (BUGS.md ## Fixed or PLANS.md ## Done, bullets, default 10) with `older` counting
- * those left out; --json carries each entry's `completedOn` heading date. */
+ * those left out; --json carries each entry's `completedOn` heading date. `plan --list` prose
+ * groups a series' blocked parts into one line (groupBlockedSeries). */
 export function listAndAnnounce(
   root: string,
   args: string[],
@@ -361,10 +376,28 @@ export function listAndAnnounce(
     say(`no ${noun}s`);
     return;
   }
-  const numbered = entries.map(
-    (entry, i) => `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`,
-  );
-  say(`${noun}s in ${fileName}:\n${numberedList(numbered)}`);
+  const line = (entry: { title: string }, i: number): string =>
+    `${entry.title}${holdMark(entryHolds[i] ?? null)}${inProgressMark(entryRunners[i] ?? null)}${entryAgeSuffix(entry.title)}`;
+  if (bugSection) {
+    say(`${noun}s in ${fileName}:\n${numberedList(entries.map(line))}`);
+    return;
+  }
+  // Plans: a series' blocked parts show as one line naming their positions, as the prompt's
+  // backlog index does; numbering is unchanged so --show/--edit/--cancel <n> reach every part.
+  const rows = entries.map((entry, i) => ({
+    position: i + 1,
+    title: entry.title,
+    hold: entryHolds[i] ?? null,
+    claimer: entryRunners[i] ?? undefined,
+  }));
+  let grouped = false;
+  const lines = groupBlockedSeries(rows).map((g) => {
+    if (g.kind === "row") return `${g.row.position}. ${line(g.row, g.row.position - 1)}`;
+    grouped = true;
+    return `${positionRuns(g.rows.map((r) => r.position))}. ${g.series}, ${g.rows.length} blocked parts (${partsLabel(g.rows)}) [blocked: each waits on an earlier part]`;
+  });
+  if (grouped) lines.push("(each blocked series is one line; --show <n> prints a part, --json lists every entry)");
+  say(`${noun}s in ${fileName}:\n${lines.join("\n")}`);
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
