@@ -2200,6 +2200,34 @@ This part makes every surface say which step each tier is on, why, and when it r
 - Client: in `test/gui-client-drawer.test.ts`, a test like "the entry drawer offers Release this entry only on a refused entry" shows `data-act='entry-top' data-arg='plans:1'` for index 1 and no `entry-top` for index 0. In `test/gui-client-boot.test.ts`, a test like "entry-release posts the release at once for plans and bugs" shows `runAct("entry-top", "plans:1")` and `runAct("entry-top", "bugs:0")` posting `["/api/backlog-top", { kind: "plan", position: 2, title: "B" }]` and `["/api/backlog-top", { kind: "bug", position: 1, title: "C" }]`.
 - `npm run test` passes.
 
+### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts)
+
+**Goal.** Disabling a role in `tumwater.json` (or lowering `roles.feature.instances`) stops its runs, but its `tumwater/<id>` branch stays, along with any worktree, landing ref, and paused marker. `tumwater retire --role <id>` (`retireRole` in `src/operator/retire.ts`) removes them, but nothing tells the operator which roles need it. This repo shows the gap: `git for-each-ref refs/heads` lists `tumwater/telemetry` while telemetry is opt-in. The "workspaces" row (`checkWorktreePool`) reports legacy checkout directories and stale pins only. It never looks at branches. Add a doctor row, "leftover role branches", that names each such role and the command that removes its leftovers.
+
+**Approach.**
+- `src/doctor/doctor-checks.ts`: add `export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome>`, documented like `checkWorkInstances`. Behavior:
+  - No config: return `okOutcome("no readable tumwater.json — nothing to verify")`, the `checkWorkInstances` wording. `checkInit` reports the config itself.
+  - List branches with `listBranches(root)` from `src/git/git.ts`. Keep the ones that start with the prefix `branchName("")` (`src/paths.ts`, which is `tumwater/`) and strip the prefix to get an id. Drop an empty id, an id containing `/`, `DIRECTOR_ROLE`, and every id where `loopEnabled(config, id)` (`src/roles/loop-ids.ts`) is true. The director has its own `tumwater/director` branch and is never in `config.roles`, so it is always skipped.
+  - Split what remains. An id that `knownRoleIds(config)` (`src/config/config.ts`) includes is retirable, because `cmdRetire`'s `namedRole` accepts exactly those ids. Every other id is unknown. Examples: a removed custom role, or an instance id such as `feature-4` above the configured instance count. `knownRoleIds` adds only `loopIds(config)` instances, so retire rejects those ids as an unknown role.
+  - When both lists are empty, return `okOutcome("no branches left by disabled roles")`.
+  - Otherwise return `warnOutcome` whose detail joins these parts with `"; "`. The retirable part (when non-empty) is `` `${ids.join(", ")} ${agree(n, "is", "are")} disabled but still ${agree(n, "has", "have")} a branch — \`tumwater retire --role <id>\` removes each (\`--dry-run\` previews)` ``. The unknown part (when non-empty) is `` `${branches.join(", ")} ${agree(n, "names", "name")} no role retire accepts — delete with \`git branch -D\` once its commits are not needed` ``, where the list shows the full branch names (`tumwater/ghost`). Both lists keep `listBranches` order, which is refname order. `agree` comes from `src/text/phrases.ts`.
+  - The check is read-only, like every doctor check. It only lists refs.
+- `src/doctor/doctor.ts`: add `{ name: "leftover role branches", ...(await checkLeftoverRoleBranches(root, config)) }` to the `checks` array, directly after `"parallel instances"`.
+- `docs/cli.md`: in the Audit row's `tumwater doctor` parenthetical, after the clause "waits for a workspace that call for a larger `worktreeSlots`", add ", disabled roles that still keep a `tumwater/<id>` branch (removed with `tumwater retire --role <id>`)". Do not touch any other clause.
+
+**Files touched.** src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts.
+
+**Acceptance criteria.**
+- New test in `test/doctor-checks.test.ts`, "checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director". Set it up like the `checkWorkInstances` test (`readyRepo()`, then `loadConfig(root)`). Create branches with `sh(root, "git", "branch", <name>)`.
+  - With no `tumwater/` branches: `{ level: "ok", detail: "no branches left by disabled roles" }`.
+  - With `tumwater/feature` (enabled by default) and `tumwater/director`: still that ok outcome.
+  - Adding `tumwater/telemetry` (disabled by default): level `warn`, the detail matches `/telemetry is disabled but still has a branch — `tumwater retire --role <id>`/`, and the detail does not mention `feature` or `director`.
+  - Adding `tumwater/ghost`: the detail also matches `/tumwater\/ghost names no role retire accepts/`, after the telemetry part.
+  - With `writeConfig(root, { roles: { feature: { instances: 2 } } })`, a `tumwater/feature-2` branch is not named. After `writeConfig(root, {})`, it is listed with the unknown branches.
+- `checkLeftoverRoleBranches(root, null)` returns the "nothing to verify" ok outcome.
+- `test/doctor.test.ts`: the expected check-name list gains `"leftover role branches"` right after `"parallel instances"`.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms event log, part 9/9: Drop the deprecated loop input from HarnessEventInput (done 2026-10-16; planned 2026-10-16 by user; requires part 8/9 landed; design in plans/terminology.md "Event log"; touches src/events/events.ts test/)
