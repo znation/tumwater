@@ -2211,6 +2211,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The new rows use the docs/glossary.md wording (team, role, run).
 - `npm run test` passes.
 
+### Every `tumwater <command>` the current docs quote is a command `tumwater help` lists, and a test keeps them that way (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/backends.md and docs/invariants.md and adds test/docs-commands.test.ts. It does not touch docs/cli.md or test/cli-doc.test.ts, which the docs/cli.md command-guard plan owns. No source change and no payload or event key renamed)
+
+**Goal.** Plain terms commands renamed `tumwater run` to `tumwater start`, but two current docs still tell the operator to use the old name. docs/backends.md says "export `HF_TOKEN` in the environment that runs `tumwater run`". docs/invariants.md INV-B6 says "A fresh unsupervised `tumwater run` clears a stale marker", and its heading ends "is cleared at a fresh `run`". `run` still dispatches only as a hidden alias (`HIDDEN_COMMAND_ALIASES` in src/cli/help.ts). Plain terms docs 5/5 covers machine-interface names (events, keys, routes, paths), not command names, so nothing will catch these. The docs/cli.md command-guard plan checks the other direction (each help command appears in cli.md). Nothing checks that a command quoted in the docs exists, so the next rename can leave the same kind of stale mention.
+
+**Approach.**
+- `docs/backends.md`: change `` `tumwater run` `` to `` `tumwater start` ``. `docs/invariants.md` INV-B6: change `` `tumwater run` `` to `` `tumwater start` `` in the Guarantee, and change the heading's trailing `` `run` `` to `` `start` ``. Keep the `### INV-B6:` id, which test/invariants-doc.test.ts reads. Edit nothing else in either file.
+- `test/docs-commands.test.ts` (new; modelled on test/config-doc.test.ts, with paths read via `fileURLToPath(new URL("../../<path>", import.meta.url))`):
+  - Docs scanned: README.md, DEVELOPMENT.md, and every `docs/*.md` (`fs.readdirSync`), skipping any file whose first five lines contain the historical banner `> Written before the 2026-10-16 plain-terms rename`. Plain terms docs 4/5 added that banner to the twelve dated design records and reports, which stay as written. Export nothing.
+  - Mentions: outside fenced blocks, each `` `tumwater <word> `` inside an inline code span (regex `` /`tumwater ([a-z][\w-]*)/g ``). Inside a ```` ``` ```` fenced block, a line that starts with optional whitespace and an optional `$ ` and then `tumwater <word>` (`/^\s*(?:\$ )?tumwater ([a-z][\w-]*)/`). Toggle the fence state on any line matching `/^\s*```/`. Bare prose such as "tumwater drives pi" is not a mention.
+  - Exemption: in docs/glossary.md, skip table rows (lines starting with `|`). Its older-names tables deliberately list `tumwater run …` and `tumwater tick …`.
+  - Test 1: collect `"<file>:<line> <word>"` for every mention whose word is not a `command` in `helpStanzas(HELP)`, then run one `assert.deepEqual(stale, [])` so the failure names every hit. A hidden alias (`run`, `tick`) is not in `helpStanzas`, so it fails like any unknown word, which is the intent.
+  - Test 2 (a sanity floor, so a regex or path regression cannot pass vacuously): the scan finds at least one mention in README.md and in docs/how-it-works.md.
+
+**Files touched.** docs/backends.md, docs/invariants.md, test/docs-commands.test.ts.
+
+**Acceptance criteria.**
+- Before the doc edits, test 1 fails and lists exactly `docs/backends.md:<line> run` and `docs/invariants.md:<line> run`. A prototype scan on 2026-10-16 found only these two outside the glossary table rows. After the edits, it passes.
+- Test 2 passes.
+- `git diff` on docs/invariants.md changes only the INV-B6 heading's trailing word and its Guarantee sentence.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms scripting, part 5/5: Rename the status row and merge-queue and budget and feed keys (planned 2026-10-16 by user; requires part 4/5 landed; design in plans/terminology.md "Script interfaces"; touches src/ui/status-payload.ts and src/status and src/events/event-format.ts and src/cli/cli-query-commands.ts and src/ui/gui; done 2026-10-16)
