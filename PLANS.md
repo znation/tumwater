@@ -2399,7 +2399,9 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it)
+## Done
+
+### docs/cli.md gets a TUI keys table naming every Ctrl key the TUI handles, and a test keeps the two key sets equal (planned 2026-10-16 by plan; independent of every other Planned entry. It appends one section to docs/cli.md and adds only test/tui-keys-doc.test.ts. No source edits: it reads src/ui/tui/tui-keys.ts and does not change it) — done 2026-10-16
 
 **Goal.** README.md says "Every command, flag, and TUI key is in docs/cli.md", but cli.md mentions TUI keys only in passing inside command rows. A prototype scan on 2026-10-16 found these Ctrl keys handled in code: A B C D E F G L N O P Q R S T W X, plus the line-editing keys U and K. docs/cli.md names only A C E F N P Q W X. docs/how-it-works.md never names Ctrl+B (daily cap), Ctrl+C (interrupt the director), or Ctrl+D (quit). Add one reference table and a test that fails when a handler is added or removed without the table changing too.
 
@@ -2443,8 +2445,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - Every table row's meaning matches its handler in src/ui/tui/tui-keys.ts, src/ui/tui/tui-editors.ts, or src/ui/tui/tui-input.ts.
 - No file under src/ changes. `git diff --stat` shows only docs/cli.md, test/tui-keys-doc.test.ts, and PLANS.md.
 - `npm run test` passes.
-
-## Done
 
 ### docs/cli.md names every long flag `tumwater help` lists, and a test keeps the two flag sets equal (planned 2026-10-16 by plan; done 2026-10-16; independent of every other Planned entry. It edits only docs/cli.md and test/cli-doc.test.ts. No source, help text, payload, or event key changes. The in-flight docs-links plan adds only test/docs-links.test.ts)
 

@@ -48,3 +48,29 @@ network, so pair it with `--token <secret>`.
 
 `tumwater completion bash|zsh` prints a shell completion script derived from that help (completing role ids after `--role` and keys after `config get|set|unset`, file paths after `--file`/`--attach`/`--notes-file`, template ids after `--template`, and result classes after `--result`); `tumwater completion --roles` and `tumwater completion --config-keys` print the role ids and config keys that script completes. Install
 it with `eval "$(tumwater completion zsh)"` in your shell rc. `tumwater version` prints the version.
+
+## TUI keys
+
+The hint line at the bottom of the TUI names the keys the current view takes.
+
+| Key | Where | What it does |
+| --- | --- | --- |
+| `Ctrl+T` | any view | next view (Activity, each role's Transcript, Backlog, Usage, Failures, History, Pending, Inbox, Health, Brief); it also leaves an open editor |
+| `Ctrl+D` | any view | quit the TUI (under `tumwater start --tui` this stops the team like Ctrl+C in the shell) |
+| `Ctrl+C` | any view | interrupt the director's in-flight run, as `tumwater abort --role director` does; a notice when none is in flight |
+| `Enter`, `↑`/`↓`, `PgUp`/`PgDn`, `Esc` | prompt line, panes | send the prompt, prompt history (or move through entries on Backlog), scroll, cancel an editor |
+| `Ctrl+U` / `Ctrl+K` | prompt line | delete to the start / to the end of the line |
+| `Ctrl+L` | prompt line | send later: set a delay for the next prompt |
+| `Ctrl+B` | Activity | edit the daily cost cap (empty means no cap) |
+| `Ctrl+F` | Activity | pause the team (`[duration] [reason]`), or resume it when paused |
+| `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop |
+| `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
+| `/` | Activity, History | search |
+| `Ctrl+S` / `Ctrl+O` | History | cycle the trailing window / the outcome filter |
+| `Ctrl+N` | History | the newest completed run's event trail, and back |
+| `Ctrl+E` | Usage, Failures | cycle the trailing window |
+| `Ctrl+R` | Transcript | send a prompt to that role |
+| `Ctrl+P` / `Ctrl+W` / `Ctrl+A` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run |
+| `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; `Ctrl+X` pressed twice on notes clears them |
+| `Ctrl+X` (twice) / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / edit its title / file a new plan or bug / answer the selected question |
+| `Ctrl+E` / `Ctrl+X` | Inbox | edit / cancel the selected queued prompt |
