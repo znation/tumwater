@@ -286,7 +286,7 @@ function scanFileReadState(file: string): EventLogState {
 
 /** The duration-shaped windowed read whose consumer needs a SECOND view of the same window
  * with a wider cutoff (history's tick-row join: a queued tick spanning the rows' cutoff logged
- * its land_queued pin before that cutoff, so its landing verdict must be joined from evidence
+ * its merge_queued pin before that cutoff, so its landing verdict must be joined from evidence
  * up to `joinBackslackMs` older). One backwards scan serves both: the wide read's day key never
  * sits after the narrow one's, so every `ts >= cutoff` event it holds is exactly the narrow
  * read's event list — the narrow scan reads a prefix of the wide scan's bytes and stops no

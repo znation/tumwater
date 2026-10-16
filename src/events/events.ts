@@ -35,9 +35,9 @@ export interface HarnessEvent {
   type:
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "run_end"
-    | "land_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
-    | "landed" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
-    | "land_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload — retry rides next-tick leftover recovery, never the queue
+    | "merge_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
+    | "merge_done" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
+    | "merge_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload — retry rides next-tick leftover recovery, never the queue
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "entry_refused" // a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason and files — the entry stays held until a human or the director lifts it
@@ -121,7 +121,7 @@ export interface HarnessEventInput {
 
 /** The usage fields an event carries, as a fragment with both omitted when zero — the
  * omit-when-zero convention the two usage-emitters apply (tick-finalize.ts's run_end,
- * landing-slot.ts's landed/land_failed): a zero-token, zero-cost run (a free model, an abort
+ * landing-slot.ts's merge_done/merge_failed): a zero-token, zero-cost run (a free model, an abort
  * before any tokens) renders without usage, so event-format's usage fragment and
  * `tumwater history` show nothing rather than "$0.00". Spreading the fragment keeps the
  * fields absent rather than 0; readers (event-read.ts's eventUsage and the index-signature

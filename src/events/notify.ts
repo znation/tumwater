@@ -22,7 +22,7 @@ import { childEnv } from "../process/process.js";
  *
  * One knob, an opinionated fixed allowlist, no per-event selection — a command that can post
  * anywhere (a desktop notification, a webhook, a phone push) composes it with the environment
- * the harness hands it: TUMWATER_EVENT_TYPE, TUMWATER_EVENT_LOOP, and TUMWATER_EVENT_MESSAGE
+ * the harness hands it: TUMWATER_EVENT_TYPE, TUMWATER_EVENT_SOURCE, and TUMWATER_EVENT_MESSAGE
  * (the exact line `tumwater logs` renders, via formatEvent). */
 export const NOTIFY_EVENT_TYPES = [
   "budget_warning", // daily spend crossed 80% of the cap, gate still open — time to raise it or fix the fallback before the page below
@@ -34,7 +34,7 @@ export const NOTIFY_EVENT_TYPES = [
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
   "main_red_hold", // main's own check is red — every code loop is held until a fix lands
-  "land_failed", // the landing slot finished without landing a change
+  "merge_failed", // the landing slot finished without landing a change
   "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
   "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
   "entry_refused", // a refusal note landed — the entry is held until a human or the director releases it
@@ -44,7 +44,7 @@ export const NOTIFY_EVENT_TYPES = [
 type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];
 
 /** Same-type events within this gap spawn the command once, not once per event: a burst of
- * `land_failed` events pages once. Keyed per type, so one type's page never suppresses
+ * `merge_failed` events pages once. Keyed per type, so one type's page never suppresses
  * another's. */
 export const NOTIFY_MIN_GAP_MS = 60_000;
 
@@ -60,10 +60,10 @@ interface Notifier {
  * the harness's own environment. One home for the variable names, shared by the notifier's
  * spawn and the `tumwater notify --test` diagnostic (src/cli/notify-command.ts), so the two
  * cannot drift on what a hook sees. */
-export function notifyCommandEnv(type: string, loop: string, message: string): NodeJS.ProcessEnv {
+export function notifyCommandEnv(type: string, source: string, message: string): NodeJS.ProcessEnv {
   return childEnv({
     TUMWATER_EVENT_TYPE: type,
-    TUMWATER_EVENT_LOOP: loop,
+    TUMWATER_EVENT_SOURCE: source,
     TUMWATER_EVENT_MESSAGE: message,
   });
 }

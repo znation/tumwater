@@ -55,7 +55,7 @@ export interface LeftoverContext {
 }
 
 /** What recovery did with a leftover, for the tick to end on:
- * - `enqueued`: the pin went onto the land queue and `land_queued` was logged — the tick ends
+ * - `enqueued`: the pin went onto the land queue and `merge_queued` was logged — the tick ends
  *   `queued`, exactly like a fresh changed tick, and the land-queue interlock holds the role
  *   until the slot has landed it;
  * - `already_queued`: the role already has a landing on the queue (the interlock normally keeps
@@ -173,7 +173,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     enqueuedAt: Date.now(),
   };
   enqueueLanding(ctx.root, entry);
-  logEventBestEffort(ctx.root, { loop: ctx.role, type: "land_queued", commit: sha, summary: entry.summary });
+  logEventBestEffort(ctx.root, { loop: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
 }
 

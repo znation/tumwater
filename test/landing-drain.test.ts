@@ -65,7 +65,7 @@ test("a queued entry whose sha main already holds is dropped without a vet", asy
   assert.equal(pipeline.vetting.size, 0, "nothing to vet — main already holds the sha");
   assert.equal(queueDepth(root), 0, "the stale entry was dropped");
   assert.equal(readLandingMarker(root), null, "the stale marker was cleared");
-  assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "no outcome was written");
+  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
 });
 
 test("a full dedupe cache never wedges the drain: every already-merged entry still drops", async () => {
@@ -96,7 +96,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
 
   await pumpUntil(ctx, pipeline, drained(root, pipeline), "the first cache-filling queue to drain");
   assert.equal(queueDepth(root), 0, "every already-merged entry was dropped through the eviction churn");
-  assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "no outcome was written");
+  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "no outcome was written");
 
   // Second arm: a cache holding phase-one verdicts against the OLD head, then a poll whose
   // main has moved — the eviction must prune the stale-head verdicts (the clear alone would
@@ -118,5 +118,5 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
   await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stale-head queue to drain");
   assert.equal(queueDepth(root), 0, "every entry deduped against the new head");
   assert.equal(pipeline.vetting.size, 0, "no vet ever started: everything was already merged");
-  assert.equal(readEvents(root).some((e) => e.type === "landed" || e.type === "land_failed"), false, "still no outcome was written");
+  assert.equal(readEvents(root).some((e) => e.type === "merge_done" || e.type === "merge_failed"), false, "still no outcome was written");
 });

@@ -144,7 +144,7 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
  * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
  * in the preceding day and ended in the current one still gets its span. The landing-outcome
  * join runs over that same whole read too (BUGS.md 2026-09-30): a queued run_end resolves
- * through its own land_queued pin to the later landed/land_failed outcome for the same
+ * through its own merge_queued pin to the later merge_done/merge_failed outcome for the same
  * loop+sha — history-data.ts's exact join — so an authoring tick whose landing was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
  * transient queued result suggested. A landing still in the pipeline, or an outcome event
@@ -167,7 +167,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     allEvents.filter((e) => e.type === "review_rejected"),
     (e) => e.loop,
   );
-  // A review_error landing kept its pin but left no message on its own land_failed; the
+  // A review_error landing kept its pin but left no message on its own merge_failed; the
   // matching review_failed event for the same loop+sha carries it, so the span prices under
   // the same cluster key the digest's review-failure section already counts.
   const reviewFailedByLoop = groupBy(
@@ -218,7 +218,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
 
     // Loss causes: a clustered failure's cluster owns its time, a no_change's role does, and
     // a landing-gate rejection prices its authoring span under a per-role cause of its own —
-    // unrepresentable as an error cluster, since the land_failed event carries no message;
+    // unrepresentable as an error cluster, since the merge_failed event carries no message;
     // the example is the matching review_rejected's first reason, matched by landing attempt.
     let key: string | null = null;
     let kind: LossDraft["kind"] = "error-cluster";
@@ -249,7 +249,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       kind = "review-rejected";
       // Match the landing ATTEMPT, not the pin's sha: every vet rebases its pin onto main
       // before the gate (syncPinToMain), so `review_rejected.head` is the rebased commit while
-      // `land_queued` keeps the authored one — exact-sha equality names no reason for a rebased
+      // `merge_queued` keeps the authored one — exact-sha equality names no reason for a rebased
       // rejection (BUGS.md 2026-10-10). The rejection for this attempt is the one inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
       const rej = newestAttemptEvent(rejectedByLoop, role, resolvedOutcome);
@@ -263,7 +263,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // cause via poolTimeoutKey — and fall back to the shared placeholder when no event is
       // visible, so the span is itemized rather than hidden. The match keys on the landing
       // ATTEMPT, not the pin's sha: every vet rebases its pin onto main before the gate
-      // (syncPinToMain), so `review_failed.head` is the rebased commit while `land_queued`
+      // (syncPinToMain), so `review_failed.head` is the rebased commit while `merge_queued`
       // keeps the authored one — exact-sha equality missed every rebased vet (BUGS.md
       // 2026-10-10). The review failure for this attempt is the one that falls inside the
       // claimed pin and its outcome, the window no other attempt can occupy.
@@ -276,7 +276,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       (resolvedOutcome?.result === "merge_conflict" || resolvedOutcome?.result === "merge_blocked")
     ) {
       // The landing failed to merge (a conflict, or a blocked fast-forward/rebase): this
-      // authoring span burned. The `land_failed` event carries no message — writeLandingOutcome
+      // authoring span burned. The `merge_failed` event carries no message — writeLandingOutcome
       // logs only result/commit/durationMs/usage — so the cause is named by its own result and
       // takes the shared no-text placeholder, the same fallback a message-less aborted run_end
       // uses, rather than dropping a span the error-class cell already priced (BUGS.md

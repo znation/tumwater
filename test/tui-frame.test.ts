@@ -259,8 +259,8 @@ test("the page's event kinds are tone's", () => {
   const { eventKind: pageKind } = clientScope<{ eventKind(item: { type: string; result?: string }): string }>(["format", "labels", "view-model"], ["eventKind"]);
   const cases: Array<[string, string | undefined]> = [
     ["merged", undefined], ["question_posted", undefined], ["run_end", "error"], ["run_end", "queued"], ["run_end", "no_change"],
-    ["run_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["land_failed", undefined],
-    ["review_rejected", undefined], ["run_start", undefined], ["landed", undefined], ["team_paused", undefined], ["orchestrator_start", undefined],
+    ["run_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["merge_failed", undefined],
+    ["review_rejected", undefined], ["run_start", undefined], ["merge_done", undefined], ["team_paused", undefined], ["orchestrator_start", undefined],
     ["warning", undefined], ["brand_new_event", undefined],
   ];
   for (const [type, result] of cases) {

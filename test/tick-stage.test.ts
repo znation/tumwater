@@ -417,7 +417,7 @@ test("a tick with a SUMMARY still enqueues its landing when the events feed is u
   const { ctx } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
-  // Put a directory where the append-only events log belongs: the land_queued event throws
+  // Put a directory where the append-only events log belongs: the merge_queued event throws
   // EISDIR while every other file under the root still writes.
   unwritableEvents(root);
 

@@ -14,7 +14,7 @@ import { runNotifyHook, NOTIFY_TEST_TIMEOUT_MS } from "../src/cli/notify-command
 /** A command that appends `TYPE|LOOP|MESSAGE` to `out` — the recorder `tumwater notify --test`
  * runs. Double quotes keep a message with spaces whole through the shell. */
 function recorderCommand(out: string): string {
-  return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_LOOP|$TUMWATER_EVENT_MESSAGE" >> ${out}`;
+  return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE|$TUMWATER_EVENT_MESSAGE" >> ${out}`;
 }
 
 function recordedLines(out: string): string[] {
@@ -48,7 +48,7 @@ test("notify --test runs the hook once with the synthetic event and reports exit
   assert.equal(r.code, 0);
   assert.match(r.stdout, /running the notify hook/);
   assert.match(r.stdout, /notify hook exited 0/);
-  assert.deepEqual(recordedLines(out), ["land_failed|harness|tumwater notify --test"]);
+  assert.deepEqual(recordedLines(out), ["merge_failed|harness|tumwater notify --test"]);
 });
 
 test("a hook that exits non-zero makes notify --test exit non-zero and print the code", async () => {

@@ -48,11 +48,11 @@ function tickNotFoundLastMessage(role: string): string {
   return tickNotFoundPhrase(role, "completed run");
 }
 
-/** The commit a tick pinned: the `commit` of the first `land_queued`/`landed` event in its
+/** The commit a tick pinned: the `commit` of the first `merge_queued`/`landed` event in its
  * block carrying a non-empty one, else null. The one rule both the header's sha and --stat use. */
 function tickCommitSha(d: TickDetail): string | null {
   const queued = d.events.find(
-    (e) => (e.type === "land_queued" || e.type === "landed") && typeof e.commit === "string" && e.commit !== "", // vocabulary-ok: event type code
+    (e) => (e.type === "merge_queued" || e.type === "merge_done") && typeof e.commit === "string" && e.commit !== "", 
   );
   return queued === undefined ? null : (queued.commit as string);
 }
@@ -75,7 +75,7 @@ export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
 }
 
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
- * marker), duration, usage, and the pinned commit sha when the block's `land_queued`/`landed`
+ * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`landed`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
  * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose landing
  * has finished shows that verdict in the header and ends with the landing's outcome line. */

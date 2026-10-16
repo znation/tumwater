@@ -162,12 +162,12 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
   }
 });
 
-test("collectReport folds landed/land_failed usage into the day and totals, with the landing share named", () => {
+test("collectReport folds merge_done/merge_failed usage into the day and totals, with the landing share named", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
   ]);
   const data = collectReport(root, 3);
@@ -532,14 +532,14 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
   assert.equal(data.coversFullWindow, true, "the log's oldest event predates the cutoff");
 });
 
-test("collectReportSince folds landed/land_failed usage into the window totals", () => {
+test("collectReportSince folds merge_done/merge_failed usage into the window totals", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "merge_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
     // Outside the 6h window: must not count.
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "landed", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "merge_done", commit: "old1234", summary: "old", tokens: 9_999, costUsd: 9 }),
   ]);
   const data = collectReportSince(root, 6 * HOUR);
   assert.equal(data.totals.mergeRuns, 2);
@@ -652,7 +652,7 @@ test("collectReport scopes the day series and totals to one role, leaving fleet 
     JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234" }),
     JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }),
   ]);
   writeBacklogFile(root, "PLANS.md", [{ heading: "## Done", body: `- A (done ${dayKey(at(0))}; commit 1)` }]);
   writeBacklogFile(root, "BUGS.md", [{ heading: "## Fixed", body: `- B (fixed ${dayKey(at(0))}; commit 2)` }]);
@@ -737,7 +737,7 @@ test("collectReportSince scopes a trailing window to one role, excluding the lan
     JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", run: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
     JSON.stringify({ ts: ago(8 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
     JSON.stringify({ ts: ago(7 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
-    JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
+    JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "merge_done", commit: "aaa", tokens: 40, costUsd: 0.4 }),
   ]);
 
   const scoped = collectReportSince(root, HOUR, "feature");
@@ -807,7 +807,7 @@ test("collectReport carries notionalByRole per loop id and narrows it for a role
 test("a subscription landing's spend is notional, never in the cost totals", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc", tokens: 40, costUsd: 0.5, notionalCostUsd: 2 }),
   ]);
 
   const data = collectReport(root, 1);

@@ -289,7 +289,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The landing
   // runs the same gate + landing flow through runLandingPi/foldLandingUsage on this same state
   // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
-  // landed/land_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
+  // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts landed changes only.
   enqueueLanding(ctx.root, {
     role: ctx.role,
@@ -309,7 +309,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   if (revisionRound !== undefined) s.revision = undefined;
   // The landing sits in the durable queue above and the commit is pinned; the event is
   // observability, so an unwritable feed must not reject a tick whose work is already queued.
-  logEventBestEffort(ctx.root, { loop: ctx.role, type: "land_queued", commit, summary });
+  logEventBestEffort(ctx.root, { loop: ctx.role, type: "merge_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
   // lastSummary and the run_end event carry it too for dashboards and logs.
   const finalSummary = highFriction

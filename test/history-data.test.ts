@@ -90,9 +90,9 @@ test("a queued tick's torn landing outcome reads as its type default, never [obj
   // "[object Object]" in the history table and /api/history. The shared textOr read falls
   // back to the landed type's own default instead.
   const events = [
-    { ts: 40, loop: "feature", type: "land_queued", commit: "sha1", summary: "work" },
+    { ts: 40, loop: "feature", type: "merge_queued", commit: "sha1", summary: "work" },
     { ts: 42, loop: "feature", type: "run_end", run: 1, result: "queued", summary: "work" },
-    { ts: 50, loop: "feature", type: "landed", commit: "sha1", result: { torn: true } },
+    { ts: 50, loop: "feature", type: "merge_done", commit: "sha1", result: { torn: true } },
   ] as never;
   const rows = tickRows(events, 10, null);
   assert.equal(rows[0]!.result, "changed");
@@ -289,23 +289,23 @@ test("--role narrows the window to one loop", () => {
   assert.equal(feature.rows[0]!.durationMs, 10 * MIN);
 });
 
-test("a queued tick resolves to its change's landing outcome — landed or land_failed (BUGS.md 2026-09-30)", () => {
+test("a queued tick resolves to its change's landing outcome — landed or merge_failed (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
   const t = (mins: number) => Date.now() - mins * MIN;
-  // The real order: land_queued is logged DURING the tick (before its run_end); the landing
-  // slot logs landed/land_failed with the same commit sha later.
+  // The real order: merge_queued is logged DURING the tick (before its run_end); the landing
+  // slot logs merge_done/merge_failed with the same commit sha later.
   writeEvents(root, [
     { ts: t(50), loop: "feature", type: "run_start", run: 1 },
-    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(49), loop: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
     { ts: t(48), loop: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
-    { ts: t(40), loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+    { ts: t(40), loop: "feature", type: "merge_done", commit: "sha1", result: "changed" },
     { ts: t(30), loop: "feature", type: "run_start", run: 2 },
-    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "work two" },
+    { ts: t(29), loop: "feature", type: "merge_queued", commit: "sha2", summary: "work two" },
     { ts: t(28), loop: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
-    { ts: t(20), loop: "feature", type: "land_failed", commit: "sha2", result: "merge_conflict" },
+    { ts: t(20), loop: "feature", type: "merge_failed", commit: "sha2", result: "merge_conflict" },
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
-  // Each queued row joins its OWN change: the newest land_queued at or before its run_end,
+  // Each queued row joins its OWN change: the newest merge_queued at or before its run_end,
   // then the FINAL same-sha landing outcome after that pin — never the other tick's.
   assert.deepEqual(
     rows.map((r) => [r.run, r.result, r.detail]),
@@ -326,13 +326,13 @@ test("a queued tick resolves past a rebased retriable failure to the recovery's 
   // not latch sha1's first, non-terminal failure.
   writeEvents(root, [
     { ts: t(50), loop: "feature", type: "run_start", run: 1 },
-    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(49), loop: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
     { ts: t(48), loop: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
-    { ts: t(40), loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" },
+    { ts: t(40), loop: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" },
     { ts: t(30), loop: "feature", type: "run_start", run: 2 },
-    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
+    { ts: t(29), loop: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
     { ts: t(28), loop: "feature", type: "run_end", run: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
-    { ts: t(20), loop: "feature", type: "landed", commit: "sha2", result: "changed" },
+    { ts: t(20), loop: "feature", type: "merge_done", commit: "sha2", result: "changed" },
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(
@@ -352,11 +352,11 @@ test("a retriable failure keeps its verdict while its recovery pin is still pend
   // before the chain fix), not the recovery's raw "queued".
   writeEvents(root, [
     { ts: t(50), loop: "feature", type: "run_start", run: 1 },
-    { ts: t(49), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: t(49), loop: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
     { ts: t(48), loop: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
-    { ts: t(40), loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" },
+    { ts: t(40), loop: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" },
     { ts: t(30), loop: "feature", type: "run_start", run: 2 },
-    { ts: t(29), loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
+    { ts: t(29), loop: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature: work one" },
     { ts: t(28), loop: "feature", type: "run_end", run: 2, result: "queued", summary: "recovered leftover work from feature: work one" },
   ]);
   const { rows } = readTickRowsSince(root, TWO_HOURS, null);
@@ -371,7 +371,7 @@ test("a retriable failure keeps its verdict while its recovery pin is still pend
 
 test("a queued tick whose pin sits before the --since cutoff still resolves (BUGS.md 2026-09-30)", () => {
   const root = tmpdir();
-  // Tick 1 SPANS the cutoff: its run_start and land_queued pin sit before it, its run_end
+  // Tick 1 SPANS the cutoff: its run_start and merge_queued pin sit before it, its run_end
   // and landing outcome after it. The row set (ts-filtered at the cutoff) keeps the run_end
   // and the outcome but cuts the pin — so the join reads wider evidence (TICK_ROW_JOIN_BACK
   // SLACK_MS) for the pins and claims them only while the row's tick block is whole there.
@@ -381,13 +381,13 @@ test("a queued tick whose pin sits before the --since cutoff still resolves (BUG
   const after = (mins: number) => cutoff + mins * MIN;
   writeEvents(root, [
     { ts: before(6), loop: "feature", type: "run_start", run: 1 },
-    { ts: before(5), loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: before(5), loop: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
     { ts: after(1), loop: "feature", type: "run_end", run: 1, result: "queued", summary: "work one" },
-    { ts: after(2), loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+    { ts: after(2), loop: "feature", type: "merge_done", commit: "sha1", result: "changed" },
     { ts: after(3), loop: "feature", type: "run_start", run: 2 },
-    { ts: after(4), loop: "feature", type: "land_queued", commit: "sha2", summary: "work two" },
+    { ts: after(4), loop: "feature", type: "merge_queued", commit: "sha2", summary: "work two" },
     { ts: after(5), loop: "feature", type: "run_end", run: 2, result: "queued", summary: "work two" },
-    { ts: after(10), loop: "feature", type: "landed", commit: "sha2", result: "changed" },
+    { ts: after(10), loop: "feature", type: "merge_done", commit: "sha2", result: "changed" },
   ]);
   const { rows } = readTickRowsSince(root, SINCE, null);
   assert.deepEqual(
@@ -406,12 +406,12 @@ test("a queued row whose run_start predates the join read's floor keeps the raw 
   // join another change's landing. Conservative fallback: the raw label.
   const events: HarnessEvent[] = [
     { ts: 1_000, loop: "feature", type: "run_start", run: 1 },
-    { ts: 1_100, loop: "feature", type: "land_queued", commit: "shaOld", summary: "old work" },
+    { ts: 1_100, loop: "feature", type: "merge_queued", commit: "shaOld", summary: "old work" },
     { ts: 1_200, loop: "feature", type: "run_end", run: 1, result: "no_change", summary: "old work" },
     { ts: 2_000, loop: "feature", type: "run_start", run: 2 },
-    { ts: 2_100, loop: "feature", type: "land_queued", commit: "sha1", summary: "work one" },
+    { ts: 2_100, loop: "feature", type: "merge_queued", commit: "sha1", summary: "work one" },
     { ts: 2_200, loop: "feature", type: "run_end", run: 2, result: "queued", summary: "work one" },
-    { ts: 2_500, loop: "feature", type: "landed", commit: "sha1", result: "changed" },
+    { ts: 2_500, loop: "feature", type: "merge_done", commit: "sha1", result: "changed" },
   ];
   // The row set is the ts-filtered tail the since scan would keep (tick 1 dropped as
   // pre-cutoff); the join set is the unfiltered read, floor between tick 2's start and pin.
@@ -428,7 +428,7 @@ test("a queued tick whose landing is still in the pipeline keeps the raw label",
   const root = tmpdir();
   writeEvents(root, [
     { ts: Date.now() - 10 * MIN, loop: "feature", type: "run_start", run: 1 },
-    { ts: Date.now() - 9 * MIN, loop: "feature", type: "land_queued", commit: "sha1", summary: "pending work" },
+    { ts: Date.now() - 9 * MIN, loop: "feature", type: "merge_queued", commit: "sha1", summary: "pending work" },
     { ts: Date.now() - 8 * MIN, loop: "feature", type: "run_end", run: 1, result: "queued", summary: "pending work" },
   ]);
   assert.deepEqual(
@@ -443,9 +443,9 @@ test("a queued tick stays raw when no landing outcome matches its pinned sha", (
   // joining by loop alone would steal it, so the sha must match and the unmatched row keeps
   // the raw label (its verdict is genuinely not in the log — still in the pipeline).
   writeEvents(root, [
-    { ts: Date.now() - 40 * MIN, loop: "feature", type: "landed", commit: "sha0", result: "changed" },
+    { ts: Date.now() - 40 * MIN, loop: "feature", type: "merge_done", commit: "sha0", result: "changed" },
     { ts: Date.now() - 10 * MIN, loop: "feature", type: "run_start", run: 1 },
-    { ts: Date.now() - 9 * MIN, loop: "feature", type: "land_queued", commit: "sha1", summary: "unresolved work" },
+    { ts: Date.now() - 9 * MIN, loop: "feature", type: "merge_queued", commit: "sha1", summary: "unresolved work" },
     { ts: Date.now() - 8 * MIN, loop: "feature", type: "run_end", run: 1, result: "queued", summary: "unresolved work" },
   ]);
   assert.deepEqual(
@@ -457,12 +457,12 @@ test("a queued tick stays raw when no landing outcome matches its pinned sha", (
 test("the resolution survives the --role filter and never crosses loops", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: Date.now() - 30 * MIN, loop: "feature", type: "land_queued", commit: "shaF", summary: "feature work" },
+    { ts: Date.now() - 30 * MIN, loop: "feature", type: "merge_queued", commit: "shaF", summary: "feature work" },
     { ts: Date.now() - 29 * MIN, loop: "feature", type: "run_end", run: 1, result: "queued", summary: "feature work" },
-    { ts: Date.now() - 25 * MIN, loop: "clean", type: "land_queued", commit: "shaC", summary: "clean work" },
+    { ts: Date.now() - 25 * MIN, loop: "clean", type: "merge_queued", commit: "shaC", summary: "clean work" },
     { ts: Date.now() - 24 * MIN, loop: "clean", type: "run_end", run: 1, result: "queued", summary: "clean work" },
-    { ts: Date.now() - 20 * MIN, loop: "feature", type: "landed", commit: "shaF", result: "changed" },
-    { ts: Date.now() - 15 * MIN, loop: "clean", type: "land_failed", commit: "shaC", result: "rejected" },
+    { ts: Date.now() - 20 * MIN, loop: "feature", type: "merge_done", commit: "shaF", result: "changed" },
+    { ts: Date.now() - 15 * MIN, loop: "clean", type: "merge_failed", commit: "shaC", result: "rejected" },
   ]);
   const all = readTickRowsSince(root, TWO_HOURS, null);
   assert.deepEqual(

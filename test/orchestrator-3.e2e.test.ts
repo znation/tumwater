@@ -113,8 +113,8 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
     assert.ok(!landingRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
-    // The landing, not the tick, was aborted: one land_failed, no run_aborted, no second tick.
-    const failed = eventsOfType(repo, "land_failed");
+    // The landing, not the tick, was aborted: one merge_failed, no run_aborted, no second tick.
+    const failed = eventsOfType(repo, "merge_failed");
     assert.equal(failed.length, 1, "the aborted landing logged its failure");
     assert.equal(failed[0]!.result, "aborted");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0);
@@ -189,12 +189,12 @@ test("a queue entry surviving a restart drains through the gate on next start", 
     );
     assert.equal(queueDepth(repo), 0, "the entry was consumed");
     assert.equal(
-      eventsOfType(repo, "landed").length,
+      eventsOfType(repo, "merge_done").length,
       1,
       "the surviving change landed through the gate",
     );
     assert.equal(
-      eventsOfType(repo, "land_failed").length,
+      eventsOfType(repo, "merge_failed").length,
       0,
       "no failed landing",
     );
@@ -234,12 +234,12 @@ test("an entry whose sha main already holds is dropped at the drain without a la
       "exactly one reviewer run: the stale entry was deduped, not re-landed",
     );
     assert.equal(
-      eventsOfType(repo, "landed").length,
+      eventsOfType(repo, "merge_done").length,
       1,
       "no second landed event",
     );
     assert.equal(
-      eventsOfType(repo, "land_failed").length,
+      eventsOfType(repo, "merge_failed").length,
       0,
       "the dedup drop logs no failure",
     );
@@ -268,7 +268,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle f
       "the stale marker naming the dropped head is cleared",
     );
     assert.equal(
-      eventsOfType(repo, "landed").length,
+      eventsOfType(repo, "merge_done").length,
       0,
       "the deduped entry ran no landing",
     );
@@ -303,12 +303,12 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
       "the live entry to drain behind the torn head",
     );
     assert.equal(
-      eventsOfType(repo, "landed").length,
+      eventsOfType(repo, "merge_done").length,
       1,
       "the live change landed through the gate",
     );
     assert.equal(
-      eventsOfType(repo, "land_failed").length,
+      eventsOfType(repo, "merge_failed").length,
       0,
       "no failed landing",
     );
@@ -343,12 +343,12 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   // the same tail a landed or rejected entry goes through.
   assert.ok(!fs.existsSync(landingStatePath(repo)), "the landing marker survives the error outcome");
   assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
-  const failed = eventsOfType(repo, "land_failed");
+  const failed = eventsOfType(repo, "merge_failed");
   assert.equal(failed.length, 1);
   assert.equal(failed[0]?.loop, "clean");
   assert.equal(failed[0]?.result, "error");
   assert.equal(failed[0]?.commit, sha);
-  assert.equal(eventsOfType(repo, "landed").length, 0);
+  assert.equal(eventsOfType(repo, "merge_done").length, 0);
   // The degraded outcome is persisted on the author's state, like any other tick result.
   assert.equal(loadLoopState(repo, "clean").lastResult, "error");
   assert.equal(loadLoopState(repo, "clean").lastError, author.state.lastError);
@@ -522,7 +522,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
     assert.equal(queueDepth(repo), 1, "only dry's entry was dropped");
     assert.deepEqual(
       readEvents(repo)
-        .filter((e) => e.type === "land_failed")
+        .filter((e) => e.type === "merge_failed")
         .map((e) => [e.loop, e.result]),
       [["dry", "aborted"]],
     );
@@ -572,7 +572,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
     assert.equal(loadLoopState(repo, "dry").ticks, 0, "dry's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
-        .filter((e) => e.type === "land_failed")
+        .filter((e) => e.type === "merge_failed")
         .map((e) => [e.loop, e.result]),
       [["clean", "rejected"]],
       "clean's outcome was written at its verdict",
@@ -580,12 +580,12 @@ test("a role rejected in its vet ticks again while another queued change is stil
 
     fs.writeFileSync(release, "");
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "landed" && e.loop === "dry"),
+      () => readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "dry"),
       "dry to land",
       60_000,
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "land_failed" && e.loop === "clean").length,
+      readEvents(repo).filter((e) => e.type === "merge_failed" && e.loop === "clean").length,
       1,
       "clean's outcome was written once",
     );
@@ -621,7 +621,7 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => eventsOfType(repo, "landed").length >= 3 && queueDepth(repo) === 0,
+      () => eventsOfType(repo, "merge_done").length >= 3 && queueDepth(repo) === 0,
       "all three to land",
       60_000,
     );
@@ -684,7 +684,7 @@ test("a vet slot that can no longer be created is contained: the healthy change 
       "clean's change did not land — its lander worktree was gone",
     );
     const cleanErrors = readEvents(repo).filter(
-      (e) => e.type === "land_failed" && e.loop === "clean" && e.result === "error",
+      (e) => e.type === "merge_failed" && e.loop === "clean" && e.result === "error",
     );
     assert.ok(cleanErrors.length >= 1, "clean ended in a terminal error outcome");
     const merged = eventsOfType(repo, "merged");
@@ -743,7 +743,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
 
     // The aborted vets are recorded like any shutdown abort: both changes `aborted`, their pins
     // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
-    const failed = events.filter((e) => e.type === "land_failed").map((e) => `${e.loop}:${String(e.result)}`);
+    const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.loop}:${String(e.result)}`);
     assert.deepEqual(failed.sort(), ["clean:aborted", "dry:aborted"]);
     assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dry"), "both pins survive for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
@@ -758,7 +758,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
   // BUGS.md 2026-09-30, the 13 ms landing: clean's tick holds a permit past the drain window
   // while dry's landing is mid-review when the redeploy reaches the swap. The drain's abort used
   // to fire the harness's one internal stop, killing the landing before the hand-off could wait
-  // the window it announces — the "waiting" warning followed 13 ms later by `land_failed …
+  // the window it announces — the "waiting" warning followed 13 ms later by `merge_failed …
   // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
   // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
   const repo = await makeFastRepo("drain role-stop test", ["dry"]);
@@ -804,7 +804,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
       (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dry outlived its 0.5s deadline — aborted'),
     );
     const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.loop === "clean" && e.result === "aborted");
-    const dryFailedAt = indexOf((e) => e.type === "land_failed" && e.loop === "dry");
+    const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.loop === "dry");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
     // The drain cut its permit holder off AT the swap, and the landing was aborted only past its
     // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait

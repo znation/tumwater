@@ -1,6 +1,6 @@
 /** Unit coverage for src/landing/landing-slot.ts's bookkeeping — the usage accounting that
  * charges a landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
- * state and records them on the landed/land_failed event, the write-back, and the 4/5 marker's
+ * state and records them on the merge_done/merge_failed event, the write-back, and the 4/5 marker's
  * per-change records. The full landing flow is pinned end-to-end through the pipeline
  * (orchestrator-fixtures.ts's landHead) in the loop and orchestrator tests, but those drive a fake
  * pi that reports no usage, so the nonzero-usage branches were never exercised: a landing whose
@@ -94,7 +94,7 @@ test("a subscription landing run folds as notional, and rides the event's notion
   const state = freshLoopState("improve");
   writeLandingOutcome(root, entry, state, "changed", 7, usage, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
   assert.ok(landed, "the landing logged a landed event");
   assert.equal(landed.costUsd, 0.1, "the event's cost is the real share only");
   assert.equal(landed.notionalCostUsd, 0.3, "the subscription share is notional");
@@ -136,7 +136,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
 
   writeLandingOutcome(root, entry, state, "changed", 1234, { tokens: 320, cost: 0.42, providerCost: {} }, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
   assert.ok(landed, "the landing logged a landed event");
   assert.equal(landed.loop, "improve");
   assert.equal(landed.commit, entry.sha);
@@ -158,7 +158,7 @@ test("a review-exempt landing (zero usage) omits the usage fields instead of log
 
   writeLandingOutcome(root, entry, state, "changed", 5, { tokens: 0, cost: 0, providerCost: {} }, file);
 
-  const landed = readEvents(root, 10).find((e) => e.type === "landed");
+  const landed = readEvents(root, 10).find((e) => e.type === "merge_done");
   assert.ok(landed, "the landing logged a landed event");
   assert.ok(!("tokens" in landed), `no tokens key on a zero-usage event: ${JSON.stringify(landed)}`);
   assert.ok(!("costUsd" in landed), `no costUsd key on a zero-usage event: ${JSON.stringify(landed)}`);
@@ -196,8 +196,8 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   assert.equal(result, "error", "the throw surfaces as an outcome, never a rejection");
   assert.equal(state.lastResult, "error");
   assert.ok(state.lastError && state.lastError.length > 0, "the error's message lands on the author's state");
-  const failed = readEvents(root, 10).find((e) => e.type === "land_failed");
-  assert.ok(failed, "even a throw logs land_failed");
+  const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
+  assert.ok(failed, "even a throw logs merge_failed");
   assert.equal(failed.result, "error");
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
   assert.equal(await refSha(root, landingRefName("improve")), null, "no pin existed and the error path fabricates none");
@@ -271,15 +271,15 @@ test("a rejection crossing the error-streak bar warns from the landing side, onc
   assert.equal(warnings().length, 1, "one warning per episode across both warn sites");
 });
 
-test("a failed landing logs land_failed with its usage and counts no commit", () => {
+test("a failed landing logs merge_failed with its usage and counts no commit", () => {
   const root = makeRepo();
   const { entry, file } = queued(root);
   const state = freshLoopState("improve");
 
   writeLandingOutcome(root, entry, state, "merge_conflict", 900, { tokens: 12, cost: 0.01, providerCost: {} }, file);
 
-  const failed = readEvents(root, 10).find((e) => e.type === "land_failed");
-  assert.ok(failed, "a non-changed outcome logs land_failed, not landed");
+  const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
+  assert.ok(failed, "a non-changed outcome logs merge_failed, not landed");
   assert.equal(failed.result, "merge_conflict");
   assert.equal(failed.tokens, 12, "spend on a failed landing is still recorded");
   assert.equal(state.lastResult, "merge_conflict");

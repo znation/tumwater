@@ -47,7 +47,7 @@ test("once: a round that produces a change merges it before exiting", async () =
       assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
       assert.notEqual(mainSha(repo), before, "main's head moved");
       assert.ok(
-        readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
+        readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "clean"),
         "the round's landed event is in events.jsonl",
       );
     },

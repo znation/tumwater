@@ -50,8 +50,8 @@ test("logs --grep filters the -n view by raw type and rendered line, case-insens
 
 test("logs --grep with no matches says so instead of printing nothing silently", async () => {
   const repo = repoWithEvents();
-  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "land_failed"]));
-  assert.match(stdout, /no events matching "land_failed"/);
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "merge_failed"]));
+  assert.match(stdout, /no events matching "merge_failed"/);
 });
 
 test("logs --since prints a bounded past window oldest-first and flags an unproven window", async () => {
@@ -174,8 +174,8 @@ test("logs --count --grep and --type count only their matches", async () => {
 test("logs --count --grep with no matches prints the no-match prose", async () => {
   const repo = makeRepo();
   logEvent(repo, { loop: "a", type: "run_start", run: 1 });
-  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "land_failed"]));
-  assert.equal(stdout, 'no events matching "land_failed"\n');
+  const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "merge_failed"]));
+  assert.equal(stdout, 'no events matching "merge_failed"\n');
 });
 
 test("logs --count --json emits a sorted type→count object", async () => {

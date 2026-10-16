@@ -325,7 +325,7 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 10, costUsd: 1.5, providerCost: { deepinfra: { costUsd: 1.5, notionalCostUsd: 0 } } }),
     JSON.stringify({ ts: at(0), loop: "clean", type: "run_end", run: 2, result: "changed", tokens: 20, notionalCostUsd: 2, providerCost: { claude: { costUsd: 0, notionalCostUsd: 2 } } }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", tokens: 5, costUsd: 0.4, providerCost: { claude: { costUsd: 0.4, notionalCostUsd: 0 } } }),
   ]);
   const md = renderReportMarkdown(collectReport(root, 2));
   // The parallel provider line: real spend per provider, the landing's reviewer spend folding
@@ -781,7 +781,7 @@ test("report --json carries the landing fields in totals and the day series", as
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
@@ -798,13 +798,13 @@ test("report --json --days carries mergeFailed on the day and totals when a land
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
   const json = await runCli(root, "report", "--json", "--days", "2");
   assert.equal(json.code, 0);
   const parsed = JSON.parse(json.out);
-  // mergeRuns still counts both landed and land_failed together; mergeFailed names the flops.
+  // mergeRuns still counts both landed and merge_failed together; mergeFailed names the flops.
   assert.equal(parsed.totals.mergeRuns, 2, "totals.mergeRuns unchanged — counts both outcomes");
   assert.equal(parsed.totals.mergeFailed, 1);
   const today = parsed.series[parsed.series.length - 1];
@@ -823,7 +823,7 @@ test("report --json --days carries mergeFailed on the day and totals when a land
 test("report --json leaves mergeFailed absent on a failure-free window", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   assert.equal(parsed.totals.mergeRuns, 1);
@@ -838,8 +838,8 @@ test("report --json --since carries mergeFailed when a landing fails and omits i
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(3 * 60_000), loop: "feature", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--since", "6h")).out);
   assert.equal(parsed.totals.mergeRuns, 2);
@@ -847,7 +847,7 @@ test("report --json --since carries mergeFailed when a landing fails and omits i
 
   const clean = makeRepo();
   writeEvents(clean, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const cleanParsed = JSON.parse((await runCli(clean, "report", "--json", "--since", "6h")).out);
   assert.equal(cleanParsed.totals.mergeRuns, 1);
@@ -857,15 +857,15 @@ test("report --json --since carries mergeFailed when a landing fails and omits i
 test("fleet day report breaks landing outcomes down by role, folding instances into their base", async () => {
   const root = makeRepo();
   // feature-2's destination event must aggregate under feature (the same base-role keying as
-  // Commits by role); bufixes' land_failed bounces off the gate under bugfix.
+  // Commits by role); bufixes' merge_failed bounces off the gate under bugfix.
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature-2", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
   assert.match(md.out, /\*\*Merged by role:\*\* feature — 1/, "landed outcome folds feature-2 into feature");
-  assert.match(md.out, /\*\*Merge failures by role:\*\* bugfix — 1/, "the gate's land_failed names its authoring role");
+  assert.match(md.out, /\*\*Merge failures by role:\*\* bugfix — 1/, "the gate's merge_failed names its authoring role");
   // The fleet totals stay exactly what they were: the per-role maps are a parallel tally.
   assert.match(md.out, /of which merge runs: 2 runs \(1 failed\)/);
 
@@ -881,18 +881,18 @@ test("fleet day report breaks landing outcomes down by role, folding instances i
 test("fleet day report omits Merge failures by role when none fail; a landing-free window omits both", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const md = await runCli(root, "report", "--days", "2");
   assert.equal(md.code, 0);
   assert.match(md.out, /\*\*Merged by role:\*\* feature — 1/);
-  assert.ok(!md.out.includes("**Merge failures by role:"), "no land_failed omits the failure line entirely");
+  assert.ok(!md.out.includes("**Merge failures by role:"), "no merge_failed omits the failure line entirely");
 });
 
 test("role-scoped day report omits the landing lines (landing runs are the landing slot's)", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const md = await runCli(root, "report", "--role", "feature", "--days", "2");
   assert.equal(md.code, 0);
@@ -904,8 +904,8 @@ test("role-scoped day report omits the landing lines (landing runs are the landi
 test("fleet report --since breaks landing outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
-    JSON.stringify({ ts: ago(4 * 60_000), loop: "bugfix", type: "land_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(4 * 60_000), loop: "bugfix", type: "merge_failed", commit: "def5678", summary: "y", tokens: 10_000, costUsd: 0.5 }),
   ]);
   const md = await runCli(root, "report", "--since", "6h");
   assert.equal(md.code, 0);
@@ -929,7 +929,7 @@ test("report --json omits mergedByRole/mergeFailedByRole when no role has either
 
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--json", "--days", "2")).out);
   assert.deepEqual(parsed.series[parsed.series.length - 1].mergedByRole, { feature: 1 });
@@ -937,7 +937,7 @@ test("report --json omits mergedByRole/mergeFailedByRole when no role has either
   // fills mergedByRole, and a failure-free window's mergeFailedByRole stays empty.
   const sinceRoot = makeRepo();
   writeEvents(sinceRoot, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
   ]);
   const since = JSON.parse((await runCli(sinceRoot, "report", "--json", "--since", "6h")).out);
   assert.deepEqual(since.mergedByRole, { feature: 1 });

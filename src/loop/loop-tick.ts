@@ -720,7 +720,7 @@ export async function handlePiResultPhase(
   // 4 — a failed pin defers to next-tick recovery), and enqueues the landing, which runs the
   // same gate + landing flow through runLandingPi/foldLandingUsage on this same state object
   // — recording the commit count, the outcome, and the reviewer spend into it — and logs
-  // landed/land_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
+  // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts landed changes only.
   return stageTickLanding({
     root: ctx.root,

@@ -34,7 +34,7 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
     // The asked run: start, a tick-less in-tick event, the queued pin, the end.
     start({ ts: 4000 }),
     { ts: 5000, loop: "bugfix", type: "review_verdict", head: "def", durationMs: 9000 } as HarnessEvent,
-    { ts: 6000, loop: "bugfix", type: "land_queued", commit: "abc1234def", summary: "the fix" } as HarnessEvent,
+    { ts: 6000, loop: "bugfix", type: "merge_queued", commit: "abc1234def", summary: "the fix" } as HarnessEvent,
     end({ ts: 7000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
     // After the block: another loop, and the asked loop's NEXT tick — both excluded.
     { ts: 8000, loop: "clean", type: "run_start", run: 1 } as HarnessEvent,
@@ -55,7 +55,7 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
     [
       ["run_start", 4000],
       ["review_verdict", 5000],
-      ["land_queued", 6000],
+      ["merge_queued", 6000],
       ["run_end", 7000],
     ],
   );
@@ -145,7 +145,7 @@ test("renderTickDetail prints the summary header, the commit sha, and formatEven
   const root = makeRepo();
   writeEvents(root, [
     start({ ts: 1000 }),
-    { ts: 2000, loop: "bugfix", type: "land_queued", commit: "abc1234def7890", summary: "the fix" } as HarnessEvent,
+    { ts: 2000, loop: "bugfix", type: "merge_queued", commit: "abc1234def7890", summary: "the fix" } as HarnessEvent,
     end({ ts: 61_000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
   ]);
   const d = readTickDetail(root, "bugfix", 3)!;
@@ -330,7 +330,7 @@ test("tick --stat appends the pinned commit's per-file summary, text and JSON", 
   const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
   writeEvents(repo, [
     start({ ts: 1000 }),
-    { ts: 1500, loop: "bugfix", type: "land_queued", commit: sha, summary: "x" } as HarnessEvent,
+    { ts: 1500, loop: "bugfix", type: "merge_queued", commit: sha, summary: "x" } as HarnessEvent,
     end({ ts: 2000 }),
   ]);
   const plain = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false))).stdout;
@@ -351,7 +351,7 @@ test("tick --stat names a missing or foreign commit instead of failing", async (
   assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(no commit: this run sent nothing to merge\)/);
   writeEvents(repo, [
     start({ ts: 1000 }),
-    { ts: 1500, loop: "bugfix", type: "land_queued", commit: "0".repeat(40), summary: "x" } as HarnessEvent,
+    { ts: 1500, loop: "bugfix", type: "merge_queued", commit: "0".repeat(40), summary: "x" } as HarnessEvent,
     end({ ts: 2000 }),
   ]);
   assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(commit 00000000 is not in this repository\)/);
@@ -363,15 +363,15 @@ test("renderTickDetail and cmdTick --json show a queued tick's resolved landing"
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
   writeEvents(repo, [
     start({ ts: 1000, run: 1 }),
-    ev({ ts: 1100, type: "land_queued", commit: "sha1abcdef" }),
+    ev({ ts: 1100, type: "merge_queued", commit: "sha1abcdef" }),
     end({ ts: 1200, run: 1, result: "queued" }),
-    ev({ ts: 1300, type: "landed", commit: "sha1abcdef", result: "changed" }),
+    ev({ ts: 1300, type: "merge_done", commit: "sha1abcdef", result: "changed" }),
   ]);
   const text = (await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], false))).stdout;
   assert.match(text, /run #1 — merged/);
   const lines = text.trimEnd().split("\n");
   assert.match(lines[lines.length - 1]!, /merge of sha1abc\w* done/);
   const payload = JSON.parse((await expectOkAsync(() => cmdTick(repo, ["bugfix", "1"], true))).stdout) as TickDetail;
-  assert.equal(payload.merge?.type, "landed");
+  assert.equal(payload.merge?.type, "merge_done");
   assert.equal(renderTickDetail(readTickDetail(repo, "bugfix", 1)!), text.trimEnd());
 });

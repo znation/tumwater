@@ -108,7 +108,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
       status: "passed",
       counts: { tests: 10, pass: 9, fail: 0, skipped: 1 },
     },
-    { ts: base + 2000, loop: "lander", type: "landed", commit: "a".repeat(40) },
+    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
   ]);
   const landed = snapshot(repo).mainCheck;
   assert.ok(landed, "mainCheck present after a landing check");
@@ -129,7 +129,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   // sha is main's current head. A gate-scope check never displaces a merge-scope one.
   writeEvents(repo, [
     { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
-    { ts: base + 2000, loop: "lander", type: "landed", commit: "a".repeat(40) },
+    { ts: base + 2000, loop: "lander", type: "merge_done", commit: "a".repeat(40) },
     { ts: base + 5000, loop: "bugfix", type: "build_check", scope: "baseline", status: "failed" },
   ]);
   const baseline = snapshot(repo).mainCheck;
@@ -146,7 +146,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   const busy = makeRepo();
   writeEvents(busy, [
     { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
-    { ts: base + 1000, loop: "lander", type: "landed", commit: "b".repeat(40) },
+    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "b".repeat(40) },
     ...Array.from({ length: 300 }, (_, i) => ({
       ts: base + 2000 + i,
       loop: "feature",
@@ -164,7 +164,7 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   const capped = makeRepo();
   writeEvents(capped, [
     { ts: base, loop: "lander", type: "build_check", scope: "landing", status: "passed" },
-    { ts: base + 1000, loop: "lander", type: "landed", commit: "c".repeat(40) },
+    { ts: base + 1000, loop: "lander", type: "merge_done", commit: "c".repeat(40) },
     ...Array.from({ length: 6_000 }, (_, i) => ({
       ts: base + 2000 + i,
       loop: "feature",

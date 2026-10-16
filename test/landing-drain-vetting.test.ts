@@ -177,10 +177,10 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
       assert.equal(pipeline.vetting.has("beta"), false, `${stop}: beta holds no vet any more`);
       assert.ok(queuedLandingFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
       assert.equal(await refSha(root, landingRefName("beta")), shas.beta, `${stop}: with its pin`);
-      assert.equal(readEvents(root).some((e) => e.loop === "beta" && (e.type === "land_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
+      assert.equal(readEvents(root).some((e) => e.loop === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
       assert.ok(!readLandingMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
       if (stop === "shutdown") {
-        const failed = readEvents(root).filter((e) => e.type === "land_failed" && e.loop === "alpha");
+        const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.loop === "alpha");
         assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the vet under review ended aborted");
         assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha, "its pin survives the shutdown");
       } else {
@@ -239,7 +239,7 @@ test("three T-long reviews run at once at cap 4, so all three merge in about T, 
         lastMerged - firstStart < serialFloorMs,
         `review to last merge took ${lastMerged - firstStart} ms, no less than the reviews' ${serialFloorMs} ms sum — they ran one after another`,
       );
-      assert.equal(events.filter((e) => e.type === "landed").length, 3, "each change's outcome written once");
+      assert.equal(events.filter((e) => e.type === "merge_done").length, 3, "each change's outcome written once");
       assert.equal(readLandingMarker(root), null, "the marker is gone once nothing is in flight");
     },
   );

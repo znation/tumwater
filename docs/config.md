@@ -34,7 +34,7 @@ at 80% of the cap while the gate is still open, a role's own cap warning or cap 
 space holding new work, a claude subscription window nearing its limit or holding the claude
 model jobs, a repeated-failure pause, main's check failing, a failed merge, a blocked restart, a posted question, a blocked backlog entry, the
 team going down — the command gets
-`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_LOOP`, and `TUMWATER_EVENT_MESSAGE` in its environment;
+`TUMWATER_EVENT_TYPE`, `TUMWATER_EVENT_SOURCE`, and `TUMWATER_EVENT_MESSAGE` in its environment;
 verify it with `tumwater notify --test`; a hook that exits nonzero logs a warning).
 Edits apply live while the team runs. A config file written before the settings were renamed still
 loads, and `tumwater doctor` names each older key with its new name.

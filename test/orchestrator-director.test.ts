@@ -217,7 +217,7 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
       "the hand-off announced the lapse before stopping",
     );
     assert.deepEqual(
-      eventsOfType(repo, "land_failed").map((e) => `${e.loop}:${String(e.result)}`),
+      eventsOfType(repo, "merge_failed").map((e) => `${e.loop}:${String(e.result)}`),
       ["clean:aborted"],
       "the outlived landing ended aborted, not merged",
     );

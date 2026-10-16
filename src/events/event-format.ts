@@ -171,16 +171,16 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "merged":
       return `merged ${shortSha(e.commit)} to main — ${textOr(e.summary)}`;
-    case "land_queued":
+    case "merge_queued":
       // Merge queue 3/5: routine state change (the tick committed and the landing slot is
       // ahead) — no warning prefix. The landing's own events follow it.
       return `waiting to merge ${shortSha(e.commit)} — ${textOr(e.summary)}`;
-    case "landed": // vocabulary-ok: event type
+    case "merge_done":
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
       // render bare — the same phrase run_end carries for its run.
       return `merge of ${shortSha(e.commit)} done${elapsed(e.durationMs)}${usagePhrase(e)}`;
-    case "land_failed":
+    case "merge_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
       return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}`;

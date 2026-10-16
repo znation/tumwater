@@ -87,7 +87,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the event feed (the -n view and its follow): case-insensitive
   // substring against `${e.type} ${formatEvent(e)}` — the rendered line is what the operator
   // would otherwise read (WYSIWYG), and prefixing the raw type id lets stable ids
-  // (review_rejected, land_failed) be filtered even where the rendering paraphrases them.
+  // (review_rejected, merge_failed) be filtered even where the rendering paraphrases them.
   // Rival shapes stay exclusive — --role swaps in a transcript rather than this event log
   // (--prompt requires --role, so it is excluded with it), and --since is a filter of its own
   // rather than a window to filter — and each failure names both flags. The flag scan itself
@@ -96,8 +96,8 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
   // the one home shared with history's identical preamble.
   const { rest: grepped, pattern: grepPattern } = parseGrepFlag(args, GREP_VALUE_ERROR);
   // `--type <eventType>` filters the event feed by EXACT event type (e.type === value):
-  // deterministic where --grep substrings — a land_failed whose rendered line quotes
-  // "land_failed" matches --grep but not --type. Unlike --grep it composes with --since
+  // deterministic where --grep substrings — a merge_failed whose rendered line quotes
+  // "merge_failed" matches --grep but not --type. Unlike --grep it composes with --since
   // (the window, not a filter of its own) as well as -n, -f, --json, and --grep; like --json
   // it is a rival only of the --role/--prompt transcript view. The value scan (keeping a
   // flag-shaped value like --since as text, the empty-value fail) mirrors parseGrepFlag via
@@ -155,7 +155,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     // `--type` composes with the window (it is NOT the --since rival --grep is): only the
     // window events of the exact type are printed, and an all-filtered window answers with
     // the no-match prose (the type's own line) instead of the generic empty-window one —
-    // "which land_failed in the last hour" filters the same as it would the -n view.
+    // "which merge_failed in the last hour" filters the same as it would the -n view.
     const filtered = type === null ? events : events.filter((e) => e.type === wantedType);
     if (filtered.length === 0) {
       // In JSON mode an empty result answers silently — an empty output IS the machine-readable
@@ -192,7 +192,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
     return;
   }
   // -n bounds the scan, not the print: the matched subset of the last `limit` events is what
-  // appears, so `-n 200 --grep land_failed` may print 3 rows from 200 scanned. The read is
+  // appears, so `-n 200 --grep merge_failed` may print 3 rows from 200 scanned. The read is
   // the tail-with-end shape (not the per-poll cached readEvents) so the follow below can seed
   // from the byte end this very read covered instead of a later stat of the file.
   const tail = readEventsTailWithEnd(root, limit);

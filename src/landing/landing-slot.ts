@@ -330,7 +330,7 @@ export function isLandingChange(value: unknown): value is LandingChange {
 /** Fold one landing's outcome into its role's state and drop its queue entry — the 3/5
  * write-back every pipeline outcome goes through (a vet's final verdict, a merged change, an
  * aborted vetted change): apply the result to the live state object (paired with the entry's
- * change for the last-result cell — applyLandingOutcome), persist it, log landed/land_failed
+ * change for the last-result cell — applyLandingOutcome), persist it, log merge_done/merge_failed
  * with the landing's own duration (from its vet's start) and usage (omitted when zero — the 4/5
  * idiom, so review-exempt landings render bare), and drop the entry: EVERY defined result
  * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
@@ -362,11 +362,11 @@ export function writeLandingOutcome(
     );
   }
   // `merged` still fires from landing-merge.ts itself — these events mark the QUEUE's
-  // bookkeeping: the slot picked the entry up (land_queued, logged at enqueue) and finished
+  // bookkeeping: the slot picked the entry up (merge_queued, logged at enqueue) and finished
   // with or without landing.
   logEventBestEffort(root, {
     loop: entry.role,
-    type: result === "changed" ? "landed" : "land_failed", // vocabulary-ok: persisted state value or event type, renamed by a later series
+    type: result === "changed" ? "merge_done" : "merge_failed",
     commit: entry.sha,
     result,
     durationMs,
@@ -399,7 +399,7 @@ export interface LandingUsage {
 /** A fresh usage accumulator for one landing plus the foldUsage callback that charges each of
  * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
  * conflict-resolution spend belongs to the authoring role) and the landing's own accumulator
- * (the landed/land_failed event's usage). Every vet builds its wiring through this, and its
+ * (the merge_done/merge_failed event's usage). Every vet builds its wiring through this, and its
  * merge reuses it, so the accounting — and any future change to it — lives in one place.
  * `reviewProvider` is this landing's reviewer seam hold key (seamHoldKey of reviewRunConfig),
  * folded onto the rate-limit and backend-failure stamps this fold writes: a 429 on a claude

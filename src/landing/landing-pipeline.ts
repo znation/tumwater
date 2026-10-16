@@ -46,7 +46,7 @@ export interface VettedLanding extends AbortableLanding, FoldsUsage {
   sha: string;
   /** `sha` again when the gate's pre-check ran green on exactly it (VetVerdict). */
   verifiedHead?: string;
-  /** When its vet started: its landed/land_failed event's durationMs runs from here. */
+  /** When its vet started: its merge_done/merge_failed event's durationMs runs from here. */
   startedAt: number;
   /** The authoring runner its vet ran with — reused by its merge, so both fold into one state. */
   author: LoopRunner;
@@ -193,8 +193,8 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
 
 /** Settle a landing queue entry that reached a terminal outcome — the one home of the
  * write-plus-drop pairing every settled landing goes through: the result lands in the role's
- * state and the landed/land_failed event (writeLandingOutcome), then the change's marker record
- * is dropped (removeLandingChange — landing-slot leaves the marker to the caller). Shared by
+ * state and the merge_done/merge_failed event (writeLandingOutcome), then the change's marker
+ * record is dropped (removeLandingChange — landing-slot leaves the marker to the caller). Shared by
  * settleAbortedVetted, the vet's final-verdict branch, and the merge's per-change write-back, so
  * no settled entry can keep a stale marker or lose its outcome write. The pinned-ref discard
  * stays with the callers: only a user abort throws work away, and the merge discards its whole

@@ -72,29 +72,29 @@ test("a review-rejected change's authoring hours price into error-class, not lan
   // slot rejects that change AFTER the run_end — so the fold that reads only run_ends read
   // the authoring span into the landed column, contradicting its own contract ("the review
   // gate" is error-class) and never appearing in the loss ranking. The fold now joins each
-  // queued run_end through its land_queued pin to the same-sha landed/land_failed outcome —
+  // queued run_end through its merge_queued pin to the same-sha merge_done/merge_failed outcome —
   // history-data's exact join — and prices a rejected landing's authoring span as the loss it
-  // was. The fixture uses the live shape: land_queued DURING the tick, review_rejected +
-  // land_failed after it, the land_failed carrying the LANDING's own duration, not the tick's.
+  // was. The fixture uses the live shape: merge_queued DURING the tick, review_rejected +
+  // merge_failed after it, the merge_failed carrying the LANDING's own duration, not the tick's.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
     // Rejected at the review gate: authoring hours move to error-class + the loss ranking.
-    { ts: at(0, 9), loop: "coverage", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
     { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
     { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("a"), reasons: ["too big"] },
-    { ts: at(0, 12), loop: "coverage", type: "land_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
     // Landed normally: the queued→landed reading survives the join.
-    { ts: at(0, 9), loop: "feature", type: "land_queued", commit: head("b"), summary: "land a thing" },
+    { ts: at(0, 9), loop: "feature", type: "merge_queued", commit: head("b"), summary: "land a thing" },
     { ts: at(0, 10), loop: "feature", type: "run_end", run: 1, result: "queued", durationMs: 1_800_000, costUsd: 0.2 },
-    { ts: at(0, 12), loop: "feature", type: "landed", commit: head("b"), result: "changed", durationMs: 5_000 },
+    { ts: at(0, 12), loop: "feature", type: "merge_done", commit: head("b"), result: "changed", durationMs: 5_000 },
     // Still in the pipeline (no pin, no outcome yet): the conservative fallback keeps it landed.
     { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 600_000, costUsd: 0.1 },
     // A merge conflict also burns the authoring span into error-class — but is no
     // review-rejection loss cause, having no rejection to name.
-    { ts: at(0, 9), loop: "organize", type: "land_queued", commit: head("c"), summary: "tidy" },
+    { ts: at(0, 9), loop: "organize", type: "merge_queued", commit: head("c"), summary: "tidy" },
     { ts: at(0, 10), loop: "organize", type: "run_end", run: 1, result: "queued", durationMs: 1_200_000, costUsd: 0.3 },
-    { ts: at(0, 12), loop: "organize", type: "land_failed", commit: head("c"), result: "merge_conflict", durationMs: 30_000 },
+    { ts: at(0, 12), loop: "organize", type: "merge_failed", commit: head("c"), result: "merge_conflict", durationMs: 30_000 },
   ]);
   const data = collectFailureReport(root, 1);
   const coverage = data.timeSpend.find((r) => r.role === "coverage");
@@ -190,11 +190,11 @@ test("a review_error landing prices its authoring hours under the matching revie
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "bugfix", type: "land_queued", commit: head("d"), summary: "fix a thing" },
+    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("d"), summary: "fix a thing" },
     { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
     { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("d"),
       message: "timed out after 900s while still making progress — the commit is kept; the next attempt reviews it from scratch" },
-    { ts: at(0, 12), loop: "bugfix", type: "land_failed", commit: head("d"), result: "review_error", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("d"), result: "review_error", durationMs: 60_000 },
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(
@@ -215,7 +215,7 @@ test("a review_error landing prices its authoring hours under the matching revie
 
 test("a rebased review_error landing prices under its review_failed message, not the placeholder", () => {
   // BUGS.md 2026-10-10: every vet rebases its pin onto main before the gate (syncPinToMain),
-  // so `review_failed` records the rebased head while `land_queued`/`land_failed` keep the
+  // so `review_failed` records the rebased head while `merge_queued`/`merge_failed` keep the
   // authored sha. Matching the event on exact sha missed every rebased vet — the common case on
   // a busy fleet — and priced the span under the anonymous `(no error text recorded)` placeholder
   // even though the digest's review-failure section held the message. The arm now keys on the
@@ -223,12 +223,12 @@ test("a rebased review_error landing prices under its review_failed message, not
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "bugfix", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 9), loop: "bugfix", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
     { ts: at(0, 10), loop: "bugfix", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 0.5 },
     // The rebased head B is what the reviewer failed; the pin and the outcome still name A.
     { ts: at(0, 11), loop: "bugfix", type: "review_failed", head: head("b"),
       message: "timed out after 900s while still making progress — the commit is kept; the next attempt continues this review" },
-    { ts: at(0, 12), loop: "bugfix", type: "land_failed", commit: head("a"), result: "review_error", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "bugfix", type: "merge_failed", commit: head("a"), result: "review_error", durationMs: 60_000 },
   ]);
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.roles.includes("bugfix"));
@@ -241,18 +241,18 @@ test("a rebased review_error landing prices under its review_failed message, not
 
 test("a rebased review-rejected landing names its reason, not an empty example", () => {
   // The sibling of the review_error arm: the same pre-review rebase moves `review_rejected.head`
-  // off the authored sha while `land_queued`/`land_failed` keep it, so exact-sha equality left
+  // off the authored sha while `merge_queued`/`merge_failed` keep it, so exact-sha equality left
   // the review-rejected cause with no reason. The arm now keys on the claimed pin and its
   // outcome, the landing attempt. The existing rejected fixture uses head === commit, which
   // matches the old filter and hid this.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
-    { ts: at(0, 9), loop: "coverage", type: "land_queued", commit: head("a"), summary: "fix a thing" },
+    { ts: at(0, 9), loop: "coverage", type: "merge_queued", commit: head("a"), summary: "fix a thing" },
     { ts: at(0, 10), loop: "coverage", type: "run_end", run: 1, result: "queued", durationMs: 3_600_000, costUsd: 1.0 },
     // The rebased head B is what the reviewer rejected; the pin and the outcome still name A.
     { ts: at(0, 11), loop: "coverage", type: "review_rejected", head: head("b"), reasons: ["too big"] },
-    { ts: at(0, 12), loop: "coverage", type: "land_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
+    { ts: at(0, 12), loop: "coverage", type: "merge_failed", commit: head("a"), result: "rejected", durationMs: 60_000 },
   ]);
   const data = collectFailureReport(root, 1);
   const loss = data.lossCauses.find((c) => c.kind === "review-rejected");

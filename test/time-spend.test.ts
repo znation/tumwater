@@ -83,7 +83,7 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
     [tickEnd],
     [
       tickEnd,
-      ev({ loop: "coverage", ts: 95, type: "land_queued", commit: "abc1234" }),
+      ev({ loop: "coverage", ts: 95, type: "merge_queued", commit: "abc1234" }),
       ev({
         loop: "coverage",
         ts: 112,
@@ -94,7 +94,7 @@ test("a queued tick whose landing was rejected prices into the error cell and a 
       ev({
         loop: "coverage",
         ts: 120,
-        type: "land_failed",
+        type: "merge_failed",
         commit: "abc1234",
         result: "rejected",
       }),
@@ -122,7 +122,7 @@ test("a queued tick with no visible landing outcome keeps the conservative queue
   const queued = ev({ ts: 100, result: "queued", durationMs: 1000 });
   const { timeSpend, lossCauses } = timeAndSpend(
     [queued],
-    [queued, ev({ ts: 95, type: "land_queued", commit: "abc1234" })],
+    [queued, ev({ ts: 95, type: "merge_queued", commit: "abc1234" })],
   );
   assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 1000, costUsd: 0 });
   assert.deepEqual(lossCauses, []);
@@ -132,7 +132,7 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
   // BUGS.md 2026-10-10: the queued→landing join repriced merge_conflict/merge_blocked authoring
   // spans into the error-class cell but gave them no loss cause, so those hours were owned by
   // no cause and were not counted by lossCausesHidden. Each now itemizes under its own result,
-  // taking the shared no-text placeholder because land_failed carries no message.
+  // taking the shared no-text placeholder because merge_failed carries no message.
   const conflict = ev({ ts: 100, run: 1, result: "queued", durationMs: 5000, costUsd: 0.25 });
   const blocked = ev({ ts: 100, loop: "feature", run: 1, result: "queued", durationMs: 6000, costUsd: 0.1 });
   const { timeSpend, lossCauses, lossCausesHidden } = timeAndSpend(
@@ -140,10 +140,10 @@ test("a queued tick whose landing failed to merge owns a cause named by its resu
     [
       conflict,
       blocked,
-      ev({ ts: 95, type: "land_queued", commit: "abc1234" }),
-      ev({ ts: 90, loop: "feature", type: "land_queued", commit: "def5678" }),
-      ev({ ts: 120, type: "land_failed", commit: "abc1234", result: "merge_conflict" }),
-      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "def5678", result: "merge_blocked" }),
+      ev({ ts: 95, type: "merge_queued", commit: "abc1234" }),
+      ev({ ts: 90, loop: "feature", type: "merge_queued", commit: "def5678" }),
+      ev({ ts: 120, type: "merge_failed", commit: "abc1234", result: "merge_conflict" }),
+      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
     ],
   );
   assert.deepEqual(timeSpend.map((r) => [r.role, r.classes.error]), [
@@ -163,9 +163,9 @@ test("a merge_blocked landing whose merge-scope check was killed at its own dead
     [blocked],
     [
       blocked,
-      ev({ ts: 90, loop: "feature", type: "land_queued", commit: "def5678" }),
+      ev({ ts: 90, loop: "feature", type: "merge_queued", commit: "def5678" }),
       ev({ ts: 110, loop: "feature", type: "build_check", scope: "batch", status: "failed", timeoutMs: 300000, deadlineLateMs: 20 }),
-      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "def5678", result: "merge_blocked" }),
+      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "def5678", result: "merge_blocked" }),
     ],
   );
   assert.equal(lossCauses.length, 1);
@@ -183,10 +183,10 @@ test("a queued tick that failed retriably, was rebased, and recovered into a lan
     [queued],
     [
       queued,
-      ev({ ts: 95, loop: "feature", type: "land_queued", commit: "sha1" }),
-      ev({ ts: 120, loop: "feature", type: "land_failed", commit: "sha1", result: "merge_blocked" }),
-      ev({ ts: 150, loop: "feature", type: "land_queued", commit: "sha2", summary: "recovered leftover work from feature" }),
-      ev({ ts: 180, loop: "feature", type: "landed", commit: "sha2", result: "changed" }),
+      ev({ ts: 95, loop: "feature", type: "merge_queued", commit: "sha1" }),
+      ev({ ts: 120, loop: "feature", type: "merge_failed", commit: "sha1", result: "merge_blocked" }),
+      ev({ ts: 150, loop: "feature", type: "merge_queued", commit: "sha2", summary: "recovered leftover work from feature" }),
+      ev({ ts: 180, loop: "feature", type: "merge_done", commit: "sha2", result: "changed" }),
     ],
   );
   assert.deepEqual(timeSpend[0]!.classes.merged, { runs: 1, ms: 5000, costUsd: 0.25 });

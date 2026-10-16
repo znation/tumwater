@@ -40,33 +40,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - README.md's `tumwater:prompt` block is unchanged.
 - `npm run test` passes.
 
-### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/)
-
-**Goal.** `land_queued`, `landed` and `land_failed` become `merge_queued`, `merge_done` and `merge_failed`. The existing `merged` (the fast-forward onto main) is unchanged. The notify hook pages on `merge_failed` and receives `TUMWATER_EVENT_SOURCE` instead of `TUMWATER_EVENT_LOOP`.
-
-**Approach.**
-- Add the three pairs to `LEGACY_EVENT_TYPES` and rename the union members and their comments.
-  - Writers: `stageTickLanding` (src/tick/tick-stage.ts), `recoverLeftover` (src/loop/leftover.ts) and `writeLandingOutcome` (src/landing/landing-slot.ts).
-  - Readers: `bucketLandingEvents` and `resolveQueuedResult` (history-data.ts), `foldUsageEvent` (report-data.ts), `scanMainCheck` (status-polls.ts), tick-detail.ts, event-format.ts, tone.ts `ROUTINE_EVENTS`/`PROBLEM_EVENTS` (they reach the dashboard through gui-client-model.ts's JSON injection), and the label map in its server and browser forms.
-- Collision: `"landed"` also names things that are not event types. Leave `OUTCOME_CLASS`'s `landed` class (time-spend.ts, failure-render.ts) and landing-stack.ts's `{ kind: "landed" }`. The text, scripting and code series own those. Rename only the event type.
-- Notify:
-  - `NOTIFY_EVENT_TYPES` lists `merge_failed`.
-  - `NOTIFY_TEST_TYPE` (src/cli/notify-command.ts) becomes `"merge_failed"`.
-  - `notifyCommandEnv(type, source, message)` sets `TUMWATER_EVENT_SOURCE`. Its value is still the event's `loop` field until part 6/9.
-  - Update the variable names in notify.ts's module comment, the `notify` doc comment in src/config/config-schema.ts and docs/config.md.
-  - No alias is kept (decision 3): a hook script that matched `land_failed` or read `TUMWATER_EVENT_LOOP` has to change. This repo's own tumwater.json sets no `notify`.
-- Tests: fix what typecheck and the suite flag (~93 typed sites, plus `--grep land_failed` filters and printed output). Notify tests and the `cli-run-shutdown` hook assert on the new variable. Add one report test in which a legacy `landed` line, appended after a first `collectReport`, is folded by the fold cache's append path as `merge_done`.
-- **Self-hosting:** safe in one part. The new build reads the old build's `land*` lines through the normalizer, and the old build reads no `merge_*` line.
-
-**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/cli/notify-command.ts, src/config/config-schema.ts, src/tick/tick-stage.ts, src/tick/tick-detail.ts, src/loop/leftover.ts, src/landing/landing-slot.ts, src/history/history-data.ts, src/report/report-data.ts, src/status/status-polls.ts, src/ui/tone.ts, the label-map module(s), docs/config.md; test/notify.test.ts, test/notify-command.test.ts, test/cli-run-shutdown.test.ts, test/report-fold-cache.test.ts, test/landing-pipeline.test.ts, test/time-spend.test.ts, test/tick-detail*.test.ts, test/orchestrator-3.e2e.test.ts and the other files the suite flags.
-
-**Acceptance criteria.**
-- A queued change logs `merge_queued`, then `merge_done` or `merge_failed`. `history` resolves a queued row from either the new or the old event names.
-- `tumwater notify --test` runs the hook with `TUMWATER_EVENT_TYPE=merge_failed` and a `TUMWATER_EVENT_SOURCE` variable, and the environment no longer has `TUMWATER_EVENT_LOOP`.
-- A `merge_failed` event pages the configured hook.
-- `tumwater logs --type land_failed` matches `merge_failed` lines.
-- `npm run test` passes.
-
 ### Plain terms event log, part 5/9: Rename the landing and drain payload values (planned 2026-10-16 by user; requires part 4/9 landed; design in plans/terminology.md "Event log"; touches src/build/build-check-events.ts src/landing/landing-merge.ts src/loop/ src/prompt/gate-prompts.ts src/redeploy/redeployer.ts src/events/ src/status/status-polls.ts src/failure/time-spend.ts test/)
 
 **Goal.** The remaining old words inside event payloads change, and old lines read with the new values:
@@ -2217,6 +2190,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 4/9: Rename the land events to merge events and the notify loop variable to source (planned 2026-10-16 by user; requires part 3/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/notify-command.ts src/tick/ src/loop/leftover.ts src/landing/landing-slot.ts src/history/ src/report/ src/status/status-polls.ts src/ui/ src/config/config-schema.ts docs/config.md test/) (done 2026-10-16)
+
+**Goal.** `land_queued`, `landed` and `land_failed` become `merge_queued`, `merge_done` and `merge_failed`. The existing `merged` (the fast-forward onto main) is unchanged. The notify hook pages on `merge_failed` and receives `TUMWATER_EVENT_SOURCE` instead of `TUMWATER_EVENT_LOOP`.
+
+**Approach.**
+- Add the three pairs to `LEGACY_EVENT_TYPES` and rename the union members and their comments.
+  - Writers: `stageTickLanding` (src/tick/tick-stage.ts), `recoverLeftover` (src/loop/leftover.ts) and `writeLandingOutcome` (src/landing/landing-slot.ts).
+  - Readers: `bucketLandingEvents` and `resolveQueuedResult` (history-data.ts), `foldUsageEvent` (report-data.ts), `scanMainCheck` (status-polls.ts), tick-detail.ts, event-format.ts, tone.ts `ROUTINE_EVENTS`/`PROBLEM_EVENTS` (they reach the dashboard through gui-client-model.ts's JSON injection), and the label map in its server and browser forms.
+- Collision: `"landed"` also names things that are not event types. Leave `OUTCOME_CLASS`'s `landed` class (time-spend.ts, failure-render.ts) and landing-stack.ts's `{ kind: "landed" }`. The text, scripting and code series own those. Rename only the event type.
+- Notify:
+  - `NOTIFY_EVENT_TYPES` lists `merge_failed`.
+  - `NOTIFY_TEST_TYPE` (src/cli/notify-command.ts) becomes `"merge_failed"`.
+  - `notifyCommandEnv(type, source, message)` sets `TUMWATER_EVENT_SOURCE`. Its value is still the event's `loop` field until part 6/9.
+  - Update the variable names in notify.ts's module comment, the `notify` doc comment in src/config/config-schema.ts and docs/config.md.
+  - No alias is kept (decision 3): a hook script that matched `land_failed` or read `TUMWATER_EVENT_LOOP` has to change. This repo's own tumwater.json sets no `notify`.
+- Tests: fix what typecheck and the suite flag (~93 typed sites, plus `--grep land_failed` filters and printed output). Notify tests and the `cli-run-shutdown` hook assert on the new variable. Add one report test in which a legacy `landed` line, appended after a first `collectReport`, is folded by the fold cache's append path as `merge_done`.
+- **Self-hosting:** safe in one part. The new build reads the old build's `land*` lines through the normalizer, and the old build reads no `merge_*` line.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-format.ts, src/events/notify.ts, src/cli/notify-command.ts, src/config/config-schema.ts, src/tick/tick-stage.ts, src/tick/tick-detail.ts, src/loop/leftover.ts, src/landing/landing-slot.ts, src/history/history-data.ts, src/report/report-data.ts, src/status/status-polls.ts, src/ui/tone.ts, the label-map module(s), docs/config.md; test/notify.test.ts, test/notify-command.test.ts, test/cli-run-shutdown.test.ts, test/report-fold-cache.test.ts, test/landing-pipeline.test.ts, test/time-spend.test.ts, test/tick-detail*.test.ts, test/orchestrator-3.e2e.test.ts and the other files the suite flags.
+
+**Acceptance criteria.**
+- A queued change logs `merge_queued`, then `merge_done` or `merge_failed`. `history` resolves a queued row from either the new or the old event names.
+- `tumwater notify --test` runs the hook with `TUMWATER_EVENT_TYPE=merge_failed` and a `TUMWATER_EVENT_SOURCE` variable, and the environment no longer has `TUMWATER_EVENT_LOOP`.
+- A `merge_failed` event pages the configured hook.
+- `tumwater logs --type land_failed` matches `merge_failed` lines.
+- `npm run test` passes.
 
 ### docs/cli.md names every command `tumwater help` lists, and a test keeps it in step with `helpStanzas(HELP)` (planned 2026-10-16 by plan; independent of every other Planned entry. It edits docs/cli.md and adds test/cli-doc.test.ts; no source change and no payload or event key renamed) (done 2026-10-16)
 

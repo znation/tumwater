@@ -156,7 +156,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
   // The landed-outcomes split by base role, mirroring the day render's line: which roles'
-  // changes reach main and which bounce off the gate (land_failed). Gated to the fleet
+  // changes reach main and which bounce off the gate (merge_failed). Gated to the fleet
   // report — a role-scoped window omits landing (ROLE_SCOPE_NOTE), so the per-role
   // attribution would contradict it. Zero-means-absent: the failures line prints only when
   // some role has one; a landing-free window renders `-` like the other lines.
@@ -291,7 +291,7 @@ export function renderReportMarkdown(data: ReportData): string {
   lines.push(rankedRoleLine("Commits by role", rankedRoleTotals(data.series, (d) => d.commitsByRole ?? {}), String));
   // The landed-outcomes split by base role: which authoring roles' changes reach main through
   // the landing slot, and — the new signal — which roles' changes bounce off the gate (a
-  // land_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
+  // merge_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
   // shutdown abort). Gated to the fleet report — a role-scoped report omits landing runs
   // (they are the landing slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
   // contradict that stance. Zero-means-absent: a window with landings renders Merged by role;

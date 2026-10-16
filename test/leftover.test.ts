@@ -72,7 +72,7 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
   assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin stays for the landing slot");
   const events = readEvents(root);
   assert.deepEqual(
-    events.filter((e) => e.type === "land_queued").map((e) => [e.commit, e.summary]),
+    events.filter((e) => e.type === "merge_queued").map((e) => [e.commit, e.summary]),
     [[sha, "recovered leftover work from improve: stranded work"]],
     "the enqueue is logged like a fresh tick's",
   );
@@ -137,7 +137,7 @@ test("a role whose landing is already queued is not enqueued twice", async () =>
   assert.equal(recovered?.kind, "already_queued");
   assert.equal(recovered?.kind === "already_queued" && recovered.entry.summary, "the original entry");
   assert.equal(queuedLandings(root).length, 1, "the queue still holds one entry for the role");
-  assert.equal(eventsOfType(root, "land_queued").length, 0, "no second land_queued");
+  assert.equal(eventsOfType(root, "merge_queued").length, 0, "no second merge_queued");
   assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is untouched");
 });
 

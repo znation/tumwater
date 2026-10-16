@@ -104,7 +104,7 @@ export const HISTORY_SCAN_MAX_EVENTS = 20_000;
 
 /** How far behind a since-shaped scan's cutoff the queued-row join reads its evidence: the
  * row set is ts-filtered to the cutoff, but a queued tick whose tick SPANS the cutoff logged
- * its `land_queued` pin before it (the pin is logged during the tick, the run_end after it)
+ * its `merge_queued` pin before it (the pin is logged during the tick, the run_end after it)
  * — so the join evidence needs its own read reaching further back. Six hours outlasts any
  * tick the harness runs (every stage inside a tick is timeout-bounded); a tick that somehow
  * queued later than that keeps the raw label, the conservative fallback. The wider read shares
@@ -216,8 +216,8 @@ export function tickRowsMatchingGrep(rows: TickRow[], pattern: string): TickRow[
   return rows.filter((r) => tickRowGrepHaystack(r).toLowerCase().includes(needle));
 }
 
-/** The landing bookkeeping resolveQueuedResult joins over: per loop, the `land_queued` pins
- * and the `landed`/`land_failed` outcomes, each list oldest-first (the scan order). Exported
+/** The landing bookkeeping resolveQueuedResult joins over: per loop, the `merge_queued` pins
+ * and the `merge_done`/`merge_failed` outcomes, each list oldest-first (the scan order). Exported
  * as one helper with exactly two call sites — readTickRows' history-row join and the failure
  * digest's time-and-spend fold (time-spend.ts) — so the two collectors cannot disagree about
  * which events feed the join or in what order they sit: a third landing-bookkeeping event
@@ -230,11 +230,11 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
   outcomeByLoop: Map<string, HarnessEvent[]>;
 } {
   const landQueuedByLoop = groupBy(
-    events.filter((e) => e.type === "land_queued"),
+    events.filter((e) => e.type === "merge_queued"),
     (e) => e.loop,
   );
   const outcomeByLoop = groupBy(
-    events.filter((e) => e.type === "landed" || e.type === "land_failed"), // vocabulary-ok: event type code
+    events.filter((e) => e.type === "merge_done" || e.type === "merge_failed"), 
     (e) => e.loop,
   );
   return { landQueuedByLoop, outcomeByLoop };
@@ -242,16 +242,16 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
 
 /** Resolve one queued tick row's eventual landing verdict: a "queued" run_end carries no
  * result until its landing batch lands or fails, so the row joins its `end` run_end to the
- * tick's land_queued pin and that pin's landed/land_failed outcome (both from the
+ * tick's merge_queued pin and that pin's merge_done/merge_failed outcome (both from the
  * bucketLandingEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
  * at or before its end, so several queued ticks cannot claim one pin. Within that pin's
  * change the row takes the LAST landing attempt's verdict, not the first: a retriable result
  * (RETRIABLE_LANDING_RESULTS: review_error, merge_conflict, merge_blocked) keeps the pin and
  * leftover recovery re-enqueues it for another attempt, so a later recovery pin — and its
- * landed/land_failed — owns the real verdict. When main moved before the retry the vet's
+ * merge_done/merge_failed — owns the real verdict. When main moved before the retry the vet's
  * syncPinToMain rebased the ref (landing-core.ts), so the recovery pin carries the rebased sha
- * while each attempt's own landed/land_failed logs its entry's authored sha (landing-slot.ts's
+ * while each attempt's own merge_done/merge_failed logs its entry's authored sha (landing-slot.ts's
  * entry.sha): the attempts' shas differ, so the walk follows the pin sequence (isRecoveryPin),
  * not sha equality alone. It stops at a pin that is not a recovery re-enqueue — a fresh change
  * after a conflict-cap discard — so the row never credits a different change's verdict
@@ -302,7 +302,7 @@ export function resolveQueuedResult(
     // on a recovery pin the walk reached: the previous attempt's non-terminal verdict is still
     // the last one visible, so return it rather than the raw label.
     if (!outcome) return resolved;
-    const result = textOr(outcome.result, outcome.type === "landed" ? "changed" : ""); // vocabulary-ok: event type code
+    const result = textOr(outcome.result, outcome.type === "merge_done" ? "changed" : ""); 
     if (!result) return resolved;
     const verdict = { result, sha: textOr(pin.commit, ""), pin, outcome };
     // A landing or a rejection ends the change (the pin is discarded, so no recovery pin can
@@ -317,7 +317,7 @@ export function resolveQueuedResult(
 }
 
 /** True when a pin re-enqueues the previous attempt's kept pin rather than starting a fresh
- * change. `recoverLeftover` (src/loop/leftover.ts) is the one `land_queued` producer whose
+ * change. `recoverLeftover` (src/loop/leftover.ts) is the one `merge_queued` producer whose
  * summary starts with this label, so a fresh change's pin after a conflict-cap discard ends
  * `resolveQueuedResult`'s walk. */
 function isRecoveryPin(pin: HarnessEvent | undefined): boolean {
@@ -337,8 +337,8 @@ export function tickRows(
   // The start pairing is the shared helper (events.ts), so history's dash-on-unpaired rule
   // and the digest's fold cannot drift into different notions of a tick's span.
   const starts = tickStartMap(scoped);
-  // The landing bookkeeping resolveQueuedResult joins over: per loop, the land_queued pins
-  // (oldest first) and the landed/land_failed outcomes (oldest first). Both ride the role
+  // The landing bookkeeping resolveQueuedResult joins over: per loop, the merge_queued pins
+  // (oldest first) and the merge_done/merge_failed outcomes (oldest first). Both ride the role
   // filter with their tick, so the scoped events hold them exactly when they hold the row.
   // A since-shaped scan hands a WIDER join read instead (readTickRowsSince): its cutoff cut
   // the pins of ticks that span it, so the maps read the unfiltered-by-cutoff evidence and
@@ -396,7 +396,7 @@ export function tickRows(
  *   run_end the harness logs follows its run_start (tick() logs the start before runTick,
  *   skipped results included), so an unpaired start is either just past the window or lost
  *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan.
- *   (A queued row's landing verdict needs no growth: the landed/land_failed event sits
+ *   (A queued row's landing verdict needs no growth: the merge_done/merge_failed event sits
  *   after its run_end, so any tail window holding the row holds the verdict too — or there
  *   is none yet, the genuinely-pending case that keeps the raw label.) */
 export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
@@ -442,7 +442,7 @@ const TICK_ROW_WINDOW_MEMO_MAX = 256;
  * and coverage derived from the wide scan, so neither windowed surface can claim coverage the
  * other would hedge or key its read differently. The rows read the cutoff-filtered events, but
  * their queued-row join reads WIDER evidence (TICK_ROW_JOIN_BACKSLACK_MS): a queued tick whose
- * tick spans the cutoff logged its land_queued pin before the cutoff, and without the wider
+ * tick spans the cutoff logged its merge_queued pin before the cutoff, and without the wider
  * read the row would either keep "Queued to land" after its change landed or misclaim an older
  * tick's pin (BUGS.md 2026-09-30). The rows reuse the pure tickRows with limit =
  * events.length, so pairing, role filtering, and the dash-on-unpaired rule stay exactly the

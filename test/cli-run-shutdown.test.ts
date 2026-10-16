@@ -48,7 +48,7 @@ test("a fleet that goes down unasked runs the notify hook once", async () => {
   const out = path.join(tmpdir("notify-fleet-down-"), "out.txt");
   const cfg = defaultConfig();
   for (const role of Object.values(cfg.roles)) role.enabled = false;
-  cfg.notify = `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_LOOP" >> ${out}`;
+  cfg.notify = `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE" >> ${out}`;
   writeConfig(repo, cfg);
   await withPi("exit 0", async () => {
     const r = await cli(repo, "run");

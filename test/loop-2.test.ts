@@ -220,7 +220,7 @@ test("a changed run's run_end event carries its per-run tokens and cost", async 
     assert.equal(runner.state.generatedTokens, 18400);
 
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
-    const landed = eventsOfType(repo, "landed");
+    const landed = eventsOfType(repo, "merge_done");
     assert.equal(landed.length, 1, "the merge slot logged its own outcome");
     assert.equal(landed[0]!.result, "changed");
     assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");

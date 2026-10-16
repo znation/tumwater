@@ -35,13 +35,23 @@ test("warm collectReport equals the cold read before and after appends", () => {
     eventsLogPath(root),
     [
       JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 10 }),
-      JSON.stringify({ ts: at(0), loop: "review", type: "landed", tokens: 42, costUsd: 0.2 }),
+      JSON.stringify({ ts: at(0), loop: "review", type: "merge_done", tokens: 42, costUsd: 0.2 }),
     ].join("\n") + "\n",
   );
   const fresh = collectReport(root, 5);
   assert.deepEqual(warmed(root, 5), fresh);
   assert.equal(fresh.series[4]!.runsByRole.bugfix, 1);
   assert.equal(fresh.totals.mergeTokens, 42);
+});
+
+test("a legacy `landed` line appended after a warm fold folds as merge_done", () => {
+  const root = tmpdir();
+  writeEvents(root, [{ ts: at(1), loop: "feature", type: "run_end", tokens: 1 }]);
+  warmed(root, 3);
+  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "review", type: "landed", tokens: 42, costUsd: 0.2 }) + "\n");
+  const fresh = collectReport(root, 3);
+  assert.equal(fresh.totals.mergeTokens, 42);
+  assert.deepEqual(warmed(root, 3), fresh);
 });
 
 test("a merge appended after a warm fold counts once, including in the role split", () => {

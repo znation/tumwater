@@ -616,20 +616,20 @@ test("formatEvent prices the gates: build_check lines and review durations", () 
 
 // The land queue's events (merge queue 3/5): the feed shows the queue's state changes — the
 // tick's enqueue, the slot's completion (with the landing's own spend), and the slot's failure.
-test("formatEvent renders land_queued, landed, and land_failed", () => {
+test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // Every line starts with the wall-clock time and the padded loop name — assert the payload.
-  const queued = formatEvent({ ts: 0, loop: "clean", type: "land_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
-  assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `land_queued must name the sha and summary: ${queued}`);
+  const queued = formatEvent({ ts: 0, loop: "clean", type: "merge_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
+  assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `merge_queued must name the sha and summary: ${queued}`);
 
   // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
-  const bare = formatEvent({ ts: 0, loop: "clean", type: "landed", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
+  const bare = formatEvent({ ts: 0, loop: "clean", type: "merge_done", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
   assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
   // The landing's own spend rides after the duration, "·"-separated like run_end (minutes
   // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
   const withUsage = formatEvent({
     ts: 0,
     loop: "clean",
-    type: "landed",
+    type: "merge_done",
     commit: "abcdef1234567890",
     result: "changed",
     durationMs: 130_000,
@@ -639,8 +639,8 @@ test("formatEvent renders land_queued, landed, and land_failed", () => {
   assert.match(withUsage, /merge of abcdef12 done \(in 2m\) · 12\.3k tok · \$0\.05$/, `usage must ride after the duration: ${withUsage}`);
 
   // A failed landing names the outcome — the detail lives in the review/merge events themselves.
-  const failed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
-  assert.match(failed, /merge of abcdef12 failed \(merge conflict\) \(in 1s\)$/, `land_failed must name the outcome: ${failed}`);
+  const failed = formatEvent({ ts: 0, loop: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
+  assert.match(failed, /merge of abcdef12 failed \(merge conflict\) \(in 1s\)$/, `merge_failed must name the outcome: ${failed}`);
 });
 
 // Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or
@@ -717,7 +717,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
 test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {
   assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "merge_done", status: "merged" }), "merged");
   assert.equal(eventResult({ ts: 0, loop: "x", type: "build_check", status: "failed" }), "failed");
   // A status is only a fallback: when both ride one event the tick's result wins.
   assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "error", status: "failed" }), "error");
@@ -732,7 +732,7 @@ test("eventResult takes a tick's result, else a landing's or build check's statu
 // filter keys, so the corrupt-field guard lives here, not there.
 test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {
   assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "merge_done", status: "merged" }), "merged");
   assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end" }), "?");
   // A non-string value smuggled into the loose payload is not an outcome.
   assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: 7 } as never), "?");
@@ -741,7 +741,7 @@ test("outcomeText renders eventResult or ? for a missing or non-string outcome",
 test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
   const tickEnd = formatEvent({ ts: 0, loop: "clean", type: "run_end", run: 5 } as never);
   assert.match(tickEnd, /run #5 \?$/);
-  const landFailed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abc1234", result: 7 } as never);
+  const landFailed = formatEvent({ ts: 0, loop: "clean", type: "merge_failed", commit: "abc1234", result: 7 } as never);
   assert.match(landFailed, /failed \(\?\)/);
   const build = formatEvent({ ts: 0, loop: "clean", type: "build_check", scope: "merge", script: "test" } as never);
   assert.match(build, /check \(merge\): test \?$/);
@@ -755,7 +755,7 @@ test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
 test("formatEvent never renders undefined or [object Object] for corrupt event fields", () => {
   const corrupt: HarnessEvent[] = [
     { ts: 0, loop: "clean", type: "merged", commit: "abcdef1234567890" } as never,
-    { ts: 0, loop: "clean", type: "land_queued" } as never,
+    { ts: 0, loop: "clean", type: "merge_queued" } as never,
     { ts: 0, loop: "feature", type: "question_posted" } as never,
     { ts: 0, loop: "feature", type: "wake" } as never,
     { ts: 0, loop: "harness", type: "orchestrator_start" } as never,

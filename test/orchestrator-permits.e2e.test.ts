@@ -101,7 +101,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
     // ends, and the merge after it (which runs no pi) can log `landed` just after bugfix's next
     // tick has started.
     await waitFor(
-      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "landed" && e.loop === "clean"),
+      () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "merge_done" && e.loop === "clean"),
       "several pi runs across the landing and role ticks, and clean's change landed",
     );
     const samples = readSamples(runDir);
@@ -249,7 +249,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "landed"),
+      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "merge_done"),
       "several role runs across both providers, and a landing",
       150_000,
     );
@@ -320,7 +320,7 @@ test("a vet's reviewer and a role tick on the same capped provider never overlap
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "landed"),
+      () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "merge_done"),
       "several role and vet runs across both providers, and a landing",
       150_000,
     );
@@ -440,7 +440,7 @@ test("two ticks on one provider and a single worktree slot both finish (pool-slo
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
-      () => readOrder(runDir).length >= 4 && readEvents(repo).some((e) => e.type === "landed"),
+      () => readOrder(runDir).length >= 4 && readEvents(repo).some((e) => e.type === "merge_done"),
       "both roles ticking through the one slot, and a landing",
       150_000,
     );

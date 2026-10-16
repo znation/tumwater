@@ -21,7 +21,7 @@ import { errorMessage } from "../src/text/text.js";
 /** A command that appends `TYPE|LOOP|MESSAGE` to `out` — the recording end every spawn test
  * reads back. The vars are double-quoted so messages with spaces survive the shell whole. */
 function recorderCommand(out: string): string {
-  return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_LOOP|$TUMWATER_EVENT_MESSAGE" >> ${out}`;
+  return `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE|$TUMWATER_EVENT_MESSAGE" >> ${out}`;
 }
 
 function recordedLines(out: string): string[] {
@@ -52,7 +52,7 @@ test("NOTIFY_EVENT_TYPES and NOTIFY_MIN_GAP_MS stay pinned to the planned allowl
       "role_cap_paused",
       "disk_low",
       "main_red_hold",
-      "land_failed",
+      "merge_failed",
       "restart_blocked",
       "question_posted",
       "entry_refused",
@@ -77,7 +77,7 @@ test("notifyCommandEnv carries exactly the three TUMWATER_EVENT_* keys with thei
   );
   assert.deepEqual(eventKeys, {
     TUMWATER_EVENT_TYPE: "budget_paused",
-    TUMWATER_EVENT_LOOP: "feature",
+    TUMWATER_EVENT_SOURCE: "feature",
     TUMWATER_EVENT_MESSAGE: "m",
   });
 });
@@ -168,7 +168,7 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
   try {
     logEvent(root, { loop: "feature", type: "run_end", run: 1, result: "no_change" });
     logEvent(root, { loop: "harness", type: "warning", message: "not page-worthy" });
-    logEvent(root, { loop: "feature", type: "landed" });
+    logEvent(root, { loop: "feature", type: "merge_done" });
     logEvent(root, { loop: "harness", type: "claude_window_reset", windowType: "five_hour" });
     await sleep(400);
     assert.equal(recordedLines(out).length, 0, "off-allowlist events must spawn nothing");
@@ -204,10 +204,10 @@ test("the throttle suppresses same-type events within the gap, per type", async 
     // one, so it has had at least as long to land: two lines means it was suppressed.
     await sleep(100);
     assert.equal(recordedLines(out).length, 2, "the same-type event inside the gap must be suppressed");
-    // Per-type keying: a land_failed right after the budget_paused page spawns on its own —
+    // Per-type keying: a merge_failed right after the budget_paused page spawns on its own —
     // one type's throttle never suppresses another's.
-    logEvent(root, { loop: "feature", type: "land_failed" });
-    await waitFor(() => recordedLines(out).some((l) => parseLine(l).type === "land_failed"), "the other-type spawn");
+    logEvent(root, { loop: "feature", type: "merge_failed" });
+    await waitFor(() => recordedLines(out).some((l) => parseLine(l).type === "merge_failed"), "the other-type spawn");
   } finally {
     notifier.dispose();
   }
@@ -265,22 +265,22 @@ test("a notify command whose spawn fails logs one warning and does not throw out
 });
 
 test("notifyExitWarning words a nonzero exit or kill and says nothing for a clean exit", () => {
-  assert.equal(notifyExitWarning("land_failed", 0, null), undefined);
+  assert.equal(notifyExitWarning("merge_failed", 0, null), undefined);
   const missing = notifyExitWarning("budget_paused", 127, null) ?? "";
   for (const part of ["code 127", "command not found", "budget_paused", "tumwater notify --test"]) {
     assert.ok(missing.includes(part), part);
   }
   // sh's 126 (found but not executable) gets the same gloss as 127, so a chmod-less or
   // directory notify command names its fix instead of a bare exit code.
-  const notExec = notifyExitWarning("land_failed", 126, null) ?? "";
+  const notExec = notifyExitWarning("merge_failed", 126, null) ?? "";
   for (const part of ["code 126", "found but not executable"]) {
     assert.ok(notExec.includes(part), part);
   }
-  const three = notifyExitWarning("land_failed", 3, null) ?? "";
+  const three = notifyExitWarning("merge_failed", 3, null) ?? "";
   assert.match(three, /code 3/);
   assert.doesNotMatch(three, /command not found/);
   assert.doesNotMatch(three, /not executable/);
-  assert.match(notifyExitWarning("land_failed", null, "SIGKILL") ?? "", /SIGKILL/);
+  assert.match(notifyExitWarning("merge_failed", null, "SIGKILL") ?? "", /SIGKILL/);
 });
 
 test("a notify hook that exits nonzero logs one warning naming the paged type", async () => {
@@ -412,8 +412,8 @@ test("notifyFleetDown returns silently without a usable notify command", async (
 
 test("isNotifyFailure holds for each failure shape and nothing else", () => {
   const warning = (message: string) => ({ ts: 1, loop: "harness", type: "warning" as const, message });
-  assert.ok(isNotifyFailure(warning(notifyExitWarning("land_failed", 3, null) ?? "")));
-  assert.ok(isNotifyFailure(warning(notifyExitWarning("land_failed", null, "SIGKILL") ?? "")));
+  assert.ok(isNotifyFailure(warning(notifyExitWarning("merge_failed", 3, null) ?? "")));
+  assert.ok(isNotifyFailure(warning(notifyExitWarning("merge_failed", null, "SIGKILL") ?? "")));
   assert.ok(isNotifyFailure(warning("notify command could not start: spawn ENOENT")));
   assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), loop: "feature" }));
   assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), type: "run_start" }));

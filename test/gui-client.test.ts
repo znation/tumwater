@@ -205,7 +205,7 @@ test("activity items sort into landings, problems, questions, notices, and routi
   assert.equal(kind("run_end", "no_change"), "routine");
   assert.equal(kind("build_check", "passed"), "routine");
   assert.equal(kind("build_check", "failed"), "problem");
-  assert.equal(kind("land_failed"), "problem");
+  assert.equal(kind("merge_failed"), "problem");
   assert.equal(kind("run_start"), "routine");
   assert.equal(kind("team_paused"), "info");
   assert.equal(kind("some_new_event"), "info", "an unknown event type is shown, not hidden");

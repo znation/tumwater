@@ -152,7 +152,7 @@ test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs it
   const orch = startLiveOrchestrator(repo);
   try {
     // Phase 1 (omlx cap 1): three roles on one omlx slot — no overlap, and one is always parked.
-    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "landed"), "several omlx runs and a landing", 150_000);
+    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "merge_done"), "several omlx runs and a landing", 150_000);
     assert.ok(
       readSamples(runDir).every((n) => n <= 1),
       `peak stays 1 while the second omlx tick waits on its cap (samples: ${readSamples(runDir)})`,

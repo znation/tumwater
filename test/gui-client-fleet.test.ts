@@ -385,7 +385,7 @@ test("an active Search fetches /api/logs and paints a slice beyond the carried w
   const calls: string[] = [];
   const getJson = async (path: string) => {
     calls.push(path);
-    return { events: [{ ts: 1, source: "feature", type: "land_failed", result: "rejected", message: "old failure" }] };
+    return { events: [{ ts: 1, source: "feature", type: "merge_failed", result: "rejected", message: "old failure" }] };
   };
   const { scope, panels } = feedScope({ "feed-grep": "failure" }, { getJson, lastStatus: payload });
   scope.renderFeed(payload);
@@ -438,7 +438,7 @@ test("a stale search response never paints over a newer filter", async () => {
   // The newer answer lands, then the stale one — which must not repaint.
   resolvers[1]!({ events: [{ ts: 2, source: "qa", type: "merged", message: "second match" }] });
   await new Promise((r) => setTimeout(r, 10));
-  resolvers[0]!({ events: [{ ts: 1, source: "qa", type: "land_failed", message: "first match" }] });
+  resolvers[0]!({ events: [{ ts: 1, source: "qa", type: "merge_failed", message: "first match" }] });
   await new Promise((r) => setTimeout(r, 10));
   assert.match(panels["feed"] ?? "", /second match/);
   assert.doesNotMatch(panels["feed"] ?? "", /first match/);
@@ -466,7 +466,7 @@ test("clearing the filter restores the windowed feed byte-for-byte", async () =>
     ],
   };
   const { scope, panels } = feedScope({ "feed-grep": "one" }, {
-    getJson: async () => ({ events: [{ ts: 1, source: "qa", type: "land_failed", message: "server row" }] }),
+    getJson: async () => ({ events: [{ ts: 1, source: "qa", type: "merge_failed", message: "server row" }] }),
     lastStatus: payload,
   });
   scope.renderFeed(payload);
@@ -542,7 +542,7 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
     getJson: async () => ({
       events: [
         { ts: 1, source: "qa", type: "merged", message: "needle one" },
-        { ts: 2, source: "qa", type: "land_failed", message: "needle two" },
+        { ts: 2, source: "qa", type: "merge_failed", message: "needle two" },
         { ts: 3, source: "qa", type: "merged", message: "needle three" },
         { ts: 4, source: "qa", type: "run_end", result: "failed", message: "needle four" },
       ],
@@ -553,7 +553,7 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
   await feedSettle();
   const html = panels["feed"] ?? "";
   // The server slice folds the same rows the <li> list paints (older merged x2, then a
-  // land_failed and a failed run_end): two merged, one land_failed, one run_end.
+  // merge_failed and a failed run_end): two merged, one merge_failed, one run_end.
   assert.match(html, /2 × merged/);
   assert.match(html, /1 × merge failed/);
   assert.match(html, /1 × run finished/);

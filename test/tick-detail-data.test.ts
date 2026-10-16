@@ -165,27 +165,27 @@ test("a queued tick resolves to its landing's verdict and outcome event; a pendi
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
   writeEvents(root, [
     startEvent({ ts: 1000, run: 1 }),
-    ev({ ts: 1100, type: "land_queued", commit: "sha1" }),
+    ev({ ts: 1100, type: "merge_queued", commit: "sha1" }),
     endEvent({ ts: 1200, run: 1, result: "queued" }),
-    ev({ ts: 1300, type: "landed", commit: "sha1", result: "changed" }),
+    ev({ ts: 1300, type: "merge_done", commit: "sha1", result: "changed" }),
     startEvent({ ts: 2000, run: 2 }),
-    ev({ ts: 2100, type: "land_queued", commit: "sha2" }),
+    ev({ ts: 2100, type: "merge_queued", commit: "sha2" }),
     endEvent({ ts: 2200, run: 2, result: "queued" }),
-    ev({ ts: 2300, type: "land_failed", commit: "sha2", result: "rejected" }),
+    ev({ ts: 2300, type: "merge_failed", commit: "sha2", result: "rejected" }),
     startEvent({ ts: 3000, run: 3 }),
-    ev({ ts: 3100, type: "land_queued", commit: "sha3" }),
+    ev({ ts: 3100, type: "merge_queued", commit: "sha3" }),
     endEvent({ ts: 3200, run: 3, result: "queued" }),
     startEvent({ ts: 4000, run: 4 }),
     endEvent({ ts: 4100, run: 4, result: "changed" }),
   ]);
   const one = readTickDetail(root, "feature", 1)!;
   assert.equal(one.result, "changed");
-  assert.equal(one.merge?.type, "landed");
-  assert.ok(!one.events.some((e) => e.type === "landed"));
+  assert.equal(one.merge?.type, "merge_done");
+  assert.ok(!one.events.some((e) => e.type === "merge_done"));
   const two = readTickDetail(root, "feature", 2)!;
   assert.equal(two.result, "rejected");
-  assert.equal(two.merge?.type, "land_failed");
-  assert.ok(!two.events.some((e) => e.type === "land_failed"));
+  assert.equal(two.merge?.type, "merge_failed");
+  assert.ok(!two.events.some((e) => e.type === "merge_failed"));
   const three = readTickDetail(root, "feature", 3)!;
   assert.equal(three.result, "queued");
   assert.equal(three.merge, null);

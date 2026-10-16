@@ -156,12 +156,12 @@ function seedMixedLog(repo: string): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
   const events = [
-    { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
+    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
     { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
     { ts: now - 4000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 1200 },
     { ts: now - 3000, loop: "bugfix", type: "run_start", run: 2 },
     { ts: now - 2000, loop: "bugfix", type: "run_end", run: 2, result: "refused", summary: "nothing to do" },
-    { ts: now - 1000, loop: "bugfix", type: "land_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 },
+    { ts: now - 1000, loop: "bugfix", type: "merge_failed", commit: COMMIT_B, result: "build_check", durationMs: 900 },
   ];
   writeLogLines(file, events);
 }
@@ -173,9 +173,9 @@ test("logs --grep matches the event type id even where the rendering paraphrases
 
   const r = await cli(repo, "logs", "--grep", "review_rejected");
   assert.equal(r.code, 0);
-  // The type id matches the review_rejected event; the land_failed whose result names the code
+  // The type id matches the review_rejected event; the merge_failed whose result names the code
   // renders the result's label ("review rejected"), so the raw code no longer matches its line.
-  // Everything else (the run lines, the other land_failed) is filtered out.
+  // Everything else (the run lines, the other merge_failed) is filtered out.
   assert.ok(r.stdout.includes("review rejected abc1234"), r.stdout);
   assert.ok(!r.stdout.includes("failed (review rejected)"), r.stdout);
   assert.ok(!r.stdout.includes("run #"), r.stdout);
@@ -205,14 +205,14 @@ test("logs --grep: -n bounds the scanned window, not the printed rows", async ()
   await initProject(repo, "cli logs grep scan window");
   seedMixedLog(repo);
 
-  // The last 4 events exclude the oldest land_failed (commit A): 4 scanned, 1 printed.
-  let r = await cli(repo, "logs", "-n", "4", "--grep", "land_failed");
+  // The last 4 events exclude the oldest merge_failed (commit A): 4 scanned, 1 printed.
+  let r = await cli(repo, "logs", "-n", "4", "--grep", "merge_failed");
   assert.equal(r.code, 0);
   assert.ok(r.stdout.includes("def4567"), r.stdout);
   assert.ok(!r.stdout.includes("abc1234"), r.stdout);
 
-  // The default window covers the whole log: both land_faileds print.
-  r = await cli(repo, "logs", "--grep", "land_failed");
+  // The default window covers the whole log: both merge_faileds print.
+  r = await cli(repo, "logs", "--grep", "merge_failed");
   assert.ok(r.stdout.includes("abc1234") && r.stdout.includes("def4567"), r.stdout);
 });
 
@@ -282,7 +282,7 @@ test("logs --grep -f applies the filter to the seeded window and every followed 
   await initProject(repo, "cli logs grep follow");
   seedMixedLog(repo);
 
-  const s = spawnCli(repo, ["logs", "--grep", "land_failed", "-f"]);
+  const s = spawnCli(repo, ["logs", "--grep", "merge_failed", "-f"]);
   try {
     await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
@@ -290,7 +290,7 @@ test("logs --grep -f applies the filter to the seeded window and every followed 
     // does not (the filter holds across rotation, on every event the callback sees).
     const file = eventsLogPath(repo);
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();
@@ -318,13 +318,13 @@ test("logs --grep --json filters before serialization", async () => {
   await initProject(repo, "cli logs json grep");
   seedMixedLog(repo);
 
-  const r = await cli(repo, "logs", "--json", "--grep", "land_failed");
+  const r = await cli(repo, "logs", "--json", "--grep", "merge_failed");
   assert.equal(r.code, 0);
   const lines = r.stdout.split("\n").filter(Boolean);
-  assert.equal(lines.length, 2, r.stdout); // The two land_failed events, nothing else.
+  assert.equal(lines.length, 2, r.stdout); // The two merge_failed events, nothing else.
   for (const line of lines) {
     const e = JSON.parse(line);
-    assert.equal(e.type, "land_failed", line);
+    assert.equal(e.type, "merge_failed", line);
     assert.equal(typeof e.ts, "number", line);
   }
   // Rendered prose never leaks into the JSON stream — the paraphrase "review rejected" is
@@ -398,24 +398,24 @@ test("logs --type prints only events of exactly that type, where --grep substrin
   const now = Date.now();
   const file = eventsLogPath(repo);
   writeLogLines(file, [
-    { ts: now - 6000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
+    { ts: now - 6000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
     { ts: now - 5000, loop: "feature", type: "run_start", run: 1 },
-    // A wake event whose rendered line quotes the word "land_failed" as its reason text:
+    // A wake event whose rendered line quotes the word "merge_failed" as its reason text:
     // the exact-vs-substring case — --grep matches the quoted text, --type (an event id,
     // not free text) must not.
-    { ts: now - 4000, loop: "clean", type: "wake", reason: "land_failed" },
+    { ts: now - 4000, loop: "clean", type: "wake", reason: "merge_failed" },
   ]);
 
-  const r = await cli(repo, "logs", "--type", "land_failed", "-n", "200");
+  const r = await cli(repo, "logs", "--type", "merge_failed", "-n", "200");
   assert.equal(r.code, 0);
   assert.ok(r.stdout.includes("failed (review rejected)"), r.stdout);
   assert.ok(!r.stdout.includes("run #"), r.stdout);
-  assert.ok(!r.stdout.includes("woke (land_failed)"), `--type is an exact id, not a substring:\n${r.stdout}`);
+  assert.ok(!r.stdout.includes("woke (merge_failed)"), `--type is an exact id, not a substring:\n${r.stdout}`);
 
   // The same log under --grep DOES match the quoted reason text (where --type refused it).
-  const g = await cli(repo, "logs", "--grep", "land_failed", "-n", "200");
+  const g = await cli(repo, "logs", "--grep", "merge_failed", "-n", "200");
   assert.equal(g.code, 0);
-  assert.ok(g.stdout.includes("woke (land_failed)"), g.stdout);
+  assert.ok(g.stdout.includes("woke (merge_failed)"), g.stdout);
 });
 
 test("logs --since --type filters the window, and an empty match is gentle prose", async () => {
@@ -424,9 +424,9 @@ test("logs --since --type filters the window, and an empty match is gentle prose
   const now = Date.now();
   const file = eventsLogPath(repo);
   writeLogLines(file, [
-    { ts: now - 40 * 60_000, loop: "feature", type: "land_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
+    { ts: now - 40 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "review_rejected", durationMs: 800 },
     { ts: now - 30 * 60_000, loop: "feature", type: "review_rejected", head: COMMIT_A, reasons: ["sloppy error handling"], durationMs: 400 },
-    { ts: now - 20 * 60_000, loop: "feature", type: "land_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 },
+    { ts: now - 20 * 60_000, loop: "feature", type: "merge_failed", commit: COMMIT_B, result: "conflict", durationMs: 100 },
   ]);
 
   // --type composes with the window: only the window's review_rejected prints, oldest-first.
@@ -449,23 +449,23 @@ test("logs --since --type filters the window, and an empty match is gentle prose
 test("logs --type -n composes with --grep (type AND text) and with --json", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli logs type compose");
-  seedMixedLog(repo); // two land_failed (review_rejected / build_check), a review_rejected, ticks.
+  seedMixedLog(repo); // two merge_failed (review_rejected / build_check), a review_rejected, ticks.
 
-  // Both rules hold: land_failed events whose text ALSO mentions "review rejected" (only the
+  // Both rules hold: merge_failed events whose text ALSO mentions "review rejected" (only the
   // one with result review_rejected, not the build_check one, and not the review_rejected
   // event itself).
-  const g = await cli(repo, "logs", "--type", "land_failed", "--grep", "review rejected", "-n", "200");
+  const g = await cli(repo, "logs", "--type", "merge_failed", "--grep", "review rejected", "-n", "200");
   assert.equal(g.code, 0);
   assert.ok(g.stdout.includes("failed (review rejected)"), g.stdout);
   assert.ok(!g.stdout.includes("failed (check ran)"), g.stdout);
   assert.ok(!g.stdout.includes("review rejected abc1234"), g.stdout);
 
-  // --json filters before serialization: every emitted line is a land_failed event.
-  const j = await cli(repo, "logs", "--json", "--type", "land_failed");
+  // --json filters before serialization: every emitted line is a merge_failed event.
+  const j = await cli(repo, "logs", "--json", "--type", "merge_failed");
   assert.equal(j.code, 0);
   const lines = j.stdout.split("\n").filter(Boolean);
   assert.equal(lines.length, 2, j.stdout);
-  for (const line of lines) assert.equal(JSON.parse(line).type, "land_failed", line);
+  for (const line of lines) assert.equal(JSON.parse(line).type, "merge_failed", line);
 });
 
 test("logs --type refuses the transcript-view rivals and a valueless flag", async () => {
@@ -505,13 +505,13 @@ test("logs --type -f holds the filter across the seeded window and rotation", as
   await initProject(repo, "cli logs type follow");
   seedMixedLog(repo);
 
-  const s = spawnCli(repo, ["logs", "--type", "land_failed", "-f"]);
+  const s = spawnCli(repo, ["logs", "--type", "merge_failed", "-f"]);
   try {
     await s.waitFor((out) => out.includes("failed (check ran)"), "the seeded match");
 
     const file = eventsLogPath(repo);
     fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "run_start", run: 7 }) + "\n");
-    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "land_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
+    fs.appendFileSync(file, JSON.stringify({ ts: Date.now(), loop: "feature", type: "merge_failed", commit: COMMIT_A, result: "conflict", durationMs: 100 }) + "\n");
     await s.waitFor((out) => out.includes("failed (conflict)"), "the live match");
 
     const out = s.out();
@@ -539,8 +539,8 @@ test("logs --count prints one N × <type> line per present type, most-frequent-f
 
   const r = await cli(repo, "logs", "--count");
   assert.equal(r.code, 0);
-  // seedMixedLog: land_failed x2, run_start x2, review_rejected x1, run_end x1.
-  assert.match(r.stdout, /2 × merge failed \(land_failed\)/);
+  // seedMixedLog: merge_failed x2, run_start x2, review_rejected x1, run_end x1.
+  assert.match(r.stdout, /2 × merge failed \(merge_failed\)/);
   assert.match(r.stdout, /2 × run started \(run_start\)/);
   assert.match(r.stdout, /1 × review rejected \(review_rejected\)/);
   assert.match(r.stdout, /1 × run finished \(run_end\)/);
@@ -554,19 +554,19 @@ test("logs --count composes with --type, --grep, --since, and -n", async () => {
   const typed = await cli(repo, "logs", "--count", "--type", "run_end");
   assert.equal(typed.code, 0);
   assert.match(typed.stdout, /1 × run finished \(run_end\)/);
-  assert.ok(!typed.stdout.includes("land_failed"), "a --type subset counts only that type");
+  assert.ok(!typed.stdout.includes("merge_failed"), "a --type subset counts only that type");
 
-  const grepped = await cli(repo, "logs", "--count", "--grep", "land_failed");
+  const grepped = await cli(repo, "logs", "--count", "--grep", "merge_failed");
   assert.equal(grepped.code, 0);
-  assert.match(grepped.stdout, /2 × merge failed \(land_failed\)/);
+  assert.match(grepped.stdout, /2 × merge failed \(merge_failed\)/);
 
   const windowed = await cli(repo, "logs", "--count", "--since", "30m");
   assert.equal(windowed.code, 0);
-  assert.match(windowed.stdout, /2 × merge failed \(land_failed\)/);
+  assert.match(windowed.stdout, /2 × merge failed \(merge_failed\)/);
 
   const tailed = await cli(repo, "logs", "--count", "-n", "2");
   assert.equal(tailed.code, 0);
-  assert.match(tailed.stdout, /1 × merge failed \(land_failed\)/);
+  assert.match(tailed.stdout, /1 × merge failed \(merge_failed\)/);
   assert.match(tailed.stdout, /1 × run finished \(run_end\)/);
 });
 
@@ -578,7 +578,7 @@ test("logs --count --json emits a sorted type→count object", async () => {
   const r = await cli(repo, "logs", "--count", "--json");
   assert.equal(r.code, 0);
   assert.deepEqual(JSON.parse(r.stdout.trim()), {
-    land_failed: 2,
+    merge_failed: 2,
     review_rejected: 1,
     run_end: 1,
     run_start: 2,

@@ -387,7 +387,7 @@ test("checkProviderHolds: a provider-undefined hold names pi's default backend",
 });
 
 test("checkProviderHolds: other event types are ignored", () => {
-  const out = checkProviderHolds(phRoot([{ loop: "feature", type: "run_end", ts: PH_NOW, tokens: 1 }, { loop: "feature", type: "landed", ts: PH_NOW, commit: "a" }]), PH_NOW);
+  const out = checkProviderHolds(phRoot([{ loop: "feature", type: "run_end", ts: PH_NOW, tokens: 1 }, { loop: "feature", type: "merge_done", ts: PH_NOW, commit: "a" }]), PH_NOW);
   assert.deepEqual(out, { level: "ok", detail: "no provider holds" });
 });
 

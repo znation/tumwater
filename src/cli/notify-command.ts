@@ -6,7 +6,7 @@ import { notifyCommandEnv, notifyExitGloss } from "../events/notify.js";
 /** The one representative allowlisted event `tumwater notify --test` fires: a failed landing
  * with loop `harness`. Fixed and opinionated — the goal is to prove the hook runs, not to
  * replay a specific page, so there are no per-type or per-message flags. */
-const NOTIFY_TEST_TYPE = "land_failed";
+const NOTIFY_TEST_TYPE = "merge_failed";
 const NOTIFY_TEST_LOOP = "harness";
 const NOTIFY_TEST_MESSAGE = "tumwater notify --test";
 

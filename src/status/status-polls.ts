@@ -117,7 +117,7 @@ function scanMainCheck(root: string): MainCheckScan {
     for (const e of events) {
       if (e.type === "build_check" && (e.scope === "landing" || e.scope === "batch" || e.scope === "baseline")) { // vocabulary-ok: persisted event scope value
         check = e;
-      } else if (e.type === "landed" && typeof e.ts === "number") { // vocabulary-ok: event type code
+      } else if (e.type === "merge_done" && typeof e.ts === "number") { 
         landed.push(e);
       }
     }

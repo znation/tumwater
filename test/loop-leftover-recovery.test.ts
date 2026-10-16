@@ -76,9 +76,9 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
       assert.notEqual(mainSha(repo), sha, "nothing landed inside the tick");
       const tickEvents = readEvents(repo);
       assert.deepEqual(
-        tickEvents.filter((e) => e.type === "land_queued").map((e) => e.commit),
+        tickEvents.filter((e) => e.type === "merge_queued").map((e) => e.commit),
         [sha],
-        "the tick logged exactly one land_queued, for the pin",
+        "the tick logged exactly one merge_queued, for the pin",
       );
       assert.equal(tickEvents.filter((e) => e.type === "merged").length, 0, "no in-tick merged");
       assert.equal(queueDepth(repo), 1);
@@ -139,7 +139,7 @@ test("a pin at the merge-conflict cap is handed back and the tick resolves it in
       assert.equal(runner.state.conflictHandback?.reason, "landing");
       assert.equal(runner.state.conflictHandback?.applied, true, "the hand-back was applied this tick");
       assert.equal(runner.state.mergeConflicts, undefined, "the streak ended with the hand-back");
-      const queued = eventsOfType(repo, "land_queued").map((e) => e.commit);
+      const queued = eventsOfType(repo, "merge_queued").map((e) => e.commit);
       assert.deepEqual(queued, [outcome.commit], "the resolved change was queued");
       assert.equal(headLanding(repo)?.entry.sha, outcome.commit);
       assert.deepEqual(
@@ -185,7 +185,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
       assert.equal(runner.state.conflictHandback, undefined, "the stale hand-back is cleared");
       assert.equal(runner.state.conflictDiscard, undefined, "the delivered note is cleared once the author commits");
       assert.equal(headLanding(repo)?.entry.sha, outcome.commit, "the queue holds only the fresh change");
-      assert.deepEqual(eventsOfType(repo, "land_queued").map((e) => e.commit), [outcome.commit]);
+      assert.deepEqual(eventsOfType(repo, "merge_queued").map((e) => e.commit), [outcome.commit]);
       assert.ok(
         eventsOfType(repo, "warning").some((e) => String(e.message).includes('discarding leftover')),
         "a warning names the discard",

@@ -12,9 +12,9 @@ import type { TickResult } from "../tick/tick-outcome.js";
 export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> = {
   run_start: "run started",
   run_end: "run finished",
-  land_queued: "waiting to merge",
-  landed: "merge finished",
-  land_failed: "merge failed",
+  merge_queued: "waiting to merge",
+  merge_done: "merge finished",
+  merge_failed: "merge failed",
   merged: "merged",
   question_posted: "question posted",
   entry_refused: "plan refused",

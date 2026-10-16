@@ -291,7 +291,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const tickStartHeld = () => holdForRestart || restart || diskHeld;
 
   // The operator notify hook (src/events/notify.ts owns the whole concern): one configured shell
-  // command run on notable events (budget_paused, role_streak_paused, land_failed,
+  // command run on notable events (budget_paused, role_streak_paused, merge_failed,
   // restart_blocked). Subscribed here so it sees every event this process logs from start;
   // disposed beside the orchestrator_stop event below.
   const notifier = newNotifier(root);

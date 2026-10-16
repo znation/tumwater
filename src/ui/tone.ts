@@ -63,11 +63,11 @@ export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_co
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
+export const ROUTINE_EVENTS = ["run_start", "wake", "run_deferred", "review_start", "review_verdict", "merge_queued", "merge_done", "resume", "counters_reset"];
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const PROBLEM_EVENTS = ["land_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_warning", "role_cap_paused", "disk_low", "main_red_hold", "supervisor_exit", "warning"];
+export const PROBLEM_EVENTS = ["merge_failed", "review_rejected", "review_failed", "restart_blocked", "restart_refused", "budget_warning", "budget_paused", "role_cap_warning", "role_cap_paused", "disk_low", "main_red_hold", "supervisor_exit", "warning"];
 
 /** The build-check results that read as routine rather than problem in `eventKind` — one home
  * of the list, interpolated into gui-client-model.ts's browser eventKind exactly as

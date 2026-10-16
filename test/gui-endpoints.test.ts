@@ -355,7 +355,7 @@ test("handleLogs serves the matched tail oldest-first as feed items, composing g
   const root = tmpdir();
   writeEvents(root, [
     { ts: 1000, loop: "feature", type: "run_end", run: 1, result: "changed", summary: "added a thing" },
-    { ts: 2000, loop: "bugfix", type: "land_failed", commit: "abc1234", status: "rejected" },
+    { ts: 2000, loop: "bugfix", type: "merge_failed", commit: "abc1234", status: "rejected" },
     { ts: 3000, loop: "feature", type: "run_end", run: 2, result: "no_change", summary: "nothing here" },
   ]);
   const { captured, data } = await serveLogs(root, "?grep=added");
@@ -525,7 +525,7 @@ test("handleTick's stat names a pinned commit that is not in the repository", as
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: 1_000, loop: "clean", type: "run_start", run: 3 }),
-    JSON.stringify({ ts: 2_000, loop: "clean", type: "land_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }),
+    JSON.stringify({ ts: 2_000, loop: "clean", type: "merge_queued", commit: "abcdef1234567890abcdef1234567890abcdef12" }),
     JSON.stringify({ ts: 3_000, loop: "clean", type: "run_end", run: 3, result: "changed" }),
   ]);
   const { data } = await serveTick(root, "?role=clean&run=3");

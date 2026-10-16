@@ -286,7 +286,7 @@ export function applyTickOutcome(
  * entry's own summary (the commit subject) covers a stash that is missing or names another
  * change — a crash between enqueue and the tick's state save, or a landing that finished before
  * its tick's outcome was applied. Either way the stash is consumed. The failure detail rides
- * in `lastReview` and the landed/land_failed events. */
+ * in `lastReview` and the merge_done/merge_failed events. */
 export function applyLandingOutcome(
   s: LoopState,
   result: TickResult,
