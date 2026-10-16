@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { commitPathsAndDiscardRest, fileContentAt } from "../git/git.js";
+import { writeTextAtomic } from "../files/files.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
 import { actionableEntryRanges } from "../backlog/backlog-structure.js";
 import {
@@ -110,7 +111,12 @@ export async function handleRefusal(
       fs.readFileSync(plansFile, "utf8"),
     );
     if (dropped.length > 0) {
-      fs.writeFileSync(plansFile, md);
+      // Atomic (tmp+rename): the note-stripped PLANS.md is committed to main moments later,
+      // and a plain writeFileSync that a kill interrupted would commit a truncated file,
+      // permanently dropping the plan entries past the cut point. writeTextAtomic is the
+      // harness's one write-to-temp-then-rename entry point — the same one backlog-write.ts
+      // and question-answer.ts use for the markdown backlog files.
+      writeTextAtomic(plansFile, md);
       for (const title of dropped) {
         logEventBestEffort(ctx.root, {
           loop: ctx.role,

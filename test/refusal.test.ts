@@ -222,6 +222,26 @@ test("a refusal note on a plan still blocked by a planned prerequisite is droppe
   assert.equal(events.filter((e) => e.type === "entry_refused").length, 0);
 });
 
+// The dropped-blocked-note path rewrites PLANS.md (and only that path does). The rewrite must
+// be atomic and leave no `.tmp-` remnant behind in the worktree: the file is committed to main
+// right after, and a leftover temp (or a torn write) would leak into — or silently drop entries
+// from — the project's plan record.
+test("the dropped-refusal PLANS.md rewrite is atomic and leaves no tmp remnant", async () => {
+  const base = BLOCKED_BASE("Planned");
+  const { root, wt } = await worktreeWithPlans(base);
+  fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(base, "### S, part 2/2"));
+  const { ctx } = makeCtx(root);
+  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  // The refusal note is gone from the worktree's PLANS.md and the two plan entries survive;
+  const plans = fs.readFileSync(path.join(wt, "PLANS.md"), "utf8");
+  assert.ok(!plans.includes(REFUSED_LINE), "the blocked refusal note is dropped");
+  assert.ok(plans.includes("part 1/2: a"), "the first plan entry survives");
+  assert.ok(plans.includes("part 2/2: b"), "the second plan entry survives");
+  // …and no atomic-write temp remains to be picked up by the commit scan.
+  const leftovers = fs.readdirSync(path.join(wt, ".")).filter((f) => f.includes("PLANS.md.tmp"));
+  assert.deepEqual(leftovers, [], "no tmp remnant survives the atomic rewrite");
+});
+
 test("a refusal note on a plan whose prerequisite is Done lands as usual", async () => {
   const base = BLOCKED_BASE("Done");
   const { root, wt } = await worktreeWithPlans(base);
