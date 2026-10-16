@@ -61,7 +61,7 @@ test("a history pane's tick trail windows the cached detail and holds the no-tra
   assert.deepEqual(empty.body, []);
   assert.equal(empty.emptyNote, "(no run trail)");
 
-  const trail = "clean tick #1 — changed · 90s\n14:00 tick_start\n14:01 landed";
+  const trail = "clean tick #1 — changed · 90s\n14:00 run_start\n14:01 landed";
   const shown = paneBody(pane, { root: "/nonexistent", width: 300, eventBudget: 5, entryBudget: 4, state: { ...state, trailCache: trail } });
   assert.equal(shown.body.map((l) => l.map((s) => s.text).join("")).join("\n"), trail);
   assert.equal(shown.emptyNote, "(no run trail)");

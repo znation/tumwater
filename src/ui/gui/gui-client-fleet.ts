@@ -565,7 +565,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     paintPanel("feed", shown.length
       ? tallyChips(shown) + shown.map((it) => {
         const kind = eventKind(it);
-        const tone = it.type === "tick_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
+        const tone = it.type === "run_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
         const whoLabel = it.loop === "harness" ? "tumwater" : roleLabel(it.loop); // vocabulary-ok: the harness event source
         const who = roles.has(it.loop) // vocabulary-ok: event field name
           ? "<button type='button' class='linkish feed-loop' data-open='" + esc(it.loop) + "'>" + esc(whoLabel) + "</button>" // vocabulary-ok: CSS class and event field

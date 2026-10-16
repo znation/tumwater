@@ -216,32 +216,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/script-keys.test.ts passes with this part's keys listed.
 - `npm run test` passes.
 
-### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)
-
-**Goal.** Mechanical. The two busiest event types are written and read as `run_start` and `run_end`, and old `tick_start`/`tick_end` lines read as the new names. Every hunk is the same substitution, checked by typecheck and the suite.
-
-**Approach.**
-- Add `tick_start → run_start` and `tick_end → run_end` to `LEGACY_EVENT_TYPES` (src/events/event-legacy.ts).
-- Rename both union members in `HarnessEvent` (src/events/events.ts). Then fix every hit of `"tick_start"`/`"tick_end"` in src, comments included:
-  - writers: `tickPhase` (src/loop/loop-tick.ts) and `finalizeTick` (src/tick/tick-finalize.ts);
-  - readers: `tickStartMap` (event-read.ts), event-format.ts, `eventKind` and `ROUTINE_EVENTS` (src/ui/tone.ts), src/ui/tui/tui-frame.ts, `readTickDetail` (src/tick/tick-detail-data.ts), history-data.ts, failure-data.ts, failure-state-change.ts, `foldUsageEvent` (report-data.ts), role-view.ts;
-  - user-visible strings that print the code itself, such as failure-render.ts's `_no tick_end events in the window_`.
-- Browser code is not typechecked, so grep it: the `eventKind` twin in src/ui/gui/gui-client-model.ts and the activity row in gui-client-fleet.ts compare `"tick_end"`.
-- Rename the two keys in the groundwork's `eventTypeLabel` map, in its server and browser forms.
-- docs/invariants.md names `tick_start` once, so update it. Leave docs/commit-history-analysis.md alone: it is a dated snapshot.
-- Do not rename identifiers that contain "tick" (`tickStartMap`, `tickSpanMs`, `TickResult`, test/fakes/log.ts's `tickEnd()`/`tickStart()`). The Plain terms code run series renames those. Do change the `type` the fake builders return.
-- Tests: tsc flags ~133 typed sites in ~33 files. The suite flags assertions on printed output, such as `--count` tallies, `--json` lines and `--grep tick_end` filters. Fix both, and leave on-disk fixtures as they are (see part 1/9).
-- **Self-hosting:** safe in one part. The new build reads the old build's `tick_*` lines as `run_*`, and the old build reads no new line.
-
-**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/ui/tone.ts, src/ui/tui/tui-frame.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, src/loop/loop-tick.ts, src/tick/tick-finalize.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/report/report-data.ts, src/roles/role-view.ts, the groundwork label-map module(s), docs/invariants.md; test/fakes/log.ts and the test files typecheck or the suite flags (event-format, event-read, history-data, cli-history*, log-commands*, gui-server-api, tick-finalize, orchestrator*.e2e, loop*, …).
-
-**Acceptance criteria.**
-- A real tick logs `run_start` and `run_end`. `history`, the run trail (`history <role> <n>`), the usage report and the failure digest count them.
-- An events.jsonl holding only old `tick_start`/`tick_end` lines yields the same `history` rows and report totals as before this part.
-- `tumwater logs --type tick_end` matches `run_end` lines.
-- `grep -rnE 'tick_(start|end)' src` finds only event-legacy.ts.
-- `npm run test` passes.
-
 ### Plain terms event log, part 3/9: Rename the other tick events and the tick payload field to run (planned 2026-10-16 by user; requires part 2/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/orchestrator/orchestrator-scheduling.ts src/operator/operator-requests.ts src/loop/ src/tick/ src/review/ src/history/history-data.ts src/ui/tone.ts test/)
 
 **Goal.** `tick_deferred` and `tick_aborted` become `run_deferred` and `run_aborted`. The `tick` number on every event becomes `run`, and old lines read back renamed.
@@ -2468,6 +2442,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms event log, part 2/9: Rename tick_start and tick_end to run_start and run_end (done 2026-10-16; planned 2026-10-16 by user; requires part 1/9 landed; design in plans/terminology.md "Event log"; touches src/events/ src/ui/ src/tick/ src/loop/ src/history/ src/failure/ src/report/ src/roles/role-view.ts test/)
+
+**Goal.** Mechanical. The two busiest event types are written and read as `run_start` and `run_end`, and old `tick_start`/`tick_end` lines read as the new names. Every hunk is the same substitution, checked by typecheck and the suite.
+
+**Approach.**
+- Add `tick_start → run_start` and `tick_end → run_end` to `LEGACY_EVENT_TYPES` (src/events/event-legacy.ts).
+- Rename both union members in `HarnessEvent` (src/events/events.ts). Then fix every hit of `"tick_start"`/`"tick_end"` in src, comments included:
+  - writers: `tickPhase` (src/loop/loop-tick.ts) and `finalizeTick` (src/tick/tick-finalize.ts);
+  - readers: `tickStartMap` (event-read.ts), event-format.ts, `eventKind` and `ROUTINE_EVENTS` (src/ui/tone.ts), src/ui/tui/tui-frame.ts, `readTickDetail` (src/tick/tick-detail-data.ts), history-data.ts, failure-data.ts, failure-state-change.ts, `foldUsageEvent` (report-data.ts), role-view.ts;
+  - user-visible strings that print the code itself, such as failure-render.ts's `_no tick_end events in the window_`.
+- Browser code is not typechecked, so grep it: the `eventKind` twin in src/ui/gui/gui-client-model.ts and the activity row in gui-client-fleet.ts compare `"tick_end"`.
+- Rename the two keys in the groundwork's `eventTypeLabel` map, in its server and browser forms.
+- docs/invariants.md names `tick_start` once, so update it. Leave docs/commit-history-analysis.md alone: it is a dated snapshot.
+- Do not rename identifiers that contain "tick" (`tickStartMap`, `tickSpanMs`, `TickResult`, test/fakes/log.ts's `tickEnd()`/`tickStart()`). The Plain terms code run series renames those. Do change the `type` the fake builders return.
+- Tests: tsc flags ~133 typed sites in ~33 files. The suite flags assertions on printed output, such as `--count` tallies, `--json` lines and `--grep tick_end` filters. Fix both, and leave on-disk fixtures as they are (see part 1/9).
+- **Self-hosting:** safe in one part. The new build reads the old build's `tick_*` lines as `run_*`, and the old build reads no new line.
+
+**Files touched.** src/events/event-legacy.ts, src/events/events.ts, src/events/event-read.ts, src/events/event-format.ts, src/ui/tone.ts, src/ui/tui/tui-frame.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, src/loop/loop-tick.ts, src/tick/tick-finalize.ts, src/tick/tick-detail-data.ts, src/history/history-data.ts, src/failure/failure-data.ts, src/failure/failure-render.ts, src/failure/failure-state-change.ts, src/report/report-data.ts, src/roles/role-view.ts, the groundwork label-map module(s), docs/invariants.md; test/fakes/log.ts and the test files typecheck or the suite flags (event-format, event-read, history-data, cli-history*, log-commands*, gui-server-api, tick-finalize, orchestrator*.e2e, loop*, …).
+
+**Acceptance criteria.**
+- A real tick logs `run_start` and `run_end`. `history`, the run trail (`history <role> <n>`), the usage report and the failure digest count them.
+- An events.jsonl holding only old `tick_start`/`tick_end` lines yields the same `history` rows and report totals as before this part.
+- `tumwater logs --type tick_end` matches `run_end` lines.
+- `grep -rnE 'tick_(start|end)' src` finds only event-legacy.ts.
+- `npm run test` passes.
 
 ### Plain terms event log, part 1/9: Normalize old event lines on read and rename the fleet pause events (planned 2026-10-16 by user; requires Plain terms text 19/19 landed; design in plans/terminology.md "Event log"; touches src/events/ src/cli/log-commands.ts src/cli/help.ts src/gates/pause-gates.ts src/failure/failure-state-change.ts docs/cli.md test/) — done 2026-10-16
 

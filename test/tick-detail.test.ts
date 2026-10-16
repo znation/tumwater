@@ -17,11 +17,11 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 // gets one smoke run through the real binary, as cli-history.test.ts does).
 
 function start(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "tick_start", tick: 3, ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_start", tick: 3, ...over } as HarnessEvent;
 }
 
 function end(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "bugfix", type: "tick_end", tick: 3, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "bugfix", type: "run_end", tick: 3, result: "changed", ...over } as HarnessEvent;
 }
 
 test("readTickDetail returns exactly one loop's tick block, bracketed by its start and end", () => {
@@ -37,7 +37,7 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
     { ts: 6000, loop: "bugfix", type: "land_queued", commit: "abc1234def", summary: "the fix" } as HarnessEvent,
     end({ ts: 7000, result: "changed", summary: "the fix", tokens: 1200, costUsd: 0.03 }),
     // After the block: another loop, and the asked loop's NEXT tick — both excluded.
-    { ts: 8000, loop: "clean", type: "tick_start", tick: 1 } as HarnessEvent,
+    { ts: 8000, loop: "clean", type: "run_start", tick: 1 } as HarnessEvent,
     start({ ts: 9000, tick: 4 }),
   ]);
   const d = readTickDetail(root, "bugfix", 3);
@@ -53,10 +53,10 @@ test("readTickDetail returns exactly one loop's tick block, bracketed by its sta
   assert.deepEqual(
     d.events.map((e) => [e.type, e.ts]),
     [
-      ["tick_start", 4000],
+      ["run_start", 4000],
       ["review_verdict", 5000],
       ["land_queued", 6000],
-      ["tick_end", 7000],
+      ["run_end", 7000],
     ],
   );
 });
@@ -100,8 +100,8 @@ test("readTickDetail marks an in-flight tick: events so far, no end, no duration
   );
 });
 
-test("readTickDetail bounds a rotation-cut block at the loop's next tick_start", () => {
-  // The tick_end was lost to rotation; the next tick's start closes the window exclusive, so
+test("readTickDetail bounds a rotation-cut block at the loop's next run_start", () => {
+  // The run_end was lost to rotation; the next tick's start closes the window exclusive, so
   // the following tick's events never leak into this one.
   const root = makeRepo();
   writeEvents(root, [
@@ -119,7 +119,7 @@ test("readTickDetail bounds a rotation-cut block at the loop's next tick_start",
   );
 });
 
-test("readTickDetail answers unpaired when only the tick_end survived rotation", () => {
+test("readTickDetail answers unpaired when only the run_end survived rotation", () => {
   const root = makeRepo();
   writeEvents(root, [end({ ts: 5000, tokens: 700, costUsd: 0.02 })]);
   const d = readTickDetail(root, "bugfix", 3);

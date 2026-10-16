@@ -19,9 +19,9 @@ import { expectFailAsync, expectOkAsync } from "./helpers/exit-capture.js";
 /** A repo with three distinct tick events logged, in order. */
 function repoWithEvents(): string {
   const repo = makeRepo();
-  logEvent(repo, { loop: "clean", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "tests", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "clean", type: "tick_end", tick: 1, result: "changed" });
+  logEvent(repo, { loop: "clean", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "tests", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "clean", type: "run_end", tick: 1, result: "changed" });
   return repo;
 }
 
@@ -38,12 +38,12 @@ test("logs -n dumps the last N events in order without following", async () => {
 test("logs --grep filters the -n view by raw type and rendered line, case-insensitively", async () => {
   const repo = repoWithEvents();
   // The raw type id matches even where the rendering paraphrases it.
-  const { stdout: raw } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "tick_end"]));
+  const { stdout: raw } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "run_end"]));
   assert.match(raw, /clean\s+run #1 merged/);
-  assert.ok(!raw.includes("started"), "the unmatched tick_start row is filtered out");
+  assert.ok(!raw.includes("started"), "the unmatched run_start row is filtered out");
 
   // Case-insensitive, and matches the rendered line too.
-  const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "TICK"]));
+  const { stdout: out } = await expectOkAsync(() => cmdLogs(repo, ["--grep", "RUN"]));
   assert.match(out, /run #1 started/);
   assert.match(out, /run #1 merged/);
 });
@@ -116,31 +116,31 @@ test("logs rejects rival flag shapes, naming both flags in each failure", async 
 
 test("logs --count tallies event types most-frequent-first over the -n window", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "clean", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "clean", type: "tick_start", tick: 2 });
-  logEvent(repo, { loop: "tests", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "clean", type: "tick_end", tick: 2, result: "changed" });
-  logEvent(repo, { loop: "clean", type: "tick_end", tick: 3, result: "none" });
+  logEvent(repo, { loop: "clean", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "clean", type: "run_start", tick: 2 });
+  logEvent(repo, { loop: "tests", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "clean", type: "run_end", tick: 2, result: "changed" });
+  logEvent(repo, { loop: "clean", type: "run_end", tick: 3, result: "none" });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count"]));
-  // Three tick_start, two tick_end: most-frequent first.
-  assert.equal(stdout, "3 × run started (tick_start)\n2 × run finished (tick_end)\n");
+  // Three run_start, two run_end: most-frequent first.
+  assert.equal(stdout, "3 × run started (run_start)\n2 × run finished (run_end)\n");
 });
 
 test("logs --count breaks ties alphabetically by type", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "a", type: "tick_end", tick: 1, result: "changed" });
-  logEvent(repo, { loop: "b", type: "tick_start", tick: 1 });
+  logEvent(repo, { loop: "a", type: "run_end", tick: 1, result: "changed" });
+  logEvent(repo, { loop: "b", type: "run_start", tick: 1 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count"]));
-  // Equal counts: ties break by type (tick_end before tick_start).
-  assert.equal(stdout, "1 × run finished (tick_end)\n1 × run started (tick_start)\n");
+  // Equal counts: ties break by type (run_end before run_start).
+  assert.equal(stdout, "1 × run finished (run_end)\n1 × run started (run_start)\n");
 });
 
 test("logs --count --since scopes the tally to the window and never prints the rotation note", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "a", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "b", type: "tick_start", tick: 2 });
+  logEvent(repo, { loop: "a", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "b", type: "run_start", tick: 2 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--since", "1h"]));
-  assert.equal(stdout, "2 × run started (tick_start)\n");
+  assert.equal(stdout, "2 × run started (run_start)\n");
   assert.ok(!stdout.includes("rotated out"), "a count never prints the sparse-window note");
 });
 
@@ -153,38 +153,38 @@ test("logs --count --since with an empty window prints the plain view's empty pr
 
 test("logs --count -n scopes the tally to the last N events", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "a", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "a", type: "tick_start", tick: 2 });
-  logEvent(repo, { loop: "b", type: "tick_end", tick: 2, result: "changed" });
+  logEvent(repo, { loop: "a", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "a", type: "run_start", tick: 2 });
+  logEvent(repo, { loop: "b", type: "run_end", tick: 2, result: "changed" });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "-n", "2"]));
-  assert.equal(stdout, "1 × run finished (tick_end)\n1 × run started (tick_start)\n");
+  assert.equal(stdout, "1 × run finished (run_end)\n1 × run started (run_start)\n");
 });
 
 test("logs --count --grep and --type count only their matches", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "a", type: "tick_start", tick: 1 });
-  logEvent(repo, { loop: "a", type: "tick_end", tick: 1, result: "changed" });
-  logEvent(repo, { loop: "b", type: "tick_start", tick: 2 });
-  const grepped = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "tick_start"]));
-  assert.equal(grepped.stdout, "2 × run started (tick_start)\n");
-  const typed = await expectOkAsync(() => cmdLogs(repo, ["--count", "--type", "tick_end"]));
-  assert.equal(typed.stdout, "1 × run finished (tick_end)\n");
+  logEvent(repo, { loop: "a", type: "run_start", tick: 1 });
+  logEvent(repo, { loop: "a", type: "run_end", tick: 1, result: "changed" });
+  logEvent(repo, { loop: "b", type: "run_start", tick: 2 });
+  const grepped = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "run_start"]));
+  assert.equal(grepped.stdout, "2 × run started (run_start)\n");
+  const typed = await expectOkAsync(() => cmdLogs(repo, ["--count", "--type", "run_end"]));
+  assert.equal(typed.stdout, "1 × run finished (run_end)\n");
 });
 
 test("logs --count --grep with no matches prints the no-match prose", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "a", type: "tick_start", tick: 1 });
+  logEvent(repo, { loop: "a", type: "run_start", tick: 1 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--grep", "land_failed"]));
   assert.equal(stdout, 'no events matching "land_failed"\n');
 });
 
 test("logs --count --json emits a sorted type→count object", async () => {
   const repo = makeRepo();
-  logEvent(repo, { loop: "clean", type: "tick_end", tick: 1, result: "changed" });
-  logEvent(repo, { loop: "clean", type: "tick_start", tick: 1 });
+  logEvent(repo, { loop: "clean", type: "run_end", tick: 1, result: "changed" });
+  logEvent(repo, { loop: "clean", type: "run_start", tick: 1 });
   const { stdout } = await expectOkAsync(() => cmdLogs(repo, ["--count", "--json"]));
   // One compact object, keys sorted alphabetically.
-  assert.equal(stdout.trim(), '{"tick_end":1,"tick_start":1}');
+  assert.equal(stdout.trim(), '{"run_end":1,"run_start":1}');
 });
 
 test("logs --count rejects the rival shapes, naming both flags", async () => {

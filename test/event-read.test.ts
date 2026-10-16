@@ -11,12 +11,12 @@ import type { HarnessEvent } from "../src/events/events.js";
 import { dayKey as dayKeyOracle } from "./helpers/oracles.js";
 
 // The read side's per-event query conventions — eventRole, eventUsage, eventDayKey, and the
-// tick_start↔tick_end pairing (tickStartMap/tickSpanMs) — are the rules the history rows, the
+// run_start↔run_end pairing (tickStartMap/tickSpanMs) — are the rules the history rows, the
 // usage report, and the failure digest all share. These tests pin those conventions directly:
 // what a corrupt or absent field contributes, and what an unpaired tick end costs.
 
 function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
-  return { ts: 1000, loop: "feature", type: "tick_end", ...extra } as HarnessEvent;
+  return { ts: 1000, loop: "feature", type: "run_end", ...extra } as HarnessEvent;
 }
 
 test("eventRole answers '?' for absent, empty, and non-string loop fields", () => {
@@ -63,12 +63,12 @@ test("eventDayKey buckets by ts and answers null when ts is not a number", () =>
   assert.equal(eventDayKey(ev({ ts: Number.NaN })), null);
 });
 
-test("tickStartMap pairs only tick_start events by loop#tick", () => {
+test("tickStartMap pairs only run_start events by loop#tick", () => {
   const starts = tickStartMap([
-    ev({ type: "tick_start", loop: "feature", tick: 7, ts: 100 }),
-    ev({ type: "tick_end", loop: "feature", tick: 7, ts: 150 }), // not a start: ignored
-    ev({ type: "tick_start", loop: "director", tick: 7, ts: 200 }), // same tick, other role
-    ev({ type: "tick_start", loop: "feature", tick: 8, ts: 300 }),
+    ev({ type: "run_start", loop: "feature", tick: 7, ts: 100 }),
+    ev({ type: "run_end", loop: "feature", tick: 7, ts: 150 }), // not a start: ignored
+    ev({ type: "run_start", loop: "director", tick: 7, ts: 200 }), // same tick, other role
+    ev({ type: "run_start", loop: "feature", tick: 8, ts: 300 }),
   ]);
   assert.deepEqual(
     [...starts.entries()],
@@ -81,7 +81,7 @@ test("tickStartMap pairs only tick_start events by loop#tick", () => {
 });
 
 test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpaired end as null", () => {
-  const starts = tickStartMap([ev({ type: "tick_start", loop: "feature", tick: 1, ts: 500 })]);
+  const starts = tickStartMap([ev({ type: "run_start", loop: "feature", tick: 1, ts: 500 })]);
   assert.equal(tickSpanMs(ev({ tick: 1, ts: 1750 }), starts), 1250);
   // A clock skew (end stamped before its start) must not price a negative span.
   assert.equal(tickSpanMs(ev({ tick: 1, ts: 400 }), starts), 0);
@@ -91,11 +91,11 @@ test("tickSpanMs measures start→end, clamps negatives to 0, and reads an unpai
 });
 
 test("tick timestamps that are not finite numbers never yield a NaN span", () => {
-  // A tick_start with no usable ts adds no entry — every value in the map is real epoch ms.
+  // A run_start with no usable ts adds no entry — every value in the map is real epoch ms.
   const starts = tickStartMap([
-    ev({ type: "tick_start", loop: "feature", tick: 1, ts: undefined }),
-    ev({ type: "tick_start", loop: "feature", tick: 2, ts: Number.NaN }),
-    ev({ type: "tick_start", loop: "feature", tick: 3, ts: 500 }),
+    ev({ type: "run_start", loop: "feature", tick: 1, ts: undefined }),
+    ev({ type: "run_start", loop: "feature", tick: 2, ts: Number.NaN }),
+    ev({ type: "run_start", loop: "feature", tick: 3, ts: 500 }),
   ]);
   assert.deepEqual([...starts.entries()], [["feature#3", 500]]);
   // A corrupt end ts reads as an unpaired span, not `Math.max(0, undefined - start)` → NaN.

@@ -71,7 +71,7 @@ test("a pi author and a claude reviewer run in one fleet and the change lands on
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "pi")), "the author's pi native log");
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "claude")), "the reviewer's claude native log");
         // The run-start events name each seam's own selector.
-        const tick = readEvents(repo).find((e) => e.type === "tick_start");
+        const tick = readEvents(repo).find((e) => e.type === "run_start");
         const review = readEvents(repo).find((e) => e.type === "review_start");
         assert.match(String((tick as { model?: string } | undefined)?.model ?? ""), /omlx\/qwen-mlx/);
         assert.match(String((review as { model?: string } | undefined)?.model ?? ""), /claude\/claude-sonnet-5-5/);

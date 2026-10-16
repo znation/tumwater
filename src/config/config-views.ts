@@ -262,7 +262,7 @@ export function resolvedModelFields(
  * provider/model/thinking triple formatted as one selector string, or an empty object when
  * no model id is resolved (pi's own default) — the key stays absent rather than empty, the
  * same empty-means-unset rule resolvedModelFields applies to the raw halves. One home of
- * that assembly and guard, shared by the two run-start event writers (loop-tick.ts's tick_start,
+ * that assembly and guard, shared by the two run-start event writers (loop-tick.ts's run_start,
  * review.ts's review_start) and the per-loop status snapshot (status-data.ts) so the three
  * observability surfaces cannot disagree about which model a run starts on. A non-pi agent is
  * named as the selector's provider namespace (agentQualifiedSelector), so a claude run reads

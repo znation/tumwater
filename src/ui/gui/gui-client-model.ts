@@ -158,7 +158,7 @@ export const GUI_CLIENT_MODEL_JS = String.raw`  // view-model:start
     if (item.type === "merged") return "landing"; // vocabulary-ok: internal key the row classes and filters match
     if (item.type === "question_posted") return "attention";
     if (item.type === "entry_refused") return "attention";
-    if (item.type === "tick_end") return PROBLEM_RESULTS.includes(item.result) ? "problem" : "routine";
+    if (item.type === "run_end") return PROBLEM_RESULTS.includes(item.result) ? "problem" : "routine";
     if (item.type === "build_check") return ROUTINE_BUILD_RESULTS.includes(item.result) ? "routine" : "problem";
     if (PROBLEM_EVENTS.includes(item.type)) return "problem";
     if (ROUTINE_EVENTS.includes(item.type)) return "routine";

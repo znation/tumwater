@@ -1,6 +1,6 @@
 /** An event-log fixture builder, under the shared test-fake catalog (test/fakes/,
  * PLANS.md 2026-10-04): typed constructors for the harness events the digest and history
- * fixes had to improvise by hand (`tick_end`/`tick_start`/`review_verdict`/`build_check`
+ * fixes had to improvise by hand (`run_end`/`run_start`/`review_verdict`/`build_check`
  * literals with `as HarnessEvent` casts, each file spelling the defaults slightly
  * differently) plus a one-call writer that stamps them into a scratch repo's
  * `.tumwater/log/events.jsonl` via log-fixtures's `writeEvents`. The builders default to
@@ -10,15 +10,15 @@
 import type { HarnessEvent } from "../../src/events/events.js";
 import { writeEvents } from "../fixtures/log-fixtures.js";
 
-/** A `tick_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
+/** A `run_end` event with the shape tick-finalize stamps: the feature loop, tick 1,
  * `changed`. Overrides pass through (`tickEnd({ result: "error", error: "pi unreachable" })`). */
 export function tickEnd(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_end", tick: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_end", tick: 1, result: "changed", ...over } as HarnessEvent;
 }
 
-/** A `tick_start` event, the pairing half tickRows reads durations from. */
+/** A `run_start` event, the pairing half tickRows reads durations from. */
 export function tickStart(over: Partial<HarnessEvent> = {}): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_start", tick: 1, ...over } as HarnessEvent;
 }
 
 /** An approved `review_verdict` event over `head` (40 hex chars expected), with the

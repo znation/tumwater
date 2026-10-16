@@ -15,7 +15,7 @@ import { runCli } from "./helpers/cli-harness.js";
 test("collectFailureReport memoizes an unchanged log and re-reads a changed one", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
   ]);
   const first = collectFailureReport(root, 1);
   const second = collectFailureReport(root, 1);
@@ -23,22 +23,22 @@ test("collectFailureReport memoizes an unchanged log and re-reads a changed one"
   // A changed log — the append below grows the file, changing its identity — must re-derive
   // rather than serve the memo.
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" },
   ]);
   const third = collectFailureReport(root, 1);
   assert.notEqual(third, first, "a changed log re-derives the digest");
   assert.equal(third.runs, 2, "the re-derived digest sees the appended tick");
 });
 
-test("collectFailureReport tallies tick_end results per role", () => {
+test("collectFailureReport tallies run_end results per role", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "no_change" },
-    { ts: at(0), loop: "", type: "tick_end", result: "queued" }, // empty loop id → "?"
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "no_change" },
+    { ts: at(0), loop: "", type: "run_end", result: "queued" }, // empty loop id → "?"
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.runs, 5);
@@ -57,8 +57,8 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
   // into reverse-alphabetical order).
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "zed", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "alpha", type: "tick_end", result: "no_change" },
+    { ts: at(0), loop: "zed", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "alpha", type: "run_end", result: "no_change" },
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(
@@ -76,14 +76,14 @@ test("equal-total roles tie in ascending key order in the outcome and time-spend
 test("a main_red tick's cause is clustered with the run errors, not left a bare count", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "organize", type: "tick_end", result: "main_red",
+    { ts: at(0), loop: "organize", type: "run_end", result: "main_red",
       error: "main abc1234 is red (test: boom) — authoring skipped until main is green" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
     // A cause-less main_red still itemizes, under a placeholder: the section's selection
-    // predicate is the Outcome table's own (raw result), so a tick_end counted above can never
+    // predicate is the Outcome table's own (raw result), so a run_end counted above can never
     // vanish from the one section built to itemize it (BUGS.md 2026-09-30).
-    { ts: at(0), loop: "improve", type: "tick_end", result: "main_red" },
-    { ts: at(0), loop: "qa", type: "tick_end", result: "error", error: "" },
+    { ts: at(0), loop: "improve", type: "run_end", result: "main_red" },
+    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "" },
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.errors.total, 4, "the error column plus every main_red cell, caused or not");
@@ -119,11 +119,11 @@ test("a main_red tick's cause is clustered with the run errors, not left a bare 
 test("error strings differing only in volatile parts cluster; exit codes stay distinct", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "ENOENT /Users/a/one.ts deadbeef0" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "ENOENT /Users/b/two.ts cafebabe1" },
-    { ts: at(0), loop: "clean", type: "tick_end", result: "error", error: "ENOENT /Users/c/three.ts 1234567" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited 1" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "ENOENT /Users/a/one.ts deadbeef0" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "ENOENT /Users/b/two.ts cafebabe1" },
+    { ts: at(0), loop: "clean", type: "run_end", result: "error", error: "ENOENT /Users/c/three.ts 1234567" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited 1" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
   ]);
   const data = collectFailureReport(root, 1);
   assert.equal(data.errors.clusters.length, 3);
@@ -160,13 +160,13 @@ test("run errors cluster only on error-result ticks; landing review failures get
     // A tick that did NOT end as an error but carries a stale `lastError` — the lander wrote the
     // shared slot during leftover recovery. It must not be counted as a tick error (BUGS.md
     // 2026-09-21).
-    { ts: at(0), loop: "clean", type: "tick_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
-    { ts: at(0), loop: "dry", type: "tick_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
+    { ts: at(0), loop: "clean", type: "run_end", result: "no_change", error: 'review failed: 429 "Rate limit exceeded"' },
+    { ts: at(0), loop: "dry", type: "run_end", result: "queued", error: 'review failed: 429 "Rate limit exceeded"' },
     // The landing failure itself is surfaced from its own event.
     { ts: at(0), loop: "clean", type: "review_failed", head: "a".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
     { ts: at(0), loop: "dry", type: "review_failed", head: "b".repeat(40), message: "no parseable VERDICT line in the reviewer's reply" },
     // A real tick error still clusters.
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
   ]);
   const data = collectFailureReport(root, 1);
   const errorTotal = data.outcomes.reduce((n, o) => n + (o.counts.error ?? 0), 0);
@@ -190,7 +190,7 @@ test("run errors cluster only on error-result ticks; landing review failures get
 
 test("a window longer than the retained log is reported as partial", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(2), loop: "feature", type: "tick_end", result: "error", error: "boom" }]);
+  writeEvents(root, [{ ts: at(2), loop: "feature", type: "run_end", result: "error", error: "boom" }]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.partial, true);
   assert.equal(data.emptyLog, false);
@@ -205,8 +205,8 @@ test("a prior window the retained log cannot prove is reported as partial too �
   // silently presenting skewed deltas as a real trend.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(5), loop: "feature", type: "tick_end", result: "error", error: "boom" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
   ]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.partial, true, "the oldest retained event does not predate the read window's start");
@@ -216,7 +216,7 @@ test("a prior window the retained log cannot prove is reported as partial too �
 
 test("a log retaining only events outside the read span says so, not 'no events retained'", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(30), loop: "feature", type: "tick_end", result: "changed" }]);
+  writeEvents(root, [{ ts: at(30), loop: "feature", type: "run_end", result: "changed" }]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.hasEvents, false);
   assert.equal(data.emptyLog, false);
@@ -265,7 +265,7 @@ test("a readable archive does not mask an unreadable live log", () => {
   fs.rmSync(live, { recursive: true, force: true });
   fs.mkdirSync(live, { recursive: true }); // a directory at the live log path
   writeLogLines(path.join(root, ".tumwater", "log", "events.jsonl.1"), [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
   ]);
   const data = collectFailureReport(root, 5);
   assert.equal(data.logState, "unreadable");
@@ -316,7 +316,7 @@ test("every digest table's separator has one delimiter cell per header cell", ()
   };
   for (const [name, ticks] of Object.entries(fixtures)) {
     const root = tmpdir();
-    writeEvents(root, ticks.map((t) => ({ ts: at(0), type: "tick_end", ...t })));
+    writeEvents(root, ticks.map((t) => ({ ts: at(0), type: "run_end", ...t })));
     const md = renderFailureMarkdown(collectFailureReport(root, 1));
     const tables = markdownTables(md);
     // Outcome by role, Time and spend by outcome, and Deltas: a scan that finds no table
@@ -338,9 +338,9 @@ test("every digest table's separator has one delimiter cell per header cell", ()
 test("deltas report new roles as absent, not an infinite increase", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error" },
-    { ts: at(1), loop: "bugfix", type: "tick_end", result: "no_change" },
-    { ts: at(1), loop: "bugfix", type: "tick_end", result: "no_change" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error" },
+    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" },
+    { ts: at(1), loop: "bugfix", type: "run_end", result: "no_change" },
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.deltas.find((d) => d.role === "feature");
@@ -355,24 +355,24 @@ test("deltas report new roles as absent, not an infinite increase", () => {
 test("deltas count quiet kills and rejections per role, both windows", () => {
   // The delta table has dedicated quiet-kills and rejections columns. A rejection is recorded
   // by the landing slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
-  // so the fixture pairs a `queued` tick_end with a `review_rejected` event — the shape the
-  // live fleet emits. A fixture that fabricates a `rejected` tick_end would pass even while the
+  // so the fixture pairs a `queued` run_end with a `review_rejected` event — the shape the
+  // live fleet emits. A fixture that fabricates a `rejected` run_end would pass even while the
   // counter reads 0 on every real rejection, the regression an operator could not notice.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
   writeEvents(root, [
     // Preceding window (yesterday): feature had a quiet kill, a rejection, an error, a pass.
-    { ts: at(1), loop: "feature", type: "tick_end", result: "quiet_killed" },
-    { ts: at(1), loop: "feature", type: "tick_end", result: "queued" },
+    { ts: at(1), loop: "feature", type: "run_end", result: "quiet_killed" },
+    { ts: at(1), loop: "feature", type: "run_end", result: "queued" },
     { ts: at(1), loop: "feature", type: "review_rejected", head: head("a"), reasons: ["too big"] },
-    { ts: at(1), loop: "feature", type: "tick_end", result: "error" },
-    { ts: at(1), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(1), loop: "feature", type: "run_end", result: "error" },
+    { ts: at(1), loop: "feature", type: "run_end", result: "changed" },
     // Current window (today): feature again, and bugfix appears for the first time.
-    { ts: at(0), loop: "feature", type: "tick_end", result: "quiet_killed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "queued" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "quiet_killed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "queued" },
     { ts: at(0), loop: "feature", type: "review_rejected", head: head("b"), reasons: ["too big"] },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "quiet_killed" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "queued" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "quiet_killed" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "queued" },
     { ts: at(0), loop: "bugfix", type: "review_rejected", head: head("c"), reasons: ["too big"] },
   ]);
   const data = collectFailureReport(root, 1);
@@ -407,10 +407,10 @@ test("a nonzero error rate never rounds to 0%, and a partial rate never to 100%"
   // 399 errors in 400 ticks is 99.75%, which rounds to "100%". Those two keep one decimal.
   const root = tmpdir();
   const events: object[] = [];
-  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "tick_end", result: "changed" });
-  events.push({ ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" });
-  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "bugfix", type: "tick_end", result: "error", error: "boom" });
-  events.push({ ts: at(0), loop: "bugfix", type: "tick_end", result: "changed" });
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "feature", type: "run_end", result: "changed" });
+  events.push({ ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" });
+  for (let i = 0; i < 399; i++) events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "error", error: "boom" });
+  events.push({ ts: at(0), loop: "bugfix", type: "run_end", result: "changed" });
   writeEvents(root, events);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.match(md, /\| feature \| — → 400 \| — → 0\.3% \|/);
@@ -426,7 +426,7 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   const roles = ["bugfix", "coverage", "dry", "feature", "perf", "qa", "telemetry"];
   roles.forEach((role, i) => {
     events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] });
-    events.push({ ts: at(0), loop: role, type: "tick_end", result: "queued" });
+    events.push({ ts: at(0), loop: role, type: "run_end", result: "queued" });
   });
   writeEvents(root, events);
   const data = collectFailureReport(root, 1);
@@ -481,7 +481,7 @@ test("the digest renders under 6 KB however bad the window was", () => {
       lines.push({
         ts: at(0),
         loop: role,
-        type: "tick_end",
+        type: "run_end",
         result: i % 3 === 0 ? "error" : "changed",
         error: i % 3 === 0 ? `boom ${i} at /Users/a/very/deep/path/file${i}.ts sha${i.toString(16).padStart(8, "0")}` : undefined,
       });
@@ -514,7 +514,7 @@ test("the digest renders under 6 KB however bad the window was", () => {
 test("the digest replays harness decisions so a wrong response is visible", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 12), loop: "feature", type: "tick_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" },
+    { ts: at(0, 12), loop: "feature", type: "run_end", result: "error", error: "oMLX prefill memory guard rejected this prompt" },
     { ts: at(0, 13), loop: "harness", type: "team_paused" },
     { ts: at(0, 23), loop: "harness", type: "budget_fallback", spentUsd: 10, capUsd: 10, provider: "omlx", model: "Qwen3-32B" },
   ]);
@@ -537,7 +537,7 @@ test("the digest replays a failure-caused role pause and a model fallback", () =
   // never the harness's response to them.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 12), loop: "docs", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0, 12), loop: "docs", type: "run_end", result: "error", error: "boom" },
     { ts: at(0, 13), loop: "harness", type: "role_streak_paused", role: "docs", streak: 10 },
     { ts: at(0, 14), loop: "feature", type: "model_fallback_started", provider: "groq", model: "llama-3-free", reason: "rate limit" },
   ]);
@@ -553,7 +553,7 @@ test("the digest replays a failure-caused role pause and a model fallback", () =
 
 test("the digest omits the state changes section when the window held none", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(0), loop: "feature", type: "tick_end", result: "changed" }]);
+  writeEvents(root, [{ ts: at(0), loop: "feature", type: "run_end", result: "changed" }]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   assert.doesNotMatch(md, /## Team state changes/);
 });
@@ -567,7 +567,7 @@ test("a state changes section over the newest-6 cap names its remainder instead 
     loop: "harness",
     type: "tick_deferred",
   }));
-  writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" }, ...events]);
+  writeEvents(root, [{ ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" }, ...events]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   const section = md.slice(md.indexOf("## Team state changes"), md.indexOf("## Outcome by role"));
   assert.match(section, /\+3 older transitions hidden/);
@@ -683,8 +683,8 @@ test("each harness state transition renders its own bounded line", () => {
 test("tumwater report --failures prints the digest and shares the --days bound", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
     { ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "land a thing" },
   ]);
   const ok = await runCli(root, "report", "--failures");
@@ -707,7 +707,7 @@ test("tumwater report --failures prints the digest and shares the --days bound",
 test("report --failures --json prints the digest's collected data", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "error", error: "pi exited null", durationMs: 5_000, costUsd: 0.02 },
   ]);
   const ok = await runCli(root, "report", "--failures", "--json");
   assert.equal(ok.code, 0);
@@ -720,7 +720,7 @@ test("report --failures --json prints the digest's collected data", async () => 
 test("the digest's JSON carries no retired key at any depth", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
+    { ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", durationMs: 5_000, costUsd: 0.02 },
   ]);
   const parsed = JSON.parse((await runCli(root, "report", "--failures", "--json")).out) as unknown;
   const keys = new Set<string>();
@@ -744,8 +744,8 @@ test("collectFailureReportSince counts only the trailing window and compares the
   const root = tmpdir();
   // Append-only, chronological: seed oldest first, like every log the harness writes.
   writeEvents(root, [
-    { ts: ago(8 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "prior failure" },
-    { ts: ago(1 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "recent failure" },
+    { ts: ago(8 * HOUR), loop: "feature", type: "run_end", result: "error", error: "prior failure" },
+    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" },
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.sinceMs, 6 * HOUR);
@@ -782,7 +782,7 @@ test("an empty since window ignores earlier same-day events outside both windows
   // read (readWindowEvents) reaches it while it lies in neither the current window nor the equal
   // prior window. It must not count as "the window held events" and suppress the empty line.
   writeEvents(root, [
-    { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: ago(12 * HOUR + 60_000), loop: "feature", type: "run_end", result: "changed" },
   ]);
   const data = collectFailureReportSince(root, 6 * HOUR);
   assert.equal(data.runs, 0);
@@ -797,7 +797,7 @@ test("an empty since window ignores earlier same-day events outside both windows
 test("tumwater report --failures --since prints the windowed digest and validates its flags", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: ago(1 * HOUR), loop: "feature", type: "tick_end", result: "error", error: "recent failure" },
+    { ts: ago(1 * HOUR), loop: "feature", type: "run_end", result: "error", error: "recent failure" },
   ]);
   const ok = await runCli(root, "report", "--failures", "--since", "6h");
   assert.equal(ok.code, 0);
@@ -845,7 +845,7 @@ test("the loss-cause ranking's top-5 cut discloses its remainder, like every oth
     ...["a", "b", "c", "d", "e", "f", "g"].map((m, i) => ({
       ts: at(0),
       loop: `role${i}`,
-      type: "tick_end",
+      type: "run_end",
       result: "error",
       error: `failure ${m}`,
       durationMs: 1000,
@@ -861,11 +861,11 @@ test("the loss-cause ranking's top-5 cut discloses its remainder, like every oth
 test("the digest reports per-role prompt-token medians and the pre-edit share", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed", promptTokens: 100, preEditPromptTokens: 40 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "no_change", promptTokens: 300, preEditPromptTokens: 20 },
     // A tick without the prompt-token fields contributes nothing and does not zero the median.
-    { ts: at(0), loop: "feature", type: "tick_end", result: "queued" },
-    { ts: at(0), loop: "bugfix", type: "tick_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "queued" },
+    { ts: at(0), loop: "bugfix", type: "run_end", result: "changed", promptTokens: 50, cacheReadTokens: 40, preEditPromptTokens: 50 },
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
@@ -887,8 +887,8 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
   // preEditShare read NaN (Infinity/Infinity).
   const root = tmpdir();
   writeEvents(root, [
-    `{"ts":${at(0)},"loop":"feature","type":"tick_end","result":"changed","promptTokens":1e999}`,
-    `{"ts":${at(0)},"loop":"feature","type":"tick_end","result":"changed","promptTokens":100,"preEditPromptTokens":1e999}`,
+    `{"ts":${at(0)},"loop":"feature","type":"run_end","result":"changed","promptTokens":1e999}`,
+    `{"ts":${at(0)},"loop":"feature","type":"run_end","result":"changed","promptTokens":100,"preEditPromptTokens":1e999}`,
   ]);
   const data = collectFailureReport(root, 1);
   const feature = data.promptStats.find((r) => r.role === "feature");
@@ -898,7 +898,7 @@ test("a non-finite prompt-token reading contributes nothing, not Infinity", () =
 test("a log without prompt-token fields renders no prompt section", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed", tokens: 500 },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed", tokens: 500 },
   ]);
   const data = collectFailureReport(root, 1);
   assert.deepEqual(data.promptStats, []);
@@ -908,8 +908,8 @@ test("a log without prompt-token fields renders no prompt section", () => {
 test("collectFailureReport scopes every section to one base role", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0, 9), loop: "qa", type: "tick_end", result: "error", error: "qa boom" },
+    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0, 9), loop: "qa", type: "run_end", result: "error", error: "qa boom" },
     { ts: at(0, 10), loop: "feature", type: "warning", message: "feature warn" },
     { ts: at(0, 10), loop: "qa", type: "warning", message: "qa warn" },
     { ts: at(0, 11), loop: "feature", type: "review_rejected", reasons: ["feature rejection"] },
@@ -955,9 +955,9 @@ test("collectFailureReport scopes every section to one base role", () => {
 test("a scoped digest folds an instance id into its base role group", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0, 9), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0, 9), loop: "feature-2", type: "tick_end", result: "error", error: "sibling boom" },
-    { ts: at(0, 9), loop: "qa", type: "tick_end", result: "changed" },
+    { ts: at(0, 9), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0, 9), loop: "feature-2", type: "run_end", result: "error", error: "sibling boom" },
+    { ts: at(0, 9), loop: "qa", type: "run_end", result: "changed" },
   ]);
   const data = collectFailureReport(root, 1, "feature-2");
   assert.equal(data.role, "feature");
@@ -971,8 +971,8 @@ test("a scoped digest for a role with no events reports the empty window", () =>
   // A pre-window event proves the log's coverage so the empty line is "no events in the last
   // …" rather than the empty-log wording.
   writeEvents(root, [
-    { ts: at(10), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
+    { ts: at(10), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
   ]);
   const data = collectFailureReport(root, 1, "qa");
   assert.equal(data.role, "qa");
@@ -987,8 +987,8 @@ test("a scoped digest for a role with no events reports the empty window", () =>
 test("a scoped partial window names the log's retention date, not the role's own first event", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(5), loop: "feature", type: "tick_end", result: "error", error: "feature boom" },
-    { ts: at(0), loop: "qa", type: "tick_end", result: "error", error: "qa boom" },
+    { ts: at(5), loop: "feature", type: "run_end", result: "error", error: "feature boom" },
+    { ts: at(0), loop: "qa", type: "run_end", result: "error", error: "qa boom" },
   ]);
   const data = collectFailureReport(root, 5, "qa");
   assert.equal(data.partial, true);
@@ -1001,9 +1001,9 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
   // digest must name it — `refused on <role> — <summary>` — rather than fold it into no_change.
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "refused",
+    { ts: at(0), loop: "feature", type: "run_end", result: "refused",
       summary: "blocks entry X: it violates a principle", durationMs: 3_600_000, costUsd: 0.5 },
-    { ts: at(0, 1), loop: "bugfix", type: "tick_end", result: "refused", durationMs: 1_800_000, costUsd: 0.2 },
+    { ts: at(0, 1), loop: "bugfix", type: "run_end", result: "refused", durationMs: 1_800_000, costUsd: 0.2 },
   ]);
   const data = collectFailureReport(root, 1);
   const md = renderFailureMarkdown(data);
@@ -1019,9 +1019,9 @@ test("the loss-ranking renders a refused cause with its summary, and bare withou
 test("the digest's table headers and section titles use plain terms, not raw result codes", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "changed" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "no_change" },
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "boom" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "changed" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "no_change" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "boom" },
   ]);
   const md = renderFailureMarkdown(collectFailureReport(root, 1));
   const section = (title: string): string => {

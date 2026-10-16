@@ -43,14 +43,14 @@ test("logs -n validates its value instead of misbehaving", async () => {
 
 // --- logs --json (the event feed as machine-readable NDJSON) ---
 
-// Seed a chronological run of tick_start events directly (the -n view is newest-first).
+// Seed a chronological run of run_start events directly (the -n view is newest-first).
 function seedTickEvents(repo: string, count: number): void {
   const now = Date.now();
   const file = eventsLogPath(repo);
   const events = Array.from({ length: count }, (_, i) => ({
     ts: now - (count - i) * 1000,
     loop: "clean",
-    type: "tick_start",
+    type: "run_start",
     tick: i + 1,
   }));
   writeLogLines(file, events);
@@ -70,7 +70,7 @@ test("logs -n --json prints exactly the raw stored events, in the text view's or
   const stored = fs.readFileSync(eventsLogPath(repo), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
   for (const [i, line] of lines.entries()) {
     const e = JSON.parse(line);
-    assert.equal(e.type, "tick_start", line);
+    assert.equal(e.type, "run_start", line);
     assert.equal(typeof e.ts, "number", line);
     assert.ok(stored.some((s) => JSON.stringify(s) === JSON.stringify(e)), `line ${i} matches a stored event`);
   }
@@ -98,7 +98,7 @@ test("logs -f --json streams each newly landed event as a JSON line", async () =
     // the moment it streams instead of after a real poll interval. The fallback crosses that
     // frozen deadline only if the child never streams, so a regression fails the wait
     // deterministically rather than hanging it.
-    const live = { ts: Date.now(), loop: "clean", type: "tick_start", tick: 99 };
+    const live = { ts: Date.now(), loop: "clean", type: "run_start", tick: 99 };
     const clock = fakeClock();
     let injectedSleeps = 0;
     const liveWait = s.waitFor((out) => out.includes('"tick":99'), "the live event as JSON", 30_000, {

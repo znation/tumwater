@@ -92,7 +92,7 @@ test("a drain past its cap aborts the in-flight tick resumably and still restart
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1);
-    const ends = eventsOfType(repo, "tick_end");
+    const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]!.result, "aborted", "the drain cap aborted the tick like a shutdown would");
     assert.equal(loadLoopState(repo, "clean").resumePending, true, "…so it resumes on the new build");
@@ -134,14 +134,14 @@ test("a drain past its cap aborts and counts only the permit holder — the tick
     assert.equal(swaps.length, 1);
     const events = readEvents(repo);
     assert.deepEqual(
-      events.filter((e) => e.type === "tick_start").map((e) => e.loop),
+      events.filter((e) => e.type === "run_start").map((e) => e.loop),
       [holder],
       "the parked waiter got the aborted holder's permit and released it without starting",
     );
-    const ends = events.filter((e) => e.type === "tick_end");
+    const ends = events.filter((e) => e.type === "run_end");
     assert.deepEqual(ends.map((e) => [e.loop, e.result]), [[holder, "aborted"]]);
     // abortedTicks is what the restart cut off — the one permit holder — not the reservation
-    // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted tick_ends).
+    // parked behind it (the 2026-09-21 restart reported 12 against 3 aborted run_ends).
     assert.equal(events.find((e) => e.type === "restart")!.abortedTicks, 1);
     assert.deepEqual(started(), [holder], "the parked role's pi never ran");
     assert.equal(loadLoopState(repo, parked).ticks, 0, "no state write for a tick that never started");
@@ -159,7 +159,7 @@ test("a tick parked through a restart hold does not start when the permit frees,
   const restore = fakePi(
     `touch started.txt\nwhile [ ! -f '${go}' ] && ${ownerAliveSh()}; do sleep 0.05; done\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
   );
-  const holderEnded = () => readEvents(repo).some((e) => e.type === "tick_end");
+  const holderEnded = () => readEvents(repo).some((e) => e.type === "run_end");
   const { redeployer, swaps } = scriptedRedeployer(repo, {
     stale: () => started().length > 0,
     // The green check outlasts the holder's tick, then comes back red: the hold lifts without a
@@ -180,14 +180,14 @@ test("a tick parked through a restart hold does not start when the permit frees,
     const isRed = (e: ReturnType<typeof readEvents>[number]) => e.type === "warning" && String(e.message).includes('fails its check');
     await waitFor(() => readEvents(repo).some(isRed), "the red verdict that lifts the hold", 20_000);
     await waitFor(
-      () => readEvents(repo).some((e) => e.type === "tick_start" && e.loop === parked),
+      () => readEvents(repo).some((e) => e.type === "run_start" && e.loop === parked),
       "the parked role to tick once the hold lifts",
       20_000,
     );
     const events = readEvents(repo);
     const red = events.findIndex(isRed);
-    const holderEnd = events.findIndex((e) => e.type === "tick_end" && e.loop === holder);
-    const parkedStart = events.findIndex((e) => e.type === "tick_start" && e.loop === parked);
+    const holderEnd = events.findIndex((e) => e.type === "run_end" && e.loop === holder);
+    const parkedStart = events.findIndex((e) => e.type === "run_start" && e.loop === parked);
     assert.ok(holderEnd >= 0 && red > holderEnd, "the holder freed its permit while the hold was still on");
     assert.ok(parkedStart > red, "the parked tick did not start inside the hold — only after it lifted");
     assert.deepEqual(swaps, []);
@@ -215,7 +215,7 @@ test("an in-flight director tick is waited for, not aborted, when the drain wind
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1);
-    const ends = eventsOfType(repo, "tick_end");
+    const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1);
     assert.notEqual(ends[0]!.result, "aborted", "the director tick finished on its own — the hold waited it out");
     const restart = readEvents(repo).find((e) => e.type === "restart")!;
@@ -247,8 +247,8 @@ test("a failed compile leaves the fleet running the old build", async () => {
       "the startup tick to finish",
     );
     landWork(repo);
-    const before = eventsOfType(repo, "tick_start").length;
-    await waitFor(() => eventsOfType(repo, "tick_start").length > before, "ticks resume after the hold lifts");
+    const before = eventsOfType(repo, "run_start").length;
+    await waitFor(() => eventsOfType(repo, "run_start").length > before, "ticks resume after the hold lifts");
     assert.deepEqual(swaps, []);
   } finally {
     await stop();

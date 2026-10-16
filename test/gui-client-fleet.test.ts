@@ -356,7 +356,7 @@ test("a Notable-only cull keeps the notable wording, not the filter empty state"
   const { scope, panels } = feedScope({ "feed-role": "qa" });
   scope.renderFeed({
     loops: [{ role: "qa" }],
-    eventItems: [{ ts: Date.now(), loop: "qa", type: "tick_start", message: "working" }],
+    eventItems: [{ ts: Date.now(), loop: "qa", type: "run_start", message: "working" }],
   });
   const html = panels["feed"] ?? "";
   assert.match(html, /Nothing notable lately/, "the Notable choice, not the Loop picker, emptied the feed");
@@ -484,13 +484,13 @@ test("the Activity feed tallies its present event types like logs --count", () =
   scope.renderFeed({
     loops: [],
     eventItems: [
-      { ts: 1, loop: "qa", type: "tick_end", message: "a" },
-      { ts: 2, loop: "qa", type: "tick_end", message: "b" },
-      { ts: 3, loop: "qa", type: "tick_end", message: "c" },
+      { ts: 1, loop: "qa", type: "run_end", message: "a" },
+      { ts: 2, loop: "qa", type: "run_end", message: "b" },
+      { ts: 3, loop: "qa", type: "run_end", message: "c" },
       { ts: 4, loop: "qa", type: "question_posted", message: "d" },
       { ts: 5, loop: "qa", type: "question_posted", message: "e" },
-      { ts: 6, loop: "qa", type: "tick_start", message: "f" },
-      { ts: 7, loop: "qa", type: "tick_start", message: "g" },
+      { ts: 6, loop: "qa", type: "run_start", message: "f" },
+      { ts: 7, loop: "qa", type: "run_start", message: "g" },
       { ts: 8, loop: "qa", type: "merged", message: "h" },
     ],
   });
@@ -506,7 +506,7 @@ test("the Activity feed tallies its present event types like logs --count", () =
   assert.equal(html.indexOf("2 × run started") < html.indexOf("1 × merged"), true, "count-descending holds past the tie");
   assert.doesNotMatch(html, /0 ×/);
   // The chip shows the label; the raw type stays reachable as its title.
-  assert.match(html, /title='tick_end'>3 × run finished/);
+  assert.match(html, /title='run_end'>3 × run finished/);
 });
 
 test("the Notable cull tallies only the notable rows", () => {
@@ -514,8 +514,8 @@ test("the Notable cull tallies only the notable rows", () => {
   scope.renderFeed({
     loops: [],
     eventItems: [
-      { ts: 1, loop: "qa", type: "tick_end", message: "a" },
-      { ts: 2, loop: "qa", type: "tick_end", message: "b" },
+      { ts: 1, loop: "qa", type: "run_end", message: "a" },
+      { ts: 2, loop: "qa", type: "run_end", message: "b" },
       { ts: 3, loop: "qa", type: "merged", message: "c" },
       { ts: 4, loop: "qa", type: "question_posted", message: "d" },
     ],
@@ -523,7 +523,7 @@ test("the Notable cull tallies only the notable rows", () => {
   const html = panels["feed"] ?? "";
   assert.match(html, /1 × merged/);
   assert.match(html, /1 × question posted/);
-  assert.doesNotMatch(html, /tick_end/, "routine rows the Notable view hides are not tallied");
+  assert.doesNotMatch(html, /run_end/, "routine rows the Notable view hides are not tallied");
 });
 
 test("a filter that removes every row and an empty feed paint no tally", () => {
@@ -544,7 +544,7 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
         { ts: 1, loop: "qa", type: "merged", message: "needle one" },
         { ts: 2, loop: "qa", type: "land_failed", message: "needle two" },
         { ts: 3, loop: "qa", type: "merged", message: "needle three" },
-        { ts: 4, loop: "qa", type: "tick_end", result: "failed", message: "needle four" },
+        { ts: 4, loop: "qa", type: "run_end", result: "failed", message: "needle four" },
       ],
     }),
     lastStatus: payload,
@@ -553,7 +553,7 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
   await feedSettle();
   const html = panels["feed"] ?? "";
   // The server slice folds the same rows the <li> list paints (older merged x2, then a
-  // land_failed and a failed tick_end): two merged, one land_failed, one tick_end.
+  // land_failed and a failed run_end): two merged, one land_failed, one run_end.
   assert.match(html, /2 × merged/);
   assert.match(html, /1 × merge failed/);
   assert.match(html, /1 × run finished/);

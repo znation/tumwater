@@ -191,13 +191,13 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
   });
 });
 
-// Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost,
+// Per-tick usage in the event feed (PLANS.md): run_end carries this tick's tokens and cost,
 // so `tumwater logs` shows where spend went without diffing status-table snapshots. The
 // rendering rules live in test/event-format.test.ts; these e2es pin that a real tick emits
 // the fields on its event — summed over every pi run of the tick (here: author + zero-usage
 // reviewer) — and that a skipped tick carries neither.
 
-test("a changed run's tick_end event carries its per-run tokens and cost", async () => {
+test("a changed run's run_end event carries its per-run tokens and cost", async () => {
   const repo = await initializedRepo();
   const script = [
     // The reviewer run reports zero usage, so the tick's totals are exactly the author
@@ -210,7 +210,7 @@ test("a changed run's tick_end event carries its per-run tokens and cost", async
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
 
-    const ends = eventsOfType(repo, "tick_end");
+    const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1, "one run ran");
     // tokens is the AUTHOR run's window, costUsd its spend — the landing's own spend (the
     // zero-usage reviewer) rides the `landed` event instead.
@@ -227,14 +227,14 @@ test("a changed run's tick_end event carries its per-run tokens and cost", async
   });
 });
 
-test("a skipped run's tick_end event carries no usage fields", async () => {
-  // A director with an empty inbox skips without running pi: its tick_end must carry neither
+test("a skipped run's run_end event carries no usage fields", async () => {
+  // A director with an empty inbox skips without running pi: its run_end must carry neither
   // tokens nor costUsd, so it renders byte-identical to a pre-feature line.
   const repo = await initializedRepo();
   const runner = makeLoopRunner(repo, "director");
   assert.equal((await runner.tick()).result, "skipped");
 
-  const ends = eventsOfType(repo, "tick_end");
+  const ends = eventsOfType(repo, "run_end");
   assert.equal(ends.length, 1, "one run ran");
   assert.equal(ends[0]!.tokens, undefined, "no tokens field on a skipped run");
   assert.equal(ends[0]!.costUsd, undefined, "no costUsd field on a skipped run");
@@ -450,7 +450,7 @@ test("a run whose agent reads an image on a blind model stops and fails", async 
 // Image-input reroute (plans/image-input.md part 4/5): with a text-only default tier and a
 // vision strong tier, a blind read on a text-only loop ends the tick aborted/`image-reroute`
 // (no target-less error), and the NEXT tick runs immediately on the vision target in a fresh
-// session over the kept worktree carrying the handoff note — its tick_start stamped
+// session over the kept worktree carrying the handoff note — its run_start stamped
 // reroute:"image" — while the tick after that is back on the loop's own tier.
 test("a blind read on a text-only role reroutes to the vision target, then back to its own tier", async () => {
   const repo = await initializedRepo();
@@ -495,7 +495,7 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   assert.equal(runner.state.imageReroute?.path, "/x/s.png");
 
   // Tick 2: a fresh-session run on the vision target. The handoff note names the prior model
-  // and the image, tick_start is stamped reroute:"image" on local/vision, and the one-shot
+  // and the image, run_start is stamped reroute:"image" on local/vision, and the one-shot
   // marker is consumed.
   await withPi(settlePi, async () => {
     const outcome = await runner.tick();
@@ -508,18 +508,18 @@ test("a blind read on a text-only role reroutes to the vision target, then back 
   const reroutedPrompt = blocks[blocks.length - 1] ?? "";
   assert.match(reroutedPrompt, /cannot read images/);
   assert.match(reroutedPrompt, /\/x\/s\.png/);
-  const starts = readEvents(repo).filter((e) => e.type === "tick_start");
+  const starts = readEvents(repo).filter((e) => e.type === "run_start");
   const reroutedStart = starts.find((e) => e.reroute === "image");
-  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted run");
+  assert.ok(reroutedStart, "run_start carries reroute:image on the rerouted run");
   assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted run runs on the target");
 
-  // Tick 3: back on the loop's own text-only tier — tick_start has no reroute stamp and names
+  // Tick 3: back on the loop's own text-only tier — run_start has no reroute stamp and names
   // the loop's own model.
   await withPi(settlePi, async () => {
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change");
   });
-  const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
+  const startsAfter = readEvents(repo).filter((e) => e.type === "run_start");
   const back = startsAfter[startsAfter.length - 1]!;
   assert.equal(back.reroute, undefined, "the run after the reroute is back on the role's own tier");
   assert.equal(String(back.model), "local/text");
@@ -581,9 +581,9 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
     assert.equal(outcome.result, "no_change");
   });
   assert.equal(runner.state.imageReroute, undefined, "the one-shot marker clears for the director too");
-  const starts = readEvents(repo).filter((e) => e.type === "tick_start");
+  const starts = readEvents(repo).filter((e) => e.type === "run_start");
   const reroutedStart = starts.find((e) => e.reroute === "image");
-  assert.ok(reroutedStart, "tick_start carries reroute:image on the rerouted director run");
+  assert.ok(reroutedStart, "run_start carries reroute:image on the rerouted director run");
   assert.equal(String(reroutedStart!.model), "local/vision", "the rerouted director run runs on the target");
 
   // Tick 3: with a NEW queued prompt and the one-shot marker cleared, the director is back on
@@ -594,7 +594,7 @@ test("a rerouted director prompt runs fresh on the vision target and is delivere
     const outcome = await runner.tick();
     assert.equal(outcome.result, "no_change");
   });
-  const startsAfter = readEvents(repo).filter((e) => e.type === "tick_start");
+  const startsAfter = readEvents(repo).filter((e) => e.type === "run_start");
   const back = startsAfter[startsAfter.length - 1]!;
   assert.equal(back.reroute, undefined, "the director run after the reroute is back on its own tier");
   assert.equal(String(back.model), "local/text");

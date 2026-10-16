@@ -245,7 +245,7 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // default), so old logs and old configs render unchanged.
   logEventBestEffort(ctx.root, {
     loop: ctx.role,
-    type: "tick_start",
+    type: "run_start",
     tick,
     // A tick routed onto the image-capable target — a blind-read handoff or an attachment
     // preflight — is stamped so the feed shows the reroute and the model it landed on.
@@ -276,11 +276,11 @@ export async function tickPhase(ctx: LoopTickContext): Promise<TickOutcome> {
   // catch above, which is the last point a requeue can happen.
   ctx.pending.settleImages();
   // Everything after the pi run — the outcome folds, the main-head read, next-run
-  // scheduling, the episode warnings, and the tick_end event — is the tick's per-result
+  // scheduling, the episode warnings, and the run_end event — is the tick's per-result
   // bookkeeping policy, not runner lifecycle: it lives in src/tick/tick-finalize.ts, which owns
   // the ordering (the folds land on state before the schedule, the head read happens while
   // `running` is still true) and the per-episode warning crossings. The tick number and
-  // start time are passed through as captured above: both must describe the tick tick_start
+  // start time are passed through as captured above: both must describe the tick run_start
   // announced, not whatever resetCounters (a documented mid-tick operation) may have left
   // on the shared state by finalize time.
   const finalizeResult = await finalizeTick({

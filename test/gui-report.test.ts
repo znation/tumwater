@@ -32,10 +32,10 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   // features/bugs come from dated headings in PLANS.md/BUGS.md, not from events.
   const evFile = eventsLogPath(repo);
   writeLogLines(evFile, [
-      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
-      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change" }),
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", tick: 2, result: "no_change" }),
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
-      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", tick: 3, result: "no_change", tokens: 250, costUsd: 1.5 }),
     ]);
   const today = dayKey(Date.now());
   fs.writeFileSync(
@@ -53,7 +53,7 @@ test("gui /api/report serves collectReport's JSON and clamps days instead of err
   assert.equal(res.status, 200);
   const d = (await res.json()) as ReturnType<typeof collectReport>;
   assert.deepEqual(d, collectReport(repo, 14), "the endpoint serves collectReport's ReportData");
-  // costByRole rides along in the JSON — split from the same tick_end events as costUsd.
+  // costByRole rides along in the JSON — split from the same run_end events as costUsd.
   const spendDay = d.series.find((x) => x.date === dayKey(atNoon(3)));
   assert.deepEqual(spendDay?.costByRole, { feature: 0.25 }, "/api/report carries costByRole per role");
   const todayTick = d.series.find((x) => x.date === dayKey(atNoon(0)));
@@ -91,10 +91,10 @@ test("gui /api/failures serves the rendered digest and clamps days instead of er
   // cluster to render — the endpoint's whole job is to hand back renderFailureMarkdown's text.
   const evFile = eventsLogPath(repo);
   writeLogLines(evFile, [
-      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
-      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "tick_end", tick: 2, result: "error", error: "pi exited 1" }),
+      JSON.stringify({ ts: atNoon(3), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.25 }),
+      JSON.stringify({ ts: atNoon(3), loop: "bugfix", type: "run_end", tick: 2, result: "error", error: "pi exited 1" }),
       JSON.stringify({ ts: atNoon(1), loop: "feature", type: "merged", commit: "abc", summary: "x" }),
-      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "tick_end", tick: 3, result: "no_change" }),
+      JSON.stringify({ ts: atNoon(0), loop: "steward", type: "run_end", tick: 3, result: "no_change" }),
     ]);
 
   await withGui(repo, async ({ base }) => {

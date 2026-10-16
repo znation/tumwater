@@ -72,7 +72,7 @@ test("once: a role in error backoff is skipped and does not run, and the round s
     assert.equal(exit.restart, false);
     assert.equal(loadLoopState(repo, "clean").ticks, 3, "the backed-off role ran no tick");
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "tick_start" && e.loop === "clean"),
+      !readEvents(repo).some((e) => e.type === "run_start" && e.loop === "clean"),
       "no tick started for the backed-off role",
     );
   });
@@ -92,7 +92,7 @@ test("once: a fleet under a standing pause settles every role as paused, ticks n
     assert.equal(exit.ticksRun?.get("clean"), 0, "the paused role ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "nothing ticked under the pause");
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "tick_start"),
+      !readEvents(repo).some((e) => e.type === "run_start"),
       "no tick started for the paused role",
     );
   } finally {

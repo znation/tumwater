@@ -56,7 +56,7 @@ export class LoopRunner {
     return this.usage.lastBackendFailure;
   }
   /** Per-tick and lifetime usage accounting (src/tick/tick-usage.ts): the turns/cost windows the
-   * commit trailer and tick_end event read, the lifetime totals folded into state, and the
+   * commit trailer and run_end event read, the lifetime totals folded into state, and the
    * observations above. Grown through foldUsage — the once-per-run choke point. */
   private readonly usage = new TickUsage();
   /** The dequeued user prompt a tick is executing and its requeue policy
@@ -320,7 +320,7 @@ export class LoopRunner {
   }
 
   /** Run one full tick of this role loop (the pipeline lives in src/loop/loop-tick.ts):
-   * `tickPhase` resolves the config and fallback episode, logs tick_start, runs the pipeline,
+   * `tickPhase` resolves the config and fallback episode, logs run_start, runs the pipeline,
    * and finalizes. Never throws: a failed tick is an "error" result, saved and logged. */
   async tick(): Promise<TickOutcome> {
     return tickPhase(this.tickContext());

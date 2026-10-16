@@ -222,13 +222,13 @@ test("the prompt line names who Enter sends to", () => {
 test("activity and transcript lines take the tones of what they report", () => {
   const ev = (type: string, extra: Record<string, unknown> = {}) => ({ ts: 1, loop: "qa", type, ...extra }) as Parameters<typeof eventTone>[0];
   assert.equal(eventTone(ev("merged")), "green");
-  assert.equal(eventTone(ev("tick_end", { result: "error" })), "red");
-  assert.equal(eventTone(ev("tick_end", { result: "rejected" })), "yellow");
-  assert.equal(eventTone(ev("tick_end", { result: "no_change" })), "dim");
+  assert.equal(eventTone(ev("run_end", { result: "error" })), "red");
+  assert.equal(eventTone(ev("run_end", { result: "rejected" })), "yellow");
+  assert.equal(eventTone(ev("run_end", { result: "no_change" })), "dim");
   assert.equal(eventTone(ev("build_check", { status: "failed" })), "red");
   assert.equal(eventTone(ev("question_posted")), "magenta");
   assert.equal(eventTone(ev("team_paused")), undefined);
-  assert.equal(eventTone(ev("tick_start")), "dim");
+  assert.equal(eventTone(ev("run_start")), "dim");
   assert.equal(transcriptTone("── run @ 2026-09-29 16:07:56 ──"), "bold");
   assert.equal(transcriptTone("→ bash npm test"), "cyan");
   assert.equal(transcriptTone("· thinking about it"), "dim");
@@ -258,9 +258,9 @@ test("sanitizeFrameLines strips terminal controls from attention and pane lines"
 test("the page's event kinds are tone's", () => {
   const { eventKind: pageKind } = clientScope<{ eventKind(item: { type: string; result?: string }): string }>(["format", "labels", "view-model"], ["eventKind"]);
   const cases: Array<[string, string | undefined]> = [
-    ["merged", undefined], ["question_posted", undefined], ["tick_end", "error"], ["tick_end", "queued"], ["tick_end", "no_change"],
-    ["tick_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["land_failed", undefined],
-    ["review_rejected", undefined], ["tick_start", undefined], ["landed", undefined], ["team_paused", undefined], ["orchestrator_start", undefined],
+    ["merged", undefined], ["question_posted", undefined], ["run_end", "error"], ["run_end", "queued"], ["run_end", "no_change"],
+    ["run_end", "quiet_killed"], ["build_check", "passed"], ["build_check", "failed"], ["build_check", "skipped"], ["land_failed", undefined],
+    ["review_rejected", undefined], ["run_start", undefined], ["landed", undefined], ["team_paused", undefined], ["orchestrator_start", undefined],
     ["warning", undefined], ["brand_new_event", undefined],
   ];
   for (const [type, result] of cases) {

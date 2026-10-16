@@ -17,8 +17,8 @@ test("TELEMETRY_DIGEST_DAYS is the role's one-day window", () => {
 test("telemetryDigest renders the digest over the role's one-day window", () => {
   const root = makeRepo();
   writeEvents(root, [
-    { ts: at(0), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
-    { ts: at(3), loop: "feature", type: "tick_end", result: "error", error: "older, out of window" },
+    { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
+    { ts: at(3), loop: "feature", type: "run_end", result: "error", error: "older, out of window" },
   ]);
   const digest = telemetryDigest(root);
   assert.ok(digest, "a readable log always yields a digest string");

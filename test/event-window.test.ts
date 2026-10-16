@@ -16,7 +16,7 @@ import { writeEvents, writeLogLines } from "./fixtures/log-fixtures.js";
 // was never checked for an early stop — are what these tests pin.
 
 function eventLine(ts: number, extra: Record<string, unknown> = {}): string {
-  return JSON.stringify({ ts, loop: "feature", type: "tick_end", ...extra });
+  return JSON.stringify({ ts, loop: "feature", type: "run_end", ...extra });
 }
 
 /** Write the rotated archive (events.jsonl.1) beside the fixture root's live log. */
@@ -60,7 +60,7 @@ test("a single-chunk log returns in-window events oldest-first and skips bad lin
     eventLine(oldest, { tick: 1 }),
     "this line is not json", // torn/corrupt line: skipped
     "", // blank line: skipped
-    JSON.stringify({ ts: "not a number", loop: "feature", type: "tick_end" }), // no numeric ts: skipped
+    JSON.stringify({ ts: "not a number", loop: "feature", type: "run_end" }), // no numeric ts: skipped
     eventLine(tsDaysAgo(1), { tick: 2 }),
     eventLine(tsDaysAgo(0), { tick: 3 }),
   ]);
@@ -111,7 +111,7 @@ test("a one-line log is dated from its own single line, not discarded as torn", 
   const recent = tsDaysAgo(1);
   writeEvents(within, [eventLine(recent, { tick: 1 })]);
   assert.deepEqual(readWindowEvents(within, dayKey(tsDaysAgo(5))), {
-    events: [{ ts: recent, loop: "feature", type: "tick_end", tick: 1 }],
+    events: [{ ts: recent, loop: "feature", type: "run_end", tick: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(within),
     logState: "ok",
@@ -263,8 +263,8 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   ]);
   assert.deepEqual(readWindowEvents(missingArchive, dayKey(tsDaysAgo(1))), {
     events: [
-      { ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 },
-      { ts: tsDaysAgo(1, 13), loop: "feature", type: "tick_end", tick: 2 },
+      { ts: tsDaysAgo(1), loop: "feature", type: "run_end", tick: 1 },
+      { ts: tsDaysAgo(1, 13), loop: "feature", type: "run_end", tick: 2 },
     ],
     coversFullWindow: false,
     liveEnd: liveEndOf(missingArchive),
@@ -275,7 +275,7 @@ test("a missing or empty archive leaves the live file's window behavior unchange
   writeArchive(emptyArchive, []);
   writeEvents(emptyArchive, [eventLine(tsDaysAgo(1), { tick: 1 })]);
   assert.deepEqual(readWindowEvents(emptyArchive, dayKey(tsDaysAgo(1))), {
-    events: [{ ts: tsDaysAgo(1), loop: "feature", type: "tick_end", tick: 1 }],
+    events: [{ ts: tsDaysAgo(1), loop: "feature", type: "run_end", tick: 1 }],
     coversFullWindow: false,
     liveEnd: liveEndOf(emptyArchive),
     logState: "ok",
@@ -331,7 +331,7 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
     eventLine(t0 - 120_000, { tick: 1 }), // before the cutoff: the ts filter drops it (it sits
     // inside the cutoff's local day for every run except one within 2 minutes of midnight,
     // where the day key drops it instead — the assertion holds either way)
-    JSON.stringify({ ts: "not a number", loop: "feature", type: "tick_end" }), // no numeric ts
+    JSON.stringify({ ts: "not a number", loop: "feature", type: "run_end" }), // no numeric ts
     eventLine(t0 - 30_000, { tick: 2 }), // inside the window
     eventLine(t0, { tick: 3 }),
   ]);

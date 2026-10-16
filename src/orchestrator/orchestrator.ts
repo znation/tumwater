@@ -227,7 +227,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // rolePermitHolders, the role ticks actually holding a permit. A parked waiter has nothing to
   // drain — the start gate (tickStartHeld below) keeps it from starting while a restart is
   // pending — and counting it held drains open for ticks that had not begun and inflated
-  // abortedTicks (12 reported against 3 aborted tick_ends on 2026-09-21; BUGS.md 2026-09-23).
+  // abortedTicks (12 reported against 3 aborted run_ends on 2026-09-21; BUGS.md 2026-09-23).
   const roleInFlight = new Set<Promise<void>>();
   const rolePermitHolders = new Set<LoopRunner>();
   const directorInFlight = new Set<Promise<void>>();

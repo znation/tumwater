@@ -424,12 +424,12 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
         `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
       );
       // Tick 2's own result was `queued`; the first landing's review failure (still in the shared
-      // `lastError` when tick 2 started) must not latch onto its `tick_end` as the tick's error
+      // `lastError` when tick 2 started) must not latch onto its `run_end` as the tick's error
       // (BUGS.md 2026-09-21). The review_failed events above are where the landing failures live.
-      const tickEnds = eventsOfType(repo, "tick_end");
+      const tickEnds = eventsOfType(repo, "run_end");
       const tick2End = tickEnds[tickEnds.length - 1]!;
       assert.equal(tick2End.result, "queued");
-      assert.equal(tick2End.error, undefined, "a healthy tick's tick_end carries no stale landing error");
+      assert.equal(tick2End.error, undefined, "a healthy tick's run_end carries no stale landing error");
     },
   );
 });
@@ -464,7 +464,7 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the landing failures fed the error streak");
 
       // One warning names the stuck gate, carrying the review failure's own reason (the detail
-      // is not in lastError, which the sibling mislabel fix clears before tick_end).
+      // is not in lastError, which the sibling mislabel fix clears before run_end).
       const warnings = eventsOfType(repo, "warning");
       assert.ok(
         warnings.some(

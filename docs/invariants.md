@@ -443,7 +443,7 @@ or the role is in a model-fallback episode) ends the run `aborted` with the `ima
 resume cause and records a one-shot `LoopState.imageReroute` marker naming the target model and backend
 and the image. The next run starts directly on the target in a FRESH session over the kept
 worktree — never `--continue` — carrying the handoff note that names the prior model and the
-image, and its `tick_start` is stamped `reroute: "image"`. A run that already started on the
+image, and its `run_start` is stamped `reroute: "image"`. A run that already started on the
 target (`imageRerouteActive` true, the marker consumed at its start) does not reroute again: a
 second blind read fails it. The marker is one-shot for the director too: a rerouted director
 prompt runs fresh on the target and is delivered exactly once, then the director is back on its

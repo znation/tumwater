@@ -204,7 +204,7 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
       "the in-flight pi run was cut off, not drained to completion",
     );
     // The tick was started but never completed: the cut-off reservation hands itself back
-    // with no tick_end of its own to record.
+    // with no run_end of its own to record.
     assert.ok(loadLoopState(repo, "clean").running || loadLoopState(repo, "clean").ticks >= 1,
       "the tick was in flight when the restart landed");
   } finally {

@@ -46,6 +46,6 @@ test("checkNotify does not count other loops' warnings or non-warning events", (
   const root = readyRepo();
   const message = notifyExitWarning("budget_paused", 1, null) ?? "";
   warnEvent(root, "feature", message);
-  logEvent(root, { loop: "harness", type: "tick_start", message });
+  logEvent(root, { loop: "harness", type: "run_start", message });
   assert.equal(checkNotify(root, withNotify()).level, "ok");
 });

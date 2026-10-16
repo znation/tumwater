@@ -80,9 +80,9 @@ test("formatEvent renders the image-reroute resume cause as a fresh-session hand
 
 test("formatEvent renders each type as one line", () => {
   const cases = [
-    { ts: 0, loop: "clean", type: "tick_start", tick: 3 },
-    { ts: 0, loop: "clean", type: "tick_end", tick: 3, result: "changed", summary: "tidy up" },
-    { ts: 0, loop: "clean", type: "tick_end", tick: 4, result: "error", error: "boom" },
+    { ts: 0, loop: "clean", type: "run_start", tick: 3 },
+    { ts: 0, loop: "clean", type: "run_end", tick: 3, result: "changed", summary: "tidy up" },
+    { ts: 0, loop: "clean", type: "run_end", tick: 4, result: "error", error: "boom" },
     { ts: 0, loop: "clean", type: "merged", commit: "abcdef1234567890", summary: "tidy up" },
     { ts: 0, loop: "harness", type: "orchestrator_start", pid: 1 },
     { ts: 0, loop: "director", type: "prompt_enqueued", preview: "do x" },
@@ -98,7 +98,7 @@ test("formatEvent renders each type as one line", () => {
 });
 
 test("formatEvent prints an instance id as its role label and the harness source as tumwater", () => {
-  const run = formatEvent({ ts: 0, loop: "feature-2", type: "tick_end", tick: 12, result: "no_change" } as never);
+  const run = formatEvent({ ts: 0, loop: "feature-2", type: "run_end", tick: 12, result: "no_change" } as never);
   assert.match(run, /^\S+ \S+ feature #2 run #12 no change$/);
   const start = formatEvent({ ts: 0, loop: "harness", type: "orchestrator_start", pid: 1 } as never);
   assert.match(start, /^\S+ \S+ tumwater   tumwater started \(pid 1\)$/);
@@ -127,11 +127,11 @@ test("formatEvent renders a corrupt event's loop as ? like the reports", () => {
 });
 
 test("formatEvent renders a corrupt event's tick as #0, never undefined or NaN", () => {
-  // The log is read without a shape filter, so a torn or hand-edited tick_start/tick_end can
+  // The log is read without a shape filter, so a torn or hand-edited run_start/run_end can
   // carry no tick ("#undefined") or a non-numeric one ("#NaN"). eventTick's 0 is the one
   // rule; ticks are 1-based, so 0 is visibly not a real tick.
   for (const tick of [undefined, NaN, Infinity, "oops"] as const) {
-    for (const type of ["tick_start", "tick_end"] as const) {
+    for (const type of ["run_start", "run_end"] as const) {
       const line = formatEvent({ ts: 0, loop: "clean", type, tick, result: "changed" } as never);
       assert.ok(line.includes("#0"), `corrupt tick must render #0: ${line}`);
       assert.ok(!/undefined|NaN/.test(line), `corrupt tick must not print undefined or NaN: ${line}`);
@@ -181,7 +181,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   const refused = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 7,
     result: "refused",
     summary: "plan harms the architecture",
@@ -191,7 +191,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   const rejected = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 8,
     result: "rejected",
     summary: "adds a runtime dep",
@@ -201,7 +201,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   const mergeFailed = formatEvent({
     ts: 0,
     loop: "bugfix",
-    type: "tick_end",
+    type: "run_end",
     tick: 9,
     result: "merge_conflict",
     error: "merge failed: merge_conflict",
@@ -213,7 +213,7 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
   const reviewError = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 10,
     result: "review_error",
     summary: "no parseable VERDICT line in the reviewer's reply",
@@ -223,9 +223,9 @@ test("formatEvent carries the reason on non-changed tick outcomes", () => {
 });
 
 test("formatEvent renders a no-change tick with no summary or error suffix", () => {
-  // The third arm of the tick_end ternary is the empty string: a regression that gave every
+  // The third arm of the run_end ternary is the empty string: a regression that gave every
   // result a suffix would print "— undefined" on every idle tick in every display surface.
-  const line = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "no_change" } as never);
+  const line = formatEvent({ ts: 0, loop: "clean", type: "run_end", tick: 5, result: "no_change" } as never);
   assert.match(line, /run #5 no change$/, `no-change tick must end at the result: ${line}`);
 });
 
@@ -237,10 +237,10 @@ test("formatEvent degrades gracefully for unknown event types", () => {
   assert.match(line, /clean\s+brand_new_type/, `unknown types must still render their name: ${line}`);
 });
 
-test("formatEvent renders tick_start's model after the tick number, and omits it when absent", () => {
-  const withModel = formatEvent({ ts: 0, loop: "feature", type: "tick_start", tick: 3, model: "prov/m1" } as never);
+test("formatEvent renders run_start's model after the tick number, and omits it when absent", () => {
+  const withModel = formatEvent({ ts: 0, loop: "feature", type: "run_start", tick: 3, model: "prov/m1" } as never);
   assert.match(withModel, /feature\s+run #3 started on prov\/m1$/);
-  const bare = formatEvent({ ts: 0, loop: "feature", type: "tick_start", tick: 3 } as never);
+  const bare = formatEvent({ ts: 0, loop: "feature", type: "run_start", tick: 3 } as never);
   assert.match(bare, /feature\s+run #3 started$/);
 });
 
@@ -394,15 +394,15 @@ test("formatEvent renders the resume event", () => {
   assert.match(line, /feature\s+resuming the run a shutdown interrupted \(same agent session and workspace\)/);
 });
 
-// Per-tick usage in the event feed (PLANS.md): tick_end carries this tick's tokens and cost so
+// Per-tick usage in the event feed (PLANS.md): run_end carries this tick's tokens and cost so
 // operators see where spend went — after result/summary/error, "·"-separated like the budget
 // badge. Zero or absent fields render byte-identical to a pre-feature line (no trailing sep).
-test("formatEvent renders per-tick usage on tick_end after result, summary, and error", () => {
+test("formatEvent renders per-tick usage on run_end after result, summary, and error", () => {
   // Both parts, in order: tokens first (compactTokens), then two-decimal cost.
   const both = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 7,
     result: "changed",
     summary: "add per-tick usage",
@@ -419,7 +419,7 @@ test("formatEvent renders per-tick usage on tick_end after result, summary, and 
   const tokensOnly = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 8,
     result: "no_change",
     tokens: 1234,
@@ -430,7 +430,7 @@ test("formatEvent renders per-tick usage on tick_end after result, summary, and 
   const withError = formatEvent({
     ts: 0,
     loop: "bugfix",
-    type: "tick_end",
+    type: "run_end",
     tick: 9,
     result: "error",
     error: "boom",
@@ -443,13 +443,13 @@ test("formatEvent renders per-tick usage on tick_end after result, summary, and 
   const zero = formatEvent({
     ts: 0,
     loop: "clean",
-    type: "tick_end",
+    type: "run_end",
     tick: 5,
     result: "no_change",
     tokens: 0,
     costUsd: 0,
   } as never);
-  const absent = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "no_change" } as never);
+  const absent = formatEvent({ ts: 0, loop: "clean", type: "run_end", tick: 5, result: "no_change" } as never);
   assert.equal(zero, absent, `zero fields must render exactly like absent ones: ${JSON.stringify([zero, absent])}`);
   assert.match(absent, /run #5 no change$/);
 });
@@ -498,12 +498,12 @@ test("formatEvent renders tick_deferred with the clause that deferred it", () =>
     assert.ok(!line.includes("warning"), `a deferral is routine, not a warning: ${line}`);
 });
 
-test("formatEvent renders a user_aborted tick_end with its result verbatim", () => {
+test("formatEvent renders a user_aborted run_end with its result verbatim", () => {
   // "user_aborted" (deliberate stop) must stay distinct from "aborted" (harness shutdown):
   // the result word is what tells them apart in the feed. The aborted outcome carries no
   // summary or error, so the line ends at the result — a regression appending an empty
   // payload would print "— undefined".
-  const line = formatEvent({ ts: 0, loop: "feature", type: "tick_end", tick: 12, result: "user_aborted" } as never);
+  const line = formatEvent({ ts: 0, loop: "feature", type: "run_end", tick: 12, result: "user_aborted" } as never);
   assert.match(line, /run #12 stopped by you$/, `the result must render verbatim with no suffix: ${line}`);
   assert.ok(!line.includes("warning"), `a deliberate stop is not a warning: ${line}`);
 
@@ -512,7 +512,7 @@ test("formatEvent renders a user_aborted tick_end with its result verbatim", () 
   const withUsage = formatEvent({
     ts: 0,
     loop: "feature",
-    type: "tick_end",
+    type: "run_end",
     tick: 12,
     result: "user_aborted",
     tokens: 900,
@@ -621,10 +621,10 @@ test("formatEvent renders land_queued, landed, and land_failed", () => {
   const queued = formatEvent({ ts: 0, loop: "clean", type: "land_queued", commit: "abcdef1234567890", summary: "tidy up" } as never);
   assert.match(queued, /clean\s+waiting to merge abcdef12 — tidy up$/, `land_queued must name the sha and summary: ${queued}`);
 
-  // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like tick_end.
+  // Spent nothing (review-exempt or zero-usage reviewer): renders bare, like run_end.
   const bare = formatEvent({ ts: 0, loop: "clean", type: "landed", commit: "abcdef1234567890", result: "changed", durationMs: 1234 } as never);
   assert.match(bare, /clean\s+merge of abcdef12 done \(in 1s\)$/, `zero-usage landing renders bare: ${bare}`);
-  // The landing's own spend rides after the duration, "·"-separated like tick_end (minutes
+  // The landing's own spend rides after the duration, "·"-separated like run_end (minutes
   // at two minutes and up, compact tokens at 10k and up — the shared text.ts rules).
   const withUsage = formatEvent({
     ts: 0,
@@ -716,30 +716,30 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
 // check's status, else undefined. Single-homes the extraction the status payload's eventItem
 // and the TUI's eventTone both render through, so the two surfaces cannot key differently.
 test("eventResult takes a tick's result, else a landing's or build check's status, else undefined", () => {
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: "changed" }), "changed");
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
   assert.equal(eventResult({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
   assert.equal(eventResult({ ts: 0, loop: "x", type: "build_check", status: "failed" }), "failed");
   // A status is only a fallback: when both ride one event the tick's result wins.
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: "error", status: "failed" }), "error");
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: "error", status: "failed" }), "error");
   // Non-string values (a number smuggled into the loose payload) are not an outcome.
-  assert.equal(eventResult({ ts: 0, loop: "x", type: "tick_end", result: 7 } as never), undefined);
+  assert.equal(eventResult({ ts: 0, loop: "x", type: "run_end", result: 7 } as never), undefined);
   assert.equal(eventResult({ ts: 0, loop: "x", type: "wake" }), undefined);
 });
 
 // outcomeText — eventResult as a display cell: the same extraction with "?" for an absent
-// outcome, so a torn tick_end renders like eventRole's loop and eventTick's tick rather than
+// outcome, so a torn run_end renders like eventRole's loop and eventTick's tick rather than
 // String(undefined)'s literal "undefined". eventResult must stay undefined for the tone and
 // filter keys, so the corrupt-field guard lives here, not there.
 test("outcomeText renders eventResult or ? for a missing or non-string outcome", () => {
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end", result: "changed" }), "changed");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: "changed" }), "changed");
   assert.equal(outcomeText({ ts: 0, loop: "x", type: "landed", status: "merged" }), "merged");
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end" }), "?");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end" }), "?");
   // A non-string value smuggled into the loose payload is not an outcome.
-  assert.equal(outcomeText({ ts: 0, loop: "x", type: "tick_end", result: 7 } as never), "?");
+  assert.equal(outcomeText({ ts: 0, loop: "x", type: "run_end", result: 7 } as never), "?");
 });
 
 test("formatEvent renders a corrupt outcome as ?, never undefined", () => {
-  const tickEnd = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5 } as never);
+  const tickEnd = formatEvent({ ts: 0, loop: "clean", type: "run_end", tick: 5 } as never);
   assert.match(tickEnd, /run #5 \?$/);
   const landFailed = formatEvent({ ts: 0, loop: "clean", type: "land_failed", commit: "abc1234", result: 7 } as never);
   assert.match(landFailed, /failed \(\?\)/);
@@ -779,8 +779,8 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
   // A hand-edited field can also hold a foreign value, which String(...) would render as
   // "[object Object]"; textOr substitutes its placeholder instead.
   const foreign: HarnessEvent[] = [
-    { ts: 0, loop: "feature", type: "tick_end", tick: 5, result: "changed", summary: { a: 1 } } as never,
-    { ts: 0, loop: "feature", type: "tick_end", tick: 5, result: "error", error: ["boom"] } as never,
+    { ts: 0, loop: "feature", type: "run_end", tick: 5, result: "changed", summary: { a: 1 } } as never,
+    { ts: 0, loop: "feature", type: "run_end", tick: 5, result: "error", error: ["boom"] } as never,
     { ts: 0, loop: "feature", type: "review_verdict", head: "abcdef12", reason: { a: 1 } } as never,
     { ts: 0, loop: "harness", type: "dep_install", status: "failed", error: { a: 1 } } as never,
     { ts: 0, loop: "harness", type: "budget_paused", fallbackRejected: { a: 1 } } as never,
@@ -810,19 +810,19 @@ test("formatEvent never renders undefined or [object Object] for corrupt event f
   assert.ok(!typeless.includes("undefined"), `a typeless event must not render undefined: ${typeless}`);
 });
 
-// usageText's either-part-omitted rule has a third shape the tick_end/landed tests never hit:
+// usageText's either-part-omitted rule has a third shape the run_end/landed tests never hit:
 // cost without tokens (a provider that reports spend but not token counts). The separator
 // must not appear before the money, and a fully empty usage must contribute nothing at all.
 test("usageText renders cost-only usage without a dangling separator", () => {
-  assert.equal(usageText({ ts: 0, loop: "x", type: "tick_end", costUsd: 0.05 } as never), "$0.05");
-  assert.equal(usageText({ ts: 0, loop: "x", type: "tick_end", tokens: 0, costUsd: 0 } as never), "");
+  assert.equal(usageText({ ts: 0, loop: "x", type: "run_end", costUsd: 0.05 } as never), "$0.05");
+  assert.equal(usageText({ ts: 0, loop: "x", type: "run_end", tokens: 0, costUsd: 0 } as never), "");
   // In a sentence context the cost-only fragment rides the same " · " glue — and an event
   // with no usage contributes neither text nor separator.
-  const costOnly = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 5, result: "changed", costUsd: 0.05 } as never);
+  const costOnly = formatEvent({ ts: 0, loop: "clean", type: "run_end", tick: 5, result: "changed", costUsd: 0.05 } as never);
   assert.match(costOnly, /run #5 merged · \$0\.05$/, `cost-only usage: ${costOnly}`);
   assert.doesNotMatch(costOnly, /tok/);
-  const noUsage = formatEvent({ ts: 0, loop: "clean", type: "tick_end", tick: 6, result: "changed" } as never);
-  assert.doesNotMatch(noUsage, / · /, `a usage-free tick_end must carry no usage clause: ${noUsage}`);
+  const noUsage = formatEvent({ ts: 0, loop: "clean", type: "run_end", tick: 6, result: "changed" } as never);
+  assert.doesNotMatch(noUsage, / · /, `a usage-free run_end must carry no usage clause: ${noUsage}`);
 });
 
 // The director inbox's prompt_edited event (inbox-edit.ts): the third queued-prompt lifecycle

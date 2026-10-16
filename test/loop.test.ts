@@ -50,9 +50,9 @@ test("a tick that changes files commits and merges to main", async () => {
 });
 
 // Model-tiers part 2/8 (PLANS.md): the model each run starts on rides on the start events —
-// tick_start names the role's resolved config (the budget fallback included, since the gate
+// run_start names the role's resolved config (the budget fallback included, since the gate
 // swaps the runner's config to the fallback pair) and review_start the reviewer's.
-test("tick_start and review_start record the model each run starts on", async () => {
+test("run_start and review_start record the model each run starts on", async () => {
   const repo = await initializedRepo();
   const script = [
     // The review gate (enabled by default) runs after the commit: approve with zero usage so
@@ -70,14 +70,14 @@ test("tick_start and review_start record the model each run starts on", async ()
     assert.equal(outcome.result, "queued");
     // The review gate runs in the landing slot (landHead), not inside tick().
     assert.equal(await landHead(repo, runner, config, "improve"), "changed");
-    const starts = eventsOfType(repo, "tick_start");
+    const starts = eventsOfType(repo, "run_start");
     assert.equal(starts[starts.length - 1]!.model, "prov/m1");
     const reviews = eventsOfType(repo, "review_start");
     assert.equal(reviews[reviews.length - 1]!.model, "prov/r1");
   });
 });
 
-test("tick_start and review_start omit model when none is configured (pi's own default)", async () => {
+test("run_start and review_start omit model when none is configured (pi's own default)", async () => {
   const repo = await initializedRepo();
   const script = [
     APPROVE_PI,
@@ -89,7 +89,7 @@ test("tick_start and review_start omit model when none is configured (pi's own d
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
-    const starts = eventsOfType(repo, "tick_start");
+    const starts = eventsOfType(repo, "run_start");
     assert.equal("model" in starts[starts.length - 1]!, false);
     const reviews = eventsOfType(repo, "review_start");
     assert.equal("model" in reviews[reviews.length - 1]!, false);
@@ -416,13 +416,13 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.ok(runner.state.backoffSeconds > 0, "backed off instead of retrying immediately");
   assert.ok(runner.state.nextRunAt > Date.now(), "next run scheduled in the future");
 
-  // The tick stays observable: tick_end lands with the error result and message.
-  const ends = eventsOfType(repo, "tick_end");
+  // The tick stays observable: run_end lands with the error result and message.
+  const ends = eventsOfType(repo, "run_end");
   assert.equal(ends.length, 1);
   assert.equal(ends[0]?.result, "error");
   assert.match(String(ends[0]?.error), /simulated internal failure/);
   // The tick's wall-clock span rides the event, so the
-  // failure digest can price the failure without pairing tick_start by hand.
+  // failure digest can price the failure without pairing run_start by hand.
   assert.equal(typeof ends[0]?.durationMs, "number");
   assert.ok((ends[0]?.durationMs as number) >= 0);
 
@@ -435,13 +435,13 @@ test("an unexpected throw inside runTick degrades to an error result instead of 
   assert.equal(runner.state.lastError, "raw failure value");
 });
 
-// Every tick_end carries its wall-clock span — the contract the failure digest's fold and the
+// Every run_end carries its wall-clock span — the contract the failure digest's fold and the
 // error-tick assertions above both rely on. The old omit-when-zero convention dropped the
 // field whenever the tick ended within the Date.now() millisecond it started (an instant
 // early-abort error tick — the shape a loaded machine produced once per few full-suite runs,
 // turning this suite's own assertion flaky). Freezing the clock pins the same-millisecond
 // span deterministically: the field must survive a 0 ms tick.
-test("a tick_end carries durationMs even when the tick spans no measurable time", async (t) => {
+test("a run_end carries durationMs even when the tick spans no measurable time", async (t) => {
   const repo = await initializedRepo();
   const runner = makeLoopRunner(repo, "clean");
   (runner as unknown as { runTick: () => Promise<unknown> }).runTick = async () => {
@@ -451,7 +451,7 @@ test("a tick_end carries durationMs even when the tick spans no measurable time"
   try {
     const outcome = await runner.tick();
     assert.equal(outcome.result, "error");
-    const [end] = eventsOfType(repo, "tick_end");
+    const [end] = eventsOfType(repo, "run_end");
     assert.equal(end?.result, "error");
     assert.match(String(end?.error), /simulated internal failure/);
     assert.equal(typeof end?.durationMs, "number");

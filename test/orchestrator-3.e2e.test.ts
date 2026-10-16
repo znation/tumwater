@@ -42,11 +42,11 @@ import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events
 
 const FAST_POLL_MS = 100;
 
-/** Has `role`'s tick ended `queued` — committed and enqueued its landing? The tick_end event is
+/** Has `role`'s tick ended `queued` — committed and enqueued its landing? The run_end event is
  * where that outcome lives: `lastResult` records only completed results, so a queued tick
  * leaves it at the prior outcome until the landing resolves (BUGS.md 2026-09-23). */
 function tickQueued(repo: string, role: string): boolean {
-  return readEvents(repo).some((e) => e.type === "tick_end" && e.loop === role && e.result === "queued");
+  return readEvents(repo).some((e) => e.type === "run_end" && e.loop === role && e.result === "queued");
 }
 
 /** Seed what a crash between the role's commit and the landing's entry drop leaves behind:
@@ -803,7 +803,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const lapseAt = indexOf(
       (e) => e.type === "warning" && String((e as unknown as { message: string }).message).includes('the merge for dry outlived its 0.5s deadline — aborted'),
     );
-    const cleanAbortedAt = indexOf((e) => e.type === "tick_end" && e.loop === "clean" && e.result === "aborted");
+    const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.loop === "clean" && e.result === "aborted");
     const dryFailedAt = indexOf((e) => e.type === "land_failed" && e.loop === "dry");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
     // The drain cut its permit holder off AT the swap, and the landing was aborted only past its

@@ -276,7 +276,7 @@ test("an unwritable events feed cannot reject a tick — its fallback verdict st
   // A directory where events.jsonl belongs makes every append throw EISDIR.
   fs.mkdirSync(eventsLogPath(repo), { recursive: true });
   await withIdlePi(async () => {
-    // Before the fix the tick_start append rejected tick() itself, before runTick's try; after
+    // Before the fix the run_start append rejected tick() itself, before runTick's try; after
     // it, every event write on the tick path is best-effort and the run resolves normally.
     assert.equal((await runner.tick()).result, "no_change");
   });

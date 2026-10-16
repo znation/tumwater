@@ -24,7 +24,7 @@ test("flakeKeys extracts the headline after the prefix and normalizes its volati
 test("flakeKeys ignores non-warning events and warnings without the prefix", () => {
   const keys = flakeKeys(
     [
-      { ts: NOW, loop: "improve", type: "tick_end" },
+      { ts: NOW, loop: "improve", type: "run_end" },
       { ts: NOW, loop: "improve", type: "warning", message: "reviewer re-ran the suite" },
       { ts: NOW, loop: "improve", type: "warning" },
     ],

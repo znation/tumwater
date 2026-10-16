@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 import { timeAndSpend } from "../src/failure/time-spend.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
-// The failure digest's time-and-spend fold: how the window's tick_ends price into the
+// The failure digest's time-and-spend fold: how the window's run_ends price into the
 // per-role × outcome-class table and the loss-cause ranking. These tests pin the rules the
 // digest's numbers live on — the result→class mapping, the duration source chain (own
-// durationMs, then the tick_start pairing, then 0), the queued→landing-outcome join, and the
+// durationMs, then the run_start pairing, then 0), the queued→landing-outcome join, and the
 // loss-cause keys (error cluster, per-role no_change, per-role review-rejected, and per-role
 // merge-conflict/merge-blocked) with their newest-wins example and the top-5 cap.
 
 function ev(extra: Partial<HarnessEvent> & { ts?: number }): HarnessEvent {
-  return { ts: 1000, loop: "coverage", type: "tick_end", ...extra } as HarnessEvent;
+  return { ts: 1000, loop: "coverage", type: "run_end", ...extra } as HarnessEvent;
 }
 
 test("outcome classes fold per role: landed, no_change, error; unknown results cost nothing", () => {
@@ -38,14 +38,14 @@ test("outcome classes fold per role: landed, no_change, error; unknown results c
   ]);
 });
 
-test("duration source chain: own durationMs, else the tick_start pairing, else 0", () => {
+test("duration source chain: own durationMs, else the run_start pairing, else 0", () => {
   const { timeSpend } = timeAndSpend(
     [
       ev({ ts: 2000, tick: 1, result: "changed" }), // paired: span 2000−1000
       ev({ ts: 3000, tick: 2, result: "no_change", durationMs: 500 }), // own wins
       ev({ ts: 4000, tick: 99, result: "error" }), // unpaired start (rotation cut it): 0
     ],
-    [ev({ ts: 1000, type: "tick_start", tick: 1 })],
+    [ev({ ts: 1000, type: "run_start", tick: 1 })],
   );
   assert.deepEqual(timeSpend[0]!.classes, {
     merged: { runs: 1, ms: 1000, costUsd: 0 },

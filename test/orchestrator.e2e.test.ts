@@ -45,7 +45,7 @@ import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 test("runTimedRoleTick measures the tick, not its semaphore queue wait", async () => {
-  // BUGS.md 2026-09-18: the restart drain's p75 sample spans `tick_start`..`tick_end`, so the
+  // BUGS.md 2026-09-18: the restart drain's p75 sample spans `run_start`..`run_end`, so the
   // clock must start after the maxConcurrent permit is granted — a tick parked in the queue
   // must not have that wait counted as its run time (which would overstate how long an
   // in-flight tick still has and hold the drain open longer than needed). The fake clock

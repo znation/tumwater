@@ -50,7 +50,7 @@ export interface LoopState {
    * until the landing resolves and applyLandingOutcome records the landing's own. */
   lastResult?: TickResult;
   lastSummary?: string;
-  /** The summary a `queued` tick reported for the change it pinned (the text its tick_end
+  /** The summary a `queued` tick reported for the change it pinned (the text its run_end
    * carries, high-friction annotation included), keyed by that change's sha. Held back from
    * `lastSummary` while the change waits, then paired with the landing's result by
    * applyLandingOutcome, which clears it — so after a landing the cell reads the landing's

@@ -378,7 +378,7 @@ test("checkStateDir fails with the OS error when .tumwater is not writable", () 
 
 test("checkEventLog fails an events.jsonl whose permissions deny reading", { skip: runningAsRoot() }, () => {
   const root = makeRepo();
-  writeEvents(root, [{ ts: Date.now(), loop: "feature", type: "tick_end" }]);
+  writeEvents(root, [{ ts: Date.now(), loop: "feature", type: "run_end" }]);
   const log = path.join(root, ".tumwater", "log", "events.jsonl");
   fs.chmodSync(log, 0o000);
   try {
@@ -414,12 +414,12 @@ test("checkEventLog passes an absent log, fails an unreadable one, and passes a 
   const damaged = makeRepo();
   fs.mkdirSync(path.join(damaged, ".tumwater", "log", "events.jsonl"), { recursive: true });
   writeLogLines(path.join(damaged, ".tumwater", "log", "events.jsonl.1"), [
-    { ts: Date.now(), loop: "feature", type: "tick_end" },
+    { ts: Date.now(), loop: "feature", type: "run_end" },
   ]);
   assert.equal(checkEventLog(damaged).level, "fail");
 
   const good = makeRepo();
-  writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "tick_end" }]);
+  writeEvents(good, [{ ts: Date.now(), loop: "feature", type: "run_end" }]);
   assert.equal(checkEventLog(good).level, "ok");
 });
 

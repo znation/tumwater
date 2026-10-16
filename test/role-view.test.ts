@@ -537,19 +537,19 @@ test("role payload reports image input and the renderer's Images line", () => {
   assert.match(renderRoleMarkdown(unknown), /- Images: unknown/);
 });
 
-// Recent runs (the `tumwater role <id>` section): the loop's last few tick_end
+// Recent runs (the `tumwater role <id>` section): the loop's last few run_end
 // results, read from the event log so the command answers with the fleet stopped. Newest
 // first, at most 8, each with its time, result, duration, and summary.
-test("role payload surfaces the newest tick_end outcomes ordered newest-first", () => {
+test("role payload surfaces the newest run_end outcomes ordered newest-first", () => {
   const dir = root();
   const now = Date.now();
-  // Seed 10 tick_end events (oldest first in file order); only the newest 8 should surface.
+  // Seed 10 run_end events (oldest first in file order); only the newest 8 should surface.
   writeEvents(
     dir,
     Array.from({ length: 10 }, (_, i) => ({
       ts: now - (10 - i) * 60_000, // i=0 oldest (10m ago) … i=9 newest (1m ago)
       loop: "feature",
-      type: "tick_end",
+      type: "run_end",
       tick: i + 1,
       result: i % 2 === 0 ? "changed" : "no_change",
       durationMs: 30_000,
@@ -568,7 +568,7 @@ test("role payload surfaces the newest tick_end outcomes ordered newest-first", 
   assert.equal(rolePayload(dir, "bugfix", NO_MODELS).recentOutcomes, undefined);
 });
 
-test("a torn tick_end line (no usable ts/result/duration) contributes no recent outcome", () => {
+test("a torn run_end line (no usable ts/result/duration) contributes no recent outcome", () => {
   const dir = root();
   const now = Date.now();
   // The event log is read without a shape filter, so a torn or hand-edited line can carry a
@@ -576,10 +576,10 @@ test("a torn tick_end line (no usable ts/result/duration) contributes no recent 
   // consumer guards with finiteNumber. A line missing a usable ts or result is as unusable
   // as an absent one and must not surface (no "Invalid Date", no literal "undefined").
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: "not-a-number", loop: "feature", type: "tick_end", tick: 2, result: "changed" }, // torn ts
-    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 3, result: "", durationMs: "not-a-number" }, // empty result + torn duration
-    { ts: now - 30_000, loop: "feature", type: "tick_end", tick: 4, result: "no_change", durationMs: 10_000 },
+    { ts: now - 120_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: "not-a-number", loop: "feature", type: "run_end", tick: 2, result: "changed" }, // torn ts
+    { ts: now - 60_000, loop: "feature", type: "run_end", tick: 3, result: "", durationMs: "not-a-number" }, // empty result + torn duration
+    { ts: now - 30_000, loop: "feature", type: "run_end", tick: 4, result: "no_change", durationMs: 10_000 },
   ]);
   const o = rolePayload(dir, "feature", NO_MODELS).recentOutcomes!;
   assert.equal(o.length, 2); // only the two with a usable ts + result survive
@@ -590,24 +590,24 @@ test("a torn tick_end line (no usable ts/result/duration) contributes no recent 
   assert.equal(newest.durationMs, 10_000); // a valid duration rides along
 });
 
-test("a role with no tick_end events carries no recentOutcomes", () => {
+test("a role with no run_end events carries no recentOutcomes", () => {
   const dir = root();
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(p.recentOutcomes, undefined);
   assert.ok(!renderRoleMarkdown(p).includes("Recent runs"));
 });
 
-// The loop's own spend (PLANS.md): rolePayload sums this role's tick_end usage over the same
+// The loop's own spend (PLANS.md): rolePayload sums this role's run_end usage over the same
 // retained event window recentOutcomes reads, through the shared eventUsage finiteness guard,
 // and the renderer names it as a Spend line (a notional suffix only when non-zero).
 test("role payload sums the role's usage and renders a Spend line", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 180_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 6000, costUsd: 0.02 },
-    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 },
+    { ts: now - 180_000, loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 6000, costUsd: 0.02 },
+    { ts: now - 120_000, loop: "feature", type: "run_end", tick: 2, result: "no_change", tokens: 6500, costUsd: 0.03, notionalCostUsd: 0.05 },
     // Another role's spend is not folded into this loop's sum.
-    { ts: now - 60_000, loop: "other", type: "tick_end", tick: 1, result: "changed", tokens: 99999, costUsd: 9.99 },
+    { ts: now - 60_000, loop: "other", type: "run_end", tick: 1, result: "changed", tokens: 99999, costUsd: 9.99 },
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.deepEqual(p.usage, { tokens: 12500, costUsd: 0.05, notionalCostUsd: 0.05 });
@@ -619,7 +619,7 @@ test("role payload sums the role's usage and renders a Spend line", () => {
 
   // A zero notional omits the notional suffix.
   writeEvents(dir, [
-    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 3, result: "changed", tokens: 1200, costUsd: 0.01 },
+    { ts: now - 60_000, loop: "feature", type: "run_end", tick: 3, result: "changed", tokens: 1200, costUsd: 0.01 },
   ]);
   assert.match(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /- Spend: \$0\.01 · 1200 tokens$/m);
 });
@@ -632,22 +632,22 @@ test("a never-costly or never-ticked role carries no usage field or Spend line",
   assert.doesNotMatch(renderRoleMarkdown(neverTicked), /- Spend:/);
   // Ticked but with all-zero usage: the zero-means-absent convention drops the field.
   writeEvents(dir, [
-    { ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
+    { ts: Date.now() - 60_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
   ]);
   const zero = rolePayload(dir, "feature", NO_MODELS);
   assert.equal(zero.usage, undefined);
   assert.doesNotMatch(renderRoleMarkdown(zero), /- Spend:/);
 });
 
-test("a torn tick_end line contributes nothing to the usage sum", () => {
+test("a torn run_end line contributes nothing to the usage sum", () => {
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.01 },
+    { ts: now - 120_000, loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.01 },
     // A non-numeric cost reads as 0 via eventUsage's finiteness guard; its tokens still count.
-    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 200, costUsd: "not-a-number" },
+    { ts: now - 60_000, loop: "feature", type: "run_end", tick: 2, result: "changed", tokens: 200, costUsd: "not-a-number" },
     // A torn ts (no usable timestamp) is as unusable as an absent tick and spends nothing.
-    { ts: "not-a-number", loop: "feature", type: "tick_end", tick: 3, result: "changed", tokens: 999, costUsd: 0.5 },
+    { ts: "not-a-number", loop: "feature", type: "run_end", tick: 3, result: "changed", tokens: 999, costUsd: 0.5 },
   ]);
   const p = rolePayload(dir, "feature", NO_MODELS);
   assert.deepEqual(p.usage, { tokens: 700, costUsd: 0.01, notionalCostUsd: 0 });
@@ -657,8 +657,8 @@ test("role markdown renders the Recent runs section before the instructions", ()
   const dir = root();
   const now = Date.now();
   writeEvents(dir, [
-    { ts: now - 120_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", durationMs: 30_000, summary: "added a thing" },
-    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change", summary: "nothing to do" },
+    { ts: now - 120_000, loop: "feature", type: "run_end", tick: 1, result: "changed", durationMs: 30_000, summary: "added a thing" },
+    { ts: now - 60_000, loop: "feature", type: "run_end", tick: 2, result: "no_change", summary: "nothing to do" },
   ]);
   const md = renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS));
   assert.match(md, /## Recent runs/);

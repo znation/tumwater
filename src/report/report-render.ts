@@ -147,7 +147,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // a window with none renders "-" like the other lines.
   lines.push(rankedRoleLine("Rejections by role", rankedRoleMap(data.rejectionsByRole).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleMap(data.revisionsByRole).filter(([, r]) => r > 0), String));
-  // The same breakdown for outright failures: error-class tick_ends per role under the
+  // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — the ticks that burned agent time and landed nothing without
   // going through review, which rejections/revisions would miss entirely. A window with
   // none renders "-" like the other lines.
@@ -265,7 +265,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
   // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed fleet
-  // spent what, straight from the events' providerCost maps (tick_end's own runs and the
+  // spent what, straight from the events' providerCost maps (run_end's own runs and the
   // landing's reviewer seam). Gated to the fleet report — a provider is not a role, so a
   // role-scoped report omits it (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a
   // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
@@ -281,7 +281,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // events, ranked like the ticks line; a window with none renders "-".
   lines.push(rankedRoleLine("Rejections by role", rankedRoleTotals(data.series, (d) => d.rejectionsByRole ?? {}).filter(([, r]) => r > 0), String));
   lines.push(rankedRoleLine("Revisions by role", rankedRoleTotals(data.series, (d) => d.revisionsByRole ?? {}).filter(([, r]) => r > 0), String));
-  // The same breakdown for outright failures: error-class tick_ends per role under the
+  // The same breakdown for outright failures: error-class run_ends per role under the
   // digest's OUTCOME_CLASS — ticks that burned agent time and landed nothing without going
   // through review, which rejections/revisions would miss entirely. Zero-means-absent, so a
   // failure-free window renders no line and an all-zero window renders "-" like the others.

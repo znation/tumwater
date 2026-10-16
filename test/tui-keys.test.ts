@@ -318,7 +318,7 @@ test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
     Array.from({ length: 20 }, (_, i) => ({
       ts: 1_700_000_000_000 + i * 60_000,
       loop: "clean",
-      type: "tick_start",
+      type: "run_start",
       tick: i + 1,
     })),
   );
@@ -352,7 +352,7 @@ test("the Activity feed pages nowhere when the log fits the pane", () => {
   const root = makeRoot();
   writeEvents(
     root,
-    Array.from({ length: 3 }, (_, i) => ({ ts: 1_700_000_000_000 + i, type: "tick_start", tick: i + 1 })),
+    Array.from({ length: 3 }, (_, i) => ({ ts: 1_700_000_000_000 + i, type: "run_start", tick: i + 1 })),
   );
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
@@ -367,8 +367,8 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
   const root = makeRoot();
   // Twelve events per loop: the unfiltered tail pages, and so does each loop's own set.
   writeEvents(root, [
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "tick_start", tick: i + 1 })),
-    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "tick_start", tick: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_000_000 + i * 60_000, loop: "feature", type: "run_start", tick: i + 1 })),
+    ...Array.from({ length: 12 }, (_, i) => ({ ts: 1_700_000_700_000 + i * 60_000, loop: "clean", type: "run_start", tick: i + 1 })),
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -401,8 +401,8 @@ test("Ctrl+G on the Activity view cycles the raw roster ids and filters the pagi
 test("the `/` search filters the Activity feed and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "widget landed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed", summary: "gizmo swept" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "widget landed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", tick: 2, result: "changed", summary: "gizmo swept" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -438,7 +438,7 @@ test("the `/` search filters the Activity feed and clears on an empty line", () 
 test("the Activity and History `/` searches are independent, and `/` elsewhere types into the prompt", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "widget landed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "widget landed" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature"]);
@@ -478,7 +478,7 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
     Array.from({ length: 12 }, (_, i) => ({
       ts: 1_700_000_000_000 + i * 60_000,
       loop: "feature",
-      type: "tick_end",
+      type: "run_end",
       tick: i + 1,
       result: "changed",
     })),
@@ -510,8 +510,8 @@ test("Ctrl+T cycles on through Usage and Failures to History, which caches and p
 test("Ctrl+N on the History pane swaps the rows for the newest completed run's trail", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "work" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", tick: 1, result: "changed", summary: "work" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
@@ -536,8 +536,8 @@ test("Ctrl+N on the History pane swaps the rows for the newest completed run's t
 function historyTrailRoot(): string {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "clean", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "work" },
+    { ts: 1_700_000_000_000, loop: "clean", type: "run_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", tick: 1, result: "changed", summary: "work" },
   ]);
   return root;
 }
@@ -609,10 +609,10 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
   const root = makeRoot();
   // clean's tick is newer than qa's, so the fleet read and the qa-scoped read differ.
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "qa", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_060_000, loop: "qa", type: "tick_end", tick: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_180_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "clean work" },
+    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", tick: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", tick: 1 },
+    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", tick: 1, result: "changed", summary: "clean work" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
@@ -632,10 +632,10 @@ test("Ctrl+G while a trail is shown re-reads the new scope's newest tick", () =>
 test("a roster change that retires the trail's scope re-reads it from the fleet", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "qa", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_060_000, loop: "qa", type: "tick_end", tick: 1, result: "changed", summary: "qa work" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "tick_start", tick: 1 },
-    { ts: 1_700_000_180_000, loop: "clean", type: "tick_end", tick: 1, result: "changed", summary: "clean work" },
+    { ts: 1_700_000_000_000, loop: "qa", type: "run_start", tick: 1 },
+    { ts: 1_700_000_060_000, loop: "qa", type: "run_end", tick: 1, result: "changed", summary: "qa work" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_start", tick: 1 },
+    { ts: 1_700_000_180_000, loop: "clean", type: "run_end", tick: 1, result: "changed", summary: "clean work" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean", "qa"]);
@@ -655,8 +655,8 @@ test("Ctrl+G cycles the report scope and recomputes the Usage and Failures cache
   // One failed feature tick with tokens: it lands in the usage report's totals and the
   // failure digest's per-role table, so scoping to clean changes both renders.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
-    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -698,8 +698,8 @@ test("Ctrl+G cycles base roles only, so an instance id never labels another scop
   const root = makeRoot();
   // One failed feature tick with tokens, so the Usage body carries the collected `role` line.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
-    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
   ]);
   const { keys } = makeKeys(root, () => 0);
   // The roster names an instance; the scoped collectors fold it into `feature`.
@@ -727,9 +727,9 @@ test("Ctrl+G on the History view cycles the raw roster ids and recomputes the sc
   // One completed run per loop, so each exact-loop scope has its own row set: feature-2 is
   // a distinct scope, unlike the report panes' base-role aggregation.
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "feature-2", type: "tick_end", tick: 1, result: "none" },
-    { ts: 1_700_000_120_000, loop: "clean", type: "tick_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "feature-2", type: "run_end", tick: 1, result: "none" },
+    { ts: 1_700_000_120_000, loop: "clean", type: "run_end", tick: 1, result: "changed" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "feature-2", "clean"]);
@@ -818,8 +818,8 @@ test("syncSnapshot recomputes an on-screen report pane when it clears a retired 
   const root = makeRoot();
   // A failed feature tick with tokens: scoping to the fleet and to feature render differently.
   writeEvents(root, [
-    { ts: Date.now(), loop: "feature", type: "tick_start", tick: 1 },
-    { ts: Date.now(), loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
+    { ts: Date.now(), loop: "feature", type: "run_start", tick: 1 },
+    { ts: Date.now(), loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 500, costUsd: 0.5 },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["feature", "clean"]);
@@ -840,8 +840,8 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
   const now = Date.now();
   // One tick 30 minutes old (inside 1h) and one three days old (only inside 7d).
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed" },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", tick: 2, result: "changed" },
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -879,7 +879,7 @@ test("Ctrl+S cycles the History pane's trailing window, re-reads the rows, and r
 
 test("Ctrl+S is inert in the prompt-line modes and off the History view only moves the label", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", tick: 1, result: "changed" }]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -912,8 +912,8 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
   // distinct token counts so the windowed usage totals name which ticks they aggregated. Both
   // are errors so the failure digest's window tick count names the same split.
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 100 },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "error", tokens: 1_000_000 },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 100 },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", tick: 2, result: "error", tokens: 1_000_000 },
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -962,7 +962,7 @@ test("Ctrl+E cycles the Usage and Failures panes' trailing report window and res
 
 test("Ctrl+E is inert in the prompt-line modes and off the report views only moves the label", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "error", tokens: 100 }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", tick: 1, result: "error", tokens: 100 }]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -992,9 +992,9 @@ test("Ctrl+O cycles the History pane's outcome class, filters rows by historyCla
   const root = makeRoot();
   const now = Date.now();
   writeEvents(root, [
-    { ts: now - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: now - 50_000, loop: "feature", type: "tick_end", tick: 2, result: "no_change" },
-    { ts: now - 40_000, loop: "feature", type: "tick_end", tick: 3, result: "error" },
+    { ts: now - 60_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: now - 50_000, loop: "feature", type: "run_end", tick: 2, result: "no_change" },
+    { ts: now - 40_000, loop: "feature", type: "run_end", tick: 3, result: "error" },
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1040,8 +1040,8 @@ test("Ctrl+O composes with the Ctrl+S window and names an emptied filter", () =>
   const now = Date.now();
   // The only "changed" tick is three days old; a "no_change" tick sits inside 1h.
   writeEvents(root, [
-    { ts: now - 30 * 60_000, loop: "feature", type: "tick_end", tick: 1, result: "no_change" },
-    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "tick_end", tick: 2, result: "changed" },
+    { ts: now - 30 * 60_000, loop: "feature", type: "run_end", tick: 1, result: "no_change" },
+    { ts: now - 3 * 24 * 60 * 60_000, loop: "feature", type: "run_end", tick: 2, result: "changed" },
   ]);
   const { keys } = makeKeys(root, () => now);
   keys.syncSnapshot(0, false, []);
@@ -1071,7 +1071,7 @@ test("Ctrl+O over a zero-row read keeps the pane's no-ticks note, not a filter-e
 
 test("Ctrl+O is inert in the prompt-line modes and off the History view only moves the label", () => {
   const root = makeRoot();
-  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" }]);
+  writeEvents(root, [{ ts: Date.now() - 60_000, loop: "feature", type: "run_end", tick: 1, result: "changed" }]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, ["clean"]);
 
@@ -1100,8 +1100,8 @@ test("Ctrl+O is inert in the prompt-line modes and off the History view only mov
 test("the `/` search filters the History pane through tickRowGrepHaystack and clears on an empty line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", tick: 2, result: "changed" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(0, false, []);
@@ -1141,8 +1141,8 @@ test("the `/` search filters the History pane through tickRowGrepHaystack and cl
 test("`/` opens a search on Activity and History with an empty line, types elsewhere, and search mode owns the line", () => {
   const root = makeRoot();
   writeEvents(root, [
-    { ts: 1_700_000_000_000, loop: "feature", type: "tick_end", tick: 1, result: "changed" },
-    { ts: 1_700_000_060_000, loop: "clean", type: "tick_end", tick: 2, result: "changed" },
+    { ts: 1_700_000_000_000, loop: "feature", type: "run_end", tick: 1, result: "changed" },
+    { ts: 1_700_000_060_000, loop: "clean", type: "run_end", tick: 2, result: "changed" },
   ]);
   const { keys } = makeKeys(root, () => 0);
   keys.syncSnapshot(50, false, ["clean"]);

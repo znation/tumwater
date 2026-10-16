@@ -294,7 +294,7 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
 test("the telemetry role's prompt carries the failure digest rendered from its event log", () => {
   const dir = root();
   writeEvents(dir, [
-    { ts: Date.now(), loop: "feature", type: "tick_end", result: "error", error: "pi exited null" },
+    { ts: Date.now(), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
   ]);
   const result = promptFor(dir, "telemetry");
   assert.ok(result);

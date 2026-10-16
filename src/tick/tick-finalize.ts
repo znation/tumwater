@@ -21,15 +21,15 @@ interface FinalizeTickDeps {
   config: TumwaterConfig;
   state: LoopState;
   outcome: TickOutcome;
-  /** The tick number tick_start announced, captured at tick start — NOT re-read from
+  /** The tick number run_start announced, captured at tick start — NOT re-read from
    * `state.ticks` here: `resetCounters` zeroes `state.ticks` in place mid-tick (the
-   * documented running-fleet reset), so a finalize-time re-read could emit a tick_end
-   * numbered 0 (or a later tick's number) under a tick_start that announced the real one. */
+   * documented running-fleet reset), so a finalize-time re-read could emit a run_end
+   * numbered 0 (or a later tick's number) under a run_start that announced the real one. */
   tick: number;
   /** When this tick started (the runner stamps state.lastTickStartedAt at tick start);
-   * captured once so the tick_end span measures the tick's own wall clock. */
+   * captured once so the run_end span measures the tick's own wall clock. */
   tickStartedAt: number;
-  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the tick_end
+  /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the run_end
    * event. */
   usage: TickUsage;
   /** The landing failure this tick's leftover recovery is retrying, if any (set by
@@ -59,10 +59,10 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   // A re-queued leftover's landing failure is not the tick's own result, so it rides the
   // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
   // below names it — even though runTick cleared `lastError` so it never latched onto
-  // `tick_end` (BUGS.md 2026-09-21).
+  // `run_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
   // A main_red tick's cause is written for that result (src/baseline/main-red.ts), not a leftover
-  // landing failure: fold it onto the state here so `tick_end` logs it like every other
+  // landing failure: fold it onto the state here so `run_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean
   // (BUGS.md 2026-09-28). runTick cleared `lastError` at its start, so nothing foreign
   // can precede this.
@@ -128,18 +128,18 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     warnEventBestEffort(root, role, `${s.quietKillStreak} consecutive stalls (no progress): ${s.lastError ?? "unknown hang"}`);
   }
   // Per-tick usage: the event feed is where operators see
-  // spend — this tick's tokens and cost ride on tick_end so a budget pause or a money-burning
+  // spend — this tick's tokens and cost ride on run_end so a budget pause or a money-burning
   // no_change/error/rejected/refused tick shows what it spent without diffing status-table
   // snapshots. Both fields are per-tick windows (reset at tick start, folded in over every
   // pi run of the tick); they ride on HarnessEvent's index signature like other payloads and
   // are omitted when zero so skipped ticks render byte-identical to a pre-feature line.
-  // The tick's wall-clock span rides on tick_end too: the
+  // The tick's wall-clock span rides on run_end too: the
   // failure digest prices a tick by its own durationMs first (src/failure/failure-data.ts
   // tickDurationMs), so the field is ALWAYS present — a tick that ends within the same
   // Date.now() millisecond it started (an instant early-abort error tick) or crosses a
   // backward clock step still attests its 0 ms, where the old omit-when-zero convention
-  // dropped the field and broke the "every tick_end carries a span" contract (BUGS.md
-  // 2026-09-29). Unlike the usage fields, tick_end's renderer never prints the span, so an
+  // dropped the field and broke the "every run_end carries a span" contract (BUGS.md
+  // 2026-09-29). Unlike the usage fields, run_end's renderer never prints the span, so an
   // always-present 0 changes no rendered line.
   const tickDurationMs = Math.max(0, Date.now() - deps.tickStartedAt);
   // The account state (plans/agent-backends.md part 6a): fold this tick's billing answer and
@@ -160,7 +160,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   const providerCost = usage.serializeProviderCost();
   logEventBestEffort(root, {
     loop: role,
-    type: "tick_end",
+    type: "run_end",
     tick,
     result: outcome.result,
     summary: outcome.summary,
@@ -174,7 +174,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
     // Per-tick prompt-token telemetry: how many prompt
     // tokens the tick sent, how many were cache reads, and how many went out before its first
     // edit. Omitted when zero like usageFragment's fields, so a tick that sent no prompt — and
-    // every tick_end written by an older build — renders byte-identically.
+    // every run_end written by an older build — renders byte-identically.
     ...(usage.promptTokens > 0 ? { promptTokens: usage.promptTokens } : {}),
     ...(usage.cacheReadTokens > 0 ? { cacheReadTokens: usage.cacheReadTokens } : {}),
     ...(usage.preEditPromptTokens > 0 ? { preEditPromptTokens: usage.preEditPromptTokens } : {}),

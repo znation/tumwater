@@ -18,26 +18,26 @@ import { displayWidth } from "../src/text/text-width.js";
 const NOW = Date.now();
 
 /** A repo whose event log holds two completed runs (role `dry`, then role `clean`,
- * newest last) plus a `docs` tick_end with no matching tick_start — the unpaired case a
+ * newest last) plus a `docs` run_end with no matching run_start — the unpaired case a
  * rotation-cut log produces, which must render an em dash for its duration. */
 function repoWithTicks(): string {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 120_000, loop: "dry", type: "tick_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 120_000, loop: "dry", type: "run_start", tick: 1 });
   logEvent(repo, {
     ts: NOW - 60_000,
     loop: "dry",
-    type: "tick_end",
+    type: "run_end",
     tick: 1,
     result: "error",
     error: "the suite went red",
     tokens: 400,
     costUsd: 0.01,
   });
-  logEvent(repo, { ts: NOW - 60_000, loop: "clean", type: "tick_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 60_000, loop: "clean", type: "run_start", tick: 1 });
   logEvent(repo, {
     ts: NOW - 30_000,
     loop: "clean",
-    type: "tick_end",
+    type: "run_end",
     tick: 1,
     result: "changed",
     summary: "Fix the flake in the parser",
@@ -47,7 +47,7 @@ function repoWithTicks(): string {
   logEvent(repo, {
     ts: NOW - 10_000,
     loop: "docs",
-    type: "tick_end",
+    type: "run_end",
     tick: 2,
     result: "changed",
     summary: "touch up the readme",
@@ -61,10 +61,10 @@ test("history renders the last ticks newest-first with duration, usage, and deta
   const cleanIdx = out.indexOf("clean");
   const testsIdx = out.indexOf("dry");
   assert.ok(cleanIdx >= 0 && testsIdx >= 0, `both rows print: ${JSON.stringify(out)}`);
-  assert.ok(cleanIdx < testsIdx, "newest first: clean's tick_end is the newest");
+  assert.ok(cleanIdx < testsIdx, "newest first: clean's run_end is the newest");
   assert.match(out, /clean\s+#1\s+merged\s+30s\s+1200 tok · \$0\.03\s+Fix the flake/);
   assert.match(out, /dry\s+#1\s+error\s+60s\s+400 tok · \$0\.01\s+the suite went red/);
-  // The unpaired tick_end (its tick_start never logged) renders the em dash for duration.
+  // The unpaired run_end (its run_start never logged) renders the em dash for duration.
   assert.match(out, /docs\s+#2\s+merged\s+—\s+touch up the readme/);
 });
 
@@ -82,7 +82,7 @@ test("history --role filters the rows to one loop", async () => {
   assert.ok(!out.includes("clean"), `other roles are filtered out: ${JSON.stringify(out)}`);
 });
 
-test("history --grep filters on the rendered row line (plus the tick_end type), case-insensitively", async () => {
+test("history --grep filters on the rendered row line (plus the run_end type), case-insensitively", async () => {
   const repo = repoWithTicks();
   // Matches through the detail column — the row as it renders.
   const { stdout: rendered } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "FLAKE"]));
@@ -90,7 +90,7 @@ test("history --grep filters on the rendered row line (plus the tick_end type), 
   assert.ok(!rendered.includes("dry"), `unmatched rows are filtered out: ${JSON.stringify(rendered)}`);
 
   // The raw event type id is greppable the way logs --grep's haystack carries it.
-  const { stdout: raw } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "tick_end"]));
+  const { stdout: raw } = await expectOkAsync(() => cmdHistory(repo, ["--grep", "run_end"]));
   assert.match(raw, /clean\s+#1/);
   assert.match(raw, /dry\s+#1/);
   assert.match(raw, /docs\s+#2/);
@@ -152,10 +152,10 @@ test("history rejects rival flag shapes and over-cap values with the shared word
 
 test("history pads text columns by display width, so a wide-character loop name aligns", async () => {
   const repo = makeRepo();
-  logEvent(repo, { ts: NOW - 60_000, loop: "a", type: "tick_start", tick: 1 });
-  logEvent(repo, { ts: NOW - 50_000, loop: "a", type: "tick_end", tick: 1, result: "changed", summary: "first" });
-  logEvent(repo, { ts: NOW - 40_000, loop: "日本", type: "tick_start", tick: 1 });
-  logEvent(repo, { ts: NOW - 30_000, loop: "日本", type: "tick_end", tick: 1, result: "changed", summary: "second" });
+  logEvent(repo, { ts: NOW - 60_000, loop: "a", type: "run_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 50_000, loop: "a", type: "run_end", tick: 1, result: "changed", summary: "first" });
+  logEvent(repo, { ts: NOW - 40_000, loop: "日本", type: "run_start", tick: 1 });
+  logEvent(repo, { ts: NOW - 30_000, loop: "日本", type: "run_end", tick: 1, result: "changed", summary: "second" });
   const { stdout } = await expectOkAsync(() => cmdHistory(repo, []));
   const lines = stdout.trimEnd().split("\n");
   // The "#" that starts the tick column sits at the same terminal display column on

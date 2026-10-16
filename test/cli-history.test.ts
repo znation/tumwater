@@ -25,9 +25,9 @@ test("history CLI keeps the detail column aligned across usage and usage-less ro
   const repo = makeRepo();
   await initProject(repo, "cli history alignment");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "tick_start", tick: 7 },
-    { ts: 1787222695956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 },
-    { ts: 1787222700000, loop: "clean", type: "tick_end", tick: 3, result: "no_change", summary: "tidied" },
+    { ts: 1787222691956, loop: "feature", type: "run_start", tick: 7 },
+    { ts: 1787222695956, loop: "feature", type: "run_end", tick: 7, result: "changed", summary: "added a widget", tokens: 2400, costUsd: 0.02 },
+    { ts: 1787222700000, loop: "clean", type: "run_end", tick: 3, result: "no_change", summary: "tidied" },
   ]);
   const r = await cli(repo, "history");
   assert.equal(r.code, 0);
@@ -40,25 +40,25 @@ test("history CLI keeps the detail column aligned across usage and usage-less ro
   assert.equal(detail0, detail1, "detail columns align across a row with no usage");
 });
 
-test("history grows the scan window to pair a tick_start the first window's boundary cut off", async () => {
-  // The default window (limit*2+50) can end inside a tick's own event block: every tick_end
-  // the ask needs sits within it, but the oldest one's tick_start sits just before the
+test("history grows the scan window to pair a run_start the first window's boundary cut off", async () => {
+  // The default window (limit*2+50) can end inside a tick's own event block: every run_end
+  // the ask needs sits within it, but the oldest one's run_start sits just before the
   // boundary — and since the row count is satisfied, growth keyed on short rows alone never
   // re-read. The log holds the start, so the row must show its duration, not a dash.
   const repo = makeRepo();
   await initProject(repo, "cli history boundary");
-  const events: HarnessEvent[] = [{ ts: 1000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent];
-  // Unrelated events inflate the span between the two tick_ends past the first window: 41
+  const events: HarnessEvent[] = [{ ts: 1000, loop: "feature", type: "run_start", tick: 1 } as HarnessEvent];
+  // Unrelated events inflate the span between the two run_ends past the first window: 41
   // merged events put tick 1's end at depth 54 of a 55-event log, exactly one event short of
   // carrying its own start (window = 2*2+50 = 54).
   for (let i = 0; i < 41; i++) events.push({ ts: 1001 + i, loop: "other", type: "merged" } as HarnessEvent);
   events.push(
-    { ts: 5000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "work", tokens: 100, costUsd: 0.01 } as HarnessEvent,
+    { ts: 5000, loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "work", tokens: 100, costUsd: 0.01 } as HarnessEvent,
   );
   for (let i = 0; i < 10; i++) events.push({ ts: 5001 + i, loop: "other", type: "merged" } as HarnessEvent);
   events.push(
-    { ts: 10000, loop: "feature", type: "tick_start", tick: 2 } as HarnessEvent,
-    { ts: 11000, loop: "feature", type: "tick_end", tick: 2, result: "changed", summary: "work 2" } as HarnessEvent,
+    { ts: 10000, loop: "feature", type: "run_start", tick: 2 } as HarnessEvent,
+    { ts: 11000, loop: "feature", type: "run_end", tick: 2, result: "changed", summary: "work 2" } as HarnessEvent,
   );
   writeEvents(repo, events);
   const r = await cli(repo, "history", "-n", "2");
@@ -97,20 +97,20 @@ test("history --role restricts rows to that loop, including user-defined ids", a
 
 test("history --role grows its scan window until it reaches the role's ticks", async () => {
   // The dilution case: the first window (limit*2+50 events) fills with a busy sibling loop's
-  // tick_ends, so the filtered rows fall short while older qa ticks sit just past it. The
+  // run_ends, so the filtered rows fall short while older qa ticks sit just past it. The
   // command must re-read with a larger window instead of printing fewer rows (or, at the
   // extreme, "no runs yet" for a role that had ticks).
   const repo = makeRepo();
   await initProject(repo, "history dilution");
   const events: HarnessEvent[] = [];
-  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "tick_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
-  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "tick_end", tick: i + 1, result: "no_change" });
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "run_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "run_end", tick: i + 1, result: "no_change" });
   writeEvents(repo, events);
   const r = await cli(repo, "history", "--role", "qa", "-n", "5");
   assert.equal(r.code, 0);
   const lines = r.stdout.trim().split("\n");
   assert.equal(lines.length, 5);
-  assert.match(lines[0]!, /qa\s+#5\s+merged\s+—\s+qa fix 4/); // no tick_start seeded: — duration
+  assert.match(lines[0]!, /qa\s+#5\s+merged\s+—\s+qa fix 4/); // no run_start seeded: — duration
 
   // The honest-shortfall case: the log holds fewer qa ticks than asked and the scan reached
   // its start — the growth loop must stop and print what exists, not spin.
@@ -143,8 +143,8 @@ test("history keeps the loop column aligned when a loop name holds a wide charac
   const repo = makeRepo();
   await initProject(repo, "cli history wide alignment");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "added a widget" },
-    { ts: 1787222700000, loop: "翻译", type: "tick_end", tick: 3, result: "no_change", summary: "tidied" },
+    { ts: 1787222691956, loop: "feature", type: "run_end", tick: 7, result: "changed", summary: "added a widget" },
+    { ts: 1787222700000, loop: "翻译", type: "run_end", tick: 3, result: "no_change", summary: "tidied" },
   ]);
   const r = await cli(repo, "history");
   assert.equal(r.code, 0);
@@ -166,7 +166,7 @@ test("history --json prints the tick rows as machine-readable data", async () =>
   // serves for the same log, and to what the table renders.
   assert.deepEqual(payload, JSON.parse(JSON.stringify({ rows: readTickRows(repo, HISTORY_MAX_TICKS, null) })));
   const rows = payload.rows as Array<Record<string, unknown>>;
-  assert.equal(rows.length, 3); // The tick_start contributes no row.
+  assert.equal(rows.length, 3); // The run_start contributes no row.
   // Newest first, with the raw fields the table's renderings are derived from.
   assert.equal(rows[0]!["loop"], "bugfix");
   assert.equal(rows[0]!["ts"], 1787222760000);

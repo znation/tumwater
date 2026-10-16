@@ -42,11 +42,11 @@ function wakeAll(repo: string): void {
   fs.writeFileSync(path.join(repo, STATE_DIR, "wake.json"), JSON.stringify({}));
 }
 
-/** Role ticks started but not yet ended. The launch pass logs a tick's tick_start before any
+/** Role ticks started but not yet ended. The launch pass logs a tick's run_start before any
  * I/O, and the orchestrator runs in-process, so once the test reads the log every admitted
  * tick is counted here. */
 function roleTicksInFlight(repo: string): number {
-  return eventsOfType(repo, "tick_start").length - eventsOfType(repo, "tick_end").length;
+  return eventsOfType(repo, "run_start").length - eventsOfType(repo, "run_end").length;
 }
 
 test("a demoted fallback admits exactly one probe tick per cool-down; other due roles wait", async () => {
@@ -96,7 +96,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     await waitFor(() => onFallback() >= 3, "the three tripping failures");
     // Both roles fail in lockstep, so the other role's tick is usually still in flight when the
     // third failure trips the breaker — a straggler admitted before the trip, which runs to its
-    // own failure by design (recordFallbackTick). Its tick_start precedes the worktree reset and
+    // own failure by design (recordFallbackTick). Its run_start precedes the worktree reset and
     // the pi spawn, so on a loaded host its argv line can land after budget_paused and read as a
     // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started tick to end; no
     // new tick can start meanwhile, since admission reads the tripped breaker.

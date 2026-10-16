@@ -237,7 +237,7 @@ test("fold carries the newest rate windows and reset clears them", () => {
 });
 
 // The per-provider spend split (plans: per-provider spend in the day report): fold keys each
-// run's real/notional cost by the provider it ran on, so the tick_end event can say which seam
+// run's real/notional cost by the provider it ran on, so the run_end event can say which seam
 // of a mixed fleet spent what. A run whose provider was never resolved attributes nothing.
 test("fold splits per-provider spend into providerCost, keyed by provider, guarded on undefined", () => {
   const s: LoopState = freshLoopState("coverage");

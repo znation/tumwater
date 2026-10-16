@@ -217,7 +217,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   lines.push(`- Min run interval: ${p.minRunIntervalSeconds}s`);
   lines.push(`- Inbox: ${p.inboxCount}`);
   // The loop's own spend over its retained event window (role-view.ts's usage, summed from the
-  // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+  // same run_end events recentOutcomes reads): how much the loop burned on tokens and cost,
   // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
   // (plans/agent-backends.md part 6a). Absent for a never-costly loop, so old `tumwater role`
   // goldens are byte-identical.

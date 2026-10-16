@@ -65,7 +65,7 @@ test("the event-log builders stamp well-formed events a scratch repo's log reads
   ]);
   const events = readEvents(root);
   assert.equal(events.length, 4);
-  assert.equal(events[1]!.type, "tick_end");
+  assert.equal(events[1]!.type, "run_end");
   assert.equal((events[1] as { result?: string }).result, "changed");
   assert.equal(events[2]!.type, "review_verdict");
   assert.equal((events[3] as { scope?: string }).scope, "gate");

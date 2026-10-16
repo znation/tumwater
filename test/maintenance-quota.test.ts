@@ -62,7 +62,7 @@ test("countMaintenanceWindow counts merged events by tier inside the last 24 h",
     // older than 24 h: excluded.
     ...Array.from({ length: 4 }, (_, i) => ({ ts: outside, loop: "clean", type: "merged", commit: `oc${i}` })),
     // a non-merged event inside the window is not a landing.
-    { ts: inside, loop: "clean", type: "tick_end", tokens: 1 },
+    { ts: inside, loop: "clean", type: "run_end", tokens: 1 },
     // a tier-counted merge with no timestamp contributes nothing.
     { loop: "clean", type: "merged", commit: "nots" },
   ]);
@@ -129,7 +129,7 @@ test("appended lines that are torn, non-merged, tierless, or timestamp-less are 
   assert.deepEqual(countMaintenanceWindow(root, counter, now), { work: 0, maint: 1 });
   const appended = [
     "{ torn",
-    JSON.stringify({ ts: now - HOUR, loop: "clean", type: "tick_end", tokens: 1 }),
+    JSON.stringify({ ts: now - HOUR, loop: "clean", type: "run_end", tokens: 1 }),
     JSON.stringify({ ts: now - HOUR, loop: "steward", type: "merged", commit: "s" }),
     JSON.stringify({ loop: "feature", type: "merged", commit: "x" }),
     JSON.stringify({ ts: now - HOUR / 2, loop: "feature", type: "merged", commit: "b" }),

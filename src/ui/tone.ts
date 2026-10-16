@@ -55,7 +55,7 @@ export function resultTone(result: string | undefined | null): Tone | undefined 
  * browser copy (gui-client-model.ts eventKind) is pinned to this one by test. */
 type EventKind = "landing" | "problem" | "attention" | "info" | "routine";
 
-/** The tick results that make a `tick_end` a problem — one home of the list, also fed to the
+/** The tick results that make a `run_end` a problem — one home of the list, also fed to the
  * dashboard's browser twin (gui-client-model.ts interpolates it into its script, both for
  * eventKind and for resultWhy's "does this result carry an error" check), so a newly problem
  * result cannot be classified on one surface and not the other. */
@@ -63,7 +63,7 @@ export const PROBLEM_RESULTS = ["refused", "rejected", "review_error", "merge_co
 
 /** The named event types that are routine bookkeeping — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
-export const ROUTINE_EVENTS = ["tick_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
+export const ROUTINE_EVENTS = ["run_start", "wake", "tick_deferred", "review_start", "review_verdict", "land_queued", "landed", "resume", "counters_reset"]; // vocabulary-ok: event type codes are renamed by the event log series
 
 /** The named event types that are problems — one home of the list, interpolated into
  * gui-client-model.ts's browser eventKind exactly as PROBLEM_RESULTS is. */
@@ -82,7 +82,7 @@ const PROBLEM_EVENT_SET = new Set(PROBLEM_EVENTS);
 const ROUTINE_BUILD_RESULT_SET = new Set(ROUTINE_BUILD_RESULTS);
 
 /** Which EventKind one event is, checked in precedence order: the two hard-coded news types
- * first (merged, question_posted), then the result-carrying types by their result — a tick_end
+ * first (merged, question_posted), then the result-carrying types by their result — a run_end
  * is routine unless its result is a known failure, and a build_check is routine only when it
  * passed or was skipped — then the named event sets, with anything unrecognized reading as
  * info (an event this file predates is news until it is classified). */
@@ -90,7 +90,7 @@ export function eventKind(type: string, result?: string): EventKind {
   if (type === "merged") return "landing"; // vocabulary-ok: EventKind value renamed by the code series
   if (type === "question_posted") return "attention";
   if (type === "entry_refused") return "attention";
-  if (type === "tick_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";
+  if (type === "run_end") return result !== undefined && PROBLEM_RESULT_SET.has(result) ? "problem" : "routine";
   if (type === "build_check") return result !== undefined && ROUTINE_BUILD_RESULT_SET.has(result) ? "routine" : "problem";
   if (PROBLEM_EVENT_SET.has(type)) return "problem";
   if (ROUTINE_EVENT_SET.has(type)) return "routine";

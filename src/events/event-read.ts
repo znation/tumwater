@@ -61,7 +61,7 @@ export function eventTick(ev: HarnessEvent): number {
   return finiteNumber(ev.tick, 0);
 }
 
-/** The usage numbers an event records (`tick_end`'s own run, `landed`'s landing slot):
+/** The usage numbers an event records (`run_end`'s own run, `landed`'s landing slot):
  * `tokens` and `costUsd` arrive `unknown` through the event's index signature, so they are
  * coerced to numbers here, with an absent, non-numeric, or non-finite value reading as 0 —
  * the one convention every usage consumer applies (the event feed's usage fragment,
@@ -76,13 +76,13 @@ export function eventUsage(ev: HarnessEvent): { tokens: number; costUsd: number;
   return { tokens, costUsd, notionalCostUsd };
 }
 
-/** Pair the tick_start events of `events` by tick, keyed `${loop}#${tick}` → start epoch ms —
+/** Pair the run_start events of `events` by tick, keyed `${loop}#${tick}` → start epoch ms —
  * the one home of that pairing and its key format, shared by `tumwater history`'s rows
  * (history-data.ts), the failure digest's time-and-spend fold (time-spend.ts), and the tick
  * drill-down's duration (tick-detail-data.ts), so those consumers cannot drift into different
- * notions of a tick's span. A tick_end whose start is not in `events` (log rotation cut it, or
+ * notions of a tick's span. A run_end whose start is not in `events` (log rotation cut it, or
  * the tick was skipped before any start logged) has no entry; callers decide what an unpaired
- * end costs. A tick_start whose `ts` is not a finite number is as unusable as an absent one and
+ * end costs. A run_start whose `ts` is not a finite number is as unusable as an absent one and
  * adds no entry either (the same "a torn or hand-edited line carries no usable timestamp"
  * policy eventTick/eventUsage apply to their fields), so every value in the map is real epoch
  * ms and the span below cannot subtract from `undefined`. Lives in the read module, not in a
@@ -91,12 +91,12 @@ export function tickStartMap(events: HarnessEvent[]): Map<string, number> {
   const starts = new Map<string, number>();
   for (const e of events) {
     const ts = finiteNumber(e.ts, null);
-    if (e.type === "tick_start" && ts !== null) starts.set(`${e.loop}#${e.tick}`, ts);
+    if (e.type === "run_start" && ts !== null) starts.set(`${e.loop}#${e.tick}`, ts);
   }
   return starts;
 }
 
-/** The start→end span of the `tick_end` event `ev` against `starts` (tickStartMap's pairing):
+/** The start→end span of the `run_end` event `ev` against `starts` (tickStartMap's pairing):
  * the `${loop}#${tick}` lookup and the clamp to non-negative, in one place beside the map
  * they index, so the key format and the span rule are spelled once. null when the start is
  * missing (rotation cut it) or when `ev.ts` is not a finite number (a torn or hand-edited end

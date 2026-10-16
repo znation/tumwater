@@ -16,11 +16,11 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 
 function startEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_start", tick: 1, ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_start", tick: 1, ...over } as HarnessEvent;
 }
 
 function endEvent(over: Partial<HarnessEvent>): HarnessEvent {
-  return { ts: 0, loop: "feature", type: "tick_end", tick: 1, result: "changed", ...over } as HarnessEvent;
+  return { ts: 0, loop: "feature", type: "run_end", tick: 1, result: "changed", ...over } as HarnessEvent;
 }
 
 /** A tick-less in-tick event — the review gate's and build check's output, filed under the
@@ -61,16 +61,16 @@ test("a paired tick's block is its start, its in-tick events, and its end — no
   assert.deepEqual(
     detail.events.map((e) => [e.type, e.ts, e.loop]),
     [
-      ["tick_start", 1000, "feature"],
+      ["run_start", 1000, "feature"],
       ["review_verdict", 1400, "feature"],
       ["review_verdict", 2000, "feature"],
-      ["tick_end", 2000, "feature"],
+      ["run_end", 2000, "feature"],
     ],
   );
 });
 
-test("a torn tick_end outcome reads as ?, never undefined", () => {
-  // The collector used String(end.result) raw: a hand-edited tick_end with a missing or
+test("a torn run_end outcome reads as ?, never undefined", () => {
+  // The collector used String(end.result) raw: a hand-edited run_end with a missing or
   // non-string result shipped the literal "undefined" as TickDetail.result, which the CLI
   // header and /api/tick drill-down printed. It now rides the shared outcomeText.
   for (const result of [undefined, 7] as const) {
@@ -87,7 +87,7 @@ test("an in-flight tick reads open: no end, no fabricated duration, zero usage",
   writeEvents(root, [
     startEvent({ ts: 5000, tick: 3 }),
     inTickEvent({ ts: 5500, tick: 3 }),
-    // Nothing after: no tick_end and no next tick_start, so everything since the start is
+    // Nothing after: no run_end and no next run_start, so everything since the start is
     // the open tick's block.
   ]);
   const detail = readTickDetail(root, "feature", 3);
@@ -138,7 +138,7 @@ test("a counter reset's repeated tick number answers with the newest block", () 
 test("a rotation-cut start answers unpaired from a surviving end: no start, no duration", () => {
   const root = tmpdir();
   writeEvents(root, [
-    // Everything before the end event rotated away — only the tick_end survives.
+    // Everything before the end event rotated away — only the run_end survives.
     endEvent({ ts: 11000, tick: 6, result: "changed", tokens: 0, costUsd: 0 }),
   ]);
   const detail = readTickDetail(root, "feature", 6);
@@ -149,7 +149,7 @@ test("a rotation-cut start answers unpaired from a surviving end: no start, no d
   );
   // Zero usage renders empty (the omit-when-zero convention), not a fabricated figure.
   assert.equal(detail.usage, "");
-  assert.deepEqual(detail.events.map((e) => e.type), ["tick_end"]);
+  assert.deepEqual(detail.events.map((e) => e.type), ["run_end"]);
 });
 
 test("a tick the scan never saw reads as not found, start or end", () => {

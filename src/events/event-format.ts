@@ -11,7 +11,7 @@ import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
 
-/** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (tick_end,
+/** The `<N> tok · $<spent>` usage fragment every event that records a run's cost shares (run_end,
  * landed): the usage numbers arrive via eventUsage (the loose-typing coercion every usage consumer
  * shares), rendered through the shared token/money formats (compactTokens, usd) in one place.
  * Either part is omitted when zero or absent, so skipped ticks and zero-usage landings render
@@ -158,9 +158,9 @@ export function eventMatchesGrep(e: HarnessEvent, patternLower: string): boolean
  * ships this beside the event's type and loop instead of making the page re-parse a line. */
 export function eventMessage(e: HarnessEvent): string {
   switch (e.type) {
-    case "tick_start":
+    case "run_start":
       return `run #${eventTick(e)} started${e.model !== undefined ? ` on ${textOr(e.model)}` : ""}`;
-    case "tick_end": {
+    case "run_end": {
       // The payload that explains the outcome: summary for changed/refused/rejected/
       // review_error ticks, error (lastError) for error and merge-failed ones. Showing it
       // for every result that carries one keeps the event feed self-explanatory — a bare
@@ -178,7 +178,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "landed": // vocabulary-ok: event type
       // The landing slot finished with the change on main; the usage is the landing's own
       // spend (reviewer + conflict resolution), omitted when zero so review-exempt landings
-      // render bare — the same phrase tick_end carries for its run.
+      // render bare — the same phrase run_end carries for its run.
       return `merge of ${shortSha(e.commit)} done${elapsed(e.durationMs)}${usagePhrase(e)}`;
     case "land_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
@@ -220,7 +220,7 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "tick_aborted":
       // Routine state change (the user stopped one loop's tick), like counters_reset — no
-      // warning prefix. The resulting tick_end line carries the user_aborted outcome.
+      // warning prefix. The resulting run_end line carries the user_aborted outcome.
       return `run stopped by you`;
     case "review_start": {
       // A resumed review continues a timed-out reviewer's session (PLANS.md, review-retry part

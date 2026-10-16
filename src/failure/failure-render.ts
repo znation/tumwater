@@ -59,7 +59,7 @@ function deltaCell(prevRuns: number, prev: string | number, runs: number, cur: s
 }
 
 /** The rejections column's cell. It cannot reuse deltaCell: a rejection is logged by the
- * landing slot, so its authoring tick_end can fall in the other window — a role with a
+ * landing slot, so its authoring run_end can fall in the other window — a role with a
  * rejection must show it even when its tick count is 0. Presence is judged on the rejection
  * count itself (the role is "absent" from the column only with neither runs nor rejections). */
 function rejectionCell(prevRuns: number, prevRejections: number, runs: number, rejections: number): string {
@@ -242,7 +242,7 @@ export function renderFailureMarkdown(data: FailureReportData): string {
 
   // Prompt-token telemetry: the per-role median prompt
   // send and how much of the prompt budget goes out before a tick's first edit. Omitted
-  // entirely when no tick_end in the window carries the fields, so old logs and their golden
+  // entirely when no run_end in the window carries the fields, so old logs and their golden
   // digests render unchanged.
   if (data.promptStats.length > 0) {
     lines.push("");

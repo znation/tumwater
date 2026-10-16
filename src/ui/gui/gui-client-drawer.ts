@@ -335,7 +335,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     });
     if (typeof view.inboxCount === "number") rows.push(kvRow("Queued prompts", String(view.inboxCount)));
     // The loop's own spend over its retained event window (rolePayload's usage, summed from the
-    // same tick_end events recentOutcomes reads): how much the loop burned on tokens and cost,
+    // same run_end events recentOutcomes reads): how much the loop burned on tokens and cost,
     // with a notional suffix only when a claude-subscription seam burned non-zero notional spend
     // — mirroring role-render.ts's Spend line, so the drawer and tumwater role <id> read one
     // loop's spend identically. Each numeric field is coerced (foreign shapes read as 0) and an

@@ -182,7 +182,7 @@ test("a per-role pause gates only that role, holds a named director, and resumes
     enqueuePrompt(repo, "steer me while the director is paused");
     await sleep(600);
     assert.ok(
-      !readEvents(repo).some((e) => e.type === "tick_start" && e.loop === DIRECTOR_ROLE),
+      !readEvents(repo).some((e) => e.type === "run_start" && e.loop === DIRECTOR_ROLE),
       "a paused director starts no ticks",
     );
     assert.ok(

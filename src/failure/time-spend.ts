@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The failure digest's time-and-spend fold: read the window's `tick_end`s and price each one into
+/** The failure digest's time-and-spend fold: read the window's `run_end`s and price each one into
  * the per-role × outcome-class table (runs, summed wall-clock ms, cost) plus the loss-cause
  * ranking that weighs causes by agent-hours rather than tick counts. Split from
  * src/failure/failure-data.ts, which owns the rest of the collection (outcome tallies, deltas,
@@ -38,7 +38,7 @@ export const OUTCOME_CLASS: Record<TickResult, "merged" | "no_change" | "error">
 
 /** One cell of the time-and-spend table: the runs that ended on one outcome class, their
  * summed wall-clock span (start→end) and cost. `ms` is 0 when no duration is known — an old
- * `tick_end` whose `tick_start` rotated out of the retained log — so the cell still counts
+ * `run_end` whose `run_start` rotated out of the retained log — so the cell still counts
  * the tick but prices no time it cannot attest. */
 export interface SpendCell {
   runs: number;
@@ -80,12 +80,12 @@ function sumMs(classes: TimeSpendRow["classes"]): number {
 const LOSS_TOP = 5;
 
 /** The raw results whose loss attributes to a cluster — an error, an abort, a quiet kill, or
- * a red-main skip, each carrying its own message on the tick_end (main_red's is the
+ * a red-main skip, each carrying its own message on the run_end (main_red's is the
  * redMainMessage the error-clusters section already itemizes, BUGS.md 2026-10-07). A queued
  * tick's landing outcomes are owned by the joins below instead: review_error through its
  * matching `review_failed` message, review-rejected through its review reasons, and
  * merge_conflict/merge_blocked by the result itself (BUGS.md 2026-10-10). (A raw
- * `user_aborted` tick_end is also error-class but is not in this set, so it stays out of the
+ * `user_aborted` run_end is also error-class but is not in this set, so it stays out of the
  * ranking.) */
 const CLUSTERED_RESULTS: ReadonlySet<string> = new Set(["error", "aborted", "quiet_killed", "main_red"]);
 
@@ -118,7 +118,7 @@ function newestAttemptEvent(
     .at(-1);
 }
 
-/** The time a `tick_end` attests: its own `durationMs` when it carries one (every event
+/** The time a `run_end` attests: its own `durationMs` when it carries one (every event
  * written since 2026-09-29 does), else the start→end pairing over `starts` — the same
  * fallback history-data.ts renders, so old events read their span the one way it can still be
  * known. 0 when neither source has the start (rotation cut it); the fold prices no time it
@@ -140,10 +140,10 @@ function tally(target: { runs: number; ms: number; costUsd: number }, durationMs
   target.costUsd += usage.costUsd;
 }
 
-/** Fold the window's tick_ends into the time-and-spend table and the loss ranking. Pairing
+/** Fold the window's run_ends into the time-and-spend table and the loss ranking. Pairing
  * runs over BOTH windows' events (the caller passes the whole read), so a tick that opened
  * in the preceding day and ended in the current one still gets its span. The landing-outcome
- * join runs over that same whole read too (BUGS.md 2026-09-30): a queued tick_end resolves
+ * join runs over that same whole read too (BUGS.md 2026-09-30): a queued run_end resolves
  * through its own land_queued pin to the later landed/land_failed outcome for the same
  * loop+sha — history-data.ts's exact join — so an authoring tick whose landing was rejected
  * prices into the error-class cell its contract names instead of the merged cell its
@@ -184,7 +184,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
     ),
     (e) => e.loop,
   );
-  // Queued tick_ends resolve newest-first so each claims the newest pin at or before its end
+  // Queued run_ends resolve newest-first so each claims the newest pin at or before its end
   // that no newer tick has claimed — resolveQueuedResult's exact claim rule, shared with the
   // history rows. tickEvents is oldest-first, hence the backward walk.
   const claimTop = new Map<string, number>();
@@ -237,7 +237,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       key = `no_change\u0000${role}`;
       kind = "no_change";
     } else if (CLUSTERED_RESULTS.has(String(ev.result))) {
-      // A clustered result with no error text still owns its time: an abort's tick_end never
+      // A clustered result with no error text still owns its time: an abort's run_end never
       // carries one (planTickStart clears s.lastError, tick-finalize logs error: undefined),
       // and a malformed error tick can lose it too, so both take the same placeholder cause the
       // error-clusters section already itemizes rather than dropping the span itemized nowhere.
@@ -278,7 +278,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       // The landing failed to merge (a conflict, or a blocked fast-forward/rebase): this
       // authoring span burned. The `land_failed` event carries no message — writeLandingOutcome
       // logs only result/commit/durationMs/usage — so the cause is named by its own result and
-      // takes the shared no-text placeholder, the same fallback a message-less aborted tick_end
+      // takes the shared no-text placeholder, the same fallback a message-less aborted run_end
       // uses, rather than dropping a span the error-class cell already priced (BUGS.md
       // 2026-10-10).
       key = `${resolvedOutcome.result}\u0000${role}`;

@@ -8,7 +8,7 @@ import { gotSuffix } from "../text/text.js";
 
 /** `tumwater history [--role <id>] [-n N]`: one row per completed tick, newest first. The
  * observing half beside cmdLogs (log-commands.ts): read-only over the event log, stdout only —
- * every datum rides the `tick_end` events src/tick/tick-finalize.ts already writes, so this
+ * every datum rides the `run_end` events src/tick/tick-finalize.ts already writes, so this
  * is a rendering of the existing record, not a new one. The rows themselves are collected
  * by history-data.ts (beside src/report/report-data.ts and src/failure/failure-data.ts), and
  * the aligned table/summary text they print is rendered by history-render.ts (beside
@@ -35,7 +35,7 @@ export const HISTORY_RESULT_VALUE_ERROR = "history --result needs a value";
  * event log prints `no runs yet` and exits 0. */
 export async function cmdHistory(root: string, args: string[]): Promise<void> {
   // `--grep <text>` filters the row set case-insensitively against the WYSIWYG row line (plus a
-  // `tick_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
+  // `run_end` prefix, the same haystack rule logs --grep applies to its rendered lines), so
   // both observing views answer substring questions the same way. The flag scan itself — the
   // value lookup, the `rest` construction that keeps a flag-shaped pattern (`history --grep
   // --since` greps for the text "--since") from impersonating a rival flag, and the

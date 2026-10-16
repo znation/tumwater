@@ -17,14 +17,16 @@ const OLD = JSON.stringify({ ts: Date.now(), loop: "harness", type: "fleet_pause
 test("canonicalEventType maps an old name and leaves anything else alone", () => {
   assert.equal(canonicalEventType("fleet_paused"), "team_paused"); // vocabulary-ok: legacy event name read from old logs
   assert.equal(canonicalEventType("fleet_resumed"), "team_resumed"); // vocabulary-ok: legacy event name read from old logs
+  assert.equal(canonicalEventType("tick_start"), "run_start"); // vocabulary-ok: legacy event name read from old logs
+  assert.equal(canonicalEventType("tick_end"), "run_end"); // vocabulary-ok: legacy event name read from old logs
   assert.equal(canonicalEventType("team_paused"), "team_paused");
   assert.equal(canonicalEventType("toString"), "toString");
 });
 
 test("normalizeLegacyEvent rewrites in place, never throws, and leaves a current line untouched", () => {
-  const cur = { ts: 1, type: "tick_end" };
+  const cur = { ts: 1, type: "run_end" };
   assert.equal(normalizeLegacyEvent(cur), cur);
-  assert.deepEqual(cur, { ts: 1, type: "tick_end" });
+  assert.deepEqual(cur, { ts: 1, type: "run_end" });
   assert.doesNotThrow(() => normalizeLegacyEvent({ ts: 1, type: 5 }));
   assert.doesNotThrow(() => normalizeLegacyEvent({}));
 });
@@ -40,7 +42,7 @@ test("parseEventLine, readEvents and readWindowEvents (live and archive) read an
   const win = readWindowEvents(repo, dayKey(Date.now() - 86_400_000 * 400));
   assert.ok(win.events.length >= 2);
   assert.ok(win.events.every((e) => e.type === "team_paused"));
-  assert.equal(parseEventLine(JSON.stringify({ ts: 1, type: "tick_end" }))?.type, "tick_end");
+  assert.equal(parseEventLine(JSON.stringify({ ts: 1, type: "tick_end" }))?.type, "run_end"); // vocabulary-ok: legacy event name read from old logs
 });
 
 test("logEvent given an old type writes and notifies the new type", () => {

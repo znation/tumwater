@@ -43,7 +43,7 @@ interface UsageFold {
    * split by role so a loop whose every iteration is a fresh rework is visible (the author-side
    * share of the rejection, where the reviewer's objection cost is the landing slot's). */
   revisionsByRole: Record<string, number>;
-  /** tick_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
+  /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
    * ticks that burned agent time and landed nothing without going through review. Split by role,
    * a parallel tally to ticksByRole (never subtracted from it). */
   failedTicksByRole: Record<string, number>;
@@ -73,7 +73,7 @@ interface UsageFold {
    * the landing gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
    * a shutdown abort), so an operator can see whether gate failures concentrate in one role. */
   landingFailedByRole: Record<string, number>;
-  /** Per-provider spend folded from the events' `providerCost` maps (tick_end's own runs and
+  /** Per-provider spend folded from the events' `providerCost` maps (run_end's own runs and
    * landed/land_failed's reviewer seam): real cost per provider, a parallel tally to
    * costByRole that is never subtracted from it or from costUsd. A provider with no real
    * spend leaves no key. */
@@ -84,7 +84,7 @@ interface UsageFold {
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
- * shape tick-finalize.ts's tick_end and landing-slot.ts's landed/land_failed emit) into the
+ * shape tick-finalize.ts's run_end and landing-slot.ts's landed/land_failed emit) into the
  * per-provider tallies, one addTo per provider per nonzero figure so zero stays absent. A
  * missing, foreign, or empty map folds nothing, so old logs render byte-identically. */
 function foldProviderCost(target: UsageFold, providerCost: unknown): void {
@@ -99,7 +99,7 @@ function foldProviderCost(target: UsageFold, providerCost: unknown): void {
   }
 }
 
-/** Fold one event into a usage accumulator: tick_end events add a tick (per role and, when
+/** Fold one event into a usage accumulator: run_end events add a tick (per role and, when
  * the target counts ticks, in total), their output tokens, and their cost — zero-cost ticks
  * contribute nothing, so they leave no costByRole key, keeping the render's "$0 roles are
  * omitted" rule true on the aggregation itself, not just at display time; merged events add
@@ -108,7 +108,7 @@ function foldProviderCost(target: UsageFold, providerCost: unknown): void {
  * breakdown, and the landing line is how the reviewer's share is named. Both collectors fold
  * through this one place, so the two windows' aggregation rules cannot drift apart. */
 function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
-  if (ev.type === "tick_end") {
+  if (ev.type === "run_end") {
     const role = eventRole(ev);
     addTo(target.ticksByRole, role, 1);
     // Error-class ticks get their own parallel tally — the day report's ``Failed ticks by role``
@@ -123,7 +123,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
-    // The tick's own runs' per-provider spend (tick-finalize.ts emits providerCost on tick_end)
+    // The tick's own runs' per-provider spend (tick-finalize.ts emits providerCost on run_end)
     // — folded per provider beside the per-role maps, so a mixed fleet's `Cost by provider`
     // line names the expensive seam.
     foldProviderCost(target, ev.providerCost);
@@ -382,9 +382,9 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
 }
 
 /** One day of a usage report: the local calendar day key plus what the fleet did on it.
- * `ticksByRole` counts tick_end events per loop id (role ids — works for custom loops too);
+ * `ticksByRole` counts run_end events per loop id (role ids — works for custom loops too);
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
- * `costByRole` splits that same costUsd per loop id — sourced from the same tick_end events
+ * `costByRole` splits that same costUsd per loop id — sourced from the same run_end events
  * (never a second pass), so its per-day sum equals the day's costUsd by construction.
  * `notionalCostUsd`/`notionalByRole` carry subscription spend the same way, kept apart
  * because it never charges the cap (plans/agent-backends.md part 6a).
@@ -406,7 +406,7 @@ export interface ReportDay {
   rejectionsByRole?: Record<string, number>;
   /** revision events per loop id; absent when the day has none (zero means absent). */
   revisionsByRole?: Record<string, number>;
-  /** error-class tick_end events per loop id; absent when the day has none (zero means
+  /** error-class run_end events per loop id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedTicksByRole?: Record<string, number>;
   commits: number;
@@ -478,7 +478,7 @@ export interface ReportData {
   coversFullWindow: boolean;
 }
 
-/** Fleet usage over a trailing window of `sinceMs` ending now: the same tick_end/merged
+/** Fleet usage over a trailing window of `sinceMs` ending now: the same run_end/merged
  * aggregation as `collectReport` but keyed to a cutoff instant rather than whole local days.
  * Backlog tallies (features done / bugs fixed) are deliberately absent: they are counted from
  * PLANS.md/BUGS.md `done`/`fixed` dates, which are day-granular file metadata that cannot
@@ -494,7 +494,7 @@ export interface SinceReport {
   rejectionsByRole: Record<string, number>;
   /** revision events per loop id; empty when the window has none. */
   revisionsByRole: Record<string, number>;
-  /** error-class tick_end events per loop id; empty when the window has none. */
+  /** error-class run_end events per loop id; empty when the window has none. */
   failedTicksByRole: Record<string, number>;
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
@@ -531,7 +531,7 @@ export interface SinceReport {
 }
 
 /** Aggregate fleet usage over the trailing `sinceMs` window ending now, from the event log
- * only (tick_end/merged — see SinceReport for why the backlog files are not read). Kept a
+ * only (run_end/merged — see SinceReport for why the backlog files are not read). Kept a
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
 export function collectReportSince(root: string, sinceMs: number, role?: string): SinceReport {
@@ -592,7 +592,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
           ...((acc.landingFailed ?? 0) > 0 ? { landingFailed: acc.landingFailed } : {}),
         }
       : (() => {
-          // The role's own notional spend, from its tick_end events; the landing slot's
+          // The role's own notional spend, from its run_end events; the landing slot's
           // notional is fleet-wide and stays out like its cost.
           const notional = roleSum(acc.notionalByRole, base);
           return {
@@ -634,7 +634,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
 }
 
 /** Aggregate fleet usage over exactly `days` local calendar days ending today, from the event
- * log (tick_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
+ * log (run_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
 export function collectReport(root: string, days: number, role?: string): ReportData {
   const now = new Date();
   // One captured instant for the whole window, so every day key derives from the same day.

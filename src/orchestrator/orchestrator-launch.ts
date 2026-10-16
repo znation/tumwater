@@ -258,7 +258,7 @@ export function launchDueTicks(ctx: LaunchContext): void {
       // A reservation whose tick never started hands itself back, so the role re-schedules
       // once the hold lifts (or on the new build) instead of sitting `running` forever with
       // nothing in flight. Memory only, on purpose: nothing started, so no state write and
-      // no tick_start/tick_end — the persisted state still reads exactly as the last real
+      // no run_start/run_end — the persisted state still reads exactly as the last real
       // tick left it, and the next generation schedules the role from that.
       if (!started) runner.state.running = false;
       // A probe turned away the same way answered nothing: hand its claim back (see

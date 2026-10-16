@@ -452,7 +452,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     saveConfig(repo, cfg);
     await waitFor(() => finished("docs-auditor"), "the new custom loop to tick");
     assert.ok(
-      readEvents(repo).some((e) => e.type === "tick_start" && e.loop === "docs-auditor"),
+      readEvents(repo).some((e) => e.type === "run_start" && e.loop === "docs-auditor"),
       "ticks under its own name",
     );
     // Owns its persistent worktree and branch like a built-in.

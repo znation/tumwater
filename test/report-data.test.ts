@@ -1,5 +1,5 @@
 // --- src/report/report-data.ts: the usage collectors (collectReport, collectReportSince) ---
-// The day-window collector buckets tick_end/merged/landing events by LOCAL calendar day and
+// The day-window collector buckets run_end/merged/landing events by LOCAL calendar day and
 // tallies the backlog trackers' completions; the trailing-window collector totals a --since
 // window with a coverage proof. The Markdown render of both lives one layer up in
 // src/report/report-render.ts (test/report.test.ts); these tests pin the collectors' data contract.
@@ -19,20 +19,20 @@ import { patchFsMethod } from "./helpers/fs-faults.js";
 // The report buckets by LOCAL calendar day, so fixtures build timestamps from local date parts
 // (never UTC strings) and compute expected keys the same way (dayKey).
 
-test("collectReport buckets tick_end/merged events by local day and totals them", () => {
+test("collectReport buckets run_end/merged events by local day and totals them", () => {
   const root = tmpdir();
   writeEvents(root, [
     // Out of the 5-day window (7 days ago) — must not count.
-    JSON.stringify({ ts: at(6), loop: "feature", type: "tick_end", tick: 1, result: "no_change", tokens: 999 }),
-    JSON.stringify({ ts: at(4), loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(6), loop: "feature", type: "run_end", tick: 1, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", tick: 2, result: "changed", tokens: 500, costUsd: 0.5 }),
     // No tokens/costUsd fields — counts as a tick with zero spend (omitted when zero in the log).
-    JSON.stringify({ ts: at(4), loop: "bugfix", type: "tick_end", tick: 3, result: "no_change" }),
+    JSON.stringify({ ts: at(4), loop: "bugfix", type: "run_end", tick: 3, result: "no_change" }),
     "this line is not json", // malformed lines are ignored
     JSON.stringify({ ts: at(3), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
     // Gap day (at 2) stays zero-filled.
-    JSON.stringify({ ts: at(1), loop: "feature", type: "tick_end", tick: 5, result: "changed", tokens: 1500, costUsd: 1.25 }),
+    JSON.stringify({ ts: at(1), loop: "feature", type: "run_end", tick: 5, result: "changed", tokens: 1500, costUsd: 1.25 }),
     JSON.stringify({ ts: at(0), loop: "steward", type: "merged", commit: "def5678", summary: "y" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 6, result: "no_change", tokens: 10 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 6, result: "no_change", tokens: 10 }),
   ]);
   const data = collectReport(root, 5);
 
@@ -49,7 +49,7 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   const d0 = data.series[0]; // at(4)
   assert.equal(d0?.tokensOut, 500);
   assert.deepEqual(d0?.ticksByRole, { feature: 1, bugfix: 1 });
-  assert.deepEqual(d0?.costByRole, { feature: 0.5 }, "cost splits by role from the same tick_end event");
+  assert.deepEqual(d0?.costByRole, { feature: 0.5 }, "cost splits by role from the same run_end event");
   assert.ok(Math.abs((d0?.costUsd ?? -1) - 0.5) < 1e-9);
   const d1 = data.series[1]; // at(3): a commit day with no ticks
   assert.equal(d1?.commits, 1);
@@ -68,7 +68,7 @@ test("collectReport buckets tick_end/merged events by local day and totals them"
   assert.equal(data.totals.ticks, 4);
   assert.equal(data.totals.commits, 2);
   assert.ok(Math.abs(data.totals.costUsd - 1.75) < 1e-9);
-  // costByRole folds from the same tick_end events as costUsd (never a second pass), so the
+  // costByRole folds from the same run_end events as costUsd (never a second pass), so the
   // per-day split sums exactly to the day's cost — and the window's to the Totals cost.
   for (const d of data.series) {
     assert.ok(Math.abs(Object.values(d.costByRole).reduce((a, b) => a + b, 0) - d.costUsd) < 1e-9, `${d.date} costByRole sums to costUsd`);
@@ -83,14 +83,14 @@ test("collectReport folds review_rejected events into per-day per-role rejection
     JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "review_rejected" }),
     JSON.stringify({ ts: at(0), loop: "qa", type: "review_rejected" }),
-    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     // Merely landing a commit is not a rejection: it must fold no rejection anywhere.
     JSON.stringify({ ts: at(1), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
   ]);
   const data = collectReport(root, 4);
   const today = data.series[data.series.length - 1];
   assert.deepEqual(today?.rejectionsByRole, { feature: 2, qa: 1 });
-  assert.deepEqual(today?.ticksByRole, { feature: 1 }, "tick_end still counts ticks alongside rejections");
+  assert.deepEqual(today?.ticksByRole, { feature: 1 }, "run_end still counts ticks alongside rejections");
   // A day with no review_rejected has no rejectionsByRole key at all (zero means absent).
   for (const d of data.series) {
     if (d !== today) {
@@ -144,13 +144,13 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
   // day key is not a number, so the fold never sees them at all.
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(4), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(4), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
     // Dated two days into the future: no bucket exists for it.
-    JSON.stringify({ ts: at(-2), loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 9999 }),
+    JSON.stringify({ ts: at(-2), loop: "feature", type: "run_end", tick: 2, result: "changed", tokens: 9999 }),
     // ts present but not a number; eventDayKey returns null for it.
-    JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "tick_end", tick: 3, result: "changed", tokens: 8888 }),
+    JSON.stringify({ ts: "not-a-timestamp", loop: "bugfix", type: "run_end", tick: 3, result: "changed", tokens: 8888 }),
     // ts omitted entirely.
-    JSON.stringify({ loop: "dry", type: "tick_end", tick: 4, result: "changed", tokens: 7777 }),
+    JSON.stringify({ loop: "dry", type: "run_end", tick: 4, result: "changed", tokens: 7777 }),
   ]);
   const data = collectReport(root, 5);
   // Only the in-window, well-timestamped event counts; the others vanish without a trace.
@@ -165,7 +165,7 @@ test("collectReport skips a future-dated or timestamp-less event instead of fold
 test("collectReport folds landed/land_failed usage into the day and totals, with the landing share named", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
     JSON.stringify({ ts: at(0), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
@@ -200,10 +200,10 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
   // in-window events: the tail scan must stop at the window, not rescan the file.
   const lines: unknown[] = [];
   for (let i = 0; i < 2500; i++) {
-    lines.push(JSON.stringify({ ts: at(40), loop: "feature", type: "tick_end", tick: i, result: "no_change", tokens: 1 }));
+    lines.push(JSON.stringify({ ts: at(40), loop: "feature", type: "run_end", tick: i, result: "no_change", tokens: 1 }));
   }
   lines.push(JSON.stringify({ ts: at(3), loop: "bugfix", type: "merged", commit: "aaa", summary: "old" }));
-  lines.push(JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 9, result: "changed", tokens: 777 }));
+  lines.push(JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 9, result: "changed", tokens: 777 }));
   writeEvents(root, lines);
 
   const data = collectReport(root, 7);
@@ -216,9 +216,9 @@ test("collectReport reads a grown event log with bounded backwards I/O", () => {
 
 test("collectReport does not double-count an event appended between the cache's stat and its read", () => {
   const root = tmpdir();
-  const first = JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100 });
+  const first = JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100 });
   writeEvents(root, [first]);
-  const second = JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 50 });
+  const second = JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 50 });
   const log = eventsLogPath(root);
   // Reproduce the full-re-read race: the fold records the outer stat's size as the offset it
   // will append from, then the event lands, then readWindowEvents scans the grown file and
@@ -505,14 +505,14 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
     // Oldest: 7h ago — outside the 6h window (and older than the cutoff instant, so it proves
     // the retained log reaches back past the window start even when its local day matches the
     // cutoff's own day, the case a day-keyed read cannot decide).
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "no_change", tokens: 999 }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", tick: 1, result: "no_change", tokens: 999 }),
     JSON.stringify({ ts: ago(6.5 * HOUR), loop: "feature", type: "merged", commit: "old1234", summary: "outside" }),
     // Inside the window: two ticks and one commit.
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "tick_end", tick: 3, result: "no_change" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "bugfix", type: "run_end", tick: 3, result: "no_change" }),
     JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "inside" }),
     // Future-dated: dropped, matching collectReport's day-map guard.
-    JSON.stringify({ ts: Date.now() + HOUR, loop: "feature", type: "tick_end", tick: 4, result: "changed", tokens: 5000, costUsd: 9 }),
+    JSON.stringify({ ts: Date.now() + HOUR, loop: "feature", type: "run_end", tick: 4, result: "changed", tokens: 5000, costUsd: 9 }),
     "this line is not json", // malformed lines are ignored
   ]);
   const data = collectReportSince(root, 6 * HOUR);
@@ -535,7 +535,7 @@ test("collectReportSince totals a trailing window: cutoff filter, role split, an
 test("collectReportSince folds landed/land_failed usage into the window totals", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: ago(2 * HOUR), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
     JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "landed", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
     JSON.stringify({ ts: ago(30 * 60_000), loop: "docs", type: "land_failed", summary: "conflict", tokens: 300, costUsd: 0.01 }),
     // Outside the 6h window: must not count.
@@ -555,8 +555,8 @@ test("collectReportSince folds landed/land_failed usage into the window totals",
 test("collectReportSince aggregation matches a same-seed collectReport slice", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 321, costUsd: 0.2 }),
-    JSON.stringify({ ts: ago(5 * 60_000), loop: "bugfix", type: "tick_end", tick: 2, result: "no_change", tokens: 11 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 321, costUsd: 0.2 }),
+    JSON.stringify({ ts: ago(5 * 60_000), loop: "bugfix", type: "run_end", tick: 2, result: "no_change", tokens: 11 }),
     JSON.stringify({ ts: ago(2 * 60_000), loop: "feature", type: "merged", commit: "abc1234", summary: "x" }),
   ]);
   const since = collectReportSince(root, HOUR);
@@ -584,8 +584,8 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
   // predates the cutoff — no rotation note may fire.
   const proven = tmpdir();
   writeEvents(proven, [
-    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "tick_end", tick: 1, result: "no_change" }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "tick_end", tick: 2, result: "no_change" }),
+    JSON.stringify({ ts: ago(7 * HOUR), loop: "feature", type: "run_end", tick: 1, result: "no_change" }),
+    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "run_end", tick: 2, result: "no_change" }),
   ]);
   assert.equal(collectReportSince(proven, 6 * HOUR).coversFullWindow, true);
   assert.ok(!renderSinceReportMarkdown(collectReportSince(proven, 6 * HOUR)).includes("rotated"));
@@ -595,7 +595,7 @@ test("collectReportSince proves coverage on a same-day log start and notes a log
   // the possible truncation instead of silently presenting a sparse window as complete.
   const truncated = tmpdir();
   writeEvents(truncated, [
-    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "no_change" }),
+    JSON.stringify({ ts: ago(30 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "no_change" }),
   ]);
   const t = collectReportSince(truncated, 6 * HOUR);
   assert.equal(t.coversFullWindow, false);
@@ -648,8 +648,8 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
 test("collectReport scopes the day series and totals to one role, leaving fleet cells off", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "merged", commit: "abc1234" }),
     JSON.stringify({ ts: at(0), loop: "clean", type: "merged", commit: "def5678" }),
     JSON.stringify({ ts: at(0), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
@@ -700,8 +700,8 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
   // inside the HOUR window below — the case this fixture tests.
   const recent = (ms: number): number => Math.max(ago(ms), at(0, 0));
   writeEvents(root, [
-    JSON.stringify({ ts: recent(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
-    JSON.stringify({ ts: recent(9 * 60_000), loop: "feature-2", type: "tick_end", tick: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
+    JSON.stringify({ ts: recent(10 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 100, costUsd: 0.1 }),
+    JSON.stringify({ ts: recent(9 * 60_000), loop: "feature-2", type: "run_end", tick: 1, result: "changed", tokens: 300, costUsd: 0.3 }),
     JSON.stringify({ ts: recent(8 * 60_000), loop: "feature-2", type: "merged", commit: "abc1234" }),
   ]);
 
@@ -733,8 +733,8 @@ test("collectReport scopes an instance id to its base role, aggregating its sibl
 test("collectReportSince scopes a trailing window to one role, excluding the landing share", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "tick_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", tick: 2, result: "changed", tokens: 100, costUsd: 0.2 }),
     JSON.stringify({ ts: ago(8 * 60_000), loop: "feature", type: "merged", commit: "abc1234" }),
     JSON.stringify({ ts: ago(7 * 60_000), loop: "clean", type: "merged", commit: "def5678" }),
     JSON.stringify({ ts: ago(6 * 60_000), loop: "feature", type: "landed", commit: "aaa", tokens: 40, costUsd: 0.4 }),
@@ -772,7 +772,7 @@ test("subscription runs total as notional spend, never in the cost totals", () =
       JSON.stringify({
         ts: at(0),
         loop: "feature",
-        type: "tick_end",
+        type: "run_end",
         tick: i + 1,
         result: "changed",
         notionalCostUsd: 3,
@@ -792,13 +792,13 @@ test("subscription runs total as notional spend, never in the cost totals", () =
 test("collectReport carries notionalByRole per loop id and narrows it for a role scope", () => {
   const root = tmpdir();
   const tick = (loop: string, n: number) =>
-    JSON.stringify({ ts: at(0), loop, type: "tick_end", tick: n, result: "changed", notionalCostUsd: 2, billing: "subscription" });
+    JSON.stringify({ ts: at(0), loop, type: "run_end", tick: n, result: "changed", notionalCostUsd: 2, billing: "subscription" });
   writeEvents(root, [tick("feature", 1), tick("feature-2", 2), tick("plan", 3)]);
   const day = collectReport(root, 1).series[0];
   assert.deepEqual(day?.notionalByRole, { feature: 2, "feature-2": 2, plan: 2 });
   assert.deepEqual(collectReport(root, 1, "feature").series[0]?.notionalByRole, { feature: 4 });
   const empty = tmpdir();
-  writeEvents(empty, [JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed" })]);
+  writeEvents(empty, [JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed" })]);
   assert.equal("notionalByRole" in (collectReport(empty, 1).series[0] ?? {}), false);
 });
 
@@ -819,14 +819,14 @@ test("a subscription landing's spend is notional, never in the cost totals", () 
   assert.match(renderReportMarkdown(data), /claude subscription, API-equivalent: \$2\.00 estimated/);
 });
 
-// Role scoping carries a role's OWN notional spend (its tick_end events), so `report --role`
+// Role scoping carries a role's OWN notional spend (its run_end events), so `report --role`
 // does not misreport a subscription loop as $0; the landing slot's notional stays fleet-wide
 // and omitted, exactly like its real cost (plans/agent-backends.md part 6a).
 test("collectReport scopes notional spend to the role, like cost", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: at(0), loop: "feature", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
+    JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
+    JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
   ]);
 
   const scoped = collectReport(root, 1, "feature");
@@ -841,8 +841,8 @@ test("collectReport scopes notional spend to the role, like cost", () => {
 test("collectReportSince scopes notional spend to the role, like cost", () => {
   const root = tmpdir();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
-    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "tick_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
+    JSON.stringify({ ts: ago(10 * 60_000), loop: "feature", type: "run_end", tick: 1, result: "changed", notionalCostUsd: 3 }),
+    JSON.stringify({ ts: ago(9 * 60_000), loop: "bugfix", type: "run_end", tick: 1, result: "changed", notionalCostUsd: 5 }),
   ]);
 
   const scoped = collectReportSince(root, HOUR, "feature");

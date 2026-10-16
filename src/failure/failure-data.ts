@@ -45,7 +45,7 @@ export interface ClusterSection {
   hiddenClusters: number;
 }
 
-/** One `tick_end` result tally, per role. */
+/** One `run_end` result tally, per role. */
 export interface OutcomeRow {
   role: string;
   counts: Partial<Record<TickResult, number>>;
@@ -53,11 +53,11 @@ export interface OutcomeRow {
 
 /** One role's prompt-token telemetry over the window:
  * the median prompt tokens a tick sent, and the share of those sent before the tick's first
- * edit. Built only from tick_end events that carry `promptTokens`; a log written before the
+ * edit. Built only from run_end events that carry `promptTokens`; a log written before the
  * field existed yields no rows, so old digests render unchanged. */
 interface PromptStatRow {
   role: string;
-  runs: number; // tick_end events with a promptTokens reading
+  runs: number; // run_end events with a promptTokens reading
   medianPromptTokens: number;
   preEditShare: number; // sum(preEditPromptTokens) / sum(promptTokens), in [0, 1]
 }
@@ -100,7 +100,7 @@ export interface FailureReportData {
   to: string; // today
   sinceMs?: number; // trailing-window length; set only by collectFailureReportSince
   fromIso?: string; // cutoff instant as ISO; set only by collectFailureReportSince
-  runs: number; // tick_end events in the current window
+  runs: number; // run_end events in the current window
   hasEvents: boolean; // any event in either window (a day-key read can reach past them)
   emptyLog: boolean; // the retained log holds no parseable events reaching the window
   logState: EventLogState; // the read outcome: "ok" (parseable events), "empty", or "unreadable"
@@ -111,7 +111,7 @@ export interface FailureReportData {
   timeSpend: TimeSpendRow[]; // per role × outcome class: runs, summed wall-clock ms, cost
   lossCauses: LossCause[]; // top LOSS_TOP causes by time: error clusters, no_change, review-rejected and merge-conflict/merge-blocked authoring
   lossCausesHidden: number; // distinct causes the LOSS_TOP cut dropped — the render marks the cut
-  promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no tick_end carries them
+  promptStats: PromptStatRow[]; // per-role prompt-token medians, empty when no run_end carries them
   errors: ClusterSection;
   warnings: ClusterSection;
   reviewFailures: ClusterSection;
@@ -173,7 +173,7 @@ function messageSection(
 }
 
 /** One role's window metrics, used for the delta row: runs/errors/quiet kills from
- * `tick_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
+ * `run_end`, rejections from `review_rejected` (the landing slot logs it after the tick). */
 interface RoleStats {
   runs: number;
   errors: number;
@@ -186,11 +186,11 @@ function roleStats(events: HarnessEvent[]): Map<string, RoleStats> {
   const statsFor = (role: string): RoleStats =>
     getOrCreate(byRole, role, () => ({ runs: 0, errors: 0, quietKills: 0, rejections: 0 }));
   for (const ev of events) {
-    // Ticks are tick_end events; a rejection is now recorded by the landing slot, AFTER the
+    // Ticks are run_end events; a rejection is now recorded by the landing slot, AFTER the
     // authoring tick has already ended `queued` (plans/merge-queue.md 3/5). review_rejected is
     // the one event every reject path logs exactly once (src/review/review.ts), so it — not a
-    // tick_end result no production path emits — is the rejection source.
-    if (ev.type === "tick_end") {
+    // run_end result no production path emits — is the rejection source.
+    if (ev.type === "run_end") {
       const stats = statsFor(eventRole(ev));
       stats.runs++;
       if (ev.result === "error") stats.errors++;
@@ -326,7 +326,7 @@ function assembleFailureReport(
   const prior = base === undefined ? priorRaw : scopeToRole(priorRaw, base);
   const allEvents = base === undefined ? allEventsRaw : scopeToRole(allEventsRaw, base);
   const oldestRetained = allEventsRaw.length > 0 ? eventDayKey(allEventsRaw[0]!) : null;
-  const tickEvents = current.filter((ev) => ev.type === "tick_end");
+  const tickEvents = current.filter((ev) => ev.type === "run_end");
 
   // Outcome table: one row per role, counts per result that occurred.
   const outcomeMap = new Map<string, Partial<Record<TickResult, number>>>();
@@ -383,14 +383,14 @@ function assembleFailureReport(
     );
 
   // Only runs that ENDED as errors carry a tick error: `state.lastError` is shared state the
-  // lander also writes, so a successful tick's `tick_end` can carry a leftover landing failure's
+  // lander also writes, so a successful tick's `run_end` can carry a leftover landing failure's
   // text (BUGS.md 2026-09-21). `main_red` joins them because its cause is written for that result
   // — the baseline gate's own text (src/baseline/main-red.ts), never a leftover — so the
   // section itemizes the outcome that blocks every merge instead of leaving it a bare count
   // (BUGS.md 2026-09-28). The total therefore equals the Outcome table's error column PLUS its
   // main_red cells; the render's section title says so, and landing failures still surface below.
   // The selection predicate is the Outcome table's own — raw `error`/`main_red` results, no
-  // error-text test — so a malformed tick_end that skipped the text can never be counted above
+  // error-text test — so a malformed run_end that skipped the text can never be counted above
   // but itemized nowhere: those events cluster under a placeholder cause, keeping the section's
   // total equal to the tables it cross-checks against (BUGS.md 2026-09-30).
   const errorEvents = tickEvents.filter(
@@ -429,7 +429,7 @@ function assembleFailureReport(
   // Landing review failures: a reviewer that could not return a parseable verdict (a dead
   // backend, a transport error) fails closed and keeps the commit, but its authoring tick ends
   // `queued`/`no_change` — so the failure lives on the `review_failed` event, never on
-  // `tick_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
+  // `run_end.error`. Clustered on their own so the telemetry role can see a gate that keeps
   // failing without misreading it as a tick error (BUGS.md 2026-09-21).
   const reviewFailures = messageSection(current, "review_failed", REVIEW_FAILURE_TOP);
 
@@ -505,7 +505,7 @@ function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
-/** Per-role prompt-token stats from the window's tick_end events. Ticks without a
+/** Per-role prompt-token stats from the window's run_end events. Ticks without a
  * `promptTokens` reading contribute nothing (and skip a role entirely), so the section only
  * appears once some tick ran on a build that records the field. Both reads go through
  * nonNegativeNumber like every other event-log number: a torn or hand-edited line whose

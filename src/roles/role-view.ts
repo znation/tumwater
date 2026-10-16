@@ -134,14 +134,14 @@ export interface RoleViewPayload {
   /** When the loop's last tick ended, epoch ms — absent for a never-ticked loop, so the
    * JSON shape stays unchanged until the loop has acted. */
   lastRunEndedAt?: number;
-  /** The loop's recent tick outcomes — the newest up to 8 `tick_end` results read from the
+  /** The loop's recent tick outcomes — the newest up to 8 `run_end` results read from the
    * event log, ordered newest-first, each with its time, result, duration, and summary.
-   * Absent when the loop has no `tick_end` events, so the JSON shape is unchanged for a
+   * Absent when the loop has no `run_end` events, so the JSON shape is unchanged for a
    * never-ticked loop. Read straight from the event log so the command runs with the fleet
    * stopped and never touches the live state. */
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
   /** The loop's own spend over its retained event window — tokens, real cost, and notional
-   * (subscription) cost summed from the same `tick_end` events `recentOutcomes` reads, each
+   * (subscription) cost summed from the same `run_end` events `recentOutcomes` reads, each
    * folded through the shared `eventUsage` finiteness guard so a torn field contributes 0.
    * The sum's window is the single `readEvents` call `recentOutcomes` already makes, so the
    * two per-loop facts cannot drift on what they cover. Absent when all three are 0 (the
@@ -225,16 +225,16 @@ export function rolePayload(
   const episode = state.modelFallback;
   // The loop's recent tick outcomes, read from the event log (readEvents) so the command
   // answers with the fleet stopped and never touches live state. readEvents returns the log's
-  // newest events in file (chronological) order, so filtering to this role's tick_end events
+  // newest events in file (chronological) order, so filtering to this role's run_end events
   // and taking the last 8 yields the newest 8, reversed to newest-first. Durations and
   // summaries ride along only when the event carried them (a torn or empty line drops them),
   // and an empty result is omitted so a never-ticked loop carries no `recentOutcomes` at all.
   // One event-log read serves both per-loop facts — the recent outcomes and the spend sum — so
-  // the two cannot drift on what they cover: filtered to this role's tick_end events once, then
+  // the two cannot drift on what they cover: filtered to this role's run_end events once, then
   // the outcome projection keeps the newest valid 8 while the usage fold sums the whole window.
   const events = readEvents(root);
-  const tickEnds = events.filter((ev) => ev.type === "tick_end" && eventRole(ev) === role);
-  // The event log is read without a shape filter, so a torn or hand-edited tick_end line can
+  const tickEnds = events.filter((ev) => ev.type === "run_end" && eventRole(ev) === role);
+  // The event log is read without a shape filter, so a torn or hand-edited run_end line can
   // carry a non-numeric ts/durationMs or an empty result — the same foreign shape every other
   // consumer guards with finiteNumber. A line with no usable ts or result is as unusable as
   // an absent one (the same "a torn line carries no usable timestamp" rule eventTick/tickStartMap
@@ -251,8 +251,8 @@ export function rolePayload(
       ...(typeof ev.summary === "string" && ev.summary !== "" ? { summary: ev.summary } : {}),
     }))
     .reverse();
-  // The loop's own spend over the same retained window, summed per-tick_end through the shared
-  // eventUsage guard (a torn or hand-edited tick_end line contributes nothing: a non-numeric
+  // The loop's own spend over the same retained window, summed per-run_end through the shared
+  // eventUsage guard (a torn or hand-edited run_end line contributes nothing: a non-numeric
   // field reads as 0, and a line without a usable ts is as unusable as an absent one, matching
   // recentOutcomes's drop rule so a torn tick never silently spends). Omitted when all three
   // sums are 0, keeping a never-costly loop's JSON unchanged (the report's zero-means-absent

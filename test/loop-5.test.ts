@@ -153,7 +153,7 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     assert.ok(s.nextRunAt > Date.now(), "backed off, not immediate");
 
     // The outcome is observable in the event feed.
-    const ends = eventsOfType(repo, "tick_end");
+    const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1);
     assert.equal(ends[0]?.result, "user_aborted");
   });

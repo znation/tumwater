@@ -104,7 +104,7 @@ export const HISTORY_SCAN_MAX_EVENTS = 20_000;
 
 /** How far behind a since-shaped scan's cutoff the queued-row join reads its evidence: the
  * row set is ts-filtered to the cutoff, but a queued tick whose tick SPANS the cutoff logged
- * its `land_queued` pin before it (the pin is logged during the tick, the tick_end after it)
+ * its `land_queued` pin before it (the pin is logged during the tick, the run_end after it)
  * — so the join evidence needs its own read reaching further back. Six hours outlasts any
  * tick the harness runs (every stage inside a tick is timeout-bounded); a tick that somehow
  * queued later than that keeps the raw label, the conservative fallback. The wider read shares
@@ -115,7 +115,7 @@ const TICK_ROW_JOIN_BACKSLACK_MS = 6 * 60 * 60 * 1000;
 /** Wider join evidence for a row set whose own window cut events the queued-row join needs
  * (the `--since` path; the tail-count path needs none — see readTickRows). `events` is the
  * cutoff-unfiltered read (a strict superset of the row set's events, oldest first);
- * `floorTs` is that read's requested lower bound (epoch ms): a queued row whose tick_start
+ * `floorTs` is that read's requested lower bound (epoch ms): a queued row whose run_start
  * sits before `floorTs` cannot trust the read around its pin (the day-keyed over-read can
  * hold older ticks' pins below the floor while the row's own pin is gone), so it keeps the
  * raw label rather than risk claiming another tick's pin — only the row's own tick block
@@ -126,10 +126,10 @@ interface TickRowJoin {
   floorTs: number;
 }
 
-/** One completed tick, rendered. `durationMs` is null when the tick's `tick_start` is not in
+/** One completed tick, rendered. `durationMs` is null when the tick's `run_start` is not in
  * the scanned window (log rotation, or a skipped tick that never started) — the row shows a
  * dash rather than a fabricated duration. `usage` is "" when the event carries neither tokens
- * nor cost, matching the payload's omit-when-zero convention. `ts` is the raw tick_end instant
+ * nor cost, matching the payload's omit-when-zero convention. `ts` is the raw run_end instant
  * (epoch ms) the rendered `time` string is derived from, and `tokens`/`costUsd` the raw usage
  * numbers `usage` folds into one string (0 when the event carries none — eventUsage's
  * loose-typing coercion, shared with the event feed's fragment): the three fields
@@ -196,7 +196,7 @@ export function tickRowLine(
 }
 
 /** The `--grep` haystack for one rendered history row: tickRowLine's canonical unpadded row
- * line prefixed with the raw event type so stable ids (`tick_end`) are greppable the way logs
+ * line prefixed with the raw event type so stable ids (`run_end`) are greppable the way logs
  * --grep's haystack carries `e.type`, and followed by the raw role id and result code, which
  * the row shows as `feature #2` and `no change`, so a script's grep on the code still
  * matches. Built per row because the filter runs before the widths of the rows actually shown
@@ -204,7 +204,7 @@ export function tickRowLine(
  * /api/history?grep so the two cannot disagree on the rule. The row's cells and column order
  * come from tickRowCells and tickRowLine, the one home for each. */
 export function tickRowGrepHaystack(row: TickRow): string {
-  return `tick_end ${tickRowLine(row)} ${row.loop} ${row.result}`;
+  return `run_end ${tickRowLine(row)} ${row.loop} ${row.result}`;
 }
 
 /** The shared tick-grep rule: a case-insensitive substring match over tickRowGrepHaystack.
@@ -240,8 +240,8 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
   return { landQueuedByLoop, outcomeByLoop };
 }
 
-/** Resolve one queued tick row's eventual landing verdict: a "queued" tick_end carries no
- * result until its landing batch lands or fails, so the row joins its `end` tick_end to the
+/** Resolve one queued tick row's eventual landing verdict: a "queued" run_end carries no
+ * result until its landing batch lands or fails, so the row joins its `end` run_end to the
  * tick's land_queued pin and that pin's landed/land_failed outcome (both from the
  * bucketLandingEvents maps, oldest-first per loop). The claim cursor `claimTop` (mutated in
  * place) walks the pin list newest-first and hands each queued tick the newest unclaimed pin
@@ -255,7 +255,7 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
  * entry.sha): the attempts' shas differ, so the walk follows the pin sequence (isRecoveryPin),
  * not sha equality alone. It stops at a pin that is not a recovery re-enqueue — a fresh change
  * after a conflict-cap discard — so the row never credits a different change's verdict
- * (BUGS.md 2026-10-10). `joinStarts` maps loop#tick to its tick_start's ts; when `floorTs` (a
+ * (BUGS.md 2026-10-10). `joinStarts` maps loop#tick to its run_start's ts; when `floorTs` (a
  * since-window's cutoff, null in the count view) sits after that start, the row's join
  * evidence is not whole in the windowed read and the row keeps its raw "queued" label (null).
  * A MISSING start needs no guard — it joins, because rotation drops a prefix, so every pin
@@ -342,7 +342,7 @@ export function tickRows(
   // filter with their tick, so the scoped events hold them exactly when they hold the row.
   // A since-shaped scan hands a WIDER join read instead (readTickRowsSince): its cutoff cut
   // the pins of ticks that span it, so the maps read the unfiltered-by-cutoff evidence and
-  // resolveQueuedResult guards each claim on the row's tick_start being whole in that read.
+  // resolveQueuedResult guards each claim on the row's run_start being whole in that read.
   const joinScoped = join
     ? role === null
       ? join.events
@@ -355,7 +355,7 @@ export function tickRows(
   const rows: TickRow[] = [];
   for (let i = scoped.length - 1; i >= 0 && rows.length < limit; i--) {
     const e = scoped[i];
-    if (e?.type !== "tick_end") continue;
+    if (e?.type !== "run_end") continue;
     const rawResult = outcomeText(e);
     const result =
       rawResult === "queued"
@@ -381,8 +381,8 @@ export function tickRows(
 
 /** The last `limit` completed ticks read from root's event log, filtered to `role` when
  * given (newest first) — the scan cmdHistory and the GUI's handleHistory share, so the two
- * surfaces cannot drift. A window twice the ask plus slack: tick_start lines and unrelated
- * events interleave with the tick_end rows scanned for, and a skipped tick's end rides a start
+ * surfaces cannot drift. A window twice the ask plus slack: run_start lines and unrelated
+ * events interleave with the run_end rows scanned for, and a skipped tick's end rides a start
  * that may sit outside any smaller window. Two shortfalls grow the window (and re-read) while
  * the scan filled it — `events.length >= window` means the log may hold older events — under
  * the same HISTORY_SCAN_MAX_EVENTS bound so one ask cannot scan without end:
@@ -390,14 +390,14 @@ export function tickRows(
  *   too), so a quiet role in a busy fleet must still get its last `limit` ticks whenever the
  *   retained log holds them — never a bare "no ticks yet" for a role whose ticks sit just
  *   past the first window.
- * - A row's tick_start went unpaired. The window boundary can cut inside a tick's own event
- *   block: every tick_end of the ask sits within the window but the oldest one's tick_start
+ * - A row's run_start went unpaired. The window boundary can cut inside a tick's own event
+ *   block: every run_end of the ask sits within the window but the oldest one's run_start
  *   sits just before it, so the row renders a dash though the log holds the start. Every
- *   tick_end the harness logs follows its tick_start (tick() logs the start before runTick,
+ *   run_end the harness logs follows its run_start (tick() logs the start before runTick,
  *   skipped results included), so an unpaired start is either just past the window or lost
  *   to rotation — growing re-pairs the former, and the latter only costs the bounded scan.
  *   (A queued row's landing verdict needs no growth: the landed/land_failed event sits
- *   after its tick_end, so any tail window holding the row holds the verdict too — or there
+ *   after its run_end, so any tail window holding the row holds the verdict too — or there
  *   is none yet, the genuinely-pending case that keeps the raw label.) */
 export function readTickRows(root: string, limit: number, role: string | null): TickRow[] {
   const key = `${root}\u0000${role ?? ""}\u0000${limit}`;

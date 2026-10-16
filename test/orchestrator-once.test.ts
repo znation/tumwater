@@ -95,7 +95,7 @@ test("once: a per-role-paused loop settles as paused and runs no tick", async ()
     assert.equal(exit.settled?.get("clean"), "paused", "the pause is the loop's round answer, not silence");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the paused loop ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 0, "nothing ticked past the fresh state");
-    assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started behind the pause");
+    assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the pause");
   });
 });
 
@@ -117,7 +117,7 @@ test("once: a role in error backoff settles as backoff and runs no tick", async 
     assert.equal(exit.settled?.get("clean"), "backoff", "the backoff is the loop's round answer");
     assert.equal(exit.ticksRun?.get("clean"), 0, "the backing-off loop ran no tick");
     assert.equal(loadLoopState(repo, "clean").ticks, 1, "nothing ticked past the seeded history");
-    assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started behind the backoff");
+    assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started behind the backoff");
   });
 });
 
@@ -133,7 +133,7 @@ test("once: the director with an empty inbox settles as idle and runs no tick", 
     );
     assert.equal(exit.ticksRun?.get("director"), 0, "the director ran no tick with nothing queued");
     assert.equal(loadLoopState(repo, "director").ticks, 0, "nothing ticked past the fresh state");
-    assert.deepEqual(eventsOfType(repo, "tick_start"), [], "no tick started for the idle director");
+    assert.deepEqual(eventsOfType(repo, "run_start"), [], "no tick started for the idle director");
   });
 });
 

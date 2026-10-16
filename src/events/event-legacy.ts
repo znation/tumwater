@@ -12,6 +12,8 @@ import type { HarnessEvent } from "./events.js";
 
 /** An old event type name → today's name. */
 const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
+  tick_start: "run_start", // vocabulary-ok: legacy event name read from old logs
+  tick_end: "run_end", // vocabulary-ok: legacy event name read from old logs
   fleet_paused: "team_paused", // vocabulary-ok: legacy event name read from old logs
   fleet_resumed: "team_resumed", // vocabulary-ok: legacy event name read from old logs
 };

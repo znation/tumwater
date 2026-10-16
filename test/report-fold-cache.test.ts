@@ -25,7 +25,7 @@ function warmed(root: string, days: number) {
 test("warm collectReport equals the cold read before and after appends", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(4), loop: "feature", type: "tick_end", tokens: 500, costUsd: 0.5 },
+    { ts: at(4), loop: "feature", type: "run_end", tokens: 500, costUsd: 0.5 },
     { ts: at(2), loop: "feature", type: "merged", commit: "abc" },
   ]);
   const cold = collectReport(root, 5);
@@ -34,7 +34,7 @@ test("warm collectReport equals the cold read before and after appends", () => {
   fs.appendFileSync(
     eventsLogPath(root),
     [
-      JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tokens: 10 }),
+      JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 10 }),
       JSON.stringify({ ts: at(0), loop: "review", type: "landed", tokens: 42, costUsd: 0.2 }),
     ].join("\n") + "\n",
   );
@@ -59,9 +59,9 @@ test("a merge appended after a warm fold counts once, including in the role spli
 
 test("a torn trailing write is ignored until its newline lands", () => {
   const root = tmpdir();
-  writeEvents(root, [{ ts: at(1), loop: "a", type: "tick_end", tokens: 1 }]);
+  writeEvents(root, [{ ts: at(1), loop: "a", type: "run_end", tokens: 1 }]);
   assert.deepEqual(warmed(root, 2), collectReport(root, 2));
-  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "a", type: "tick_end", tokens: 2 }));
+  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "a", type: "run_end", tokens: 2 }));
   const torn = collectReport(root, 2);
   assert.deepEqual(collectReport(root, 2), torn); // No partial fold, no drift between calls.
   fs.appendFileSync(eventsLogPath(root), "\n"); // The writer completes the line.
@@ -73,7 +73,7 @@ test("a torn trailing write is ignored until its newline lands", () => {
 test("a rotated log replaced by a fresh larger one refolds instead of folding the new log's bytes", () => {
   const root = tmpdir();
   // Five 100-token ticks warm the memo; the cache's offset lands at this file's size.
-  writeEvents(root, Array.from({ length: 5 }, () => ({ ts: at(0), loop: "bugfix", type: "tick_end", tokens: 100 })));
+  writeEvents(root, Array.from({ length: 5 }, () => ({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 100 })));
   assert.equal(warmed(root, 2).totals.tokensOut, 500);
   // Rotation: rename the whole log away and let a fresh log grow in its place — with ten
   // 10-token ticks AND a size already past the cached offset. Size/mtime alone read as
@@ -85,7 +85,7 @@ test("a rotated log replaced by a fresh larger one refolds instead of folding th
   // exceeds the cached offset while the bytes past that offset hold only a strict SUFFIX of
   // the fresh events — whatever the growth arm folds from the old offset is a partial fold,
   // never the fresh log's full contribution.
-  const tick = () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "tick_end", tokens: 10 });
+  const tick = () => JSON.stringify({ ts: at(0), loop: "bugfix", type: "run_end", tokens: 10 });
   const oldSize = fs.statSync(eventsLogPath(root) + ".1").size;
   const head = [tick(), tick(), tick()].join("\n") + "\n";
   const tail = [tick(), tick(), tick(), tick(), tick(), tick(), tick()].join("\n") + "\n";
@@ -102,12 +102,12 @@ test("a rotated log replaced by a fresh larger one refolds instead of folding th
 test("a shrunken log (rotation) refolds instead of misaligning the byte offset", () => {
   const root = tmpdir();
   writeEvents(root, [
-    { ts: at(3), loop: "a", type: "tick_end", tokens: 7 },
+    { ts: at(3), loop: "a", type: "run_end", tokens: 7 },
     { ts: at(1), loop: "b", type: "merged" },
   ]);
   assert.deepEqual(warmed(root, 5), collectReport(root, 5));
   // Rotation replaced the whole file: shorter than the memo's offset, new content.
-  writeEvents(root, [{ ts: at(0), loop: "c", type: "tick_end", tokens: 9 }]);
+  writeEvents(root, [{ ts: at(0), loop: "c", type: "run_end", tokens: 9 }]);
   const fresh = collectReport(root, 5);
   assert.deepEqual(collectReport(root, 5), fresh);
   assert.equal(fresh.totals.tokensOut, 9);
@@ -120,11 +120,11 @@ test("the coverage proof follows the window, not the memo's seed: empty-log vacu
   assert.equal(collectReport(root, 1).coversFullWindow, true);
   assert.equal(warmed(root, 1).coversFullWindow, true);
   // First event lands inside the window: the vacuous arm must give way, on the warm path too.
-  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "a", type: "tick_end", tokens: 3 }) + "\n");
+  fs.appendFileSync(eventsLogPath(root), JSON.stringify({ ts: at(0), loop: "a", type: "run_end", tokens: 3 }) + "\n");
   assert.equal(collectReport(root, 1).coversFullWindow, false);
   assert.equal(warmed(root, 1).coversFullWindow, false);
   // A log born inside a 1-day window still proves a wider window whose first day predates it.
-  writeEvents(root, [{ ts: at(3), loop: "a", type: "tick_end" }]);
+  writeEvents(root, [{ ts: at(3), loop: "a", type: "run_end" }]);
   // The log's birth (3 days ago) predates the narrow windows' first day — covered there;
   // a 4-day window starts on the log's birth day (no proof anything earlier existed) and
   // wider windows contain the log's whole life, so none of those are covered.

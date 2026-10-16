@@ -13,7 +13,7 @@ test("event types and result codes are disjoint", () => {
 });
 
 test("eventTypeLabel serves both families and falls back to spaced words", () => {
-  assert.equal(eventTypeLabel("tick_end"), "run finished");
+  assert.equal(eventTypeLabel("run_end"), "run finished");
   assert.equal(eventTypeLabel("no_change"), "no change");
   assert.equal(eventTypeLabel("some_new_type"), "some new type");
   assert.equal(eventTypeLabel("constructor"), "constructor");

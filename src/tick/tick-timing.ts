@@ -51,7 +51,7 @@ export const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
  * off by an abort. This is the restart drain's p75 sample (BUGS.md 2026-09-18). The clock starts
  * only once the permit is granted, so time a tick spends parked in the semaphore queue is not
  * counted as work: the drain waits on ticks that are already running, and folding queue wait
- * into the window would overstate how long they have left (the `tick_start`..`tick_end` span
+ * into the window would overstate how long they have left (the `run_start`..`run_end` span
  * the window was sized against excludes it too). Aborted ticks return null so their short
  * cut-off lengths cannot drag the window down. So do ticks that ended with nothing to show
  * (`no_change`, `skipped`): a `main moved` re-check runs the model and still finishes in
@@ -64,7 +64,7 @@ export const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
  * the hold may have parked in the semaphore queue long before it; checking the hold only at
  * scheduling let every such waiter start a fresh pi run mid-drain as slots freed — the very
  * ticks the restart then aborted (BUGS.md 2026-09-23). A held tick releases its permit without
- * calling `tick`, so it writes no state and logs no tick_start/tick_end; the caller hands its
+ * calling `tick`, so it writes no state and logs no run_start/run_end; the caller hands its
  * reservation back. */
 export async function runTimedRoleTick(
   signal: AbortSignal,

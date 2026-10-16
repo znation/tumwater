@@ -10,8 +10,8 @@ import type { TickResult } from "../tick/tick-outcome.js";
  * here and leaves the label unchanged. A label is a lowercase phrase of a few words, never the
  * code itself. */
 export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> = {
-  tick_start: "run started",
-  tick_end: "run finished",
+  run_start: "run started",
+  run_end: "run finished",
   land_queued: "waiting to merge",
   landed: "merge finished",
   land_failed: "merge failed",

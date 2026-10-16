@@ -65,7 +65,7 @@ test("mainRedGate blocks a red main with the terminal outcome and a harness-leve
   const restore = fakeNpm(`echo baseline-failure; echo run >> ${counter}; exit 1`);
   try {
     const blocked = await mainRedGate(root, ROLE, wt);
-    // The cause rides the outcome (BUGS.md 2026-09-28): the tick's tick_end must be able to
+    // The cause rides the outcome (BUGS.md 2026-09-28): the tick's run_end must be able to
     // name what broke, not leave the digest's main_red cells a bare count.
     const sha = mainSha(root);
     assert.deepEqual(blocked, {

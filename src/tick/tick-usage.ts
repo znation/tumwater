@@ -8,7 +8,7 @@ import { nonNegativeNumber } from "../files/json-object.js";
 
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
- * commit trailer reads turns, the tick_end event reads costUsd, and the orchestrator's fleet-wide
+ * commit trailer reads turns, the run_end event reads costUsd, and the orchestrator's fleet-wide
  * hold reads lastRateLimit and lastBackendFailure (src/fleet/fleet-hold.ts,
  * src/fleet/fleet-polls.ts).
  *
@@ -38,12 +38,12 @@ export class TickUsage {
   turns = 0;
   /** USD cost folded into THIS tick so far (non-persisted): reset at tick start alongside
    * turns, grown in fold. Deliberately not on LoopState — unlike generatedTokens, no
-   * dashboard reads it mid-run; its only consumer is the tick_end event, which fires before
+   * dashboard reads it mid-run; its only consumer is the run_end event, which fires before
    * the next tick resets it (plans: per-tick usage in the event feed). */
   costUsd = 0;
   /** Subscription runs' cost folded into THIS tick (non-persisted): API-equivalent spend the
    * run reported but that never charges the daily cap (plans/agent-backends.md part 6a). The
-   * tick_end event carries it and the report shows it on its own notional line. Reset at tick
+   * run_end event carries it and the report shows it on its own notional line. Reset at tick
    * start like costUsd. */
   notionalCostUsd = 0;
   /** How the tick's runs were last reported as paid for, and the newest subscription
@@ -75,7 +75,7 @@ export class TickUsage {
    * restart forgetting it costs nothing. Undefined until the first such run. */
   lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
   /** Per-provider spend folded into THIS tick (non-persisted, reset at tick start): each
-   * run's real/notional cost keyed by the provider it ran on, so the tick_end event can say
+   * run's real/notional cost keyed by the provider it ran on, so the run_end event can say
    * which seam of a mixed fleet spent what (plans: per-provider spend in the day report). A
    * run whose provider was never resolved attributes nothing — the `provider !== undefined`
    * guard below skips the bump — so an old single-provider tick keeps today's byte-identical
@@ -168,7 +168,7 @@ export class TickUsage {
     this.providerCost.set(provider, e);
   }
 
-  /** Serialize the per-provider split for the tick_end payload: a `Record<provider,
+  /** Serialize the per-provider split for the run_end payload: a `Record<provider,
    * {costUsd, notionalCostUsd}>`, or `{}` when no run carried a provider — the
    * omit-when-empty idiom tick-finalize.ts applies, so a tick whose runs never resolved a
    * provider renders no providerCost field at all. */

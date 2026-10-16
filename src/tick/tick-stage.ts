@@ -311,7 +311,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // observability, so an unwritable feed must not reject a tick whose work is already queued.
   logEventBestEffort(ctx.root, { loop: ctx.role, type: "land_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;
-  // lastSummary and the tick_end event carry it too for dashboards and logs.
+  // lastSummary and the run_end event carry it too for dashboards and logs.
   const finalSummary = highFriction
     ? `${summary} (high friction: ${authoringTurns} turns / ${Math.round(minutes)}m)`
     : summary;

@@ -66,11 +66,11 @@ export interface TickOutcome {
    * `queued`, but the persistent landing failure must still feed the error streak so a dead
    * reviewer backend raises the alarm instead of resetting it every tick (BUGS.md 2026-09-21).
    * Carries the failure detail for the warning: `lastError` is deliberately cleared off the tick
-   * so the failure never rides its `tick_end` (the sibling mislabel fix). */
+   * so the failure never rides its `run_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
   /** The outcome's own cause, written deliberately for this result — never a leftover landing
    * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
-   * red-main baseline gate (src/baseline/main-red.ts) so the tick's `tick_end` names what broke:
+   * red-main baseline gate (src/baseline/main-red.ts) so the tick's `run_end` names what broke:
    * the failure digest's error clusters include main_red ticks, and without a cause on the event
    * the Outcome table's main_red cells would read as a bare count (BUGS.md 2026-09-28). */
   error?: string;

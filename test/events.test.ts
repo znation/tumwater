@@ -16,13 +16,13 @@ test("eventsRotationLabel derives the report header's rotation phrase from EVENT
 
 test("logEvent appends and readEvents tails in order", () => {
   const dir = tmpdir();
-  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1 });
-  logEvent(dir, { loop: "clean", type: "tick_end", tick: 1, result: "no_change" });
+  logEvent(dir, { loop: "clean", type: "run_start", tick: 1 });
+  logEvent(dir, { loop: "clean", type: "run_end", tick: 1, result: "no_change" });
   const events = readEvents(dir);
   assert.equal(events.length, 2);
-  assert.equal(events[0]?.type, "tick_start");
-  assert.equal(events[1]?.type, "tick_end");
-  assert.deepEqual(readEvents(dir, 1).map((e) => e.type), ["tick_end"]);
+  assert.equal(events[0]?.type, "run_start");
+  assert.equal(events[1]?.type, "run_end");
+  assert.deepEqual(readEvents(dir, 1).map((e) => e.type), ["run_end"]);
 });
 
 test("the best-effort stderr fallbacks strip terminal controls from the text they surface", (t) => {
@@ -55,20 +55,20 @@ test("logEvent's post-append shape memo counts UTF-8 bytes, so a multi-byte even
   // First append: no file yet, nothing to terminate, no shape recorded. Second: appends from
   // an existing file, so the post-append shape is memoized — byte-exact only when the growth
   // is counted in bytes. Both lines carry multi-byte text (an em dash writes 3 bytes).
-  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1, message: "timed out — 30s over" });
-  logEvent(dir, { loop: "clean", type: "tick_end", tick: 1, result: "error", message: "em dash — rides along" });
+  logEvent(dir, { loop: "clean", type: "run_start", tick: 1, message: "timed out — 30s over" });
+  logEvent(dir, { loop: "clean", type: "run_end", tick: 1, result: "error", message: "em dash — rides along" });
   const open = t.mock.method(fs, "openSync");
-  logEvent(dir, { loop: "clean", type: "tick_end", tick: 2, result: "error" });
+  logEvent(dir, { loop: "clean", type: "run_end", tick: 2, result: "error" });
   assert.equal(open.mock.calls.length, 0); // Memo hit: the stat matched the recorded byte shape.
   // Safety stays: a shape this process did not leave (an external append) misses the memo,
   // and the torn-tail check opens the file exactly once — and terminates nothing, because
   // the external line ended in a newline.
   fs.appendFileSync(eventsLogPath(dir), '{"ts":1,"loop":"x"}\n');
-  logEvent(dir, { loop: "clean", type: "tick_end", tick: 2, result: "error" });
+  logEvent(dir, { loop: "clean", type: "run_end", tick: 2, result: "error" });
   assert.equal(open.mock.calls.length, 1);
-  // The three logged tick_end events survive the external append and read back in order.
+  // The three logged run_end events survive the external append and read back in order.
   assert.deepEqual(
-    readEvents(dir).filter((e) => e.type === "tick_end").map((e) => e.tick),
+    readEvents(dir).filter((e) => e.type === "run_end").map((e) => e.tick),
     [1, 2, 2],
   );
 });
@@ -78,8 +78,8 @@ test("logEvent's post-append shape memo counts UTF-8 bytes, so a multi-byte even
 // the follow starts — the both-neither gap a fresh `statOrNull(file).size` seed carried.
 test("readEventsTailWithEnd reports the covered byte end, so a follow seeded from it delivers an event appended after the read", () => {
   const dir = tmpdir();
-  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1 });
-  logEvent(dir, { loop: "clean", type: "tick_end", tick: 1, result: "no_change" });
+  logEvent(dir, { loop: "clean", type: "run_start", tick: 1 });
+  logEvent(dir, { loop: "clean", type: "run_end", tick: 1, result: "no_change" });
   const file = eventsLogPath(dir);
 
   const { events, coveredEnd } = readEventsTailWithEnd(dir, 50);
@@ -89,7 +89,7 @@ test("readEventsTailWithEnd reports the covered byte end, so a follow seeded fro
 
   // The race, replayed deterministically: an event lands AFTER the read (the old code's seed
   // stat, taken later, measured a size past it, so the event was printed by neither view).
-  logEvent(dir, { loop: "clean", type: "tick_start", tick: 2 });
+  logEvent(dir, { loop: "clean", type: "run_start", tick: 2 });
 
   // followFile's first poll runs synchronously, so the appended event must arrive immediately.
   const delivered: string[] = [];
@@ -105,9 +105,9 @@ test("readEventsTailWithEnd reports the covered byte end, so a follow seeded fro
 // its head never delivered.
 test("readEventsTailWithEnd's covered end stops at the last complete line when the log's last line is torn", () => {
   const dir = tmpdir();
-  logEvent(dir, { loop: "clean", type: "tick_start", tick: 1 });
+  logEvent(dir, { loop: "clean", type: "run_start", tick: 1 });
   const file = eventsLogPath(dir);
-  const torn = '{"loop":"clean","type":"tick_end","tick":1'; // A write in flight: no newline yet.
+  const torn = '{"loop":"clean","type":"run_end","tick":1'; // A write in flight: no newline yet.
   fs.appendFileSync(file, torn);
 
   const { events, coveredEnd } = readEventsTailWithEnd(dir, 50);
@@ -120,7 +120,7 @@ test("readEventsTailWithEnd's covered end stops at the last complete line when t
   const stop = followFile(file, coveredEnd, (lines) => delivered.push(...lines));
   stop();
   assert.equal(delivered.length, 1, `the completed line, whole:\n${JSON.stringify(delivered)}`);
-  assert.match(delivered[0] ?? "", /"tick_end"/);
+  assert.match(delivered[0] ?? "", /"run_end"/);
 });
 
 // And the boundary the seed must sit on exactly: coveredEnd is the read's EOF, so re-following
@@ -162,7 +162,7 @@ test("readEvents skips a valid-JSON non-object line", () => {
 test("logEvent terminates a torn trailing line before appending", () => {
   const dir = tmpdir();
   logEvent(dir, { loop: "x", type: "warning", message: "ok" });
-  const frag = '{"loop":"x","type":"tick_end","tick":1,"resu'; // no trailing \n
+  const frag = '{"loop":"x","type":"run_end","tick":1,"resu'; // no trailing \n
   fs.appendFileSync(eventsLogPath(dir), frag);
   logEvent(dir, { loop: "x", type: "warning", message: "after" });
   const lines = fs.readFileSync(eventsLogPath(dir), "utf8").split("\n").filter(Boolean);
@@ -181,7 +181,7 @@ test("readEvents holds back a torn trailing line instead of letting it eat a lim
   for (let i = 0; i < limit + 2; i++) {
     logEvent(dir, { loop: "x", type: "warning", message: `event ${i}` });
   }
-  fs.appendFileSync(eventsLogPath(dir), '{"loop":"x","type":"tick_end","resu'); // no trailing \n
+  fs.appendFileSync(eventsLogPath(dir), '{"loop":"x","type":"run_end","resu'); // no trailing \n
   const events = readEvents(dir, limit);
   assert.equal(events.length, limit); // not limit-1: the fragment is held back, not counted
   assert.deepEqual(
@@ -245,8 +245,8 @@ test("subscribeEvents sees logged events until unsubscribed", () => {
   const dir = tmpdir();
   const seen: string[] = [];
   const unsubscribe = subscribeEvents((e) => seen.push(e.type));
-  logEvent(dir, { loop: "x", type: "tick_start", tick: 1 });
+  logEvent(dir, { loop: "x", type: "run_start", tick: 1 });
   unsubscribe();
-  logEvent(dir, { loop: "x", type: "tick_end", tick: 1, result: "no_change" });
-  assert.deepEqual(seen, ["tick_start"]);
+  logEvent(dir, { loop: "x", type: "run_end", tick: 1, result: "no_change" });
+  assert.deepEqual(seen, ["run_start"]);
 });

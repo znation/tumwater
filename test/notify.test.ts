@@ -166,7 +166,7 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
   const notifier = newNotifier(root);
   notifier.update({ notify: recorderCommand(out) });
   try {
-    logEvent(root, { loop: "feature", type: "tick_end", tick: 1, result: "no_change" });
+    logEvent(root, { loop: "feature", type: "run_end", tick: 1, result: "no_change" });
     logEvent(root, { loop: "harness", type: "warning", message: "not page-worthy" });
     logEvent(root, { loop: "feature", type: "landed" });
     logEvent(root, { loop: "harness", type: "claude_window_reset", windowType: "five_hour" });
@@ -416,6 +416,6 @@ test("isNotifyFailure holds for each failure shape and nothing else", () => {
   assert.ok(isNotifyFailure(warning(notifyExitWarning("land_failed", null, "SIGKILL") ?? "")));
   assert.ok(isNotifyFailure(warning("notify command could not start: spawn ENOENT")));
   assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), loop: "feature" }));
-  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), type: "tick_start" }));
+  assert.ok(!isNotifyFailure({ ...warning("notify command exited with code 1"), type: "run_start" }));
   assert.ok(!isNotifyFailure(warning("something else")));
 });

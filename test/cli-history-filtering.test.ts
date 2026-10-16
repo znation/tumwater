@@ -17,16 +17,16 @@ import { seededHistoryRepo } from "./fixtures/history-fixtures.js";
 // --- --since <duration>: the window-shaped view (the sibling of logs --since / report --since)
 
 /** Seed tick pairs at fixed ages before `now` (the pattern cli-logs-filtering.test.ts uses for
- * --since): one 2-day-old tick_end outside any sane window, then a clean tick (start 50m,
+ * --since): one 2-day-old run_end outside any sane window, then a clean tick (start 50m,
  * end 45m) and a feature tick (start 30m, end 10m) inside a 1h window. */
 function seedWindowedHistory(repo: string, now = Date.now()): void {
   const age = (ms: number) => now - ms;
   writeEvents(repo, [
-    { ts: age(2 * 86_400_000), loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "old work" },
-    { ts: age(50 * 60_000), loop: "clean", type: "tick_start", tick: 2 },
-    { ts: age(45 * 60_000), loop: "clean", type: "tick_end", tick: 2, result: "no_change", summary: "tidied" },
-    { ts: age(30 * 60_000), loop: "feature", type: "tick_start", tick: 3 },
-    { ts: age(10 * 60_000), loop: "feature", type: "tick_end", tick: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
+    { ts: age(2 * 86_400_000), loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "old work" },
+    { ts: age(50 * 60_000), loop: "clean", type: "run_start", tick: 2 },
+    { ts: age(45 * 60_000), loop: "clean", type: "run_end", tick: 2, result: "no_change", summary: "tidied" },
+    { ts: age(30 * 60_000), loop: "feature", type: "run_start", tick: 3 },
+    { ts: age(10 * 60_000), loop: "feature", type: "run_end", tick: 3, result: "changed", summary: "new work", tokens: 1200, costUsd: 0.01 },
   ]);
 }
 
@@ -65,7 +65,7 @@ test("history --since --json emits the window's rows raw and an empty document f
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as { rows: Array<Record<string, unknown>> };
   assert.deepEqual(payload.rows.map((row) => [row.loop, row.tick]), [["feature", 3], ["clean", 2]]);
-  // Raw epoch ms, not the rendered time: exactly the seeded 10m-ago tick_end's stamp — compared
+  // Raw epoch ms, not the rendered time: exactly the seeded 10m-ago run_end's stamp — compared
   // to the seed's own clock, not a read after the CLI ran, which a loaded host pushed past the
   // old 5 s tolerance (7-8 s CLI runs, BUGS.md 2026-10-01).
   assert.equal(payload.rows[0]!["ts"], seededAt - 10 * 60_000, "the 10m-ago instant, as raw epoch ms");
@@ -74,7 +74,7 @@ test("history --since --json emits the window's rows raw and an empty document f
   // The note never touches JSON output — a parsing consumer reads rows only.
   assert.ok(!r.stdout.includes("note:"), r.stdout);
 
-  // A window holding no tick_end answers as an empty document, never prose.
+  // A window holding no run_end answers as an empty document, never prose.
   const empty = await cli(repo, "history", "--since", "1s", "--json");
   assert.equal(empty.code, 0);
   assert.deepEqual(JSON.parse(empty.stdout), { rows: [] });
@@ -87,8 +87,8 @@ test("history --since prints the hedged rotation note after the table, table mod
   // window's coverage (rotation or idleness — the hedged phrasing stays true either way).
   const now = Date.now();
   writeEvents(repo, [
-    { ts: now - 10 * 60_000, loop: "clean", type: "tick_start", tick: 1 },
-    { ts: now - 5 * 60_000, loop: "clean", type: "tick_end", tick: 1, result: "no_change", summary: "tidied" },
+    { ts: now - 10 * 60_000, loop: "clean", type: "run_start", tick: 1 },
+    { ts: now - 5 * 60_000, loop: "clean", type: "run_end", tick: 1, result: "no_change", summary: "tidied" },
   ]);
 
   const r = await cli(repo, "history", "--since", "1h");
@@ -154,7 +154,7 @@ test("history --grep keeps only rows whose rendered line matches, case-insensiti
   assert.equal(none.stdout, 'no runs matching "no such text"\n');
 
   // The stable event id is greppable: the haystack prefixes the raw type.
-  const type = await cli(repo, "history", "--grep", "tick_end");
+  const type = await cli(repo, "history", "--grep", "run_end");
   assert.equal(type.code, 0);
   assert.equal(type.stdout.trim().split("\n").length, 3);
 });
@@ -163,7 +163,7 @@ test("history --grep treats a flag-shaped pattern as text, not a flag", async ()
   const repo = makeRepo();
   await initProject(repo, "cli history grep impersonation");
   writeEvents(repo, [
-    { ts: 1787222691956, loop: "feature", type: "tick_end", tick: 7, result: "changed", summary: "reverted --since handling" },
+    { ts: 1787222691956, loop: "feature", type: "run_end", tick: 7, result: "changed", summary: "reverted --since handling" },
   ]);
   const r = await cli(repo, "history", "--grep", "--since");
   assert.equal(r.code, 0);

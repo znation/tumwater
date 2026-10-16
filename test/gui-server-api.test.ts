@@ -143,13 +143,13 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
 // fabricated duration), and a merged event that tickRows must ignore.
 function historySeedEvents(): HarnessEvent[] {
   return [
-    { ts: 1_000, loop: "feature", type: "tick_start", tick: 1 } as HarnessEvent,
-    { ts: 46_000, loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
+    { ts: 1_000, loop: "feature", type: "run_start", tick: 1 } as HarnessEvent,
+    { ts: 46_000, loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "tidy up", tokens: 500, costUsd: 0.25 } as HarnessEvent,
     { ts: 47_000, loop: "steward", type: "merged", commit: "abc", summary: "unrelated" } as HarnessEvent,
-    { ts: 48_000, loop: "clean", type: "tick_end", tick: 7, result: "no_change" } as HarnessEvent,
-    { ts: 49_000, loop: "feature", type: "tick_end", tick: 2, result: "skipped" } as HarnessEvent,
-    { ts: 50_000, loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
-    { ts: 96_000, loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+    { ts: 48_000, loop: "clean", type: "run_end", tick: 7, result: "no_change" } as HarnessEvent,
+    { ts: 49_000, loop: "feature", type: "run_end", tick: 2, result: "skipped" } as HarnessEvent,
+    { ts: 50_000, loop: "clean", type: "run_start", tick: 9 } as HarnessEvent,
+    { ts: 96_000, loop: "clean", type: "run_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
   ];
 }
 
@@ -162,14 +162,14 @@ test("gui /api/history serves tickRows' JSON with role filtering and n clamped, 
   const { server, base } = await startLocalGui(repo);
   try {
     // Default window: the JSON equals what `tumwater history` derives for the same window —
-    // tickRows over the same seed, newest first, durations from tick_start pairs, null when
+    // tickRows over the same seed, newest first, durations from run_start pairs, null when
     // the start is outside the window.
     const res = await fetch(base + "/api/history");
     assert.equal(res.status, 200);
     const d = (await res.json()) as { rows: ReturnType<typeof tickRows> };
     assert.deepEqual(d, { rows: tickRows(events, 20, null) });
     assert.deepEqual(d.rows.map((r) => [r.loop, r.tick]), [["clean", 9], ["feature", 2], ["clean", 7], ["feature", 1]], "newest first");
-    assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own tick_start");
+    assert.equal(d.rows[0]!.durationMs, 46_000, "duration pairs the tick's own run_start");
     assert.equal(d.rows[1]!.durationMs, null, "a skipped tick's end claims no duration");
 
     // role filters to that loop's rows (a filter is not a target: an id with no ticks is a
@@ -219,9 +219,9 @@ test("gui /api/history serves a trailing window from readTickRowsSince with its 
   const base = Date.now();
   const t = (mins: number) => base - mins * 60_000;
   const events: HarnessEvent[] = [
-    { ts: t(30), loop: "clean", type: "tick_start", tick: 9 } as HarnessEvent,
-    { ts: t(10), loop: "clean", type: "tick_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
-    { ts: t(5), loop: "feature", type: "tick_end", tick: 1, result: "changed", summary: "later work" } as HarnessEvent,
+    { ts: t(30), loop: "clean", type: "run_start", tick: 9 } as HarnessEvent,
+    { ts: t(10), loop: "clean", type: "run_end", tick: 9, result: "changed", summary: "sorted imports" } as HarnessEvent,
+    { ts: t(5), loop: "feature", type: "run_end", tick: 1, result: "changed", summary: "later work" } as HarnessEvent,
   ];
   writeEvents(repo, events);
   const { server, base: url } = await startLocalGui(repo);
@@ -289,7 +289,7 @@ test("gui /api/tick serves one tick's detail over the live route, 404 when the s
     assert.equal(d.role, "clean");
     assert.equal(d.tick, 9);
     assert.equal(d.durationMs, 46_000);
-    assert.deepEqual(d.events.map((e) => e.type), ["tick_start", "tick_end"]);
+    assert.deepEqual(d.events.map((e) => e.type), ["run_start", "run_end"]);
     assert.match(d.text, /^clean run #9 — merged · 46s/);
 
     // A tick the scan does not hold → 404 (never a crash); a bad role and a non-count tick →
@@ -307,14 +307,14 @@ test("gui /api/tick serves one tick's detail over the live route, 404 when the s
 
 test("gui /api/history grows its role-filtered scan window until it reaches the role's ticks", async () => {
   // The dilution case the CLI's `history --role` fix pinned: the first window (n*2+50 events)
-  // fills with a busy sibling loop's tick_ends, so the filtered rows fall short while the
+  // fills with a busy sibling loop's run_ends, so the filtered rows fall short while the
   // role's older ticks sit just past it. The endpoint must grow the scan like cmdHistory,
   // not return fewer rows (or an empty set) for a role the retained log covers.
   const repo = makeRepo();
   await initProject(repo, "history api dilution");
   const events: HarnessEvent[] = [];
-  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "tick_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
-  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "tick_end", tick: i + 1, result: "no_change" });
+  for (let i = 0; i < 5; i++) events.push({ ts: 1000 + i, loop: "qa", type: "run_end", tick: i + 1, result: "changed", summary: `qa fix ${i}` });
+  for (let i = 0; i < 60; i++) events.push({ ts: 2000 + i, loop: "clean", type: "run_end", tick: i + 1, result: "no_change" });
   writeEvents(repo, events);
   const { server, base } = await startLocalGui(repo);
   try {

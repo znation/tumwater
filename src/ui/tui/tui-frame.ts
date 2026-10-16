@@ -132,7 +132,7 @@ export function eventTone(e: HarnessEvent): Tone | undefined {
   const kind = eventKind(e.type, result);
   if (kind === "landing") return "green"; // vocabulary-ok: event kind code
   if (kind === "attention") return "magenta";
-  if (kind === "problem") return (e.type === "tick_end" ? resultTone(result) : undefined) ?? "red";
+  if (kind === "problem") return (e.type === "run_end" ? resultTone(result) : undefined) ?? "red";
   if (kind === "routine") return "dim";
   return undefined;
 }

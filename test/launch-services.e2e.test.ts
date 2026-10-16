@@ -43,7 +43,7 @@ test("a daemon fleet samples launchservicesd on its first poll and warns once th
     await waitFor(() => warned().length > 0, "the port warning");
     // The first poll sampled before any tick started; by the time the role's tick has ended the
     // fleet has polled again and again, and none of those samples inside the interval.
-    await waitFor(() => eventsOfType(repo, "tick_end").length > 0, "the clean role's first tick to end");
+    await waitFor(() => eventsOfType(repo, "run_end").length > 0, "the clean role's first tick to end");
     assert.equal(probe.reads, 1);
     assert.equal(warned().length, 1);
   } finally {

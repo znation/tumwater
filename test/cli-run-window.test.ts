@@ -84,7 +84,7 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
 
   onlyCleanRole(repo);
   // A tick that ended before the window opened must not be counted in the window's summary.
-  logEvent(repo, { ts: Date.now() - 3_600_000, loop: "ghost", type: "tick_end", tick: 1, result: "changed" } as never);
+  logEvent(repo, { ts: Date.now() - 3_600_000, loop: "ghost", type: "run_end", tick: 1, result: "changed" } as never);
   const restore = fakePi("exit 0");
   const spawnedAt = Date.now();
   const s = spawnCli(repo, ["run", "--for", "3s"]);
