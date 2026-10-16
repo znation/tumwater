@@ -15,6 +15,7 @@ import type { CheckConfigSlice } from "../config/config-schema.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject } from "../files/json-object.js";
 import { baselineVerdictsPath } from "../paths.js";
+import { memoSetLru } from "../collections.js";
 
 /** The fleet-shared verdict of main's own build/test suite at one SHA, and the one-run-per-SHA
  * machinery that produces it. Split out of build/build-check.ts — which keeps running and
@@ -119,11 +120,7 @@ const BASELINE_CACHE_MAX = 256;
  * cap. Both write sites route through here so the cap cannot be bypassed, and so does the
  * mirror on disk (saveGreens). */
 function rememberBaseline(sha: string, baseline: MainBaseline): void {
-  if (!baselineCache.has(sha) && baselineCache.size >= BASELINE_CACHE_MAX) {
-    const oldest = baselineCache.keys().next().value;
-    if (oldest !== undefined) baselineCache.delete(oldest);
-  }
-  baselineCache.set(sha, baseline);
+  memoSetLru(baselineCache, sha, baseline, BASELINE_CACHE_MAX);
   saveGreens();
 }
 

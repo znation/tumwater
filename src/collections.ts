@@ -64,6 +64,24 @@ export function addTo<K extends string>(
   record[key] = (current ?? 0) + amount;
 }
 
+/** Set `key` to `value` in a bounded memo `cache`, moving an existing key to the LRU tail
+ * (delete + re-set, so a re-read at the cap does not evict itself) and, when the map would
+ * exceed `max` entries, dropping the oldest (first-inserted) one. The single home of the
+ * bounded-memo discipline — the `delete(key); set(key, …)` refresh and the
+ * `keys().next().value` oldest-eviction — shared by the report fold (report-data.ts's
+ * reportFoldCache), the failure digest (failure-data.ts's failureDigestCache), and the
+ * baseline verdict cache (main-baseline.ts's baselineCache), so those sites cannot drift on
+ * how a hit is refreshed or an over-cap cache drained. After any call the map holds at most
+ * `max` entries. */
+export function memoSetLru<K, V>(cache: Map<K, V>, key: K, value: V, max: number): void {
+  if (cache.has(key)) cache.delete(key);
+  if (cache.size >= max) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, value);
+}
+
 /** One deterministic ranking rule: count descending, then key ascending, so equal counts always
  * order the same way. These two helpers are the single home of that rule; every surface that
  * ranks counters calls one of them rather than re-implementing the comparator —

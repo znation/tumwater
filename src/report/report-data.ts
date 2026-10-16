@@ -15,7 +15,7 @@ import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
-import { addTo } from "../collections.js";
+import { addTo, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { TickResult } from "../tick/tick-outcome.js";
@@ -345,8 +345,7 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
       { dev: cached.dev, ino: cached.ino, mtimeMs: cached.mtimeMs, size: cached.offset },
     )
   ) {
-    reportFoldCache.delete(key); // Refresh LRU position.
-    reportFoldCache.set(key, cached);
+    memoSetLru(reportFoldCache, key, cached, REPORT_FOLD_CACHE_MAX);
     return cached;
   }
   if (cached && size > cached.offset && dev === cached.dev && ino === cached.ino) {
@@ -377,11 +376,7 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
     days: new Map(),
   };
   for (const ev of raw.events) foldEventInto(entry, ev);
-  if (reportFoldCache.size >= REPORT_FOLD_CACHE_MAX) {
-    const oldest = reportFoldCache.keys().next().value;
-    if (oldest !== undefined) reportFoldCache.delete(oldest);
-  }
-  reportFoldCache.set(key, entry);
+  memoSetLru(reportFoldCache, key, entry, REPORT_FOLD_CACHE_MAX);
   return entry;
 }
 

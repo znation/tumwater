@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { addTo, getOrCreate, groupBy, rankCountEntries } from "../src/collections.js";
+import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
 // digest, the fleet hold, and the error-storm reducer. Those paths already cover it end to
@@ -100,4 +100,30 @@ test("addTo counts a key that collides with an Object.prototype name", () => {
   addTo(counts, key, 2);
   assert.equal(typeof counts["constructor"], "number", "the stored value stays a number");
   assert.equal(counts["constructor"], 7);
+});
+
+// memoSetLru is the shared home of the bounded-memo discipline the report fold, the failure
+// digest, and the baseline verdict cache hand-rolled. These pin the two facts its doc
+// comment claims: a hit is refreshed to the LRU tail (so it is not evicted next at the cap),
+// and the map never exceeds `max` entries.
+
+test("memoSetLru refreshes a hit to the tail and evicts the oldest at the cap", () => {
+  const cache = new Map<string, number>();
+  memoSetLru(cache, "a", 1, 2);
+  memoSetLru(cache, "b", 2, 2);
+  // Refreshing "a" moves it past "b", so the oldest ("b") is the one evicted on the next set.
+  memoSetLru(cache, "a", 11, 2);
+  assert.deepEqual([...cache.keys()], ["b", "a"]);
+  memoSetLru(cache, "c", 3, 2);
+  assert.deepEqual([...cache.keys()], ["a", "c"]);
+  assert.equal(cache.get("a"), 11);
+  assert.equal(cache.get("c"), 3);
+  assert.equal(cache.size, 2);
+});
+
+test("memoSetLru never exceeds max entries even when all distinct", () => {
+  const cache = new Map<string, number>();
+  for (let i = 0; i < 10; i++) memoSetLru(cache, `k${i}`, i, 3);
+  assert.equal(cache.size, 3);
+  assert.deepEqual([...cache.values()], [7, 8, 9]);
 });

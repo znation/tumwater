@@ -17,7 +17,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { describeStateChange, STATE_CHANGE_TOP, STATE_CHANGE_TYPES } from "./failure-state-change.js";
 import { clusterMessages, errorTextOrPlaceholder, truncateExample, type Cluster } from "./failure-cluster.js";
-import { addTo, getOrCreate, rankByCount } from "../collections.js";
+import { addTo, getOrCreate, memoSetLru, rankByCount } from "../collections.js";
 import { firstReason } from "../text/phrases.js";
 import { sameStatIdentity, statOrNull } from "../files/files.js";
 import { nonNegativeNumber } from "../files/json-object.js";
@@ -258,8 +258,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
     cached.priorFrom === priorFrom &&
     sameStatIdentity(cached.stat, stat)
   ) {
-    failureDigestCache.delete(key); // Refresh LRU position.
-    failureDigestCache.set(key, cached);
+    memoSetLru(failureDigestCache, key, cached, FAILURE_DIGEST_CACHE_MAX);
     return cached.data;
   }
 
@@ -274,11 +273,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
   }
 
   const data = assembleFailureReport(current, prior, events, coversFullWindow, logState, { days, from, to }, role);
-  failureDigestCache.set(key, { from, to, priorFrom, stat, data });
-  if (failureDigestCache.size > FAILURE_DIGEST_CACHE_MAX) {
-    const oldest = failureDigestCache.keys().next().value;
-    if (oldest !== undefined) failureDigestCache.delete(oldest);
-  }
+  memoSetLru(failureDigestCache, key, { from, to, priorFrom, stat, data }, FAILURE_DIGEST_CACHE_MAX);
   return data;
 }
 
