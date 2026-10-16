@@ -8,7 +8,7 @@
  * change-render.ts's half. */
 
 import { knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
-import { aheadOfMain, branchExists, currentBranch, targetBranch } from "../git/git.js";
+import { aheadOfMain, branchExists, countCommitsInRange, currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { aheadOfMainDiff, changedFiles } from "../git/git-diff.js";
 import { branchName } from "../paths.js";
@@ -37,6 +37,8 @@ export interface RoleChangeView {
   state: "absent" | "no-base" | "ready";
   /** Commits on the loop branch not on mainBranch (0 unless state is "ready"). */
   ahead: number;
+  /** Commits on mainBranch the loop branch has not picked up (0 unless state is "ready"). */
+  behind: number;
   commits: RoleChangeCommit[];
   /** The ahead-of-main patch ("" unless state is "ready"); under `--stat` the `git diff --stat`
    * summary instead. */
@@ -60,6 +62,7 @@ interface FleetRoleChange {
   /** The per-role view's state, verbatim: "absent" | "no-base" | "ready". */
   state: "absent" | "no-base" | "ready";
   ahead: number;
+  behind: number;
   commits: RoleChangeCommit[];
   dirtyFiles: string[];
 }
@@ -109,6 +112,7 @@ export async function collectRoleChange(
     branch,
     mainBranch,
     ahead: 0,
+    behind: 0,
     commits: [],
     diff: "",
     dirtyFiles: [],
@@ -122,6 +126,7 @@ export async function collectRoleChange(
   const wt = await roleWorktreeDir(root, role);
   if (wt === null || !(await isUsableWorktree(wt))) return { ...empty, state: "absent" };
   const ahead = await aheadOfMain(wt, mainBranch);
+  const behind = await countCommitsInRange(wt, `HEAD..${mainBranch}`);
   const commits = parseOnelineLog(await gitTry(wt, "log", "--oneline", `${mainBranch}..HEAD`));
   // Under opts.stat both halves hold the uncapped `git diff --stat` summary (one line per file).
   const diff =
@@ -137,7 +142,7 @@ export async function collectRoleChange(
       : opts.stat
         ? ((await gitTry(wt, "diff", "--stat", "HEAD")) ?? "")
         : await cappedWorkingDiff(wt);
-  return { ...empty, state: "ready", ahead, commits, diff, dirtyFiles, uncommittedDiff };
+  return { ...empty, state: "ready", ahead, behind, commits, diff, dirtyFiles, uncommittedDiff };
 }
 
 /** Parse `git log --oneline` output into {sha, subject} pairs — sha up to the first space,

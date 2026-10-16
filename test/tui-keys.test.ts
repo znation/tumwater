@@ -1194,8 +1194,8 @@ test("the Pending pane caches the rendered fleet roster when collectPending reso
   const fleet = {
     mainBranch: "main",
     roles: [
-      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, commits: [], dirtyFiles: [] },
-      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, commits: [], dirtyFiles: ["a.ts"] },
+      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
+      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, behind: 0, commits: [], dirtyFiles: ["a.ts"] },
     ],
   };
   let resolvePending!: (view: typeof fleet) => void;
@@ -1234,8 +1234,8 @@ test("the Pending pane renders the durable land queue on entry, above the resolv
   const fleet = {
     mainBranch: "main",
     roles: [
-      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, commits: [], dirtyFiles: [] },
-      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, commits: [], dirtyFiles: ["a.ts"] },
+      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
+      { role: "clean", branch: "tumwater/clean", state: "ready" as const, ahead: 0, behind: 0, commits: [], dirtyFiles: ["a.ts"] },
     ],
   };
   let resolvePending!: (view: typeof fleet) => void;
@@ -1327,6 +1327,7 @@ test("Ctrl+N cycles transcript → notebook → change and back, caching the col
     mainBranch: "main",
     state: "ready" as const,
     ahead: 2,
+    behind: 0,
     commits: [{ sha: "abc1234", subject: "add a thing" }],
     diff: "",
     dirtyFiles: ["a.ts"],
@@ -1377,6 +1378,7 @@ test("Ctrl+T leaves change mode, and a resolution after a cycle away does not ca
     mainBranch: "main",
     state: "ready" as const,
     ahead: 0,
+    behind: 0,
     commits: [],
     diff: "",
     dirtyFiles: [],

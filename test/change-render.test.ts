@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { collectRoleChange } from "../src/change/change-data.js";
-import { renderRoleChange } from "../src/change/change-render.js";
+import { renderFleetChange, renderRoleChange } from "../src/change/change-render.js";
 import { initProject } from "../src/init/init.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { commitIn, makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -92,4 +92,25 @@ test("two uncommitted files pluralize in the header and the file list", async ()
   const text = renderRoleChange(view);
   assert.ok(text.includes("0 commits ahead of main, 2 uncommitted files"));
   assert.ok(text.includes("uncommitted (2 files): a.md, b.md"));
+});
+
+test("a lagging branch renders its behind count in the role header and the fleet roster", () => {
+  const base = {
+    role: "feature",
+    branch: "tumwater/feature",
+    mainBranch: "main",
+    state: "ready" as const,
+    ahead: 1,
+    commits: [{ sha: "abc1234", subject: "work" }],
+    diff: "",
+    dirtyFiles: [],
+    uncommittedDiff: "",
+  };
+  const lagging = { ...base, behind: 2 };
+  assert.ok(renderRoleChange(lagging).startsWith("feature: tumwater/feature, 1 commit ahead of main, 2 commits behind"));
+  assert.equal(
+    renderFleetChange({ mainBranch: "main", roles: [lagging] }),
+    "feature: 1 commit ahead of main, 2 commits behind",
+  );
+  assert.ok(renderRoleChange({ ...base, behind: 0 }).includes("1 commit ahead of main\n"));
 });

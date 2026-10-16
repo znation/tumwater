@@ -7,13 +7,19 @@ import { plural } from "../text/phrases.js";
 import type { FleetChangeView, RoleChangeView } from "./change-data.js";
 
 /** The work-summary phrase both change views open their work lines with — `N commits ahead
- * of <main>` plus `, M uncommitted file(s)` when the worktree is dirty (both halves through
- * plural, so the singular/plural wording the tests pin cannot drift between the fleet roster
- * and the per-role header). Exactly two call sites: renderFleetChange's per-role line and
- * renderRoleChange's header line. */
-function workSummary(ahead: number, mainBranch: string, dirtyFiles: string[]): string {
+ * of <main>` plus `, K commits behind` when the branch lags main, plus `, M uncommitted
+ * file(s)` when the worktree is dirty (each count through plural, so the singular/plural
+ * wording the tests pin cannot drift between the fleet roster and the per-role header).
+ * Exactly two call sites: renderFleetChange's per-role line and renderRoleChange's header line. */
+function workSummary(
+  ahead: number,
+  behind: number,
+  mainBranch: string,
+  dirtyFiles: string[],
+): string {
   return (
     `${plural(ahead, "commit")} ahead of ${mainBranch}` +
+    (behind > 0 ? `, ${plural(behind, "commit")} behind` : "") +
     (dirtyFiles.length > 0 ? `, ${plural(dirtyFiles.length, "uncommitted file")}` : "")
   );
 }
@@ -28,7 +34,7 @@ export function renderFleetChange(view: FleetChangeView): string {
   }
   const lines = view.roles
     .filter((r) => r.state !== "no-base" && (r.ahead > 0 || r.dirtyFiles.length > 0))
-    .map((r) => `${r.role}: ${workSummary(r.ahead, view.mainBranch, r.dirtyFiles)}`);
+    .map((r) => `${r.role}: ${workSummary(r.ahead, r.behind, view.mainBranch, r.dirtyFiles)}`);
   return lines.length > 0 ? lines.join("\n") : "no pending changes";
 }
 
@@ -38,7 +44,7 @@ export function renderRoleChange(view: RoleChangeView): string {
   if (view.state === "no-base") return `main branch ${view.mainBranch} does not exist`;
   if (view.ahead === 0 && view.dirtyFiles.length === 0) return `no pending change for ${view.role}`;
   const lines = [
-    `${view.role}: ${view.branch}, ${workSummary(view.ahead, view.mainBranch, view.dirtyFiles)}`,
+    `${view.role}: ${view.branch}, ${workSummary(view.ahead, view.behind, view.mainBranch, view.dirtyFiles)}`,
   ];
   for (const c of view.commits) lines.push(`${c.sha} ${c.subject}`);
   if (view.diff) lines.push("", view.diff.trimEnd());

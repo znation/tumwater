@@ -147,3 +147,23 @@ test("the fleet view keeps the counts and drops the patch fields", async () => {
   assert.deepEqual(feature.dirtyFiles, ["notes.txt"]);
   assert.ok(!("diff" in feature) && !("uncommittedDiff" in feature), "the patch halves never ride the fleet view");
 });
+
+test("a branch whose base lags main reports behind beside ahead, in both views", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "change-data behind");
+  const wt = await ensureWorktree(repo, "feature", "main");
+  fs.writeFileSync(path.join(wt, "feature.md"), "work\n");
+  commitIn(wt, "feature work");
+  fs.writeFileSync(path.join(repo, "later.txt"), "1\n");
+  commitIn(repo, "main moves on");
+  fs.writeFileSync(path.join(repo, "later.txt"), "2\n");
+  commitIn(repo, "main moves again");
+
+  const view = await collectRoleChange(repo, "feature");
+  assert.equal(view.ahead, 1);
+  assert.equal(view.behind, 2);
+  const fleet = await collectFleetChanges(repo);
+  const feature = fleet.roles.find((r) => r.role === "feature");
+  assert.equal(feature?.behind, 2);
+  assert.equal(fleet.roles.find((r) => r.state === "absent")?.behind ?? 0, 0);
+});
