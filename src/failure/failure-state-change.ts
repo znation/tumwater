@@ -69,6 +69,13 @@ function field(v: unknown): string {
   return s.slice(0, cut);
 }
 
+/** The backend a fallback-ish decision line names, as "provider/model", defaulting each half
+ * to pi's own default when the event omits it and slicing both through field. Shared by the
+ * budget_fallback and model_fallback lines so the default and its slice rule stay in one place. */
+function providerModel(ev: HarnessEvent): string {
+  return `${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")}`;
+}
+
 /** A compact, bounded one-liner for one harness decision event, for the Fleet state changes
  * section. Every free string is sliced (field) and the whole line is capped again at
  * STATE_CHANGE_MAX so the digest's byte bound holds for any event shape — the cap cut falls on
@@ -92,7 +99,7 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     }
     case "budget_fallback":
-      text = `budget fallback — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached; on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} (cost n/a)`;
+      text = `budget fallback — ${budgetPhrase(ev.spentUsd, ev.capUsd)} daily cost reached; on ${providerModel(ev)} (cost n/a)`;
       break;
     case "budget_resumed":
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
@@ -123,12 +130,12 @@ export function describeStateChange(ev: HarnessEvent): string {
       break;
     case "model_fallback_started":
       // The role tripped off its primary onto its fallback after provider-class failures.
-      text = `model fallback — ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} engaged (${field(ev.reason ?? "backend failure")})`;
+      text = `model fallback — ${providerModel(ev)} engaged (${field(ev.reason ?? "backend failure")})`;
       break;
     case "model_fallback_ended":
       // The return counterpart: names the primary the role resumed on and how long the
       // off-model episode ran.
-      text = `model fallback ended — back on ${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
+      text = `model fallback ended — back on ${providerModel(ev)} after ${shortSpanPhrase(finiteNumber(ev.durationMs, 0))}`;
       break;
     case "rate_limit_hold": {
       // Same split as the event feed's rendering (event-format.ts): a rate-limit hold keeps
