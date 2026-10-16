@@ -490,6 +490,19 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
   // carries no Clear-filter action, so it stays literal.
   const emptyFeedRow = (head, body) => "<li class='empty'><strong>" + head + "</strong>" + body +
     "<button type='button' class='linkish' data-action='feedclear'>Clear filter</button></li>";
+  // A per-type tally for the Activity feed, mirroring the CLI's logs --count display rule
+  // (read-only from src/cli/log-commands.ts's sayTally): one N × <type> chip per present event
+  // type, count-descending then type-name ascending. A pure function of the rows in hand, so the
+  // chips and the <li> rows below cannot drift on which events count; "" for an empty array so
+  // empty and empty-state feeds paint no stray chips.
+  function tallyChips(events) {
+    if (!events.length) return "";
+    const counts = new Map();
+    for (const e of events) counts.set(e.type, (counts.get(e.type) || 0) + 1);
+    return "<div class='feed-tally chips'>" + [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .map(([type, n]) => "<span class='chip mono'>" + n + " × " + esc(type) + "</span>").join("") + "</div>";
+  }
   function renderFeed(d) {
     syncFeedRoles(d);
     // Re-arm the debounced server search whenever the filter changed since the last paint (so a
@@ -515,7 +528,7 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
     markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.loops || []).map((l) => l.role));
     paintPanel("feed", shown.length
-      ? shown.map((it) => {
+      ? tallyChips(shown) + shown.map((it) => {
         const kind = eventKind(it);
         const tone = it.type === "tick_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
         const who = roles.has(it.loop)

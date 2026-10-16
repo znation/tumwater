@@ -422,6 +422,86 @@ test("clearing the filter restores the windowed feed byte-for-byte", async () =>
   assert.equal(panels["feed"], plain.panels["feed"], "no-filter markup is byte-identical after clearing");
 });
 
+test("the Activity feed tallies its present event types like logs --count", () => {
+  // Default feed filter is Notable, so carry the routine tick rows too via the All choice.
+  const { scope, panels } = feedScope({ feed: "all" });
+  scope.renderFeed({
+    loops: [],
+    eventItems: [
+      { ts: 1, loop: "qa", type: "tick_end", message: "a" },
+      { ts: 2, loop: "qa", type: "tick_end", message: "b" },
+      { ts: 3, loop: "qa", type: "tick_end", message: "c" },
+      { ts: 4, loop: "qa", type: "question_posted", message: "d" },
+      { ts: 5, loop: "qa", type: "question_posted", message: "e" },
+      { ts: 6, loop: "qa", type: "tick_start", message: "f" },
+      { ts: 7, loop: "qa", type: "tick_start", message: "g" },
+      { ts: 8, loop: "qa", type: "merged", message: "h" },
+    ],
+  });
+  const html = panels["feed"] ?? "";
+  // One N × <type> chip per present type, count-descending then type-name ascending.
+  assert.match(html, /3 × tick_end/);
+  assert.match(html, /2 × question_posted/);
+  assert.match(html, /2 × tick_start/);
+  assert.match(html, /1 × merged/);
+  // Order: the 3-count first, then the tied 2-counts alphabetically, then the 1-count.
+  assert.equal(html.indexOf("3 × tick_end") < html.indexOf("2 × question_posted"), true, "most frequent first");
+  assert.equal(html.indexOf("2 × question_posted") < html.indexOf("2 × tick_start"), true, "a count tie breaks by type name ascending");
+  assert.equal(html.indexOf("2 × tick_start") < html.indexOf("1 × merged"), true, "count-descending holds past the tie");
+  assert.doesNotMatch(html, /0 ×/);
+});
+
+test("the Notable cull tallies only the notable rows", () => {
+  const { scope, panels } = feedScope(); // default Notable filter
+  scope.renderFeed({
+    loops: [],
+    eventItems: [
+      { ts: 1, loop: "qa", type: "tick_end", message: "a" },
+      { ts: 2, loop: "qa", type: "tick_end", message: "b" },
+      { ts: 3, loop: "qa", type: "merged", message: "c" },
+      { ts: 4, loop: "qa", type: "question_posted", message: "d" },
+    ],
+  });
+  const html = panels["feed"] ?? "";
+  assert.match(html, /1 × merged/);
+  assert.match(html, /1 × question_posted/);
+  assert.doesNotMatch(html, /tick_end/, "routine rows the Notable view hides are not tallied");
+});
+
+test("a filter that removes every row and an empty feed paint no tally", () => {
+  const carried = { ts: 1, loop: "qa", type: "merged", message: "boom" };
+  const filtered = feedScope({ "feed-grep": "no-such-text" });
+  filtered.scope.renderFeed({ loops: [], eventItems: [carried] });
+  assert.doesNotMatch(filtered.panels["feed"] ?? "", /feed-tally/, "a filter that empties the feed paints no chips");
+  const empty = feedScope();
+  empty.scope.renderFeed({ loops: [], eventItems: [] });
+  assert.doesNotMatch(empty.panels["feed"] ?? "", /feed-tally/, "an empty window paints no chips");
+});
+
+test("the Activity feed tallies the server-backed /api/logs slice it displays", async () => {
+  const payload = { loops: [{ role: "qa" }], eventItems: [] };
+  const { scope, panels } = feedScope({ feed: "all", "feed-grep": "needle" }, {
+    getJson: async () => ({
+      events: [
+        { ts: 1, loop: "qa", type: "merged", message: "needle one" },
+        { ts: 2, loop: "qa", type: "land_failed", message: "needle two" },
+        { ts: 3, loop: "qa", type: "merged", message: "needle three" },
+        { ts: 4, loop: "qa", type: "tick_end", result: "failed", message: "needle four" },
+      ],
+    }),
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  const html = panels["feed"] ?? "";
+  // The server slice folds the same rows the <li> list paints (older merged x2, then a
+  // land_failed and a failed tick_end): two merged, one land_failed, one tick_end.
+  assert.match(html, /2 × merged/);
+  assert.match(html, /1 × land_failed/);
+  assert.match(html, /1 × tick_end/);
+  assert.doesNotMatch(html, /0 ×/);
+});
+
 test("the Activity filter persists its choices and the page ships the controls in the card head", () => {
   assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-role"/);
   assert.match(GUI_CLIENT_FLEET_JS, /store\("feed-grep"/);

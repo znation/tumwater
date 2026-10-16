@@ -381,6 +381,8 @@ export const GUI_STYLES = String.raw`
   .feed-item.k-routine .feed-msg { color: var(--text-3); }
   .feed-loop { font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; color: var(--text); margin-right: 4px; }
   .feed-time { font-size: 12px; color: var(--text-4); white-space: nowrap; font-variant-numeric: tabular-nums; padding-top: 1px; }
+  .feed-tally { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 6px; border-bottom: 1px solid var(--line-soft); }
+  .feed-tally .chip { height: 22px; padding: 0 9px; font-size: 12px; font-weight: 500; }
 
   /* ---- drawer: a loop's detail and live transcript, or one backlog entry ---- */
   .drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 50; width: min(660px, 100vw); display: flex;
