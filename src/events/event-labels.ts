@@ -1,0 +1,114 @@
+// vocabulary: plain
+/** Words for the two code families the dashboards show: event types (the activity chips) and run
+ * result codes (the result cells). Pure, no I/O, so core modules and the UI may both import it. */
+
+import type { HarnessEvent } from "./events.js";
+import type { TickResult } from "../tick/tick-outcome.js";
+
+/** The words for each event type. The `Record` type makes the compiler demand a label for every
+ * type in the union, so a new event type cannot ship without one; renaming a type renames its key
+ * here and leaves the label unchanged. A label is a lowercase phrase of a few words, never the
+ * code itself. */
+export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> = {
+  tick_start: "run started",
+  tick_end: "run finished",
+  land_queued: "waiting to merge",
+  landed: "merge finished",
+  land_failed: "merge failed",
+  merged: "merged",
+  question_posted: "question posted",
+  entry_refused: "plan refused",
+  wake: "woke up",
+  tick_deferred: "run deferred",
+  orchestrator_start: "tumwater started",
+  orchestrator_stop: "tumwater stopped",
+  prompt_enqueued: "message queued",
+  prompt_cancelled: "message cancelled",
+  prompt_edited: "message edited",
+  prompt_taken: "message picked up",
+  counters_reset: "counters reset",
+  tick_aborted: "run stopped by you",
+  resume: "run resumed",
+  review_start: "review started",
+  review_verdict: "review approved",
+  review_rejected: "review rejected",
+  review_failed: "review failed",
+  revision: "revision round",
+  conflict_handback: "sent back to resolve",
+  build_check: "check ran",
+  dep_install: "dependencies installed",
+  budget_warning: "budget warning",
+  budget_paused: "budget paused",
+  budget_fallback: "over-cap model",
+  budget_resumed: "budget resumed",
+  budget_handback: "returned to main model",
+  fleet_paused: "team paused",
+  fleet_resumed: "team resumed",
+  role_paused: "role paused",
+  role_resumed: "role resumed",
+  role_streak_paused: "repeated-failure pause",
+  role_cap_warning: "role budget warning",
+  role_cap_paused: "role budget paused",
+  role_cap_resumed: "role budget resumed",
+  main_red_hold: "main's check is failing",
+  maintenance_quota_hold: "waiting: maintenance allowance used",
+  maintenance_quota_resumed: "maintenance allowance reopened",
+  bootstrap_complete: "bootstrap complete",
+  quiet_hours_started: "quiet hours started",
+  quiet_hours_ended: "quiet hours ended",
+  disk_low: "waiting: low disk",
+  disk_ok: "disk space restored",
+  disk_reclaim: "disk space reclaimed",
+  claim: "entry claimed",
+  permit_reserve: "permits reserved",
+  slot_wait: "waited to start",
+  rate_limit_hold: "waiting: provider limit",
+  rate_limit_resumed: "provider limit lifted",
+  claude_window_warning: "claude usage window warning",
+  claude_window_limited: "waiting: claude usage window",
+  claude_window_reset: "claude usage window reset",
+  max_concurrent_changed: "concurrency changed",
+  provider_concurrency_changed: "provider concurrency changed",
+  retention_changed: "retention changed",
+  config_changed: "settings changed",
+  model_changed: "model changed",
+  backend_binary: "backend checked",
+  model_fallback_started: "fallback model started",
+  model_fallback_ended: "fallback model ended",
+  image_blind: "image not seen",
+  image_reroute: "image sent to another model",
+  build_stale: "update available",
+  restart_pending: "update waits for idle",
+  restart: "restarted onto update",
+  restart_refused: "update refused",
+  restart_blocked: "update blocked",
+  restart_forced: "update forced",
+  supervisor_exit: "tumwater exited",
+  warning: "warning",
+};
+
+/** The words for each run result code, shown in the result cells. */
+export const RUN_RESULT_LABELS: Readonly<Record<TickResult, string>> = {
+  changed: "merged",
+  queued: "waiting to merge",
+  no_change: "no change",
+  skipped: "skipped",
+  refused: "refused",
+  rejected: "rejected in review",
+  review_error: "review failed",
+  merge_conflict: "merge conflict",
+  merge_blocked: "merge blocked",
+  error: "error",
+  aborted: "interrupted",
+  quiet_killed: "stalled, resumed",
+  user_aborted: "stopped by you",
+  main_red: "main's check is failing",
+};
+
+/** The words for an event type or run result code: its own-property label, else the code with
+ * underscores as spaces. The two code families are disjoint, so one lookup serves both. */
+export function eventTypeLabel(code: string): string {
+  if (Object.hasOwn(EVENT_TYPE_LABELS, code)) return EVENT_TYPE_LABELS[code as HarnessEvent["type"]];
+  if (Object.hasOwn(RUN_RESULT_LABELS, code)) return RUN_RESULT_LABELS[code as TickResult];
+  return code.replace(/_/g, " ");
+}

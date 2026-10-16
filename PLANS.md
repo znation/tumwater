@@ -21,58 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests)
-
-**Goal.** One server-side home for three display rules every surface will use: `feature-2` shown as `feature #2`, a role's title, and an event type or run result code shown in words ("run finished", "no change"). They land with tests and no callers. The text series adopts them.
-
-**Approach.**
-- New module `src/roles/role-labels.ts`, carrying the `// vocabulary: plain` header line:
-  - `roleLabel(runnerId: string): string` — for an instance id, where `baseRoleOf(id) !== id` (src/roles/loop-ids.ts), return `` `${baseRoleOf(id)} #${instanceIndex(id)}` ``. Return any other id unchanged: a bare role, `director`, a custom role, `feature-1`.
-  - `ROLE_TITLES: Readonly<Record<string, string>>` — built from `ROLES` (src/roles/role-catalog.ts) as id → `title`, plus `DIRECTOR_ROLE` → `"runs your messages first"`.
-  - `CUSTOM_ROLE_TITLE = "custom role"`.
-  - `roleTitle(id: string): string` — `ROLE_TITLES[baseRoleOf(id)]` when that is an own property (use `Object.hasOwn`: a custom role may be named `constructor`, see the comment in config.ts `overlayDefaults`), else `CUSTOM_ROLE_TITLE`. Instance ids resolve through their base.
-  - The catalog titles themselves do not change here. Plain terms role ids changes them.
-- New module `src/events/event-labels.ts`, carrying the header:
-  - `EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>>` (src/events/events.ts). The `Record` type makes the compiler demand a label for every one of the 75 types in the union, so a new event type cannot ship without one, and a later rename of a type (Plain terms event log) renames its key here with the label unchanged. Say both in the doc comment.
-  - `RUN_RESULT_LABELS: Readonly<Record<TickResult, string>>` (src/tick/tick-outcome.ts, 14 codes), exactly:
-    - `changed` "merged"; `queued` "waiting to merge"; `no_change` "no change"; `skipped` "skipped"
-    - `refused` "refused"; `rejected` "rejected in review"; `review_error` "review failed"
-    - `merge_conflict` "merge conflict"; `merge_blocked` "merge blocked"; `error` "error"
-    - `aborted` "interrupted"; `quiet_killed` "stalled, resumed"; `user_aborted` "stopped by you"
-    - `main_red` "main's check is failing"
-  - `eventTypeLabel(code: string): string` — the own-property label from `EVENT_TYPE_LABELS`, else from `RUN_RESULT_LABELS`, else `code.replace(/_/g, " ")`. Event types and result codes are disjoint today, which a test pins, so one lookup serves the activity chips (`tick_end`) and the result cells (`no_change`).
-  - **Label rule** for event types: a lowercase phrase of a few words, in the "Glossary" and "Wording rules" terms, never the code itself. These labels are fixed:
-    - `tick_start` "run started"; `tick_end` "run finished"; `tick_deferred` "run deferred"; `tick_aborted` "run stopped by you"; `resume` "run resumed"
-    - `land_queued` "waiting to merge"; `landed` "merge finished"; `land_failed` "merge failed"; `merged` "merged"
-    - `fleet_paused` "team paused"; `fleet_resumed` "team resumed"; `role_streak_paused` "repeated-failure pause"
-    - `main_red_hold` "main's check is failing"
-    - `maintenance_quota_hold` "waiting: maintenance allowance used"
-    - `disk_low` "waiting: low disk"; `rate_limit_hold` "waiting: provider limit"; `claude_window_limited` "waiting: claude usage window"
-    - `budget_fallback` "over-cap model"; `slot_wait` "waited to start"
-    - `build_stale` "update available"; `restart_pending` "update waits for idle"; `restart` "restarted onto update"
-    - `conflict_handback` "sent back to resolve"; `build_check` "check ran"
-    - `prompt_enqueued` "message queued"; `prompt_taken` "message picked up"
-    - `orchestrator_start` "tumwater started"; `orchestrator_stop` "tumwater stopped"; `supervisor_exit` "tumwater exited"
-  - Label every other type by the same rule.
-- Both modules are pure, with no I/O. Neither is under src/ui/, so core modules (event-format.ts, report, notify) may import them per test/layering.test.ts.
-- New tests:
-  - `test/role-labels.test.ts`: `roleLabel` for `feature-2` → `feature #2` and `bugfix-10` → `bugfix #10`, and unchanged for `feature`, `feature-1`, `director` and `nightly-2` (a custom name). `roleTitle` for `feature-3` equals feature's catalog title, `director` → "runs your messages first", and `nightly` and `constructor` → "custom role". Every `ROLES` id has a non-empty title.
-  - `test/event-labels.test.ts`:
-    - every label is non-empty, starts with a lowercase letter and contains no `_`;
-    - no key appears in both maps;
-    - `eventTypeLabel("tick_end") === "run finished"` and `eventTypeLabel("no_change") === "no change"`;
-    - an unknown `some_new_type` falls back to `some new type`.
-- The vocabulary guard (part 2/4) scans both modules through their headers, so a retired word in a label fails the suite.
-
-**Files touched.** src/roles/role-labels.ts (new), src/events/event-labels.ts (new), test/role-labels.test.ts (new), test/event-labels.test.ts (new). Reads (does not edit): src/roles/loop-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/events/events.ts, src/tick/tick-outcome.ts, src/ui/gui/gui-client-model.ts (its `RESULTS` map shows today's result wording).
-
-**Acceptance criteria.**
-- `roleLabel("feature-2")` is `feature #2`, and `roleTitle("bugfix-3")` is bugfix's catalog title.
-- Deleting one entry from `EVENT_TYPE_LABELS` or `RUN_RESULT_LABELS` fails `tsc`.
-- The guard scans both new modules, which carry the header, and passes.
-- test/exports.test.ts passes: every new export has a test user.
-- `npm run test` passes.
-
 ### Plain terms groundwork, part 4/4: Give the dashboard client browser twins of the label helpers (planned 2026-10-16 by user; requires part 1/4 and part 3/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/loop-ids.ts and src/ui/gui/gui-client-labels.ts and src/ui/gui/gui-client.ts plus a test)
 
 **Goal.** The browser dashboard gets `roleLabel`, `roleTitle` and `eventTypeLabel` under the same names, with exactly the server's answers, so the dashboard text parts can call them from any client module.
@@ -3910,6 +3858,58 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests; done 2026-10-16)
+
+**Goal.** One server-side home for three display rules every surface will use: `feature-2` shown as `feature #2`, a role's title, and an event type or run result code shown in words ("run finished", "no change"). They land with tests and no callers. The text series adopts them.
+
+**Approach.**
+- New module `src/roles/role-labels.ts`, carrying the `// vocabulary: plain` header line:
+  - `roleLabel(runnerId: string): string` — for an instance id, where `baseRoleOf(id) !== id` (src/roles/loop-ids.ts), return `` `${baseRoleOf(id)} #${instanceIndex(id)}` ``. Return any other id unchanged: a bare role, `director`, a custom role, `feature-1`.
+  - `ROLE_TITLES: Readonly<Record<string, string>>` — built from `ROLES` (src/roles/role-catalog.ts) as id → `title`, plus `DIRECTOR_ROLE` → `"runs your messages first"`.
+  - `CUSTOM_ROLE_TITLE = "custom role"`.
+  - `roleTitle(id: string): string` — `ROLE_TITLES[baseRoleOf(id)]` when that is an own property (use `Object.hasOwn`: a custom role may be named `constructor`, see the comment in config.ts `overlayDefaults`), else `CUSTOM_ROLE_TITLE`. Instance ids resolve through their base.
+  - The catalog titles themselves do not change here. Plain terms role ids changes them.
+- New module `src/events/event-labels.ts`, carrying the header:
+  - `EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>>` (src/events/events.ts). The `Record` type makes the compiler demand a label for every one of the 75 types in the union, so a new event type cannot ship without one, and a later rename of a type (Plain terms event log) renames its key here with the label unchanged. Say both in the doc comment.
+  - `RUN_RESULT_LABELS: Readonly<Record<TickResult, string>>` (src/tick/tick-outcome.ts, 14 codes), exactly:
+    - `changed` "merged"; `queued` "waiting to merge"; `no_change` "no change"; `skipped` "skipped"
+    - `refused` "refused"; `rejected` "rejected in review"; `review_error` "review failed"
+    - `merge_conflict` "merge conflict"; `merge_blocked` "merge blocked"; `error` "error"
+    - `aborted` "interrupted"; `quiet_killed` "stalled, resumed"; `user_aborted` "stopped by you"
+    - `main_red` "main's check is failing"
+  - `eventTypeLabel(code: string): string` — the own-property label from `EVENT_TYPE_LABELS`, else from `RUN_RESULT_LABELS`, else `code.replace(/_/g, " ")`. Event types and result codes are disjoint today, which a test pins, so one lookup serves the activity chips (`tick_end`) and the result cells (`no_change`).
+  - **Label rule** for event types: a lowercase phrase of a few words, in the "Glossary" and "Wording rules" terms, never the code itself. These labels are fixed:
+    - `tick_start` "run started"; `tick_end` "run finished"; `tick_deferred` "run deferred"; `tick_aborted` "run stopped by you"; `resume` "run resumed"
+    - `land_queued` "waiting to merge"; `landed` "merge finished"; `land_failed` "merge failed"; `merged` "merged"
+    - `fleet_paused` "team paused"; `fleet_resumed` "team resumed"; `role_streak_paused` "repeated-failure pause"
+    - `main_red_hold` "main's check is failing"
+    - `maintenance_quota_hold` "waiting: maintenance allowance used"
+    - `disk_low` "waiting: low disk"; `rate_limit_hold` "waiting: provider limit"; `claude_window_limited` "waiting: claude usage window"
+    - `budget_fallback` "over-cap model"; `slot_wait` "waited to start"
+    - `build_stale` "update available"; `restart_pending` "update waits for idle"; `restart` "restarted onto update"
+    - `conflict_handback` "sent back to resolve"; `build_check` "check ran"
+    - `prompt_enqueued` "message queued"; `prompt_taken` "message picked up"
+    - `orchestrator_start` "tumwater started"; `orchestrator_stop` "tumwater stopped"; `supervisor_exit` "tumwater exited"
+  - Label every other type by the same rule.
+- Both modules are pure, with no I/O. Neither is under src/ui/, so core modules (event-format.ts, report, notify) may import them per test/layering.test.ts.
+- New tests:
+  - `test/role-labels.test.ts`: `roleLabel` for `feature-2` → `feature #2` and `bugfix-10` → `bugfix #10`, and unchanged for `feature`, `feature-1`, `director` and `nightly-2` (a custom name). `roleTitle` for `feature-3` equals feature's catalog title, `director` → "runs your messages first", and `nightly` and `constructor` → "custom role". Every `ROLES` id has a non-empty title.
+  - `test/event-labels.test.ts`:
+    - every label is non-empty, starts with a lowercase letter and contains no `_`;
+    - no key appears in both maps;
+    - `eventTypeLabel("tick_end") === "run finished"` and `eventTypeLabel("no_change") === "no change"`;
+    - an unknown `some_new_type` falls back to `some new type`.
+- The vocabulary guard (part 2/4) scans both modules through their headers, so a retired word in a label fails the suite.
+
+**Files touched.** src/roles/role-labels.ts (new), src/events/event-labels.ts (new), test/role-labels.test.ts (new), test/event-labels.test.ts (new). Reads (does not edit): src/roles/loop-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/events/events.ts, src/tick/tick-outcome.ts, src/ui/gui/gui-client-model.ts (its `RESULTS` map shows today's result wording).
+
+**Acceptance criteria.**
+- `roleLabel("feature-2")` is `feature #2`, and `roleTitle("bugfix-3")` is bugfix's catalog title.
+- Deleting one entry from `EVENT_TYPE_LABELS` or `RUN_RESULT_LABELS` fails `tsc`.
+- The guard scans both new modules, which carry the header, and passes.
+- test/exports.test.ts passes: every new export has a test user.
+- `npm run test` passes.
 
 ### Plain terms commands, part 5/6: Make tumwater start the command that runs the team with run as a hidden alias (planned 2026-10-16 by user; requires Compact backlog index 1/1 landed; design in plans/terminology.md "Commands and config"; touches src/cli.ts and src/cli/ and the strings that say tumwater run plus scripts/live-checkout-guard.mjs) (done 2026-10-16)
 
