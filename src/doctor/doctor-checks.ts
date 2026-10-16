@@ -5,6 +5,7 @@ import path from "node:path";
 import { increment } from "../collections.js";
 import {
   enabledRoleIds,
+  knownRoleIds,
   parseJsonConfig,
   loadConfig,
   loadConfigSafe,
@@ -24,6 +25,7 @@ import {
   hasCommits,
   branchesPhrase,
   isGitRepo,
+  listBranches,
   refSha,
   repoToplevel,
 } from "../git/git.js";
@@ -39,14 +41,14 @@ import { piSettingsPath, readPiDefaultModel } from "../pi/pi-settings.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { classifyLock, readLockPid } from "../concurrency/lock.js";
-import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
+import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
 import { finiteNumber } from "../files/json-object.js";
-import { plural, shortSpanPhrase } from "../text/phrases.js";
+import { agree, plural, shortSpanPhrase } from "../text/phrases.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { readSlotsState } from "../git/slots-state.js";
 import { agentsInUse } from "../gates/startup-gate.js";
@@ -54,7 +56,7 @@ import { claudeSeamsInUse } from "./doctor-model-checks.js";
 import { claudeConfigDir } from "../agent/claude/claude-backend.js";
 import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
 import { loadLoopState } from "../loop/loop-state.js";
-import { INSTANCE_ROLES, loopIds } from "../roles/loop-ids.js";
+import { INSTANCE_ROLES, loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
 import { flakeWarningKeys, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 
@@ -518,6 +520,39 @@ export function checkWorktreePool(root: string, now = Date.now()): CheckOutcome 
   }
   const warn = leftover.length > 0 || stale.length > 0 || contended;
   return (warn ? warnOutcome : okOutcome)(parts.join(" — "));
+}
+
+/** The "leftover role branches" row: `tumwater/<id>` branches whose role is no longer enabled
+ * (disabled in tumwater.json, or an instance above the configured count). Retirable ids are
+ * the ones `tumwater retire --role <id>` accepts (knownRoleIds); any other id is listed by
+ * full branch name with a manual-delete hint. The director and enabled roles are skipped.
+ * Read-only, like every check: it only lists refs; an unreadable tumwater.json skips it. */
+export async function checkLeftoverRoleBranches(root: string, config?: TumwaterConfig | null): Promise<CheckOutcome> {
+  if (!config) return okOutcome("no readable tumwater.json — nothing to verify");
+  const prefix = branchName("");
+  const known = new Set(knownRoleIds(config));
+  const retirable: string[] = [];
+  const unknown: string[] = [];
+  for (const branch of await listBranches(root)) {
+    if (!branch.startsWith(prefix)) continue;
+    const id = branch.slice(prefix.length);
+    if (!id || id.includes("/") || id === DIRECTOR_ROLE || loopEnabled(config, id)) continue;
+    if (known.has(id)) retirable.push(id);
+    else unknown.push(branch);
+  }
+  const parts: string[] = [];
+  if (retirable.length > 0) {
+    const n = retirable.length;
+    parts.push(
+      `${retirable.join(", ")} ${agree(n, "is", "are")} disabled but still ${agree(n, "has", "have")} a branch — \`tumwater retire --role <id>\` removes each (\`--dry-run\` previews)`,
+    );
+  }
+  if (unknown.length > 0) {
+    parts.push(
+      `${unknown.join(", ")} ${agree(unknown.length, "names", "name")} no role retire accepts — delete with \`git branch -D\` once its commits are not needed`,
+    );
+  }
+  return parts.length === 0 ? okOutcome("no branches left by disabled roles") : warnOutcome(parts.join("; "));
 }
 
 /** Parallel work instances (plans/parallel-work-instances.md "Observability", part 6/7): the

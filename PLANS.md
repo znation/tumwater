@@ -2134,7 +2134,9 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts)
+## Done
+
+### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts) — done 2026-10-16
 
 **Goal.** Disabling a role in `tumwater.json` (or lowering `roles.feature.instances`) stops its runs, but its `tumwater/<id>` branch stays, along with any worktree, landing ref, and paused marker. `tumwater retire --role <id>` (`retireRole` in `src/operator/retire.ts`) removes them, but nothing tells the operator which roles need it. This repo shows the gap: `git for-each-ref refs/heads` lists `tumwater/telemetry` while telemetry is opt-in. The "workspaces" row (`checkWorktreePool`) reports legacy checkout directories and stale pins only. It never looks at branches. Add a doctor row, "leftover role branches", that names each such role and the command that removes its leftovers.
 
@@ -2161,8 +2163,6 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `checkLeftoverRoleBranches(root, null)` returns the "nothing to verify" ok outcome.
 - `test/doctor.test.ts`: the expected check-name list gains `"leftover role branches"` right after `"parallel instances"`.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's entry drawer can move a plan or bug to the top of its section: a "Move to top" button does what `tumwater plan|bug --top <n>` does (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-write.ts, src/gui/gui-backlog-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/invariants.md and their tests) (done 2026-10-16)
 

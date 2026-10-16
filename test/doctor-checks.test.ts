@@ -19,6 +19,7 @@ import {
   checkProviderConcurrency,
   checkRepo,
   checkStateDir,
+  checkLeftoverRoleBranches,
   checkWorkInstances,
   checkWorktreePool,
 } from "../src/doctor/doctor-checks.js";
@@ -928,4 +929,27 @@ test("checkFlakyChecks ignores flake warnings older than the window", () => {
     { ts: Date.now() - 48 * 3_600_000, loop: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}old test failed` },
   ]);
   assert.deepEqual(checkFlakyChecks(root), { level: "ok", detail: "no check flapped more than once in the last 24h" });
+});
+
+test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones, skipping enabled roles and the director", async () => {
+  const root = readyRepo();
+  const ok = { level: "ok", detail: "no branches left by disabled roles" };
+  assert.deepEqual(await checkLeftoverRoleBranches(root, loadConfig(root)), ok);
+  sh(root, "git", "branch", "tumwater/feature");
+  sh(root, "git", "branch", "tumwater/director");
+  assert.deepEqual(await checkLeftoverRoleBranches(root, loadConfig(root)), ok);
+  sh(root, "git", "branch", "tumwater/telemetry");
+  const warn = await checkLeftoverRoleBranches(root, loadConfig(root));
+  assert.equal(warn.level, "warn");
+  assert.match(warn.detail, /telemetry is disabled but still has a branch — `tumwater retire --role <id>`/);
+  assert.doesNotMatch(warn.detail, /feature|director/);
+  sh(root, "git", "branch", "tumwater/ghost");
+  const ghost = await checkLeftoverRoleBranches(root, loadConfig(root));
+  assert.match(ghost.detail, /telemetry is disabled.*; tumwater\/ghost names no role retire accepts/);
+  sh(root, "git", "branch", "tumwater/feature-2");
+  writeConfig(root, { roles: { feature: { instances: 2 } } });
+  assert.doesNotMatch((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /feature-2/);
+  writeConfig(root, {});
+  assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /tumwater\/feature-2/);
+  assert.deepEqual(await checkLeftoverRoleBranches(root, null), { level: "ok", detail: "no readable tumwater.json — nothing to verify" });
 });

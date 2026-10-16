@@ -28,6 +28,7 @@ import {
   checkRepo,
   checkStateDir,
   checkWorktreePool,
+  checkLeftoverRoleBranches,
   checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
@@ -112,6 +113,7 @@ export async function runDoctor(
     { name: "merge lock", ...checkMergeLock(root) },
     { name: "workspaces", ...checkWorktreePool(root) },
     { name: "parallel instances", ...checkWorkInstances(root, config) },
+    { name: "leftover role branches", ...(await checkLeftoverRoleBranches(root, config)) },
     // The disk floor (plans/disk-floor.md, part 1/4): a broken config stays undefined (checkInit
     // reports it), so the check falls back to the 10 GB default rather than skipping itself.
     { name: "disk space", ...checkDiskSpace(root, config?.diskHoldGB ?? 10, config?.diskReclaimGB ?? 40) },
