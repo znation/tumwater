@@ -244,6 +244,10 @@ Usage:
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data
+  tumwater questions --answered [-n <count>] [--json]
+                                   List the newest answered questions, newest first (default
+                                   10), each with its answer line; --json prints {questions,
+                                   older}, each with title, body, answeredOn
   tumwater questions answer [--json] <n> "<decision>"
                                    Answer the Nth open question: stamps today's date on the
                                    entry and moves it to ## Answered with your decision.

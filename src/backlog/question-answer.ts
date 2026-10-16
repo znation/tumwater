@@ -15,7 +15,8 @@
  */
 import path from "node:path";
 import { fencedHeadingTitle, fenceTracker, nextSectionHeading } from "./backlog-md.js";
-import { openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
+import { answeredQuestionEntries, openQuestionEntries, ageInDays, ageSuffix } from "./backlog.js";
+import type { BacklogEntry } from "./backlog.js";
 import { normalizeEntryBody } from "./backlog-write.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines, truncate } from "../text/text.js";
 import { readTextOrNull, writeTextAtomic } from "../files/files.js";
@@ -90,6 +91,57 @@ export function questionListPayload(root: string): {
       }
       return sent;
     }),
+  };
+}
+
+/** The date in an answer stamp paragraph (`**Answered <date> by …`). */
+const ANSWER_DATE_RE = /\*\*Answered (\d{4}-\d{2}-\d{2})\b/;
+
+/** The first answer stamp's date in an answered entry's body, or null when it has none. The
+ * stamp is a body paragraph, so this reads the body, not the heading. */
+function answerDate(body: string): string | null {
+  const m = ANSWER_DATE_RE.exec(body);
+  return m === null ? null : (m[1] as string);
+}
+
+/** The first body line that starts with `**Answered `, markup stripped, whitespace collapsed
+ * and truncated; "" when no line matches. */
+function answerPreview(body: string): string {
+  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith("**Answered "));
+  if (line === undefined) return "";
+  return truncate(collapseWhitespace(line.replaceAll("**", "")), BODY_PREVIEW_MAX);
+}
+
+/** The newest `count` answered questions, newest first (the file appends, so it is reversed),
+ * and how many older ones were left out. */
+function answeredQuestionsNewestFirst(root: string, count: number): { entries: BacklogEntry[]; older: number } {
+  const all = answeredQuestionEntries(root).reverse();
+  return { entries: all.slice(0, count), older: Math.max(0, all.length - count) };
+}
+
+/** `tumwater questions --answered`: bullets, not numbers, because `questions answer <n>`
+ * positions address only `## Open`. */
+export function answeredQuestionList(root: string, count: number): string {
+  const { entries, older } = answeredQuestionsNewestFirst(root, count);
+  if (entries.length === 0) return "no answered questions";
+  const lines = ["answered questions in QUESTIONS.md, newest first:"];
+  for (const e of entries) {
+    const preview = answerPreview(e.body);
+    lines.push(`- ${e.title}${preview === "" ? "" : ` — ${preview}`}`);
+  }
+  if (older > 0) lines.push(`(${older} older; -n <count> shows more)`);
+  return lines.join("\n");
+}
+
+/** The same list as data for `--json`. */
+export function answeredQuestionPayload(
+  root: string,
+  count: number,
+): { questions: { title: string; body: string; answeredOn: string | null }[]; older: number } {
+  const { entries, older } = answeredQuestionsNewestFirst(root, count);
+  return {
+    questions: entries.map((e) => ({ title: e.title, body: e.body, answeredOn: answerDate(e.body) })),
+    older,
   };
 }
 

@@ -174,6 +174,12 @@ export function openQuestionEntries(root: string): BacklogEntry[] {
   return sectionEntries(root, "QUESTIONS.md", "Open");
 }
 
+/** Answered questions as full entries (title + body), in file order — oldest first, since
+ * tryAnswerQuestion appends. Missing or unreadable → []. */
+export function answeredQuestionEntries(root: string): BacklogEntry[] {
+  return sectionEntries(root, "QUESTIONS.md", "Answered");
+}
+
 /** The backlog as one machine-readable document: the three entry arrays the Markdown renderer
  * and the GUI's /api/backlog endpoint serve, so `tumwater backlog --json` prints the same data
  * every surface reads (status --json's "print the endpoint's payload" pattern). Each array keeps

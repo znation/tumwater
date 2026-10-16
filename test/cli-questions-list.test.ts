@@ -70,3 +70,30 @@ test("questions rejects a non-answer subcommand and an answer with no decision",
   assert.match(md, /### Cap the spend\?/, "the open entry stayed open");
   assert.doesNotMatch(md, /\*\*Answered/);
 });
+
+test("questions --answered lists the newest answers and refuses misuse", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli questions answered");
+  fs.writeFileSync(
+    path.join(repo, "QUESTIONS.md"),
+    "# q\n\n## Open\n\n### Open one\n\nbody\n\n## Answered\n\n### Old\n\n**Answered 2026-10-01 by operator:** a\n\n### New\n\n**Answered 2026-10-02 by operator:** b\n",
+  );
+  const r = await cli(repo, "questions", "--answered");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /answered questions in QUESTIONS\.md, newest first:\n- New/);
+  const j = await cli(repo, "questions", "--answered", "-n", "1", "--json");
+  const payload = JSON.parse(j.stdout) as { questions: { title: string }[]; older: number };
+  assert.equal(payload.questions.length, 1);
+  assert.equal(payload.older, 1);
+  const n = await cli(repo, "questions", "-n", "2");
+  assert.equal(n.code, 1);
+  assert.match(n.stderr, /-n needs --answered/);
+  const twice = await cli(repo, "questions", "--answered", "--answered");
+  assert.equal(twice.code, 1);
+  assert.match(twice.stderr, /may only be given once/);
+  const sub = await cli(repo, "questions", "--answered", "answer", "1", "x");
+  assert.equal(sub.code, 1);
+  assert.match(sub.stderr, /takes no subcommand/);
+  const bogus = await cli(repo, "questions", "--bogus");
+  assert.match(bogus.stderr, /--answered/);
+});

@@ -6,7 +6,7 @@
  * with the wording and gating order moved verbatim from main()'s cases. */
 
 import { fail, say, sayJson, sayJsonOrRender, warnIfUncommitted } from "./cli-output.js";
-import { flagValue, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
+import { flagValue, parseCountFlag, parseRoleFlag, rejectRepeatFlag } from "./cli-args.js";
 import { JSON_FLAG, READY_FLAG, rejectEqualsForm, rejectUnknownArgs, ROLE_FLAG, STAT_FLAG } from "./cli-flag-specs.js";
 import { requireReadyRepo } from "./cli-repo-gate.js";
 import { defaultConfig, knownRoleIds, knownRoleIdsCached, loadConfigSafe } from "../config/config.js";
@@ -33,7 +33,7 @@ import { readPromptFileArg, promptFileValue } from "./cli-command-args.js";
 import { commitOperatorBacklogEdit } from "../backlog/backlog-commit.js";
 import { stampedSubject } from "../git/commit-message.js";
 import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
-import { questionListPayload } from "../backlog/question-answer.js";
+import { answeredQuestionList, answeredQuestionPayload, questionListPayload } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
@@ -184,8 +184,20 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   let jsonFlag = false;
   let numbered = false;
   let file: string | undefined;
+  let answeredFlag = false;
+  let limit: number | undefined;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
+    if (!numbered && arg === "--answered") {
+      rejectRepeatFlag(answeredFlag, "--answered");
+      answeredFlag = true;
+      continue;
+    }
+    if (!numbered && arg === "-n") {
+      rejectRepeatFlag(limit !== undefined, "-n");
+      limit = parseCountFlag("-n", args[++i]);
+      continue;
+    }
     if (arg === "--file") {
       rejectRepeatFlag(file !== undefined, "--file");
       file = promptFileValue(args[++i]);
@@ -198,7 +210,7 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     }
     if (arg.startsWith("--") && arg !== "--json") {
       rejectEqualsForm(arg, [JSON_FLAG, FILE_SPEC]);
-      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file)`);
+      fail(`unknown argument: ${arg} (valid flags for tumwater questions: --json, --file, --answered)`);
     }
     if (!numbered) {
       // The position is a plain-decimal positive integer (parsePositiveInt's rule, the same
@@ -208,6 +220,14 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
       if (parsePositiveInt(arg) !== null) numbered = true;
     }
     words.push(arg);
+  }
+  if (limit !== undefined && !answeredFlag) fail("-n needs --answered (it limits the answered questions listed)");
+  if (answeredFlag) {
+    if (words.length > 0) fail("--answered lists answered questions; it takes no subcommand");
+    if (file !== undefined) fail("--file only applies to questions answer <n>");
+    if (jsonFlag) sayJson(answeredQuestionPayload(root, limit ?? 10));
+    else say(answeredQuestionList(root, limit ?? 10));
+    return;
   }
   if (words.length === 0 && file !== undefined) fail("--file only applies to questions answer <n>");
   if (words.length === 0) {
