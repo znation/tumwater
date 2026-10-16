@@ -19,6 +19,7 @@ import {
   SUPERVISED_ENV,
   SUPERVISOR_PID_ENV,
   spawnRunChild,
+  spawnGuiChild,
   superviseRun,
   ONCE_FAILED_EXIT_CODE,
 } from "../src/process/supervisor.js";
@@ -285,6 +286,33 @@ test("spawnRunChild runs the same script with `run`, SUPERVISED_ENV set, and rep
         "the child is handed the supervisor's pid, so its watch fires even if this process dies first",
       );
     }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("spawnGuiChild runs the same script with `gui`, and a silent stdio (run --tui) still lets it run", async () => {
+  const dir = tmpdir();
+  try {
+    const outFile = path.join(dir, "evidence-gui.json");
+    await withArgv1(probeScript(dir, outFile, "process.exit(0);\n"), async () => {
+      const exit = await within(spawnGuiChild(new AbortController().signal), 15_000);
+      assert.deepEqual(exit, { code: 0, signal: null });
+    });
+    assert.equal(readJson<Record<string, unknown>>(outFile).argv2, "gui", "the child is the same script with `gui` as its command");
+
+    // `run --gui --tui` silences the dashboard child's stdio so its `tumwater gui at http://…`
+    // banner cannot paint over the observer TUI's full-screen render; the child must still run
+    // (a separate fs path still receives its writes) and report its exit.
+    const silentOut = path.join(dir, "evidence-gui-silent.json");
+    await withArgv1(
+      probeScript(dir, silentOut, "process.exit(0);\n"),
+      async () => {
+        const e = await within(spawnGuiChild(new AbortController().signal, {}, ["ignore", "ignore", "ignore"]), 15_000);
+        assert.deepEqual(e, { code: 0, signal: null });
+      },
+    );
+    assert.equal(readJson<Record<string, unknown>>(silentOut).argv2, "gui");
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

@@ -3,6 +3,7 @@
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were
  * the only implementations living in the dispatcher itself. */
+import type { StdioOptions } from "node:child_process";
 import { increment } from "../collections.js";
 import { loopIds } from "../roles/loop-ids.js";
 import { fail, say } from "./cli-output.js";
@@ -99,6 +100,11 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // half runs it too, so a start that cannot boot fails before any child spawns. The flag
   // vocabulary is validated by the dispatcher (cli.ts, from the same RUN_FLAG_SPECS).
   const once = args.includes("--once");
+  // The TUI cannot be hosted by a run that is about to stop, like the dashboard: a --once round
+  // drains and exits within the same invocation, so the two shapes are refused together before
+  // any boot. --for stays allowed — the TUI runs for the window, like the dashboard.
+  if (once && args.includes("--tui"))
+    failRivalShapes("--tui", "--once", "a one-round run cannot hold a TUI it is about to kill");
   // The dashboard cannot serve a run that is about to stop: a --once round drains and exits
   // within the same invocation, so the two shapes are refused together before any boot. --for
   // stays allowed — the dashboard serves for the window.
@@ -416,14 +422,30 @@ export function onceSummary(
   return `once: ${plural(ticks, "tick")} — ${counts || "nothing ran"}${skipNote}`;
 }
 
-/** Split `run`'s args for `run --gui`: whether the supervisor should also start the dashboard,
- * and the args the supervised orchestrator generation gets with `--gui` stripped so the
- * generation's own cmdRun never tries to supervise a second dashboard. Exported so the unit
- * tests pin the stripping that removing the spawn wiring would otherwise silently drop. */
-export function guiChildPlan(runArgs: string[]): { spawnGui: boolean; orchestratorArgs: string[] } {
+/** Split `run`'s args for `run --gui` and `run --tui`: whether the supervisor should also start
+ * the dashboard and/or host the observer TUI, and the args the supervised orchestrator
+ * generation gets with both stripped so the generation's own cmdRun never tries to supervise a
+ * second dashboard or re-attach a TUI in a terminal the parent owns (a self-redeploy spawns a
+ * fresh generation each time). Exported so the unit tests pin the stripping that removing the
+ * spawn wiring would otherwise silently drop. */
+export function guiChildPlan(runArgs: string[]): {
+  spawnGui: boolean;
+  spawnTui: boolean;
+  orchestratorArgs: string[];
+  /** The stdio the supervised children (the run child and, when `--gui`, the dashboard child)
+   * get: `"inherit"` on a plain `run`/`run --gui`, but silent when a TUI is hosted — the
+   * observer TUI owns the terminal (ink paints it), so neither child's `say()` output may share
+   * that stdout or its lines would interleave with and corrupt the TUI's full-screen render.
+   * The TUI renders status + recent events from on-disk state, so nothing the operator watched
+   * for is lost by silencing the feeds; the dashboard's `tumwater gui at http://…` banner is
+   * exactly such an interleaving line, so it is silenced with the rest. */
+  childStdio: StdioOptions;
+} {
   return {
     spawnGui: runArgs.includes("--gui"),
-    orchestratorArgs: runArgs.filter((arg) => arg !== "--gui"),
+    spawnTui: runArgs.includes("--tui"),
+    orchestratorArgs: runArgs.filter((arg) => arg !== "--gui" && arg !== "--tui"),
+    childStdio: runArgs.includes("--tui") ? ["ignore", "ignore", "ignore"] : "inherit",
   };
 }
 
@@ -433,11 +455,11 @@ export function guiChildPlan(runArgs: string[]): { spawnGui: boolean; orchestrat
  * redeploy and exits on its own if this supervisor dies outright (SIGKILL, a crash) — a killed
  * supervisor never leaves a dashboard holding its port. Any other dashboard exit (a failed bind
  * prints its own message and exits) ends this loop and leaves the fleet running. */
-async function superviseDashboard(signal: AbortSignal): Promise<void> {
+async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "inherit"): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
   for (;;) {
-    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) });
+    const exit = await spawnGuiChild(signal, { [DASHBOARD_CHILD_ENV]: String(process.pid) }, stdio);
     if (signal.aborted || exit.code !== RESTART_EXIT_CODE) return;
   }
 }
@@ -453,6 +475,15 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   // that never boots the fleet never compiles it.
   const { RUN_WINDOW_START_ENV, fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
   const plan = guiChildPlan(runArgs);
+  // A TUI owns the terminal, so it can only be hosted when this supervisor's own stdin and
+  // stdout are a TTY — the same guard runTui enforces. Check before booting a fleet a TUI
+  // could never drive, surfacing the actionable tuiTerminalError instead of letting runTui's
+  // rejection sit unhandled until superviseRun settles and then crash the supervisor after
+  // the fleet has (pointlessly) started.
+  if (plan.spawnTui && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+    const { tuiTerminalError } = await import("../ui/tui/tui-input.js");
+    fail(tuiTerminalError(Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY)));
+  }
   const windowEnv = forMs !== null ? { [RUN_WINDOW_START_ENV]: String(Date.now()) } : {};
   const controller = new AbortController();
   // The dashboard lives beside the orchestrator generations rather than inside one: it must
@@ -468,13 +499,40 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
     controller.abort(); // Not delivered to the child by the kernel — forward it.
     guiController.abort();
   });
-  const gui = plan.spawnGui ? superviseDashboard(guiController.signal) : Promise.resolve();
+  // The TUI is hosted in the supervisor process, beside the orchestrator generations it must
+  // outlive. Quitting it (q or Ctrl+C handled by ink's key handler) is the run's Ctrl+C:
+  // runTui resolves and the .then sets `stopping` and aborts the controller, so superviseRun
+  // drains in-flight ticks and the fleet shuts down exactly as Ctrl+C on a plain `run` does;
+  // the fleet-down teardown (dashboard abort, onDone, terminal restore) is unchanged.
+  // reloadDisabled keeps the hosted TUI off its self-reload watch: the fleet's own first
+  // self-redeploy dist swap must not resolve runTui (which would read as a quit and abort
+  // this run's controller) or spawn a re-exec replacement; the host supervisor survives a
+  // redeploy by respawning its fleet children, and the hosted TUI — like the supervisor
+  // itself — stays on the build it started, getting fresh code on the next run. The abort
+  // signal is how this process ends the TUI when the run ends on its own (a `--for` window
+  // closes, or the fleet stops): runTui resolves on abort and takes its quit teardown, so the
+  // `await tui` below cannot hang on a TUI nothing else would ever close.
+  const tuiController = new AbortController();
+  const tui = plan.spawnTui
+    ? (await import("../ui/tui/tui.js")).runTui(root, { abortSignal: tuiController.signal, reloadDisabled: true }).then(() => {
+        stopping = true; // the TUI quit = the run's Ctrl+C
+        controller.abort();
+        guiController.abort();
+      })
+    : Promise.resolve();
+  const gui = plan.spawnGui ? superviseDashboard(guiController.signal, plan.childStdio) : Promise.resolve();
   const code = await superviseRun(
     {
-      spawnChild: (signal) => spawnRunChild(signal, plan.orchestratorArgs, windowEnv),
+      spawnChild: (signal) =>
+        spawnRunChild(signal, plan.orchestratorArgs, windowEnv, plan.childStdio),
       stopping: () => stopping,
-      onRespawn: (generation) =>
-        say(`\nrestarting on the new build (generation ${generation})\n`),
+      onRespawn: (generation) => {
+        // With a hosted TUI the supervisor owns no free stdout: its own say() would paint the
+        // restart line over the ink full-screen render and corrupt it — the same interleaving
+        // childStdio silences for the children. The TUI renders status from on-disk state, so
+        // the redeploy is visible there as the fleet coming back.
+        if (!plan.spawnTui) say(`\nrestarting on the new build (generation ${generation})\n`);
+      },
       onCrashLoop: () =>
         process.stderr.write("tumwater: the harness restarted itself too many times in a minute — giving up\n"),
       // Re-ask the startup gate for the reason: a generation that dies right after a respawn
@@ -496,9 +554,14 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
     },
     controller.signal,
   );
-  // The orchestrator is gone; take the dashboard with it so a stopped fleet never leaves a
-  // dashboard holding its port. abort() SIGTERMs the current gui child; await lets the spawn
-  // loop observe the abort before this process exits.
+  // The orchestrator is gone; take the dashboard and the TUI with it so a stopped fleet never
+  // leaves a dashboard holding its port or a TUI holding the terminal. abort() SIGTERMs the
+  // current gui child; await lets the spawn loop observe the abort before this process exits.
+  // On a plain run the user's own Ctrl+C already resolved the TUI; on a windowed (--for) run
+  // the window just closed with the TUI still up, so it is aborted here and its teardown /
+  // terminal restore settle before this process exits.
+  tuiController.abort();
+  await tui; // let the TUI's promise settle / terminal restore
   guiController.abort();
   await gui;
   process.exit(code);

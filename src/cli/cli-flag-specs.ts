@@ -327,6 +327,11 @@ export const RUN_FLAG_SPECS: FlagSpec[] = [
   // flag vocabularies to keep in step. `run --gui --once` is refused in cmdRun beside the
   // timer it arms.
   { names: ["--gui"] },
+  // `run --tui` is the one-command form of the observer TUI: it boots the fleet and hosts the
+  // same in-terminal TUI `tumwater tui` attaches from another terminal. Its flag vocabulary
+  // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdRun
+  // beside the `--gui` rival.
+  { names: ["--tui"] },
   // `run --for <duration>` (the windowed run): the same spec `pause --for` passes, so the
   // gate's accepted vocabulary and parseDurationFlag's error wording cannot drift; the
   // 90-day cap is the spec's own validate (shared with pause), and the --once rival rule

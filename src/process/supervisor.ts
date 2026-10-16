@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type StdioOptions } from "node:child_process";
 import type { HarnessEventInput } from "../events/events.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import { childEnv, runOnAbort } from "./process.js";
@@ -240,32 +240,46 @@ export function fleetDownEvent(down: FleetDown, diagnosis: string | null): Harne
  * SUPERVISED_ENV set so it runs the orchestrator instead of supervising again, plus
  * SUPERVISOR_PID_ENV naming this supervisor so the child's own parent-death watch fires even if
  * this process is killed before the child reads its first ppid. `env` carries extra marks, e.g.
- * RUN_WINDOW_START_ENV for a `--for` window. */
-export function spawnRunChild(signal: AbortSignal, extraArgs: string[] = [], env: NodeJS.ProcessEnv = {}): Promise<ChildExit> {
-  return spawnSupervised(["run", ...extraArgs], signal, {
-    [SUPERVISED_ENV]: "1",
-    [SUPERVISOR_PID_ENV]: String(process.pid),
-    ...env,
-  });
+ * RUN_WINDOW_START_ENV for a `--for` window. `stdio` defaults to `"inherit"` (the child's
+ * event stream is what a plain `run` operator sees); `run --tui` passes silent stdio instead,
+ * because the observer TUI owns the terminal and the child must not paint over its render. */
+export function spawnRunChild(
+  signal: AbortSignal,
+  extraArgs: string[] = [],
+  env: NodeJS.ProcessEnv = {},
+  stdio: StdioOptions = "inherit",
+): Promise<ChildExit> {
+  return spawnSupervised(
+    ["run", ...extraArgs],
+    signal,
+    {
+      [SUPERVISED_ENV]: "1",
+      [SUPERVISOR_PID_ENV]: String(process.pid),
+      ...env,
+    },
+    stdio,
+  );
 }
 
 /** The production dashboard spawner for `run --gui`: a `tumwater gui` child on its defaults,
- * stdio shared so a terminal Ctrl+C reaches it exactly as it reaches the orchestrator child.
+ * stdio shared so a terminal Ctrl+C reaches it exactly as it reaches the orchestrator child —
+ * unless `--tui` is hosted, when the caller passes silent stdio so the dashboard's
+ * `tumwater gui at http://…` banner cannot paint over the observer TUI's full-screen render.
  * `env` carries the caller's mark — in production DASHBOARD_CHILD_ENV naming this supervisor's
  * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
  * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor
  * dies outright (SIGKILL, a crash), freeing the dashboard port. Deliberately not SUPERVISED_ENV:
  * the child must run `gui`, not supervise a fleet. Resolves like spawnRunChild — a failed spawn
  * is `{ code: 1, signal: null }` — so an EMFILE/ENOMEM here cannot throw an unhandled 'error'. */
-export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}): Promise<ChildExit> {
-  return spawnSupervised(["gui"], signal, env);
+export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}, stdio: StdioOptions = "inherit"): Promise<ChildExit> {
+  return spawnSupervised(["gui"], signal, env, stdio);
 }
 
 /** Spawn one supervised child (`commandArgs` after the cli.js script path) and resolve on its
  * exit, with the abort signal wiring and spawn-failure handling shared by spawnRunChild and
  * spawnGuiChild: the signal's abort sends SIGTERM, and a spawn that never starts resolves as a
  * failed exit instead of emitting an unhandled 'error'. */
-function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS.ProcessEnv): Promise<ChildExit> {
+function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS.ProcessEnv, stdio: StdioOptions = "inherit"): Promise<ChildExit> {
   return new Promise((resolve) => {
     const script = process.argv[1];
     if (!script) {
@@ -273,7 +287,7 @@ function spawnSupervised(commandArgs: string[], signal: AbortSignal, env: NodeJS
       return;
     }
     const child = spawn(process.execPath, [script, ...commandArgs], {
-      stdio: "inherit",
+      stdio,
       env: childEnv(env),
     });
     // runOnAbort closes the register/abort race: an already-fired signal kills the child

@@ -747,6 +747,27 @@ test("Ctrl+D exits cleanly: raw mode restored off, render timer cleared", async 
   assert.ok(tui.clearCalls >= 1, "the render interval is cleared on exit");
 });
 
+test("aborting runTui's injected signal closes it like a quit, not a hang", async () => {
+  const repo = await makeTuiRepo();
+  const controller = new AbortController();
+  const tui = startTui(repo, undefined, { abortSignal: controller.signal });
+  await flushImmediate(); // ink's tree effects mount raw mode
+  assert.equal(tui.rawModes.length, 1); // setRawMode(true) on entry, via ink's useInput
+  let settled = false;
+  void tui.done.then(() => { settled = true; });
+  // `run --tui` hosts the TUI inside the supervisor, which must be able to end it from
+  // outside: a `--for` window closes (or the fleet stops) with the TUI still up, and
+  // runTui's promise otherwise only settles on a keypress or a reload — so a windowed run
+  // would hang on `await tui`. The supervisor aborts the injected signal; this pins that
+  // the abort closes the TUI through the same clean quit teardown, not a hang.
+  controller.abort();
+  await waitFor(() => settled, "runTui resolves after its signal is aborted");
+  await flushImmediate();
+  await tui.quit(); // restores the patched globals; done already settled
+  assert.deepEqual(tui.rawModes, [true, false]); // raw mode restored, terminal released
+  assert.ok(tui.clearCalls >= 1, "the render interval is cleared on exit");
+});
+
 // The flicker BUGS.md recorded: every changed frame used to erase the whole screen
 // (`\x1b[2J`) and repaint it. Ink's renderer diff-renders instead — a changed frame
 // rewrites only its changed lines, so no frame of a run ever carries a screen clear.

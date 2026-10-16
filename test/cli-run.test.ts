@@ -58,14 +58,48 @@ test("parseRunWindow enforces pause --for's 90-day cap", () => {
 // (whose cmdRun would otherwise supervise a second dashboard), and reports whether the
 // supervisor should start one. Pinned here so the stripping cannot silently drop.
 test("guiChildPlan strips --gui and reports it, leaving other args untouched", () => {
-  assert.deepEqual(guiChildPlan(["--gui"]), { spawnGui: true, orchestratorArgs: [] });
+  assert.deepEqual(guiChildPlan(["--gui"]), {
+    spawnGui: true,
+    spawnTui: false,
+    orchestratorArgs: [],
+    childStdio: "inherit",
+  });
   assert.deepEqual(guiChildPlan(["--branch", "x", "--gui", "--for", "2h"]), {
     spawnGui: true,
+    spawnTui: false,
     orchestratorArgs: ["--branch", "x", "--for", "2h"],
+    childStdio: "inherit",
   });
   assert.deepEqual(guiChildPlan(["--once", "--role", "clean"]), {
     spawnGui: false,
+    spawnTui: false,
     orchestratorArgs: ["--once", "--role", "clean"],
+    childStdio: "inherit",
+  });
+});
+
+// `run --tui` gets the same treatment as `--gui`: `--tui` is stripped so a self-redeploy
+// generation never re-attaches a TUI in a terminal the parent owns, and reported so the
+// supervisor hosts it. The two flags together stay allowed (dashboard child + in-terminal TUI
+// are orthogonal) and both are stripped.
+test("guiChildPlan strips --tui (and --gui), reports spawnTui and silences the child's stdio", () => {
+  assert.deepEqual(guiChildPlan(["--tui"]), {
+    spawnGui: false,
+    spawnTui: true,
+    orchestratorArgs: [],
+    childStdio: ["ignore", "ignore", "ignore"],
+  });
+  assert.deepEqual(guiChildPlan(["--gui", "--tui"]), {
+    spawnGui: true,
+    spawnTui: true,
+    orchestratorArgs: [],
+    childStdio: ["ignore", "ignore", "ignore"],
+  });
+  assert.deepEqual(guiChildPlan(["--branch", "x", "--tui", "--for", "2h"]), {
+    spawnGui: false,
+    spawnTui: true,
+    orchestratorArgs: ["--branch", "x", "--for", "2h"],
+    childStdio: ["ignore", "ignore", "ignore"],
   });
 });
 

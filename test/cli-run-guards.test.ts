@@ -66,6 +66,31 @@ test("run --gui --once fails before boot with the rival-shapes message", async (
   });
 });
 
+test("run --tui --once fails before boot with the rival-shapes message", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run tui once");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--tui", "--once");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /--tui cannot be combined with --once/);
+  });
+});
+
+// A TUI owns the terminal, so `run --tui` refuses before boot when this supervisor's stdin or
+// stdout is not a TTY (piped, as under a script or this harness) — failing fast with the
+// actionable tuiTerminalError instead of pointlessly booting a fleet and only then crashing on
+// runTui's own guard. This guards suite runs the CLI with piped stdio, so the bare `--tui`
+// shape lands on the guard, not on a real terminal.
+test("run --tui fails before boot when the terminal is not interactive", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli run tui tty");
+  await withPi("exit 0", async () => {
+    const r = await cli(repo, "run", "--tui");
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /tumwater tui needs an interactive terminal/);
+  });
+});
+
 // The `--role` guards of `run` (cmdRun): scoping is a once-round concept, the filter is
 // validated against the ENABLED role ids, and the startup gate is asked before any of it.
 // These were pinned only in the e2e tier (orchestrator-once.e2e.test.ts), which `npm test`

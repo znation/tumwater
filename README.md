@@ -43,6 +43,7 @@ tumwater init "Build a tiny markdown-to-html converter CLI in Python."
                                 # --template, --file, and --adopt pick a starting point (see docs/cli.md)
 tumwater run                    # start the loops (Ctrl+C to stop)
 tumwater run --gui              # ... and serve the browser dashboard at http://127.0.0.1:7180
+tumwater run --tui              # ... and attach the terminal TUI in the same window
 tumwater run --for 2h           # run for a bounded window, then drain, summarize, and exit
 tumwater run --once             # one round of ticks for cron/CI; exits 3 if a loop's tick failed
 ```

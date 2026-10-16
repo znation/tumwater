@@ -12,7 +12,7 @@ Usage:
                                    TUMWATER.md, --branch <name> seeds a new repo only,
                                    --template <id> seeds a starter brief+backlog (--list-templates
                                    lists them), --dry-run: write nothing)
-  tumwater run [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui]
+  tumwater run [--branch <name>] [--once] [--for <duration>] [--role <id>] [--gui] [--tui]
                                    Run all enabled loops (headless; Ctrl+C stops);
                                    --once runs one full round of ticks, drains the
                                    landings it produced, and exits (for cron/CI);
@@ -25,7 +25,10 @@ Usage:
                                    trial, a demo, a CI step);
                                    --gui also serves the browser dashboard at
                                    http://127.0.0.1:7180 (the \`tumwater gui\`
-                                   defaults — see that command for --port and --token)
+                                   defaults — see that command for --port and --token);
+                                   --tui also hosts the observer TUI in this terminal
+                                   (the \`tumwater tui\` view — quitting it stops the
+                                   fleet like Ctrl+C)
   tumwater tui                     Dashboard + prompt input (observes a running \`tumwater run\`)
   tumwater gui [--port N] [--all-interfaces] [--token <secret>]
                                    Same dashboard in the browser (default port 7180,

@@ -8,7 +8,7 @@
 import { EventEmitter } from "node:events";
 import { initProject } from "../../src/init/init.js";
 import { loadConfig, saveConfig } from "../../src/config/config.js";
-import { runTui, type TuiStdin } from "../../src/ui/tui/tui.js";
+import { runTui, type TuiStdin, type TuiSeams } from "../../src/ui/tui/tui.js";
 import { makeRepo } from "./repo-fixtures.js";
 import { flushImmediate } from "../helpers/wait.js";
 
@@ -73,7 +73,7 @@ function makeFakeStdin(onRawMode: (on: boolean) => void): EventEmitter & {
  * a failed test cannot leave a live render timer behind. Keys are pressed as raw terminal
  * bytes into the fake stdin, so ink's input parser consumes them the same way it consumes
  * a real terminal's. */
-export function startTui(root: string, size?: { rows?: number; columns?: number }) {
+export function startTui(root: string, size?: { rows?: number; columns?: number }, seams: Partial<Pick<TuiSeams, "abortSignal">> = {}) {
   const chunks: string[] = [];
   const frames: string[] = [];
   const rawModes: boolean[] = [];
@@ -108,7 +108,7 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
   // runTui's body runs synchronously up to its main await; ink's input subscription mounts
   // with its tree's effects, which withTui flushes with one macrotask tick before the
   // test body presses any key.
-  const done = runTui(root, { stdin: stdin as unknown as TuiStdin });
+  const done = runTui(root, { stdin: stdin as unknown as TuiStdin, ...seams });
 
   /** Press one key as its raw terminal bytes, the way a real keyboard delivers it: ink's
    * input parser decodes the bytes and the useTuiKeys hook dispatches the parsed key. */
@@ -148,7 +148,7 @@ export function startTui(root: string, size?: { rows?: number; columns?: number 
     cleanup();
   }
 
-  return { key: press, lastFrame, rawFrame, lines, chunks, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
+  return { done, key: press, lastFrame, rawFrame, lines, chunks, frames, rawModes, get clearCalls() { return clearCalls; }, quit };
 }
 
 /** Every escape sequence the ink renderer writes: CSI styling and cursor motion, plus the

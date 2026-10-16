@@ -209,6 +209,48 @@ test("a reload with no injected reexec seam falls back to reexecSelf", async () 
   }
 });
 
+test("a hosted run's TUI (reloadDisabled) ignores a dist swap: no re-exec, no resolve-as-quit", async () => {
+  // The one behavior a `run --tui` self-redeploy depends on: the hosted TUI must NOT treat the
+  // fleet's own dist swap as a reload. Its watch firing would resolve runTui, which the host
+  // reads as a quit and aborts the run's controller — process.exit-ing the supervisor — and
+  // spawn a re-exec replacement the dying supervisor would then kill. The whole point of
+  // reloadDisabled is that a hosted TUI stays on the supervisor's build and the redeploy is
+  // the supervisor's (respawn the fleet children), so this pins that the seam wins over the
+  // watch seams that WOULD have fired a reload in the standalone path.
+  const repo = makeRepo();
+  await initProject(repo, "tui hosted reload-disabled");
+
+  const startup = readBuildInfo();
+  assert.ok(startup, "the suite runs from a stamped dist");
+  const reexecs = { n: 0 };
+  let disk: BuildInfo | null = startup;
+  const term = new FakeTerminal();
+  const done = runTui(repo, {
+    ...term.asSeams,
+    reloadDisabled: true,
+    // The watch seams the standalone path would have used are still supplied, so this proves
+    // a newer disk stamp does not fire a reload the host disabled.
+    watch: reloadWatchSeams(() => disk, reexecs),
+  });
+  try {
+    await sleep(60);
+    assert.deepEqual(term.rawModes, [true], "a hosted TUI runs with raw mode on");
+
+    // A self-redeploy swaps dist/ under the host.
+    disk = { ...startup, sha: `${startup.sha}-newer` };
+    await sleep(60);
+    assert.equal(reexecs.n, 0, "a hosted TUI never re-execs on a dist swap");
+    assert.deepEqual(term.rawModes, [true], "still running — raw mode never left");
+    let ended = false;
+    void done.then(() => (ended = true));
+    assert.equal(ended, false, "the hosted TUI did not resolve/quit on the dist swap");
+  } finally {
+    term.keypress({ ctrl: true, name: "d" });
+    await done;
+  }
+  assert.equal(reexecs.n, 0, "a Ctrl+D teardown of a hosted TUI never re-execs either");
+});
+
 test("runTui without a terminal still refuses before any seam or watch is armed", async () => {
   const repo = makeRepo();
   // No TTY stand-ins and no TTY behind process.stdin in a test process: the guard fires

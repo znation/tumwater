@@ -68,6 +68,21 @@ export interface TuiSeams {
   stdout?: TuiStdout;
   watch?: ReloadWatchSeams & { reexec?: () => void };
   supervisor?: SupervisorWatchSeams;
+  /** When a hosted run (`run --tui`) must end this TUI from outside — the supervising run's
+   * window (`--for`) closes or the fleet stops — the supervisor aborts this signal and the
+   * TUI takes the same quit teardown a keypress does (restoring the cursor and raw mode).
+   * A standalone `tumwater tui` passes none, so its lifecycle is unchanged. */
+  abortSignal?: AbortSignal;
+  /** A hosted run (`run --tui`) hosts this TUI inside its supervisor, which — like a plain
+   * `run` supervisor — never re-execs onto a new build; it respawns its fleet children
+   * instead. So the host disables the self-reload watch: a standalone `tumwater tui` re-execs
+   * so a long-lived observer picks up fleet code changes, but a hosted TUI must not — its
+   * watch would otherwise fire on the fleet's own first self-redeploy dist swap, resolve this
+   * promise and read as a quit (aborting the run's controller), and spawn a re-exec
+   * replacement the dying supervisor would then kill. A hosted TUI stays on the build the
+   * supervisor runs, exactly as the supervisor itself does, and gets fresh code on the next
+   * run. Omit it (or leave false) for a standalone `tumwater tui`, whose reload is unchanged. */
+  reloadDisabled?: boolean;
 }
 
 /** Observer TUI: renders status + recent events from the on-disk state, and feeds
@@ -88,16 +103,23 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
   // trigger-before-await race either way.
   let reloadRequested = false;
   let resolveMain: (() => void) | null = null;
-  const reloadWatch = createReloadWatch({
-    root,
-    startupInfo: captureStartupBuild(),
-    ...seams.watch,
-    onTrigger: () => {
-      reloadRequested = true;
-      resolveMain?.();
-    },
-  });
-  void reloadWatch.start();
+  // A hosted run disables the reload watch (see TuiSeams.reloadDisabled): only the host
+  // supervisor may survive a self-redeploy, and it respawns its fleet children rather than
+  // re-execing. When disabled, no watch is created, so a dist swap under a hosted TUI never
+  // resolves this promise or spawns a replacement.
+  const reloadDisabled = seams.reloadDisabled === true;
+  const reloadWatch = reloadDisabled
+    ? undefined
+    : createReloadWatch({
+        root,
+        startupInfo: captureStartupBuild(),
+        ...seams.watch,
+        onTrigger: () => {
+          reloadRequested = true;
+          resolveMain?.();
+        },
+      });
+  if (reloadWatch) void reloadWatch.start();
   // A reloaded child whose reload supervisor died outright no longer owns the terminal the
   // shell has taken back: it takes the quit teardown (restoring the cursor and raw mode) and
   // ends, with no re-exec. `supervisorGone` closes the same race `reloadRequested` does.
@@ -106,6 +128,13 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     supervisorGone = true;
     resolveMain?.();
   }, seams.supervisor);
+  // A hosted run can end the TUI from outside (see TuiSeams.abortSignal): the supervisor
+  // aborts when its run is over, closing the TUI the same way a quit keypress does. The
+  // listener is registered here, before the main await, so an abort that fires mid-run
+  // resolves it; one already set before mount is caught by the executor's `aborted` check.
+  if (seams.abortSignal) {
+    seams.abortSignal.addEventListener("abort", () => resolveMain?.(), { once: true });
+  }
 
   // The framework-free keypress handler (src/ui/tui/tui-keys.ts, extracted from runTui): it owns
   // every mutable local the dispatch used to keep in this closure; render syncs snapshot
@@ -218,16 +247,17 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
 
   await new Promise<void>((resolve) => {
     resolveMain = resolve;
-    // The reload trigger (or the supervisor watch) may have fired between `start()` and this
-    // await; the executor resolves immediately in that case so both orderings reach the same
-    // teardown.
-    if (reloadRequested || supervisorGone) resolve();
+    // The reload trigger, the supervisor watch, or a hosted run's abort may have fired between
+    // `start()` and this await; the executor resolves immediately in that case so all orderings
+    // reach the same teardown.
+    if (reloadRequested || supervisorGone || seams.abortSignal?.aborted) resolve();
   });
 
   clearInterval(timer);
   inkApp.unmount(); // restore the cursor and raw mode; the newline below closes it
   stdout.write("\n");
-  reloadWatch.stop();
+  reloadWatch?.stop();
   stopSupervisorWatch();
-  if (reloadRequested && !supervisorGone) (seams.watch?.reexec ?? reexecSelf)();
+  // A hosted TUI (reloadDisabled) never set reloadRequested; only a standalone reload does.
+  if (!reloadDisabled && reloadRequested && !supervisorGone) (seams.watch?.reexec ?? reexecSelf)();
 }
