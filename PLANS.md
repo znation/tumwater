@@ -23,6 +23,424 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
+### Mixed claude + pi fleets, part 1/4: one `seamsInUse` list for the startup gate, doctor and the claude seed, and an end-to-end test with both fakes (planned 2026-10-15 from an operator request; independent of the "Per-provider concurrency caps" series; parts 2/4–4/4 follow it in order)
+
+Design: plans/provider-concurrency.md §9 "Mixed claude + pi fleets" (gap 1, "One list", and "The
+end-to-end test").
+
+**Goal.** Nobody has run a fleet whose seams span pi and claude. This part does two things:
+
+- it proves the basic path works: a pi author and a claude reviewer in one orchestrator run, each
+  spawning its own CLI;
+- it makes every startup and doctor check cover every seam the fleet can spawn, fallbacks
+  included.
+
+**Approach.**
+- Add `seamsInUse(config)` (src/config/config-views.ts, or beside `agentsInUse` in
+  src/gates/startup-gate.ts). It returns the resolved seams, each with its label: every enabled
+  role (`configForRole`), the review gate when enabled (`reviewRunConfig`), the resolver
+  (`resolverConfig`), the director, each tier's budget-fallback pair (`resolveTierFallbacks`),
+  and the model-failure fallback (`fallbackRoleConfig`).
+  - `agentsInUse` becomes its distinct agents.
+  - Doctor's `seamPairs` (src/doctor/doctor-model-checks.ts) becomes its distinct pairs.
+  - So `checkAgentBinary`, `checkClaudeAuth`, `checkClaudeVersion`, the per-provider
+    `pi auth check` and the startup gate's `seedClaudeAccount` all see a claude or pi seam that
+    exists only as a fallback.
+- config-live.ts: when a live edit routes a seam to an agent the previous config did not use, it
+  runs that backend's binary check (a `warning` event when the binary is missing; the fleet
+  keeps running) and the claude-account seed. `claudeSeedAttempted` keeps the seed to one attempt
+  per root.
+- Doctor prints a routing table: each seam's label, its agent-qualified selector, and its backend.
+- A new orchestrator e2e case, beside test/orchestrator-permits.e2e.test.ts, installs both
+  fake pi and fake claude (`withClaudeReplay`). Its config has one work role on `omlx/…` and
+  `review.model` `claude/claude-sonnet-5-5`. The tick authors on pi, the vet reviews on claude,
+  and the change lands.
+
+**Files touched.** src/config/config-views.ts, src/gates/startup-gate.ts, src/config/config-live.ts,
+src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, and tests:
+test/startup-gate.test.ts, test/doctor-model-checks.test.ts, test/budget-gates.test.ts, and the
+new e2e case.
+
+**Acceptance criteria (this part).**
+- With `fallback: "claude/claude-sonnet-5-5"` and a pi primary, startup checks the claude binary
+  and seeds `claude-account.json`, with no hand-written account file. The budget gate then treats
+  a subscription claude fallback as free at the cap.
+- `tumwater doctor` runs `checkClaudeAuth`/`checkClaudeVersion` when claude appears only as a
+  fallback, and runs `pi auth check` for a fallback's pi provider. `checkAgentBinary` and the
+  claude checks agree on whether claude is in use.
+- A live edit that adds a claude reviewer to a pi fleet logs the binary check's verdict and seeds
+  the account once.
+- The e2e case passes, asserting:
+  - the author run's argv is in fake pi's log and the reviewer's in fake claude's;
+  - each native log sits at its own `role.agent` path;
+  - `tick_start` and `review_start` name `omlx/…` and `claude/claude-sonnet-5-5`;
+  - the change is on main.
+- `npm test` and `npm run test:e2e` pass.
+
+### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow)
+
+Design: plans/provider-concurrency.md §9, gaps 2–4 and "One key".
+
+**Goal.**
+- A tick on a claude fallback is handed back when the budget gate reopens.
+- A dead claude fallback is demoted.
+- A 429 storm on a claude reviewer holds `claude` instead of the pi author's provider. The same
+  holds for any author and reviewer on two different pi providers.
+- A SUMMARY or stage-fix follow-up on a fallback seam names that seam's agent.
+
+**Approach.**
+- `setTickPair` (src/loop/loop-tick.ts) records `{ provider: seamHoldKey(cfg), model: cfg.model }`.
+  For a pi seam that is unchanged. For a claude seam it carries `claude`, matching the configured
+  fallback pair that `tickOnPair` (src/gates/budget-gates.ts) compares against.
+- The launch pass's `ranPair` (src/orchestrator/orchestrator-launch.ts) builds its breaker key
+  the same way. Audit every other `modelPairName({ provider: cfg.provider, … })` and switch it.
+- The failure stamps `lastRateLimit` and `lastBackendFailure` (src/tick/tick-usage.ts) gain
+  `provider`, the failing run's `seamHoldKey`. `LoopPi.runWithTransientRetry` knows it from
+  `opts.config` and passes it into the fold.
+  - gate-polls.ts's `holdInputs` files each stamp under its own provider, falling back to
+    `runProvider` for a stamp without one.
+  - The fleet-hold reducer (src/fleet/fleet-hold.ts) is unchanged, because it already keys by
+    provider.
+- `requestFollowUp` (src/loop/loop-pi.ts) passes its `cfg` to `loopPiOpts`, so `nativeLogFile`
+  and the authoring budget cap follow the seam the follow-up runs on.
+
+**Files touched.** src/loop/loop-tick.ts, src/orchestrator/orchestrator-launch.ts,
+src/tick/tick-usage.ts, src/loop/loop-pi.ts, src/gates/gate-polls.ts, and tests:
+test/budget-gates.test.ts, test/fleet-polls.test.ts, test/loop-pi.test.ts,
+test/loop-fallback.test.ts, and the part 1/4 e2e harness.
+
+**Acceptance criteria (this part).**
+- A role ticking on `fallback: "claude/claude-sonnet-5-5"` while the cap holds is handed back
+  when the cap is raised. Today it is not; the test fails on the old code.
+- Two failing role ticks on a claude fallback demote the `claude/claude-sonnet-5-5` breaker
+  entry. No `?/…` pair name appears in events or orchestrator info.
+- Two roles whose claude reviewer runs end on 429 inside the storm window hold `claude`. Their pi
+  author provider stays open, and `reviewHeldNow` turns true.
+- Two pi providers (author `huggingface`, reviewer `omlx`) are held separately in the same way.
+- A follow-up during a model-failure episode on the other backend writes its native log under
+  that backend's name.
+- `npm test` passes.
+
+### Mixed claude + pi fleets, part 3/4: landing runs keep the claude window, `ANTHROPIC_API_KEY` is named, and displays show the backend (planned 2026-10-15 from an operator request; requires part 2/4 landed; part 4/4 follows)
+
+Design: plans/provider-concurrency.md §9, gaps 5–7.
+
+**Goal.**
+- A pi-author, claude-reviewer fleet keeps an up-to-date subscription window.
+- The operator is told when an exported API key moves claude off the subscription.
+- Every surface names a fallback or reviewer's backend, not just its bare model id.
+
+**Approach.**
+- `landingUsage`'s fold (src/landing/landing-slot.ts) calls `observeClaudeAccount` for a landing
+  run that carries `billing` or `rateWindows`. This is the same best-effort write tick-finalize.ts
+  makes at tick end, so a reviewer's or resolver's reading reaches
+  `.tumwater/state/claude-account.json` when the run ends.
+- Doctor gets a warning check: `ANTHROPIC_API_KEY` is set in the environment, `claude auth status`
+  reports a claude.ai login, and some seam runs on claude. The warning says claude seams will
+  bill the API key, not the subscription, and to unset it or route pi's anthropic seams
+  explicitly.
+- The display surfaces print agent-qualified selectors (`agentQualifiedSelector`):
+  - the budget badge's and fleet alert's fallback model (src/ui/badges.ts, src/ui/fleet-alerts.ts);
+  - `modelFallbackView` (src/config/config-views.ts) carries `agent`, so role-render.ts prints
+    `claude/…`;
+  - `fleetModelLabel` labels routed seams, so flipping `agent` with bare ids emits
+    `model_changed`;
+  - the role view (src/roles/role-view.ts) shows billing for any claude seam the role uses,
+    reviewer included.
+
+**Files touched.** src/landing/landing-slot.ts, src/doctor/ (the new check),
+src/agent/claude/claude-account.ts (only if a helper is needed), src/ui/badges.ts,
+src/ui/fleet-alerts.ts, src/config/config-views.ts, src/roles/role-render.ts,
+src/roles/role-view.ts, src/config/config-live.ts, and their tests.
+
+**Acceptance criteria (this part).**
+- A claude reviewer run that reports a `five_hour` reading updates `claude-account.json` before
+  the author's next tick starts, with the author on pi.
+- Doctor warns with `ANTHROPIC_API_KEY` set and a claude.ai login. It stays silent when no seam
+  runs on claude.
+- A claude fallback renders as `claude/claude-sonnet-5-5` in the badge, the fleet alert and
+  `tumwater role`.
+- Switching `agent` from `pi` to `claude` over a bare-id `model` logs `model_changed`.
+- `npm test` passes.
+
+### Mixed claude + pi fleets, part 4/4: a bare `claude-…` model id runs on the claude CLI, and the docs show a mixed fleet (planned 2026-10-15 from an operator request; requires part 3/4 landed; last of the series)
+
+Design: plans/provider-concurrency.md §9 "Routing a bare Claude model id to claude".
+
+**Goal.** An operator who writes a Claude model next to models from other providers gets the
+claude CLI for it and pi for the rest, with no `agent` key and no `claude/` prefix.
+
+**Approach.**
+- `routeModel` (src/config/model-selector.ts) gets rule 3a: a bare id (no provider) starting with
+  `claude-` routes to `claude`, whatever `configAgent` says.
+  - A named provider still wins: `anthropic/claude-…` and `openrouter/anthropic/claude-…` stay
+    on pi.
+  - Bare aliases (`sonnet`, `opus`, `haiku`) keep today's routing.
+- `agentQualifiedSelector` already prints the routed form, so events and status show
+  `claude/claude-opus-5-5`.
+- Doctor's routing table (part 1/4) makes the move visible. Doctor's "names no provider — pi
+  resolves it with its own default" note (src/doctor/doctor-model-checks.ts) no longer fires for
+  a `claude-` id.
+- Docs:
+  - docs/config.md and plans/agent-backends.md §3 list rule 3a;
+  - the README gets a short "Mixing providers" example (HF default tier, Claude strong tier,
+    oMLX fallback) that names `anthropic/…` as the way to keep a Claude model on pi.
+
+**Files touched.** src/config/model-selector.ts, src/doctor/doctor-model-checks.ts,
+plans/agent-backends.md, docs/config.md, README.md, test/config-views.test.ts,
+test/doctor-model-checks.test.ts.
+
+**Acceptance criteria (this part).**
+- `routeModel` routes as follows:
+
+  | Call | Result |
+  | --- | --- |
+  | `routeModel(undefined, "claude-opus-5-5", "pi", "strong")` | `{ agent: "claude", model: "claude-opus-5-5" }` |
+  | `routeModel("anthropic", "claude-opus-5-5", "pi", "strong")` | `{ agent: "pi", … }` |
+  | `routeModel(undefined, "sonnet", "pi", "default")` | still `{ agent: "pi", model: "sonnet" }` |
+
+- The README's example config, put through `configForRole`/`reviewConfig`/`resolverConfig`, gives:
+  - pi with provider `huggingface` for the default tier;
+  - claude for the strong seams;
+  - pi with provider `omlx` for the fallback pair.
+
+  A config-views test pins this.
+- `npm test` passes.
+
+### Per-provider concurrency caps, part 1/5: a keyed permit pool in `Semaphore`, and the seam's provider key (planned 2026-10-15 from an operator request; independent of the "Mixed claude + pi fleets" series; parts 2/5–5/5 follow it in order)
+
+Design: plans/provider-concurrency.md §2 "The provider key" and §3 "A keyed permit pool". This
+part adds the pure mechanism only. No caller passes a key yet, so the fleet behaves exactly as
+today.
+
+**Goal.** `Semaphore` can admit by the fleet total and an optional provider key at once. A
+provider at its cap then never blocks a waiter on another provider. Later parts wire it to the
+orchestrator.
+
+**Approach.**
+- In src/concurrency/semaphore.ts, add `acquireLease(tier, key?)`, which returns
+  `{ key, release(), rekey(to) }`, and `forceLease(key)`. Keep the keyless
+  `acquire`/`tryAcquire`/`release` unchanged, because check-permit.ts and the current orchestrator
+  callers use them.
+- Waiters stay in one tier-ordered FIFO queue. `grantNextWaiter` becomes a scan:
+  - grant every waiter whose key is under its cap while the fleet is under
+    `capacity − reserveFor(tier)`;
+  - skip a waiter whose key is full, leaving its place unchanged;
+  - stop at the first tier ≥ 1 waiter the reserve withholds from, as today.
+- `rekey(to)` gives the old key back first, which wakes that key's waiters. It then waits only for
+  the new key's headroom, ahead of every admission waiter, keeping its fleet permit. A forced
+  lease re-keys without waiting.
+- Add `setKeyCaps(caps)`, which grows and wakes waiters and shrinks without preempting, the same
+  contract as `setCapacity`.
+- Add `snapshot()`, returning `{ inUse, limit, reserve, byKey }`.
+- Add `seamConcurrencyKey(cfg, piDefault)` to src/config/config-views.ts beside `seamHoldKey`:
+  - `seamHoldKey(cfg)`;
+  - else, for a pi seam with no model at all, `piDefault?.provider`;
+  - else undefined.
+
+**Files touched.** src/concurrency/semaphore.ts, src/config/config-views.ts, test/semaphore.test.ts,
+test/config-views.test.ts.
+
+**Acceptance criteria (this part).**
+- Under one total, two keys with caps fill independently. A waiter on a full key never delays a
+  later waiter on a free key, and FIFO holds within a key.
+- With no keys, `acquire`/`release` grant in exactly today's order. Every existing
+  test/semaphore.test.ts and test/check-permit.test.ts case passes unchanged.
+- The reserve still withholds only from tier ≥ 1 waiters.
+- `setKeyCaps` shrinking a key below its in-use preempts nothing and grants nothing on that key
+  until releases drain it under the new cap.
+- A rekey releases the old key before it waits, and a parked rekey is granted ahead of a parked
+  admission for the same key.
+- A forced lease overshoots its key by at most one holder and blocks further grants on that key
+  until the key is back under its cap.
+- The §5 no-deadlock property is pinned. With every fleet permit held by rekey waiters on key K,
+  K has headroom, so one of them is granted.
+- `seamConcurrencyKey` returns:
+  - `claude` for a claude seam;
+  - the pi provider for `omlx/…` and `huggingface/…:deepinfra`;
+  - pi's default provider for a no-model pi seam;
+  - undefined for a bare id with no provider.
+- `npm test` passes.
+
+### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow)
+
+Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
+§4. This part makes the cap real for role ticks, the bulk of the load. Vets, the resolver and the
+director keep today's keyless permits until part 3/5.
+
+**Goal.** The operator writes `"maxConcurrentPerProvider": { "omlx": 3 }`. From then on no more
+than three role ticks run on `omlx` at once, while ticks on other providers fill the rest of
+`maxConcurrent`. The cap applies live.
+
+**Approach.**
+- Config (src/config/config-schema.ts, config-validation.ts):
+  - add the optional map `maxConcurrentPerProvider`;
+  - validate each value as a positive integer under a non-empty key;
+  - accept unknown provider names (doctor warns in part 5/5).
+- Writers (src/config/config-write.ts):
+  - `config set|unset maxConcurrentPerProvider.<provider>` merges or removes one entry;
+  - `DOTTED_MAP_KEYS` gets a provider-keyed branch that skips the role-catalog check that
+    `maxDailyCostUsdPerRole` uses;
+  - completion's config-key list picks the new key up.
+- The launch pass (src/orchestrator/orchestrator-launch.ts) calls
+  `semaphore.acquireLease(roleTier(role), key)`:
+  - the key is `seamConcurrencyKey(runner.runConfig(now), piDefault)`;
+  - `piDefault` is `readPiDefaultModel(piSettingsPath(piModelsPath()), root)`, which is
+    stat-cached and is the same read status-roles.ts makes;
+  - the lease's `release` replaces the bare `semaphore.release()`.
+- The orchestrator seeds the pool's key caps at startup. config-live.ts calls `setKeyCaps` on an
+  edit and emits `provider_concurrency_changed` `{ provider, from, to }` for each changed key.
+  event-format.ts renders it like `max_concurrent_changed`.
+- `changedConfigKeys` (src/config/config.ts) skips the key, as it skips `maxConcurrent`.
+- Docs: tumwater.example.json, docs/config.md, and docs/how-it-works.md's `maxConcurrent`
+  bullet.
+
+**Files touched.** src/config/config-schema.ts, src/config/config-validation.ts,
+src/config/config-write.ts, src/config/config.ts, src/config/config-live.ts,
+src/orchestrator/orchestrator.ts, src/orchestrator/orchestrator-launch.ts,
+src/events/event-format.ts, tumwater.example.json, docs/config.md, docs/how-it-works.md, and
+tests: test/config-validation.test.ts, test/config-write.test.ts, test/config-live.test.ts,
+test/event-format.test.ts, and e2e cases in test/orchestrator-permits.e2e.test.ts and
+test/orchestrator-resize.e2e.test.ts.
+
+**Acceptance criteria (this part).**
+- With `maxConcurrent` 4 and `{ "omlx": 1 }`, plus fake-pi roles on `omlx/…` and
+  `huggingface/…`:
+  - at most one omlx run is in flight at a time;
+  - the huggingface roles run beside it;
+  - nothing exceeds the total.
+- A config without the key schedules exactly as before: the existing orchestrator suites pass
+  unchanged.
+- A live edit from `{ "omlx": 1 }` to `{ "omlx": 2 }` admits a parked omlx tick within one poll
+  and logs `provider_concurrency_changed`. A shrink preempts nothing.
+- Validation rejects `0`, `-1`, `1.5` and a non-object, naming the dotted key.
+  `config set maxConcurrentPerProvider.omlx 3` and `config unset maxConcurrentPerProvider.omlx`
+  round-trip.
+- `npm test` passes.
+
+### Per-provider concurrency caps, part 3/5: landings and the director count against their provider (planned 2026-10-15 from an operator request; requires part 2/5 landed; parts 4/5–5/5 follow)
+
+Design: plans/provider-concurrency.md §4 "Who holds a lease" and §6 "Priority headroom and the
+vet limit".
+
+**Goal.** Every model stream the fleet starts counts against its provider. That includes landing
+vets, the merge's conflict resolver and the director, besides role ticks. A work loop's priority
+headroom is withheld only where the loop could use it.
+
+**Approach.**
+- Vets: `acquireUnlessAborted` (src/landing/landing-pipeline.ts), as `startVet` calls it
+  (src/landing/landing-vetting.ts), takes a key:
+  - the review seam's key for the author's role, through `reviewRunConfig`;
+  - none when the review gate is off.
+- The resolver: landing-drain.ts's `runPi` wrapper acquires at `MERGE_TIER` with
+  `resolverConfig`'s key (the `cfg` it is handed).
+- The director: its runs take `forceLease(key)`. They never wait and never count toward
+  `maxConcurrent`, but while they run, the key's in-use is one higher.
+  - The director runs through LoopPi like every loop. Wrap its tick in the lease exactly where
+    the launch pass skips the semaphore today (`usesSlot` false).
+- `workReserveCount` (src/scheduling/claims.ts) takes a predicate. An idle work loop counts toward
+  the reserve only when its provider key has headroom or is uncapped, read from the pool's
+  `snapshot()`.
+
+**Files touched.** src/landing/landing-pipeline.ts, src/landing/landing-vetting.ts,
+src/landing/landing-drain.ts, src/orchestrator/orchestrator-launch.ts,
+src/orchestrator/orchestrator.ts, src/scheduling/claims.ts, and tests:
+test/orchestrator-permits.e2e.test.ts and the claims and landing suites that cover
+`workReserveCount` and `startVet`.
+
+**Acceptance criteria (this part).**
+- With the reviewer on `omlx` capped at 1, a vet and a role tick on omlx never run at the same
+  time, while a huggingface role tick runs beside either.
+- A director prompt on a full omlx key starts at once. No further omlx grant happens until
+  in-use is back under the cap.
+- A work loop whose provider is full adds nothing to the reserve: a maintenance tick on another
+  provider is granted the permit.
+- `npm test` passes.
+
+### Per-provider concurrency caps, part 4/5: a tick's lease follows its runs across providers (planned 2026-10-15 from an operator request; requires part 3/5 landed; part 5/5 follows)
+
+Design: plans/provider-concurrency.md §5 "Leases follow the tick's runs".
+
+**Goal.** A tick is counted against the provider it is actually using. An author on
+`huggingface` whose reviewer runs on capped `omlx` takes an omlx slot for the review and gives
+its huggingface slot back. A budget handback or model-failure switch re-keys the same way.
+
+**Approach.**
+- Carry the lease in an `AsyncLocalStorage` store, check-permit.ts's `holdingPermit` pattern.
+  The store is entered around `runner.tick()` in the launch pass, the vet task body, the resolver
+  run and the director tick.
+- `LoopPi.runWithTransientRetry` (src/loop/loop-pi.ts) is the one choke point for authoring,
+  gate and landing runs. Before `runPi`, it calls
+  `ensureProviderLease(seamConcurrencyKey(opts.config, piDefault))`:
+  - no lease in context: no-op;
+  - same key: no-op;
+  - different key: `lease.rekey(key)`.
+- The lease stays on the last run's key until the tick ends.
+- `leaseSlot`'s wait path (src/git/worktree-pool.ts) drops the context lease's key before it
+  parks. This never waits, and the next run re-takes the key. A key holder therefore never waits
+  on a pool slot that a re-key waiter holds (§5 "No deadlock").
+- A parked rekey shows as a stage, via a `providerWaitStage` beside `checkWaitStage` and
+  `resolveWaitStage` (src/landing/landing-slot.ts) for vets, and the loop phase for ticks. The
+  row reads "waiting for an omlx slot".
+
+**Files touched.** src/loop/loop-pi.ts, src/concurrency/ (the lease store, beside
+check-permit.ts), src/orchestrator/orchestrator-launch.ts, src/landing/landing-vetting.ts,
+src/landing/landing-drain.ts, src/landing/landing-slot.ts, src/git/worktree-pool.ts, and tests:
+test/loop-pi.test.ts,
+test/orchestrator-permits.e2e.test.ts.
+
+**Acceptance criteria (this part).**
+- Author on `huggingface`, reviewer on `omlx` capped at 1 and held by another tick: the gate run
+  waits and the row shows the wait. The huggingface count drops by one during the wait. The
+  review starts once omlx frees.
+- A tick whose runs all share one provider never re-keys.
+- A run with no lease in context (a direct `LoopPi` unit test, `tumwater tick`) behaves as today.
+- With `worktreeSlots` 1, two omlx ticks and a cap of 1, the tick waiting for the slot holds no
+  omlx count while it waits, and both ticks finish.
+- `npm test` passes.
+
+### Per-provider concurrency caps, part 5/5: status, dashboards and doctor show the per-provider slots (planned 2026-10-15 from an operator request; requires part 4/5 landed; last of the series)
+
+Design: plans/provider-concurrency.md §8 "Observability".
+
+**Goal.** The operator can see which provider is full and who is waiting for it. Doctor catches a
+cap that cannot work.
+
+**Approach.**
+- `OrchestratorInfo.permits` (src/fleet/orchestrator-info.ts) is the pool's `snapshot()`, written
+  through `assignInfoFieldIfChanged` each poll.
+- `LoopState.parkedOn` (src/loop/loop-state.ts) holds the parked waiter's key. It is set and
+  cleared with `parkedSince`, and healed like it.
+- status-model.ts renders `awaiting <key> slot <dur>` when that key is the binding limit in
+  `permits`, and today's `awaiting slot <dur>` otherwise. gui-client-model.ts puts the provider
+  in the "Waiting for a slot" chip's detail.
+- The fleet line in `tumwater status`, the TUI header and the GUI fleet tile reads
+  `slots 5/8 · omlx 3/3 · claude 2/6`. The provider part shows only while the map is set.
+- `tumwater role <id>` names the role's provider key and its cap.
+- A doctor check, "provider concurrency" (src/doctor/), lists each provider key a seam resolves
+  to, with its cap. The seams are the roles, the review gate, the resolver, the director and each
+  tier's fallback. It warns on:
+  - a cap key that no seam resolves to;
+  - a cap at or above `maxConcurrent`;
+  - a capped fleet with a key-less seam.
+- docs/backends.md "Match clients to slots" now says: cap the local provider at its slots minus
+  one for the director, then raise `maxConcurrent` freely. The README gets one sentence.
+
+**Files touched.** src/fleet/orchestrator-info.ts, src/orchestrator/orchestrator.ts,
+src/loop/loop-state.ts, src/orchestrator/orchestrator-launch.ts, src/ui/status-model.ts,
+src/ui/status-payload.ts, src/ui/gui/gui-client-model.ts, src/ui/gui/gui-client-fleet.ts, the
+TUI header under src/ui/tui/, src/status/, src/roles/role-view.ts, src/doctor/, docs/backends.md,
+README.md, and their tests.
+
+**Acceptance criteria (this part).**
+- A parked omlx role renders `awaiting omlx slot` in `tumwater status`, the TUI and the GUI
+  payload. A role parked on the total renders `awaiting slot` as before.
+- The fleet line shows per-provider counts only while `maxConcurrentPerProvider` is set.
+  Without it, the status, TUI and GUI snapshots are unchanged.
+- Doctor warns on `{ "olmx": 3 }` when the seams resolve to `omlx`, and on a cap ≥
+  `maxConcurrent`. It passes a well-formed map.
+- `npm test` passes.
+
 
 ### The landing pipeline's in-flight markers time each stage: `tumwater queue` and the fleet row say how long a landing has been in its CURRENT stage (planned 2026-10-14 by plan; independent of every other entry — the waiting series touches `src/report/` (failed-ticks-by-role) and `src/doctor/` (stale-queued-landing, which READS the queue and marker but changes no `src/landing/` file); this changes `setLandingStage`/`addLandingChange` and the two label renderers, and touches no `src/report`, `src/doctor`, or `src/ui/tui` file. It lands before or after the stale-queued doctor plan in either order: that plan reads only `readLandingMarker`/`queuedLandings` and iterates roles, which an added optional marker field does not disturb)
 
