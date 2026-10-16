@@ -1,4 +1,5 @@
 // vocabulary: plain
+import { answeredQuestionSummaries } from "../backlog/question-answer.js";
 import { openBugs, openQuestions, plannedPlans } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress, backlogMarks } from "../backlog/backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "../backlog/backlog-structure.js";
@@ -17,6 +18,8 @@ import { fleetAlerts } from "./fleet-alerts.js";
  * still show a screenful of notable events (landings, failures, questions) after it filters
  * out the routine ones (tick starts, wakes, passing checks). */
 const RECENT_EVENTS = 80;
+/** How many answered questions the dashboard lists under the open ones (a default, not a knob). */
+const DASHBOARD_ANSWERED_QUESTIONS = 5;
 
 /** The one fleet-state document both observer surfaces carry: `GET /api/status` (gui/gui-server.ts)
  * spreads it and adds the serving process's own `serverBuildSha` (the page's cue to notice a
@@ -302,6 +305,9 @@ export function statusPayload(root: string, now = Date.now()): object {
     // expandable row per series instead of every waiting part; null for an ordinary row.
     planSeries,
     questions,
+    // The newest answered questions, newest first, read fresh each poll like the other backlog
+    // lists. Alerts and badges keep counting open questions only.
+    answeredQuestions: answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS),
     // What needs the operator (fleet-alerts.ts's fleetAlerts): the dashboard's alert banners and
     // the TUI's attention lines, phrased once.
     alerts: fleetAlerts(snap, questions, loops, now),

@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
 import { fileURLToPath } from "node:url";
 import { answerQuestion, sayAnswered } from "../src/cli/question-commands.js";
-import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionPayload } from "../src/backlog/question-answer.js";
+import { tryAnswerQuestion, openQuestionList, questionListPayload, answeredQuestionList, answeredQuestionPayload, answeredQuestionSummaries } from "../src/backlog/question-answer.js";
 import { openQuestionEntries } from "../src/backlog/backlog.js";
 import { writeTextAtomic } from "../src/files/files.js";
 import { primaryWorktreeLockPath } from "../src/paths.js";
@@ -495,4 +495,15 @@ test("a question answered through answerQuestion is listed first", () => {
   const out = answeredQuestionList(root, 10).split("\n");
   assert.match(out[1] as string, /^- First: which renderer\?/);
   assert.match(out[1] as string, /by the user: use ink/);
+});
+
+test("answeredQuestionSummaries is the compact newest-first list, with an empty decision when unanswered", () => {
+  const root = tmpdir();
+  seed(root, "# Questions\n\n## Open\n\n## Answered\n\n### A\n\n**Answered 2026-10-01 by operator:** da\n\n### B\n\n**Answered 2026-10-02 by operator:** db\n\n### C\n\nno answer line\n");
+  assert.deepEqual(answeredQuestionSummaries(root, 2), [
+    { title: "C", decision: "" },
+    { title: "B", decision: "Answered 2026-10-02 by operator: db" },
+  ]);
+  seed(root, "# Questions\n\n## Open\n\n## Answered\n");
+  assert.deepEqual(answeredQuestionSummaries(root, 5), []);
 });

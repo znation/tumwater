@@ -154,6 +154,12 @@ export function answeredQuestionPayload(
   };
 }
 
+/** The dashboard's compact form of the `--answered` list: the same titles and truncated
+ * `**Answered …` lines, newest first, without bodies so each poll stays small. */
+export function answeredQuestionSummaries(root: string, count: number): { title: string; decision: string }[] {
+  return answeredQuestionsNewestFirst(root, count).entries.map((e) => ({ title: e.title, decision: answerPreview(e.body) }));
+}
+
 /** One open entry's extent in the raw file: its heading line and the line index where its
  * block ends — the next `### ` heading (fence-aware: a `### ` inside a code fence is quoted
  * content, never a boundary), or the end of the `## Open` section. */

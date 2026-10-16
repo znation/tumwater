@@ -660,3 +660,15 @@ test("status payload's planSeries folds a series' blocked parts into one slot", 
   assert.deepEqual(payload.planSeries, [null, null, slot, slot, null]);
   assert.match(slot.label, /2 blocked parts \(2\/3–3\/3\)$/);
 });
+
+test("status payload lists the five newest answered questions beside the open ones", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "payload answered test");
+  let text = "# Questions\n\n## Open\n\n### Still open\n\nbody\n\n## Answered\n\n";
+  for (let k = 1; k <= 6; k++) text += `### Q${k}\n\n**Answered 2026-10-0${k} by operator:** d${k}\n\n`;
+  fs.writeFileSync(path.join(repo, "QUESTIONS.md"), text);
+  const payload = statusPayload(repo) as { questions: string[]; answeredQuestions: { title: string; decision: string }[] };
+  assert.equal(payload.questions.length, 1);
+  assert.deepEqual(payload.answeredQuestions.map((a) => a.title), ["Q6", "Q5", "Q4", "Q3", "Q2"]);
+  assert.match(payload.answeredQuestions[0]?.decision ?? "", /d6$/);
+});

@@ -609,3 +609,24 @@ test("the stat tile sub line wraps and reserves two lines instead of truncating"
   assert.match(rule, /min-height: calc\(2 \* 1\.4em\)/);
   assert.match(rule, /line-height: 1\.4/);
 });
+
+test("the Questions tab lists answered questions under the open ones, read-only", () => {
+  const base = { questions: [], plans: ["P (planned 2026-10-01)"], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
+  const answeredQuestions = [{ title: "Which <b>?", decision: "Answered 2026-10-02: A" }, { title: "Second", decision: "" }];
+  const q = backlogScope("questions");
+  q.scope.renderBacklog({ ...base, answeredQuestions });
+  const html = q.panels["backlog"] ?? "";
+  assert.ok(html.indexOf("No open questions") < html.indexOf("Answered recently"));
+  assert.ok(html.indexOf("Answered recently") < html.indexOf("Which &lt;b&gt;?"));
+  assert.match(html, /Answered 2026-10-02: A/);
+  assert.match(html, /Second/);
+  assert.doesNotMatch(html, /backloglink|data-index|Answer<\/button>/);
+  for (const extra of [{}, { answeredQuestions: [] }]) {
+    const old = backlogScope("questions");
+    old.scope.renderBacklog({ ...base, ...extra });
+    assert.doesNotMatch(old.panels["backlog"] ?? "", /Answered recently/);
+  }
+  const plans = backlogScope("plans");
+  plans.scope.renderBacklog({ ...base, answeredQuestions });
+  assert.doesNotMatch(plans.panels["backlog"] ?? "", /Answered recently/);
+});

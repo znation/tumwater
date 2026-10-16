@@ -373,6 +373,12 @@ export const GUI_CLIENT_FLEET_JS = String.raw`  // ---- sidebar: project, fleet 
       });
       html = ready.join("") + (heldCount ? "<div class='list-item list-divider'><span class='li-meta'>Blocked (" + heldCount + ")</span></div>" + held.join("") : "");
     }
+    const answered = key === "questions" ? (d.answeredQuestions || []) : [];
+    if (answered.length) {
+      html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map((a) =>
+        "<div class='list-item t-gray'><span class='li-icon'>" + icon("check") + "</span><div class='li-main'><span class='li-title'>" + esc(a.title) + "</span>" +
+        (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</div></div>").join("");
+    }
     if (key === "plans" || key === "bugs") {
       const kind = key === "plans" ? "plan" : "bug";
       if (backlogNew && backlogNew.kind === kind) {
