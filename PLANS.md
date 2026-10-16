@@ -3857,6 +3857,30 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 - In `test/gui-client-drawer.test.ts`, a role payload with one holding entry paints `<dt>Quiet hours</dt>` with the same wording as the CLI line. A payload without the field paints no Quiet hours row.
 - `npm run test` passes.
 
+### `tumwater role <id>` and the GUI loop drawer show the loop's `maxDailyCostUsdPerRole` cap, today's spend against it, and whether it is holding the loop now (planned 2026-10-16 by plan; independent of the plain-terms series. It touches the same three files as the quiet-hours role-page plan above (`src/roles/role-view.ts`, `src/roles/role-render.ts`, `src/ui/gui/gui-client-drawer.ts`) but different fields and lines, so either can land first. It reads, and does not edit, `roleCapVerdicts` in src/gates/role-cap-gates.ts)
+
+**Goal.** A loop that has reached its own `maxDailyCostUsdPerRole` entry starts no new tick until local midnight. The scheduler applies that through `pollRoleCapGate`, the status snapshot shows it as `capPaused` (`src/status/status-budget.ts`), and `tumwater doctor` names it (`src/doctor/doctor-holds.ts`). The per-loop inspection says nothing about it. `rolePayload` in `src/roles/role-view.ts` carries `usage` (spend over the retained event window) but no cap: grep finds no `maxDailyCostUsdPerRole` or `roleCap` in `src/roles/` or in `drawerConfigHtml`. So under `maxDailyCostUsdPerRole: {"feature": 1}`, `tumwater role feature-2` prints `Next tick: due now` for a loop whose group has spent $1.04 today, and gives no hint of the cap.
+
+**Approach.** Get the verdict from `roleCapVerdicts`, the function the gate and the status observer already share, so the role page cannot disagree with the scheduler.
+- `src/roles/role-view.ts`: add an optional field to `RoleViewPayload`: `dailyCap?: { capUsd: number; spentUsd: number; over: boolean; roleIds: string[] }`. Give it a doc comment in the file's style.
+  - Fill it only when `cfg.maxDailyCostUsdPerRole?.[baseRoleOf(role)]` is a finite number above 0, mirroring `roleCapPaused`'s rule that 0 disables the cap, and the role is not `DIRECTOR_ROLE`.
+  - The runners are `loopIds(cfg).filter((id) => baseRoleOf(id) === baseRoleOf(role))`, plus `role` itself when it is missing (a disabled loop is still inspectable). Each is mapped to `{ role: id, state: loadLoopState(root, id) }`. Reuse the `state` already loaded for `role`, not a second read.
+  - Pass the runners to `roleCapVerdicts(runners, cfg.maxDailyCostUsdPerRole, now.getTime())` and take the entry for `baseRoleOf(role)`. Copy its `over`, `spentUsd`, and `roleIds`, and add the cap as `capUsd`.
+  - `now` is the trailing `now: Date = new Date()` test-seam parameter after `modelsPath`. If the quiet-hours plan has already added it, reuse it; otherwise add it, with that exact name and default.
+  - When no cap applies the field is absent, so the JSON of a fleet without per-role caps keeps its current shape.
+- `src/roles/role-render.ts`: right after the `- Spend:` line in `renderRoleMarkdown`, print one line when `p.dailyCap` is present: `- Daily cap: <spent> of <cap> spent today (holding now — no new ticks until local midnight)`, or `(not holding)` when `over` is false. Format both amounts with the `usd` helper the Spend line uses. When `roleIds.length > 1`, add ` · shared by <ids joined with ", ">` after the parenthetical, because instances share and sum one cap. A payload without the field renders no new line.
+- `src/ui/gui/gui-client-drawer.ts`: in `drawerConfigHtml`, right after the `Spend` row, add one `kvRow("Daily cap", …)` with the same wording, using `fmtUsd`. Guard it with `view.dailyCap && typeof view.dailyCap === "object"` and coerce the numbers with `Number(x) || 0`, as the Spend row does. Include the shared suffix only when `Array.isArray(dc.roleIds) && dc.roleIds.length > 1`. Do not use backticks, because the script is one `String.raw` template.
+- The TUI renders `inspectMarkdownLines`, which holds only the notebook and prompt blocks, so it needs no change.
+
+**Files touched.** `src/roles/role-view.ts`, `src/roles/role-render.ts`, `src/ui/gui/gui-client-drawer.ts`, `test/role-view.test.ts`, `test/gui-client-drawer.test.ts`. There is no gate, scheduler, status, doctor, or config edit.
+
+**Acceptance criteria.**
+- In `test/role-view.test.ts`, use a config with `maxDailyCostUsdPerRole: {"tests": 1}` and a `tests` loop state saved with today's `dayStamp` and `dayCostUsd: 1.2`. `rolePayload(root, "tests", modelsPath, <fixed Date on that day>)` carries `dailyCap: {capUsd: 1, spentUsd: 1.2, over: true, roleIds: ["tests"]}`. `renderRoleMarkdown` prints `- Daily cap: $1.20 of $1.00 spent today (holding now — no new ticks until local midnight)`, with the dollar text exactly as `usd` formats it.
+- Instances sum: with `roles.feature: {enabled: true, instances: 2}`, `maxDailyCostUsdPerRole: {"feature": 1}`, and `feature` and `feature-2` each at `dayCostUsd: 0.6` today, `rolePayload(root, "feature-2", …)` carries `over: true`, `spentUsd: 1.2`, and `roleIds` holding both ids. The rendered line ends with `· shared by feature, feature-2`.
+- A spend stamped on an earlier day counts 0 and reads `(not holding)`. A cap of `0` yields no `dailyCap`. The director's payload carries no `dailyCap`. A config without `maxDailyCostUsdPerRole` yields a payload with no `dailyCap` key, and the existing render tests' output is unchanged.
+- In `test/gui-client-drawer.test.ts`, a role payload with a holding `dailyCap` paints `<dt>Daily cap</dt>` with the same wording as the CLI line. A payload without the field paints no Daily cap row.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms groundwork, part 3/4: Add the shared roleLabel and roleTitle and eventTypeLabel helpers (planned 2026-10-16 by user; requires part 2/4 landed; design in plans/terminology.md "Wording rules"; touches src/roles/role-labels.ts and src/events/event-labels.ts plus their tests; done 2026-10-16)
