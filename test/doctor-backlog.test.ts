@@ -242,6 +242,18 @@ test("checkRefusedEntries flags a refusal whose prerequisites have left Planned"
   assert.ok(!live.detail.includes("may be stale"));
 });
 
+test("checkRefusedEntries counts the planned parts that wait on a refused part", () => {
+  const dir = tmpdir("doctor-refusals-waiting-");
+  const note = "**Refused 2026-10-16 by feature: too big**";
+  fs.writeFileSync(path.join(dir, "PLANS.md"),
+    `## Planned\n\n### S, part 1/3: a\n${note}\n\n### S, part 2/3: b (requires part 1/3 landed)\n\n` +
+    `### S, part 3/3: c (requires part 2/3 landed)\n\n### Solo\n${note}\n\n## Done\n`);
+  const out = checkRefusedEntries(dir);
+  assert.equal(out.level, "warn");
+  assert.ok(out.detail.includes("; 2 planned part(s) wait on it, directly or through an earlier part"));
+  assert.ok(out.detail.includes('(and 1 more: PLANS.md plan #4 "Solo")'));
+});
+
 // checkStalledPlans — plans parked by a Needs-review or Needs-replan note until the plan role
 // splits or replans them: the doctor names them so the state is one-line visible, without the
 // plan role or any listing changing. Mirrors the checkRefusedEntries setup — the two are the

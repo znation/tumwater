@@ -2724,7 +2724,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor`'s refusal warning says how many planned parts wait on a refused part, so a series stuck behind a refusal is visible (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `checkRefusedEntries` in `src/doctor/doctor-backlog.ts`, adds one exported function to `src/backlog/backlog-eligibility.ts`, and adds tests to `test/doctor-backlog.test.ts` and `test/backlog-eligibility.test.ts` plus one clause in `docs/cli.md`'s Audit row. The TUI backlog pane plan edits only `src/ui/tui/`, and Plain terms text 18/19 edits role instructions and hold-mark wording, so the tests here match the doctor's own message text, never a hold mark)
+## Done
+
+### `tumwater doctor`'s refusal warning says how many planned parts wait on a refused part, so a series stuck behind a refusal is visible (done 2026-10-16; planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `checkRefusedEntries` in `src/doctor/doctor-backlog.ts`, adds one exported function to `src/backlog/backlog-eligibility.ts`, and adds tests to `test/doctor-backlog.test.ts` and `test/backlog-eligibility.test.ts` plus one clause in `docs/cli.md`'s Audit row. The TUI backlog pane plan edits only `src/ui/tui/`, and Plain terms text 18/19 edits role instructions and hold-mark wording, so the tests here match the doctor's own message text, never a hold mark)
 
 **Goal.** No role clears a **Refused** note. When the refused plan is a series part that other plans require (`requires <Series> i/n landed`), every part that requires it, directly or through a chain of parts, stays blocked until a person edits or releases the refused part. The backlog index, `plan --list` and `tumwater backlog` show those parts only as `[blocked: each waits on an earlier part]` or `[blocked: requires …]`, which looks like normal progress. `checkRefusedEntries` warns about the refused entry but does not say that a series waits on it. The warning should give that count, so the operator knows that releasing or cancelling this one entry frees N parts.
 
@@ -2743,8 +2745,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - New test `checkRefusedEntries counts the planned parts that wait on a refused part`. Its PLANS.md fixture has a refused `S, part 1/3` and parts 2/3 and 3/3 that require the earlier part. The warn detail contains `; 2 planned part(s) wait on it, directly or through an earlier part`. A second refused, non-series plan in the same fixture shows up in the `(and 1 more: …)` tail with no `wait on it` suffix.
 - The existing tests `checkRefusedEntries warns naming the first refused entry, the rest, and how to release it` and `checkRefusedEntries reads ok with no notes, with no files, and ignores Done and Fixed` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The TUI backlog pane's list shows each blocked series as one line, so bugs and questions are not pushed off the screen by 100+ waiting parts (planned 2026-10-16 by plan; independent of every other eligible Planned entry. It edits `labeledBacklogEntries` and `backlogLines` in `src/ui/tui/tui-backlog.ts` and the backlog list-mode branch of `paneBody` in `src/ui/tui/tui-pane.ts`, with tests in `test/tui-backlog.test.ts`. It does not touch `src/ui/tui/tui-keys.ts`, `src/ui/tui/tui-editors.ts`, or the selection logic. The dashboard plan edits only `src/ui/status-payload.ts` and `src/ui/gui/`. Plain terms text 8/19 and 18/19 edit help prose and role instructions and hold marks, so the tests here build expected marks from `holdMark` instead of fixed strings; done 2026-10-16)
 

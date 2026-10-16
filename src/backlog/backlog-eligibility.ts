@@ -137,6 +137,36 @@ export function plannedPartKeys(planned: readonly BacklogEntry[]): Set<string> {
   return keys;
 }
 
+/** The doctor's count of a refusal's stranded dependents: the ascending indexes into `planned` of
+ * the entries that require `planned[index]`'s own part, directly or through a chain of parts.
+ * Matching is by partKey, as entryHoldAgainst matches. [] when that entry has no series part. A
+ * dependency cycle ends the walk, and `index` itself is never listed. */
+export function plansWaitingOn(planned: readonly BacklogEntry[], index: number): number[] {
+  const root = planned[index];
+  const own = root === undefined ? null : seriesPart(root.title);
+  if (own === null) return [];
+  const dependents = new Map<string, number[]>();
+  planned.forEach((entry, i) => {
+    if (seriesPart(entry.title) === null) return;
+    for (const ref of requiredParts(entry.title)) {
+      const key = partKey(ref.series, ref.part);
+      dependents.set(key, [...(dependents.get(key) ?? []), i]);
+    }
+  });
+  const seen = new Set<number>([index]);
+  const queue = [partKey(own.series, own.part)];
+  for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
+    for (const i of dependents.get(key) ?? []) {
+      if (seen.has(i)) continue;
+      seen.add(i);
+      const part = seriesPart(planned[i]!.title)!;
+      queue.push(partKey(part.series, part.part));
+    }
+  }
+  seen.delete(index);
+  return [...seen].sort((a, b) => a - b);
+}
+
 /** The prerequisite parts a plan heading's trailing parenthetical (or, when the heading wraps
  * and the parenthetical stays open past the line, its open parenthetical) names through the clause
  * `requires <ref>((, | and )<ref>)* landed`, with each range (e.g. `parts 1/5–3/5`) expanded.

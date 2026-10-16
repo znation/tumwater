@@ -5,7 +5,7 @@ import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
-import { entryHold, planDependencyProblems, plannedPartKeys, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
+import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -330,7 +330,7 @@ export function checkStaleBugs(root: string): CheckOutcome {
  * only other signs are the `[refused]` marks in the backlog listings. Reads the tree at `root`
  * — the primary checkout IS main's tree — like checkFixClaims, in `--list` order (PLANS.md
  * Planned, then BUGS.md Open). A warn, never a fail: a refusal is operator signal, not a broken
- * environment. */
+ * environment. The warning also counts the planned parts a refused series part holds. */
 export function checkRefusedEntries(root: string): CheckOutcome {
   const planned = plannedPlanEntries(root);
   const parts = plannedPartKeys(planned);
@@ -343,18 +343,23 @@ export function checkRefusedEntries(root: string): CheckOutcome {
       const note = refusalNote(entry.body);
       if (note === null) return [];
       const landed = prerequisitesLanded(entry.title, parts);
-      return [{ file, command, position: index + 1, title: entry.title, note, landed }];
+      const waiting = file === "PLANS.md" ? plansWaitingOn(planned, index).length : 0;
+      return [{ file, command, position: index + 1, title: entry.title, note, landed, waiting }];
     }));
   const [first, ...rest] = held;
   if (!first) return okOutcome("no planned plan or open bug is held by a Refused note");
   const more = andMore(rest, (e) =>
     `${e.file} ${e.command} #${e.position} "${truncate(e.title, FIX_CLAIM_HEADING_MAX)}"` +
-    (e.landed.length > 0 ? " [prerequisites no longer planned]" : ""));
+    (e.landed.length > 0 ? " [prerequisites no longer planned]" : "") +
+    (e.waiting > 0 ? ` [${e.waiting} part(s) wait on it]` : ""));
   const stale = first.landed.length > 0
     ? `; its prerequisite(s) ${first.landed.map((r) => `${r.series} ${r.part}/${r.of}`).join(", ")} are no longer planned, so the refusal may be stale`
     : "";
+  const waiting = first.waiting > 0
+    ? `; ${first.waiting} planned part(s) wait on it, directly or through an earlier part`
+    : "";
   return warnOutcome(`${first.file} ${first.command} #${first.position} "${first.title}" is held by a Refused note ` +
-      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${more} — no role takes a refused entry until it is edited: ` +
+      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${stale}${waiting}${more} — no role takes a refused entry until it is edited: ` +
       `answer the objection and release the entry with \`tumwater ${first.command} --release ${first.position}\`, ` +
       `or retract it with \`tumwater ${first.command} --cancel ${first.position}\``);
 }

@@ -16,6 +16,7 @@ import {
   prerequisitesLanded,
   refusalNote,
   planDependencyProblems,
+  plansWaitingOn,
   requiredParts,
   seriesPart,
   type EligibleEntry,
@@ -416,4 +417,24 @@ test("backlogInProgress names the runner holding each entry's claim; inProgressM
   assert.deepEqual(backlogInProgress(dir), { plans: ["feature-2", null], bugs: ["bugfix"] });
   assert.equal(inProgressMark(null), "");
   assert.equal(inProgressMark("feature-2"), " [working on it: feature #2]");
+});
+
+test("plansWaitingOn follows requires clauses transitively and stops on a cycle", () => {
+  const entry = (title: string): BacklogEntry => ({ title, body: "" } as BacklogEntry);
+  const planned = [
+    "S, part 1/3: a",
+    "S, part 2/3: b (requires part 1/3 landed)",
+    "S, part 3/3: c (requires part 2/3 landed)",
+    "Other",
+    "T, part 1/1: d (requires S 1/3 landed)",
+  ].map(entry);
+  assert.equal(requiredParts(planned[1]!.title).length, 1);
+  assert.deepEqual(plansWaitingOn(planned, 0), [1, 2, 4]);
+  assert.deepEqual(plansWaitingOn(planned, 2), []);
+  assert.deepEqual(plansWaitingOn(planned, 3), []);
+  const cycle = [
+    "X, part 1/2: a (requires part 2/2 landed)",
+    "X, part 2/2: b (requires part 1/2 landed)",
+  ].map(entry);
+  assert.deepEqual(plansWaitingOn(cycle, 0), [1]);
 });
