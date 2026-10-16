@@ -13,6 +13,7 @@ import { isAgentId } from "../config/model-selector.js";
 import { piModelImageInput, piPairFree, piModelsPath, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import type { ClaudeAccount } from "./claude/claude-account.js";
 import { agentBackend, DEFAULT_AGENT } from "./agent-backend.js";
+import { imageProbeEntryFresh, imageProbeKey, type ImageProbeCache } from "../doctor/image-probe.js";
 
 /** The subset of a resolved seam the capability resolver reads: an `agent` when the config
  * routed one, else a `provider`/`model` pair. ResolvedModelConfig and the doctor's SeamPair
@@ -30,12 +31,14 @@ interface SeamLike {
  *
  * The backend bookends: a backend with an `imageInput` hook (claude → true) owns the answer;
  * the default pi backend leaves it to models.json's `input` field, where absent means text-only
- * (pi's own default for a custom model). `_probes` is part 2/5's seam — failed live probes
- * override a claim then; part 1 passes none, so a claim stands on the catalog alone. */
+ * (pi's own default for a custom model). `probes` is the doctor's live-probe cache (part 2/5): a
+ * claimed pi seam whose probe FAILED reads false — a claim is only as good as the verified
+ * answer — while a cached pass (or an unprobed claim) stands on the catalog. claude seams are
+ * never probed, so the hook answer is never overridden. */
 export function seamImageInput(
   seam: SeamLike,
   providers: Map<string, PiModelDef[]> | null,
-  _probes?: unknown,
+  probes?: ImageProbeCache,
 ): boolean | null {
   const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : DEFAULT_AGENT);
   const backend = agentBackend(agent);
@@ -43,7 +46,13 @@ export function seamImageInput(
   if (backend?.imageInput !== undefined) return backend.imageInput(seam.model);
   // An unknown backend without a hook has no catalog to consult — unknown, never assume.
   if (agent !== "pi") return null;
-  return piModelImageInput(providers, seam.provider, seam.model);
+  const base = piModelImageInput(providers, seam.provider, seam.model);
+  if (base !== true) return base;
+  // A claimed pi seam whose live probe failed (fresh, claim unchanged) reads false. Only pi is
+  // probed, so the probe key carries the pi agent.
+  const entry = probes?.[imageProbeKey(agent, seam.provider, seam.model)];
+  if (entry?.verdict === "fail" && imageProbeEntryFresh(entry)) return false;
+  return true;
 }
 
 /** Which set of pairs a reroute may look among: the primary tiers (the model each tier's
@@ -73,12 +82,13 @@ export function imageReroute(
   regime: RerouteRegime = "primary",
   modelsPath: string = piModelsPath(),
   account: ClaudeAccount | null = null,
+  probes?: ImageProbeCache,
 ): ImageReroute | null {
   const tier = roleSeamTier(config, role);
   const candidates = BORROW_ORDER[tier].filter((t) => t !== tier);
   if (candidates.length === 0) return null;
   const providers = readPiProviders(modelsPath);
-  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providers) === true;
+  const capable = (rc: ResolvedModelConfig): boolean => seamImageInput(rc, providers, probes) === true;
   if (regime === "primary") {
     for (const t of candidates) {
       const rc = withModelOverrides(config, t, {});
@@ -111,6 +121,7 @@ export function imageRerouteTarget(
   regime: RerouteRegime = "primary",
   modelsPath: string = piModelsPath(),
   account: ClaudeAccount | null = null,
+  probes?: ImageProbeCache,
 ): ResolvedModelConfig | null {
-  return imageReroute(config, role, regime, modelsPath, account)?.config ?? null;
+  return imageReroute(config, role, regime, modelsPath, account, probes)?.config ?? null;
 }

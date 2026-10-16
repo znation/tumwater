@@ -253,6 +253,10 @@ export const N_FLAG: FlagSpec = {
  * whole spec, and the render-vs-JSON switch stays in each command body beside its render. */
 export const JSON_FLAG: FlagSpec = { names: ["--json"] };
 
+/** Force re-probing of every claimed image-input model in `tumwater doctor` (part 2/5),
+ * bypassing the 7-day cache: `--reprobe` (a value-less flag like JSON_FLAG). */
+export const REPROBE_FLAG: FlagSpec = { names: ["--reprobe"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };

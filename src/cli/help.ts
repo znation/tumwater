@@ -58,11 +58,13 @@ Usage:
                                    resolution); --role <id> scopes the totals to one loop
                                    (landing runs and backlog tallies omitted); not
                                    combinable with --days
-  tumwater doctor [--json]         Pre-flight check: node, git, repo, config, fallback
+  tumwater doctor [--json] [--reprobe]
+                                   Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, build, orphans, mach ports
                                    (read-only; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
-                                   and verdict)
+                                   and verdict; probes image-input models — --reprobe
+                                   re-probes every one, bypassing the 7-day cache)
   tumwater config [get <key> | set <key> <value> | unset <key>]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one

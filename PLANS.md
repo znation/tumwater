@@ -6,45 +6,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-
-### Image input, part 2/5: `tumwater doctor` probes every model that claims image input with a real image (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Doctor"; touches src/doctor/, src/cli.ts, src/cli/help.ts, src/paths.ts, src/agent/image-input.ts, and the two doctor callers in src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts, a different area from part 3/5's stream and verdict files)
-
-**Goal.** A claim in pi's models.json is only a claim. Today's file claims image input for `huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra` but not for the same model without the pin, so at least one claim is wrong. With a wrong claim, pi sends images the model cannot read: the provider rejects them, or drops them silently and the model answers anyway. Doctor should show each claimed model a real image and check the answer.
-
-**Approach.** See plans/image-input.md "Doctor".
-- New src/doctor/image-probe.ts:
-  - A PNG of a random 4-digit code, drawn with a built-in 5×7 digit bitmap scaled up, black on white. Encode it with `zlib.deflateSync` and a hand-rolled CRC-32 (`zlib.crc32` is newer than the `>=20.3` node floor). No new dependency.
-  - The probe runs the resolved pi binary in a run's environment: `pi --print --mode json --no-session --no-tools --no-mcp --provider P --model M --thinking <level> @<png> "Reply with only the 4-digit number shown in the image."`. First confirm that `@image` reaches the model in `--print` mode; if it does not, say so in a `**Needs replan**` note rather than improvising another transport.
-  - Pass: the final text contains the code.
-  - A wrong answer retries once with a fresh code. Two wrong answers, or a 4xx, fail.
-  - A timeout, spawn failure, 429, 5xx, or connection error is "could not verify" and is not cached.
-  - The probe's process is bounded like `boundedProbe` (process-group kill at the deadline), with a longer deadline (90 s) because a local model may need to load.
-- Cache at `.tumwater/state/image-probes.json` (path in src/paths.ts), keyed agent/provider/model, holding `{verdict, detail, at, claim}`. A verdict is valid for 7 days while the claim is unchanged.
-- `runDoctor` gains `probeImages: "missing" | "all" | "never"`, defaulting to `"never"`:
-  - the CLI passes `"missing"`, or `"all"` with the new `--reprobe` flag;
-  - the TUI Health tab and the GUI doctor endpoint keep `"never"` and show cached verdicts ("not verified yet — run `tumwater doctor`").
-- claude seams are not probed; they report "reads images (claude backend)".
-- `seamImageInput` honors a cached failed probe: a claimed pi seam whose probe failed reads false.
-- Check levels:
-  - fail when a claimed model failed, naming its answer or error and the fix: remove `"image"` from `input` in models.json or fix the endpoint, then `tumwater doctor --reprobe`;
-  - warn when a probe could not run;
-  - ok shows the verified date.
-
-**Files touched.**
-- new src/doctor/image-probe.ts
-- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
-- src/paths.ts, src/agent/image-input.ts
-- src/cli.ts, src/cli/help.ts, docs/cli.md (`--reprobe`)
-- src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts (explicit `"never"`)
-- tests: new test/image-probe.test.ts, the doctor tests (with a fake pi shim on PATH)
-
-**Acceptance criteria.**
-- The generated PNG is valid: signature, IHDR/IDAT/IEND, correct CRCs. Inflating IDAT reproduces the drawn digit pixels.
-- A fake pi that echoes the code passes and writes the cache. A fake pi that answers wrong twice fails, naming the model and the models.json fix. A fake pi that exits with a 5xx-shaped error warns and caches nothing.
-- A second `tumwater doctor` within 7 days spawns no probe. `--reprobe` spawns one per claimed model. Changing a model's `input` claim invalidates its entry.
-- `runDoctor` with the default option, as the TUI and GUI call it, never spawns a probe.
-- A claimed pi seam with a cached failed probe reads false from `seamImageInput`.
-
 ### Image input, part 4/5: a tick stopped for a blind image read reruns on a tier that can read images (planned 2026-10-15 by user; requires part 3/5 landed; design and decisions in plans/image-input.md "Rerunning on a model that can read images" and "Attachments"; touches src/loop/, src/tick/, src/prompt/prompt-followup.ts, src/events/)
 
 **Goal.** Part 3 stops a blind tick; this part moves its work to a model that can see the image. When the role's tier has a reroute target (part 1's `imageRerouteTarget`, the budget-fallback borrow order, free pairs only at the cap), the tick hands its work to that model instead of failing. A queued prompt that attaches images to a text-only loop starts on the target directly, with no failed tick first.
@@ -361,6 +322,7 @@ README.md, and their tests.
 
 
 
+
 ## Done
 ### Mixed claude + pi fleets, part 2/4: tick pairs, the fallback breaker and fleet-hold stamps are keyed by the seam that ran (planned 2026-10-15 from an operator request; requires part 1/4 landed; parts 3/4–4/4 follow) — done 2026-10-15
 
@@ -437,6 +399,7 @@ test/loop-fallback.test.ts, and the part 1/4 e2e harness.
 - A gate run's blind read is logged (`action: "logged"`) and not killed.
 - `modelFallbackVerdict` scores a blind run `"inconclusive"`.
 
+
 ### Per-provider concurrency caps, part 2/5: `maxConcurrentPerProvider` caps role-tick admission (planned 2026-10-15 from an operator request; requires part 1/5 landed; parts 3/5–5/5 follow) — done 2026-10-15
 
 Design: plans/provider-concurrency.md §1 "Config" and §7 "Live reload", plus the role-tick row of
@@ -493,6 +456,44 @@ test/orchestrator-resize.e2e.test.ts.
   round-trip.
 - `npm test` passes.
 
+
+### Image input, part 2/5: `tumwater doctor` probes every model that claims image input with a real image (planned 2026-10-15 by user; requires part 1/5 landed; design and decisions in plans/image-input.md "Doctor"; touches src/doctor/, src/cli.ts, src/cli/help.ts, src/paths.ts, src/agent/image-input.ts, and the two doctor callers in src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts, a different area from part 3/5's stream and verdict files) — done 2026-10-15
+
+**Goal.** A claim in pi's models.json is only a claim. Today's file claims image input for `huggingface/deepseek-ai/DeepSeek-V4.1-Flash:deepinfra` but not for the same model without the pin, so at least one claim is wrong. With a wrong claim, pi sends images the model cannot read: the provider rejects them, or drops them silently and the model answers anyway. Doctor should show each claimed model a real image and check the answer.
+
+**Approach.** See plans/image-input.md "Doctor".
+- New src/doctor/image-probe.ts:
+  - A PNG of a random 4-digit code, drawn with a built-in 5×7 digit bitmap scaled up, black on white. Encode it with `zlib.deflateSync` and a hand-rolled CRC-32 (`zlib.crc32` is newer than the `>=20.3` node floor). No new dependency.
+  - The probe runs the resolved pi binary in a run's environment: `pi --print --mode json --no-session --no-tools --no-mcp --provider P --model M --thinking <level> @<png> "Reply with only the 4-digit number shown in the image."`. First confirm that `@image` reaches the model in `--print` mode; if it does not, say so in a `**Needs replan**` note rather than improvising another transport.
+  - Pass: the final text contains the code.
+  - A wrong answer retries once with a fresh code. Two wrong answers, or a 4xx, fail.
+  - A timeout, spawn failure, 429, 5xx, or connection error is "could not verify" and is not cached.
+  - The probe's process is bounded like `boundedProbe` (process-group kill at the deadline), with a longer deadline (90 s) because a local model may need to load.
+- Cache at `.tumwater/state/image-probes.json` (path in src/paths.ts), keyed agent/provider/model, holding `{verdict, detail, at, claim}`. A verdict is valid for 7 days while the claim is unchanged.
+- `runDoctor` gains `probeImages: "missing" | "all" | "never"`, defaulting to `"never"`:
+  - the CLI passes `"missing"`, or `"all"` with the new `--reprobe` flag;
+  - the TUI Health tab and the GUI doctor endpoint keep `"never"` and show cached verdicts ("not verified yet — run `tumwater doctor`").
+- claude seams are not probed; they report "reads images (claude backend)".
+- `seamImageInput` honors a cached failed probe: a claimed pi seam whose probe failed reads false.
+- Check levels:
+  - fail when a claimed model failed, naming its answer or error and the fix: remove `"image"` from `input` in models.json or fix the endpoint, then `tumwater doctor --reprobe`;
+  - warn when a probe could not run;
+  - ok shows the verified date.
+
+**Files touched.**
+- new src/doctor/image-probe.ts
+- src/doctor/doctor-model-checks.ts, src/doctor/doctor.ts
+- src/paths.ts, src/agent/image-input.ts
+- src/cli.ts, src/cli/help.ts, docs/cli.md (`--reprobe`)
+- src/ui/tui/tui-keys.ts and src/gui/gui-endpoints.ts (explicit `"never"`)
+- tests: new test/image-probe.test.ts, the doctor tests (with a fake pi shim on PATH)
+
+**Acceptance criteria.**
+- The generated PNG is valid: signature, IHDR/IDAT/IEND, correct CRCs. Inflating IDAT reproduces the drawn digit pixels.
+- A fake pi that echoes the code passes and writes the cache. A fake pi that answers wrong twice fails, naming the model and the models.json fix. A fake pi that exits with a 5xx-shaped error warns and caches nothing.
+- A second `tumwater doctor` within 7 days spawns no probe. `--reprobe` spawns one per claimed model. Changing a model's `input` claim invalidates its entry.
+- `runDoctor` with the default option, as the TUI and GUI call it, never spawns a probe.
+- A claimed pi seam with a cached failed probe reads false from `seamImageInput`. (tumwater(feature): Land doctor live image-input probe with cache and --reprobe)
 
 ### Image input, part 1/5: tumwater knows which seams can read images, and `tumwater doctor` reports it (planned 2026-10-15 by user; design and decisions in plans/image-input.md; independent of every other entry — touches src/pi/pi-models.ts, src/agent/, src/config/config-views.ts and src/doctor/, and changes no runtime behavior) — done 2026-10-15
 
@@ -6890,5 +6891,6 @@ so one command corrects the text and the images without moving the entry.
 - Bound README's status section — state, not log (planned 2026-09-03, done 2026-09-04; commit 9e00d29)
 - `tumwater prompt --list --json` — the queued-prompt listing as machine-readable data (planned 2026-09-30, done 2026-09-30; commit 0dee85db)
 - `tumwater prompt --list` shows how long each prompt has waited — part 1/2, the shared stamp and the CLI (planned 2026-10-01, done 2026-10-01; commit bbd9f5b6)
+
 
 

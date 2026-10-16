@@ -115,6 +115,13 @@ export function orchestratorStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "orchestrator.json");
 }
 
+/** The doctor's image-probe verdict cache (src/doctor/image-probe.ts): how each claimed
+ * image-input model actually answered a live probe, keyed agent/provider/model. Runtime state
+ * under .tumwater/state/, never committed. */
+export function imageProbesPath(root: string): string {
+  return path.join(tumwaterDir(root), "state", "image-probes.json");
+}
+
 /** The `qa` flow-coverage ledger (tick/qa-coverage.ts): which flow each observer tick exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
  * must leave the repo untouched, or every cheap pass would move main and wake the fleet. */

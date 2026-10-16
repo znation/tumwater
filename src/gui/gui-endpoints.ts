@@ -317,7 +317,7 @@ export function handlePromptText(q: URLSearchParams, res: http.ServerResponse, r
 export async function handleDoctor(
   res: http.ServerResponse,
   root: string,
-  run: (root: string) => Promise<DoctorReport> = runDoctor,
+  run: (root: string) => Promise<DoctorReport> = (r: string) => runDoctor(r, undefined, undefined, "never"),
 ): Promise<void> {
   sendJson(res, 200, await run(root));
 }

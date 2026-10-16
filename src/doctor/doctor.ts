@@ -52,6 +52,7 @@ export async function runDoctor(
   root: string,
   pathEnv: string = envPath(),
   probe: ProcessProbe = systemProcessProbe,
+  probeImages: "missing" | "all" | "never" = "never",
 ): Promise<DoctorReport> {
   // Loaded once for the checks that read config (repo's baseBranch); a broken file stays
   // undefined — checkInit reports it verbatim — so doctor still runs every other check.
@@ -91,7 +92,7 @@ export async function runDoctor(
     { name: "main red", ...checkMainRed(root, config) },
     { name: "fallback", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
     { name: "tier models", ...(await checkTierModels(root)) },
-    { name: "image input", ...checkImageInput(root) },
+    { name: "image input", ...(await checkImageInput(root, undefined, undefined, undefined, probeImages, pathEnv)) },
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },
     { name: "claude version", ...(await checkClaudeVersion(root, pathEnv)) },
     { name: "agent binary", ...checkAgentBinary(root, pathEnv) },

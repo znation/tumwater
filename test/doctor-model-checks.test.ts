@@ -19,6 +19,9 @@ import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend } from "../src/agent/claude/claude-backend.js";
 import { allRoleIds } from "../src/roles/roles.js";
+import type { ImageProbeResult } from "../src/doctor/image-probe.js";
+import { envPath } from "../src/files/files.js";
+import { imageProbesPath } from "../src/paths.js";
 
 // Unit coverage for the doctor's model-readiness checks (src/doctor/doctor-model-checks.ts):
 // the cap fallback's price check, the declared-tier resolution check, and the agent binary's
@@ -536,44 +539,44 @@ function onlyFeature(): Record<string, { enabled: boolean }> {
   return roles;
 }
 
-test("checkImageInput is ok when every seam reads images (all-claude), naming them", () => {
+test("checkImageInput is ok when every seam reads images (all-claude), naming them", async () => {
   const root = readyRepo();
   writeConfig(root, {
     agent: "claude",
     model: { default: "claude-sonnet-5-5", strong: "claude-opus-5-5" },
     roles: onlyFeature(),
   });
-  const outcome = checkImageInput(root, path.join(tmpdir(), "absent.json"));
+  const outcome = await checkImageInput(root, path.join(tmpdir(), "absent.json"));
   assert.deepEqual(outcome, {
     level: "ok",
     detail: "reads images: claude-opus-5-5, claude-sonnet-5-5",
   });
 });
 
-test("checkImageInput names the reroute for a text-only default with a vision strong", () => {
+test("checkImageInput names the reroute for a text-only default with a vision strong (unverified by default)", async () => {
   const models = writeImageModels();
   const root = readyRepo();
   writeConfig(root, { model: { default: "local/text", strong: "local/vision" }, roles: onlyFeature() });
-  const outcome = checkImageInput(root, models);
+  const outcome = await checkImageInput(root, models);
   assert.equal(outcome.level, "ok");
-  assert.match(outcome.detail, /^reads images: local\/vision; /);
+  assert.match(outcome.detail, /^reads images: local\/vision \(not verified yet — run `tumwater doctor`\); /);
   assert.match(
     outcome.detail,
     /feature text-only \(local\/text\) — reroutes to strong \(local\/vision\)/,
   );
 });
 
-test("checkImageInput warns when no tier can read images and a text-only loop has no target", () => {
+test("checkImageInput warns when no tier can read images and a text-only loop has no target", async () => {
   const models = writeImageModels();
   const root = readyRepo();
   writeConfig(root, { model: { default: "local/text", strong: "local/textlist" }, roles: onlyFeature() });
-  const outcome = checkImageInput(root, models);
+  const outcome = await checkImageInput(root, models);
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /^feature text-only \(local\/text\) — no configured model reads images/);
   assert.match(outcome.detail, /declare image input on a vision model in pi's models\.json/);
 });
 
-test("checkImageInput warns when no seam reads images (models declared, all text-only)", () => {
+test("checkImageInput warns when no seam reads images (models declared, all text-only)", async () => {
   const models = writeImageModels();
   const root = readyRepo();
   // All roles disabled, but a fleet with only a text-only model declared: nothing can read
@@ -582,25 +585,155 @@ test("checkImageInput warns when no seam reads images (models declared, all text
     model: { default: "local/text" },
     roles: Object.fromEntries(Object.entries(onlyFeature()).map(([id]) => [id, { enabled: false }])),
   });
-  const outcome = checkImageInput(root, models);
+  const outcome = await checkImageInput(root, models);
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /^no configured model reads images/);
 });
 
-test("checkImageInput is informational when no models are declared at all", () => {
+test("checkImageInput is informational when no models are declared at all", async () => {
   const root = readyRepo();
   // No model map: capability is left to pi's own defaults, the same stance as tier models —
   // informational, so a default-configured fleet still reads doctor as ready.
   writeConfig(root, { roles: onlyFeature() });
-  const outcome = checkImageInput(root, writeImageModels());
+  const outcome = await checkImageInput(root, writeImageModels());
   assert.equal(outcome.level, "ok");
   assert.match(outcome.detail, /^no models declared/);
 });
 
-test("checkImageInput cannot check when models.json is unreadable", () => {
+test("checkImageInput cannot check when models.json is unreadable", async () => {
   const root = readyRepo();
   writeConfig(root, { model: { default: "local/text", strong: "local/vision" }, roles: onlyFeature() });
-  const outcome = checkImageInput(root, path.join(tmpdir(), "absent.json"));
+  const outcome = await checkImageInput(root, path.join(tmpdir(), "absent.json"));
   assert.equal(outcome.level, "warn");
   assert.match(outcome.detail, /^cannot check — could not read pi's model definitions/);
+});
+
+// ── The live image probe (part 2/5): probeImages + cache. The probe itself is injected so
+// these tests need no real pi on PATH; checkImageInput's caller passes the resolved probe, and
+// runImageProbe's own process handling is covered in test/image-probe.test.ts with a fake pi.
+
+/** A ready repo with one claimed vision model (local/vision on the strong tier) and only the
+ * feature role, the shape the probe tests drive. */
+function probeConfig(): { root: string; models: string } {
+  const root = readyRepo();
+  const models = writeImageModels();
+  writeConfig(root, { model: { default: "local/text", strong: "local/vision" }, roles: onlyFeature() });
+  return { root, models };
+}
+
+test("checkImageInput with missing probes only uncached claimed models once, and caches the pass", async () => {
+  const { root, models } = probeConfig();
+  let calls = 0;
+  const probe = async (): Promise<ImageProbeResult> => {
+    calls += 1;
+    return { verdict: "pass", detail: 'answered "1"' };
+  };
+  const base = envPath();
+  const first = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 1, "probes the one claimed model");
+  assert.equal(first.level, "ok");
+  assert.match(first.detail, /local\/vision \(verified \d{4}-\d{2}-\d{2}\)/);
+  // A second doctor within 7 days reads the fresh cached pass and spawns no probe.
+  const second = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 1, "cached pass means no second probe");
+  assert.equal(second.level, "ok");
+});
+
+test("checkImageInput fails a claimed model whose probe failed, naming it and the fix", async () => {
+  const { root, models } = probeConfig();
+  const probe = async (): Promise<ImageProbeResult> => ({ verdict: "fail", detail: 'answered "6319"' });
+  const outcome = await checkImageInput(root, models, undefined, undefined, "missing", envPath(), probe);
+  assert.equal(outcome.level, "fail");
+  assert.match(outcome.detail, /local\/vision failed the image probe — answered "6319"/);
+  assert.match(outcome.detail, /remove "image" from its input in pi's models\.json or fix the endpoint/);
+  assert.match(outcome.detail, /tumwater doctor --reprobe/);
+});
+
+test("checkImageInput warns but does not cache a probe that could not verify", async () => {
+  const { root, models } = probeConfig();
+  let calls = 0;
+  const probe = async (): Promise<ImageProbeResult> => {
+    calls += 1;
+    return { verdict: "could-not-verify", detail: "the provider backend failed (5xx or connection)" };
+  };
+  const base = envPath();
+  const first = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(first.level, "warn");
+  assert.match(first.detail, /local\/vision could not be verified — the provider backend failed/);
+  // could-not-verify is never cached: a second run probes again.
+  await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 2, "uncached could-not-verify probes again");
+});
+
+test("checkImageInput with never probes nothing even when unverified", async () => {
+  const { root, models } = probeConfig();
+  let calls = 0;
+  const probe = async (): Promise<ImageProbeResult> => {
+    calls += 1;
+    return { verdict: "pass", detail: 'answered "1"' };
+  };
+  const outcome = await checkImageInput(root, models, undefined, undefined, "never", envPath(), probe);
+  assert.equal(calls, 0, "the TUI/GUI path never spawns a probe");
+  assert.equal(outcome.level, "ok");
+});
+
+test("checkImageInput --reprobe re-probes a model that already has a fresh cached pass", async () => {
+  const { root, models } = probeConfig();
+  let calls = 0;
+  const probe = async (): Promise<ImageProbeResult> => {
+    calls += 1;
+    return { verdict: "pass", detail: 'answered "1"' };
+  };
+  const base = envPath();
+  await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 1, "first run cached a pass");
+  await checkImageInput(root, models, undefined, undefined, "all", base, probe);
+  assert.equal(calls, 2, "--reprobe bypasses the cache");
+});
+
+// The write-side fallback key (objection): a free fallback pair that fails its probe is cached
+// under the same imageProbeKey("pi", …) the readers (seamImageInput/imageReroute) look up, and a
+// second doctor run within the TTL reads that fresh fail without a double probe.
+test("checkImageInput caches a failed free-fallback probe under the pi agent key and does not re-probe", async () => {
+  const root = readyRepo();
+  const modelsDir = tmpdir("doctor-image-probe-fallback-");
+  const models = path.join(modelsDir, "models.json");
+  fs.writeFileSync(
+    models,
+    JSON.stringify({
+      providers: {
+        local: {
+          models: [
+            { id: "text" },
+            { id: "fb-vision", input: ["text", "image"] },
+          ],
+        },
+      },
+    }),
+  );
+  // Both primary tiers text-only; the only vision claim rides the strong tier's free fallback.
+  writeConfig(root, {
+    model: { default: "local/text", strong: "local/text" },
+    fallback: { strong: "local/fb-vision" },
+    roles: onlyFeature(),
+  });
+  let calls = 0;
+  const probe = async (): Promise<ImageProbeResult> => {
+    calls += 1;
+    return { verdict: "fail", detail: 'answered "6319"' };
+  };
+  const base = envPath();
+  const first = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 1, "probes the one claimed fallback model");
+  assert.equal(first.level, "fail");
+  assert.match(first.detail, /local\/fb-vision failed the image probe/);
+  // The cached key carries the pi agent segment — the segment the readers resolve and look up.
+  const cache = JSON.parse(fs.readFileSync(imageProbesPath(root), "utf8"));
+  const entry = cache["pi/local/fb-vision"];
+  assert.ok(entry, `fallback fail cached under the pi agent key (keys: ${Object.keys(cache)})`);
+  assert.equal(entry.verdict, "fail");
+  // A second doctor within the TTL reads the fresh fail verdict and spawns no probe.
+  const second = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
+  assert.equal(calls, 1, "fresh cached fail means no double probe");
+  assert.equal(second.level, "fail");
 });

@@ -360,7 +360,7 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const now = deps.now ?? Date.now;
   const { root } = deps;
   const collectPending = deps.collectPending ?? collectFleetChanges;
-  const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r));
+  const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const collectChange = deps.collectChange ?? collectRoleChange;
   const tickStat = deps.tickStat ?? tickDetailStat;
   // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
