@@ -1188,7 +1188,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role)
+## Done
+
+### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role) — done 2026-10-16
 
 **Goal.** When a role's model can't read images, its runs move to a tier that can. Each move logs an `image_reroute` event: with `preflight: true` from `src/loop/loop-tick.ts`, where an attachment was routed before any run, or with `preflight: false` from `src/tick/tick-verdict.ts`, after a blind read stopped a run. Today these events reach only the event feed, as one line each through `eventMessage`. The usage report already ranks fallbacks, failed runs, rejections, and revisions per role. A role whose text-only model keeps getting image work spends a hop per image, and a failed run when the hop follows a blind read. The report shows neither. Add a ranked `Image reroutes by role` line to the day report and the `--since` report, with the counts in `--json`. The operator can then see which role should get a vision-capable primary.
 
@@ -1212,8 +1214,6 @@ The GUI report charts (`src/ui/gui/gui-client-report.ts`) are out of scope. The 
 - `test/report.test.ts`: the day render prints `**Image reroutes by role:** feature — 3 · qa — 1` for a two-day series with those counts, and `**Image reroutes by role:** -` when there are none. The `--since` render prints the same line from `SinceReport.imageReroutesByRole`. Every existing `lines[N]` assertion passes, updated only where the new line shifts its index.
 - `tumwater report --json` carries `imageReroutesByRole` for both the day report and `--since`.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor`'s `disk space` row says what reclaim passes freed over the last 24 h (planned 2026-10-16 by plan; independent of the waiting merge-rename series and the in-flight report fallbacks plan — touches only `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, and `docs/cli.md`) — done 2026-10-16
 

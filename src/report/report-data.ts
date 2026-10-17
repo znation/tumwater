@@ -50,6 +50,9 @@ interface UsageFold {
   /** model_fallback_started events per loop id, so a role whose primary keeps failing is
    * visible beside its runs and cost. */
   fallbacksByRole: Record<string, number>;
+  /** image_reroute events per loop id, so a role whose model keeps being handed images it
+   * can't read is visible beside its runs and cost. */
+  imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   tokensOut: number;
@@ -141,6 +144,9 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
   } else if (ev.type === "model_fallback_started") {
     // One episode per start event; durations are not summed (an episode can span the window edge).
     addTo(target.fallbacksByRole, eventRole(ev), 1);
+  } else if (ev.type === "image_reroute") {
+    // One reroute per event, preflight or after a blind read.
+    addTo(target.imageReroutesByRole, eventRole(ev), 1);
   } else if (ev.type === "merged") {
     target.commits++;
     // Work ratio 4/4: split landed commits by base role and by tier. Instance suffixes fold
@@ -190,6 +196,7 @@ interface DayFold {
   revisionsByRole: Record<string, number>;
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
+  imageReroutesByRole: Record<string, number>;
   tokensByRole: Record<string, number>;
   costByRole: Record<string, number>;
   notionalByRole: Record<string, number>;
@@ -294,6 +301,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       revisionsByRole: {},
       failedRunsByRole: {},
       fallbacksByRole: {},
+      imageReroutesByRole: {},
       tokensByRole: {},
       costByRole: {},
       notionalByRole: {},
@@ -420,6 +428,8 @@ export interface ReportDay {
   /** model_fallback_started events per loop id; absent when the day has none (zero means
    * absent). */
   fallbacksByRole?: Record<string, number>;
+  /** image_reroute events per loop id; absent when the day has none (zero means absent). */
+  imageReroutesByRole?: Record<string, number>;
   commits: number;
   commitsByRole?: Record<string, number>; // landed commits by base role (Work ratio 4/4)
   workCommits?: number; // of those, feature/bugfix/director
@@ -509,6 +519,8 @@ export interface SinceReport {
   failedRunsByRole: Record<string, number>;
   /** model_fallback_started events per loop id; empty when the window has none. */
   fallbacksByRole: Record<string, number>;
+  /** image_reroute events per loop id; empty when the window has none. */
+  imageReroutesByRole: Record<string, number>;
   /** Output tokens per loop id, so the --since render can break the window's token spend
    * down by role the way the day report does. */
   tokensByRole: Record<string, number>;
@@ -565,6 +577,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     revisionsByRole: {},
     failedRunsByRole: {},
     fallbacksByRole: {},
+    imageReroutesByRole: {},
     tokensByRole: {},
     costByRole: {},
     tokensOut: 0,
@@ -634,6 +647,8 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     revisionsByRole: base === undefined ? acc.revisionsByRole : narrowToRole(acc.revisionsByRole, base),
     failedRunsByRole: base === undefined ? acc.failedRunsByRole : narrowToRole(acc.failedRunsByRole, base),
     fallbacksByRole: base === undefined ? acc.fallbacksByRole : narrowToRole(acc.fallbacksByRole, base),
+    imageReroutesByRole:
+      base === undefined ? acc.imageReroutesByRole : narrowToRole(acc.imageReroutesByRole, base),
     tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
     commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
     mergedByRole: base === undefined ? acc.mergedByRole : narrowToRole(acc.mergedByRole, base),
@@ -690,6 +705,8 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.failedRunsByRole = fold.failedRunsByRole;
       if (Object.keys(fold.fallbacksByRole).length > 0)
         day.fallbacksByRole = fold.fallbacksByRole;
+      if (Object.keys(fold.imageReroutesByRole).length > 0)
+        day.imageReroutesByRole = fold.imageReroutesByRole;
       day.commits = fold.commits;
       day.commitsByRole = fold.commitsByRole;
       day.workCommits = fold.workCommits;
@@ -735,6 +752,8 @@ export function collectReport(root: string, days: number, role?: string): Report
       if (Object.keys(fails).length > 0) day.failedRunsByRole = fails;
       const falls = narrowToRole(fold.fallbacksByRole, base);
       if (Object.keys(falls).length > 0) day.fallbacksByRole = falls;
+      const reroutes = narrowToRole(fold.imageReroutesByRole, base);
+      if (Object.keys(reroutes).length > 0) day.imageReroutesByRole = reroutes;
       day.commits = commits;
       day.commitsByRole = narrowToRole(fold.commitsByRole, base);
       day.workCommits = tier === "work" ? commits : 0;
