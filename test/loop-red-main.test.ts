@@ -1,6 +1,6 @@
 /** The red-main/baseline slice of the loop e2e suite, extracted from loop-2.test.ts: while
  * main's own suite is known red, code-producing roles skip authoring entirely instead of
- * burning runs the landing gate would reject deterministically (with the healer, exempt-role,
+ * burning runs the merge gate would reject deterministically (with the healer, exempt-role,
  * and unverifiable-main counter-cases). Like every loop suite file it runs in its own process
  * (fakePi's global PATH swap requires it) and its top-level tests run sequentially within it.
  */
@@ -21,7 +21,7 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 // --- Red-main baseline check (PLANS.md): while main's own suite is known red, code-producing
 // roles skip authoring entirely instead of burning runs the gate would reject deterministically.
 
-/** A fake pi that approves review verdicts and lands one small change (plus a marker file so
+/** A fake pi that approves review verdicts and merges one small change (plus a marker file so
  * the test can prove an authoring run actually started). */
 function approvingPi(marker: string): () => void {
   return fakePi(
@@ -111,7 +111,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
   }
 });
 
-test("an exempt role ticks normally while main is red — its markdown-only diff still lands", async () => {
+test("an exempt role ticks normally while main is red — its markdown-only diff still merges", async () => {
   const repo = await initializedRepo();
   makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
   const marker = path.join(tmpdir(), "pi-invoked");
@@ -129,7 +129,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
       assert.equal(
         await mergeHead(repo, runner, defaultConfig(), "readme"),
         "changed",
-        "markdown-only diffs are exempt from the build pre-check and land even on red main",
+        "markdown-only diffs are exempt from the build pre-check and merge even on red main",
       );
       assert.ok(fs.existsSync(marker), "the authoring run started for an exempt role");
     },
@@ -172,7 +172,7 @@ test("the bugfix healer's fresh prompt carries the red-main handoff", async () =
   );
 });
 
-test("after a fix lands on main, the next tick re-checks the new SHA and authoring resumes", async () => {
+test("after a fix merges on main, the next tick re-checks the new SHA and authoring resumes", async () => {
   const repo = await initializedRepo();
   const counter = path.join(tmpdir(), "npm-runs");
   makeMainRed(repo, counter);
@@ -182,7 +182,7 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
     const runner = makeLoopRunner(repo, "feature");
     assert.equal((await runner.tick()).result, "main_red");
 
-    // The bugfix role (exempt) lands a fix on main — the suite is green at the new SHA.
+    // The bugfix role (exempt) merges a fix on main — the suite is green at the new SHA.
     fs.writeFileSync(
       path.join(repo, "package.json"),
       projManifest({ test: `echo fixed >> ${counter}; exit 0` }),
@@ -210,7 +210,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
   // The baseline check's environmental-skip branch: when the detected check cannot RUN
   // (npm missing from PATH), a blocked role must warn and still spend its authoring run —
   // never block as main_red. Main is made genuinely red below so that warn-and-proceed is
-  // the ONLY reason this tick can land: a fail-closed regression would return "main_red"
+  // the ONLY reason this tick can merge: a fail-closed regression would return "main_red"
   // forever on any machine without npm.
   const repo = await initializedRepo();
   makeMainRed(repo, path.join(tmpdir(), "npm-runs"));
@@ -239,7 +239,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
     const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
 
-    // Authoring proceeded and landed: the skip is environmental (warn-and-proceed), not a block.
+    // Authoring proceeded and merged: the skip is environmental (warn-and-proceed), not a block.
     assert.equal(outcome.result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started despite the unverifiable main");

@@ -13,14 +13,14 @@ import { withPi } from "./fakes/fake-pi.js";
 import { assistantLine } from "./fixtures/pi-events.js";
 
 // Refusal handling (plans/refusal-and-thrash.md): the TUMWATER_REFUSED sentinel routes a
-// tick to handleRefusal, where only the markdown objection note may land — it is the durable
+// tick to handleRefusal, where only the markdown objection note may merge — it is the durable
 // record that blocks the entry for later ticks. Non-markdown half-work is discarded and the
 // note commit merges directly (md-only diffs are review-exempt by construction). The sentinel
 // is detected ONLY as an anchored line with a non-negating reason (BUGS.md 2026-09-23): a
 // bare sentinel or a `TUMWATER_REFUSED: none` on an ordinary reply is not a refusal, and a
 // refusal contradicted by its own SUMMARY beside real work keeps the work.
 
-test("a refused tick lands only its markdown note, discards code changes, and skips review", async () => {
+test("a refused tick merges only its markdown note, discards code changes, and skips review", async () => {
   const repo = await initializedRepo();
   // The fake pi counts its invocations in a file OUTSIDE the worktree: exactly one run is
   // expected (the author). A second invocation would mean the note commit went through the
@@ -31,7 +31,7 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
     [
       `n=$(cat '${counter}'); n=$((n+1)); echo $n > '${counter}'`,
       // Declines the work and leaves a Refused note under the entry in PLANS.md — plus
-      // half-done code changes (one tracked edit, one untracked file) that must NOT land.
+      // half-done code changes (one tracked edit, one untracked file) that must NOT merge.
       `printf '%s\\n' '${assistantLine("declining this plan\nTUMWATER_REFUSED: it would delete user data")}'`,
       `printf '\\n## Entry\\n\\n**Refused:** it would delete user data\\n' >> PLANS.md`,
       `echo bad >> seed.txt`,
@@ -43,7 +43,7 @@ test("a refused tick lands only its markdown note, discards code changes, and sk
     assert.equal(outcome.result, "refused");
     assert.equal(outcome.summary, "it would delete user data");
 
-    // The note landed on main with the refusal subject…
+    // The note merged on main with the refusal subject…
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): refuse — it would delete user data/);
     assert.ok(
       fs.readFileSync(path.join(repo, "PLANS.md"), "utf8").includes("**Refused:** it would delete user data"),
@@ -77,7 +77,7 @@ test("a bare sentinel over work is not a refusal: the tick runs the normal flow 
   });
 });
 
-test("a reply ending TUMWATER_REFUSED: none lands its work instead of refusing (regression)", async () => {
+test("a reply ending TUMWATER_REFUSED: none merges its work instead of refusing (regression)", async () => {
   // The exact shape that discarded two tested bugfix ticks (BUGS.md 2026-09-23): an ordinary
   // work-completed reply whose trailing line fills the sentinel in like a report field.
   const repo = await initializedRepo();

@@ -94,7 +94,7 @@ export class LoopRunner {
    * the LOOP itself is mid-fallback; defaults false, so standalone-loop tests stay on the
    * primary regime unless they set it. */
   budgetFallbackActive = false;
-  /** The landing failure this tick's leftover recovery is retrying, if any (a retriable lander
+  /** The merge failure this tick's leftover recovery is retrying, if any (a retriable merger
    * outcome that kept the pin, which recovery re-queued): set in finishRecoveryTick and
    * attached to the returned TickOutcome so applyTickOutcome can feed it into the error streak
    * even though the tick itself ends `queued` (BUGS.md 2026-09-21). Reset at every tick start. */
@@ -129,7 +129,7 @@ export class LoopRunner {
       runSignal: () => this.runSignal(),
       warn: (message) => this.warn(message),
       foldUsage: (run, provider, pair) => this.foldUsage(run, provider, pair),
-      foldLandingUsage: (run, provider, pair) => this.foldLandingUsage(run, provider, pair),
+      foldMergeUsage: (run, provider, pair) => this.foldMergeUsage(run, provider, pair),
       tickNumber: () => this.state.runs,
       sleep: this.sleep,
     });
@@ -276,45 +276,45 @@ export class LoopRunner {
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
-    priorLandingFailure: string | undefined,
+    priorMergeFailure: string | undefined,
   ): Promise<TickOutcome> {
-    return finishRecoveryTickPhase(this.tickContext(), recovered, userPrompt, wt, priorLandingFailure);
+    return finishRecoveryTickPhase(this.tickContext(), recovered, userPrompt, wt, priorMergeFailure);
   }
 
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
    * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
-   * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
+   * choke point and the foldMergeUsage face on the runner, where LoopPi and the merge
    * wiring (src/merge/merge-slot.ts) reach them. */
   private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {
     this.usage.fold(this.state, run, true, provider, pair);
   }
 
-  /** Run pi for the orchestrator's landing slot (merge queue 3/5): runRolePi's shared wiring
+  /** Run pi for the orchestrator's merge slot (merge queue 3/5): runRolePi's shared wiring
    * with usage folded into this loop's counters, watching ONLY the harness shutdown signal
-   * (`this.signal`) — a landing is outside any tick, so `tumwater abort --role` must never
-   * reach it. The plumbing lives in src/loop/loop-pi.ts; this is the landing slot's public
+   * (`this.signal`) — a merge is outside any tick, so `tumwater abort --role` must never
+   * reach it. The plumbing lives in src/loop/loop-pi.ts; this is the merge slot's public
    * face. */
-  async runLandingPi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
-    return this.pi.runLandingPi(wt, prompt, sessionName, config);
+  async runMergePi(wt: string, prompt: string, sessionName: string, config?: ResolvedModelConfig): Promise<PiRunResult> {
+    return this.pi.runMergePi(wt, prompt, sessionName, config);
   }
 
-  /** Run pi for the landing gate's reviewer (the review run and its verdict follow-up)
+  /** Run pi for the merge gate's reviewer (the review run and its verdict follow-up)
    * through the loop's shared transient-retry wiring — the same retry an authoring run gets,
    * so a 429 in the gate is waited out and retried once instead of failing the review on
    * first contact (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time
    * (the team-wide rate-limit hold's input); the FINAL run's usage is folded by the gate's
    * caller, exactly as before — the plumbing lives in src/loop/loop-pi.ts; this is the
-   * landing wiring's public face. */
+   * merge wiring's public face. */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
     return this.pi.runGatePi(opts);
   }
 
-  /** Public face of foldUsage for the orchestrator's landing wiring: folds a landing pi run
+  /** Public face of foldUsage for the orchestrator's merge wiring: folds a merge pi run
    * (reviewer, conflict resolution) into the AUTHORING role's counters, so the team's daily
    * cost and the per-role usage windows attribute that spend to the role that authored the
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
-  foldLandingUsage(run: PiRunResult, provider?: string, pair?: string): void {
-    // authoring=false: a landing/review run's usage counts toward cost and prompt tokens, but
+  foldMergeUsage(run: PiRunResult, provider?: string, pair?: string): void {
+    // authoring=false: a merge/review run's usage counts toward cost and prompt tokens, but
     // never toward the tick's pre-edit counter (src/tick/tick-usage.ts fold).
     this.usage.fold(this.state, run, false, provider, pair);
   }
@@ -382,8 +382,8 @@ export class LoopRunner {
       finishAbortedTick: (userPrompt, wt) => this.finishAbortedTick(userPrompt, wt),
       pinAndReset: (wt, sha) => this.pinAndReset(wt, sha),
       foldModelFallback: (fallbackCtx, pi) => this.foldModelFallback(fallbackCtx, pi),
-      finishRecoveryTick: (recovered, userPrompt, wt, priorLandingFailure) =>
-        this.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure),
+      finishRecoveryTick: (recovered, userPrompt, wt, priorMergeFailure) =>
+        this.finishRecoveryTick(recovered, userPrompt, wt, priorMergeFailure),
     };
   }
 }

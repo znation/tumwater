@@ -162,7 +162,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     target.notionalCostUsd += notionalCostUsd;
     // The landing's per-provider spend (merge-slot.ts keys it to its reviewer seam), so a
     // landing's costs appear under the provider that ran the reviewer, matching the author
-    // side's foldLandingUsage charge.
+    // side's foldMergeUsage charge.
     foldProviderCost(target, ev.providerCost);
   }
 }

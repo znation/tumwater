@@ -138,7 +138,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
     ].join("\n"),
     async () => {
       const runner = makeLoopRunner(repo, "improve");
-      // Tick 1: the change is committed and enqueued; the LANDING's build pre-check rejects it
+      // Tick 1: the change is committed and enqueued; the MERGE's build pre-check rejects it
       // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
@@ -148,10 +148,10 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       // tick starts a fresh pi session. Since revise-rejected, the rejected diff is re-applied
       // as uncommitted edits and the revision note carries the reasons; the idle run then
       // declares nothing-to-do, so the revision is dropped and the worktree reset clean. The
-      // prompts log holds exactly the two author runs: the landing spent none.
+      // prompts log holds exactly the two author runs: the merge spent none.
       assert.equal((await runner.tick()).result, "no_change");
       const runs = readRunBlocks(promptsFile);
-      assert.equal(runs.length, 2, "two author runs and nothing from the landing");
+      assert.equal(runs.length, 2, "two author runs and nothing from the merge");
       assert.ok(!runs[0]?.includes("rejected in review"), "tick 1's prompt had no rejection note yet");
       const second = runs[1] ?? "";
       assert.match(second, /is already in the worktree as uncommitted edits/);
@@ -187,7 +187,7 @@ test("a tick that posts a question merges it and emits question_posted with the 
       assert.equal(outcome.result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
 
-      // The question landed on main under ## Open…
+      // The question reached main under ## Open…
       const questionsMd = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
       assert.match(questionsMd, /## Open\n\n### Q1: which database?/);
 
@@ -217,7 +217,7 @@ test("a tick that changes other files emits no question_posted event", async () 
   await withPi(
     [
       // Non-md diff goes through the review gate: approve the reviewer run (identified by its
-      // VERDICT prompt) so the tick lands like "a tick that changes files commits and merges".
+      // VERDICT prompt) so the tick merges like "a tick that changes files commits and merges".
       APPROVE_PI,
       `printf '%s\\n' '${assistantLine("done\nSUMMARY: add hello file", { tokens: 42, output: 42, cost: 0.05 })}'`,
       `echo hello > hello.txt`,
@@ -234,15 +234,15 @@ test("a tick that changes other files emits no question_posted event", async () 
   );
 });
 
-test("the landing slot is the only merge-lock holder: another loop ticks and queues behind it", async () => {
+test("the merge slot is the only merge-lock holder: another loop ticks and queues behind it", async () => {
   const repo = await initializedRepo();
-  // A's LANDING (drained right after its tick) touches the marker in its reviewer run, then
-  // holds — A holds the merge lock (the lander's merge) until B's tick is done, bounded at
+  // A's MERGE (drained right after its tick) touches the marker in its reviewer run, then
+  // holds — A holds the merge lock (the merger's run) until B's tick is done, bounded at
   // ~30s. B waits for that marker, then does its whole tick (author + commit + pin + enqueue).
   // Since merge queue 3/5 a tick never merges, so it never needs the lock: B must finish while
-  // A's landing is still mid-flight. The landing slot serializes merges, not authoring. A tick
-  // that did need the lock would wait out A's bound and finish after A's landing.
-  const marker = path.join(tmpdir(), "a-landing");
+  // A's merge is still mid-flight. The merge slot serializes merges, not authoring. A tick
+  // that did need the lock would wait out A's bound and finish after A's merge.
+  const marker = path.join(tmpdir(), "a-merge");
   const bDone = path.join(tmpdir(), "b-done");
   const approveLine = assistantLine("VERDICT: approve");
   await withPi(
@@ -252,11 +252,11 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
       // prompt's VERDICT and key both on the leased role.
       `is_review=0; for a in "$@"; do case "$a" in *"VERDICT:"*) is_review=1;; esac; done`,
       `case "$role:$is_review" in`,
-      // A's landing's reviewer run (slot for improve): hold the lock while reviewing.
+      // A's merge's reviewer run (slot for improve): hold the lock while reviewing.
       `improve:1)`,
       `  touch '${marker}'; i=0; while [ ! -f '${bDone}' ] && [ $i -lt 300 ]; do sleep 0.1; i=$((i+1)); done`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
-      // B's landing's reviewer run (slot for organize): plain approve.
+      // B's merge's reviewer run (slot for organize): plain approve.
       `organize:1)`,
       `  printf '%s\n' '${approveLine}'; exit 0;;`,
       // The leased slots cover the authoring ticks.
@@ -264,7 +264,7 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
       `  printf '%s\n' '${assistantLine("slow work\\nSUMMARY: slow change")}'`,
       `  echo a > a.txt`,
       `  ;;`,
-      // B's tick's author run: wait for A to be mid-landing, then work fast.
+      // B's tick's author run: wait for A to be mid-merge, then work fast.
       `organize:0)`,
       `  i=0; while [ ! -f "${marker}" ] && [ $i -lt 60 ]; do sleep 0.2; i=$((i+1)); done`,
       `  printf '%s\n' '${assistantLine("fast work\\nSUMMARY: fast change")}'`,
@@ -276,13 +276,13 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
       const a = makeLoopRunner(repo, "improve");
       const b = makeLoopRunner(repo, "organize");
       let bEndAt = 0;
-      let aLandEndAt = 0;
+      let aMergeEndAt = 0;
       const pa = (async () => {
         const tickOutcome = await a.tick();
         assert.equal(tickOutcome.result, "queued");
-        const landed = await mergeHead(repo, a, defaultConfig(), "improve");
-        aLandEndAt = Date.now();
-        return landed;
+        const mergeDone = await mergeHead(repo, a, defaultConfig(), "improve");
+        aMergeEndAt = Date.now();
+        return mergeDone;
       })();
       const pb = (async () => {
         const outcome = await b.tick();
@@ -290,16 +290,16 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
         fs.writeFileSync(bDone, "");
         return outcome;
       })();
-      const [aLanded, bOutcome] = await Promise.all([pa, pb]);
-      assert.equal(aLanded, "changed");
+      const [aMergeDone, bOutcome] = await Promise.all([pa, pb]);
+      assert.equal(aMergeDone, "changed");
       assert.equal(bOutcome.result, "queued");
-      // B's tick (commit + enqueue) finished while A's landing held the merge lock — the
-      // landing slot is the only place the lock is ever needed.
+      // B's tick (commit + enqueue) finished while A's merge held the merge lock — the
+      // merge slot is the only place the lock is ever needed.
       assert.ok(
-        bEndAt < aLandEndAt,
-        `B finished at ${bEndAt} before A's landing ended at ${aLandEndAt}: its tick must not need the lock`,
+        bEndAt < aMergeEndAt,
+        `B finished at ${bEndAt} before A's merge ended at ${aMergeEndAt}: its tick must not need the lock`,
       );
-      // Then B drains behind A: the slot is free again and both merges land linearly.
+      // Then B drains behind A: the slot is free again and both merges complete linearly.
       assert.equal(await mergeHead(repo, b, defaultConfig(), "organize"), "changed");
       // Both commits are on main, linearly — no lock contention broke either merge.
       assert.ok(fs.existsSync(path.join(repo, "a.txt")));

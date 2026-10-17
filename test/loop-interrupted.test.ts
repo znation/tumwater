@@ -137,7 +137,7 @@ test("a cut-off director run re-queues the user prompt instead of resuming", asy
   });
 });
 
-test("an aborted run lands nothing, does not back off, and marks itself resumable", async () => {
+test("an aborted run merges nothing, does not back off, and marks itself resumable", async () => {
   const repo = await initializedRepo();
   // Writes a half-done change, then hangs until killed. `exec` so SIGTERM reaches sleep.
   await withPi(`echo partial > partial.txt\nexec sleep 30`, async () => {
@@ -147,7 +147,7 @@ test("an aborted run lands nothing, does not back off, and marks itself resumabl
     setTimeout(() => controller.abort(), 300);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "aborted");
-    assert.equal(mainSha(repo), before, "nothing lands on main");
+    assert.equal(mainSha(repo), before, "nothing merges on main");
     assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
     assert.equal(runner.state.backoffSeconds, 0);
     assert.ok(runner.state.nextRunAt <= Date.now(), "resumes promptly on restart");
@@ -282,7 +282,7 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
   }
 });
 
-// The conflict-hand-back block is guarded by !resuming so a resume does not re-apply a landed
+// The conflict-hand-back block is guarded by !resuming so a resume does not re-apply a merged
 // diff onto its kept worktree; a handoff keeps the worktree too, so it must be guarded the same
 // way — re-applying collides with the kept edits, fails, and resets them.
 test("a cross-agent handoff does not re-apply a pending conflict hand-back", async () => {

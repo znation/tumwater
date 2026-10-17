@@ -30,7 +30,7 @@ export const REVISION_BACKSTOP = 6;
 /** Re-apply a rejected change `sha` onto current main as uncommitted edits in `wt`
  * (plans/revise-rejected.md): the author's next tick starts from the rejected diff instead of
  * re-deriving it. `git cherry-pick --no-commit <merge-base>..<sha>` leaves the edits in the
- * worktree without committing. On any git failure — most often a conflict with what main landed
+ * worktree without committing. On any git failure — most often a conflict with what main merged
  * since the rejection, but also a missing object — the cherry-pick is aborted and the worktree
  * reset to main, and false is returned so the caller falls back to a plain rejection note. */
 export async function applyRevision(wt: string, mainBranch: string, sha: string): Promise<boolean> {

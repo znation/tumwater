@@ -41,7 +41,7 @@ export function verifyLimit(maxConcurrent: number): number {
 /** Resolve a merge entry's authoring runner: the live runner when the role is enabled
  * (runners are never removed from the array on disable — only a warning event fires); a role
  * disabled before this process started has no runner, so a throwaway one supplies the same
- * wiring (loop-pi.ts, runLandingPi, foldLandingUsage) and a disk-loaded state to fold and save
+ * wiring (loop-pi.ts, runMergePi, foldMergeUsage) and a disk-loaded state to fold and save
  * on. Both share the live config, like every runner — the director takes directorConfig (the live
  * config, its budget-gate exemption, unless a used-up window moved it), every other role takes
  * roleConfig (gateRoleConfig's single home for the rule; the scheduler assigns the live runners
@@ -195,7 +195,7 @@ export function startVerify(ctx: MergePipelineContext, p: MergePipeline, entry: 
                 ...(entry.revisionRound !== undefined ? { revisionRound: entry.revisionRound } : {}),
                 ...(entry.priorReview !== undefined ? { priorReview: entry.priorReview } : {}),
               },
-              { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runLandingPi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
+              { state: author.state, foldUsage, runPi: (w, prompt, s, cfg) => author.runMergePi(w, prompt, s, cfg), runGatePi: (opts) => author.runGatePi(opts) },
             ),
           { piDefault: ctx.piDefault, hooks: providerWaitStage(root, role) },
         );

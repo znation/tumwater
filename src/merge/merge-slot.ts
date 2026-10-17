@@ -22,7 +22,7 @@ import { canonicalRoleId } from "../roles/legacy-role-ids.js";
  * ff-merge). This module owns the 4/5 in-flight marker — one record per change being verified,
  * approved, or merged — the per-merge usage accounting, and the write-back that folds every
  * outcome into the authoring role's state and drops its queue entry. A merge's pi runs charge
- * to the authoring runner (foldLandingUsage). */
+ * to the authoring runner (foldMergeUsage). */
 
 /** What the pipeline is doing with one change right now. A verification opens at `rebasing` (its
  * checkout and rebase onto main) and moves through `build-check` — a deterministic check (the
@@ -379,7 +379,7 @@ export function writeMergeOutcome(
     durationMs,
     ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
     // The merge's per-provider spend, keyed to its reviewer seam (the same reviewProvider
-    // key the author-side foldLandingUsage charges), so the report's `Cost by provider` line
+    // key the author-side foldMergeUsage charges), so the report's `Cost by provider` line
     // sees a merge's spend under its reviewer's provider. Omitted when empty (a merge
     // whose runs carried no provider), the same omit-when-empty idiom the usage fields use.
     ...(Object.keys(usage.providerCost).length > 0 ? { providerCost: usage.providerCost } : {}),
@@ -399,12 +399,12 @@ export interface MergeUsage {
   notionalCost?: number;
   /** Per-run spend keyed by provider (the merge's reviewer seam — see mergeUsage), so the
    * reporting fold can attribute a merge's costs to the provider that ran them. The same
-   * seam key the author-side foldLandingUsage charges. */
+   * seam key the author-side foldMergeUsage charges. */
   providerCost: Record<string, { costUsd: number; notionalCostUsd: number }>;
 }
 
 /** A fresh usage accumulator for one merge plus the foldUsage callback that charges each of
- * its pi runs to BOTH the authoring runner's live state (foldLandingUsage: reviewer and
+ * its pi runs to BOTH the authoring runner's live state (foldMergeUsage: reviewer and
  * conflict-resolution spend belongs to the authoring role) and the merge's own accumulator
  * (the merge_done/merge_failed event's usage). Every verification builds its wiring through this,
  * and its merge reuses it, so the accounting — and any future change to it — lives in one place.
@@ -437,7 +437,7 @@ export function mergeUsage(author: LoopRunner, root: string): {
   return {
     usage,
     foldUsage: (run) => {
-      author.foldLandingUsage(run, reviewProvider, reviewPair);
+      author.foldMergeUsage(run, reviewProvider, reviewPair);
       // A claude reviewer's or resolver's billing/window readings reach the account file the
       // moment this run folds, not at the author's next tick end — so a pi-author team's
       // claude reviewer still updates the five-hour window before the author's next tick

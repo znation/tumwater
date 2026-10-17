@@ -296,7 +296,7 @@ test("pollTeamGates: a fallback episode's failures key the hold on the fallback 
     r.state.modelFallback = episode();
     // Stamp each role's latest observation as a 429; the poll reads the provider through
     // runProvider, which resolves the active episode's fallback pair, not the primary.
-    r.foldLandingUsage(piRunResult({ ok: false, transientRateLimit: true }));
+    r.foldMergeUsage(piRunResult({ ok: false, transientRateLimit: true }));
   }
   const runners = [feature, docs, perf];
 

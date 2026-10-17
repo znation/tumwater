@@ -137,7 +137,7 @@ function startMerge(ctx: MergePipelineContext, p: MergePipeline, picks: Approved
             return await withProviderLease(
               lease,
               semaphore,
-              () => v.author.runLandingPi(w, prompt, s, cfg),
+              () => v.author.runMergePi(w, prompt, s, cfg),
               { piDefault: ctx.piDefault },
             );
           } finally {

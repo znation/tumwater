@@ -15,12 +15,12 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/loop/leftover.ts's recoverLeftover — the salvage path that puts a commit
 // a
-// previous tick left unlanded back on the durable land queue (land-queue speed 3c: the slot is
+// previous tick left unmerged back on the durable merge queue (merge-queue speed 3c: the slot is
 // main's one writer): normally pinned by refs/tumwater/landing/<role>, or unpinned on the branch
 // when a crash landed in the commit→pin window. The queue and the ref mechanics are real; no
-// landing runs here. The loop e2e tests (test/loop-leftover-recovery.test.ts) drive the queued
+// merge runs here. The loop e2e tests (test/loop-leftover-recovery.test.ts) drive the queued
 // entry through
-// the landing slot end-to-end.
+// the merge slot end-to-end.
 
 const ROLE = "improve";
 
@@ -28,7 +28,7 @@ function makeCtx(root: string, wt: string): LeftoverContext {
   return { root, role: ROLE, mainBranch: "main", tick: 7, wt };
 }
 
-/** A repo with one commit NOT contained in main, pinned by the landing ref — the leftover to
+/** A repo with one commit NOT contained in main, pinned by the merge ref — the leftover to
  * salvage. The commit sits on a throwaway branch so it stays reachable after leaving it.
  * `message` is the commit subject/body; `commitArgs` carries extra git-commit flags an
  * unreadable-subject case needs. */
@@ -44,7 +44,7 @@ async function pinnedFixture(message = "stranded work", commitArgs: string[] = [
   return { root, sha };
 }
 
-test("no landing ref and nothing ahead of main: no-op, nothing queued", async () => {
+test("no merge ref and nothing ahead of main: no-op, nothing queued", async () => {
   const root = makeRepo(); // nothing pinned, branch at main
   const wt = await ensureWorktree(root, ROLE, "main");
 
@@ -53,7 +53,7 @@ test("no landing ref and nothing ahead of main: no-op, nothing queued", async ()
   assert.deepEqual(queuedMerges(root), [], "nothing is queued when there is no pin and nothing ahead");
 });
 
-test("a pinned commit not in main is put on the land queue, not landed", async () => {
+test("a pinned commit not in main is put on the merge queue, not merged", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main"); // branch at main: only the pin matters
 
@@ -62,14 +62,14 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
   assert.equal(recovered?.kind, "enqueued");
   const queued = queuedMerges(root);
   assert.equal(queued.length, 1, "exactly one entry is queued");
-  // A routine hand-made commit still names what lands — its whole subject, un-stamped — and
+  // A routine hand-made commit still names what merges — its whole subject, un-stamped — and
   // carries no recovered body or flag.
   assert.deepEqual(
     { ...queued[0], enqueuedAt: 0 },
     { role: ROLE, sha, run: 7, summary: "recovered leftover work from improve: stranded work", enqueuedAt: 0 },
   );
   assert.ok(!(await isMergedInto(root, sha, "main")), "nothing was written to main");
-  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the landing slot");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin stays for the merge slot");
   const events = readEvents(root);
   assert.deepEqual(
     events.filter((e) => e.type === "merge_queued").map((e) => [e.commit, e.summary]),
@@ -79,7 +79,7 @@ test("a pinned commit not in main is put on the land queue, not landed", async (
   assert.equal(events.filter((e) => e.type === "merged").length, 0, "no in-tick merge");
 });
 
-test("a pin whose landings hit the merge-conflict cap is handed back, not re-queued", async () => {
+test("a pin whose merges hit the merge-conflict cap is handed back, not re-queued", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
 
@@ -127,7 +127,7 @@ test("a pin at the cap whose lineage was already handed back is discarded, namin
   assert.ok(warned.some((m) => m.includes("even after sending it back to the role to resolve")), "the warning names the hand-back");
 });
 
-test("a role whose landing is already queued is not enqueued twice", async () => {
+test("a role whose merge is already queued is not enqueued twice", async () => {
   const { root, sha } = await pinnedFixture();
   const wt = await ensureWorktree(root, ROLE, "main");
   enqueueMerge(root, { role: ROLE, sha, run: 3, summary: "the original entry", enqueuedAt: Date.now() });
@@ -141,7 +141,7 @@ test("a role whose landing is already queued is not enqueued twice", async () =>
   assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is untouched");
 });
 
-// BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its
+// BUGS.md 2026-09-19: recovery re-merged a high-friction commit without its flag (and its
 // body), so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are
 // already durable in the commit message the harness stamped; recovery reads them back.
 test("recovery reads the pinned commit's body and high-friction flag back out of its message", async () => {
@@ -150,7 +150,7 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
       "tumwater(improve): slow but worthwhile",
       "",
       "WHY: the fix was fiddly",
-      "RISK: touches the landing path",
+      "RISK: touches the merge path",
       "VERIFIED: npm test, all pass",
       "",
       commitTrailer("improve", 5, 44, 20_000, 4.2),
@@ -164,7 +164,7 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
   assert.equal(entry?.highFriction, true, "the Friction trailer sets the review flag");
   assert.equal(
     entry?.body,
-    "WHY: the fix was fiddly\nRISK: touches the landing path\nVERIFIED: npm test, all pass",
+    "WHY: the fix was fiddly\nRISK: touches the merge path\nVERIFIED: npm test, all pass",
     "the commit body rides into the review gate",
   );
   assert.equal(
@@ -176,7 +176,7 @@ test("recovery reads the pinned commit's body and high-friction flag back out of
 
 test("a stale ref already contained in main is deleted without queuing anything", async () => {
   const { root, sha } = await pinnedFixture();
-  // Simulate the crash window: the work landed on main but the ref deletion never ran.
+  // Simulate the crash window: the work merged on main but the ref deletion never ran.
   sh(root, "git", "merge", "--ff-only", "stray");
   assert.ok(await isMergedInto(root, sha, "main"), "fixture sanity: the pin is now contained in main");
   const wt = await ensureWorktree(root, ROLE, "main");
@@ -222,7 +222,7 @@ test("a failed pin adoption is logged and queues nothing: the commit stays on th
     const recovered = await recoverLeftover(makeCtx(root, wt));
 
     assert.deepEqual(recovered, { kind: "unpinned", sha: tip }, "the caller learns the commit is still unpinned");
-    assert.deepEqual(queuedMerges(root), [], "a landing without its pin is never queued");
+    assert.deepEqual(queuedMerges(root), [], "a merge without its pin is never queued");
     assert.equal(await refSha(root, mergeRefName(ROLE)), null, "no pin was created");
     assert.equal(headSha(wt), tip, "the commit is still on the branch");
     // The failed adoption is recorded for the transcript, not swallowed.

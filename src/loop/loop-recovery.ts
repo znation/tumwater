@@ -9,7 +9,7 @@ import { shortSha } from "../text/format.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
 /** What the recovery phases need from their `LoopRunner` host. `setRecoveryFailure` writes the
- * landing failure back to the runner's field (which `tick` reads at finalize time) instead of
+ * merge failure back to the runner's field (which `tick` reads at finalize time) instead of
  * the phase reaching into a runner instance. */
 interface RecoveryContext {
   root: string;
@@ -59,12 +59,12 @@ export async function finishAbortedTickPhase(
   return handedBack ? { result: "aborted", resumeCause: "budget-resumed" } : { result: "aborted" };
 }
 
-/** Pin `sha` by this role's landing ref and free the worktree (plans/merge-queue.md invariant
+/** Pin `sha` by this role's merge ref and free the worktree (plans/merge-queue.md invariant
  * 4): the pin must exist BEFORE resetWorktreeToMain moves the branch, or the commit is
  * orphaned. Returns false when the pin write failed — the caller then leaves the commit on its
  * branch (no reset) and defers to next-tick recovery, which adopts it into the pin scheme.
- * After a successful pin the review gate and the rebase run in the vet's leased pool slot —
- * never in this worktree (merge queue 2/5). */
+ * After a successful pin the review gate and the rebase run in the verification's leased pool
+ * slot, never in this worktree (merge queue 2/5). */
 export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: string): Promise<boolean> {
   const pinned = await setRef(ctx.root, mergeRefName(ctx.role), sha);
   if (!pinned) {
@@ -78,14 +78,14 @@ export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: st
 }
 
 /** End a tick whose leftover recovery found work to salvage (src/loop/leftover.ts) without an
- * authoring run — the leftover owns the role's one landing ref until its landing resolves. A
+ * authoring run — the leftover owns the role's one merge ref until its merge resolves. A
  * tick's dequeued user prompt goes back to its queue, since nothing ran it. A pin put on
- * the land queue ends the tick `queued` exactly like a fresh changed tick (the land-queue
- * interlock then holds the role until the slot lands it) and frees the worktree, the pin now
- * holding the commit. When the pin is left over from a landing that failed non-terminally
- * (`priorLandingFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
+ * the merge queue ends the tick `queued` exactly like a fresh changed tick (the merge-queue
+ * interlock then holds the role until the slot merges it) and frees the worktree, the pin now
+ * holding the commit. When the pin is left over from a merge that failed non-terminally
+ * (`priorMergeFailure`), re-queuing it is a retry of a PERSISTENT failure the `queued` result
  * cannot express, so it rides the outcome's recoveryFailure into the error streak and the
- * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose landing is still queued
+ * warning that names the stuck gate (BUGS.md 2026-09-21). A role whose merge is still queued
  * ends `queued` on that entry — nothing enqueued twice, nothing reset. A leftover that could
  * not be pinned stays on the branch and the tick fails like a fresh tick's failed pin. Every
  * arm is `recoveredLeftover`: no model ran, so the tick is no evidence about the backend. */
@@ -94,7 +94,7 @@ export async function finishRecoveryTickPhase(
   recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
   userPrompt: string | null,
   wt: string,
-  priorLandingFailure: string | undefined,
+  priorMergeFailure: string | undefined,
 ): Promise<TickOutcome> {
   ctx.pending.clear();
   ctx.pending.requeueUnfulfilled(userPrompt);
@@ -112,7 +112,7 @@ export async function finishRecoveryTickPhase(
   }
   const { entry } = recovered;
   if (recovered.kind === "enqueued") {
-    ctx.setRecoveryFailure(priorLandingFailure);
+    ctx.setRecoveryFailure(priorMergeFailure);
     await resetWorktreeToMain(wt, ctx.mainBranch);
   }
   return {

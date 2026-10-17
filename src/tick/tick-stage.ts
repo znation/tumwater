@@ -287,7 +287,7 @@ export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome
   // The commit is pinned and the worktree is free: enqueue the merge and END the tick — the
   // orchestrator drains the queue on its single merge slot, outside the author semaphore, so
   // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The merge
-  // runs the same gate + merge flow through runLandingPi/foldLandingUsage on this same state
+  // runs the same gate + merge flow through runMergePi/foldMergeUsage on this same state
   // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts merged changes only.

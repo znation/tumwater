@@ -34,9 +34,9 @@ test("a tick that changes files commits and merges to main", async () => {
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
-    // Merge queue 3/5: the tick ends at commit + pin — the landing is the orchestrator's
-    // separate step, and mergeHead drives it through the landing pipeline's own vet and merge,
-    // so the whole flow below is the production path.
+    // Merge queue 3/5: the tick ends at commit + pin — the merge is the orchestrator's
+    // separate step, and mergeHead drives it through the merge pipeline's own verification and
+    // merge, so the whole flow below is the production path.
     assert.equal(outcome.result, "queued");
     assert.equal(outcome.summary, "add hello file");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
@@ -68,7 +68,7 @@ test("run_start and review_start record the model each run starts on", async () 
     const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    // The review gate runs in the landing slot (mergeHead), not inside tick().
+    // The review gate runs in the merge slot (mergeHead), not inside tick().
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     const starts = eventsOfType(repo, "run_start");
     assert.equal(starts[starts.length - 1]!.model, "prov/m1");
@@ -96,10 +96,10 @@ test("run_start and review_start omit model when none is configured (pi's own de
   });
 });
 
-test("a full tick → review → merge cycle lands on a repo whose only branch is trunk (portability 2/7)", async () => {
+test("a full tick → review → merge cycle merges on a repo whose only branch is trunk (portability 2/7)", async () => {
   // The branch plumbing is parameterized end to end; this pins that nothing named "main"
-  // leaks into the landing path: rename the only branch to trunk BEFORE init, so no main
-  // exists anywhere, and the commit must land on trunk.
+  // leaks into the merge path: rename the only branch to trunk BEFORE init, so no main
+  // exists anywhere, and the commit must merge on trunk.
   const repo = makeRepo();
   sh(repo, "git", "branch", "-m", "main", "trunk");
   await initProject(repo, "A trunk-based project.");
@@ -116,7 +116,7 @@ test("a full tick → review → merge cycle lands on a repo whose only branch i
     assert.equal(
       await mergeHead(repo, runner, config, "improve", "trunk"),
       "changed",
-      "the landing lands on trunk, the only branch there is",
+      "the merge completes on trunk, the only branch there is",
     );
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")));
     assert.equal(sh(repo, "git", "symbolic-ref", "--short", "HEAD"), "trunk");
@@ -168,7 +168,7 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
-    // After the first completed tick + its landing the state file holds that tick's usage only.
+    // After the first completed tick + its merge the state file holds that tick's usage only.
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.equal(runner.state.generatedTokens, 42);
     assert.equal(runner.state.peakContextTokens, 42);

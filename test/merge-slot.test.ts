@@ -62,7 +62,7 @@ test("mergeUsage charges each run to both the authoring role and the merge's own
   // mergeUsage keys the reviewer's fold by the review seam (PLANS.md "Mixed claude + pi
   // fleets, part 2/4"), so the stub author must carry a config; these tests don't assert on
   // the stamp, only on the cost/token accounting, so a default config is enough.
-  const author = { foldLandingUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: (run: PiRunResult) => folded.push(run), config: defaultConfig() } as unknown as LoopRunner;
   const { usage, foldUsage } = mergeUsage(author, tmpdir());
 
   foldUsage(piRun(120, 0.5));
@@ -82,7 +82,7 @@ test("mergeUsage charges each run to both the authoring role and the merge's own
 // and its real field stays empty.
 test("a subscription merge run folds as notional, and rides the event's notional field", () => {
   const root = makeRepo();
-  const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
   const { usage, foldUsage } = mergeUsage(author, tmpdir());
   foldUsage(piRunResult({ outputTokens: 100, costUsd: 0.3, billing: "subscription" }));
   foldUsage(piRunResult({ outputTokens: 20, costUsd: 0.1, billing: "api" }));
@@ -107,7 +107,7 @@ test("a subscription merge run folds as notional, and rides the event's notional
 // file untouched.
 test("a merge run's five_hour reading reaches claude-account.json at fold time", () => {
   const root = makeRepo();
-  const author = { foldLandingUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
+  const author = { foldMergeUsage: () => {}, config: defaultConfig() } as unknown as LoopRunner;
   const { foldUsage } = mergeUsage(author, root);
 
   assert.equal(readClaudeAccount(root), null, "no account file before any reading");

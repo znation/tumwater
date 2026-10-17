@@ -62,7 +62,7 @@ export interface FallbackRunContext {
 
 /** Everything the tick-pipeline phases need from their `LoopRunner` host. The runner builds one
  * per tick (before its `runTick` override point) from its readonly fields and live config, plus
- * bound callbacks back into the runner for the work whose body stays there (landing merge, the
+ * bound callbacks back into the runner for the work whose body stays there (the merge,
  * recovery phases, the fallback fold). Splitting the pipeline out of the class keeps each phase
  * a plain function of this context. */
 export interface LoopTickContext {
@@ -102,13 +102,13 @@ export interface LoopTickContext {
     recovered: Exclude<LeftoverRecovery, { kind: "discarded" } | { kind: "handback" }>,
     userPrompt: string | null,
     wt: string,
-    priorLandingFailure: string | undefined,
+    priorMergeFailure: string | undefined,
   ): Promise<TickOutcome>;
 }
 
 /** The intent the author needs to resolve a handed-back change: the change's own commit message
  * and the main commits that touched its conflicted files since its merge-base. Mirrors what
- * resolveConflict gathers for the landing resolver (src/merge/merge-to-main.ts) and feeds the
+ * resolveConflict gathers for the merge resolver (src/merge/merge-to-main.ts) and feeds the
  * same prompt block through buildConflictHandbackNote. */
 async function handbackIntent(
   wt: string,
@@ -404,9 +404,9 @@ async function runTickInLeasePhase(
 }
 
 /** Put `tumwater/<role>` on the leased slot before authoring. An existing branch is checked
- * out, never reset — `-B` would discard the unlanded commit it durably holds; an absent one
+ * out, never reset — `-B` would discard the unmerged commit it durably holds; an absent one
  * is created from main. `--ignore-other-worktrees` lets the slot take the branch while a
- * legacy `.tumwater/worktrees/<role>` still holds it (the ordering that lands this part
+ * legacy `.tumwater/worktrees/<role>` still holds it (the ordering that merges this part
  * before part 4c, which retires those directories); the stale checkout is never used again.
  * Untracked files are cleaned so the checkout is pristine. */
 async function checkoutRoleBranchPhase(ctx: LoopTickContext, dir: string): Promise<void> {
@@ -428,7 +428,7 @@ async function tickWithWorktreePhase(
   leasedDir?: string,
 ): Promise<TickOutcome> {
   const s = ctx.state;
-  const { priorLandingFailure, resuming, handoff, resumeCause, userPrompt } = plan;
+  const { priorMergeFailure, resuming, handoff, resumeCause, userPrompt } = plan;
   let prompt = plan.prompt;
 
   const wt = leasedDir ?? (await ensureWorktree(ctx.root, ctx.role, ctx.mainBranch));
@@ -439,12 +439,12 @@ async function tickWithWorktreePhase(
     await abortSync(wt);
     logEventBestEffort(ctx.root, { source: ctx.role, type: "resume", cause: resumeCause });
   } else {
-    // Salvage a commit a previous tick left unlanded (src/loop/leftover.ts): recovery puts it
-    // back on the land queue, so it lands through the orchestrator's landing pipeline — the
+    // Salvage a commit a previous tick left unmerged (src/loop/leftover.ts): recovery puts it
+    // back on the merge queue, so it merges through the orchestrator's merge pipeline — the
     // same gate as a fresh tick's change, and main keeps exactly one writer (an in-tick
-    // recovery landing raced the slot's batches into `merge_blocked`). A salvaged leftover
-    // ENDS the tick: the role holds one landing ref, and the leftover owns it until its
-    // landing resolves. With nothing to salvage the branch holds nothing either, so the reset
+    // recovery merge raced the slot's batches into `merge_blocked`). A salvaged leftover
+    // ENDS the tick: the role holds one merge ref, and the leftover owns it until its
+    // merge resolves. With nothing to salvage the branch holds nothing either, so the reset
     // below leaves pristine main for the red-main gate.
     // A permanent reviewer config error — held from re-queueing — clears once the resolved
     // reviewer selector changes, so fixing the model config recovers the pin automatically
@@ -480,7 +480,7 @@ async function tickWithWorktreePhase(
       s.conflictHandback = undefined;
       s.conflictDiscard = { sha: recovered.sha, summary: recovered.summary, attempts: recovered.attempts, at: Date.now() };
       prompt = appendPromptNote(prompt, buildConflictDiscardNote(recovered.summary, recovered.attempts));
-    } else if (recovered) return ctx.finishRecoveryTick(recovered, userPrompt, wt, priorLandingFailure);
+    } else if (recovered) return ctx.finishRecoveryTick(recovered, userPrompt, wt, priorMergeFailure);
     await resetWorktreeToMain(wt, ctx.mainBranch);
     // Red-main baseline gate (src/baseline/main-red.ts): the worktree is pristine main right
     // now — verify main's own suite before spending an authoring run on top of it. Only roles
@@ -507,10 +507,10 @@ async function tickWithWorktreePhase(
     }
   }
 
-  // A change handed back after its landings kept conflicting — or a persisted hand-back the
+  // A change handed back after its merges kept conflicting — or a persisted hand-back the
   // author's tick has not applied yet — is re-applied over current main with the conflict
   // markers left as ordinary uncommitted edits so this tick resolves them (PLANS.md "Robust
-  // conflict landing, part 2/2"). The landing ref is deleted once the diff is in the worktree.
+  // conflict landing, part 2/2"). The merge ref is deleted once the diff is in the worktree.
   // Runs before the revision branch, which applies a revision hand-back itself. A resume or
   // handoff keeps the interrupted worktree as-is, so re-applying here would cherry-pick onto
   // those kept edits; both skip it, exactly as before this feature for a resume.
@@ -621,7 +621,7 @@ async function tickWithWorktreePhase(
   // run has none of the interrupted session's context explaining them, so re-send the hand-back
   // note (a resume keeps its session context and must not see the note twice). The revision
   // block above covers a revision hand-back's own note; this covers every hand-back reason,
-  // including a landing hand-back with no revision. Unlike the apply path there is no index to
+  // including a merge hand-back with no revision. Unlike the apply path there is no index to
   // read, so the conflicted set comes from the worktree's current marker-bearing files.
   if (handoff && s.conflictHandback?.applied) {
     const hb = s.conflictHandback;
@@ -645,12 +645,13 @@ async function tickWithWorktreePhase(
   return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
 }
 
-/** Land the worktree branch on main (see src/merge/merge-to-main.ts for the
+/** Merge the worktree branch on main (see src/merge/merge-to-main.ts for the
  * rebase → verify → ff-merge → conflict-retry flow): delegates with the loop identity, tick
  * number, and shared pi wiring so a conflict-resolution run folds into this tick's counters
- * like any other pi run. Only the refusal-note landing (src/verdict/refusal.ts) still uses it —
- * reviewed changes land through the landing pipeline's leased vet slot instead; md-only notes
- * are review-exempt by construction, so they keep this branch path (plans/merge-queue.md 2/5). */
+ * like any other pi run. Only the refusal-note merge (src/verdict/refusal.ts) still uses it —
+ * reviewed changes merge through the merge pipeline's leased verification slot instead; md-only
+ * notes are review-exempt by construction, so they keep this branch path (plans/merge-queue.md
+ * 2/5). */
 async function mergePhase(ctx: LoopTickContext, wt: string, summary: string): Promise<TickResult> {
   return mergeToMain(
     {
@@ -685,7 +686,7 @@ export async function handlePiResultPhase(
   piStartedAt: number,
   cfg: ResolvedModelConfig,
 ): Promise<TickOutcome> {
-  // Everything that decides the run left nothing landable — abort, config request,
+  // Everything that decides the run left nothing mergeable — abort, config request,
   // quiet kill, timeout, refusal, failure without changes, no change — lives in
   // resolveTickVerdict (src/tick/tick-verdict.ts); null means the run IS fulfillable.
   const verdict = await resolveTickVerdict({
@@ -712,16 +713,16 @@ export async function handlePiResultPhase(
   if (verdict) return verdict;
 
   // The commit is pinned and the worktree is free (src/tick/tick-stage.ts): stage it for the
-  // land queue and END the tick — the orchestrator drains the queue on its single landing
+  // merge queue and END the tick — the orchestrator drains the queue on its single merge
   // slot, outside the author semaphore, so this slot is free the moment the work is
   // committed (plans/merge-queue.md 3/5). Staging derives the commit message from the reply's
   // SUMMARY block (one bounded follow-up turn when the run left none), flags high-friction
-  // ticks, pins the commit by the role's landing ref BEFORE freeing the worktree (invariant
-  // 4 — a failed pin defers to next-tick recovery), and enqueues the landing, which runs the
-  // same gate + landing flow through runLandingPi/foldLandingUsage on this same state object
+  // ticks, pins the commit by the role's merge ref BEFORE freeing the worktree (invariant
+  // 4 — a failed pin defers to next-tick recovery), and enqueues the merge, which runs the
+  // same gate + merge flow through runMergePi/foldMergeUsage on this same state object
   // — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
-  // `commits` was NOT incremented above: it counts landed changes only.
+  // `commits` was NOT incremented above: it counts merged changes only.
   return stageTickMerge({
     root: ctx.root,
     role: ctx.role,

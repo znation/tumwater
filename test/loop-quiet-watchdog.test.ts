@@ -49,7 +49,7 @@ test("a pi run that goes silent is killed as hung and never commits partial work
       const outcome = await tick;
       assert.equal(outcome.result, "quiet_killed");
       assert.match(runner.state.lastError ?? "", /killed as hung: no agent progress/);
-      assert.equal(mainSha(repo), before, "nothing landed on main");
+      assert.equal(mainSha(repo), before, "nothing merged on main");
       assert.ok(!fs.existsSync(path.join(repo, "partial.txt")));
       // The kill is non-destructive (BUGS.md 2026-09-12): the partial edit survives in the
       // worktree and the next tick resumes the session instead of resetting it away.

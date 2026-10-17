@@ -35,7 +35,7 @@ export interface LoopState {
   backoffSeconds: number;
   /** main HEAD observed at the end of the last tick; a different HEAD wakes the loop. */
   lastMainHead: string;
-  /** The role's recent yield as a ring of one-char codes, oldest first: `L` for a landing
+  /** The role's recent yield as a ring of one-char codes, oldest first: `L` for a merge
    * (a `changed`/`queued` tick) and `n` for a counted empty tick — every result except the
    * error class (`error`/`aborted`/`quiet_killed`, which are no evidence of yield either
    * way) and the ring keeps the last YIELD_RING entries. Read by yieldMultiplier
@@ -47,15 +47,15 @@ export interface LoopState {
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
    * renders. A `queued` tick never writes it (tick-apply.ts's applyTickOutcome): its change is
    * still in flight, which the state column already shows, so the pair keeps the prior outcome
-   * until the landing resolves and applyMergeOutcome records the landing's own. */
+   * until the merge resolves and applyMergeOutcome records the merge's own. */
   lastResult?: TickResult;
   lastSummary?: string;
   /** The summary a `queued` tick reported for the change it pinned (the text its run_end
    * carries, high-friction annotation included), keyed by that change's sha. Held back from
-   * `lastSummary` while the change waits, then paired with the landing's result by
-   * applyMergeOutcome, which clears it — so after a landing the cell reads the landing's
-   * outcome next to the summary of the change it landed, never next to the prior tick's.
-   * Persisted: the land queue is durable, so the landing can resolve in a later process. */
+   * `lastSummary` while the change waits, then paired with the merge's result by
+   * applyMergeOutcome, which clears it — so after a merge the cell reads the merge's
+   * outcome next to the summary of the change it merged, never next to the prior tick's.
+   * Persisted: the merge queue is durable, so the merge can resolve in a later process. */
   queuedSummary?: { sha: string; summary: string };
   lastRunStartedAt?: number;
   lastRunEndedAt?: number;
@@ -129,14 +129,14 @@ export interface LoopState {
    * 2026-09-18). Reset by any non-quiet-kill outcome. */
   quietKillStreak?: number;
   /** Consecutive failed ticks: an `error`-result tick OR one whose leftover recovery left a
-   * landing pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
+   * merge pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
    * (tick-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
    * identical tick failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
-   * backend left every recovery landing failing silently and reset this streak each tick).
-   * A review-rejected landing counts in too (BUGS.md 2026-09-30): the authoring tick ends
+   * backend left every recovery merge failing silently and reset this streak each tick).
+   * A review-rejected merge counts in too (BUGS.md 2026-09-30): the authoring tick ends
    * `queued`, which preserves the streak, and applyMergeOutcome's rejected branch is the
-   * accumulation point; a landed change resets it. Reset by any other completed result. */
+   * accumulation point; a merged change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
   /** Consecutive completed ticks that ended `no_change`. Observational only — the resting
    * state cell's ` · no change ×N` suffix (status-model.ts loopPhase) — so a loop that keeps
@@ -180,10 +180,10 @@ export interface LoopState {
    * patch-id it was judging (only the same diff may resume), the per-run session directory to
    * `--continue` in, how many resumes have already been attempted, and when the marker was
    * written. Set when a review run hits its time budget while still making progress; cleared
-   * by any verdict, any other failure, a discard, or a landing. Absent for a loop with no
+   * by any verdict, any other failure, a discard, or a merge. Absent for a loop with no
    * timed-out review, so existing state files read unchanged. */
   reviewResume?: { patchId: string; sessionDir: string; attempts: number; at: number };
-  /** Consecutive landings of the SAME pinned sha that ended `merge_conflict` — each one a failed
+  /** Consecutive merges of the SAME pinned sha that ended `merge_conflict` — each one a failed
    * conflict-resolution run. Keyed by sha: a pin that rebased cleanly onto a moved main is a new
    * attempt and starts fresh. At MERGE_CONFLICT_LIMIT leftover recovery stops re-queuing: it
    * hands the pin back to its author to resolve (PLANS.md "Robust conflict landing, part 2/2"),
@@ -194,15 +194,15 @@ export interface LoopState {
    * prompts until its next change is queued — the author's only memory that the work is gone
    * and must be redone against current main if it is still wanted. */
   conflictDiscard?: { sha: string; summary: string; attempts: number; at: number };
-  /** A change handed back to its author when its landings kept ending in unresolved merge
+  /** A change handed back to its author when its merges kept ending in unresolved merge
    * conflicts with main, or its revision re-apply conflicted (PLANS.md "Robust conflict
    * landing, part 2/2"): its sha, when, why, the revision round when the hand-back is a
    * revision, and whether the re-apply onto current main has happened yet. The author's next
    * non-resume tick re-applies the sha with conflict markers left as ordinary uncommitted
-   * edits, appends the hand-back note, and deletes the landing ref. The record then lives
-   * exactly as long as the resolved change: while it is queued or pinned for its landing, a
+   * edits, appends the hand-back note, and deletes the merge ref. The record then lives
+   * exactly as long as the resolved change: while it is queued or pinned for its merge, a
    * conflict at the cap discards it rather than handing it back a second time. It is cleared
-   * when that change lands or is rejected (tick-apply.ts), and when a tick neither commits the
+   * when that change merges or is rejected (tick-apply.ts), and when a tick neither commits the
    * marker edits nor leaves a session to resume them (no_change, a deliberate user_aborted, or
    * an error/quiet-kill with no resume), nor while a rejected change's revision still owes
    * them. Absent for a loop with no hand-back, so older state files read unchanged. */
@@ -239,14 +239,14 @@ export interface LoopState {
    * tier. Read by the verdict's one-hop guard, which fails a blind read during a rerouted
    * tick instead of rerouting it again. Transient: reset at every tick start. */
   imageRerouteActive?: boolean;
-  /** The pinned change a landing failed to review on a permanent provider configuration error
+  /** The pinned change a merge failed to review on a permanent provider configuration error
    * (a 4xx other than 408/429): the request can never succeed until the model config changes,
    * so leftover recovery holds the pin instead of re-queuing it at suite speed (BUGS.md
    * 2026-10-06). `selector` is the resolved reviewer selector that failed — when the loop's
    * current reviewer selector differs, the config has changed and recovery clears the hold and
-   * re-queues. Cleared when the pin lands or is rejected. */
+   * re-queues. Cleared when the pin merges or is rejected. */
   mergeReviewError?: { sha: string; selector?: string; message: string };
-  /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
+  /** Consecutive merges of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At merge-check-failures.ts's
    * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
    * re-queued as merge_blocked again. `headline` is the failing test's headline, set only by a
@@ -277,12 +277,12 @@ export interface LoopState {
    * over with `dayCostUsd`; estimated (subscription) spend never folds in. */
   dayCostByPair?: Record<string, number>;
   lastError?: string;
-  /** Epoch ms (Date.now()) of the last time this loop landed a change on main (set only in
+  /** Epoch ms (Date.now()) of the last time this loop merged a change on main (set only in
    * applyMergeOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
-   * landing, and absent on state files written before the field existed, so the last-landed
+   * merge, and absent on state files written before the field existed, so the last-merged
    * age reads "never" until then. Mirrors lastRunEndedAt: an observational timestamp that
    * reset-counters deliberately leaves alone — the dry-spell question it answers is about
-   * landed work, not counters. */
+   * merged work, not counters. */
   lastMergedAt?: number;
   /** The backlog entry this instance is assigned to implement or fix (plans/parallel-work-
    * instances.md "Claims", part 4/7): its file, the stamp-free key (backlog-eligibility.ts's
@@ -313,7 +313,7 @@ export interface LoopState {
    * cleared when the rejected change is final (a repeated objection or the backstop, BUGS.md
    * 2026-10-14). `reasonCounts` holds each of that rejection's objections' persistence counts —
    * how many consecutive revisions each has survived — aligned with `lastReview.reasons`;
-   * staging copies it onto the queued landing's PriorReview so the next rejection can resolve a
+   * staging copies it onto the queued merge's PriorReview so the next rejection can resolve a
    * `(prior N)` tag to a count. Absent for a loop with no outstanding rejection, so existing
    * state files read unchanged (and an older file without `reasonCounts` reads as all-new). */
   revision?: { sha: string; round: number; at: number; reasonCounts?: number[] };
@@ -384,7 +384,7 @@ function healOptionalNumber<T extends object, K extends keyof T>(rec: T, key: K)
 
 /** Heal one persisted nested record: absent stays absent; a present non-object (a string,
  * number, NaN, null, or array) is dropped to undefined — every consumer of these records reads
- * them with property access or mutation (landing-core sets `lastReview.exhausted`, tick-apply
+ * them with property access or mutation (merge-core sets `lastReview.exhausted`, tick-apply
  * adds to `mergeConflicts.count`), and property access on a torn scalar reads undefined where
  * the mutation throws "Cannot create property … on string" in a strict ES module; a present
  * object keeps its shape with each numeric field repaired by `heal`. */
@@ -604,7 +604,7 @@ function liveClaimLoopIds(root: string): string[] {
 /** The live backlog claim of every built-in role and running instance, keyed by claim
  * entryKey — `Map<key, role>` — for the ones that hold one. The cross-role in-flight hold
  * (BUGS.md 2026-10-09): a plan a `feature` instance claimed stays listed under PLANS.md
- * `## Planned` until its landing merges to main, so an eligibility reader built for another
+ * `## Planned` until its merge reaches main, so an eligibility reader built for another
  * role would otherwise see it as open and let that role implement it a second time — the
  * duplicate then fails review as a claim mismatch. Same-base claims are deliberately NOT
  * filtered here: callers (eligibleEntries) apply their own base rule, because the scheduling

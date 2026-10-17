@@ -6,7 +6,7 @@
  * equal when moving tests between the files. The suite's leftover/pin-recovery topic lives in
  * loop-leftover-recovery.test.ts (extracted 2026-09-29), the transient-retry regressions in
  * loop-transient-retry.test.ts (2026-09-30); what remains here is the rejection ride-along and
- * the landing-conflict regressions. */
+ * the merge-conflict regressions. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -36,8 +36,8 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
   ].join("\n");
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "improve");
-    // Tick 1: the change is committed and enqueued, then the LANDING rejects it — nothing
-    // lands on main.
+    // Tick 1: the change is committed and enqueued, then the MERGE rejects it — nothing
+    // merges on main.
     assert.equal((await runner.tick()).result, "queued");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
@@ -65,9 +65,9 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
   });
 });
 
-test("concurrent-main-advance still lands (rebase path, linear history)", async () => {
+test("concurrent-main-advance still merges (rebase path, linear history)", async () => {
   const repo = await initializedRepo();
-  // The fake pi advances main itself mid-tick, simulating another loop landing work.
+  // The fake pi advances main itself mid-tick, simulating another loop merging work.
   const script = [
     // The tick's commit goes through the review gate before the (rebased) merge.
     APPROVE_PI,
@@ -86,7 +86,7 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
   });
 });
 
-test("a clean resolution of a conflicted file with setext underlines lands (regression)", async () => {
+test("a clean resolution of a conflicted file with setext underlines merges (regression)", async () => {
   const repo = await initializedRepo();
   // docs.md uses a setext heading whose underline is exactly seven '=' — legitimate content
   // that the old marker check mistook for an unresolved conflict separator.

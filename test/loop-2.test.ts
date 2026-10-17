@@ -53,7 +53,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
     assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     assert.ok(outcome.highFriction, "the run is flagged high-friction");
     // The flag annotates the summary for dashboards and lastSummary — the latter once the
-    // landing resolves, paired with the landing's result (BUGS.md 2026-09-23).
+    // merge resolves, paired with the merge's result (BUGS.md 2026-09-23).
     assert.match(String(outcome.summary), /^slow change \(high friction: 2 turns \/ \d+m\)$/);
     assert.equal(runner.state.lastResult, "changed");
     assert.equal(runner.state.lastSummary, outcome.summary);
@@ -140,7 +140,7 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
 });
 
 // Self-explaining commit bodies (plans/commit-bodies.md item a): the reply contract's
-// WHY/RISK/VERIFIED lines land in an ACTUAL tick commit on main, and a SUMMARY-only reply
+// WHY/RISK/VERIFIED lines end up in an ACTUAL tick commit on main, and a SUMMARY-only reply
 // commits subject + trailer only. The pure-function units live in test/commit-message.test.ts;
 // this e2e reads real `git log` content from two ticks of one loop — the first compliant,
 // the second non-compliant — so both halves of buildCommitMessage's assembly are pinned
@@ -212,18 +212,18 @@ test("a changed run's run_end event carries its per-run tokens and cost", async 
 
     const ends = eventsOfType(repo, "run_end");
     assert.equal(ends.length, 1, "one run ran");
-    // tokens is the AUTHOR run's window, costUsd its spend — the landing's own spend (the
-    // zero-usage reviewer) rides the `landed` event instead.
+    // tokens is the AUTHOR run's window, costUsd its spend — the merge's own spend (the
+    // zero-usage reviewer) rides the `merge_done` event instead.
     assert.equal(ends[0]!.tokens, 18400);
     assert.equal(ends[0]!.costUsd, 0.37);
     // The state file still carries the same per-tick window (the gen column's source).
     assert.equal(runner.state.generatedTokens, 18400);
 
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
-    const landed = eventsOfType(repo, "merge_done");
-    assert.equal(landed.length, 1, "the merge slot logged its own outcome");
-    assert.equal(landed[0]!.result, "changed");
-    assert.equal(landed[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
+    const mergeDone = eventsOfType(repo, "merge_done");
+    assert.equal(mergeDone.length, 1, "the merge slot logged its own outcome");
+    assert.equal(mergeDone[0]!.result, "changed");
+    assert.equal(mergeDone[0]!.tokens, undefined, "the zero-usage reviewer omits the token field");
   });
 });
 
@@ -294,7 +294,7 @@ test("a shutdown resume is bridged as a restart with no cut-off note", async () 
     fs.mkdirSync(sessionDir(repo, "clean"), { recursive: true });
     fs.writeFileSync(path.join(sessionDir(repo, "clean"), "s.jsonl"), "{}\n");
     // The resumed run finds the interrupted edit in place and decides against it: a clean
-    // nothing-to-do finish, so the tick lands nothing and never reaches the review gate.
+    // nothing-to-do finish, so the tick merges nothing and never reaches the review gate.
     restore = fakePi(
       [
         logPromptsTo(promptsFile),
@@ -350,7 +350,7 @@ test("a pi crash on malformed JSON is retried once by continuing the session (re
 // .git would. Tick 2's leftover recovery then adopts the unpinned tip
 // into the pin scheme and queues it for the same review gate — invariant 1 must hold
 // whether or not the pin survived (plans/merge-queue.md).
-test("a failed pin leaves the commit on the branch; the next run recovers and lands it", async () => {
+test("a failed pin leaves the commit on the branch; the next run recovers and merges it", async () => {
   const repo = await initializedRepo();
   // Tick 1: one authoring run that makes a change. The tick ends at commit + pin, so the
   // VERDICT branch below only guards against the review prompt ever reaching this script.
@@ -391,8 +391,8 @@ test("a failed pin leaves the commit on the branch; the next run recovers and la
 
   // Unblock done (the first tick's withPi block ended); tick 2's leftover recovery adopts the
   // unpinned commit and puts it on
-  // the land queue — the tick ends there, like a fresh changed tick — and the landing slot
-  // lands
+  // the merge queue — the tick ends there, like a fresh changed tick — and the merge slot
+  // merges
   // it through the same gate, with the approve.
   const script2 = [
     APPROVE_PI,
@@ -402,18 +402,18 @@ test("a failed pin leaves the commit on the branch; the next run recovers and la
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
-    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the run");
+    assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing merges inside the run");
     assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit merged on main");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "0", "the branch is back at main");
     assert.equal(await refSha(repo, mergeRefName("improve")), null, "the merged pin is deleted");
     assert.equal(queueDepth(repo), 0);
-    // Like the pinned-recovery case, the landing is recorded as a merged event (what the
-    // usage report counts), from the landing slot rather than the tick.
+    // Like the pinned-recovery case, the merge is recorded as a merged event (what the
+    // usage report counts), from the merge slot rather than the tick.
     const merged = eventsOfType(repo, "merged");
     assert.equal(merged.length, 1);
-    // The merged summary names what landed — the recovered commit's own subject — not
+    // The merged summary names what merged — the recovered commit's own subject — not
     // merely that a recovery happened, so the failure digest's "Landed in the window" is
     // never opaque (BUGS.md 2026-09-21).
     assert.equal(String(merged[0]!.summary), "recovered leftover work from improve: add hello file");

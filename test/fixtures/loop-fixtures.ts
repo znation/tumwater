@@ -54,15 +54,15 @@ export function roleWt(root: string, role: string): string {
   return worktreePath(root, role);
 }
 
-/** Drive a director tick whose landing review is aborted once the vet's pooled checkout
- * appears: the tick commits and pins (result "queued"), the landing runs under its own
+/** Drive a director tick whose merge review is aborted once the verification's pooled checkout
+ * appears: the tick commits and pins (result "queued"), the merge runs under its own
  * AbortSignal, and the abort kills the hung reviewer (the fake pi script loops on the
  * VERDICT review prompt and sleeps). Asserts the fail-closed shape a shutdown and
  * `tumwater abort` share at the loop level — nothing merged, the pin survives for next-start
  * recovery, the queue entry is dropped, and the completed tick consumed the prompt — so the
  * user-abort (loop-5.test.ts) and shutdown (loop-leftover-recovery.test.ts) tests state only
- * their framing. Only meaningful for a director tick, whose landing carries the review. */
-export async function runAbortedDirectorLanding(repo: string): Promise<void> {
+ * their framing. Only meaningful for a director tick, whose merge carries the review. */
+export async function runAbortedDirectorMerge(repo: string): Promise<void> {
   await withPi(
     [
       `for a in "$@"; do case "$a" in *"VERDICT:"*) exec sleep 30;; esac; done`,
@@ -75,23 +75,23 @@ export async function runAbortedDirectorLanding(repo: string): Promise<void> {
         enqueuePrompt(repo, "ship the hello file");
         const runner = makeLoopRunner(repo, "director");
         const outcome = await runner.tick();
-        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
+        assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the merge's");
         const head = headMerge(repo);
-        assert.ok(head, "the landing is queued");
-        const landing = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
-        // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
+        assert.ok(head, "the merge is queued");
+        const merge = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
+        // Abort only once the verification's pooled checkout exists: an earlier abort hits nothing.
         await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
         controller.abort();
-        assert.equal(await landing, "aborted", "a mid-review abort is an abort, not a failed review");
+        assert.equal(await merge, "aborted", "a mid-review abort is an abort, not a failed review");
 
         // Fail closed: nothing merged — the role worktree is clean at main and the pin survives
         // the abort for next-start recovery. The queue entry is dropped; the prompt was consumed
         // by the completed tick, so recovery rides the pin, never a re-queued prompt.
         assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
         const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("director")).trim();
-        assert.ok(pinned.length === 40, "the pin survived the aborted landing");
-        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
-        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");
+        assert.ok(pinned.length === 40, "the pin survived the aborted merge");
+        assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing merged on main");
+        assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted merge");
         assert.equal(inboxSize(repo), 0);
         const s = loadLoopState(repo, "director");
         assert.equal(s.lastResult, "aborted");

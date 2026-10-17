@@ -228,7 +228,7 @@ export async function drainInFlightWork(
   if (merge && restart) {
     // The abort is the caller's internal stop, not just the merge's own controller: each task
     // wires the harness signal to its controller, and a conflict-resolution run watches the
-    // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
+    // harness signal alone (runMergePi). Nothing else it reaches can start work here — the
     // director has finished, permit holders were aborted at the restart, and a parked waiter
     // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
     const outcome = await awaitMergeForHandoff(root, merge, handoffWindowMs, abort, after);

@@ -13,7 +13,7 @@ import { nonNegativeNumber } from "../files/json-object.js";
  * src/team/team-polls.ts).
  *
  * fold() is the once-per-run choke point: every pi run of a tick — main attempt, transient
- * retry, conflict resolution, merge runs via foldLandingUsage — ends up here exactly once, so
+ * retry, conflict resolution, merge runs via foldMergeUsage — ends up here exactly once, so
  * adding a usage field to PiRunResult touches this single place. */
 /** One persisted counter, healed to a finite non-negative number before it is read and
  * rewritten: `generatedTokens`/`peakContextTokens` are per-tick windows and `totalCostUsd` a
@@ -54,7 +54,7 @@ export class TickUsage {
   rateWindows?: RateWindow[];
   /** Prompt tokens folded into THIS tick so far (non-persisted, reset at tick start). Every
    * pi run of the tick contributes — the authoring run, its transient retry, the SUMMARY
-   * follow-up, and (through foldLandingUsage) review and conflict-resolution runs — because
+   * follow-up, and (through foldMergeUsage) review and conflict-resolution runs — because
    * all of them re-send context the operator paid for. */
   promptTokens = 0;
   /** The cache-read share of promptTokens folded so far. */
@@ -108,7 +108,7 @@ export class TickUsage {
 
   /** Fold one pi run's usage into the tick's counters (gen / peak ctx / cost / turns) and
    * the loop's lifetime totals on `s`. `authoring` is false for a merge/review run folded
-   * through foldLandingUsage: those never advance the tick's pre-edit counter, which measures
+   * through foldMergeUsage: those never advance the tick's pre-edit counter, which measures
    * the authoring search. */
   fold(s: LoopState, run: PiRunResult, authoring = true, provider?: string, pair?: string): void {
     s.generatedTokens = counter(s.generatedTokens) + run.outputTokens;

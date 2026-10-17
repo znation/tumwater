@@ -18,7 +18,7 @@ export interface TickStartPlan {
    * clears lastError: a non-terminally failed merge kept its pin, and when this tick's
    * recovery re-queues that pin the failure must still feed the error streak
    * (finishRecoveryTick). Undefined when the last result was not a retriable merge failure. */
-  priorLandingFailure: string | undefined;
+  priorMergeFailure: string | undefined;
   /** Resume the interrupted session instead of starting fresh. */
   resuming: boolean;
   /** Run a fresh session but leave the worktree as the interrupted run left it, with the
@@ -70,7 +70,7 @@ export function planTickStart(opts: {
   // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
   // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
   // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
-  const priorLandingFailure =
+  const priorMergeFailure =
     s.lastResult !== undefined && RETRIABLE_MERGE_RESULTS.has(s.lastResult)
       ? (s.lastError ?? `merge failed: ${s.lastResult}`)
       : undefined;
@@ -184,5 +184,5 @@ export function planTickStart(opts: {
   // The raw user prompt a director tick is executing (null for role loops), so an
   // unfulfilled outcome below can re-queue it. Captured before the field is cleared.
   const userPrompt = opts.pending.get();
-  return { priorLandingFailure, resuming, handoff: handingOff, resumeCause, prompt, userPrompt };
+  return { priorMergeFailure, resuming, handoff: handingOff, resumeCause, prompt, userPrompt };
 }

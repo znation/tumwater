@@ -3,7 +3,7 @@
  * tests within one file run sequentially, while each test FILE gets its own process (and its
  * own PATH, which fakePi's global PATH swap requires). The slices are balanced by measured
  * per-test duration (~51 s and ~43 s at 2026-09-25); keep them roughly equal when moving
- * tests between the files. The landing-merge-conflict tests live in their own topic file,
+ * tests between the files. The merge-conflict tests live in their own topic file,
  * loop-merge-conflicts.test.ts (2026-09-29). */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ import { mergeRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/loop-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -29,7 +29,7 @@ import { assistantLine } from "./fixtures/pi-events.js";
 // no evidence about the backend.
 test("a leftover whose pin cannot be written ends the tick in error and stays on the branch", async () => {
   const repo = await initializedRepo();
-  // Same crash shape as above: a commit on the role branch, no landing ref written.
+  // Same crash shape as above: a commit on the role branch, no merge ref written.
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "unpinned.txt"), "committed but unpinned\n");
   sh(wt, "git", "add", "-A");
@@ -54,7 +54,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
     assert.equal(outcome.recoveredLeftover, true, "the error is recovery bookkeeping, not the model's");
     assert.ok(!fs.existsSync(ran), "no pi run: the tick ended before any authoring run");
     // The commit stays on the branch (invariant 1: nothing lost) and nothing was queued —
-    // the pin never took, so no landing entry can hold it.
+    // the pin never took, so no merge entry can hold it.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
     assert.equal(await refSha(repo, mergeRefName("improve")), null, "no pin was written");
     assert.equal(queueDepth(repo), 0, "nothing was queued without a pin");
@@ -137,10 +137,10 @@ test("a user-aborted tick discards work, backs off, and does not resume", async 
     const outcome = await tick;
     assert.equal(outcome.result, "user_aborted");
 
-    // The work is discarded: nothing lands on main and the planted dirty file is gone from
+    // The work is discarded: nothing merges on main and the planted dirty file is gone from
     // the worktree (reset --hard + clean -fd), so the next tick's leftover recovery finds
     // nothing to salvage.
-    assert.equal(mainSha(repo), before, "nothing lands on main");
+    assert.equal(mainSha(repo), before, "nothing merges on main");
     const wt = roleWt(repo, "improve");
     assert.ok(!fs.existsSync(path.join(wt, "partial.txt")), "the half-done edit is discarded");
     assertClean(wt, "no uncommitted edits remain");
@@ -197,12 +197,12 @@ test("a user-abort mid-review discards the committed work too", async () => {
   const repo = await initializedRepo();
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
   // VERDICT): hang until the abort kills it — simulating `tumwater abort` while under review.
-  // Since merge queue 3/5 the gate runs in the LANDING, not the tick: the abort below hits
-  // the landing's signal (the same wiring the orchestrator's pipeline hands its vets). At the
-  // loop level an aborted landing KEEPS the pin — the drain adds the deliberate-stop ref
+  // Since merge queue 3/5 the gate runs in the MERGE, not the tick: the abort below hits
+  // the merge's signal (the same wiring the orchestrator's pipeline hands its verifications). At
+  // the loop level an aborted merge KEEPS the pin — the drain adds the deliberate-stop ref
   // deletion on top (pinned in the orchestrator tests). The queue entry itself is dropped:
   // retry rides the pin, never the queue.
-  await runAbortedDirectorLanding(repo);
+  await runAbortedDirectorMerge(repo);
 });
 
 test("a failing director tick re-queues the user prompt (regression)", async () => {
@@ -282,7 +282,7 @@ test("a tick timeout that fires on a run still making progress is resumed like a
       const outcome = await runner.tick();
       assert.equal(outcome.result, "quiet_killed");
       assert.match(runner.state.lastError ?? "", /timed out .* making progress/);
-      assert.equal(mainSha(repo), before, "nothing landed on main");
+      assert.equal(mainSha(repo), before, "nothing merged on main");
       assert.equal(runner.state.resumePending, true, "the slow run's session is resumed, not discarded");
       assert.equal(runner.state.resumeCause, "timeout");
       assert.ok(

@@ -1,7 +1,7 @@
-/** The loop e2e suite's leftover-recovery slice — how a committed-but-unlanded change (the
- * landing pin) is recovered by a later tick: re-landed through the gate, dropped with an
+/** The loop e2e suite's leftover-recovery slice — how a committed-but-unmerged change (the
+ * merge pin) is recovered by a later tick: re-merged through the gate, dropped with an
  * author-facing reason once it exhausts the merge-conflict cap, or failed closed so a
- * shutdown mid-landing survives for next-start recovery. Extracted from loop-3.test.ts
+ * shutdown mid-merge survives for next-start recovery. Extracted from loop-3.test.ts
  * (2026-09-29) so the topic has a name instead of nine rows in a numbered grab-bag. The
  * suite's slices run one test FILE per process (each file gets its own process and PATH,
  * which fakePi's global PATH swap requires — see loop-3.test.ts's header), so this file
@@ -22,14 +22,14 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
-import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
+import { makeLoopRunner, roleWt, runAbortedDirectorMerge } from "./fixtures/loop-fixtures.js";
 import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Simulate an interrupted tick's leftover — the crash state every test in this file starts
  * from: detach, commit work main does not contain, return to main, and pin the commit with the
- * role's landing ref — the on-disk state a shutdown between the tick's commitAll and its
- * landing leaves. Returns the pinned sha. */
+ * role's merge ref — the on-disk state a shutdown between the tick's commitAll and its
+ * merge leaves. Returns the pinned sha. */
 async function pinLeftover(
   repo: string,
   file: string,
@@ -44,16 +44,16 @@ async function pinLeftover(
 import { conflictingMainEdit, firstRunThenIdle, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
 // The crash path of plans/merge-queue.md invariant 7: a shutdown between the tick's commitAll
-// and its landing leaves the pin on disk (the branch is already reset to main). The next tick
-// must re-land that sha through the SAME gate — reviewed, never smuggled in unreviewed.
-test("a landing pin left behind by an interrupted tick is re-landed through the gate on the next tick", async () => {
+// and its merge leaves the pin on disk (the branch is already reset to main). The next tick
+// must re-merge that sha through the SAME gate — reviewed, never smuggled in unreviewed.
+test("a merge pin left behind by an interrupted tick is re-merged through the gate on the next tick", async () => {
   const repo = await initializedRepo();
-  // Simulate the crash: a commit not contained in main, pinned by the landing ref, with the
+  // Simulate the crash: a commit not contained in main, pinned by the merge ref, with the
   // role branch back at main.
   const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted tick's commit");
 
-  // The next tick's recovery puts the pin on the land queue; the landing slot re-lands it
-  // through the full gate: approve → land. The authoring branch would make a change, so a tick
+  // The next tick's recovery puts the pin on the merge queue; the merge slot re-merges it
+  // through the full gate: approve → merge. The authoring branch would make a change, so a tick
   // that authored instead of ending on the recovery would show up as a second queued entry.
   const authored = path.join(tmpdir(), "authored");
   await withPi(
@@ -67,13 +67,13 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
       const runner = makeLoopRunner(repo, "improve");
       const outcome = await runner.tick();
 
-      // Land-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
-      // changed tick and never lands it itself.
+      // Merge-queue speed 3c — main has one writer: the tick QUEUES the leftover like a fresh
+      // changed tick and never merges it itself.
       assert.equal(outcome.result, "queued");
       assert.equal(outcome.commit, sha);
       assert.equal(outcome.summary, "recovered leftover work from improve: interrupted tick's commit");
       assert.ok(!fs.existsSync(authored), "the recovery tick ran no authoring pass");
-      assert.notEqual(mainSha(repo), sha, "nothing landed inside the tick");
+      assert.notEqual(mainSha(repo), sha, "nothing merged inside the tick");
       const tickEvents = readEvents(repo);
       assert.deepEqual(
         tickEvents.filter((e) => e.type === "merge_queued").map((e) => e.commit),
@@ -83,11 +83,11 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
       assert.equal(tickEvents.filter((e) => e.type === "merged").length, 0, "no in-tick merged");
       assert.equal(queueDepth(repo), 1);
       assert.equal(headMerge(repo)?.entry.sha, sha);
-      // The interlock state the orchestrator reads: the queued summary waits for the landing.
+      // The interlock state the orchestrator reads: the queued summary waits for the merge.
       assert.equal(runner.state.queuedSummary?.sha, sha);
 
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
-      // The interrupted work landed on main via recovery — reviewed, not smuggled in.
+      // The interrupted work merged on main via recovery — reviewed, not smuggled in.
       assert.equal(mainSha(repo), sha);
       assert.ok(fs.existsSync(path.join(repo, "crash.txt")), "the recovered file is on main");
       const merged = eventsOfType(repo, "merged");
@@ -97,13 +97,13 @@ test("a landing pin left behind by an interrupted tick is re-landed through the 
         ),
         "recovery is recorded as a merge of the leftover work, naming its subject",
       );
-      assert.ok(!mergeRefExists(repo, "improve"), "the pin was deleted once the work landed");
+      assert.ok(!mergeRefExists(repo, "improve"), "the pin was deleted once the work merged");
     },
   );
 });
 
-// A pin whose every landing ended in a conflict the resolver could not settle used to re-queue
-// forever once recovery stopped landing in-tick (3c): the role never authored again. At
+// A pin whose every merge ended in a conflict the resolver could not settle used to re-queue
+// forever once recovery stopped merging in-tick (3c): the role never authored again. At
 // MERGE_CONFLICT_LIMIT recovery hands the pin back to its author: the diff is re-applied over
 // current main with the markers in place, and the author resolves them in the same tick
 // (PLANS.md "Robust conflict landing, part 2/2").
@@ -196,7 +196,7 @@ test("a pin at the cap whose lineage already used its hand-back is discarded and
 
 // A persisted hand-back whose diff cannot be re-applied at all — the object is gone, or the apply
 // fails for a reason other than a conflict — is dropped rather than retried every tick: the
-// landing ref goes with it, the failure is logged, and the author starts fresh on current main.
+// merge ref goes with it, the failure is logged, and the author starts fresh on current main.
 test("a hand-back whose diff no longer applies is dropped and the author starts fresh", async () => {
   const repo = await initializedRepo();
   const missing = "0".repeat(40);
@@ -226,7 +226,7 @@ test("a hand-back whose diff no longer applies is dropped and the author starts 
   );
 });
 
-// BUGS.md 2026-09-19: recovery re-landed a high-friction commit without its flag (and its body),
+// BUGS.md 2026-09-19: recovery re-merged a high-friction commit without its flag (and its body),
 // so the reviewer skipped the extra scrutiny the flag exists to trigger. Both are already stamped
 // into the pinned commit's message; recovery must read them back and present them to the same
 // gate a fresh tick uses.
@@ -242,7 +242,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
       "tumwater(improve): slow but worthwhile",
       "",
       "WHY: the fix was fiddly",
-      "RISK: touches the landing path",
+      "RISK: touches the merge path",
       "VERIFIED: npm test, all pass",
       "",
       "Run: improve #3 · turns 44 · ctx 20.0k",
@@ -267,15 +267,15 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
       const prompt = fs.readFileSync(reviewArgs, "utf8");
       assert.match(prompt, /HIGH-FRICTION/, "the recovered commit is flagged for extra scrutiny");
       assert.match(prompt, /WHY: the fix was fiddly/, "the recovered body rides into the gate");
-      assert.equal(mainSha(repo), sha, "the recovered commit landed");
+      assert.equal(mainSha(repo), sha, "the recovered commit merged");
     },
   );
 });
 
 // A director tick dequeues its user prompt before recovery runs; a tick that ends on the
 // recovery never ran that prompt, so it must go back to the inbox — the same policy as every
-// other unfulfilled director outcome. (A user abort of the queued recovery landing is the
-// landing slot's to handle now: merge-drain.test.ts pins that it discards the pin.)
+// other unfulfilled director outcome. (A user abort of the queued recovery merge is the
+// merge slot's to handle now: merge-drain.test.ts pins that it discards the pin.)
 test("a director tick that ends on leftover recovery puts its user prompt back", async () => {
   const repo = await initializedRepo();
   const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");
@@ -284,7 +284,7 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
     enqueuePrompt(repo, "important request");
     const runner = makeLoopRunner(repo, "director");
     const outcome = await runner.tick();
-    assert.equal(outcome.result, "queued", "the director's leftover went on the land queue");
+    assert.equal(outcome.result, "queued", "the director's leftover went on the merge queue");
     assert.equal(headMerge(repo)?.entry.sha, sha);
     assert.ok(!fs.existsSync(ran), "no pi run: the prompt was never executed");
     assert.equal(inboxSize(repo), 1, "the prompt is back in the inbox");
@@ -293,19 +293,19 @@ test("a director tick that ends on leftover recovery puts its user prompt back",
 });
 
 // The no-pin crash window: a shutdown between the tick's commitAll and its pin write leaves the
-// commit on the role branch with NO landing ref. Recovery must fall back to the branch tip so
-// invariant 1 (a shutdown between commit and landing loses nothing) holds whether or not the
+// commit on the role branch with NO merge ref. Recovery must fall back to the branch tip so
+// invariant 1 (a shutdown between commit and merge loses nothing) holds whether or not the
 // pin survived.
 test("an unpinned commit ahead of main is recovered from the branch tip", async () => {
   const repo = await initializedRepo();
-  // Simulate the crash: a commit on the role branch, no landing ref written.
+  // Simulate the crash: a commit on the role branch, no merge ref written.
   const wt = await ensureWorktree(repo, "improve", "main");
   fs.writeFileSync(path.join(wt, "unpinned.txt"), "committed but unpinned\n");
   sh(wt, "git", "add", "-A");
   sh(wt, "git", "commit", "-m", "the pin write never happened");
   const sha = headSha(wt);
 
-  // The next tick's recovery finds no ref but a branch ahead of main: it re-lands the tip.
+  // The next tick's recovery finds no ref but a branch ahead of main: it re-merges the tip.
   await withPi(
     [
       APPROVE_PI,
@@ -318,7 +318,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
 
-      // The unpinned work landed on main via recovery — reviewed, not smuggled in.
+      // The unpinned work merged on main via recovery — reviewed, not smuggled in.
       assert.equal(mainSha(repo), sha);
       assert.ok(fs.existsSync(path.join(repo, "unpinned.txt")), "the recovered file is on main");
       const merged = eventsOfType(repo, "merged");
@@ -335,7 +335,7 @@ test("an unpinned commit ahead of main is recovered from the branch tip", async 
   );
 });
 
-test("an unmergeable leftover is retried on the next tick and keeps its landing pin", async () => {
+test("an unmergeable leftover is retried on the next tick and keeps its merge pin", async () => {
   const repo = await initializedRepo();
   const m1 = path.join(tmpdir(), "phase1");
   // Phase 0 (any run whose prompt asks for a VERDICT — the review gate, which recovery
@@ -360,14 +360,14 @@ test("an unmergeable leftover is retried on the next tick and keeps its landing 
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
-      // Tick 2: recovery re-queues the pin, and its landing goes through the same gate (the early
-      // approved return — no reviewer run — since the first landing's gate already signed off on
+      // Tick 2: recovery re-queues the pin, and its merge goes through the same gate (the early
+      // approved return — no reviewer run — since the first merge's gate already signed off on
       // this HEAD) and hits the same unresolvable conflict.
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
 
       // merge_conflict is non-terminal: a fresh-context retry may resolve what two consecutive
-      // attempts could not (a bounded attempt count lands with merge queue 3/5; review failures
+      // attempts could not (a bounded attempt count ships with merge queue 3/5; review failures
       // have their own strike cap). The pin survives for the next tick's retry, and main keeps
       // its version either way.
       const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
@@ -399,7 +399,7 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       const runner = makeLoopRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
-      // The landing's commit is pinned for recovery; the role worktree is clean at main.
+      // The merge's commit is pinned for recovery; the role worktree is clean at main.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
       assert.ok(pinned.length === 40, "the failed review's commit is pinned for re-review");
@@ -410,26 +410,26 @@ test("a failed recovery review keeps its pinned commit for re-review", async () 
       // The failed recovery review (under the strike cap) deliberately kept its pin for
       // re-review — a plain ref deletion would have discarded it. The role worktree stays
       // clean at main whatever recovery does, and the reviewer's stray file in the pooled slot
-      // is cleaned by the next landing's lease (the slot's ensureDetachedWorktree reset).
+      // is cleaned by the next merge's lease (the slot's ensureDetachedWorktree reset).
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
       const wt = roleWt(repo, "improve");
       assert.ok(!fs.existsSync(path.join(wt, "stray.txt")), "no stray file in the role worktree");
       assertClean(wt, "no uncommitted edits remain");
-      const landWt = path.join(repo, ".tumwater/worktrees/_slot-1");
-      assert.ok(!fs.existsSync(path.join(landWt, "stray.txt")), "the reviewer's stray file is cleaned on re-landing");
+      const mergeWt = path.join(repo, ".tumwater/worktrees/_slot-1");
+      assert.ok(!fs.existsSync(path.join(mergeWt, "stray.txt")), "the reviewer's stray file is cleaned on re-merge");
       const failed = eventsOfType(repo, "review_failed");
       assert.equal(failed.length, 2, "both the tick's review and its recovery review failed");
       assert.ok(
         failed.some((e) => String(e.message).includes('no parseable VERDICT')),
         `expected a verdict-less review failure, got: ${JSON.stringify(failed)}`,
       );
-      // Tick 2's own result was `queued`; the first landing's review failure (still in the shared
+      // Tick 2's own result was `queued`; the first merge's review failure (still in the shared
       // `lastError` when tick 2 started) must not latch onto its `run_end` as the tick's error
-      // (BUGS.md 2026-09-21). The review_failed events above are where the landing failures live.
+      // (BUGS.md 2026-09-21). The review_failed events above are where the merge failures live.
       const tickEnds = eventsOfType(repo, "run_end");
       const tick2End = tickEnds[tickEnds.length - 1]!;
       assert.equal(tick2End.result, "queued");
-      assert.equal(tick2End.error, undefined, "a healthy tick's run_end carries no stale landing error");
+      assert.equal(tick2End.error, undefined, "a healthy tick's run_end carries no stale merge error");
     },
   );
 });
@@ -454,14 +454,14 @@ test("a persistent recovery review failure feeds the error streak and reads fail
       assert.equal((await runner.tick()).result, "queued");
       assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
 
-      // Each following tick re-queues the still-pinned commit, and its landing's review fails
+      // Each following tick re-queues the still-pinned commit, and its merge's review fails
       // again. The ticks themselves end `queued` — healthy on their face — so only the re-queued
-      // landing failure they carry can grow the streak.
+      // merge failure they carry can grow the streak.
       for (let i = 0; i < ERROR_STREAK_WARN; i++) {
         assert.equal((await runner.tick()).result, "queued", "the tick re-queued the leftover");
         assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "review_error");
       }
-      assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the landing failures fed the error streak");
+      assert.equal(runner.state.consecutiveErrors, ERROR_STREAK_WARN, "the merge failures fed the error streak");
 
       // One warning names the stuck gate, carrying the review failure's own reason (the detail
       // is not in lastError, which the sibling mislabel fix clears before run_end).
@@ -507,7 +507,7 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
       assert.equal(await mergeHead(repo, runner, config, "improve"), "review_error");
       assert.equal(runner.state.mergeReviewError?.selector, "bad/model", "the hold names the failed reviewer selector");
 
-      // The next tick holds the pin: no re-queue and no second landing (which would pay another
+      // The next tick holds the pin: no re-queue and no second merge (which would pay another
       // full gate check for a request that can never succeed), and an error outcome so the loop
       // backs off on the error ladder instead of re-queuing at suite speed.
       assert.equal((await runner.tick()).result, "error", "the held tick backs off instead of re-queuing");
@@ -531,11 +531,11 @@ test("a permanent reviewer config error holds the pin instead of re-queuing it",
   );
 });
 
-test("a shutdown mid-landing fails closed: the pinned commit survives for next-start recovery", async () => {
+test("a shutdown mid-merge fails closed: the pinned commit survives for next-start recovery", async () => {
   const repo = await initializedRepo();
   // Author run (the tick prompt): make a change and finish. Review run (its prompt contains
-  // VERDICT): hang until the abort kills it — simulating Ctrl+C while the LANDING is under
-  // review. Since merge queue 3/5 the gate runs in the landing, not the tick, so the
-  // shutdown hits the landing's signal — the same wiring the orchestrator's pipeline uses.
-  await runAbortedDirectorLanding(repo);
+  // VERDICT): hang until the abort kills it — simulating Ctrl+C while the MERGE is under
+  // review. Since merge queue 3/5 the gate runs in the merge, not the tick, so the
+  // shutdown hits the merge's signal — the same wiring the orchestrator's pipeline uses.
+  await runAbortedDirectorMerge(repo);
 });

@@ -154,7 +154,7 @@ test("applyRevision resets to clean main when the rejected commit no longer exis
 });
 
 test("applyWithConflicts resets to main when the cherry-pick fails without conflicts", async () => {
-  const { root, sha } = commitOffMain("landed.ts", "export const merged = true;\n", "work main already has");
+  const { root, sha } = commitOffMain("merged.ts", "export const merged = true;\n", "work main already has");
   // main fast-forwards onto the same commit, so merge-base is the commit itself and the
   // `base..sha` range is empty: cherry-pick fails with no unmerged paths. Unlike the
   // bogus-sha case above (which fails at merge-base), this reaches the picked===null arm.
@@ -247,7 +247,7 @@ test("a chain whose objections never repeat ends at the backstop", async () => {
 test("exhausting a revision still records the outcome when the events feed is unwritable", async () => {
   // recordRejectedChange (merge-core.ts) deletes the rejected ref and clears the round, then
   // logs the exhaustion LAST. An EISDIR on that append must not turn the terminal exhaustion
-  // into a thrown vet error after the ref is already gone.
+  // into a thrown verification error after the ref is already gone.
   await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {
     const { root, sha } = await pinnedFixture();
     const state = freshLoopState(ROLE);
@@ -271,7 +271,7 @@ test("exhausting a revision still records the outcome when the events feed is un
 
 test("a permanent reviewer config error still holds the pin when the events feed is unwritable", async () => {
   // reviewPinnedChange's configError branch records the hold and then warns; an EISDIR on that
-  // warning must not turn the designed held-pin "review_error" into a thrown vet error.
+  // warning must not turn the designed held-pin "review_error" into a thrown verification error.
   const configErrorPi = `for a in "$@"; do case "$a" in *"VERDICT:"*) printf '%s\\n' '400 model_not_supported' >&2; exit 1;; esac; done`;
   await withPi(configErrorPi, async () => {
     const { root, sha } = await pinnedFixture();
@@ -508,7 +508,7 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
 
   assert.equal(recovered?.kind, "enqueued");
   assert.equal(recovered?.kind === "enqueued" ? recovered.entry.revisionRound : undefined, 1);
-  // A recovery landing carries no prior review: the re-review sees it like a fresh change
+  // A recovery merge carries no prior review: the re-review sees it like a fresh change
   // (plans/revise-rejected.md part 2/2).
   assert.equal(recovered?.kind === "enqueued" ? recovered.entry.priorReview : undefined, undefined);
 });

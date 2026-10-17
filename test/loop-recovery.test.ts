@@ -47,7 +47,7 @@ function makeCtx(root: string, role = "improve", mainBranch = "main") {
   return { ctx, pending, state, warns, failures };
 }
 
-test("pinAndResetPhase warns and leaves the commit when the landing-ref write fails", async () => {
+test("pinAndResetPhase warns and leaves the commit when the merge-ref write fails", async () => {
   const root = tmpdir();
   const { ctx, warns } = makeCtx(root);
   // A plain temp dir is not a git repo, so setRef's update-ref cannot write the pin: the phase

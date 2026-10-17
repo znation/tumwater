@@ -87,7 +87,7 @@ test("a fresh run takes the assembled prompt and derives the restart cause", () 
   assert.equal(p.resumeCause, "restart");
   assert.equal(p.prompt, "assembled run prompt");
   assert.equal(p.userPrompt, null);
-  assert.equal(p.priorLandingFailure, undefined);
+  assert.equal(p.priorMergeFailure, undefined);
   // The flags are consumed even on the fresh path, so a stale record never survives.
   assert.equal(s.resumePending, false);
   assert.equal(s.resumeCause, undefined);
@@ -462,14 +462,14 @@ test("a retriable merge failure feeds the error streak; other lastResults do not
   const s = state({ lastResult: "merge_conflict", lastError: "conflict in src/x.ts" });
   const p = plan(dir, s);
   assert.ok(p);
-  assert.equal(p.priorLandingFailure, "conflict in src/x.ts");
+  assert.equal(p.priorMergeFailure, "conflict in src/x.ts");
   assert.equal(s.lastError, undefined, "lastError must be cleared once captured");
 
   const noDetail = state({ lastResult: "review_error" });
-  assert.equal(plan(dir, noDetail)?.priorLandingFailure, "merge failed: review_error");
+  assert.equal(plan(dir, noDetail)?.priorMergeFailure, "merge failed: review_error");
 
   const merged = state({ lastResult: "changed", lastError: "stale" });
-  assert.equal(plan(dir, merged)?.priorLandingFailure, undefined);
+  assert.equal(plan(dir, merged)?.priorMergeFailure, undefined);
   assert.equal(merged.lastError, undefined);
 });
 

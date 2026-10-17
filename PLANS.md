@@ -21,35 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 7/11: Rename the merge identifiers in the loop modules (planned 2026-10-16 by user; requires part 6/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ and test/loop*.test.ts and their fixtures)
-
-**Goal.** The runner modules' merge-related identifiers, comments and test names say merge, including the pi-wiring methods the merge pipeline calls. The later code-runner series turns loop into runner. A mechanical rename of about 490 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
-  - comments, test names and assertion messages follow the Glossary;
-  - comment lines wrap at 100 columns.
-  - Leave loop and tick alone (later series).
-- **Methods and members, renamed at every use.** They are members, so they cannot be aliased.
-  - `runLandingPi` → `runMergePi` and `foldLandingUsage` → `foldMergeUsage`: the runner's methods in loop.ts, the pi host in loop-pi.ts (including the `foldLandingUsage` wiring member), and their callers in src/merge/merge-drain.ts, merge-verify.ts, merge-slot.ts and src/tick/, which earlier parts left.
-  - The parameter `priorLandingFailure` → `priorMergeFailure`: loop-recovery.ts, loop-tick.ts, src/tick/tick-resume.ts and its test.
-- **Fixtures and tests:** `runAbortedDirectorLanding` → `runAbortedDirectorMerge` (test/fixtures/loop-fixtures.ts), `landingFoldProviders` → `mergeFoldProviders` (test/fixtures/loop-pi-fixtures.ts), `aLanded` → `aMergeDone`, `aLandEndAt` → `aMergeEndAt`, `landed` → `mergeDone`.
-- **Move off the aliases.** These files still use aliases from parts 2–6, such as `enqueueMerge`, `queuedMerges`, `mergeRefName`, `stageTickMerge`, `applyMergeOutcome`, `MERGE_CHECK_FAILURE_LIMIT`, `verifyRequest`, `MergerContext` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - legacy readers;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/loop/` (loop.ts, loop-pi.ts, loop-tick.ts, loop-recovery.ts, loop-state.ts, leftover.ts, revision.ts); `test/fixtures/loop-fixtures.ts`, `test/fixtures/loop-pi-fixtures.ts`; `test/loop*.test.ts`, `test/leftover.test.ts`, `test/revision.test.ts`; the method-call lines in `src/merge/merge-drain.ts`, `merge-verify.ts`, `merge-slot.ts`, `src/tick/tick-stage.ts`, `tick-timing.ts`, `tick-resume.ts`, `test/tick-resume.test.ts`.
-
-**Acceptance criteria.**
-- `git grep -nE 'runLandingPi|foldLandingUsage|priorLandingFailure|runAbortedDirectorLanding|landingFoldProviders' -- src test` prints nothing.
-- In src/loop/ and its tests, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 8/11: Rename the merge identifiers in the orchestrator and scheduling modules (planned 2026-10-16 by user; requires part 7/11 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ src/scheduling/ and their tests and fixtures)
 
 **Goal.** The orchestrator's and the scheduler's merge-related identifiers, comments and test names say merge. A mechanical rename of about 420 lines with no behavior change.
@@ -1263,6 +1234,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Both new tests pass, and the first one would fail if a case were removed.
 - `npm run test` passes.
 
+### Plain terms code merge, part 7/11: Rename the merge identifiers in the loop modules (planned 2026-10-16 by user; requires part 6/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ and test/loop*.test.ts and their fixtures, done 2026-10-16)
+
+**Goal.** The runner modules' merge-related identifiers, comments and test names say merge, including the pi-wiring methods the merge pipeline calls. The later code-runner series turns loop into runner. A mechanical rename of about 490 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+  - Leave loop and tick alone (later series).
+- **Methods and members, renamed at every use.** They are members, so they cannot be aliased.
+  - `runLandingPi` → `runMergePi` and `foldLandingUsage` → `foldMergeUsage`: the runner's methods in loop.ts, the pi host in loop-pi.ts (including the `foldLandingUsage` wiring member), and their callers in src/merge/merge-drain.ts, merge-verify.ts, merge-slot.ts and src/tick/, which earlier parts left.
+  - The parameter `priorLandingFailure` → `priorMergeFailure`: loop-recovery.ts, loop-tick.ts, src/tick/tick-resume.ts and its test.
+- **Fixtures and tests:** `runAbortedDirectorLanding` → `runAbortedDirectorMerge` (test/fixtures/loop-fixtures.ts), `landingFoldProviders` → `mergeFoldProviders` (test/fixtures/loop-pi-fixtures.ts), `aLanded` → `aMergeDone`, `aLandEndAt` → `aMergeEndAt`, `landed` → `mergeDone`.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `enqueueMerge`, `queuedMerges`, `mergeRefName`, `stageTickMerge`, `applyMergeOutcome`, `MERGE_CHECK_FAILURE_LIMIT`, `verifyRequest`, `MergerContext` and `ApprovedMerge`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - legacy readers;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/loop/` (loop.ts, loop-pi.ts, loop-tick.ts, loop-recovery.ts, loop-state.ts, leftover.ts, revision.ts); `test/fixtures/loop-fixtures.ts`, `test/fixtures/loop-pi-fixtures.ts`; `test/loop*.test.ts`, `test/leftover.test.ts`, `test/revision.test.ts`; the method-call lines in `src/merge/merge-drain.ts`, `merge-verify.ts`, `merge-slot.ts`, `src/tick/tick-stage.ts`, `tick-timing.ts`, `tick-resume.ts`, `test/tick-resume.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'runLandingPi|foldLandingUsage|priorLandingFailure|runAbortedDirectorLanding|landingFoldProviders' -- src test` prints nothing.
+- In src/loop/ and its tests, no identifier, comment or test name uses a retired merge word, except quoted backlog titles and legacy names.
+- `npm run test` passes.
+
 ### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits) (done 2026-10-16)
 
 **Goal.** When a merge moves main's lockfile, `syncRootInstall` (`src/build/dep-install.ts`) re-installs the root checkout. If that install fails, it logs a `dep_install` event with `status: "failed"` plus a warning, and only tries again when a later merge calls it. Until then, every gate and merge check finds the drift through `installDrift` and runs its own `npm install` into its own tree. Each check pays for an install, and nothing tells the operator the root is behind. `src/build/dep-install.ts` and `src/events/event-format.ts` are the only places that reference `dep_install` or `installDrift` today, so no doctor row, alert, or report reads either one. Add a doctor row that checks the root live and names the fix.
@@ -1312,6 +1312,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - two qualifying events of 40 000 and 100 000 ms give a median of `40s` (the lower median).
 - test/doctor-checks.test.ts: for a repo with a declared npm `test` script and two passed `merge`-scope `build_check` events written with `logEvent`, `checkBuildCheck(root)` returns level `ok` with a detail that starts `npm test · passing merge checks in the last 24h took` and ends `(2 runs)`. The existing "checkBuildCheck names the declared script and walks up from a worktree to the installed root" test passes unchanged; its repos log no events.
 - `npm run test` passes.
+
 
 ### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit) (done 2026-10-16)
 

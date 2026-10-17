@@ -244,7 +244,7 @@ test("loadLoopState heals corrupt numeric fields inside nested records", () => {
   assert.equal(s.conflictDiscard?.at, 0);
   assert.equal(s.conflictHandback?.at, 0);
   assert.equal(s.conflictHandback?.round, 0);
-  assert.equal(s.conflictHandback?.reason, "merge", "an old build's landing reason loads as merge");
+  assert.equal(s.conflictHandback?.reason, "merge", "an old build's merge reason loads as merge");
   assert.equal(s.mergeCheckFailures?.count, 0);
   assert.equal(s.modelFallback?.failures, 0);
   assert.equal(s.modelFallback?.since, 0);
@@ -284,7 +284,7 @@ test("loadLoopState drops a nested record that is not a plain object, keeping re
   const dir = tmpdir();
   const file = statePath(dir, "torn");
   ensureParentDir(file);
-  // A scalar/array in a nested slot would throw on the first property write (landing-core
+  // A scalar/array in a nested slot would throw on the first property write (merge-core
   // sets lastReview.exhausted; tick-apply adds to mergeConflicts.count), so it reads as absent
   // — the same no-data policy readJsonFile applies to the file as a whole.
   fs.writeFileSync(
@@ -464,7 +464,7 @@ test("loadLoopState keeps `runs` and drops `ticks` when a file holds both", () =
   assert.equal("ticks" in s, false);
 });
 
-test("loadLoopState maps the five legacy tick and landing keys, healing each as before", () => {
+test("loadLoopState maps the five legacy tick and merge keys, healing each as before", () => {
   const dir = tmpdir();
   const file = statePath(dir, "qa");
   ensureParentDir(file);

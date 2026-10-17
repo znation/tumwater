@@ -74,8 +74,8 @@ test("a 429 run folds its seam hold key (the provider it ran on), not just the r
   }
 });
 
-test("a 429 on a non-default reviewer seam folds that seam's hold key through foldLandingUsage", async () => {
-  // The reviewer case: the gate's reviewer run folds through foldLandingUsage (authoring
+test("a 429 on a non-default reviewer seam folds that seam's hold key through foldMergeUsage", async () => {
+  // The reviewer case: the gate's reviewer run folds through foldMergeUsage (authoring
   // false), and its config is the review seam — so the storm it ends on holds that seam's
   // key, not the pi author's default provider. (With a claude reviewer this is `claude`;
   // the omlx seam here proves the mechanism on the fake-pi backend.)
@@ -89,7 +89,7 @@ test("a 429 on a non-default reviewer seam folds that seam's hold key through fo
     cfg.agent = "pi";
     cfg.provider = "omlx";
     cfg.model = "qwen";
-    const { loopPi, landingUsage, landingFoldProviders } = makeHost(root, cfg);
+    const { loopPi, mergeUsage, mergeFoldProviders } = makeHost(root, cfg);
     const result = await loopPi.runGatePi({
       cwd: root,
       kind: "gate",
@@ -102,14 +102,14 @@ test("a 429 on a non-default reviewer seam folds that seam's hold key through fo
       label: "review",
     });
     assert.equal(result.ok, true, "the retry succeeds");
-    assert.equal(landingUsage.length, 1, "the failed attempt folds through foldLandingUsage");
-    assert.deepEqual(landingFoldProviders, ["omlx"], "the reviewer storm folds omlx");
+    assert.equal(mergeUsage.length, 1, "the failed attempt folds through foldMergeUsage");
+    assert.deepEqual(mergeFoldProviders, ["omlx"], "the reviewer storm folds omlx");
   } finally {
     restore();
   }
 });
 
-test("a 429 on a claude reviewer's final run folds the review seam through foldLandingUsage", () => {
+test("a 429 on a claude reviewer's final run folds the review seam through foldMergeUsage", () => {
   // The reviewer's FINAL (retried) run is folded by merge-core.ts's reviewPinnedChange
   // through the mergeUsage fold (src/merge/merge-slot.ts); loop-pi.ts folds only the
   // RETRIED first attempt. That final fold must stamp the REVIEW seam's hold key too — a
@@ -188,11 +188,11 @@ test("a Retry-After hint larger than the cap is waited out only to the cap", asy
 });
 
 test("runGatePi gives the reviewer the same 429 retry, folding only the failed attempt", async () => {
-  // BUGS.md 2026-10-01: review.ts called bare runPi, so a 429 in the landing gate failed the
+  // BUGS.md 2026-10-01: review.ts called bare runPi, so a 429 in the merge gate failed the
   // review on first contact — the gate's runs now take this wiring. The fold split: a RETRIED
   // first attempt is folded here (its spend is otherwise lost, and the fold stamps the
   // team-wide rate-limit hold before the wait), while the FINAL run is folded by the gate's
-  // caller (landing-core's foldUsage of gate.run) — folding it twice would count the reviewer
+  // caller (merge-core's foldUsage of gate.run) — folding it twice would count the reviewer
   // twice.
   const root = tmpdir();
   const args = path.join(root, "args");
@@ -200,7 +200,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
     firstRun: `printf '%s\\n' '${errorLine('429 "Rate limit exceeded" — retry after 3s')}'`,
   });
   try {
-    const { loopPi, warns, usage, landingUsage, sleeps } = makeHost(root);
+    const { loopPi, warns, usage, mergeUsage, sleeps } = makeHost(root);
     const result = await loopPi.runGatePi({
       cwd: root,
       kind: "gate",
@@ -214,7 +214,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
     });
     assert.equal(result.ok, true, "the retry succeeds");
     assert.equal(usage.length, 0, "a reviewer run never folds through the tick's authoring fold");
-    assert.equal(landingUsage.length, 1, "the failed attempt folds through foldLandingUsage; the final run is the caller's");
+    assert.equal(mergeUsage.length, 1, "the failed attempt folds through foldMergeUsage; the final run is the caller's");
     assert.match(warns[0]!, /rate-limited the request \(429, retry after 3s\)/);
     assert.deepEqual(sleeps, [3000], "the hint is waited out before the retry");
     const [firstArgs, retryArgs] = runArgs(args);
