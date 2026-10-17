@@ -88,7 +88,7 @@ test("a due role tick parks, holds a permit, releases it, and folds its duration
   assert.equal(runner.state.running, true, "the reservation is held before the permit");
   assert.ok(typeof runner.state.parkedSince === "number", "a role parks while it waits");
   await settle(c);
-  assert.equal(runner.state.parkedSince, undefined, "parking is cleared when the permit lands");
+  assert.equal(runner.state.parkedSince, undefined, "parking is cleared when the permit arrives");
   assert.equal(runner.state.running, true, "a started tick keeps its reservation");
   assert.equal(c.rolePermitHolders.size, 0, "the permit was released at tick end");
   assert.equal(c.roleInFlight.size, 0, "the finished task left the in-flight bucket");
@@ -180,7 +180,7 @@ test("the probe goes to a runner whose tier resolves to the probed pair, one per
 test("a model-fallback tick folds its breaker evidence into the pair runConfig names, not the primary (PLANS.md 1/2)", async () => {
   // The runner's installed config is the primary (what configForRole would read), but its
   // active model-fallback episode means the tick runs the fallback pair, which runConfig —
-  // the start pass's read — returns. The evidence must land on the fallback breaker; the
+  // the start pass's read — returns. The evidence must end up on the fallback breaker; the
   // primary's must stay untouched.
   const primary = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "paid/gpt", 10);
   const fallback = rekeyFallbackBreaker(IDLE_FALLBACK_BREAKER, "free/qwen", 10);
@@ -248,7 +248,7 @@ test("a probe whose tick starts after the budget reopened has its claim handed b
     reasons: new Map([[runner, "scheduled"]]),
     probePair: "free/qwen",
     probeRoles: new Set(["clean"]),
-    budgetActive: false, // the reopen landed between admission and tick start
+    budgetActive: false, // the reopen arrived between admission and tick start
     gateStates,
   });
   launchDueTicks(c);

@@ -40,7 +40,7 @@ import { orchestratorStatePath } from "../paths.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
-import { WorkLandedCache } from "../scheduling/work-merged-cache.js";
+import { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,
   HANDOFF_MERGE_WINDOW_MS,
@@ -84,19 +84,19 @@ interface RunOptions {
    * this clock instead of sleeping through the real one. Scheduling, tick timing, and gate
    * polling keep the wall clock; only the breaker's probe deadlines move with it. */
   breakerNow?: () => number;
-  /** The restart hand-off's per-phase wait on an in-flight landing (default
+  /** The restart hand-off's per-phase wait on an in-flight merge (default
    * HANDOFF_MERGE_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
    * deadline path resolves quickly. */
-  handoffLandingWindowMs?: number;
+  handoffMergeWindowMs?: number;
   /** Once mode (`tumwater run --once`): give every enabled role at most one tick, wait for
-   * every landing that round produced to merge, then fire the internal stop — the same
+   * every merge that round produced to finish, then fire the internal stop — the same
    * graceful-shutdown path an operator's Ctrl+C takes, so drainInFlightWork drains exactly
    * as it always does. Never self-redeploys: the hand-off machinery stays daemon-only. */
   once?: boolean;
   /** Scope the whole round to this one role (`run --once --role <id>`): the runners map
    * starts with just it, the director never runs, and a mid-round config edit that enables
    * another role does not widen the round (config-live skips runners past the filter). The
-   * land queue still drains fully before exit. cmdRun validates the id against the enabled
+   * merge queue still drains fully before exit. cmdRun validates the id against the enabled
    * set before booting, so an unreachable-without-filter guard upstream is not re-checked. */
   roleFilter?: string;
   /** The `run --for` window's deadline (epoch ms), published in the info file so observers can
@@ -145,15 +145,15 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // Two internal stop controllers ride beside the caller's (Ctrl+C/SIGTERM): internalStop, the
   // graceful shutdown the once-mode exit and the hand-off's deadline abort fire — it cuts role
-  // ticks and landings alike — and internalRoleStop, which ONLY the restart drain fires when it
+  // ticks and merges alike — and internalRoleStop, which ONLY the restart drain fires when it
   // gives up on its permit-holding ROLE ticks (they then end as `aborted`, resumable on the new
   // build, exactly like a shutdown). The split is the point: the drain's abort must not cut off
-  // an in-flight landing, which then never reaches the hand-off window the wait announces
-  // (BUGS.md 2026-09-30: the landing died 13 ms after the warning). So the runners and the timed
-  // tick wrapper watch roleSignal — the full signal PLUS the role-only stop — while the landing
+  // an in-flight merge, which then never reaches the hand-off window the wait announces
+  // (BUGS.md 2026-09-30: the merge died 13 ms after the warning). So the runners and the timed
+  // tick wrapper watch roleSignal — the full signal PLUS the role-only stop — while the merge
   // tasks keep wiring the full signal alone. A director tick is never aborted by either
-  // controller: poll holds for it without a cap, so by the time `restart` lands only role ticks
-  // and the landing can remain.
+  // controller: poll holds for it without a cap, so by the time `restart` takes effect only
+  // role ticks and the merge can remain.
   const internalStop = new AbortController();
   const internalRoleStop = new AbortController();
   const signal = AbortSignal.any([externalSignal, internalStop.signal]);
@@ -165,13 +165,13 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   const launchServicesWatch = opts.once ? null : (opts.launchServicesWatch ?? null);
   // Pressure reclaim (plans/disk-floor.md, part 2/4): one background pass at a time, driven by
   // the disk gate's poll below. In-process state (the use registry) is enough, because this
-  // process is the one that runs ticks and landings.
+  // process is the one that runs ticks and merges.
   const reclaim = new ReclaimController(root);
   let restart = false;
 
-  // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
+  // The shared concurrency cap: role ticks and the merges (each verify, and the merge's conflict
   // resolver — merge-drain.ts) all hold a permit; see its MergePipelineContext for why a
-  // landing is not exempt.
+  // merge is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
   // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
   // §7): a role tick's lease is bounded by its provider key from the first launch onward, not
@@ -203,7 +203,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // an in-process test or a second `tumwater run` probe reads synchronously.)
   await runStartupMigrations(root);
   const runners = enabled.map((role) => new LoopRunner(root, role, config, mainBranch, roleSignal));
-  // Legacy lander checkouts (`_land-<role>`) from a pre-pool build hold nothing now that vets
+  // Legacy merger checkouts (`_land-<role>`) from a pre-pool build hold nothing now that verifies
   // and merges lease pooled slots: remove them once, before any tick, so the retired layout
   // never lingers on disk. (After the info write and start event above, so startup's published
   // state is on disk synchronously for an in-process test or a second `tumwater run` probe.)
@@ -222,10 +222,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
   // In-flight tasks, split by who requested them: the redeploy drain caps role ticks at its
   // window but waits for a director tick without one — an explicit human prompt outranks the
-  // self-redeploy (BUGS.md 2026-09-08). The landing tasks are deliberately OUTSIDE this split:
-  // in-process tasks (the vets and the one merge, since 2026-09-18 under the same maxConcurrent
+  // self-redeploy (BUGS.md 2026-09-08). The merge tasks are deliberately OUTSIDE this split:
+  // in-process tasks (the verifies and the one merge, since 2026-09-18 under the same maxConcurrent
   // permits as role ticks) that shutdown still awaits — to the end on an operator stop, and for a
-  // bounded hand-off on a restart (drainInFlightWork) — an aborted landing keeps its ref and
+  // bounded hand-off on a restart (drainInFlightWork) — an aborted merge keeps its ref and
   // drops its entry, recovering on next start. roleInFlight holds every RESERVED role tick
   // (permit holders and waiters parked in the semaphore queue alike), since shutdown awaits
   // both; what the restart drain waits on, aborts, and reports as abortedTicks is only
@@ -242,9 +242,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // long-running team's memory stays flat; aborted ticks are
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
   const roleTickDurationsMs: number[] = [];
-  // Every landing task (merge-drain.ts's MergePipeline): the vetting stage's tasks, the
-  // changes they vetted, and the merge slot.
-  const landings = newMergePipeline();
+  // Every merge task (merge-drain.ts's MergePipeline): the verification stage's tasks, the
+  // changes they approved, and the merge slot.
+  const merges = newMergePipeline();
 
   // Once-mode bookkeeping (`tumwater run --once`) — the tick-count snapshot, the per-role
   // settle reasons, and the quiet-poll exit rule — lives in src/scheduling/once-round.ts.
@@ -272,9 +272,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // the resolved branch. One warning per episode, re-armed when the checkout returns.
   let warnedBranchDivergence = false;
 
-  // Need-based deferral: whether qualifying work has landed
+  // Need-based deferral: whether qualifying work has merged
   // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
-  const workLandedSince = new WorkLandedCache(root, mainBranch);
+  const workMergedSince = new WorkMergedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
   // logs exactly once — on the transition in, never while merely not-due and never on exit.
@@ -340,8 +340,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       consumeWakeRequest(root, runners);
       consumeRestartRequest(root, redeploy);
       consumeReclaimRequest(root, reclaim);
-      consumeAbortRequests(root, runners, abortableMerges(landings));
-      await settleAbortedApproved(root, landings);
+      consumeAbortRequests(root, runners, abortableMerges(merges));
+      await settleAbortedApproved(root, merges);
 
       // branchHead reads the ref files first (microsecond-scale; this runs every poll) and
       // spawns `git rev-parse` only when they cannot resolve it. "" means main does not exist
@@ -368,7 +368,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       // hold, and the two observational storm alarms. The family's cross-poll memory lives
       // in gateStates, advanced in place; this returns this poll's verdicts for the
       // scheduling and start passes. The failure hold is deliberately not among them — the
-      // start gate and the landings' startHeld read the LATEST poll's verdict at permit
+      // start gate and the merges' startHeld read the LATEST poll's verdict at permit
       // time from gateStates.teamHold, so a waiter granted its permit after later polls
       // ran meets the hold as it stands then, not as this poll left it.
       const {
@@ -408,7 +408,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
       // The failure hold, keyed per provider (PLANS.md 2026-10-05): a role is held when ITS
       // tick model's provider stands under a hold, and every role is held when the
-      // reviewer's provider is (with the review gate on, nothing could land — and the land
+      // reviewer's provider is (with the review gate on, nothing could merge — and the merge
       // queue below reads the same reviewHeld verdict). Key presence in the map is relapse
       // memory, not a hold: heldProviders() reads only standing holds (`until` non-null),
       // so a lifted hold never keeps blocking. Read fresh from gateStates.teamHold — the
@@ -427,7 +427,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
 
       // Self-redeploy (src/redeploy/redeployer.ts): with main's head in hand, let the state
       // machine observe it. `hold` starts no new ticks at all — director included; a restart
-      // lands within the drain's window plus a bounded landing hand-off, and its prompt waits
+      // takes effect within the drain's window plus a bounded merge hand-off, and its prompt waits
       // in the inbox for the new build — while the green check/compile/drain run in the
       // background. That covers ticks
       // reserved before the hold too: a waiter parked in the semaphore queue that is granted a
@@ -457,8 +457,8 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           // Only permit holders have a pi run to cut off (the director is guaranteed finished by
           // then): a parked waiter meets the closed start gate whenever the shutdown hands it a
           // permit, so it needs no abort — and aborting for it alone would also cut off an
-          // in-flight landing that no permit-holding tick put at stake. The role-only controller
-          // keeps that promise: the landing, wired to the full signal, runs on into the hand-off
+          // in-flight merge that no permit-holding tick put at stake. The role-only controller
+          // keeps that promise: the merge, wired to the full signal, runs on into the hand-off
           // window the wait announces (BUGS.md 2026-09-30).
           if (rolePermitHolders.size > 0) internalRoleStop.abort();
           break;
@@ -466,10 +466,10 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         holdForRestart = action === "hold";
       }
 
-      // Merge queue 3/5 — drain the durable land queue while neither a restart nor a failure
-      // hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the vetting
-      // stage, its merge slot, and the dedupe against main). A held poll starts no vet and no
-      // merge, exactly as it starts no tick; what is already in flight runs on, and a vet
+      // Merge queue 3/5 — drain the durable merge queue while neither a restart nor a failure
+      // hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the verification
+      // stage, its merge slot, and the dedupe against main). A held poll starts no verify and no
+      // merge, exactly as it starts no tick; what is already in flight runs on, and a verify
       // parked for its permit meets the same start gate as a parked tick when the permit comes.
       if (!holdForRestart && !reviewHeld && !diskHeld) {
         await drainMergeQueue(
@@ -485,14 +485,14 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
             piDefault,
             startHeld: () => tickStartHeld() || reviewHeldNow(),
           },
-          landings,
+          merges,
         );
       }
 
       // Backlog-aware deferral: while PLANS.md `## Planned` or BUGS.md `## Open` on main
       // holds an entry feature or bugfix may take (eligibleEntries), idle maintenance ticks
       // stay deferred — queued feature/bugfix work outranks
-      // them regardless of what landed. Stat-cached reads (backlog.ts): one stat per file per
+      // them regardless of what merged. Stat-cached reads (backlog.ts): one stat per file per
       // poll while the files are unchanged. bugfix is not a maintenance role, but while BUGS.md
       // `## Open` is empty it defers like one (deferTick) — openBugsNow is that emptiness, read
       // once here and reused for both predicates.
@@ -518,7 +518,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         }
       }
       // The review-on strong pause (budgetGate): with the review gate on, an unresolvable
-      // strong tier means nothing could land, so EVERY role is held — the per-tier pause set
+      // strong tier means nothing could merge, so EVERY role is held — the per-tier pause set
       // alone would let small/default roles author changes no reviewer could judge. The probe
       // of the strong pair pierces this hold for exactly the probed tier's roles too.
       const reviewStrongPaused =
@@ -550,7 +550,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
         workBacklogOpen,
         planBacklogFull: plansFull,
         deferredDue,
-        workLandedSince,
+        workMergedSince,
       });
       launchDueTicks({
         root,
@@ -610,18 +610,18 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
       lastReserve = reserve;
 
-      // Once mode's exit: every enabled role settled, no tick in flight, and the land queue
-      // empty with no landing in flight for one full poll cycle — then fire the internal
+      // Once mode's exit: every enabled role settled, no tick in flight, and the merge queue
+      // empty with no merge in flight for one full poll cycle — then fire the internal
       // stop, the same graceful shutdown the restart drain uses (the `finally` awaits
-      // in-flight landing tasks to the end). The one-poll-cycle requirement is the guard
-      // against dropping a queued-but-not-yet-started landing: a stop that lands during the
+      // in-flight merge tasks to the end). The one-poll-cycle requirement is the guard
+      // against dropping a queued-but-not-yet-started merge: a stop that arrives during the
       // shutdown drain drops the queue entry, so the slot gets its poll to pick the entry up
       // before the stop is trusted.
       if (
         once.exitReady({
           roleTicks: roleInFlight.size,
           directorTicks: directorInFlight.size,
-          landings: mergeTasks(landings).length,
+          merges: mergeTasks(merges).length,
           queuedMerges: queuedMergeFiles(root).length,
         })
       ) {
@@ -636,9 +636,9 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       root,
       roleInFlight,
       directorInFlight,
-      mergeTasks(landings),
+      mergeTasks(merges),
       restart,
-      opts.handoffLandingWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
+      opts.handoffMergeWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
       () => internalStop.abort(),
     );
     emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop" });

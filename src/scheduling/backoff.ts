@@ -56,12 +56,12 @@ export function restoreMidTickWake(s: LoopState): boolean {
 
 /** Yield-scaled clocks: how long a role's own recent
  * results stretch its min-tick gap. The ring (LoopState.recentOutcomes) holds one char per
- * COUNTED tick — a landing (`changed`/`queued`) is `L`, every other counted result is `n`;
+ * COUNTED tick — a merge (`changed`/`queued`) is `L`, every other counted result is `n`;
  * the error class (`error`/`aborted`/`quiet_killed`) is no yield evidence either way and is
  * not recorded at all, so a run of backend failures neither stretches a role's clock nor
  * resets it. */
 export const YIELD_RING = 20;
-const YIELD_LAND = "L";
+const YIELD_MERGE = "L";
 /** Results that never enter the ring. */
 const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", "quiet_killed"]);
 
@@ -70,22 +70,22 @@ const UNCOUNTED_RESULTS: ReadonlySet<TickResult> = new Set(["error", "aborted", 
  * beside the streak counters. */
 export function pushYieldOutcome(s: LoopState, result: TickResult): void {
   if (UNCOUNTED_RESULTS.has(result)) return;
-  const ch = result === "changed" || result === "queued" ? YIELD_LAND : "n";
+  const ch = result === "changed" || result === "queued" ? YIELD_MERGE : "n";
   s.recentOutcomes = ((s.recentOutcomes ?? "") + ch).slice(-YIELD_RING);
 }
 
 const YIELD_MAX = 8;
 
 /** The multiplier on a scalable role's minRunIntervalSeconds gap its recent yield earns:
- * 1 while any of the last 10 counted ticks landed, otherwise doubling per 5 further empty
+ * 1 while any of the last 10 counted ticks merged, otherwise doubling per 5 further empty
  * ticks — 10 empties ×2, 15 ×4, 20 ×8 — capped at 8. `recent` is the ring's chars, oldest
  * first, as pushYieldOutcome recorded them. Pure; unit-tested beside the other ladder math.
- * A landing inside the last 10 resets the multiplier to 1 even when older empties remain in
- * the ring: one landing is the evidence the role's clock should trust, and the ring's older
- * half only matters once the landing has aged out of the recent window. */
+ * A merge inside the last 10 resets the multiplier to 1 even when older empties remain in
+ * the ring: one merge is the evidence the role's clock should trust, and the ring's older
+ * half only matters once the merge has aged out of the recent window. */
 export function yieldMultiplier(recent: string[]): number {
-  if (recent.slice(-10).includes(YIELD_LAND)) return 1;
-  const empty = recent.filter((c) => c !== YIELD_LAND).length;
+  if (recent.slice(-10).includes(YIELD_MERGE)) return 1;
+  const empty = recent.filter((c) => c !== YIELD_MERGE).length;
   if (empty < 10) return 1;
   return Math.min(YIELD_MAX, 2 ** (Math.floor((empty - 10) / 5) + 1));
 }

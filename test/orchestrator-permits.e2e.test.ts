@@ -1,5 +1,5 @@
 /** The orchestrator e2e tier's shared-permit slice (see orchestrator.e2e.test.ts for the
- * tier's split): a landing's reviewer run sharing the maxConcurrent permit with role ticks, and
+ * tier's split): a merge's reviewer run sharing the maxConcurrent permit with role ticks, and
  * a work-role tick jumping ahead of parked maintenance waiters. Renamed here from
  * orchestrator-5.e2e.test.ts (2026-09-29) so the topic has a name instead of a slice number —
  * unlike the tier's balanced orchestrator-2/3 slices, this file holds one coherent topic.
@@ -44,12 +44,12 @@ function readProviderSamples(runDir: string): Array<{ provider: string; provider
   }
 }
 
-test("a landing's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
-  // BUGS.md 2026-09-18: the landing drain ran its reviewer outside the author semaphore, so
-  // maxConcurrent + 1 landing + 1 director was the real ceiling and a single-GPU backend saw
-  // four streams. With one permit, a landing in flight and a role tick must never overlap.
+test("a merge's reviewer run takes the same maxConcurrent permit as a role tick", async () => {
+  // BUGS.md 2026-09-18: the merge drain ran its reviewer outside the author semaphore, so
+  // maxConcurrent + 1 merge + 1 director was the real ceiling and a single-GPU backend saw
+  // four streams. With one permit, a merge in flight and a role tick must never overlap.
   const repo = makeRepo();
-  await initProject(repo, "landing shares the maxConcurrent cap");
+  await initProject(repo, "merge shares the maxConcurrent cap");
   const cfg = fastConfig(["clean", "bugfix"]);
   cfg.maxConcurrent = 1;
   saveConfig(repo, cfg);
@@ -59,7 +59,7 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
   seedOpenBug(repo);
   const runDir = tmpdir();
   // Each run records how many pi processes were already in flight when it started. clean's
-  // author makes a change (so its landing's reviewer actually runs and holds the slot ~3s);
+  // author makes a change (so its merge's reviewer actually runs and holds the slot ~3s);
   // bugfix keeps ticking every ~1s and declares nothing-to-do. Without the permit the reviewer
   // and a bugfix tick overlap; the 3s reviewer sleep makes that window unmissable.
   const restore = fakePi(
@@ -72,13 +72,13 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
       // Role and run kind from the real markers, not the cwd: non-director runs happen in
       // pooled `_slot-<n>` checkouts (worktree-pool), so `case $PWD in *clean*)` can no
       // longer see the role. The role comes from the slot lease; the reviewer's run carries
-      // the gate's VERDICT prompt, a tick's does not. A `vet` flag routes the branch so
+      // the gate's VERDICT prompt, a tick's does not. A `verify` flag routes the branch so
       // `rm -f "$f"` still cleans the reviewer's own file (clearing `f` would leak it and
       // fake a sample-2 overlap on the next run's count).
       leasedRoleShell(),
-      `vet=0`,
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) vet=1; break;; esac; done`,
-      `if [ "$vet" = 1 ]; then`,
+      `verify=0`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) verify=1; break;; esac; done`,
+      `if [ "$verify" = 1 ]; then`,
       `  sleep 3`,
       `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
       `else`,
@@ -96,18 +96,18 @@ test("a landing's reviewer run takes the same maxConcurrent permit as a role tic
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The contention was real: clean's change landed through its reviewer while bugfix ticked.
-    // Wait for the landing too, not only the runs: the vet frees its permit when its review
-    // ends, and the merge after it (which runs no pi) can log `landed` just after bugfix's next
+    // The contention was real: clean's change merged through its reviewer while bugfix ticked.
+    // Wait for the merge too, not only the runs: the verify frees its permit when its review
+    // ends, and the merge after it (which runs no pi) can log `merge_done` just after bugfix's next
     // tick has started.
     await waitFor(
       () => readSamples(runDir).length >= 5 && readEvents(repo).some((e) => e.type === "merge_done" && e.source === "clean"),
-      "several pi runs across the landing and role ticks, and clean's change landed",
+      "several pi runs across the merge and role ticks, and clean's change merged",
     );
     const samples = readSamples(runDir);
     assert.ok(
       samples.every((n) => n <= 1),
-      `a landing and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
+      `a merge and a role tick never share the backend at maxConcurrent 1 (samples: ${samples})`,
     );
   } finally {
     await stopOrchestrator(orch, restore);
@@ -215,7 +215,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   // alone. With maxConcurrent 4 and { omlx: 1 }, two omlx roles must never overlap, while a
   // huggingface role runs beside them, and nothing exceeds the team total. Disabled review
   // keeps every pi process here a role tick, so the shim's in-flight census is the role
-  // census this part owns (vets count against their provider from part 3/5).
+  // census this part owns (verifies count against their provider from part 3/5).
   const repo = makeRepo();
   await initProject(repo, "per-provider concurrency caps");
   const cfg = fastConfig(["feature", "bugfix", "clean"]);
@@ -250,7 +250,7 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   try {
     await waitFor(
       () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "merge_done"),
-      "several role runs across both providers, and a landing",
+      "several role runs across both providers, and a merge",
       150_000,
     );
     const samples = readProviderSamples(runDir);
@@ -273,14 +273,14 @@ test("maxConcurrentPerProvider caps role-tick admission per provider while other
   }
 });
 
-test("a vet's reviewer and a role tick on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
-  // plans/provider-concurrency.md §4: the landing vet acquires a keyed lease on the author's
+test("a verify's reviewer and a role tick on the same capped provider never overlap, while another provider runs beside (part 3/5)", async () => {
+  // plans/provider-concurrency.md §4: the merge verify acquires a keyed lease on the author's
   // review seam, so a review on omlx shares the omlx provider cap with role ticks — not just
   // the team total (part 2/5's scope, review off). With { omlx: 1 }, feature's omlx tick and
-  // the omlx review vetting feature's (or clean's) change never run at once, while the
+  // the omlx review verifying feature's (or clean's) change never run at once, while the
   // huggingface bugfix tick runs beside them. Review is on, pinned to omlx.
   const repo = makeRepo();
-  await initProject(repo, "per-provider caps reach the vet");
+  await initProject(repo, "per-provider caps reach the verify");
   const cfg = fastConfig(["feature", "bugfix", "clean"]);
   cfg.maxConcurrent = 4;
   cfg.maxConcurrentPerProvider = { omlx: 1 };
@@ -305,9 +305,9 @@ test("a vet's reviewer and a role tick on the same capped provider never overlap
       `t=0; for x in "$d"/run.*; do t=$((t+1)); done`,
       `printf '%s %s %s\\n' "$prov" "$n" "$t" >> "${runDir}/samples.log"`,
       leasedRoleShell(),
-      `vet=0`,
-      `for a in "$@"; do case "$a" in *"VERDICT:"*) vet=1; break;; esac; done`,
-      `if [ "$vet" = 1 ]; then`,
+      `verify=0`,
+      `for a in "$@"; do case "$a" in *"VERDICT:"*) verify=1; break;; esac; done`,
+      `if [ "$verify" = 1 ]; then`,
       `  printf '%s\\n' '${assistantLine("VERDICT: approve")}'`,
       `else`,
       `  echo change >> change.txt`,
@@ -321,7 +321,7 @@ test("a vet's reviewer and a role tick on the same capped provider never overlap
   try {
     await waitFor(
       () => readProviderSamples(runDir).length >= 12 && readEvents(repo).some((e) => e.type === "merge_done"),
-      "several role and vet runs across both providers, and a landing",
+      "several role and verify runs across both providers, and a merge",
       150_000,
     );
     const samples = readProviderSamples(runDir);
@@ -329,7 +329,7 @@ test("a vet's reviewer and a role tick on the same capped provider never overlap
     const totals = samples.map((s) => s.totalInFlight);
     assert.ok(
       omlxCounts.every((n) => n <= 1),
-      `a vet review and a role tick on omlx never overlap (samples: ${JSON.stringify(samples)})`,
+      `a verify review and a role tick on omlx never overlap (samples: ${JSON.stringify(samples)})`,
     );
     assert.ok(
       totals.every((n) => n <= 4),
@@ -355,7 +355,7 @@ test("a director prompt on a full provider starts at once and holds the provider
   const cfg = fastConfig(["clean", "director"]);
   cfg.maxConcurrent = 4;
   cfg.maxConcurrentPerProvider = { omlx: 1 };
-  cfg.review!.enabled = false; // keep every pi run a role/director tick: no vet, no resolver
+  cfg.review!.enabled = false; // keep every pi run a role/director tick: no verify, no resolver
   cfg.roles.clean!.provider = "omlx";
   cfg.roles.clean!.model = "m";
   cfg.roles.director!.provider = "omlx";
@@ -441,7 +441,7 @@ test("two ticks on one provider and a single worktree slot both finish (pool-slo
   try {
     await waitFor(
       () => readOrder(runDir).length >= 4 && readEvents(repo).some((e) => e.type === "merge_done"),
-      "both roles ticking through the one slot, and a landing",
+      "both roles ticking through the one slot, and a merge",
       150_000,
     );
     const roles = readOrder(runDir);

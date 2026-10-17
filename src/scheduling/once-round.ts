@@ -10,9 +10,9 @@ import type { LoopRunner } from "../loop/loop.js";
  * with a persistent reason (backoff, paused, disabled mid-round, or the director's empty inbox —
  * nothing a poll can change). The value is the skip reason, for the caller's summary. A role
  * whose tick is merely in flight is NOT settled — the orchestrator only fires its stop once
- * every role is settled AND no tick is in flight AND the land queue has been empty with no
- * landing in flight for one full poll cycle (the guard against dropping a
- * queued-but-not-yet-started landing: a stop that lands during the shutdown drain drops the
+ * every role is settled AND no tick is in flight AND the merge queue has been empty with no
+ * merge in flight for one full poll cycle (the guard against dropping a
+ * queued-but-not-yet-started merge: a stop that arrives during the shutdown drain drops the
  * queue entry, so the slot gets one poll to pick the entry up before the stop is trusted).
  */
 export class OnceRound {
@@ -83,19 +83,19 @@ export class OnceRound {
   }
 
   /** True on the SECOND consecutive quiet poll — every role settled, no role or director tick
-   * in flight, no landing task running, land queue empty — and false otherwise (resetting the
+   * in flight, no merge task running, merge queue empty — and false otherwise (resetting the
    * quiet streak). The orchestrator fires its internal stop when this returns true. */
   exitReady(flight: {
     roleTicks: number;
     directorTicks: number;
-    landings: number;
+    merges: number;
     queuedMerges: number;
   }): boolean {
     const quiet =
       this.runners.every((r) => this.isSettled(r)) &&
       flight.roleTicks === 0 &&
       flight.directorTicks === 0 &&
-      flight.landings === 0 &&
+      flight.merges === 0 &&
       flight.queuedMerges === 0;
     if (!(this.active && quiet)) {
       this.idlePolls = 0;

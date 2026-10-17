@@ -41,7 +41,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
   const restore = fakePiIdle({ cost: 1 });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // clean's startup tick lands the first spend; the transition is logged exactly once,
+    // clean's startup tick records the first spend; the transition is logged exactly once,
     // harness-level, with the spend and cap that triggered it.
     await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "a budget_paused event");
@@ -80,7 +80,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(resumed.length, 1, "one transition event per resume");
     assert.equal(resumed[0]?.source, "tumwater");
     assert.equal(resumed[0]?.capUsd, 100);
-    // clean is deferrable and no work has landed since its first tick — a work commit supplies
+    // clean is deferrable and no work has merged since its first tick — a work commit supplies
     // the wake for the post-resume tick.
     mergeWork(repo);
     await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after the cap raise");

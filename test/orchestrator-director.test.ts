@@ -12,12 +12,12 @@
  * - No team gate for the director: an operator pause (`tumwater pause`, the marker file)
  *   holds every role's next tick but exempts the director — an explicit human prompt outranks
  *   the pause. The director ticks while the paused role never starts one.
- * - Merge queue 3/5 interlock: a role with a queued landing starts no new tick until the
- *   landing ends — the poll lists the queue once and skips that role's reservation. Pinned by
+ * - Merge queue 3/5 interlock: a role with a queued merge starts no new tick until the
+ *   merge ends — the poll lists the queue once and skips that role's reservation. Pinned by
  *   prompt order: the queued change's review run (its summary is in the reviewer's prompt)
  *   completes before the role's own tick prompt runs.
- * - The restart hand-off's deadline: a self-redeploy with an in-flight landing and no role
- *   tick waits only handoffLandingWindowMs for it, then aborts it and exits — the drain's
+ * - The restart hand-off's deadline: a self-redeploy with an in-flight merge and no role
+ *   tick waits only handoffMergeWindowMs for it, then aborts it and exits — the drain's
  *   abort callback (the shutdown path's last resort), which only the e2e tier exercised.
  */
 
@@ -61,7 +61,7 @@ function recordingIdlePi(log: string): () => void {
   return fakePi(`${logPromptsTo(log)}\nprintf '%s\\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
 }
 
-/** One real commit that main does not hold, for a queued landing to vet: a side branch off
+/** One real commit that main does not hold, for a queued merge to verify: a side branch off
  * main with one file added, checked back out to main. Returns the commit's sha. */
 function shaOnSideBranch(repo: string): string {
   const g = (args: string[]) => {
@@ -70,7 +70,7 @@ function shaOnSideBranch(repo: string): string {
     return r.stdout.trim();
   };
   g(["checkout", "-b", "interlock-fixture"]);
-  fs.writeFileSync(path.join(repo, "interlock-note.txt"), "queued landing fixture\n");
+  fs.writeFileSync(path.join(repo, "interlock-note.txt"), "queued merge fixture\n");
   g(["add", "interlock-note.txt"]);
   g(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-m", "interlock fixture change"]);
   const sha = g(["rev-parse", "HEAD"]);
@@ -153,12 +153,12 @@ test("director: a team pause holds role ticks but not the director's queued prom
   }
 });
 
-test("merge queue interlock: a role with a queued landing starts no tick until the landing ends", async () => {
+test("merge queue interlock: a role with a queued merge starts no tick until the merge ends", async () => {
   const repo = await makeFastRepo("merge queue interlock test", ["clean"]);
   const log = path.join(tmpdir(), "interlock-prompts.log");
   const restore = recordingIdlePi(log);
-  // A queued change main does not hold: its vet runs a real review run (the idle reply has no
-  // verdict, so the landing ends rejected and the entry is dropped), and until that outcome
+  // A queued change main does not hold: its verify runs a real review run (the idle reply has no
+  // verdict, so the merge ends rejected and the entry is dropped), and until that outcome
   // the interlock must keep clean's own tick from starting.
   enqueueMerge(repo, {
     role: "clean",
@@ -169,12 +169,12 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
   });
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    await waitFor(() => queueDepth(repo) === 0, "the queued landing to settle and drop", 30_000);
+    await waitFor(() => queueDepth(repo) === 0, "the queued merge to settle and drop", 30_000);
     await awaitSettledTick(repo, "clean", 1, "clean's first tick after the interlock released it");
     const runs = readRunBlocks(log);
     const reviewIdx = runs.findIndex((b) => b.includes("interlock sentinel change"));
     const tickIdx = runs.findIndex((b) => sessionOf(b).startsWith("tumwater-clean-"));
-    assert.ok(reviewIdx >= 0, "the queued change was vetted with a review run");
+    assert.ok(reviewIdx >= 0, "the queued change got a review run");
     assert.ok(tickIdx >= 0, "clean eventually ran its own tick");
     assert.ok(reviewIdx < tickIdx, "the review ran before the role's tick — the interlock held the role back");
     assert.equal(loadLoopState(repo, "clean").runs, 1, "exactly the post-interlock tick ran");
@@ -183,11 +183,11 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
   }
 });
 
-test("restart hand-off: an in-flight landing outliving its deadline is aborted, not waited out", async () => {
+test("restart hand-off: an in-flight merge outliving its deadline is aborted, not waited out", async () => {
   const repo = await makeFastRepo("restart hand-off abort test", ["clean"]);
   const reviewing = path.join(tmpdir(), "handoff-abort-reviewing");
-  // The queued change's reviewer run holds the landing in flight (a minute-long review); the
-  // interlock keeps clean itself from ticking, so the vet is the only work the hand-off waits
+  // The queued change's reviewer run holds the merge in flight (a minute-long review); the
+  // interlock keeps clean itself from ticking, so the verify is the only work the hand-off waits
   // on — the drain's bounded wait, then its abort callback, is what this pins.
   const restore = fakePi(
     `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
@@ -200,15 +200,15 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
     enqueuedAt: Date.now(),
   });
   // Staleness is re-evaluated only when main moves: stale once the reviewer is running, and
-  // the test moves main then — the restart lands mid-review, with no role tick in flight.
+  // the test moves main then — the restart takes effect mid-review, with no role tick in flight.
   const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(reviewing) });
   const { run, stop } = startRedeployRun(repo, redeployer, {
     timeoutMs: 90_000,
-    handoffLandingWindowMs: 500,
+    handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "the vet's reviewer run to be in flight");
-    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the vet");
+    await waitFor(() => fs.existsSync(reviewing), "the verify's reviewer run to be in flight");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verify");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
@@ -219,7 +219,7 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
     assert.deepEqual(
       eventsOfType(repo, "merge_failed").map((e) => `${e.source}:${String(e.result)}`),
       ["clean:aborted"],
-      "the outlived landing ended aborted, not merged",
+      "the outlived merge ended aborted, not merged",
     );
   } finally {
     await stop();

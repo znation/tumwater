@@ -9,7 +9,7 @@
  *   ("deferred"), the run_deferred event logs the episode, and no tick runs.
  * - Held entries are not need: a backlog whose entries are all refused/needs-review/blocked
  *   holds nothing feature or bugfix can take, so it does not defer a maintenance role — the
- *   work-landed verdict decides instead.
+ *   work-merged verdict decides instead.
  * - Demand over need: a fresh operator wake (`wokenAt` newer than the last tick's end — the
  *   same predicate isEligible's min-gap exemption keys on) overrides the deferral; an explicit
  *   "try again now" is a demand, not idle maintenance, so the role ticks even with the backlog
@@ -18,9 +18,9 @@
  *   deferred role due via its inbox silently ends the deferral episode (no event — the tick
  *   itself is the answer), and the next scheduled deferral is a NEW episode that logs again.
  * - Search mode: bugfix is not a maintenance role, but while BUGS.md `## Open` is empty it
- *   defers like one — keyed on the work-landed verdict ALONE (the backlog-open shortcut must
+ *   defers like one — keyed on the work-merged verdict ALONE (the backlog-open shortcut must
  *   not stand in for the git-range query), so an idle search tick with nothing new on main
- *   waits and an empty backlog never blocks it from ticking once work has landed.
+ *   waits and an empty backlog never blocks it from ticking once work has merged.
  */
 
 import test from "node:test";
@@ -80,7 +80,7 @@ test("once: a due maintenance role with an open backlog settles as deferred, run
   });
 });
 
-test("once: a backlog of only held entries does not defer a maintenance role — it defers on the work-landed verdict instead", async () => {
+test("once: a backlog of only held entries does not defer a maintenance role — it defers on the work-merged verdict instead", async () => {
   const repo = await makeFastRepo("once unit held backlog test", ["clean"]);
   fs.writeFileSync(
     path.join(repo, "PLANS.md"),
@@ -111,12 +111,12 @@ test("once: a fresh operator wake overrides the deferral — the demand ticks de
   });
 });
 
-test("once: bugfix in search mode defers on the work-landed verdict alone, backlog or none", async () => {
+test("once: bugfix in search mode defers on the work-merged verdict alone, backlog or none", async () => {
   const repo = await makeFastRepo("once search-mode deferral test", ["bugfix"]);
   // The backlog is left at initProject's empty template: BUGS.md `## Open` and PLANS.md
   // `## Planned` both empty, so workBacklogOpen is false and the deferral rests entirely on
-  // the work-landed query — the seeded state's lastMainHead IS main's head, so nothing has
-  // landed since the idle tick and the search waits. The seed must carry the bugfix role
+  // the work-merged query — the seeded state's lastMainHead IS main's head, so nothing has
+  // merged since the idle tick and the search waits. The seed must carry the bugfix role
   // itself: saveLoopState keys the state file off the state's role field.
   saveLoopState(repo, { ...idleDueState(repo), role: "bugfix" });
   await withIdlePi(async () => {

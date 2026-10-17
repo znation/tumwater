@@ -1,7 +1,7 @@
 /** The mixed pi + claude team e2e (plans/provider-concurrency.md §9, part 1/4): one
  * orchestrator run whose seams span both backends — a feature author on an omlx pi selector
  * and a claude reviewer on `review.model`. It proves the basic mixed path works end to end: a
- * pi author makes a change, the claude CLI reviews and approves it, and the change lands on
+ * pi author makes a change, the claude CLI reviews and approves it, and the change merges on
  * main — each backend spawning its own CLI, its own native-log path, and naming its own
  * selector in the run-start events. The harness every later part of the series extends. Like
  * the rest of the tier it waits on real timers and runs via `npm run test:e2e`, not `npm
@@ -22,7 +22,7 @@ import { claudeAssistant, claudeInit, claudeResult, claudeText } from "./fixture
 import { assistantLine } from "./fixtures/pi-events.js";
 import { waitFor } from "./helpers/wait.js";
 
-test("a pi author and a claude reviewer run in one team and the change lands on main", async () => {
+test("a pi author and a claude reviewer run in one team and the change merges on main", async () => {
   const repo = makeRepo();
   await initProject(repo, "mixed pi + claude team");
   const cfg = fastConfig(["feature"]);
@@ -60,14 +60,15 @@ test("a pi author and a claude reviewer run in one team and the change lands on 
       try {
         await waitFor(
           () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "feature"),
-          "the claude-vetted change landed on main",
+          "the claude-approved change merged on main",
         );
         // The author's run is in fake pi's argv log, the reviewer's in fake claude's.
         const piRuns = readRunBlocks(piArgs);
         assert.ok(piRuns.some((r) => r.includes("qwen-mlx")), `author argv: ${piRuns.join(" | ")}`);
         const claudeRuns = readRunBlocks(fake.argvFile);
         assert.ok(claudeRuns.length >= 1, `reviewer argv: ${claudeRuns.join("|")}`);
-        // Each native log sits at its own role.agent path: pi for the author, claude for the vet.
+        // Each native log sits at its own role.agent path: pi for the author, claude for the
+        // verify.
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "pi")), "the author's pi native log");
         assert.ok(fs.existsSync(nativeLogPath(repo, "feature", "claude")), "the reviewer's claude native log");
         // The run-start events name each seam's own selector.

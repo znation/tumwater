@@ -127,7 +127,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
   // The other wake shape: not backoff but the loop's OWN interval. qa-style slow clocks
   // used to defeat the wake in isEligible — lastRunEndedAt minutes old and nextRunAt
   // hours out left the loop asleep for the rest of the interval no matter how many wake
-  // markers landed, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake
+  // markers arrived, so `tumwater wake --role qa` and a queued per-role prompt's auto-wake
   // silently did nothing. The earlier wake test dodged this by seeding lastRunEndedAt an
   // hour in the past; this one seeds the fresh-tick shape the operator actually hits.
   const repo = await makeFastRepo("wake vs min gap test", ["clean"]);
@@ -164,7 +164,7 @@ test("an operator wake brings a slow-clock loop in despite a fresh min-gap windo
 });
 
 test("a queued per-role prompt pulls a slow-clock loop in even when its wake was clobbered", async () => {
-  // The mid-tick wake race's end state, made deterministic: the enqueue's auto-wake landed
+  // The mid-tick wake race's end state, made deterministic: the enqueue's auto-wake arrived
   // while a tick was in flight and that tick's end-save overwrote wokenAt and nextRunAt —
   // so only the queue file is left carrying the demand. The old code read the schedule and
   // kept the loop asleep for the rest of its interval despite the p:1 marker; now the
@@ -214,7 +214,7 @@ test("a plain wake consumed mid-tick survives the tick's end-save", async () => 
   seeded.lastMainHead = "";
   seeded.nextRunAt = Date.now() - 1000; // due now
   saveLoopState(repo, seeded);
-  // A fake pi run slow enough to leave room for a wake to land and be consumed mid-tick.
+  // A fake pi run slow enough to leave room for a wake to arrive and be consumed mid-tick.
   const restore = fakePi(`sleep 1\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -309,7 +309,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     const dryTicks = loadLoopState(repo, "dedupe").runs;
     // The enabled role's next tick proves the team is still alive and ticking — the disabled
     // role had that same window and must not have used it. clean is deferrable (need-based
-    // prioritization), so a work landing supplies its wake; the re-enabled dedupe below wakes on
+    // prioritization), so a work merge supplies its wake; the re-enabled dedupe below wakes on
     // the same commit.
     mergeWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").runs > cleanTicks, "an enabled role to tick again");
@@ -374,7 +374,7 @@ test("a live config edit logs one config_changed naming the keys, and an identic
 });
 
 test("a tumwater.json that vanishes mid-run keeps the last-known-good config, warns once, and reloads on return", async () => {
-  // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the next poll
+  // BUGS.md 2026-09-23: a merge's fast-forward deleted the live file and the next poll
   // reloaded defaultConfig() — config_changed naming every non-default key, the cap reset to
   // the default, every role enabled — and the team ran 8.6 h on it with no word of why.
   const repo = makeRepo();

@@ -5,41 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Plain terms code merge, part 8/11: Rename the merge identifiers in the orchestrator and scheduling modules (planned 2026-10-16 by user; requires part 7/11 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ src/scheduling/ and their tests and fixtures)
-
-**Goal.** The orchestrator's and the scheduler's merge-related identifiers, comments and test names say merge. A mechanical rename of about 420 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `landings` → `merges`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
-  - comments, test names and assertion messages follow the Glossary;
-  - comment lines wrap at 100 columns.
-- **"On main" names take `Merged`.** These mean "qualifying work is on main", so they take `Merged` rather than `MergeDone`:
-  - src/scheduling/work-merged-cache.ts: `WorkLandedCache` → `WorkMergedCache`, `workLandedHeads` → `workMergedHeads`;
-  - scheduling.ts: `workLanded` → `workMerged`, `workLandedSinceLast` → `workMergedSinceLast`;
-  - the orchestrator-scheduling member `workLandedSince` → `workMergedSince`.
-- **Other renames:**
-  - the orchestrator option `handoffLandingWindowMs` → `handoffMergeWindowMs` (orchestrator.ts, test/fixtures/orchestrator-fixtures.ts and the tests);
-  - backoff.ts: `YIELD_LAND` → `YIELD_MERGE`;
-  - test: `seedLandQueue` → `seedMergeQueue`;
-  - locals: `landings` → `merges` (orchestrator.ts's pipeline instance, once-round.ts).
-- **Keep calls to `removeLegacyLandWorktrees` as they are.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps recognizing.
-- **Fixtures.** The rest of test/fixtures/orchestrator-fixtures.ts and test/fixtures/repo-fixtures.ts belongs to this part (comments, locals and test-only names). Part 2/11 already renamed their three exported helpers.
-- **Move off the aliases.** These files still use aliases from parts 2–6, such as `drainMergeQueue`, `settleAbortedApproved`, `MergePipeline`, `newMergePipeline`, `mergeTasks`, `abortableMerges`, `VERIFY_TIER`, `verifyLimit`, `startVerify`, `mergeApproved`, `HANDOFF_MERGE_WINDOW_MS`, `awaitMergeForHandoff`, `queuedMergeFiles`, `mergeHead`, `mergeWork` and `mergeRefExists`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - the state series' startup migration of the old layout (`src/orchestrator/startup-migrations.ts`, `startup-migration-steps.ts` and their tests): these name the old forms on purpose, so leave their identifiers and comments as they are;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/orchestrator/` (not the startup-migration files); `src/scheduling/` (work-merged-cache.ts, scheduling.ts, backoff.ts, claims.ts, once-round.ts); `test/fixtures/orchestrator-fixtures.ts`, `test/fixtures/repo-fixtures.ts`; `test/orchestrator*.test.ts` (the `.e2e` ones too), `test/scheduling.test.ts`, `test/once-round.test.ts`, `test/claims.test.ts`, `test/backoff.test.ts`, `test/work-merged-cache.test.ts`.
-
-**Acceptance criteria.**
-- `git grep -nE 'WorkLandedCache|workLanded|handoffLandingWindowMs|YIELD_LAND|seedLandQueue' -- src test` prints nothing.
-- In the listed files, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, quoted backlog titles and legacy-layout names.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
 
 **Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
@@ -1214,6 +1179,41 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - A dir with no lockfile returns `[]`.
   - Call `resetRootInstallCache()` between tests.
 - `snapshot()` on a fixture repo with that drift carries `rootInstallDrift: [name]`. With matching versions the key is absent. Assert this in `test/status-install.test.ts` through `snapshot(root)` if the existing status tests' fixture helper makes that cheap; otherwise the two unit tests above suffice.
+- `npm run test` passes.
+
+### Plain terms code merge, part 8/11: Rename the merge identifiers in the orchestrator and scheduling modules (planned 2026-10-16 by user; requires part 7/11 landed; design in plans/terminology.md "Code names"; touches src/orchestrator/ src/scheduling/ and their tests and fixtures, done 2026-10-16)
+
+**Goal.** The orchestrator's and the scheduler's merge-related identifiers, comments and test names say merge. A mechanical rename of about 420 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `landings` → `merges`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+- **"On main" names take `Merged`.** These mean "qualifying work is on main", so they take `Merged` rather than `MergeDone`:
+  - src/scheduling/work-merged-cache.ts: `WorkLandedCache` → `WorkMergedCache`, `workLandedHeads` → `workMergedHeads`;
+  - scheduling.ts: `workLanded` → `workMerged`, `workLandedSinceLast` → `workMergedSinceLast`;
+  - the orchestrator-scheduling member `workLandedSince` → `workMergedSince`.
+- **Other renames:**
+  - the orchestrator option `handoffLandingWindowMs` → `handoffMergeWindowMs` (orchestrator.ts, test/fixtures/orchestrator-fixtures.ts and the tests);
+  - backoff.ts: `YIELD_LAND` → `YIELD_MERGE`;
+  - test: `seedLandQueue` → `seedMergeQueue`;
+  - locals: `landings` → `merges` (orchestrator.ts's pipeline instance, once-round.ts).
+- **Keep calls to `removeLegacyLandWorktrees` as they are.** It removes the legacy `_land-<role>` worktrees, which "State and git" keeps recognizing.
+- **Fixtures.** The rest of test/fixtures/orchestrator-fixtures.ts and test/fixtures/repo-fixtures.ts belongs to this part (comments, locals and test-only names). Part 2/11 already renamed their three exported helpers.
+- **Move off the aliases.** These files still use aliases from parts 2–6, such as `drainMergeQueue`, `settleAbortedApproved`, `MergePipeline`, `newMergePipeline`, `mergeTasks`, `abortableMerges`, `VERIFY_TIER`, `verifyLimit`, `startVerify`, `mergeApproved`, `HANDOFF_MERGE_WINDOW_MS`, `awaitMergeForHandoff`, `queuedMergeFiles`, `mergeHead`, `mergeWork` and `mergeRefExists`. Move them to the new names, and delete each alias that test/exports.test.ts then reports unused.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the state series' startup migration of the old layout (`src/orchestrator/startup-migrations.ts`, `startup-migration-steps.ts` and their tests): these name the old forms on purpose, so leave their identifiers and comments as they are;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/orchestrator/` (not the startup-migration files); `src/scheduling/` (work-merged-cache.ts, scheduling.ts, backoff.ts, claims.ts, once-round.ts); `test/fixtures/orchestrator-fixtures.ts`, `test/fixtures/repo-fixtures.ts`; `test/orchestrator*.test.ts` (the `.e2e` ones too), `test/scheduling.test.ts`, `test/once-round.test.ts`, `test/claims.test.ts`, `test/backoff.test.ts`, `test/work-merged-cache.test.ts`.
+
+**Acceptance criteria.**
+- `git grep -nE 'WorkLandedCache|workLanded|handoffLandingWindowMs|YIELD_LAND|seedLandQueue' -- src test` prints nothing.
+- In the listed files, no identifier, comment or test name uses a retired merge word, except `removeLegacyLandWorktrees`, quoted backlog titles and legacy-layout names.
 - `npm run test` passes.
 
 ### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role) — done 2026-10-16

@@ -1,10 +1,10 @@
 /** Tick-scheduling POLICY, split out of orchestrator.ts (the poll-loop runtime that calls it):
  * pure decisions over a runner's state and the world — when a loop may tick, in what order
- * eligible loops take slots, and whether landed work or an open backlog defers idle
+ * eligible loops take slots, and whether merged work or an open backlog defers idle
  * maintenance. No I/O, no process state: every function
  * takes plain data (a LoopRunner's observable fields, timestamps, commit subjects) so the
  * policy is unit-tested without running an orchestrator, and a future change to how ticks are
- * driven (e.g. the merge queue's async landing, PLANS.md 3/5) reuses these decisions instead of
+ * driven (e.g. the merge queue's async merge, PLANS.md 3/5) reuses these decisions instead of
  * re-deriving them inside the loop. Dependency direction: orchestrator → scheduling; this
  * module only reads LoopRunner through its public fields and imports no runtime from it. */
 
@@ -91,7 +91,7 @@ export function isEligible(
   // finding nothing slows down, and the multiplication gates the "main moved" wake below
   // too, which is where the cost actually comes from (the gap check above runs first, so a
   // scaled role inside its stretched gap neither ticks on schedule nor on a main move).
-  // One landing in the last ten counted ticks restores the plain gap; error-class results
+  // One merge in the last ten counted ticks restores the plain gap; error-class results
   // never enter the ring (backoff.ts), so a failing backend does not stretch anything;
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
@@ -119,7 +119,7 @@ export function isEligible(
   }
   // The world changed under a sleeping loop: main moved since its last tick. The stretched
   // gap above gates this wake too (the gap check runs first), so a role whose recent ticks
-  // landed nothing does not re-check on every landing — the multiplier's whole point.
+  // merged nothing does not re-check on every merge — the multiplier's whole point.
   if (s.lastMainHead && mainHead && mainHead !== s.lastMainHead) {
     return { run: true, reason: "main moved" };
   }
@@ -143,7 +143,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
   });
 }
 
-/** Did work land on main since a head? (Need-based prioritization, PLANS.md "Prioritize loops
+/** Did work merge on main since a head? (Need-based prioritization, PLANS.md "Prioritize loops
  * by need".) A commit counts when its subject starts with `tumwater(feature):`,
  * `tumwater(bugfix):`, `tumwater(director):`, or `tumwater(operator):` — the harness stamps
  * that prefix itself (buildCommitMessage), so attribution needs no new metadata; a director
@@ -152,10 +152,10 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
  * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
  * team cannot generate itself. An operator commit (the stamp the CLI, TUI and dashboard
  * backlog/brief edits write) is the human's own change made through tumwater, so it counts like
- * an unstamped human commit. Every other role's landing is markdown or hygiene; waking
+ * an unstamped human commit. Every other role's merge is markdown or hygiene; waking
  * maintenance roles on it is exactly the cascade deferral removes.
  */
-export function workLanded(subjects: string[]): boolean {
+export function workMerged(subjects: string[]): boolean {
   return subjects.some(
     (subject) => /^tumwater\((feature|bugfix|director|operator)\):/.test(subject) || !subject.startsWith("tumwater("),
   );
@@ -185,11 +185,11 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * defer, the harness cannot judge what an arbitrary custom role needs; its last tick did
  * nothing; it has seen main before (a never-ticked role always runs its first tick); either
  * the backlog is open — PLANS.md `## Planned` or BUGS.md `## Open` non-empty, so queued
- * feature/bugfix work outranks idle maintenance regardless of what landed — or no
- * feature/bugfix/director/operator/human commit landed since that head; and the deferral has not
+ * feature/bugfix work outranks idle maintenance regardless of what merged — or no
+ * feature/bugfix/director/operator/human commit merged since that head; and the deferral has not
  * outlasted DEFER_MAX_MS. Only `no_change` defers: every other outcome carries pending
  * business (retry an error, address recorded review-rejection reasons, recover a merge
- * failure) that must not stall until unrelated work lands. A blocked backlog keeps maintenance
+ * failure) that must not stall until unrelated work merges. A blocked backlog keeps maintenance
  * deferred until the cap, then a forced tick resets the episode; clearing or revising the entry
  * lifts it on the next poll. A fresh operator wake overrides all of it: `wokenAt` newer than
  * the gap window's opening tick (the same demand predicate isEligible's min-gap exemption keys
@@ -201,13 +201,13 @@ function deferralExpired(s: LoopState, now: number): boolean {
  * false) it has no assigned work and behaves as a search role, so it schedules like a
  * maintenance role — same predicate, including the wake override and the DEFER_MAX_MS cap —
  * except the backlog-open clause is dropped: its backlog is empty by precondition, so it defers
- * only while no feature/bugfix/director/operator/human commit landed since its last tick (a feature
- * landing is exactly the kind of change that creates bugs, so it wakes the search). With one or
+ * only while no feature/bugfix/director/operator/human commit merged since its last tick (a feature
+ * merge is exactly the kind of change that creates bugs, so it wakes the search). With one or
  * more open bugs it never defers here; pollRunnerReasons stands it down while all of them are
  * held (refused, needs-review, blocked).
  */
 /** Which clause deferred a due tick: the open feature/bugfix backlog ("backlog"), or no
- * feature/bugfix/director/operator/human commit having landed since its last no-change tick
+ * feature/bugfix/director/operator/human commit having merged since its last no-change tick
  * ("no-work"). The `tick_deferred` event carries it, so the feed and the failure digest name
  * the clause that actually held the role back instead of spelling the no-work case over a
  * need-based deferral. */
@@ -229,13 +229,13 @@ function planDeferral(s: LoopState, planBacklogFull: boolean, now: number): Defe
 
 /** The deferral verdict as its clause, or null when the tick is admitted. The one home of the
  * predicate (deferTick is this function's null test) and of the clause order: a deferrable
- * maintenance role with the backlog open reports "backlog" even when work also landed — the
- * backlog clause stands in for the landing verdict, which the caller short-circuits — while the
+ * maintenance role with the backlog open reports "backlog" even when work also merged — the
+ * backlog clause stands in for the merge verdict, which the caller short-circuits — while the
  * bugfix-in-search-mode branch ignores the backlog and reports "no-work". */
 export function deferTickReason(
   s: LoopState,
   role: string,
-  workLandedSinceLast: boolean,
+  workMergedSinceLast: boolean,
   workBacklogOpen: boolean,
   openBugsNow: boolean,
   now: number,
@@ -252,17 +252,17 @@ export function deferTickReason(
     !deferralExpired(s, now);
   if (!due) return null;
   if (!searchBugfix && workBacklogOpen) return "backlog";
-  return workLandedSinceLast ? null : "no-work";
+  return workMergedSinceLast ? null : "no-work";
 }
 
 /** The boolean projection of deferTickReason: does this due maintenance tick defer? */
 export function deferTick(
   s: LoopState,
   role: string,
-  workLandedSinceLast: boolean,
+  workMergedSinceLast: boolean,
   workBacklogOpen: boolean,
   openBugsNow: boolean,
   now: number,
 ): boolean {
-  return deferTickReason(s, role, workLandedSinceLast, workBacklogOpen, openBugsNow, now) !== null;
+  return deferTickReason(s, role, workMergedSinceLast, workBacklogOpen, openBugsNow, now) !== null;
 }

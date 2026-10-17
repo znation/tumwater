@@ -1,17 +1,17 @@
 import { execFileSync } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WorkLandedCache } from "../src/scheduling/work-merged-cache.js";
+import { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
 import { headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
 // Unit coverage for src/scheduling/work-merged-cache.ts — the caching layer around
-// scheduling.workLanded
+// scheduling.workMerged
 // that the orchestrator's need-based deferral consults. The caching rule (PLANS.md
 // "Prioritize loops by need") is the thing under test: a TRUE verdict is monotone under
 // fast-forward-only main movement and may be cached forever; a FALSE verdict is valid exactly
 // while main sits at the head it was checked against — caching it unconditionally would defer
 // a role forever after the very commit that should wake it. Fixtures are real git history;
-// the seed commit's subject ("seed") counts as qualifying work under workLanded, but only
+// the seed commit's subject ("seed") counts as qualifying work under workMerged, but only
 // commits INSIDE the checked range are consulted, so maintenance-only ranges read false.
 
 /** Commit (empty, subjects are all these fixtures need) and return the new head sha. */
@@ -43,9 +43,9 @@ test("a false verdict is cached at the main head it was checked against, and re-
   const root = makeRepo();
   const base = headSha(root);
   const m1 = commit(root, "tumwater(organize): tidy"); // maintenance-only since base
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
 
-  assert.equal(await cache.since(base, m1), false, "only maintenance work has landed since base");
+  assert.equal(await cache.since(base, m1), false, "only maintenance work has merged since base");
 
   const f1 = commit(root, "tumwater(feature): ship it"); // main moves; the range now holds work
   assert.equal(
@@ -56,16 +56,16 @@ test("a false verdict is cached at the main head it was checked against, and re-
   assert.equal(await cache.since(base, f1), true, "main moved: the cached false is stale and the check runs again");
 });
 
-test("a true verdict stays true as main moves — qualifying work never un-lands", async () => {
+test("a true verdict stays true as main moves — qualifying work never un-merges", async () => {
   const root = makeRepo();
   const base = headSha(root);
   commit(root, "tumwater(feature): ship it");
   const m1 = commit(root, "tumwater(organize): tidy");
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
 
   assert.equal(await cache.since(base, m1), true);
   const m2 = commit(root, "tumwater(organize): tidy again");
-  assert.equal(await cache.since(base, m2), true, "still true after more maintenance-only commits land");
+  assert.equal(await cache.since(base, m2), true, "still true after more maintenance-only commits merge");
   assert.equal(await cache.since(m1, m2), false, "the verdict is per since-head: nothing qualifying since m1");
 });
 
@@ -73,7 +73,7 @@ test("an unresolvable main head is never trusted or stored", async () => {
   const root = makeRepo();
   const base = headSha(root);
   commit(root, "tumwater(organize): tidy");
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
 
   assert.equal(await cache.since(base, ""), false, "an empty main head still runs the real check");
   const f1 = commit(root, "tumwater(feature): ship it");
@@ -85,10 +85,10 @@ test("an unresolvable main head is never trusted or stored", async () => {
   assert.equal(await cache.since(base, f1), true, "a resolvable head sees the qualifying work too");
 });
 
-test("a range that cannot be evaluated reads as work landed — conservative", async () => {
+test("a range that cannot be evaluated reads as work merged — conservative", async () => {
   const root = makeRepo();
   const head = headSha(root);
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
   const ghost = "0123456789abcdef0123456789abcdef01234567";
 
   assert.equal(await cache.since(ghost, head), true, "an unknown since-head cannot be evaluated: run the tick");
@@ -106,7 +106,7 @@ test("the true-verdict cache stays correct past its 200-entry bound", async () =
     ...bulkCommits(root, Array.from({ length: 201 }, (_, i) => `tumwater(feature): work ${i + 1}`)),
   ];
   const end = heads[heads.length - 1]!;
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
 
   // 201 distinct since-heads each with qualifying work in range — one insert past the bound,
   // which clears the cache; every verdict must still be right afterwards.
@@ -122,7 +122,7 @@ test("the false-verdict cache stays correct past its 200-entry bound", async () 
     ...bulkCommits(root, Array.from({ length: 200 }, (_, i) => `tumwater(organize): tidy ${i + 1}`)),
   ];
   const end = heads[heads.length - 1]!;
-  const cache = new WorkLandedCache(root, "main");
+  const cache = new WorkMergedCache(root, "main");
 
   // 201 distinct since-heads each with a maintenance-only range — the insert that trips
   // noWorkAtHead's 200-entry clear, plus the two repeats below re-populating past it.

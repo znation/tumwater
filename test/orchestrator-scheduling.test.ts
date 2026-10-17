@@ -10,7 +10,7 @@ import { pollTeamHold } from "../src/team/team-polls.js";
 import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { WorkLandedCache } from "../src/scheduling/work-merged-cache.js";
+import type { WorkMergedCache } from "../src/scheduling/work-merged-cache.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";
@@ -23,7 +23,7 @@ import { HOUR } from "./helpers/oracles.js";
 // The scheduling pass's per-provider hold block (PLANS.md 2026-10-05): a storm at provider P
 // holds the roles whose tick model is on P while roles on a healthy provider Q keep ticking,
 // the reviewer's provider being held blocks EVERY role (with the review gate on, nothing
-// could land), and — the seam the 2026-10-06 review called out as untested — a storm, its
+// could merge), and — the seam the 2026-10-06 review called out as untested — a storm, its
 // lift, and the SUBSEQUENT poll run through scheduling end with the previously held role
 // admitted again: a lifted hold never keeps blocking.
 
@@ -75,7 +75,7 @@ function schedulingCtx(root: string, runners: readonly LoopRunner[], roleProvide
     holdForRestart: false,
     diskHeld: false,
     deferredDue: new Map<string, boolean>(),
-    workLandedSince: {} as unknown as WorkLandedCache,
+    workMergedSince: {} as unknown as WorkMergedCache,
   };
 }
 
@@ -214,7 +214,7 @@ test("an extra instance with no free entry is skipped and keeps its schedule", a
   assert.equal(loadLoopState(root, "feature-2").skipReason, "no-free-entry");
 });
 
-test("a claimed entry that lands releases the claim on the next poll", async () => {
+test("a claimed entry that merges releases the claim on the next poll", async () => {
   const root = tmpdir("tumwater-scheduling-release-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
   const config = twoFeatureInstances();
@@ -364,7 +364,7 @@ test("a base with an outstanding revision and no claim also holds the group", as
   const config = twoFeatureInstances();
   const feature = fakeRunner("feature", config);
   const feature2 = fakeRunner("feature-2", config);
-  // The base's change is out of the landing queue for a revision (state.revision) and it never
+  // The base's change is out of the merge queue for a revision (state.revision) and it never
   // recorded a claim: the same unclaimed-mid-entry shape, caught while the base is idle.
   feature.state.revision = { sha: "deadbeef", round: 1, at: T0 };
   const reasons = await pollRunnerReasons(
@@ -424,7 +424,7 @@ test("the reviewer's provider being held blocks every role through scheduling, a
     ["dedupe", "Q"],
   ]);
 
-  // A storm on the strong tier's provider P while the review gate is on: nothing could land,
+  // A storm on the strong tier's provider P while the review gate is on: nothing could merge,
   // so every role is blocked — not just roles ticking on P.
   const heldCtx = schedulingCtx(root, runners, roleProviders);
   heldCtx.reviewHeld = true;
@@ -576,7 +576,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   const root = tmpdir("tumwater-scheduling-quota-race-");
   const runners = [fakeRunner("clean", defaultConfig()), fakeRunner("dedupe", defaultConfig())];
   const now = T0 + 10_000;
-  // No work landings, so the floor allowance is 12; 11 maintenance landings leave exactly one
+  // No work merges, so the floor allowance is 12; 11 maintenance merges leave exactly one
   // open slot in the rolling window.
   writeEvents(
     root,
@@ -612,7 +612,7 @@ test("the allowance's in-flight headroom starts at most one of two due maintenan
   assert.equal(firstReasons.has(runners[0]!), true, "the first due loop takes the open slot");
   assert.equal(firstReasons.has(runners[1]!), false, "the second waits its turn");
 
-  // The first tick ends without landing (so the landed count, and the allowance, are unchanged).
+  // The first tick ends without merge (so the merged count, and the allowance, are unchanged).
   // Its backoff now makes it not due; the second takes the slot on the next poll — one tick,
   // not two, between the two starts.
   runners[0]!.state.lastRunEndedAt = now;

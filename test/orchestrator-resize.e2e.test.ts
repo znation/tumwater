@@ -45,7 +45,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
   base.maxConcurrent = 1;
   saveConfig(repo, base);
   // bugfix is one of the three fast-ticking roles this test needs to keep ticking between
-  // landings; with an empty BUGS.md `## Open` it defers like a maintenance role instead
+  // merges; with an empty BUGS.md `## Open` it defers like a maintenance role instead
   // (deferTick), so the open bug keeps it on the every-wake schedule the test was written for.
   seedOpenBug(repo);
   const runDir = tmpdir();
@@ -72,10 +72,10 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
       () => readEvents(repo).some((e) => e.type === "max_concurrent_changed" && e.to === 2),
       "the max_concurrent_changed event",
     );
-    // Need-based deferral (landed after this test was written) leaves only bugfix ticking:
-    // clean and dedupe defer after their nothing-to-do startup ticks, so without a landing there
+    // Need-based deferral (merged after this test was written) leaves only bugfix ticking:
+    // clean and dedupe defer after their nothing-to-do startup ticks, so without a merge there
     // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
-    // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
+    // then pass only by racing the startup burst's tail. Merge work to wake the deferred roles:
     // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
     mergeWork(repo);
     // 60s, not the 20s default: this is the one assertion in the suite that waits on the
@@ -152,7 +152,7 @@ test("a live maxConcurrentPerProvider edit admits a parked omlx tick and logs it
   const orch = startLiveOrchestrator(repo);
   try {
     // Phase 1 (omlx cap 1): three roles on one omlx slot — no overlap, and one is always parked.
-    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "merge_done"), "several omlx runs and a landing", 150_000);
+    await waitFor(() => readSamples(runDir).length >= 6 && readEvents(repo).some((e) => e.type === "merge_done"), "several omlx runs and a merge", 150_000);
     assert.ok(
       readSamples(runDir).every((n) => n <= 1),
       `peak stays 1 while the second omlx tick waits on its cap (samples: ${readSamples(runDir)})`,

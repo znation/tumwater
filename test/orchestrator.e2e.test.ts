@@ -3,7 +3,7 @@
  * maxConcurrent resize and orchestrator-permits.e2e.test.ts the shared-permit and
  * tier-ordering cases): these tests start a live orchestrator and wait on real timers, so
  * their fixed wall-clock budgets are not reliable on a loaded machine — they run via
- * `npm run test:e2e` (and CI), not in the unfiltered `npm test` run the harness's landing gate
+ * `npm run test:e2e` (and CI), not in the unfiltered `npm test` run the harness's merge gate
  * executes (BUGS.md 2026-09-21). The files run in parallel processes; this one holds
  * scheduling basics, deferral, session pruning, live config edits, reset requests and the
  * branch watch. */
@@ -316,10 +316,10 @@ test("a main move and a queued prompt each log exactly one wake event with their
   }
 });
 
-test("a no_change maintenance role defers due ticks until work lands on main", async () => {
+test("a no_change maintenance role defers due ticks until work merges on main", async () => {
   // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
   // after its startup tick it keeps coming due with lastResult no_change: only deferral can
-  // keep it quiet while non-work commits land.
+  // keep it quiet while non-work commits merge.
   const repo = await makeFastRepo("deferral test", ["organize"]);
   const argsFile = path.join(tmpdir(), "pi-args.txt");
   const restore = recordingFakePi(argsFile);
@@ -327,7 +327,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
   try {
     await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
 
-    // A non-work landing (a readme commit) moves main but must not wake the deferred role.
+    // A non-work merge (a readme commit) moves main but must not wake the deferred role.
     fs.writeFileSync(path.join(repo, "readme-note.txt"), "x\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(readme): x");
@@ -337,7 +337,7 @@ test("a no_change maintenance role defers due ticks until work lands on main", a
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
     assert.equal(loadLoopState(repo, "organize").runs, 1);
 
-    // Work lands: the deferred tick starts within one poll and finishes. (This is also the
+    // Work merges: the deferred tick starts within one poll and finishes. (This is also the
     // verdict-cache flip case: the earlier false verdict over this range must not be cached.)
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
@@ -383,7 +383,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
     submitRolePrompt(repo, "organize", "check the deferral episode reset");
     await awaitSettledTick(repo, "organize", 2, "the prompt-driven tick to finish");
 
-    // Episode 2: due again on the next poll, still no_change, still no work landed — and
+    // Episode 2: due again on the next poll, still no_change, still no work merged — and
     // deferring a second time is announced again because the inbox run ended the first
     // episode.
     await waitFor(() => eventsOfType(repo, "run_deferred").length === 2, "the second deferral event");
@@ -397,7 +397,7 @@ test("a queued prompt ends a deferral episode, so the next deferral is announced
   }
 });
 
-test("an open bug backlog defers due maintenance ticks even when work lands, until it drains", async () => {
+test("an open bug backlog defers due maintenance ticks even when work merges, until it drains", async () => {
   // organize ticks fast (no min gap, 1s backoff) and declares nothing-to-do every run — so
   // after its startup tick it keeps coming due with lastResult no_change.
   const repo = await makeFastRepo("backlog-aware deferral test", ["organize"]);
@@ -412,8 +412,8 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
   try {
     await awaitSettledTick(repo, "organize", 1, "the startup tick to finish");
 
-    // Work lands while the backlog is open: the due maintenance tick must stay deferred —
-    // before the fix this poll started a new run (workLandedSinceLast broke deferral).
+    // Work merges while the backlog is open: the due maintenance tick must stay deferred —
+    // before the fix this poll started a new run (workMergedSinceLast broke deferral).
     fs.writeFileSync(path.join(repo, "feature-note.txt"), "y\n");
     sh(repo, "git", "add", "-A");
     sh(repo, "git", "commit", "-m", "tumwater(feature): y");
@@ -421,7 +421,7 @@ test("an open bug backlog defers due maintenance ticks even when work lands, unt
     assert.equal(fs.readFileSync(argsFile, "utf8").trim().split("\n").length, 1);
     assert.equal(loadLoopState(repo, "organize").runs, 1);
 
-    // The bugfix role fixes the last open bug: its landing drains BUGS.md `## Open` (and
+    // The bugfix role fixes the last open bug: its merge drains BUGS.md `## Open` (and
     // counts as work) — the deferred tick starts within one poll of either conjunct flipping.
     fs.writeFileSync(
       path.join(repo, "BUGS.md"),
@@ -661,7 +661,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
     // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
-    // (need-based prioritization), so the second tick needs a work landing to wake it.
+    // (need-based prioritization), so the second tick needs a work merge to wake it.
     await awaitSettledTick(repo, "clean", 1, "the first tick to finish");
     mergeWork(repo);
     await awaitSettledTick(repo, "clean", 2, "two finished ticks");
@@ -682,7 +682,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     );
 
     // The reset survives tick boundaries: the next completed tick counts from zero — a stale
-    // in-memory copy would have saved ticks >= 3 here instead. A work landing wakes the
+    // in-memory copy would have saved ticks >= 3 here instead. A work merge wakes the
     // deferred role for that post-reset tick.
     mergeWork(repo);
     await waitFor(
@@ -703,7 +703,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   const repo = await makeFastRepo("mid-tick reset test", ["clean"]);
   // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
   // first tick is in flight (observed within a poll or two of start, consumed within one)
-  // lands mid-tick. That is the documented use case (resetting a running team), where most
+  // arrives mid-tick. That is the documented use case (resetting a running team), where most
   // loops are mid-tick at any moment.
   const restore = fakePi(`sleep 2\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);

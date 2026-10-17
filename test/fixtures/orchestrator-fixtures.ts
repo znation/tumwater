@@ -24,8 +24,8 @@ import type { TumwaterConfig } from "../../src/config/config-schema.js";
 import type { TickResult } from "../../src/tick/tick-outcome.js";
 
 /** The live-orchestrator tier's test scaffolding — the helpers that drive a running
- * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around
- * runOrchestrator, and a one-entry driver for the landing pipeline. Split from the
+ * orchestrator or its merge pipeline: fast configs and repos, a start/stop wrapper around
+ * runOrchestrator, and a one-entry driver for the merge pipeline. Split from the
  * loop-level fixtures (loop-fixtures.ts) so the e2e tier's machinery lives beside its tier,
  * mirroring repo-fixtures.ts / merger-fixtures.ts / status-fixtures.ts. */
 
@@ -37,10 +37,10 @@ import type { TickResult } from "../../src/tick/tick-outcome.js";
  * between polls to prevent back-to-back ticks. */
 export const FAST_POLL_MS = 100;
 
-/** Does `role`'s pinned landing ref still exist? `git rev-parse --verify` exits nonzero once
+/** Does `role`'s pinned merge ref still exist? `git rev-parse --verify` exits nonzero once
  * the ref is gone, so its absence is the postcondition the rejection, abort, and
- * successful-landing tests assert. Waiting on the outcome alone races the discard: a
- * deliberate stop's `discardPinnedRefs` runs in the landing slot's `finally`, AFTER
+ * successful-merge tests assert. Waiting on the outcome alone races the discard: a
+ * deliberate stop's `discardPinnedRefs` runs in the merge slot's `finally`, AFTER
  * `writeMergeOutcome` has already recorded `lastResult` (the load-sensitive-test class in
  * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the loop-tier suites
  * (loop-3.test.ts, loop-leftover-recovery.test.ts) each held an inline copy before this was
@@ -65,13 +65,13 @@ export function readSamples(runDir: string): number[] {
 }
 
 /** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
- * ticks land within a few poll cycles. The per-role clocks defaultConfig seeds (organize
+ * ticks merge within a few poll cycles. The per-role clocks defaultConfig seeds (organize
  * 3600s, plan 3600s, readme 1800s, steward/qa/selfcheck) are zeroed too: a role entry
  * inherits them through overlayDefaults even when the test rewrites `roles.<id>`
  * wholesale, and configForRole prefers the per-role value — leaving them would put a
  * `fastConfig(["organize"])` team on a 1 h tick clock (2026-10-06 CI regression). Only
  * the SEEDED clocks are cleared, so a role without a default clock still inherits the
- * global `minRunIntervalSeconds` a caller sets afterwards (the vet-abort test's 300 s
+ * global `minRunIntervalSeconds` a caller sets afterwards (the verify-abort test's 300 s
  * freeze relies on that). */
 export function fastConfig(roles: string[], model?: string): TumwaterConfig {
   const c = defaultConfig();
@@ -253,13 +253,13 @@ export async function awaitSettledTick(
   );
 }
 
-/** Land the head of the durable land queue through the orchestrator's own landing pipeline
+/** Merge the head of the durable merge queue through the orchestrator's own merge pipeline
  * (merge-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
- * entry a changed tick enqueues needs a driver: this vets the head alone (startVerify, on a
- * one-permit semaphore) and, once vetted, merges it (drainMerge), leaving every other queued
- * entry untouched — a test that ticks a second role meanwhile lands that one with its own call.
+ * entry a changed tick enqueues needs a driver: this verifies the head alone (startVerify, on a
+ * one-permit semaphore) and, once approved, merges it (drainMerge), leaving every other queued
+ * entry untouched — a test that ticks a second role meanwhile merges that one with its own call.
  * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
- * landing's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
+ * merge's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
  * exactly as the pipeline does. */
 export async function mergeHead(
   repo: string,
@@ -270,9 +270,9 @@ export async function mergeHead(
   signal: AbortSignal = new AbortController().signal,
 ): Promise<TickResult> {
   const head = headMerge(repo);
-  if (!head) throw new Error("expected a queued landing");
+  if (!head) throw new Error("expected a queued merge");
   assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
-  assert.equal(runner.role, role, "the landing folds into its own role's runner");
+  assert.equal(runner.role, role, "the merge folds into its own role's runner");
   const ctx: MergePipelineContext = {
     root: repo,
     mainBranch: branch,
@@ -289,9 +289,9 @@ export async function mergeHead(
   await Promise.all([...pipeline.verifying.values()].map((v) => v.promise));
   drainMerge(ctx, pipeline);
   await pipeline.merge?.promise;
-  if (fs.existsSync(head.file)) throw new Error(`the landing of ${role} ended without an outcome`);
+  if (fs.existsSync(head.file)) throw new Error(`the merge of ${role} ended without an outcome`);
   const result = runner.state.lastResult;
-  if (result === undefined) throw new Error(`the landing of ${role} recorded no result`);
+  if (result === undefined) throw new Error(`the merge of ${role} recorded no result`);
   return result;
 }
 
@@ -336,7 +336,7 @@ export function scriptedRedeployer(
 export function startRedeployRun(
   repo: string,
   redeployer: Redeployer,
-  opts: { timeoutMs?: number; handoffLandingWindowMs?: number } = {},
+  opts: { timeoutMs?: number; handoffMergeWindowMs?: number } = {},
 ) {
   const controller = new AbortController();
   const timeout = opts.timeoutMs === undefined ? null : setTimeout(() => controller.abort(), opts.timeoutMs);
@@ -344,7 +344,7 @@ export function startRedeployRun(
     signal: controller.signal,
     pollMs: FAST_POLL_MS,
     redeploy: redeployer,
-    ...(opts.handoffLandingWindowMs ? { handoffLandingWindowMs: opts.handoffLandingWindowMs } : {}),
+    ...(opts.handoffMergeWindowMs ? { handoffMergeWindowMs: opts.handoffMergeWindowMs } : {}),
   });
   return {
     run,

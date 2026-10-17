@@ -93,8 +93,8 @@ interface ClaimReleaseCtx {
   /** The keys eligibleEntries found (listed, not blocked/refused/needs-review). */
   eligibleKeys: ReadonlySet<string>;
   now: number;
-  /** The runner has a queued or in-flight landing. */
-  hasQueuedLanding: boolean;
+  /** The runner has a queued or in-flight merge. */
+  hasQueuedMerge: boolean;
   /** The runner's loop id is enabled in config (`loopEnabled`, so a lowered `instances`
    * disables the surplus runner). */
   enabled: boolean;
@@ -104,11 +104,11 @@ interface ClaimReleaseCtx {
   paused: boolean;
 }
 
-/** Why a runner drops its queued-landing claim; claimReleaseReason below decides each arm. */
+/** Why a runner drops its queued-merge claim; claimReleaseReason below decides each arm. */
 export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "paused" | "stale";
 
 /** Why a runner must drop its claim, or null when it keeps it. A runner is idle when it is not
- * running, has no queued landing, no outstanding revision and no pending resume; `disabled`,
+ * running, has no queued merge, no outstanding revision and no pending resume; `disabled`,
  * `paused` and `stale` only release an idle runner, while a claim whose entry left or turned
  * ineligible is released outright (there is nothing left to do). */
 export function claimReleaseReason(
@@ -119,7 +119,7 @@ export function claimReleaseReason(
   if (!claim) return null;
   const idle =
     !runner.state.running &&
-    !ctx.hasQueuedLanding &&
+    !ctx.hasQueuedMerge &&
     !hasOutstandingWork(runner.state);
   if (!ctx.listedKeys.has(claim.key)) return "left";
   if (!ctx.eligibleKeys.has(claim.key)) return "ineligible";
@@ -136,7 +136,7 @@ interface MovedEntry {
 }
 
 /** The entries `headMd` moved out of `section` that `baseMd` still listed, in base file order.
- * A moved entry's key matches whether it landed into `## Done`/`## Fixed` or was renamed; a key
+ * A moved entry's key matches whether it merged into `## Done`/`## Fixed` or was renamed; a key
  * absent from the head section means it is no longer actionable there. */
 export function movedOutEntries(baseMd: string, headMd: string, section: string): MovedEntry[] {
   const headKeys = new Set(actionableEntryRanges(headMd, section).map((e) => entryKey(e.title)));
@@ -163,7 +163,7 @@ export async function stagedMovedEntries(
 /** How many permits to withhold from tier ≥ 1 acquirers this poll so a work loop that has work
  * to take can claim one without waiting out a maintenance tick (plans/parallel-work-instances.md
  * "Priority headroom", part 7/7). Only the claim-taking roles (feature, bugfix) count: an idle
- * one — not running, with no queued landing — counts when it either holds an eligible claim or
+ * one — not running, with no queued merge — counts when it either holds an eligible claim or
  * its base role still has an unclaimed eligible entry. Returns min(floor(maxConcurrent / 3),
  * the count), so an entirely busy work tier reserves nothing. */
 export function workReserveCount(
@@ -173,7 +173,7 @@ export function workReserveCount(
     maxConcurrent: number;
     /** The loop ids the live config enables (loopEnabled). */
     enabled: ReadonlySet<string>;
-    /** The loop ids with a queued or in-flight landing. */
+    /** The loop ids with a queued or in-flight merge. */
     queuedMergeRoles: ReadonlySet<string>;
     /** Whether an idle work loop's provider still has headroom to use a reserved permit
      * (plans/provider-concurrency.md §6). With per-provider caps, withholding a team permit

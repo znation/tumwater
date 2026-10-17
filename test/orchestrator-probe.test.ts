@@ -97,7 +97,7 @@ test("a demoted fallback admits exactly one probe tick per cool-down; other due 
     // Both roles fail in lockstep, so the other role's tick is usually still in flight when the
     // third failure trips the breaker — a straggler admitted before the trip, which runs to its
     // own failure by design (recordFallbackTick). Its run_start precedes the worktree reset and
-    // the pi spawn, so on a loaded host its argv line can land after budget_paused and read as a
+    // the pi spawn, so on a loaded host its argv line can appear after budget_paused and read as a
     // pierced pause (BUGS.md 2026-10-07). The snapshot waits for every started tick to end; no
     // new tick can start meanwhile, since admission reads the tripped breaker.
     await waitFor(() => roleTicksInFlight(repo) === 0, "the pre-trip stragglers to finish");

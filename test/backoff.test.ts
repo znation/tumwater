@@ -104,7 +104,7 @@ test("restoreMidTickWake: an end stamp in the future wins the max — wokenAt la
   assert.equal(s.wokenAt, s.lastRunEndedAt + 1);
 });
 
-test("pushYieldOutcome: landings are L, everything productive-or-empty is n, error classes never enter the ring", () => {
+test("pushYieldOutcome: merges are L, everything productive-or-empty is n, error classes never enter the ring", () => {
   const s = freshLoopState("feature");
   pushYieldOutcome(s, "changed");
   pushYieldOutcome(s, "queued");
@@ -122,8 +122,8 @@ test("pushYieldOutcome: the ring is bounded at YIELD_RING, oldest entries fall o
   assert.equal(s.recentOutcomes, "n".repeat(YIELD_RING));
 });
 
-test("yieldMultiplier: a landing inside the recent window resets the clock to 1 even with older empties", () => {
-  // 15 empties would earn ×4 — but a landing inside the last 10 is the evidence the
+test("yieldMultiplier: a merge inside the recent window resets the clock to 1 even with older empties", () => {
+  // 15 empties would earn ×4 — but a merge inside the last 10 is the evidence the
   // role's clock should trust, so the older empties count for nothing while it's recent.
   assert.equal(yieldMultiplier(("n".repeat(15) + "L" + "n".repeat(9)).split("")), 1);
   assert.equal(yieldMultiplier("nnnLnnnnn".split("")), 1);
@@ -142,13 +142,13 @@ test("yieldMultiplier: doubling per 5 further empty ticks, capped at 8", () => {
   assert.equal(yieldMultiplier("n".repeat(40).split("")), 8);
 });
 
-test("yieldMultiplier: a landing older than the recent window counts as yield evidence neither way", () => {
+test("yieldMultiplier: a merge older than the recent window counts as yield evidence neither way", () => {
   // One L aged out of the recent window plus 10 empties: the L is excluded from the empty
   // count, so the multiplier climbs on the empties alone.
   const ring = "L" + "n".repeat(10);
   assert.equal(ring.length, 11);
   assert.equal(yieldMultiplier(ring.split("")), 2);
-  // And one aged-out landing among 11 empties does not hold the clock down either.
+  // And one aged-out merge among 11 empties does not hold the clock down either.
   assert.equal(yieldMultiplier(("L" + "n".repeat(11)).split("")), 2);
 });
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workLanded } from "../src/scheduling/scheduling.js";
+import { DEFER_MAX_MS, deferTick, deferTickReason, fairOrder, isEligible, workMerged } from "../src/scheduling/scheduling.js";
 import { configForRole, scheduleConfigForRole } from "../src/config/config-views.js";
 import { applyTickOutcome } from "../src/tick/tick-apply.js";
 import { OBSERVER_ROLES, ROLES } from "../src/roles/roles.js";
@@ -13,7 +13,7 @@ import { makeRepo } from "./fixtures/repo-fixtures.js";
 
 /** Unit tests for the pure tick-scheduling policy in src/scheduling/scheduling.ts — eligibility,
  * fair
- * order, and work-landed/deferral. Moved out of
+ * order, and work-merged/deferral. Moved out of
  * orchestrator.e2e.test.ts, which now covers only the orchestrator runtime, so the policy module
  * has the module-named test file the rest of src/ follows and its pure tests run in their own
  * parallel process. */
@@ -339,17 +339,17 @@ test("fairOrder orders the work tier ahead of maintenance; LRU (catalog order fo
   );
 });
 
-// --- Need-based prioritization (workLanded / deferTick) ---
+// --- Need-based prioritization (workMerged / deferTick) ---
 
-test("workLanded: feature/bugfix/director, operator and human subjects count; other roles do not", () => {
-  assert.equal(workLanded(["tumwater(feature): land a plan"]), true);
-  assert.equal(workLanded(["tumwater(bugfix): fix the crash"]), true);
+test("workMerged: feature/bugfix/director, operator and human subjects count; other roles do not", () => {
+  assert.equal(workMerged(["tumwater(feature): merge a plan"]), true);
+  assert.equal(workMerged(["tumwater(bugfix): fix the crash"]), true);
   // A director commit is user-directed work: after a pure-director burst the maintenance
   // roles must resync, so it counts like feature/bugfix.
-  assert.equal(workLanded(["tumwater(director): implement the request"]), true);
-  // Markdown/hygiene landings are not work for a maintenance role to react to.
+  assert.equal(workMerged(["tumwater(director): implement the request"]), true);
+  // Markdown/hygiene merges are not work for a maintenance role to react to.
   assert.equal(
-    workLanded([
+    workMerged([
       "tumwater(plan): write a plan",
       "tumwater(readme): sync status",
       "tumwater(steward): curate PLANS.md",
@@ -359,14 +359,14 @@ test("workLanded: feature/bugfix/director, operator and human subjects count; ot
   );
   // A human commit (no tumwater( prefix) is work: the world changed in a way the team
   // cannot generate itself.
-  assert.equal(workLanded(["fix the flaky test by hand"]), true);
-  assert.equal(workLanded(["tumwater(operator): Edit brief"]), true);
-  assert.equal(workLanded(["tumwater(operator): File plan: x"]), true);
+  assert.equal(workMerged(["fix the flaky test by hand"]), true);
+  assert.equal(workMerged(["tumwater(operator): Edit brief"]), true);
+  assert.equal(workMerged(["tumwater(operator): File plan: x"]), true);
   assert.equal(
-    workLanded(["tumwater(readme): sync", "tumwater(bugfix): fix it"]),
+    workMerged(["tumwater(readme): sync", "tumwater(bugfix): fix it"]),
     true,
   );
-  assert.equal(workLanded([]), false); // nothing landed since
+  assert.equal(workMerged([]), false); // nothing merged since
 });
 
 test("deferTickReason: an operator commit admits an idle readme; a readme commit alone does not", () => {
@@ -374,8 +374,8 @@ test("deferTickReason: an operator commit admits an idle readme; a readme commit
   const s = freshLoopState("readme");
   s.lastResult = "no_change";
   s.lastMainHead = "abc123";
-  assert.equal(deferTickReason(s, "readme", workLanded(["tumwater(operator): Edit brief"]), false, false, NOW), null);
-  assert.equal(deferTickReason(s, "readme", workLanded(["tumwater(readme): sync"]), false, false, NOW), "no-work");
+  assert.equal(deferTickReason(s, "readme", workMerged(["tumwater(operator): Edit brief"]), false, false, NOW), null);
+  assert.equal(deferTickReason(s, "readme", workMerged(["tumwater(readme): sync"]), false, false, NOW), "no-work");
 });
 
 test("deferTick: only a deferrable no_change role that has seen main and got no work defers", () => {
@@ -386,8 +386,8 @@ test("deferTick: only a deferrable no_change role that has seen main and got no 
   assert.equal(deferTick(base, "organize", false, false, false, NOW), true);
 
   // Each condition flipped → no deferral.
-  const workLandedSinceLast = { ...base };
-  assert.equal(deferTick(workLandedSinceLast, "organize", true, false, false, NOW), false); // work landed
+  const workMergedSinceLast = { ...base };
+  assert.equal(deferTick(workMergedSinceLast, "organize", true, false, false, NOW), false); // work merged
   const changed = { ...base, lastResult: "changed" as const };
   assert.equal(deferTick(changed, "organize", false, false, false, NOW), false);
   for (const result of ["rejected", "error", "refused", "merge_conflict"] as const) {
@@ -427,12 +427,12 @@ test("deferTick: observers never defer, under every input", () => {
   }
 });
 
-test("deferTick: an open backlog defers idle maintenance even when work landed; pending business never defers", () => {
+test("deferTick: an open backlog defers idle maintenance even when work merged; pending business never defers", () => {
   const NOW = Date.now();
   const base = freshLoopState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
-  // Backlog open → deferred regardless of the work-landed verdict.
+  // Backlog open → deferred regardless of the work-merged verdict.
   assert.equal(deferTick(base, "organize", true, true, false, NOW), true);
   assert.equal(deferTick(base, "organize", false, true, false, NOW), true);
 
@@ -450,15 +450,15 @@ test("deferTick: an open backlog defers idle maintenance even when work landed; 
   }
 });
 
-test("deferTickReason: names the clause that deferred — open backlog, else no work landed", () => {
+test("deferTickReason: names the clause that deferred — open backlog, else no work merged", () => {
   const NOW = Date.now();
   const base = freshLoopState("organize");
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
-  // Backlog open → "backlog", with or without work landed (the caller short-circuits the query).
+  // Backlog open → "backlog", with or without work merged (the caller short-circuits the query).
   assert.equal(deferTickReason(base, "organize", true, true, false, NOW), "backlog");
   assert.equal(deferTickReason(base, "organize", false, true, false, NOW), "backlog");
-  // No backlog: the clause is the work-landed verdict — no work → "no-work", work → admitted.
+  // No backlog: the clause is the work-merged verdict — no work → "no-work", work → admitted.
   assert.equal(deferTickReason(base, "organize", false, false, false, NOW), "no-work");
   assert.equal(deferTickReason(base, "organize", true, false, false, NOW), null);
   // bugfix in search mode drops the backlog clause, so open plans still read "no-work".
@@ -480,12 +480,12 @@ test("deferTick: bugfix with no open bugs defers like a maintenance role", () =>
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   // Its backlog is empty by precondition (openBugsNow false), so the backlog-open clause is
-  // dropped: it defers exactly while no feature/bugfix/director/human commit landed since its
+  // dropped: it defers exactly while no feature/bugfix/director/human commit merged since its
   // last tick — including while PLANS.md has open plans (a backlog open elsewhere does not
-  // stand in for the work-landed verdict, and a feature landing is exactly what creates bugs).
+  // stand in for the work-merged verdict, and a feature merge is exactly what creates bugs).
   assert.equal(deferTick(base, "bugfix", false, false, false, NOW), true);
   assert.equal(deferTick(base, "bugfix", false, true, false, NOW), true);
-  assert.equal(deferTick(base, "bugfix", true, true, false, NOW), false); // work landed
+  assert.equal(deferTick(base, "bugfix", true, true, false, NOW), false); // work merged
 
   // Each shared condition still applies: a productive tick, pending business, a never-ticked
   // role, an unknown role, and the DEFER_MAX_MS cap all behave as for a maintenance role.
@@ -523,7 +523,7 @@ test("deferTick: a deferral that outlasts DEFER_MAX_MS stops deferring (the latc
   base.lastResult = "no_change";
   base.lastMainHead = "abc123";
   base.nextRunAt = 1_000_000;
-  // Just due: deferred (backlog open, no work landed).
+  // Just due: deferred (backlog open, no work merged).
   assert.equal(deferTick(base, "organize", false, true, false, 1_000_000), true);
   // Still inside the window: deferred.
   assert.equal(deferTick(base, "organize", false, true, false, 1_000_000 + DEFER_MAX_MS - 1), true);

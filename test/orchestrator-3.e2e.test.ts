@@ -42,17 +42,17 @@ import { APPROVE_PI, assistantLine, leasedRoleShell } from "./fixtures/pi-events
 
 const FAST_POLL_MS = 100;
 
-/** Has `role`'s tick ended `queued` — committed and enqueued its landing? The run_end event is
+/** Has `role`'s tick ended `queued` — committed and enqueued its merge? The run_end event is
  * where that outcome lives: `lastResult` records only completed results, so a queued tick
- * leaves it at the prior outcome until the landing resolves (BUGS.md 2026-09-23). */
+ * leaves it at the prior outcome until the merge resolves (BUGS.md 2026-09-23). */
 function tickQueued(repo: string, role: string): boolean {
   return readEvents(repo).some((e) => e.type === "run_end" && e.source === role && e.result === "queued");
 }
 
-/** Seed what a crash between the role's commit and the landing's entry drop leaves behind:
+/** Seed what a crash between the role's commit and the merge's entry drop leaves behind:
  * one real commit ahead of main — a child of main's head carrying the parent's full tree plus
  * one new `file` (a one-entry mktree would delete every other file, and the ff-merge would
- * rightly refuse to overwrite the operator's checkout) — pinned by `clean`'s landing ref, with
+ * rightly refuse to overwrite the operator's checkout) — pinned by `clean`'s merge ref, with
  * its queue entry enqueued under `label`. The restart-drain and torn-head drain tests both
  * construct this survivor; only the file and its label differ. Returns the pinned sha. */
 function seedSurvivorCommit(repo: string, file: string, label: string): string {
@@ -71,16 +71,16 @@ function seedSurvivorCommit(repo: string, file: string, label: string): string {
   return sha;
 }
 
-test("a user abort during a landing kills it and discards the pinned ref", async () => {
+test("a user abort during a merge kills it and discards the pinned ref", async () => {
   const repo = makeRepo();
-  await initProject(repo, "abort landing e2e test");
+  await initProject(repo, "abort merge e2e test");
   // A long minimum interval: the aborted role must NOT start a second tick while the test
   // asserts the aftermath (a fresh tick would re-enqueue and re-pin and muddy the asserts).
   const cfg = fastConfig(["clean"]);
   cfg.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
   // Author run: make a change and finish. Review run (its prompt contains VERDICT): touch the
-  // marker, then hang until the abort kills it — the landing stays in flight for as long as
+  // marker, then hang until the abort kills it — the merge stays in flight for as long as
   // the abort marker sits on disk.
   const marker = path.join(tmpdir(), "clean-reviewing");
   const restore = fakePi(
@@ -92,30 +92,30 @@ test("a user abort during a landing kills it and discards the pinned ref", async
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The tick commits + enqueues; the landing slot picks the entry up and starts its
+    // The tick commits + enqueues; the merge slot picks the entry up and starts its
     // reviewer run — by merge queue 3/5 this is where `tumwater abort --role` reaches it.
-    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its landing");
-    await waitFor(() => fs.existsSync(marker), "the landing's reviewer run to be in flight");
+    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its merge");
+    await waitFor(() => fs.existsSync(marker), "the merge's reviewer run to be in flight");
 
     // What `tumwater abort --role clean` does from the CLI side: drop the per-role marker.
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
 
-    // The team consumes the request, aborts the in-flight landing, and the drain discards
-    // the pinned ref: a deliberate stop kills the work under review, the landing's
+    // The team consumes the request, aborts the in-flight merge, and the drain discards
+    // the pinned ref: a deliberate stop kills the work under review, the merge's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
     await waitFor(
       () => loadLoopState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
-      "the aborted landing to settle and discard its pinned ref",
+      "the aborted merge to settle and discard its pinned ref",
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
-    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
-    assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
+    assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing merged on main");
+    assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted merge");
     assert.ok(!mergeRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
-    // The landing, not the tick, was aborted: one merge_failed, no run_aborted, no second tick.
+    // The merge, not the tick, was aborted: one merge_failed, no run_aborted, no second tick.
     const failed = eventsOfType(repo, "merge_failed");
-    assert.equal(failed.length, 1, "the aborted landing logged its failure");
+    assert.equal(failed.length, 1, "the aborted merge logged its failure");
     assert.equal(failed[0]!.result, "aborted");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0);
     assert.equal(loadLoopState(repo, "clean").runs, 1);
@@ -124,11 +124,11 @@ test("a user abort during a landing kills it and discards the pinned ref", async
   }
 });
 
-test("a role with a queued or in-flight landing never starts a new tick (interlock)", async () => {
+test("a role with a queued or in-flight merge never starts a new tick (interlock)", async () => {
   // minTickInterval 0: the role is due on EVERY poll — only the interlock can hold it.
   const repo = await makeFastRepo("interlock e2e test", ["clean"]);
   // Author run: first time a change, after that nothing to do. Review run: touch the marker,
-  // then hang until the test's abort kills it — the landing stays in flight through the window.
+  // then hang until the test's abort kills it — the merge stays in flight through the window.
   const hang = path.join(tmpdir(), "interlock-hang");
   const did = path.join(tmpdir(), "interlock-did");
   const restore = fakePi(
@@ -140,29 +140,29 @@ test("a role with a queued or in-flight landing never starts a new tick (interlo
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // The tick commits + enqueues; the landing slot picks the entry up and its reviewer hangs.
-    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its landing");
-    await waitFor(() => fs.existsSync(hang), "the landing's reviewer run to be in flight");
+    // The tick commits + enqueues; the merge slot picks the entry up and its reviewer hangs.
+    await waitFor(() => tickQueued(repo, "clean"), "the tick to enqueue its merge");
+    await waitFor(() => fs.existsSync(hang), "the merge's reviewer run to be in flight");
 
     // ~10 poll cycles pass with the role due on every one — yet no second tick starts: the
-    // entry stays in the queue until the landing settles, and the interlock covers both the
+    // entry stays in the queue until the merge settles, and the interlock covers both the
     // queued and the in-flight phases with that one check.
     await sleep(1_200);
-    assert.equal(loadLoopState(repo, "clean").runs, 1, "no second tick while its own landing is in flight");
-    assert.equal(queueDepth(repo), 1, "the entry stays queued until the landing settles");
+    assert.equal(loadLoopState(repo, "clean").runs, 1, "no second tick while its own merge is in flight");
+    assert.equal(queueDepth(repo), 1, "the entry stays queued until the merge settles");
     // The pending change is not a completed result: the role's first tick had no prior one,
     // so the persisted last-result pair stays empty through the whole window (BUGS.md
     // 2026-09-23 — it used to read `queued`).
-    assert.equal(loadLoopState(repo, "clean").lastResult, undefined, "the in-flight landing is not a last result");
+    assert.equal(loadLoopState(repo, "clean").lastResult, undefined, "the in-flight merge is not a last result");
 
-    // Settle the test: a deliberate stop kills the hung landing and drops its entry.
+    // Settle the test: a deliberate stop kills the hung merge and drops its entry.
     const markerFile = abortRequestPath(repo, "clean");
     writeMarker(markerFile, { at: Date.now() });
     await waitFor(
       () => loadLoopState(repo, "clean").lastResult === "aborted",
-      "the aborted landing to settle",
+      "the aborted merge to settle",
     );
-    assert.equal(queueDepth(repo), 0, "the entry drops with the aborted landing");
+    assert.equal(queueDepth(repo), 0, "the entry drops with the aborted merge");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -177,9 +177,9 @@ test("a queue entry surviving a restart drains through the gate on next start", 
       `printf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`,
     ].join("\n"),
   );
-  // Seed exactly what a crash between commitAll and the landing's entry drop leaves behind:
-  // one commit pinned by the landing ref, with its queue entry. The next start's drain
-  // must land it through the gate.
+  // Seed exactly what a crash between commitAll and the merge's entry drop leaves behind:
+  // one commit pinned by the merge ref, with its queue entry. The next start's drain
+  // must merge it through the gate.
   seedSurvivorCommit(repo, "crash.txt", "crash survivor");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
@@ -191,21 +191,21 @@ test("a queue entry surviving a restart drains through the gate on next start", 
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
-      "the surviving change landed through the gate",
+      "the surviving change merged through the gate",
     );
     assert.equal(
       eventsOfType(repo, "merge_failed").length,
       0,
-      "no failed landing",
+      "no failed merge",
     );
-    assert.equal(loadLoopState(repo, "clean").commits, 1, "the landed change counts as one commit");
-    assert.ok(!mergeRefExists(repo, "clean"), "the pin is deleted with a successful landing");
+    assert.equal(loadLoopState(repo, "clean").commits, 1, "the merged change counts as one commit");
+    assert.ok(!mergeRefExists(repo, "clean"), "the pin is deleted with a successful merge");
   } finally {
     await stopOrchestrator(orch, restore);
   }
 });
 
-test("an entry whose sha main already holds is dropped at the drain without a landing run", async () => {
+test("an entry whose sha main already holds is dropped at the drain without a merge run", async () => {
   const repo = await makeFastRepo("dedup drain e2e test", ["clean"]);
   // Every reviewer run increments its own counter — a deduped drain must burn none of them.
   const rev = path.join(tmpdir(), "interlock-review-count");
@@ -219,10 +219,10 @@ test("an entry whose sha main already holds is dropped at the drain without a la
   );
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
-    // One real change lands end to end…
+    // One real change merges end to end…
     await waitFor(
       () => loadLoopState(repo, "clean").lastResult === "changed" && fs.existsSync(path.join(repo, "hello.txt")),
-      "the change to land on main",
+      "the change to merge on main",
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
     const sha = headSha(repo);
@@ -231,12 +231,12 @@ test("an entry whose sha main already holds is dropped at the drain without a la
     assert.equal(
       fs.readFileSync(rev, "utf8").trim(),
       "1",
-      "exactly one reviewer run: the stale entry was deduped, not re-landed",
+      "exactly one reviewer run: the stale entry was deduped, not re-merged",
     );
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
-      "no second landed event",
+      "no second merge_done event",
     );
     assert.equal(
       eventsOfType(repo, "merge_failed").length,
@@ -249,10 +249,10 @@ test("an entry whose sha main already holds is dropped at the drain without a la
 });
 
 test("a stale marker beside an already-merged queue head is cleared so an idle team reads clean", async () => {
-  // The other crash ordering's residue: a landing wrote its 4/5 marker and the ff-merge made
+  // The other crash ordering's residue: a merge wrote its 4/5 marker and the ff-merge made
   // main hold the entry's sha, but the process died before the write-back dropped the entry.
   // The dedup arm drops the entry; the marker must go with it, or a liveness-cross-checking
-  // observer (status/TUI/GUI) keeps reading an in-flight landing that no process is running.
+  // observer (status/TUI/GUI) keeps reading an in-flight merge that no process is running.
   const repo = await makeFastRepo("stale marker drain e2e test", ["clean"]);
   // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
@@ -270,7 +270,7 @@ test("a stale marker beside an already-merged queue head is cleared so an idle t
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       0,
-      "the deduped entry ran no landing",
+      "the deduped entry ran no merge",
     );
   } finally {
     await stopOrchestrator(orch, restore);
@@ -280,8 +280,8 @@ test("a stale marker beside an already-merged queue head is cleared so an idle t
 test("a torn queue-head file is dropped at the drain so the queue drains", async () => {
   // Seeds exactly what a hard crash mid-enqueueMerge leaves behind: a truncated queue
   // file that sorts before a live entry. headMerge reads null for the torn head and
-  // nothing else drops it, so before the fix the live entry behind it never landed and
-  // its role's interlock (a non-empty land queue) held the role's ticks forever.
+  // nothing else drops it, so before the fix the live entry behind it never merged and
+  // its role's interlock (a non-empty merge queue) held the role's ticks forever.
   const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
   // The review run approves; the role's own ticks never start — the interlock holds from
   // the first poll, because the entry is queued before the orchestrator starts.
@@ -305,15 +305,15 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
     assert.equal(
       eventsOfType(repo, "merge_done").length,
       1,
-      "the live change landed through the gate",
+      "the live change merged through the gate",
     );
     assert.equal(
       eventsOfType(repo, "merge_failed").length,
       0,
-      "no failed landing",
+      "no failed merge",
     );
     assert.equal(
-      readEvents(repo).filter((e) => e.type === "warning" && String(e.message).includes('land queue')).length,
+      readEvents(repo).filter((e) => e.type === "warning" && String(e.message).includes('merge queue')).length,
       1,
       "one harness warning for the torn head drop",
     );
@@ -322,11 +322,11 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   }
 });
 
-test("a landing whose pinned sha no longer exists degrades to an error outcome, not a throw", async () => {
+test("a merge whose pinned sha no longer exists degrades to an error outcome, not a throw", async () => {
   // The queue entry can outlive its commit: the pin ref is dropped or the dangling commit
-  // gc'd while the entry waits (a crash between pin and drop, manual gc). The vet's checkout
+  // gc'd while the entry waits (a crash between pin and drop, manual gc). The verify's checkout
   // throws on the uncheckable sha — verifyRequest must turn that into a normal "error" outcome
-  // with every bookkeeping step a real failure gets, instead of taking the landing pipeline
+  // with every bookkeeping step a real failure gets, instead of taking the merge pipeline
   // down with it.
   const repo = makeRepo();
   const sha = "0".repeat(40); // a commit git cannot check out
@@ -340,8 +340,8 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   // The git failure is recorded where the next tick's prompt reads it.
   assert.match(author.state.lastError ?? "", /invalid reference/);
   // The 4/5 in-flight marker is cleared, the entry dropped, and the failure logged —
-  // the same tail a landed or rejected entry goes through.
-  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the landing marker survives the error outcome");
+  // the same tail a merged or rejected entry goes through.
+  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the merge marker survives the error outcome");
   assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
   const failed = eventsOfType(repo, "merge_failed");
   assert.equal(failed.length, 1);
@@ -426,17 +426,17 @@ test("an abort request kills an in-flight tick, consumes its marker, and logs on
   }
 });
 
-// ── The landing pipeline over a seeded queue (merge queue 5/5, land-queue speed 2c) ────────
+// ── The merge pipeline over a seeded queue (merge queue 5/5, merge-queue speed 2c) ────────
 
-/** Seed the land queue with one pinned single-commit entry per role (queue order = argument
- * order), built the way pinAndReset leaves them: a commit off main under the landing ref.
+/** Seed the merge queue with one pinned single-commit entry per role (queue order = argument
+ * order), built the way pinAndReset leaves them: a commit off main under the merge ref.
  * Pre-seeding — instead of letting the roles tick the entries in — makes the pipeline's start
- * deterministic: it vets EVERY entry from its first poll, before any tick can race it. */
-async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
+ * deterministic: it verifies EVERY entry from its first poll, before any tick can race it. */
+async function seedMergeQueue(repo: string, ...roles: string[]): Promise<void> {
   // The seed commits must not swallow the live config: initProject's initial commit tracks
   // tumwater.json, and any `reset --hard main` in the seed loop below resurrects the committed
   // copy over a live user edit. Untrack it on main (commit the deletion) and ignore it, the
-  // way real projects keep a live config out of the tree; the untrack must land on main
+  // way real projects keep a live config out of the tree; the untrack must merge on main
   // BEFORE the loop, since a bare `rm --cached` would be undone by the first reset --hard.
   const gi = path.join(repo, ".gitignore");
   const existing = fs.existsSync(gi) ? fs.readFileSync(gi, "utf8") : "";
@@ -455,7 +455,7 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
     // Not tracked — the gitignore line above still keeps future `add -A`s from swallowing it.
   }
   for (const role of roles) {
-    // Each pin stands alone on main: the two queued landings are independent changes.
+    // Each pin stands alone on main: the two queued merges are independent changes.
     const sha = pinOffMain(
       repo,
       (d) => fs.writeFileSync(path.join(d, `${role}.txt`), `${role}\n`),
@@ -467,17 +467,18 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
   }
 }
 
-test("an abort for one queued role stops only that role's vet and discards its pin; the other vet runs on", async () => {
-  // The land-queue speed 2c rule through the live scheduler: every queued change is its own vet,
-  // so `tumwater abort --role dedupe` reaches dedupe's vet alone — its reviewer killed, its outcome
-  // `aborted`, its pin discarded — while clean's vet, reviewing beside it, runs on and lands.
+test("an abort for one queued role stops only that role's verify and discards its pin; the other verify runs on", async () => {
+  // The merge-queue speed 2c rule through the live scheduler: every queued change is its own
+  // verify, so `tumwater abort --role dedupe` reaches dedupe's verify alone — its reviewer killed,
+  // its outcome `aborted`, its pin discarded — while clean's verify, reviewing beside it, runs on
+  // and merges.
   const repo = makeRepo();
-  await initProject(repo, "vet abort e2e test");
+  await initProject(repo, "verify abort e2e test");
   // A long minimum interval: nothing re-ticks while the test asserts the aftermath.
   const cfg = fastConfig(["clean", "dedupe"]);
   cfg.minRunIntervalSeconds = 300;
   saveConfig(repo, cfg);
-  await seedLandQueue(repo, "clean", "dedupe");
+  await seedMergeQueue(repo, "clean", "dedupe");
   // The 300 s min-gap only throttles ticks AFTER the first: a never-run role has
   // lastRunEndedAt 0, so it is startup-eligible on poll one and — under load — can finish a
   // no-op tick before the asserts below read `ticks`. Seed both roles as freshly ticked so NO
@@ -489,7 +490,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
   }
   // Each reviewer marks itself and parks until released (bounded ~60 s, so a failed assert can
   // never leave one spinning); the abort kills dedupe's.
-  const dir = tmpdir("vet-abort-");
+  const dir = tmpdir("verify-abort-");
   const release = path.join(dir, "release");
   const restore = fakePi(
     [
@@ -505,7 +506,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
   try {
     await waitFor(
       () => fs.existsSync(path.join(dir, "clean-reviewing")) && fs.existsSync(path.join(dir, "dry-reviewing")),
-      "both vets' reviewer runs to be in flight",
+      "both verifies' reviewer runs to be in flight",
       60_000,
     );
     // What `tumwater abort --role dedupe` does from the CLI side.
@@ -514,7 +515,7 @@ test("an abort for one queued role stops only that role's vet and discards its p
 
     await waitFor(
       () => loadLoopState(repo, "dedupe").lastResult === "aborted" && !mergeRefExists(repo, "dedupe"),
-      "dedupe's aborted vet to settle and discard its pin",
+      "dedupe's aborted verify to settle and discard its pin",
       60_000,
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
@@ -528,8 +529,8 @@ test("an abort for one queued role stops only that role's vet and discards its p
     );
 
     fs.writeFileSync(release, "");
-    await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's vet to land", 60_000);
-    assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean landed on main");
+    await waitFor(() => loadLoopState(repo, "clean").lastResult === "changed", "clean's verify to merge", 60_000);
+    assert.ok(fs.existsSync(path.join(repo, "clean.txt")), "clean merged on main");
     assert.ok(!fs.existsSync(path.join(repo, "dedupe.txt")), "the aborted change never did");
     assert.equal(eventsOfType(repo, "run_aborted").length, 0, "no tick was running");
     assert.equal(loadLoopState(repo, "clean").runs, 0, "the interlock held: no tick ever started");
@@ -541,13 +542,13 @@ test("an abort for one queued role stops only that role's vet and discards its p
   }
 });
 
-test("a role rejected in its vet ticks again while another queued change is still in review", async () => {
+test("a role rejected in its verify ticks again while another queued change is still in review", async () => {
   // BUGS.md 2026-09-23: a final verdict once kept its entry queued until a whole batch wrote
   // back, so the interlock skipped the rejected author's due tick every poll through every
   // later review, the stack check, and the ff. clean's reviewer rejects at once; dedupe's parks
-  // until released, keeping a landing in flight while the test watches clean.
-  const repo = await makeFastRepo("vet early drop e2e test", ["clean", "dedupe"]); // minTickInterval 0: due on every poll
-  await seedLandQueue(repo, "clean", "dedupe");
+  // until released, keeping a merge in flight while the test watches clean.
+  const repo = await makeFastRepo("verify early drop e2e test", ["clean", "dedupe"]); // minTickInterval 0: due on every poll
+  await seedMergeQueue(repo, "clean", "dedupe");
   const dir = tmpdir("early-drop-");
   const held = path.join(dir, "dry-reviewing");
   const release = path.join(dir, "release");
@@ -567,8 +568,8 @@ test("a role rejected in its vet ticks again while another queued change is stil
   try {
     await waitFor(() => fs.existsSync(held), "dedupe's review to be in flight — clean's verdict is already in", 60_000);
     // The interlock frees clean while dedupe's review is still parked: its due tick runs.
-    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-landing", 30_000);
-    assert.ok(!fs.existsSync(release), "dedupe's landing is still in flight: its review never returned");
+    await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the rejected role's fix tick to start mid-merge", 30_000);
+    assert.ok(!fs.existsSync(release), "dedupe's merge is still in flight: its review never returned");
     assert.equal(loadLoopState(repo, "dedupe").runs, 0, "dedupe's entry is still queued, so the interlock still holds it");
     assert.deepEqual(
       readEvents(repo)
@@ -581,7 +582,7 @@ test("a role rejected in its vet ticks again while another queued change is stil
     fs.writeFileSync(release, "");
     await waitFor(
       () => readEvents(repo).some((e) => e.type === "merge_done" && e.source === "dedupe"),
-      "dedupe to land",
+      "dedupe to merge",
       60_000,
     );
     assert.equal(
@@ -596,18 +597,18 @@ test("a role rejected in its vet ticks again while another queued change is stil
   }
 });
 
-test("maxConcurrent 4 vets three queued changes at once on the live orchestrator, then merges them all", async () => {
-  // Land-queue speed 2c through the scheduler's own wiring: every vet takes one of the shared
+test("maxConcurrent 4 verifies three queued changes at once on the live orchestrator, then merges them all", async () => {
+  // Merge-queue speed 2c through the scheduler's own wiring: every verify takes one of the shared
   // maxConcurrent permits (the authors are interlocked, so no role tick holds one), verifyLimit
   // keeps the fourth for authoring, all three reviews run together (each records how many were
-  // in flight as it started), and the merge slot lands every change.
+  // in flight as it started), and the merge slot merges every change.
   const repo = makeRepo();
-  await initProject(repo, "vetting stage e2e test");
+  await initProject(repo, "verification stage e2e test");
   const roles = ["feature", "bugfix", "clean"];
   const cfg = { ...fastConfig(roles), maxConcurrent: 4 };
-  cfg.minRunIntervalSeconds = 300; // landings never tick; the seeded-queue drive needs no author runs
+  cfg.minRunIntervalSeconds = 300; // merges never tick; the seeded-queue drive needs no author runs
   saveConfig(repo, cfg);
-  await seedLandQueue(repo, ...roles);
+  await seedMergeQueue(repo, ...roles);
   const runDir = tmpdir();
   const restore = fakePi(
     [
@@ -622,7 +623,7 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   try {
     await waitFor(
       () => eventsOfType(repo, "merge_done").length >= 3 && queueDepth(repo) === 0,
-      "all three to land",
+      "all three to merge",
       60_000,
     );
     const samples = fs.readFileSync(path.join(runDir, "samples.log"), "utf8").trim().split("\n").map(Number);
@@ -634,17 +635,17 @@ test("maxConcurrent 4 vets three queued changes at once on the live orchestrator
   }
 });
 
-test("a vet slot that can no longer be created is contained: the healthy change lands, the other drops as an error", async () => {
-  // mergeApproved degrades failed landings to results, but a git-level failure in a stack's
-  // assembly still throws, and the merge's catch must keep every entry queued (un-vetted, so
-  // each is vetted afresh next poll) instead of escaping as an unhandled rejection; clean's
-  // own re-vet degrades the same failure to an "error" outcome. Either way the queue must
+test("a verify slot that can no longer be created is contained: the healthy change merges, the other drops as an error", async () => {
+  // mergeApproved degrades failed merges to results, but a git-level failure in a stack's
+  // assembly still throws, and the merge's catch must keep every entry queued (un-approved, so
+  // each is reviewed afresh next poll) instead of escaping as an unhandled rejection; clean's
+  // own re-verify degrades the same failure to an "error" outcome. Either way the queue must
   // drain: clean, whose just-freed slot cannot be re-created, drops as a terminal error, and
-  // dedupe lands. Trigger: clean's own review run deletes its just-freed slot and makes the
+  // dedupe merges. Trigger: clean's own review run deletes its just-freed slot and makes the
   // worktrees parent unwritable before it approves, after seeding the shared `_merge` checkout
-  // so dedupe's merge (part 2c) can still land.
-  const repo = await makeFastRepo("lander worktree throw recovery test", ["clean", "dedupe"]);
-  await seedLandQueue(repo, "clean", "dedupe");
+  // so dedupe's change (part 2c) can still merge.
+  const repo = await makeFastRepo("merger worktree throw recovery test", ["clean", "dedupe"]);
+  await seedMergeQueue(repo, "clean", "dedupe");
   const worktrees = path.join(repo, ".tumwater", "worktrees");
   const mergeWt = path.join(worktrees, "_merge");
   const armed = path.join(tmpdir(), "worktree-throw-armed");
@@ -655,10 +656,10 @@ test("a vet slot that can no longer be created is contained: the healthy change 
       leasedRoleShell(),
       `case "$role" in clean) if [ ! -e '${armed}' ]; then`,
       `  touch '${armed}'; slot="$PWD"; cd /;`,
-      // The shared merge checkout must exist before the parent is locked (a vet on a pooled
+      // The shared merge checkout must exist before the parent is locked (a verify on a pooled
       // slot does not create it): seed it, then remove clean's just-freed slot and lock the
-      // parent, so clean can no longer re-vet (its slot cannot be re-created) while the seeded
-      // shared `_merge` checkout survives and dedupe's change lands.
+      // parent, so clean can no longer re-verify (its slot cannot be re-created) while the seeded
+      // shared `_merge` checkout survives and dedupe's change merges.
       `  git -C '${repo}' worktree add --detach '${mergeWt}' main >/dev/null 2>&1;`,
       `  rm -rf "$slot"; chmod 555 '${worktrees}'`,
       `fi;; esac`,
@@ -670,18 +671,18 @@ test("a vet slot that can no longer be created is contained: the healthy change 
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => fs.existsSync(armed), "clean's review to arm the corruption", 60_000);
-    // The failure was contained and the pipeline self-terminated: dedupe's change lands, while
-    // clean's — whose lander worktree can no longer be created — drops as a terminal error
+    // The failure was contained and the pipeline self-terminated: dedupe's change merges, while
+    // clean's — whose merger worktree can no longer be created — drops as a terminal error
     // instead of silently vanishing or wedging the queue forever.
     await waitFor(
       () => fs.existsSync(path.join(repo, "dedupe.txt")) && queueDepth(repo) === 0,
-      "dedupe's landing to land and the queue to drain",
+      "dedupe's merge to finish and the queue to drain",
       60_000,
     );
-    assert.ok(fs.existsSync(path.join(repo, "dedupe.txt")), "dedupe's change landed on main");
+    assert.ok(fs.existsSync(path.join(repo, "dedupe.txt")), "dedupe's change merged on main");
     assert.ok(
       !fs.existsSync(path.join(repo, "clean.txt")),
-      "clean's change did not land — its lander worktree was gone",
+      "clean's change did not merge — its merger worktree was gone",
     );
     const cleanErrors = readEvents(repo).filter(
       (e) => e.type === "merge_failed" && e.source === "clean" && e.result === "error",
@@ -700,30 +701,30 @@ test("a vet slot that can no longer be created is contained: the healthy change 
   }
 });
 
-test("a restart's hand-off aborts the landings that outlive its deadline instead of waiting them out", async () => {
+test("a restart's hand-off aborts the merges that outlive its deadline instead of waiting them out", async () => {
   // BUGS.md 2026-09-23, the 97-minute hand-off: a self-redeploy swaps while queued changes are
   // mid-review and no role tick is in flight, so poll returns `restart` at once with the
-  // landings still running. Their reviewers each take a minute; the unbounded shutdown await sat
+  // merges still running. Their reviewers each take a minute; the unbounded shutdown await sat
   // through every one of them in silence. Bounded, the hand-off announces the wait, aborts
-  // every vet when the window lapses, and exits — the pins surviving for the new build.
+  // every verify when the window lapses, and exits — the pins surviving for the new build.
   const repo = await makeFastRepo("restart hand-off test", ["clean", "dedupe"]);
   // Both roles are interlocked by their queued entries, so no role tick ever starts: the drain
-  // has nothing to wait for and the restart lands mid-review — the incident's shape.
-  await seedLandQueue(repo, "clean", "dedupe");
+  // has nothing to wait for and the restart takes effect mid-review — the incident's shape.
+  await seedMergeQueue(repo, "clean", "dedupe");
   const reviewing = path.join(tmpdir(), "handoff-reviewing");
   const restore = fakePi(
     `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
   );
-  // Staleness is re-evaluated only when main moves: stale once the first vet's reviewer is
+  // Staleness is re-evaluated only when main moves: stale once the first verify's reviewer is
   // running, and the test moves main after that — so the restart arrives mid-review.
   const { redeployer, swaps } = scriptedRedeployer(repo, { stale: () => fs.existsSync(reviewing) });
   const { run, stop, signal } = startRedeployRun(repo, redeployer, {
     timeoutMs: 90_000,
-    handoffLandingWindowMs: 500,
+    handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "the first vet's reviewer run to be in flight");
-    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the vets");
+    await waitFor(() => fs.existsSync(reviewing), "the first verify's reviewer run to be in flight");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the verifies");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
@@ -741,12 +742,12 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     const handoffMs = events[stopAt]!.ts - events[restartAt]!.ts;
     assert.ok(handoffMs < 20_000, `the hand-off did not wait out the minute-long reviewers (${handoffMs}ms)`);
 
-    // The aborted vets are recorded like any shutdown abort: both changes `aborted`, their pins
-    // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
+    // The aborted verifies are recorded like any shutdown abort: both changes `aborted`, their pins
+    // kept for the new build's recovery, nothing merged, and no in-flight marker left behind.
     const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
     assert.deepEqual(failed.sort(), ["clean:aborted", "dedupe:aborted"]);
     assert.ok(mergeRefExists(repo, "clean") && mergeRefExists(repo, "dedupe"), "both pins survive for the next generation");
-    assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
+    assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing merged");
     assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
     await stop();
@@ -754,15 +755,15 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
   }
 });
 
-test("a restart's drain aborts only its permit-holding role ticks — the in-flight landing keeps its hand-off window, and a role enabled mid-run is cut off with the startup ones", async () => {
-  // BUGS.md 2026-09-30, the 13 ms landing: clean's tick holds a permit past the drain window
-  // while dedupe's landing is mid-review when the redeploy reaches the swap. The drain's abort used
-  // to fire the harness's one internal stop, killing the landing before the hand-off could wait
+test("a restart's drain aborts only its permit-holding role ticks — the in-flight merge keeps its hand-off window, and a role enabled mid-run is cut off with the startup ones", async () => {
+  // BUGS.md 2026-09-30, the 13 ms merge: clean's tick holds a permit past the drain window
+  // while dedupe's merge is mid-review when the redeploy reaches the swap. The drain's abort used
+  // to fire the harness's one internal stop, killing the merge before the hand-off could wait
   // the window it announces — the "waiting" warning followed 13 ms later by `merge_failed …
   // aborted`, the review thrown away. And the role the drain DOES cut off here is one enabled
   // mid-run (config-live's runner creation), the second wiring the role-only stop must reach.
   const repo = await makeFastRepo("drain role-stop test", ["dedupe"]);
-  await seedLandQueue(repo, "dedupe"); // dedupe is interlocked: its landing runs, its tick never starts
+  await seedMergeQueue(repo, "dedupe"); // dedupe is interlocked: its merge runs, its tick never starts
   const reviewing = path.join(tmpdir(), "rolestop-reviewing");
   const authoring = path.join(tmpdir(), "rolestop-authoring");
   const restore = fakePi(
@@ -775,15 +776,15 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
   });
   const { run, stop, signal } = startRedeployRun(repo, redeployer, {
     timeoutMs: 90_000,
-    handoffLandingWindowMs: 500,
+    handoffMergeWindowMs: 500,
   });
   try {
-    await waitFor(() => fs.existsSync(reviewing), "dedupe's vet reviewer to be in flight");
+    await waitFor(() => fs.existsSync(reviewing), "dedupe's verify reviewer to be in flight");
     // Enable clean mid-run — the live-reload path, not startup — and let its tick take a permit
     // BEFORE main moves: a held poll starts no tick, so the permit holder must predate the hold.
     saveConfig(repo, fastConfig(["clean", "dedupe"]));
     await waitFor(() => fs.existsSync(authoring), "the mid-run role's tick to hold a permit");
-    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the tick and the vet");
+    sh(repo, "git", "commit", "-q", "--allow-empty", "-m", "main moves under the tick and the verify");
     const exit = await run;
     assert.deepEqual(exit, { restart: true });
     assert.equal(swaps.length, 1, "the new build was swapped in");
@@ -806,9 +807,9 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     const cleanAbortedAt = indexOf((e) => e.type === "run_end" && e.source === "clean" && e.result === "aborted");
     const dryFailedAt = indexOf((e) => e.type === "merge_failed" && e.source === "dedupe");
     const stopAt = indexOf((e) => e.type === "orchestrator_stop");
-    // The drain cut its permit holder off AT the swap, and the landing was aborted only past its
+    // The drain cut its permit holder off AT the swap, and the merge was aborted only past its
     // deadline — never straight at the swap (the 13 ms shape). Clean's cut-off and the wait
-    // warning land within milliseconds of each other, so their ORDER would race; the lapse is
+    // warning arrive within milliseconds of each other, so their ORDER would race; the lapse is
     // the anchor: a runner wired to the full signal instead of roleSignal survives the drain's
     // abort and dies only when the lapse fires its abort — after the lapse warning, half a
     // window (~500 ms) late — while a correctly wired one died long before it.
@@ -816,10 +817,10 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
     assert.equal((events[restartAt] as unknown as { abortedTicks: number }).abortedTicks, 1, "the drain counted clean's cut-off tick");
     assert.ok(cleanAbortedAt > -1, "clean's in-flight tick ended aborted");
     assert.ok(cleanAbortedAt < lapseAt, "clean's tick was cut off by the drain at the swap, not at the hand-off's lapse");
-    assert.ok(waitAt > restartAt && lapseAt > waitAt && dryFailedAt > lapseAt && stopAt > dryFailedAt, "the landing got the announced window: wait, lapse, abort, stop — in that order");
+    assert.ok(waitAt > restartAt && lapseAt > waitAt && dryFailedAt > lapseAt && stopAt > dryFailedAt, "the merge got the announced window: wait, lapse, abort, stop — in that order");
 
-    // The landing's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
-    // next generation, nothing landed, no stale marker.
+    // The merge's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
+    // next generation, nothing merged, no stale marker.
     assert.ok(mergeRefExists(repo, "dedupe"), "dedupe's pin survives for the next generation");
     assert.equal(readMergeMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {

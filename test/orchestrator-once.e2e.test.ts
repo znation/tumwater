@@ -1,5 +1,5 @@
 /** `tumwater run --once` (PLANS.md 2026-09-25): one full round of ticks — every enabled role
- * at most once, every landing that round produced merged — then exit 0. Tests (a)–(d) drive
+ * at most once, every change that round produced merged — then exit 0. Tests (a)–(d) drive
  * runOrchestrator directly in once mode on the standard fixture pattern (fake pi shim, short
  * poll); (e)–(g) go through the real CLI so the supervisor half, the flag vocabulary, and the
  * summary line are exercised end to end. Like the rest of the orchestrator e2e tier this runs
@@ -32,7 +32,7 @@ test("once: a team where every role finds nothing to do exits on its own, one ti
 });
 
 test("once: a round that produces a change merges it before exiting", async () => {
-  const repo = await makeFastRepo("once landing test", ["clean"]);
+  const repo = await makeFastRepo("once merge test", ["clean"]);
   const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
   await withPi(
@@ -44,11 +44,11 @@ test("once: a round that produces a change merges it before exiting", async () =
     async () => {
       const exit = await onceRound(repo);
       assert.equal(exit.restart, false);
-      assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
+      assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged on main");
       assert.notEqual(mainSha(repo), before, "main's head moved");
       assert.ok(
         readEvents(repo).some((e) => e.type === "merge_done" && e.source === "clean"),
-        "the round's landed event is in events.jsonl",
+        "the round's merge_done event is in events.jsonl",
       );
     },
   );
@@ -223,7 +223,7 @@ test("once --role: a scoped round ticks only the named role", async () => {
 });
 
 test("once --role: a scoped round that produces a change merges it before exiting", async () => {
-  const repo = await makeFastRepo("once scoped landing test", ["clean", "dedupe"]);
+  const repo = await makeFastRepo("once scoped merge test", ["clean", "dedupe"]);
   const before = mainSha(repo);
   // Author run: make a change and finish. Review run (its prompt carries VERDICT): approve.
   await withPi(
@@ -235,7 +235,7 @@ test("once --role: a scoped round that produces a change merges it before exitin
     async () => {
       const exit = await onceRound(repo, "clean");
       assert.equal(exit.restart, false);
-      assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change landed on main");
+      assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged on main");
       assert.notEqual(mainSha(repo), before, "main's head moved");
       assert.equal(loadLoopState(repo, "dedupe").runs, 0, "the unscoped role never ran");
     },

@@ -181,7 +181,7 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
   const script = `echo started >> '${runLog}'\nsleep 120\necho finished >> '${runLog}'\n`;
   const restore = fakePi(script);
   const controller = new AbortController();
-  // The restart verdict waits for the startup tick to park inside the hung pi run, so it lands
+  // The restart verdict waits for the startup tick to park inside the hung pi run, so it is read
   // with a tick in flight. A fixed count of idle polls raced the tick's worktree setup: under
   // load the restart cut the tick off before pi ever started (2026-10-01 suite flake).
   const piStarted = () => fs.existsSync(runLog) && fs.readFileSync(runLog, "utf8").includes("started");
@@ -206,7 +206,7 @@ test("a restart verdict cuts off a permit-holding tick instead of draining it", 
     // The tick was started but never completed: the cut-off reservation hands itself back
     // with no run_end of its own to record.
     assert.ok(loadLoopState(repo, "clean").running || loadLoopState(repo, "clean").runs >= 1,
-      "the tick was in flight when the restart landed");
+      "the tick was in flight when the restart took effect");
   } finally {
     controller.abort();
     restore();

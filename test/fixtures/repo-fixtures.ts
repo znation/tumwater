@@ -66,8 +66,8 @@ export function sh(cwd: string, cmd: string, ...args: string[]): string {
   return execFileSync(cmd, args, { cwd, encoding: "utf8" }).trimEnd();
 }
 
-/** main's current commit sha — the head every "did this landing move main" assertion captures
- * before acting and re-reads after (lander, drain, merge, baseline, review, loop tests), so the
+/** main's current commit sha — the head every "did this merge move main" assertion captures
+ * before acting and re-reads after (merger, drain, merge, baseline, review, loop tests), so the
  * pinned-ref spelling cannot drift between them and a typo'd ref fails in one place. */
 export function mainSha(dir: string): string {
   return sh(dir, "git", "rev-parse", "main");
@@ -82,7 +82,7 @@ export function headSha(dir: string): string {
 }
 
 /** Assert a repo or worktree dir has a clean `git status --porcelain` — the single home of the
- * tests' "no stray edits / no uncommitted work" assertion (init, cli, lander, landing, and
+ * tests' "no stray edits / no uncommitted work" assertion (init, cli, merger, merge, and
  * loop tests carried ~20 identical copies). An optional label is forwarded so the sites that
  * named the assertion keep their failure message. Sites asserting a *non*-clean status (a
  * conflict, an expected untracked file) assert something different and keep their own spelling. */
@@ -93,15 +93,15 @@ export function assertClean(dir: string, message?: string): void {
 }
 
 /** Assert a worktree has no merge or rebase left in progress and is back on its committed
- * branch state — the landing tests' shared "settled" assertion (landing-git and landing-merge
- * each declared their own copy of this wrapper). The message names the rebase so a
+ * branch state — the merge tests' shared "settled" assertion (merge-git and merge-pipeline
+ * tests each declared their own copy of this wrapper). The message names the rebase so a
  * mid-conflict leftover is not mistaken for a stray edit. */
 export function assertWorktreeSettled(wt: string): void {
   assertClean(wt, "worktree clean, no rebase in progress");
 }
 
 /** A scratch bin dir whose only entry is a symlink to the real git: a restricted PATH that
- * keeps git working (repo checks, landing, the worktree helpers) while dropping every other
+ * keeps git working (repo checks, merge, the worktree helpers) while dropping every other
  * binary — pi, npm — so a test can isolate exactly one missing tool. Tests that need the dir
  * to stay findable in failures pass a distinctive `prefix`. */
 /** Install a logging `git` shim at the front of PATH that appends each invocation's args
@@ -205,7 +205,7 @@ export function makeRepo(dir = tmpdir()): string {
 }
 
 /** A makeRepo'd repo that has run initProject — the standard fixture for tests that drive a
- * full tick or lander against an initialized tumwater project. Shared by the loop e2e slices,
+ * full tick or merger against an initialized tumwater project. Shared by the loop e2e slices,
  * which each used to carry their own identical copy. */
 export async function initializedRepo(): Promise<string> {
   const repo = makeRepo();
@@ -213,8 +213,8 @@ export async function initializedRepo(): Promise<string> {
   return repo;
 }
 
-/** An initializedRepo'd repo plus a role's worktree off main — the base the landing-git,
- * landing-merge, refusal, retire, tick-stage, and tick-verdict tests stage their scenarios on,
+/** An initializedRepo'd repo plus a role's worktree off main — the base the merge-git,
+ * merge-pipeline, refusal, retire, tick-stage, and tick-verdict tests stage their scenarios on,
  * several of which used to carry their own identical initializedRoot/setup copy. The role
  * defaults to improve; pass one for tests that need a specific role's worktree. */
 export async function initializedWorktree(role = "improve"): Promise<{ root: string; wt: string }> {
@@ -362,7 +362,7 @@ export function worktreeAt(root: string, role: string): string {
   return wt;
 }
 
-/** Land a commit on main that counts as "work" for need-based prioritization, so deferrable
+/** Merge a commit on main that counts as "work" for need-based prioritization, so deferrable
  * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
  * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
  * itself is pinned in its own test in orchestrator.e2e.test.ts. */
@@ -372,5 +372,5 @@ export function mergeWork(repo: string): void {
     "work\n",
   );
   sh(repo, "git", "add", "-A");
-  sh(repo, "git", "commit", "-m", "tumwater(feature): test work landing");
+  sh(repo, "git", "commit", "-m", "tumwater(feature): test work merge");
 }

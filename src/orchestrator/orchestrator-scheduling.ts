@@ -5,13 +5,13 @@
  * producing the reasons map orchestrator-launch.ts's launchDueTicks starts ticks from.
  * Split out of runOrchestrator's poll body so the WHY-due policy reads on its own screen;
  * the poll body keeps the poll's other passes (config reload, markers, gates, redeploy,
- * landing drain) and the launch call itself. */
+ * merge drain) and the launch call itself. */
 import { increment } from "../collections.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
-import type { WorkLandedCache } from "../scheduling/work-merged-cache.js";
+import type { WorkMergedCache } from "../scheduling/work-merged-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
@@ -45,7 +45,7 @@ interface SchedulingPassCtx {
   /** The loops the new-project bootstrap holds (plans/work-ratio.md, part 2/2). */
   bootstrapHeld: ReadonlySet<string>;
   /** The maintenance allowance's verdict this poll (plans/work-ratio.md, part 1b/4): `allowance`
-   * is what the rolling window permits and `used` is the landed maintenance count plus the
+   * is what the rolling window permits and `used` is the merged maintenance count plus the
    * maintenance loops already in flight. The pass admits at most the remaining
    * `allowance - used` due maintenance loops, so the headroom is never overshot within a poll. */
   maintenanceQuota: MaintenanceQuotaVerdict;
@@ -63,7 +63,7 @@ interface SchedulingPassCtx {
    * probe. A probe blind to the pair's tier lifted the pause for every role (an objection to
    * an earlier draft of this pass). */
   probeRoles: ReadonlySet<string>;
-  /** With the review gate on, an unresolvable strong tier means nothing could land, so every
+  /** With the review gate on, an unresolvable strong tier means nothing could merge, so every
    * role is held (the director exempt) — not only the strong ones. budgetGate's second pause
    * cause, split from the per-tier set so the dashboards can name the tiers' own holds
    * separately from this team-wide one. */
@@ -75,7 +75,7 @@ interface SchedulingPassCtx {
   /** The subset of `heldProviders` held by a subscription window (team-hold.ts
    * windowHeldProviders): the one hold the director is NOT exempt from. */
   windowHeldProviders: ReadonlySet<string | undefined>;
-  /** The reviewer's provider is held while the review gate is on: nothing could land, so
+  /** The reviewer's provider is held while the review gate is on: nothing could merge, so
    * EVERY role is blocked, not just roles ticking on that provider. */
   reviewHeld: boolean;
   /** Each runner's tick model provider (configForRole at poll time): the key the
@@ -94,7 +94,7 @@ interface SchedulingPassCtx {
   planBacklogFull: boolean;
   /** Per-role deferred-due memory (one-shot run_deferred events), advanced in place. */
   deferredDue: Map<string, boolean>;
-  workLandedSince: WorkLandedCache;
+  workMergedSince: WorkMergedCache;
 }
 
 /** Record why the poll skipped a due loop on its state (LoopState.skipReason), saving only when
@@ -138,15 +138,15 @@ export async function pollRunnerReasons(
     holdForRestart,
     diskHeld,
     deferredDue,
-    workLandedSince,
+    workMergedSince,
   } = ctx;
   const reasons = new Map<LoopRunner, string | undefined>();
   // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
-  // queuedMergeFiles() re-lists the land-queue directory and re-stats every queued entry): the
+  // queuedMergeFiles() re-lists the merge-queue directory and re-stats every queued entry): the
   // check below only asks whether the runner's role has a queued entry. The queue changes
-  // only when a landing completes or a tick enqueues — both asynchronous events this pass
+  // only when a merge completes or a tick enqueues — both asynchronous events this pass
   // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
-  // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
+  // merge that completes mid-pass just keeps its role blocked one extra poll (conservative).
   const queuedRoles = queuedMergeRoles(root);
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
@@ -171,7 +171,7 @@ export async function pollRunnerReasons(
     // A group whose runner is mid-entry with no recorded claim (it took the entry while it was
     // the only runner, before a live reload raised `instances`) cannot be told WHICH entry that
     // is from state alone. Assigning a free entry to a sibling could then hand it the same
-    // work: hold the whole group's assignment until that runner settles (lands, drops or goes
+    // work: hold the whole group's assignment until that runner settles (merges, drops or goes
     // idle), at which point its own staging may have recorded a claim. A busy runner that DOES
     // hold a claim is fine — `held` excludes its key and siblings take other entries.
     let hold = false;
@@ -185,7 +185,7 @@ export async function pollRunnerReasons(
         listedKeys: listed,
         eligibleKeys,
         now,
-        hasQueuedLanding: queuedRoles.has(r.role),
+        hasQueuedMerge: queuedRoles.has(r.role),
         // Per instance, not per base role: a lowered `instances` leaves the surplus runner in
         // place with `loopEnabled` false, and its idle claim must be released so a sibling can
         // take the entry instead of the key staying held until the 24h stale sweep.
@@ -226,7 +226,7 @@ export async function pollRunnerReasons(
   // disjunct — a role held by either window (or both, held once) starts no new ticks;
   // the director stays exempt by the same role check that covers the other disjuncts.
   // The budget hold, per role (part 5c/8): a tier that resolved to pause holds its own roles,
-  // and — with review on — an unresolvable strong tier holds every role (nothing could land).
+  // and — with review on — an unresolvable strong tier holds every role (nothing could merge).
   // The probe of a demoted pair pierces the hold for EXACTLY the probed pair's tier's roles:
   // the earlier draft's pair-blind pierce lifted the pause team-wide on any due probe.
   // Quiet hours fold in beside the operator pause — the schedule is not probe-worthy the way a
@@ -315,7 +315,7 @@ export async function pollRunnerReasons(
       runner.role !== DIRECTOR_ROLE &&
       (reviewHeld || heldProviders.has(roleProviders.get(runner.role)))
     )
-      continue; // nor while ITS provider's failure storm holds — or the reviewer's (nothing could land)
+      continue; // nor while ITS provider's failure storm holds — or the reviewer's (nothing could merge)
     // The loop's OWN queue decides inbox due-ness: the director counts its historical
     // inbox, every other loop its per-role queue (tumwater prompt --role <id>) — so a
     // queued prompt makes its loop due by itself, no wake marker needed (isEligible).
@@ -333,14 +333,14 @@ export async function pollRunnerReasons(
       noteSkip(root, runner, undefined);
       continue;
     }
-    // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT landing never
-    // starts a tick — the entry stays in the queue until its landing completes, so one check
+    // Merge queue 3/5 interlock (invariant 3): a role with a QUEUED or IN-FLIGHT merge never
+    // starts a tick — the entry stays in the queue until its merge completes, so one check
     // covers both. Uniform over every role, director included: its prompt is not finished until it
-    // lands. Placed before the need-based deferral block on purpose — no episode bookkeeping is
-    // needed (the tick that queued the landing ran, which closed any deferral episode; its `queued`
+    // merges. Placed before the need-based deferral block on purpose — no episode bookkeeping is
+    // needed (the tick that queued the merge ran, which closed any deferral episode; its `queued`
     // can leave a prior no_change in lastResult — loop-state.ts records only completed results
-    // — but the landing's outcome replaces it before the interlock lets the role back into this
-    // pass), and skipping here saves that branch's workLandedSince git-range query for the skipped
+    // — but the merge's outcome replaces it before the interlock lets the role back into this
+    // pass), and skipping here saves that branch's workMergedSince git-range query for the skipped
     // role.
     if (queuedRoles.has(runner.role)) {
       noteSkip(root, runner, undefined);
@@ -348,8 +348,8 @@ export async function pollRunnerReasons(
     }
     // Need-based deferral: a due maintenance tick (scheduled or main-moved wake) whose last
     // tick did nothing stays deferred while the feature/bugfix backlog is open or no new
-    // work has landed to react to — nextRunAt is left untouched, so it re-checks every poll
-    // until the backlog drains and qualifying work lands. Resume wakes precede this check in
+    // work has merged to react to — nextRunAt is left untouched, so it re-checks every poll
+    // until the backlog drains and qualifying work merges. Resume wakes precede this check in
     // isEligible, the director's "inbox" reason skips it, work roles are not in
     // DEFERRABLE_ROLES (bugfix is the exception while its backlog is empty — deferTick), and
     // a fresh operator wake overrides it (deferTick's woken check — an explicit "try again
@@ -359,18 +359,18 @@ export async function pollRunnerReasons(
       const s = runner.state;
       // The git range is only consulted when the other conditions already hold — a
       // never-ticked role or a tick with pending business runs without paying for it, and an
-      // open backlog defers regardless of what landed. bugfix in search mode is the
-      // exception: its deferral keys on the work-landed verdict alone, so the backlog-open
+      // open backlog defers regardless of what merged. bugfix in search mode is the
+      // exception: its deferral keys on the work-merged verdict alone, so the backlog-open
       // shortcut must not stand in for the query.
       const searchBugfix = baseRoleOf(runner.role) === BUGFIX_ROLE && !openBugsNow;
-      const landed =
+      const merged =
         (!workBacklogOpen || searchBugfix) && s.lastMainHead !== ""
-          ? await workLandedSince.since(s.lastMainHead, mainHead)
+          ? await workMergedSince.since(s.lastMainHead, mainHead)
           : true;
       const deferral: DeferReason | null = deferTickReason(
         s,
         runner.role,
-        landed,
+        merged,
         workBacklogOpen,
         openBugsNow,
         now,

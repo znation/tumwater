@@ -3,9 +3,9 @@
  * swaps, staleness is published in orchestrator.json, the drain cap aborts the in-flight tick
  * resumably (and counts only the permit holder), a parked tick waits out the restart hold, an
  * in-flight director tick is waited for, a failed compile leaves the old build running, and the
- * restart hand-off aborts landings that outlive their deadline (BUGS.md 2026-09-23). The
+ * restart hand-off aborts merges that outlive their deadline (BUGS.md 2026-09-23). The
  * scripted Redeployer and the run harness live in orchestrator-fixtures.ts (scriptedRedeployer,
- * startRedeployRun); the restart hand-off test that also seeds the land queue stays in
+ * startRedeployRun); the restart hand-off test that also seeds the merge queue stays in
  * orchestrator-3.e2e.test.ts. Like the other topic-named orchestrator files (orchestrator-budget,
  * orchestrator-pause, orchestrator-permits), this file holds one coherent topic; the tier's
  * balanced slices are orchestrator-2/3.e2e.test.ts. Each test file gets its own process — and
@@ -239,8 +239,8 @@ test("a failed compile leaves the team running the old build", async () => {
     );
     // Still running: ticks keep coming after the failure was recorded. clean is deferrable
     // (need-based prioritization) and main has not moved since its startup tick — a work
-    // landing supplies the wake for the post-failure tick. The in-flight startup tick must
-    // finish first: its end-of-tick head refresh would swallow a concurrent landing into
+    // merge supplies the wake for the post-failure tick. The in-flight startup tick must
+    // finish first: its end-of-tick head refresh would swallow a concurrent merge into
     // lastMainHead, leaving deferral nothing to react to.
     await waitFor(
       () => !loadLoopState(repo, "clean").running && loadLoopState(repo, "clean").lastMainHead !== "",

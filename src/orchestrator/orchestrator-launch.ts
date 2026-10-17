@@ -38,7 +38,7 @@ import { runTimedRoleTick } from "../tick/tick-timing.js";
 export const ROLE_TICK_DURATION_SAMPLES = 50;
 
 /** What the launch pass needs from the orchestrator: the poll's inputs and the team's
- * shared mutable state, passed by reference so updates land where the drain, the redeployer,
+ * shared mutable state, passed by reference so updates arrive where the drain, the redeployer,
  * and the next poll read them. Not exported — callers pass an object literal and the
  * structural type is only this module's parameter shape. */
 interface LaunchContext {

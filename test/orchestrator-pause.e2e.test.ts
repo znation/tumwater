@@ -28,7 +28,7 @@ test("a pause marker blocks new role ticks for any reason while the director run
   const repo = await makeFastRepo("operator pause e2e test", ["clean", "director"]);
   const { restore, orch } = startIdleOrchestrator(repo);
   try {
-    // Baseline: clean's startup tick lands while unpaused.
+    // Baseline: clean's startup tick runs while unpaused.
     await awaitSettledTick(repo, "clean", 1, "the startup tick to finish");
 
     // The operator pauses the running team (what `tumwater pause` does: drop the marker).
@@ -110,8 +110,8 @@ test("starting already paused keeps role ticks blocked until resume — no resta
 });
 
 // The in-flight bullet of the same plan: a tick already running when the marker drops is not
-// killed — it finishes and lands its outcome even though no new one starts.
-test("an in-flight tick finishes and lands while the team is paused", async () => {
+// killed — it finishes and records its outcome even though no new one starts.
+test("an in-flight tick finishes and merges while the team is paused", async () => {
   const repo = await makeFastRepo("operator pause in-flight test", ["clean"]);
   // A slow fake pi that makes a real change: it stays in flight long enough for the marker to
   // drop mid-run. The review gate approves with zero usage so the tick's outcome is clean.
@@ -135,16 +135,16 @@ test("an in-flight tick finishes and lands while the team is paused", async () =
     const marker = pausedPath(repo);
     writeMarker(marker, { at: Date.now() });
 
-    // The in-flight tick finishes (commit + pin + enqueue) and the landing slot drains the
-    // entry to main — both despite the pause: a queued landing is committed work awaiting
+    // The in-flight tick finishes (commit + pin + enqueue) and the merge slot drains the
+    // entry to main — both despite the pause: a queued merge is committed work awaiting
     // completion, not a new tick, so the pause gate deliberately does not hold it.
     await waitFor(
       () => loadLoopState(repo, "clean").lastResult === "changed",
-      "the in-flight landing to finish",
+      "the in-flight merge to finish",
     );
     const s = loadLoopState(repo, "clean");
     assert.equal(s.runs, 1, "exactly one tick started");
-    assert.equal(s.lastResult, "changed", "the outcome lands despite the pause");
+    assert.equal(s.lastResult, "changed", "the outcome is recorded despite the pause");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the change merged to main");
 
     // …and no new tick starts while the marker holds.

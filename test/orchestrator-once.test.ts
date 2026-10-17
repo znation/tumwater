@@ -41,13 +41,13 @@ test("once: an idle team exits on its own, ticks each role exactly once, and ret
 });
 
 test("once: startup removes a legacy _land-<role> checkout left by a pre-pool build", async () => {
-  const repo = await makeFastRepo("once legacy lander cleanup", ["clean"]);
+  const repo = await makeFastRepo("once legacy merger cleanup", ["clean"]);
   const legacy = path.join(repo, ".tumwater", "worktrees", "_land-feature");
   await ensureDetachedWorktree(repo, legacy, "main");
   assert.ok(fs.existsSync(legacy), "the legacy checkout is seeded");
   await withIdlePi(async () => {
     await onceRound(repo);
-    assert.equal(fs.existsSync(legacy), false, "startup removed the legacy lander checkout");
+    assert.equal(fs.existsSync(legacy), false, "startup removed the legacy merger checkout");
   });
 });
 
