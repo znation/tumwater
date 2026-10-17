@@ -23,6 +23,15 @@ export function atLocalTs(daysAgo: number, hour = 12): number {
   return d.getTime();
 }
 
+/** A timestamp `agoMs` back from now but never before today's local midnight, so it stays in the
+ * past (inside a `--since` window) and on today's day at any time of day — unlike `atLocalTs(0)`
+ * (noon, in the future before noon) and `ago(HOUR)` (yesterday between 00:00 and 01:00). */
+export function todayTs(agoMs = HOUR): number {
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  return Math.max(midnight.getTime(), Date.now() - agoMs);
+}
+
 /** Local calendar date `YYYY-MM-DD` from a Date's own local parts — the raw-parts date builder
  * dayKey and expectedTimestamp are made of (never datetime.ts's formatDate — a test-local
  * oracle, so a drift in the production formatter fails an assertion instead of matching its

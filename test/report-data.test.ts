@@ -11,7 +11,7 @@ import { collectReport, collectReportSince } from "../src/report/report-data.js"
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
 import { REPORT_SINCE_MAX_MS } from "../src/events/event-window.js";
 import { eventsLogPath } from "../src/paths.js";
-import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
+import { atLocalTs as at, dayKey, HOUR, ago, todayTs } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
@@ -854,11 +854,11 @@ test("collectReport and collectReportSince count model_fallback_started per role
   const root = tmpdir();
   const started = (ts: number, loop: string) => JSON.stringify({ ts, loop, type: "model_fallback_started" });
   writeEvents(root, [
-    started(at(0), "feature"),
-    started(at(0), "feature"),
-    started(at(0), "qa"),
+    started(todayTs(), "feature"),
+    started(todayTs(), "feature"),
+    started(todayTs(), "qa"),
     started(at(1), "feature-2"),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "model_fallback_ended", durationMs: 5000 }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_ended", durationMs: 5000 }),
     JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }),
   ]);
   const data = collectReport(root, 3);
@@ -879,12 +879,12 @@ test("collectReport and collectReportSince count image_reroute per role, zero me
   const reroute = (ts: number, loop: string, preflight: boolean) =>
     JSON.stringify({ ts, loop, type: "image_reroute", preflight });
   writeEvents(root, [
-    reroute(at(0), "feature", true),
-    reroute(at(0), "feature", false),
-    reroute(at(0), "qa", true),
+    reroute(todayTs(), "feature", true),
+    reroute(todayTs(), "feature", false),
+    reroute(todayTs(), "qa", true),
     reroute(at(1), "feature-2", false),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "image_blind" }),
-    JSON.stringify({ ts: at(0), loop: "bugfix", type: "model_fallback_started" }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "image_blind" }),
+    JSON.stringify({ ts: todayTs(), loop: "bugfix", type: "model_fallback_started" }),
     JSON.stringify({ ts: at(2), loop: "feature", type: "run_end", run: 1, result: "no_change", tokens: 1 }),
   ]);
   const data = collectReport(root, 3);

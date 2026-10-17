@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { collectReport, collectReportSince, type ReportData } from "../src/report/report-data.js";
 import { renderReportMarkdown, renderSinceReportMarkdown } from "../src/report/report-render.js";
-import { atLocalTs as at, dayKey, HOUR, ago } from "./helpers/oracles.js";
+import { atLocalTs as at, dayKey, HOUR, ago, todayTs } from "./helpers/oracles.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { cli, runCli } from "./helpers/cli-harness.js";
@@ -1100,9 +1100,9 @@ test("renderReportMarkdown prints notional spend by role and per commit only whe
 test("report --json carries fallbacksByRole on the day and --since report that have fallback episodes", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "model_fallback_started" }),
-    JSON.stringify({ ts: ago(HOUR), loop: "qa", type: "model_fallback_started" }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "model_fallback_started" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }),
+    JSON.stringify({ ts: todayTs(), loop: "qa", type: "model_fallback_started" }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "model_fallback_started" }),
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.match(md.out, /\*\*Fallbacks by role:\*\* feature — 2 · qa — 1/);
@@ -1115,9 +1115,9 @@ test("report --json carries fallbacksByRole on the day and --since report that h
 test("report --json carries imageReroutesByRole on the day and --since report that have image reroutes", async () => {
   const root = makeRepo();
   writeEvents(root, [
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "image_reroute", preflight: true }),
-    JSON.stringify({ ts: ago(HOUR), loop: "qa", type: "image_reroute", preflight: false }),
-    JSON.stringify({ ts: ago(HOUR), loop: "feature", type: "image_reroute", preflight: false }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: true }),
+    JSON.stringify({ ts: todayTs(), loop: "qa", type: "image_reroute", preflight: false }),
+    JSON.stringify({ ts: todayTs(), loop: "feature", type: "image_reroute", preflight: false }),
   ]);
   const md = await runCli(root, "report", "--days", "1");
   assert.match(md.out, /\*\*Image reroutes by role:\*\* feature — 2 · qa — 1/);
