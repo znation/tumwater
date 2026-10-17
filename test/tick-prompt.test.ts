@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { logEvent } from "../src/events/events.js";
+import { FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { DIRECTOR_ROLE, roleById, allRoleIds } from "../src/roles/roles.js";
@@ -604,4 +606,31 @@ test("a director preview peeks its inbox and an empty inbox still assembles to n
   fs.rmSync(path.join(dir, ".tumwater"), { recursive: true, force: true });
   assert.equal(assembleTickPrompt({ ...input, preview: true }), null);
   assert.equal(assembleTickPrompt(input), null);
+});
+
+function flake(dir: string, headline: string): void {
+  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${headline}` });
+}
+
+test("the bugfix prompt carries the gate's flake tally after the task text; other roles do not", () => {
+  const dir = root();
+  flake(dir, "suite alpha broke");
+  flake(dir, "suite alpha broke");
+  for (const role of ["bugfix", "bugfix-2"]) {
+    const result = promptFor(dir, role);
+    assert.ok(result);
+    assert.match(result.prompt, /Flaky checks:/);
+    assert.match(result.prompt, /"suite alpha broke" ×2/);
+    assert.ok(result.prompt.indexOf("Flaky checks:") > result.prompt.indexOf("Your task this run:"));
+  }
+  assert.doesNotMatch(promptFor(dir, "feature")!.prompt, /Flaky checks:/);
+});
+
+test("the bugfix prompt omits the flake tally over an empty log and caps it at five entries", () => {
+  assert.doesNotMatch(promptFor(root(), "bugfix")!.prompt, /Flaky checks:/);
+  const dir = root();
+  for (const name of ["a", "b", "c", "d", "e", "f"]) flake(dir, `suite ${name} broke`);
+  const prompt = promptFor(dir, "bugfix")!.prompt;
+  assert.match(prompt, /\(and 1 more\)/);
+  assert.equal(prompt.match(/" ×1/g)?.length, 5);
 });

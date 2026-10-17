@@ -45,7 +45,8 @@ and one serial merge step merges them, so other roles keep running while a chang
   actually merge.
 - **Check.** The project's declared check runs: `check.command` in tumwater.json, else
   `npm test`, else typecheck/build. A failure is re-run once; one that then passes is warned
-  as a flake and proceeds. A failure that repeats is attributed through main's own verdict at
+  as a flake and proceeds; the bugfix run's prompt lists the checks excused as flakes in the last
+  24 h, with their counts. A failure that repeats is attributed through main's own verdict at
   its tip: main passing (or no verdict) rejects the change with the check's output, no model run;
   main's check failing is not the change's failure, so its pin is kept for a later retry and the
   failure goes to bugfix. Optionally, `check.gateCommand` names a cheaper check (say, only the

@@ -277,6 +277,9 @@ interface TickPromptInput {
    * here by the caller that holds the config; a role payload's `nextPrompt` therefore shows the
    * resolved number, never a placeholder. Omitted: every role but plan. */
   planTargetNote?: string;
+  /** The bugfix run's flake tally, rendered by tick-prompt.ts; omitted for every other role and
+   * when no flake was excused in the window. */
+  flakyChecks?: string;
   /** A per-role prompt the user queued for this loop's next tick (`tumwater prompt --role <id>`),
    * rendered as a labeled block near the top of the task text.
    * The loop still owns find-something-to-do: the request steers, the role's rules and the
@@ -328,7 +331,7 @@ from the repo.`,
 
 /** The full prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, check, briefFile, today, userRequest, agent } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -349,6 +352,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, notesSavedDay, day));
   parts.push(`Your task this run:\n${role.find.trim()}`);
   if (planTargetNote) parts.push(planTargetNote.trim());
+  if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
   parts.push(roleNotesInstruction(dialect));
   parts.push(commonRules(check, briefFile, role.scope, dialect).trim());

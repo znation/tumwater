@@ -3,7 +3,7 @@
  * The prefix extraction, the shared failure-cluster normalization, and the 24 h window. */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FLAKY_WARNING_PREFIX, flakeKeys } from "../src/review/known-flakes.js";
+import { FLAKY_WARNING_PREFIX, flakeCounts, flakeKeys } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
 const NOW = 1_700_000_000_000;
@@ -49,4 +49,32 @@ test("flakeKeys keeps distinct test names distinct", () => {
     NOW,
   );
   assert.equal(keys.size, 2);
+});
+
+test("flakeCounts tallies normalized headlines, most frequent first, ties in first-seen order", () => {
+  assert.deepEqual(flakeCounts([]), []);
+  assert.deepEqual(
+    flakeCounts([
+      warning(`${FLAKY_WARNING_PREFIX}test failed after 3s`),
+      warning(`${FLAKY_WARNING_PREFIX}other one`),
+      warning(`${FLAKY_WARNING_PREFIX}test failed after 9s`),
+    ]),
+    [
+      ["test failed after <dur>", 2],
+      ["other one", 1],
+    ],
+  );
+  const tie = flakeCounts([
+    warning(`${FLAKY_WARNING_PREFIX}beta`),
+    warning(`${FLAKY_WARNING_PREFIX}alpha`),
+  ]);
+  assert.deepEqual(tie.map(([k]) => k), ["beta", "alpha"]);
+});
+
+test("flakeCounts ignores non-warnings and warnings without the prefix", () => {
+  const events: HarnessEvent[] = [
+    { ts: NOW, source: "improve", type: "run_end", message: `${FLAKY_WARNING_PREFIX}x` } as HarnessEvent,
+    warning("some other warning"),
+  ];
+  assert.deepEqual(flakeCounts(events), []);
 });

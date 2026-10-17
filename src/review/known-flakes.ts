@@ -11,6 +11,7 @@
 
 import type { HarnessEvent } from "../events/events.js";
 import { readEventsSince } from "../events/event-window.js";
+import { increment } from "../collections.js";
 import { normalizeClusterKey } from "../failure/failure-cluster.js";
 
 /** How far back the gate looks for its own flake warnings. One local day: the example in
@@ -30,7 +31,7 @@ export const FLAKY_WARNING_PREFIX = "gate check failed then passed on retry — 
  * warning events and warnings whose message is not a string are ignored; `cutoffMs`, when
  * given, also drops events timestamped strictly before it. Pure over its inputs (no I/O, no
  * clock) so the matching rules have their own unit tests. */
-export function flakeWarningKeys(events: readonly HarnessEvent[], cutoffMs?: number): string[] {
+function flakeWarningKeys(events: readonly HarnessEvent[], cutoffMs?: number): string[] {
   const keys: string[] = [];
   for (const e of events) {
     if (e.type !== "warning" || typeof e.message !== "string") continue;
@@ -40,6 +41,14 @@ export function flakeWarningKeys(events: readonly HarnessEvent[], cutoffMs?: num
     keys.push(normalizeClusterKey(e.message.slice(at + FLAKY_WARNING_PREFIX.length)));
   }
   return keys;
+}
+
+/** Each normalized flake headline in `events` with how often it was warned, most frequent first;
+ * ties keep first-seen order. No cutoff: callers pass an already-windowed read. Pure. */
+export function flakeCounts(events: readonly HarnessEvent[]): [string, number][] {
+  const counts = new Map<string, number>();
+  for (const key of flakeWarningKeys(events)) increment(counts, key);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
 }
 
 /** A Set of the flakeWarningKeys at or after `now - windowMs` of the gate's own window. */

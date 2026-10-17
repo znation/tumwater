@@ -15,6 +15,8 @@ import { buildCutOffNote } from "../prompt/prompt-followup.js";
 import { buildAssignmentNote, buildConflictDiscardNote, buildHeldEntriesNote, buildRejectedReviewNote } from "../prompt/gate-prompts.js";
 import { eligibleEntries } from "../backlog/backlog-eligibility.js";
 import { detectBuildCheck } from "../build/build-check-detect.js";
+import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
+import { readEventsSince } from "../events/event-window.js";
 import { telemetryDigest } from "./telemetry-digest.js";
 import { readQaCoverage, renderCoverageBlock } from "./qa-coverage.js";
 import { roleNotesPath } from "../paths.js";
@@ -59,6 +61,30 @@ export interface TickPromptInput {
 function readRoleNote(root: string, role: string): string | undefined {
   const text = readTextOrNull(roleNotesPath(root, role));
   return text === null ? undefined : truncateWithNote(text, ROLE_NOTES_MAX_BYTES, "role notes");
+}
+
+/** The bugfix run's tally of checks the merge gate excused as flaky in the last day, or
+ * undefined when none (or the log is unreadable — a missing tally never fails a run). */
+function flakyChecksNote(root: string): string | undefined {
+  let counts: [string, number][];
+  try {
+    counts = flakeCounts(readEventsSince(root, KNOWN_FLAKE_WINDOW_MS).events);
+  } catch {
+    return undefined;
+  }
+  if (counts.length === 0) return undefined;
+  const shown = counts
+    .slice(0, 5)
+    .map(([key, n]) => `"${key}" ×${n}`)
+    .join("; ");
+  const more = counts.length > 5 ? ` (and ${counts.length - 5} more)` : "";
+  return (
+    `Flaky checks: in the last 24h the merge gate excused these check failures as flaky (each ` +
+    `failed, then passed on its one re-run), most frequent first: ${shown}${more}. An excused ` +
+    `flake blocks no merge, so it stays unfixed until it has a BUGS.md entry. When an open bug ` +
+    `names one of these, that bug is still firing. When \`## Open\` holds no entries, a check ` +
+    `excused 2 or more times is a confirmed latent bug: take it as this run's latent-bug candidate.`
+  );
 }
 
 /** Assemble the prompt a loop's next tick runs on — the whole "what should this tick see"
@@ -173,6 +199,7 @@ export function assembleTickPrompt(
           `It holds ${eligibleEntries(root, "feature").length} now (tumwater's count of entries ` +
           `feature could take, the same count that decides whether a plan run is deferred).`
         : undefined;
+    const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
     prompt = buildTickPrompt({
       role: resolved,
       initialPrompt,
@@ -184,6 +211,7 @@ export function assembleTickPrompt(
       notes,
       notesSavedDay,
       planTargetNote,
+      flakyChecks,
       extraInstructions: config.roles[base]?.instructions,
       check,
       briefFile: brief,

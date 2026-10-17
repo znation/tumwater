@@ -2,7 +2,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { increment } from "../collections.js";
 import {
   enabledRoleIds,
   knownRoleIds,
@@ -58,7 +57,7 @@ import { failOutcome, okOutcome, warnOutcome, type CheckOutcome } from "./outcom
 import { loadLoopState } from "../loop/loop-state.js";
 import { INSTANCE_ROLES, loopEnabled, loopIds } from "../roles/loop-ids.js";
 import { CLAIM_IDLE_MAX_MS, listedKeys } from "../scheduling/claims.js";
-import { flakeWarningKeys, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
+import { flakeCounts, KNOWN_FLAKE_WINDOW_MS } from "../review/known-flakes.js";
 
 /** The environment/repo pre-flight checks, split out of
  * doctor.ts. The shared report contract (CheckOutcome and its constructors) lives in
@@ -676,20 +675,14 @@ export function checkBuildCheck(
  * gate's matching, so a genuinely flaky check silently burns a re-run per landing and hides
  * real instability — exactly the information that explains intermittent rejections. This
  * check reads the same window and folds the same normalized headline the gate matches with
- * (flakeWarningKeys, so the prefix slice-offset and cluster normalization cannot drift), and
+ * (flakeCounts, so the prefix slice-offset and cluster normalization cannot drift), and
  * warns only when a normalized check flapped more than once, so a routine one-off flake stays
  * quiet.
  * ok/warn only — never a fail — so a flaky suite cannot fail a scripted doctor pre-flight
  * (the checkStalledPlans precedent; the exit-code rule is outcome.ts's). */
 export function checkFlakyChecks(root: string): CheckOutcome {
   const { events } = readEventsSince(root, KNOWN_FLAKE_WINDOW_MS);
-  const counts = new Map<string, number>();
-  for (const key of flakeWarningKeys(events)) {
-    increment(counts, key);
-  }
-  const flapped = [...counts.entries()]
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1]);
+  const flapped = flakeCounts(events).filter(([, n]) => n >= 2);
   if (flapped.length === 0)
     return okOutcome("no check flapped more than once in the last 24h");
   const render = ([k, n]: [string, number]) => `"${k}" ×${n}`;
