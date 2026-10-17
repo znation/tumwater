@@ -1117,6 +1117,62 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor` says how long merges waited over the last 24 h, from enqueue to merged on main (planned 2026-10-17 by the plan role)
+
+**Goal.** `tumwater report` now shows each day's median merge wait, and `tumwater doctor` says how
+long passing merge checks took over the last 24 h. But doctor, the pre-flight an operator runs
+when the team feels slow, says nothing about how long finished work waited to reach main. Its
+"stale merge-queue entries" row only warns about one entry stuck for 6 hours. Add a 24 h
+merge-wait phrase to that row. It is information only and adds no new warning threshold.
+Independent of the plain-terms series: it touches only `src/doctor/doctor-backlog.ts`, its test,
+and docs/cli.md.
+
+**Approach.**
+1. `src/doctor/doctor-backlog.ts`: add an exported
+   `mergeWaitPhrase(events: readonly HarnessEvent[]): string | undefined` beside
+   `checkStaleQueuedMerges`, modelled on `checkDurationPhrase` in `src/doctor/doctor-checks.ts`.
+   - It takes `merge_done` events only, mapped through `finiteNumber(ev.queuedMs, 0)` and kept
+     when > 0. A merge logged before `queuedMs` existed is skipped, the same rule as
+     `foldUsageEvent` in `src/report/report-data.ts`. A `merge_failed` is not a wait that
+     ended on main.
+   - It sorts the values and takes the lower median, `values[Math.floor((n - 1) / 2)]`, and the
+     longest.
+   - It returns `merges in the last 24h waited <median> median, <longest> longest (<plural(n,
+     "merge")>)`, with spans from `shortSpanPhrase` and `plural` from `src/text/phrases.ts`.
+     It returns undefined when no event qualifies.
+   - Its doc comment says the wait runs from the entry's last enqueue to its outcome and
+     includes the merge check.
+2. `checkStaleQueuedMerges(root, now)`: read
+   `readEventsSince(root, MERGE_WAIT_WINDOW_MS).events`, already imported in this file, and keep
+   `ev.ts >= now - MERGE_WAIT_WINDOW_MS`. `MERGE_WAIT_WINDOW_MS = 24 * 3600_000` is a new module
+   constant. Pass the result to `mergeWaitPhrase`. When it returns a phrase, append
+   ` · <phrase>` to the detail of both the ok and the warn outcome. Wrap the read in try/catch.
+   On an error, omit the phrase and keep the outcome otherwise unchanged, so an unreadable event
+   log never changes this row's level. Leave the level rules, the row name in
+   `src/doctor/doctor.ts`, and every existing detail text as they are.
+3. `docs/cli.md`: in the Audit row's `tumwater doctor` description, after "the declared check
+   and how long its passing merge checks took over the last 24 h", add "how long merges waited
+   from enqueue to merged on main over the last 24 h (median and longest)".
+
+**Files touched.** `src/doctor/doctor-backlog.ts`, `test/doctor-backlog.test.ts`, `docs/cli.md`.
+
+**Acceptance criteria.**
+- `test/doctor-backlog.test.ts` has a new test, "mergeWaitPhrase reports the lower median and
+  longest of merge_done waits". Given `merge_done` events with `queuedMs` 60_000, 180_000 and
+  600_000, it asserts the result equals
+  `merges in the last 24h waited ${shortSpanPhrase(180_000)} median, ${shortSpanPhrase(600_000)} longest (3 merges)`.
+  With two values it asserts the lower one is the median. It also checks that `merge_failed`
+  events, `merge_done` events without `queuedMs` or with 0, and other event types give
+  `undefined`.
+- Another new test, "checkStaleQueuedMerges appends the last 24h merge wait to its detail",
+  writes events with `logEvent` into a `queueRoot()`: two `merge_done` events with `queuedMs`
+  within the window and one with `ts` 48 h ago. It asserts that the ok detail ends with
+  ` · merges in the last 24h waited … (2 merges)`, so the 48 h-old one is excluded. It also
+  asserts that a stale entry's warn detail carries the same suffix and stays `warn`.
+- The existing `checkStaleQueuedMerges` tests pass unchanged. With no `merge_done` in the
+  window, the detail has no ` · merges` suffix.
+- `npm run test` passes.
+
 ## Done
 
 ### `plan|bug --list --done` and `questions --answered` take `--grep <text>` to find an old finished entry by its text (planned 2026-10-17 by the plan role) — done 2026-10-17
