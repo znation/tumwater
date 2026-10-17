@@ -41,6 +41,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       for (const role of Object.keys(d.imageReroutesByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.failedRunsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.mergeFailedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.commitsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.mergedByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
     }
     return Object.entries(byRole).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -115,6 +116,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function chartCommits(data) {
     return reportSvg(data.series, (d) => [{ value: d.commits, color: "#10b981", title: d.date + ": " + plural(d.commits, "commit") + " merged" }],
       countAxis, true);
+  }
+
+  // The day's merged commits per base role, the per-role split of the Merged commits total
+  // it sits beside (same roleStackChart shape, palette, legend order and integer count axis
+  // as the other role charts). Counts merged events, one per change in a stacked fast-forward.
+  function chartCommitsByRole(data) {
+    return roleStackChart(data, "commitsByRole", (n) => plural(n, "commit"), countAxis, true);
   }
 
   // The day's work vs maintenance commits, from workCommits/maintenanceCommits (the same split
@@ -539,7 +547,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
+        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +

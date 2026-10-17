@@ -344,6 +344,34 @@ test("the Merged by role chart stacks per role and seriesHasAny gates it", () =>
   assert.equal(seriesHasAny(data, "mergedByRole"), true);
 });
 
+test("the Commits by role chart stacks per role in the ticks order", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartCommitsByRole(d: ReportData): string;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartCommitsByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartCommitsByRole"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { commitsByRole: { feature: 2, qa: 1 } }),
+    mkDay("2026-09-02", { feature: 1 }, { commitsByRole: {} }),
+  ]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles(chartCommitsByRole(data)), ["2026-09-01 · feature: 2 commits", "2026-09-01 · qa: 1 commit"]);
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartCommitsByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["qa", 0]]);
+  const missing = mk([mkDay("2026-09-01", { feature: 1 }, { runsByRole: { feature: 1 } }), mkDay("2026-09-02", { feature: 1 })]);
+  assert.equal(titles(chartCommitsByRole(missing)).length, 0, "a day whose commitsByRole map is missing renders no commit segments");
+});
+
 test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   interface Builders {
     reportRoleOrder(d: ReportData): Array<[string, number]>;
