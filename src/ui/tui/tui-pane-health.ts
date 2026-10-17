@@ -2,6 +2,7 @@
 import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { runManualReclaim } from "../../operator/operator-intent.js";
+import { testNotifyHook } from "../../cli/notify-command.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
@@ -72,6 +73,34 @@ export function createHealthPane(session: TuiPaneSession) {
           session.flashMessage(message);
           run();
           session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
+      return true;
+    }
+    if (key.ctrl && key.name === "n" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {
+      // Ctrl+N on the Health pane runs the saved notify hook once with the synthetic test event —
+      // the terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test,
+      // both reached through the same testNotifyHook (src/cli/notify-command.ts) — so a terminal
+      // operator can check the push channel before a real page. The hook runs with stdio "ignore"
+      // (the dashboard's choice) so a chatty hook's output cannot corrupt the alternate screen; the
+      // running notice flashes first, then the outcome (the not-configured wording when no hook is
+      // set, the hook's own outcome line otherwise), and a hook or write failure flashes instead of
+      // killing the TUI. The action never blocks the render. Every other view keeps Ctrl+N (the
+      // transcript notes/change cycle, the History run trail, and the backlog new-entry form).
+      session.flashMessage("running the notify hook …");
+      session.requestRender();
+      void testNotifyHook(session.root, "ignore").then(
+        (outcome) => {
+          session.flashMessage(
+            outcome.status === "not_configured"
+              ? "notify is not configured (set `notify` in tumwater.json)"
+              : outcome.message,
+          );
           session.requestRender();
         },
         (err: unknown) => {

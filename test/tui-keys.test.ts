@@ -27,6 +27,8 @@ import { initializedRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
+import { waitFor, waitForFile, sleep } from "./helpers/wait.js";
+import { setConfigKey } from "../src/config/config-write.js";
 
 /** A throwaway root for the factory's disk actions (config write, prompt inbox, backlog). */
 const makeRoot = (): string => tmpdir("tui-keys-");
@@ -2755,4 +2757,96 @@ test("Ctrl+E on the Activity view writes no reclaim marker", async () => {
   assert.equal(keys.state().view, 0, "starts on Activity");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(fs.existsSync(reclaimRequestPath(root)), false, "Activity's Ctrl+E writes no reclaim marker");
+});
+
+// Ctrl+N on the Health view runs the saved notify hook once with the synthetic test event — the
+// terminal twin of `tumwater notify --test` and the dashboard Settings card's Send test, both
+// reached through the same testNotifyHook (src/cli/notify-command.ts). The hook's stdio is
+// "ignore" (the dashboard's choice) so a chatty hook's output cannot corrupt the alternate
+// screen; the running notice flashes first, then the outcome once the hook exits.
+test("Ctrl+N on the Health view runs the notify hook once and flashes the outcome", async () => {
+  const root = makeRoot();
+  const out = path.join(root, "notify-out.txt");
+  const set = setConfigKey(
+    root,
+    "notify",
+    `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE|$TUMWATER_EVENT_MESSAGE" >> ${out}`,
+  );
+  assert.ok(set.ok, `setConfigKey failed: ${set.ok ? "" : set.error}`);
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, renderDoctor(report));
+  // Ctrl+N flashes the running notice first, then the outcome when the spawned hook exits.
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  assert.match(keys.state().flash!, /running the notify hook/);
+  await waitForFile(out); // let the spawned hook write the recorder file
+  await waitFor(() => (keys.state().flash ?? "").includes("notify hook exited 0"), "the notify hook outcome flash");
+  assert.match(keys.state().flash!, /notify hook exited 0/);
+  const lines = fs.readFileSync(out, "utf8").split("\n").filter((l) => l !== "");
+  assert.deepEqual(lines, ["merge_failed|tumwater|tumwater notify --test"]);
+});
+
+test("Ctrl+N on the Health view with no notify configured flashes the missing-setting wording and leaves the report", async () => {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "ok", name: "node", detail: "fine" }],
+    routing: [],
+    verdict: "ok",
+  } as DoctorReport;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.match(keys.state().flash!, /notify is not configured/);
+  assert.equal(keys.state().paneCache, renderDoctor(report), "the cached doctor report is unchanged");
+});
+
+test("Ctrl+N off the Health view never runs the notify hook", async () => {
+  const root = makeRoot();
+  const out = path.join(root, "notify-out.txt");
+  const set = setConfigKey(root, "notify", `echo out >> ${out}`);
+  assert.ok(set.ok, `setConfigKey failed: ${set.ok ? "" : set.error}`);
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  assert.equal(keys.state().view, 0, "starts on Activity");
+  keys.handleKey(undefined, { ctrl: true, name: "n" });
+  // Off Health the view guard must keep the hook from ever being spawned. A spawned hook
+  // writes asynchronously, so an immediate synchronous assert would pass even without the
+  // guard; wait a real-time budget so a wrongly-spawned hook (even under load) has time to
+  // write the recorder file before we assert it stayed absent.
+  for (let i = 0; i < 40 && !fs.existsSync(out); i++) await sleep(25);
+  assert.equal(fs.existsSync(out), false, "off Health, Ctrl+N never runs the hook");
 });
