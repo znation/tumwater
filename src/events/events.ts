@@ -37,8 +37,8 @@ export interface HarnessEvent {
     | "run_start" // carries run; model when one is configured — the selector string (formatModelSelector) of the config the tick's runs start on (the budget fallback included)
     | "run_end"
     | "merge_queued" // a changed tick pinned its commit and enqueued it for the orchestrator's landing slot (merge queue 3/5); carries sha + summary
-    | "merge_done" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, and the landing's own usage
-    | "merge_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including the entry's summary) — retry rides next-tick leftover recovery, never the queue
+    | "merge_done" // the landing slot finished with the change on main; carries commit, the lander's outcome, durationMs, queuedMs (enqueue to outcome), and the landing's own usage
+    | "merge_failed" // the landing slot finished without landing (review rejection, under-cap review failure, conflict, blocked ff, shutdown abort); carries the same payload (including queuedMs and the entry's summary) — retry rides next-tick leftover recovery, never the queue
     | "merged"
     | "question_posted" // a merged diff added an entry to QUESTIONS.md's ## Open
     | "entry_refused" // a refusal tick's objection note landed on main (src/verdict/refusal.ts handleRefusal); carries reason, files and entries (the stamp-free titles of the plans and bugs whose Refused note is new) — the entry stays held until a human or the director lifts it

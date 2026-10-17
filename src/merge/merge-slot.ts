@@ -377,6 +377,10 @@ export function writeMergeOutcome(
     result,
     summary: entry.summary,
     durationMs,
+    // Enqueue-to-outcome span, including the slot's own durationMs. A leftover-recovery
+    // re-enqueue writes a new entry with its own enqueuedAt, so a retried change counts from
+    // its last enqueue.
+    queuedMs: Math.max(0, Date.now() - entry.enqueuedAt),
     ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
     // The merge's per-provider spend, keyed to its reviewer seam (the same reviewProvider
     // key the author-side foldMergeUsage charges), so the report's `Cost by provider` line

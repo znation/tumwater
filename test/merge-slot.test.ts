@@ -143,6 +143,8 @@ test("a merge's nonzero usage rides its merge_done event and the entry is droppe
   assert.equal(mergeDone.result, "changed");
   assert.equal(mergeDone.summary, entry.summary);
   assert.equal(mergeDone.durationMs, 1234);
+  assert.equal(typeof mergeDone.queuedMs, "number");
+  assert.ok(Number(mergeDone.queuedMs) >= 0 && Number(mergeDone.queuedMs) <= Date.now() - entry.enqueuedAt);
   assert.equal(mergeDone.tokens, 320, "the merge's own tokens are on the event");
   assert.equal(mergeDone.costUsd, 0.42, "…and its own cost");
   assert.equal(state.lastResult, "changed");
@@ -602,4 +604,16 @@ test("a failing marker write never throws — the merge proceeds and the old fra
     fs.chmodSync(dir, 0o755);
   }
   assert.deepEqual(readMergeMarker(root), before, "the observers keep the previous frame");
+});
+
+test("a merge_failed outcome carries queuedMs too", () => {
+  const root = makeRepo();
+  const { entry, file } = queued(root);
+  const state = freshLoopState("improve");
+
+  writeMergeOutcome(root, entry, state, "rejected", 10, { tokens: 0, cost: 0, providerCost: {} }, file);
+
+  const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
+  assert.ok(failed, "the merge logged a merge_failed event");
+  assert.ok(Number(failed.queuedMs) >= 0 && Number(failed.queuedMs) <= Date.now() - entry.enqueuedAt);
 });

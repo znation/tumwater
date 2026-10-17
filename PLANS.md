@@ -1117,7 +1117,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role)
+## Done
+
+### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role) — done 2026-10-17
 
 **Goal.** The report shows how long the merge check takes ("Merge check median") but not how
 long a finished run's commit waits before it reaches main: queued behind other merges, reviewed,
@@ -1175,8 +1177,6 @@ event.
   fixture value) appears for a day carrying the field, and that the line is absent when no day
   carries one and on a role-scoped report.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater questions --show <n> --answered` prints the Nth newest answered question in full, context and recorded answer (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/backlog/question-answer.ts, src/cli/cli-query-commands.ts, src/cli/help.ts, docs/cli.md and their tests) — done 2026-10-17
 

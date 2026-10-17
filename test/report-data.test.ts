@@ -916,3 +916,22 @@ test("collectReport gives each day the lower median of its passing full-suite ch
   assert.ok(!("checkMedianMs" in data.series[0]!));
   for (const d of collectReport(root, 2, "feature").series) assert.ok(!("checkMedianMs" in d));
 });
+
+test("collectReport gives each day the lower median of its merge_done queuedMs, team scope only", () => {
+  const root = tmpdir();
+  const ev = (ts: number, type: string, extra: Record<string, unknown>) =>
+    JSON.stringify({ ts, loop: "feature", type, summary: "x", ...extra });
+  writeEvents(root, [
+    ev(at(0), "merge_done", { queuedMs: 60_000 }),
+    ev(at(0), "merge_done", { queuedMs: 300_000 }),
+    ev(at(0), "merge_done", { queuedMs: 120_000 }),
+    ev(at(0), "merge_done", {}), // logged before queuedMs existed: skipped, not counted as zero
+    ev(at(0), "merge_failed", { queuedMs: 9_000_000 }), // a failed merge's wait is not a merge wait
+    ev(at(2), "merge_failed", { queuedMs: 5_000 }),
+  ]);
+  const data = collectReport(root, 3);
+  assert.equal(data.series[2]!.mergeWaitMedianMs, 120_000);
+  assert.ok(!("mergeWaitMedianMs" in data.series[1]!));
+  assert.ok(!("mergeWaitMedianMs" in data.series[0]!), "a day with only a merge_failed has none");
+  for (const d of collectReport(root, 3, "feature").series) assert.ok(!("mergeWaitMedianMs" in d));
+});

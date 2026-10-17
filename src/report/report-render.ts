@@ -313,6 +313,10 @@ export function renderReportMarkdown(data: ReportData): string {
       d.checkMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.checkMedianMs)}`],
     );
     if (medians.length > 0) lines.push(`**Merge check median:** ${medians.join(" · ")}`);
+    const waits = data.series.flatMap((d) =>
+      d.mergeWaitMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.mergeWaitMedianMs)}`],
+    );
+    if (waits.length > 0) lines.push(`**Merge wait median:** ${waits.join(" · ")}`);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.

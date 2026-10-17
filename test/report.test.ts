@@ -1145,3 +1145,23 @@ test("renderReportMarkdown prints Merge check median for the days that carry one
   assert.ok(!renderReportMarkdown(none).includes("Merge check median"));
   assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Merge check median"));
 });
+
+test("renderReportMarkdown prints Merge wait median for the days that carry one, team scope only", () => {
+  const day = { tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 };
+  const base: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", ...day },
+      { date: "2026-09-10", ...day, mergeWaitMedianMs: 95_000 },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  assert.match(renderReportMarkdown(base), /^\*\*Merge wait median:\*\* 09-10 95s$/m);
+
+  const none: ReportData = { ...base, series: base.series.map(({ mergeWaitMedianMs: _m, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(none).includes("Merge wait median"));
+  assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Merge wait median"));
+});

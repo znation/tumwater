@@ -46,6 +46,8 @@ interface UsageFold {
   revisionsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check (isPassingFullCheck), unsorted. */
   checkDurationsMs: number[];
+  /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
+  mergeWaitsMs: number[];
   /** run_end events whose result is error-class under the digest's shared OUTCOME_CLASS —
    * ticks that burned agent time and landed nothing without going through review. Split by role,
    * a parallel tally to runsByRole (never subtracted from it). */
@@ -90,6 +92,12 @@ interface UsageFold {
   /** The notional share per provider (a subscription seam's API-equivalent spend), the same
    * parallel age as costByProvider but on the notional line. */
   notionalByProvider: Record<string, number>;
+}
+
+/** The lower median of a non-empty list: the middle value, or the smaller of the middle two. */
+function lowerMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)] as number;
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
@@ -171,8 +179,12 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // aggregates into `feature`. A parallel tally beside the team run counts, never
     // subtracted from mergeRuns/mergeFailed.
     const role = baseRoleOf(eventRole(ev));
-    if (ev.type === "merge_done") addTo(target.mergedByRole, role, 1); 
-    else addTo(target.mergeFailedByRole, role, 1);
+    if (ev.type === "merge_done") {
+      addTo(target.mergedByRole, role, 1);
+      // Events logged before queuedMs existed carry none: skipped, not counted as zero.
+      const waited = finiteNumber(ev.queuedMs, 0);
+      if (waited > 0) target.mergeWaitsMs.push(waited);
+    } else addTo(target.mergeFailedByRole, role, 1);
     const { tokens, costUsd, notionalCostUsd } = eventUsage(ev);
     target.mergeTokens = (target.mergeTokens ?? 0) + tokens;
     target.mergeCostUsd = (target.mergeCostUsd ?? 0) + costUsd;
@@ -203,6 +215,8 @@ interface DayFold {
   revisionsByRole: Record<string, number>;
   /** Wall-clock ms of each passing full-suite build_check that day, unsorted. */
   checkDurationsMs: number[];
+  /** Enqueue-to-outcome ms of each merge_done that carries queuedMs, unsorted. */
+  mergeWaitsMs: number[];
   failedRunsByRole: Record<string, number>;
   fallbacksByRole: Record<string, number>;
   imageReroutesByRole: Record<string, number>;
@@ -309,6 +323,7 @@ function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
       rejectionsByRole: {},
       revisionsByRole: {},
       checkDurationsMs: [],
+      mergeWaitsMs: [],
       failedRunsByRole: {},
       fallbacksByRole: {},
       imageReroutesByRole: {},
@@ -435,6 +450,9 @@ export interface ReportDay {
   /** Lower median of the day's passing full-suite check durations (ms); absent when the day
    * has none. */
   checkMedianMs?: number;
+  /** Lower median of the day's merge waits (enqueue to merged on main, ms); absent when the
+   * day has no merge that carried queuedMs. */
+  mergeWaitMedianMs?: number;
   /** error-class run_end events per loop id; absent when the day has none (zero means
    * absent, so a failure-free day keeps its exact pre-feature shape). */
   failedRunsByRole?: Record<string, number>;
@@ -589,6 +607,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     rejectionsByRole: {},
     revisionsByRole: {},
     checkDurationsMs: [],
+    mergeWaitsMs: [],
     failedRunsByRole: {},
     fallbacksByRole: {},
     imageReroutesByRole: {},
@@ -716,9 +735,9 @@ export function collectReport(root: string, days: number, role?: string): Report
         day.revisionsByRole = fold.revisionsByRole;
       // Checks belong to the merge slot, so only the team series carries the median.
       if (fold.checkDurationsMs.length > 0) {
-        const sorted = [...fold.checkDurationsMs].sort((a, b) => a - b);
-        day.checkMedianMs = sorted[Math.floor((sorted.length - 1) / 2)];
+        day.checkMedianMs = lowerMedian(fold.checkDurationsMs);
       }
+      if (fold.mergeWaitsMs.length > 0) day.mergeWaitMedianMs = lowerMedian(fold.mergeWaitsMs);
       // Only set when nonzero, so a failure-free day keeps its exact pre-feature shape.
       if (Object.keys(fold.failedRunsByRole).length > 0)
         day.failedRunsByRole = fold.failedRunsByRole;
