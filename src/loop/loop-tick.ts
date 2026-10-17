@@ -10,7 +10,7 @@ import { abortSync, ensureWorktree, resetWorktreeToMain } from "../git/worktree.
 import { leaseSlot } from "../git/worktree-pool.js";
 import { slotCount } from "../config/config.js";
 import { useWorktree } from "../git/worktree-use.js";
-import { branchName, worktreePath, landingRefName, rejectedRefName } from "../paths.js";
+import { branchName, worktreePath, mergeRefName, rejectedRefName } from "../paths.js";
 import { logEventBestEffort } from "../events/events.js";
 import {
   buildConflictDiscardNote,
@@ -526,7 +526,7 @@ async function tickWithWorktreePhase(
     const applied = await applyWithConflicts(wt, ctx.mainBranch, hb.sha);
     if (applied.applied) {
       s.conflictHandback = { ...hb, applied: true };
-      await deleteRef(ctx.root, landingRefName(ctx.role));
+      await deleteRef(ctx.root, mergeRefName(ctx.role));
       logEventBestEffort(ctx.root, {
         source: ctx.role,
         type: "conflict_handback",
@@ -541,7 +541,7 @@ async function tickWithWorktreePhase(
       // The object is gone or the apply failed for a non-conflict reason: drop the hand-back
       // so the author starts fresh rather than retrying it every tick.
       s.conflictHandback = undefined;
-      await deleteRef(ctx.root, landingRefName(ctx.role));
+      await deleteRef(ctx.root, mergeRefName(ctx.role));
       logEventBestEffort(ctx.root, { source: ctx.role, type: "conflict_handback", action: "failed", sha: hb.sha, reason: hb.reason });
     }
   }

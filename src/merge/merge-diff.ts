@@ -1,7 +1,7 @@
 import { increment } from "../collections.js";
 import { gitTry } from "../git/git-run.js";
 
-/** The landing-scope DIFF COMPARISON (see merge-to-main.ts for the merge flow that consults
+/** The merge-scope DIFF COMPARISON (see merge-to-main.ts for the merge flow that consults
  * it): whether a conflict-resolved tree's diff ahead of main stays inside the diff the review
  * gate approved. Pure multiset comparison over unified diffs, plus the git reads that produce
  * them — kept apart from the merge flow so the hunk-aware parsing (BUGS.md 2026-10-02) is

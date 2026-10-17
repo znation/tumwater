@@ -11,7 +11,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
-import { queueDepth, queuedLandings } from "../src/merge/merge-queue.js";
+import { queueDepth, queuedMerges } from "../src/merge/merge-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";
@@ -401,7 +401,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
 
   // Exactly one landing sits in the queue, pointing at the pinned commit.
   assert.equal(queueDepth(root), 1);
-  const queued = queuedLandings(root);
+  const queued = queuedMerges(root);
   assert.equal(queued.length, 1);
   assert.equal(queued[0]!.role, "improve");
   assert.equal(queued[0]!.sha, outcome.commit);
@@ -425,7 +425,7 @@ test("a tick with a SUMMARY still enqueues its landing when the events feed is u
 
   assert.equal(outcome.result, "queued");
   assert.equal(queueDepth(root), 1, "the landing is durably queued despite the unwritable feed");
-  assert.equal(queuedLandings(root)[0]!.sha, outcome.commit);
+  assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
 });
 
 test("a revision tick's queued landing carries the prior review's objections", async () => {
@@ -444,7 +444,7 @@ test("a revision tick's queued landing carries the prior review's objections", a
   const outcome = await stageTickLanding(ctx);
 
   assert.equal(outcome.result, "queued");
-  const queued = queuedLandings(root);
+  const queued = queuedMerges(root);
   assert.equal(queued[0]!.revisionRound, 1);
   assert.deepEqual(queued[0]!.priorReview, { sha: rejected, reasons: ["fix the bug", "add a test"] });
   assert.equal(state.revision, undefined, "the revision is now in flight");
@@ -465,7 +465,7 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
   assert.equal(calls.summaryRequests.length, 1);
   assert.equal(calls.summaryRequests[0], wt, "the follow-up runs in the tick's worktree");
   assert.match(calls.warnings[0]!, /recovered it with a follow-up turn/);
-  assert.equal(queuedLandings(root)[0]!.summary, "recovered summary");
+  assert.equal(queuedMerges(root)[0]!.summary, "recovered summary");
 });
 
 test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
@@ -480,7 +480,7 @@ test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "short form");
   assert.deepEqual(calls.summaryOverLengths, [140]);
-  assert.equal(queuedLandings(root)[0]!.summary, "short form");
+  assert.equal(queuedMerges(root)[0]!.summary, "short form");
   assert.ok(calls.warnings.some((w) => w.includes("shortened with a follow-up turn")));
 });
 
@@ -600,7 +600,7 @@ test("a tick past both friction thresholds is flagged, warned, and marked in the
   assert.match(outcome.summary!, /\(high friction: 5 turns \/ \d+m\)/);
   assert.match(calls.warnings[0]!, /high-friction run: 5 turns in \d+ min/);
   assert.match(sh(wt, "git", "log", "-1", "--format=%b"), /^Friction: high \(5 turns \/ \d+m\)$/m);
-  assert.equal(queuedLandings(root)[0]!.highFriction, true);
+  assert.equal(queuedMerges(root)[0]!.highFriction, true);
 });
 
 test("burning turns alone is not friction — the wall clock must pass too", async () => {
@@ -621,7 +621,7 @@ test("burning turns alone is not friction — the wall clock must pass too", asy
   assert.equal(outcome.highFriction, false, "a fast high-turn tick is ordinary work");
   assert.deepEqual(calls.warnings, []);
   assert.doesNotMatch(sh(wt, "git", "log", "-1", "--format=%b"), /Friction:/);
-  assert.equal(queuedLandings(root)[0]!.highFriction, undefined, "the landing is not marked");
+  assert.equal(queuedMerges(root)[0]!.highFriction, undefined, "the landing is not marked");
 });
 
 test("a failed pin reports an error, records lastError, and queues nothing", async () => {
@@ -702,7 +702,7 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
     "md-only BUGS.md edit moves X to Fixed, but none of its symbols exist",
   ]);
   assert.deepEqual(calls.warnings, ["stage self-check: 1 finding — fixed by the follow-up turn"]);
-  assert.equal(queuedLandings(root)[0]!.summary, "add the feature");
+  assert.equal(queuedMerges(root)[0]!.summary, "add the feature");
 });
 
 test("a partial fix-up body keeps the fields it did not restate", async () => {

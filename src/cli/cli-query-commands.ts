@@ -19,8 +19,8 @@ import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.
 import { readyBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { renderTeamChange, renderRoleChange } from "../change/change-render.js";
-import { readLandingQueue } from "../merge/merge-queue.js";
-import { renderLandingQueue } from "../merge/merge-queue-render.js";
+import { readMergeQueue } from "../merge/merge-queue.js";
+import { renderMergeQueue } from "../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";
@@ -129,9 +129,9 @@ export async function cmdQueue(root: string, args: string[]): Promise<void> {
   // read, so `tumwater queue` and `tumwater status --json`'s landQueue cannot drift.
   // The in-flight marker rides along only while an orchestrator runs and the marker names a
   // queued entry (queueInFlight) — status --json's mergeQueue.inFlight, so the two agree.
-  const view = readLandingQueue(root);
+  const view = readMergeQueue(root);
   const inFlight = queueInFlight(root, view.entries, orchestratorAlive(root));
-  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderLandingQueue(view, Date.now(), inFlight));
+  sayJsonOrRender(args, inFlight ? { ...view, inFlight } : view, () => renderMergeQueue(view, Date.now(), inFlight));
 }
 
 /** `tumwater backlog`: the planned/open entries as Markdown or as the GUI's JSON payload. */

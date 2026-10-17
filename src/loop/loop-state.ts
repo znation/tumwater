@@ -248,7 +248,7 @@ export interface LoopState {
   mergeReviewError?: { sha: string; selector?: string; message: string };
   /** Consecutive landings of one patch (git/git.ts patchId, stable across a clean rebase) whose
    * in-lock check went red on the rebased tree. At merge-check-failures.ts's
-   * LANDING_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
+   * MERGE_CHECK_FAILURE_LIMIT the red is attributed through main's own verdict instead of
    * re-queued as merge_blocked again. */
   mergeCheckFailures?: { patchId: string; count: number };
   /** Tokens the model generated in this loop's current or last completed tick — a per-tick

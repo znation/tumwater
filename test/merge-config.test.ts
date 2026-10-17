@@ -8,15 +8,15 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { assertClean, commitIn, headSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
-/** merge-git.ts's config write-back across a landing that untracks tumwater.json, split out
+/** merge-git.ts's config write-back across a merge that untracks tumwater.json, split out
  * of merge-to-main.test.ts (whose mergeToMain clusters stay there): these tests exercise
  * ffMainTo's preserve-and-restore path and configBytesToPreserve's contract directly, with no
  * MergeContext or pi run involved. */
-// ── Config preserve across an untracking landing (plans/portability.md §4b/7): the working-tree
+// ── Config preserve across an untracking merge (plans/portability.md §4b/7): the working-tree
 // merge deletes a tracked config out from under the running team, so ffMainTo saves the live
-// bytes and restores them when the landing removed the file ───────────────────────────
+// bytes and restores them when the merge removed the file ───────────────────────────
 
-/** The pre-4a shape this landing retires: a repo whose tumwater.json is TRACKED, with a
+/** The pre-4a shape this merge retires: a repo whose tumwater.json is TRACKED, with a
  * .gitignore that does not yet list it (but does ignore .tumwater/, so root's
  * `git status --porcelain` stays clean around the worktree dir). */
 function trackedConfigRoot(config: string): string {
@@ -37,7 +37,7 @@ async function untrackingBranch(root: string): Promise<string> {
   return headSha(wt);
 }
 
-test("a landing that untracks the config preserves the live file byte-identical", async () => {
+test("a merge that untracks the config preserves the live file byte-identical", async () => {
   const config =
     '{"provider":"o","model":"m","fallbackModel":{"provider":"f","model":"fm"},' +
     '"maxConcurrent":3,"runTimeoutSeconds":54000,"quietTimeoutSeconds":1800,' +
@@ -52,13 +52,13 @@ test("a landing that untracks the config preserves the live file byte-identical"
   assert.ok(fs.existsSync(path.join(root, "tumwater.json")), "restored, not deleted");
   assert.ok(
     before.equals(fs.readFileSync(path.join(root, "tumwater.json"))),
-    "byte-identical to the pre-landing file",
+    "byte-identical to the pre-merge file",
   );
-  assert.deepEqual(loadConfig(root), parsedBefore, "the parsed config survives the landing");
+  assert.deepEqual(loadConfig(root), parsedBefore, "the parsed config survives the merge");
   assertClean(root, "restored file is ignored, tree clean");
 });
 
-test("a landing whose tree keeps the config leaves the live file untouched", async () => {
+test("a merge whose tree keeps the config leaves the live file untouched", async () => {
   const root = trackedConfigRoot('{"provider":"o"}\n');
   const wt = await ensureWorktree(root, "improve", "main");
   fs.writeFileSync(path.join(wt, "seed.txt"), "changed\n");
@@ -71,7 +71,7 @@ test("a landing whose tree keeps the config leaves the live file untouched", asy
   assert.equal(fs.readFileSync(path.join(root, "tumwater.json"), "utf8"), '{"provider":"o"}\n');
 });
 
-test("a landing on a repo with no config needs no preserve and still fast-forwards", async () => {
+test("a merge on a repo with no config needs no preserve and still fast-forwards", async () => {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, ".gitignore"), ".tumwater/\n");
   sh(root, "git", "add", "-A");
@@ -91,7 +91,7 @@ test("a crash mid write-back leaves the live config absent, never torn", () => {
   const root = makeRepo();
   const cfg = path.join(root, "tumwater.json");
   const saved = Buffer.from('{"provider":"preserved"}\n');
-  assert.ok(!fs.existsSync(cfg), "the landing deleted the live config");
+  assert.ok(!fs.existsSync(cfg), "the merge deleted the live config");
 
   // Inject the fault: the write dies after emitting half the bytes (an interrupted write —
   // SIGKILL, the OOM killer, a full disk). The live config path must never hold that prefix;
@@ -124,7 +124,7 @@ test("the config write-back is restore-only-when-absent: a newer write wins", as
   const saved = await configBytesToPreserve(root, sha);
   assert.ok(saved, "a tracked config absent from the ref is preserved");
   assert.ok(await ffMainTo(root, sha, "main"));
-  // Replay the applyConfigRequest race (3/7's write lands between the merge and the write-back):
+  // Replay the applyConfigRequest race (3/7's write merges between the merge and the write-back):
   // the file exists again with newer bytes, and the restore must leave them alone.
   fs.writeFileSync(path.join(root, "tumwater.json"), '{"provider":"newer"}\n');
   restoreConfigBytes(root, saved);

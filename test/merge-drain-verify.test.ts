@@ -4,8 +4,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { drainLandings } from "../src/merge/merge-drain.js";
 import { abortableLandings, landingTasks } from "../src/merge/merge-pipeline.js";
-import { queuedLandingFiles } from "../src/merge/merge-queue.js";
-import { landingRefName, slotsStatePath } from "../src/paths.js";
+import { queuedMergeFiles } from "../src/merge/merge-queue.js";
+import { mergeRefName, slotsStatePath } from "../src/paths.js";
 import { readSlotsState } from "../src/git/slots-state.js";
 import { refSha } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -175,14 +175,14 @@ test("a parked vet starts nothing when a shutdown or a closed start gate meets i
       await Promise.allSettled(allTasks(pipeline));
 
       assert.equal(pipeline.vetting.has("beta"), false, `${stop}: beta holds no vet any more`);
-      assert.ok(queuedLandingFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
-      assert.equal(await refSha(root, landingRefName("beta")), shas.beta, `${stop}: with its pin`);
+      assert.ok(queuedMergeFiles(root).some((q) => q.entry.role === "beta"), `${stop}: beta's entry is still queued`);
+      assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, `${stop}: with its pin`);
       assert.equal(readEvents(root).some((e) => e.source === "beta" && (e.type === "merge_failed" || e.type === "review_start")), false, `${stop}: nothing ran for beta`);
       assert.ok(!readLandingMarker(root)?.changes?.some((c) => c.role === "beta"), `${stop}: beta never had a record`);
       if (stop === "shutdown") {
         const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha");
         assert.deepEqual(failed.map((e) => e.result), ["aborted"], "the vet under review ended aborted");
-        assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha, "its pin survives the shutdown");
+        assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha, "its pin survives the shutdown");
       } else {
         held = false; // the hold lifts: the next drain vets beta afresh
         await pumpUntil(ctx, pipeline, drained(root, pipeline), "both to land once the gate reopens");

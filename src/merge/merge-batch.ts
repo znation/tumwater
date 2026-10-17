@@ -294,7 +294,7 @@ export async function landVetted(
     // head (the synced pin its vet judged, not the bare pin) — no second gate, so no model run:
     // re-gating would rebase onto the main the earlier entries just moved, and the rewritten
     // sha misses the approved short-circuit. main is never left red — mergeToMain's in-lock
-    // rebase + verifyLanding re-check every change whose tree differs from the one its vet
+    // rebase + verifyMerge re-check every change whose tree differs from the one its vet
     // judged. Only the change being landed reads `landing`; the rest are back to awaiting
     // their turn, and each one landed is done.
     for (let s = landedCount; s < vetted.length; s++) report(s, "approved");

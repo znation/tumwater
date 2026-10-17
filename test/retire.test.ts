@@ -9,9 +9,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { branchName, landingRefName, legacyLandingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
+import { branchName, mergeRefName, legacyLandingRefName, pausedRolesPath, slotWorktreePath, worktreePath } from "../src/paths.js";
 import { collectRetire, hasRetirableLeftovers, previewRetire, retireRole, type RetireResult, type RetireStatus } from "../src/operator/retire.js";
-import { landingRefExists } from "./fixtures/orchestrator-fixtures.js";
+import { mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, initializedWorktree, mainSha, sh } from "./fixtures/repo-fixtures.js";
 import { ensureDetachedWorktree } from "../src/git/worktree.js";
 import { readSlotsState, writeSlotsState } from "../src/git/slots-state.js";
@@ -31,7 +31,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
 
   // A landing ref pinning a sha already merged into main (the stale-pin crash state) must not
   // block — only a pin holding unlanded work counts against the retire.
-  await setRef(root, landingRefName("improve"), mainSha(root));
+  await setRef(root, mergeRefName("improve"), mainSha(root));
 
   const r = await cli(root, "retire", "--role", "improve", "--json");
   assert.equal(r.code, 0, r.stderr);
@@ -44,7 +44,7 @@ test("retire removes a disabled role's worktree, branch, and landing ref", async
     false,
     "no worktree registration left",
   );
-  assert.equal(landingRefExists(root, "improve"), false, "landing ref deleted");
+  assert.equal(mergeRefExists(root, "improve"), false, "landing ref deleted");
   // Branch gone: rev-parse fails.
   const branchGone = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.equal(branchGone, null, "branch deleted");
@@ -290,7 +290,7 @@ test("hasRetirableLeftovers gates on a well-formed non-director id with a branch
   sh(root, "git", "branch", branchName("director"));
   assert.equal(await hasRetirableLeftovers(root, "director"), false);
   assert.equal(await hasRetirableLeftovers(root, "nothing-here"), false);
-  await setRef(root, landingRefName("gone"), mainSha(root));
+  await setRef(root, mergeRefName("gone"), mainSha(root));
   assert.equal(await hasRetirableLeftovers(root, "gone"), true);
 });
 
@@ -346,7 +346,7 @@ function disableRole(root: string, role: string): void {
 test("retire --dry-run previews the removal and changes nothing", async () => {
   const { root } = await initializedWorktree();
   disableRole(root, "improve");
-  await setRef(root, landingRefName("improve"), mainSha(root));
+  await setRef(root, mergeRefName("improve"), mainSha(root));
 
   const r = await cli(root, "retire", "--role", "improve", "--dry-run", "--json");
   assert.equal(r.code, 0, r.stderr);
@@ -363,7 +363,7 @@ test("retire --dry-run previews the removal and changes nothing", async () => {
   assert.ok(fs.existsSync(worktreePath(root, "improve")), "worktree directory kept");
   const head = await import("../src/git/git.js").then((m) => m.branchHead(root, branchName("improve")));
   assert.notEqual(head, null, "branch kept");
-  assert.equal(landingRefExists(root, "improve"), true, "landing ref kept");
+  assert.equal(mergeRefExists(root, "improve"), true, "landing ref kept");
 });
 
 test("retire --dry-run reports rail objections without failing; --force reframes them", async () => {

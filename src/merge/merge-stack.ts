@@ -9,7 +9,7 @@
 
 import { COMMIT_IDENT, gitTry } from "../git/git-run.js";
 import { branchHead, deleteRef, gitLines, headOf } from "../git/git.js";
-import { landingRefName, mergeLockDir } from "../paths.js";
+import { mergeRefName, mergeLockDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { exemptSkipBlockReason } from "./merge-to-main.js";
@@ -91,7 +91,7 @@ async function assembleStack(
 /** True when the tree at `to` differs from the tree at `from` only in review-exempt paths —
  * the gate's own doc-only test (isExemptDiff over config.review.exemptPaths). A re-stack whose
  * new commits from main were doc-only rebuilds the checked tree with nothing but doc bytes
- * changed, and a doc-only delta cannot break the build: the reasoning verifyLanding
+ * changed, and a doc-only delta cannot break the build: the reasoning verifyMerge
  * (src/merge/merge-to-main.ts) applies when it skips its in-lock re-check for a moved
  * doc-only landing. Its false-fix cross-check has no counterpart here — the delta is
  * commits main already landed through their own gate, not a claim this batch makes.
@@ -111,7 +111,7 @@ async function exemptTreeDelta(
  * `red` — the check over the stacked tree failed (the check and its outcome, for the reasons);
  * `conflict` — the stack cannot be assembled on main's tip, or cannot be landed as a stack (a
  * doc-only stack that failed a cross-check: the one-at-a-time fallback lands its changes
- * through verifyLanding's exempt arm, which blocks or rejects with the proper handling);
+ * through verifyMerge's exempt arm, which blocks or rejects with the proper handling);
  * `blocked` — the fast-forward lost
  * the race to a moved main on every attempt; `aborted` — a stop arrived before an attempt. */
 export type StackOutcome =
@@ -126,11 +126,11 @@ export type StackOutcome =
  * won, up to BATCH_RESTACK_ATTEMPTS times, and a re-stack whose tree is the checked tree plus
  * doc-only commits skips its re-check (exemptTreeDelta). A stack whose whole delta ahead of
  * its assembly base is review-exempt skips the check too — a doc-only delta cannot break the
- * build (the reasoning verifyLanding's exempt arm applies) — and runs the same cross-checks
+ * build (the reasoning verifyMerge's exempt arm applies) — and runs the same cross-checks
  * that arm runs, the backlog heading structure and the false-fix claim; one that fails either
  * returns `conflict`, so the per-change fallback applies the gate's own verdict per change.
  * On `landed` every entry's ref is deleted and the red-main baseline is seeded with the tip
- * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyLanding's
+ * when a check PASSED on exactly it — a skipped check seeds nothing, like verifyMerge's
  * exempt arm. The check's events log under the first entry's role. */
 export async function landStack(ctx: LandingScopeContext, wtPath: string, entries: readonly StackEntry[]): Promise<StackOutcome> {
   // Hold the merge checkout from before assembleStack (its reset is part of the use) through
@@ -161,13 +161,13 @@ async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: re
     const docOnlyRestack = checkedTip !== null && (await exemptTreeDelta(ctx.root, checkedTip, tip, exemptPaths));
     if (!docOnlyRestack) {
       // The stack's own delta ahead of its assembly base — main here is the tip assembleStack
-      // stacked on — decides like verifyLanding does: doc-only cannot break the build, so no
+      // stacked on — decides like verifyMerge does: doc-only cannot break the build, so no
       // check runs (a doc-only stack, or a bisect's size-1 doc-only remainder, lands on the
       // exemption instead of paying a suite run no code change asked for).
       const stackDiff = await gitTry(ctx.root, "diff", "--no-renames", "--name-only", base, tip);
       const stackFiles = stackDiff === null ? null : gitLines(stackDiff);
       if (stackFiles !== null && isExemptDiff(stackFiles, exemptPaths)) {
-        // The same cross-checks verifyLanding's exempt arm runs (merge-to-main.ts's
+        // The same cross-checks verifyMerge's exempt arm runs (merge-to-main.ts's
         // exemptSkipBlockReason): the skip must not wave through an md-only edit the gate would
         // have rejected. A failure here cannot name a red check (none ran), so it hands the
         // stack to the one-at-a-time fallback, whose exempt arm blocks or rejects each change
@@ -203,9 +203,9 @@ async function landStackIn(ctx: LandingScopeContext, wtPath: string, entries: re
       // A PASSED stack check ran on exactly the future main tip — seed the red-main
       // baseline after (not before) the successful ff, so a merge_blocked stack seeds
       // nothing; a skipped check seeds nothing either (skips never seed), and neither does
-      // a doc-only re-stack (like verifyLanding's exempt arm: nothing ran on this tip).
+      // a doc-only re-stack (like verifyMerge's exempt arm: nothing ran on this tip).
       if (seed !== undefined) noteGreenBaseline(seed);
-      for (const e of entries) await deleteRef(ctx.root, landingRefName(e.role));
+      for (const e of entries) await deleteRef(ctx.root, mergeRefName(e.role));
       return { kind: "landed" }; // vocabulary-ok: persisted state value or event type, renamed by a later series
     }
     // Main moved under the batch while the check ran (a human commit): diverged history, ff

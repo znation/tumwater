@@ -3,7 +3,7 @@ import { landVetted, type BatchRoleWiring } from "./merge-batch.js";
 import { removeLandingChange, resolveWaitStage, setLandingChangeStatus } from "./merge-slot.js";
 import { seamConcurrencyKey } from "../config/config-views.js";
 import { withProviderLease } from "../concurrency/provider-lease.js";
-import { dropLanding, queuedLandingFiles } from "./merge-queue.js";
+import { dropMerge, queuedMergeFiles } from "./merge-queue.js";
 import { errorMessage } from "../text/text.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { saveLoopState } from "../loop/loop-state.js";
@@ -59,7 +59,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
       await settleLandingOutcome(root, v.entry, v.author.state, "aborted", Date.now() - v.startedAt, v.usage, v.file);
     } catch (err) {
       warnEventBestEffort(root, TUMWATER_SOURCE, `the stopped merge for ${role} could not be settled: ${errorMessage(err)}`);
-      dropLanding(v.file);
+      dropMerge(v.file);
       removeLandingChange(root, role);
     }
     await discardPinnedRefs(root, [role]);
@@ -72,7 +72,7 @@ export async function settleAbortedVetted(root: string, p: LandingPipeline): Pro
  * forgotten (nothing in-process drops one; defensive). */
 export function drainMerge(ctx: LandingPipelineContext, p: LandingPipeline): void {
   if (p.merge !== null || p.vetted.size === 0) return;
-  const queued = queuedLandingFiles(ctx.root);
+  const queued = queuedMergeFiles(ctx.root);
   const files = new Set(queued.map((q) => q.file));
   for (const [role, v] of [...p.vetted]) {
     if (files.has(v.file)) continue;

@@ -6,7 +6,7 @@ import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { refSha, setRef } from "../src/git/git.js";
-import { eventsLogPath, landingRefName } from "../src/paths.js";
+import { eventsLogPath, mergeRefName } from "../src/paths.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
 import { readEvents } from "../src/events/event-read.js";
 import { shortSha } from "../src/text/format.js";
@@ -56,7 +56,7 @@ async function attribute(
   state: LoopState = seededState(root),
 ): Promise<{ head: string; state: LoopState; result: Awaited<ReturnType<typeof attributeRedCheck>> }> {
   const head = mainSha(root);
-  await setRef(root, landingRefName(ROLE), head);
+  await setRef(root, mergeRefName(ROLE), head);
   const result = await attributeRedCheck(
     { root, mainBranch: "main", config: defaultConfig() },
     ROLE,
@@ -91,7 +91,7 @@ test("attributeRedCheck rejects deterministically when main's own tip is green",
       `check failed (\`npm run test\`): ${CHANGE_REASON}`,
     ]);
     assert.equal(state.lastReview?.head, head);
-    assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was deleted");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
     assert.deepEqual(reviewRejectedEvents(root), [
       { loop: ROLE, head, reasons: [`check failed (\`npm run test\`): ${CHANGE_REASON}`] },
     ]);
@@ -116,7 +116,7 @@ test("attributeRedCheck returns main_red and keeps the change recoverable when m
     assert.equal(state.lastReview, undefined, "no rejection was recorded against the author");
     assert.equal(state.unreviewFailures, 3, "the strike count was left untouched");
     assert.equal(
-      await refSha(root, landingRefName(ROLE)),
+      await refSha(root, mergeRefName(ROLE)),
       head,
       "the pin was kept so recovery can re-land once main is green",
     );
@@ -139,7 +139,7 @@ test("attributeRedCheck rejects with the unavailable why when main's baseline ca
     "main's own baseline was unavailable (it declares no check), so the failed merge check is attributed to this change",
   ]);
   assert.equal(state.unreviewFailures, 0, "the strike count reset with the rejection");
-  assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was deleted");
+  assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was deleted");
   const saved = loadLoopState(root, ROLE);
   assert.equal(saved.lastReview?.verdict, "reject", "the rejection was persisted");
 });
@@ -166,7 +166,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
     const { head, state, result } = await attribute(root, "merge check", flag);
     assert.equal(result, "merge_blocked", "the pin stays for the next attempt, as for any retriable landing");
     assert.equal(state.unreviewFailures, 3, "no strike: nothing judged this diff");
-    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref was not deleted");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), head, "the ref was not deleted");
     assert.match(state.lastError ?? "", /host slept 119s mid-run/, "the sleep is what the state records");
     assert.equal(reviewRejectedEvents(root).length, 0, "no rejection was logged");
 
@@ -184,7 +184,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
     const { state: state2, result: result2 } = await attribute(root, "merge check", measured);
     assert.equal(result2, "merge_blocked");
     assert.equal(state2.unreviewFailures, 3, "no strike here either");
-    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the ref still was not deleted");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), head, "the ref still was not deleted");
   } finally {
     restore();
   }
@@ -207,7 +207,7 @@ test("attributeRedCheck still rejects when the events feed is unwritable", async
     const { result } = await attribute(root, "merge check", red());
 
     assert.equal(result, "rejected", "the deterministic reject stands despite the broken feed");
-    assert.equal(await refSha(root, landingRefName(ROLE)), null, "the pin was still deleted");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), null, "the pin was still deleted");
     assert.equal(loadLoopState(root, ROLE).lastReview?.verdict, "reject", "the rejection was persisted");
   } finally {
     restore();
@@ -233,7 +233,7 @@ test("attributeRedCheck still reports main_red when the events feed is unwritabl
     assert.equal(result, "main_red", "a broken feed must not attribute main's red to the change");
     assert.equal(state.lastReview, undefined, "no rejection was recorded against the author");
     assert.equal(state.unreviewFailures, 3, "the strike count was left untouched");
-    assert.equal(await refSha(root, landingRefName(ROLE)), head, "the pin is kept for recovery");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), head, "the pin is kept for recovery");
   } finally {
     restore();
   }

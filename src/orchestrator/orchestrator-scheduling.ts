@@ -18,7 +18,7 @@ import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/loop-ids.js";
 import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
-import { queuedLandingRoles } from "../merge/merge-queue.js";
+import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {
@@ -142,12 +142,12 @@ export async function pollRunnerReasons(
   } = ctx;
   const reasons = new Map<LoopRunner, string | undefined>();
   // Merge-queue interlock data, listed ONCE per poll (was once per runner per poll — each
-  // queuedLandingFiles() re-lists the land-queue directory and re-stats every queued entry): the
+  // queuedMergeFiles() re-lists the land-queue directory and re-stats every queued entry): the
   // check below only asks whether the runner's role has a queued entry. The queue changes
   // only when a landing completes or a tick enqueues — both asynchronous events this pass
   // observes on its next poll — so one snapshot is as fresh as per-runner reads, and a
   // landing that completes mid-pass just keeps its role blocked one extra poll (conservative).
-  const queuedRoles = queuedLandingRoles(root);
+  const queuedRoles = queuedMergeRoles(root);
   // Parallel work instances (plans/parallel-work-instances.md "Claims", part 4/7): a base role
   // with more than one runner assigns each due instance a distinct eligible entry, and releases
   // the claims whose entry left, turned ineligible, was disabled or went stale. Computed once

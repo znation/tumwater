@@ -23,8 +23,8 @@ import { readBrief, renderBrief } from "../../brief/brief.js";
 import { runDoctor } from "../../doctor/doctor.js";
 import { renderDoctor } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
-import { readLandingQueue } from "../../merge/merge-queue.js";
-import { renderLandingQueue } from "../../merge/merge-queue-render.js";
+import { readMergeQueue } from "../../merge/merge-queue.js";
+import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
@@ -974,8 +974,8 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
           // pane the same index names, must not have this resolution overwrite the pane now shown.
           // The default collector degrades rather than throws, so the rejection arm only covers an
           // injected seam (or an unexpected throw).
-          const queueView = readLandingQueue(root);
-          const queueText = renderLandingQueue(queueView, now(), queueInFlight(root, queueView.entries, orchestratorAlive(root)));
+          const queueView = readMergeQueue(root);
+          const queueText = renderMergeQueue(queueView, now(), queueInFlight(root, queueView.entries, orchestratorAlive(root)));
           paneCache = queueText;
           void collectPending(root).then(
             (team) => {

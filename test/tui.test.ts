@@ -7,7 +7,7 @@ import { logEvent } from "../src/events/events.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueRolePrompt, listWideScope, queuedListRows } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
-import { enqueueLanding } from "../src/merge/merge-queue.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { runTui } from "../src/ui/tui/tui.js";
 import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./helpers/oracles.js";
@@ -114,7 +114,7 @@ test("runTui honors NO_COLOR: no escapes at all in the frame, layout unchanged",
 // is what clips on a long name).
 test("runTui shows the land queue badge in the header while a landing is queued", async () => {
   const repo = await makeTuiRepo();
-  enqueueLanding(repo, {
+  enqueueMerge(repo, {
     role: "clean",
     sha: "abc1234",
     run: 1,

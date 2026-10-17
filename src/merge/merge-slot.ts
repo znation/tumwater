@@ -1,5 +1,5 @@
 // vocabulary: plain
-import { dropLanding, type LandingEntry } from "./merge-queue.js";
+import { dropMerge, type MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
@@ -10,7 +10,7 @@ import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../event
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { removeQuiet } from "../files/files.js";
-import { landingStatePath } from "../paths.js";
+import { mergeStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
@@ -122,14 +122,14 @@ export interface LandingInFlight {
  * overwrite would let a poll read a torn file as "no landing" and flicker the landing row back
  * to its idle label. */
 export function writeLandingMarker(root: string, marker: LandingInFlight & { stage: LandingStage }): void {
-  writeJsonAtomic(landingStatePath(root), marker);
+  writeJsonAtomic(mergeStatePath(root), marker);
 }
 
 /** Read the in-flight landing marker; null when missing or unreadable. Never throws —
  * observers poll it every second, and a torn write (a crash mid-write) must not take them
  * down (the readOrchestratorInfo precedent). */
 export function readLandingMarker(root: string): LandingInFlight | null {
-  const marker = readJsonFile<LandingInFlight>(landingStatePath(root));
+  const marker = readJsonFile<LandingInFlight>(mergeStatePath(root));
   if (!marker || typeof marker.role !== "string") return marker;
   const out = { ...marker, role: canonicalRoleId(marker.role) };
   if (Array.isArray(marker.changes)) {
@@ -203,7 +203,7 @@ export function setLandingChangeStatus(root: string, role: string, status: Landi
  * vet opens with its checkout and rebase onto main). Every other record is kept only while its
  * role is in `live` — the roles the pipeline holds right now — so a record a crashed generation
  * left behind never rides along. Never throws (rewriteMarker). */
-export function addLandingChange(root: string, entry: LandingEntry, live: ReadonlySet<string>): void {
+export function addLandingChange(root: string, entry: MergeEntry, live: ReadonlySet<string>): void {
   const marker = readLandingMarker(root);
   const kept = marker ? landingChanges(marker).filter((c) => c.role !== entry.role && live.has(c.role)) : [];
   const startedAt = Date.now();
@@ -237,7 +237,7 @@ export function removeLandingChange(root: string, role: string): void {
   const changes = all.filter((c) => c.role !== role);
   if (changes.length === all.length) return;
   if (changes.length === 0) {
-    removeQuiet(landingStatePath(root));
+    removeQuiet(mergeStatePath(root));
     return;
   }
   rewriteMarker(root, { ...marker, changes });
@@ -346,7 +346,7 @@ export function isLandingChange(value: unknown): value is LandingChange {
  * change's marker record is the caller's concern (removeLandingChange). */
 export function writeLandingOutcome(
   root: string,
-  entry: LandingEntry,
+  entry: MergeEntry,
   state: LoopState,
   result: TickResult,
   durationMs: number,
@@ -385,7 +385,7 @@ export function writeLandingOutcome(
     // whose runs carried no provider), the same omit-when-empty idiom the usage fields use.
     ...(Object.keys(usage.providerCost).length > 0 ? { providerCost: usage.providerCost } : {}),
   });
-  dropLanding(file);
+  dropMerge(file);
 }
 
 /** One landing's own spend (reviewer + conflict resolution), accumulated across its pi runs.

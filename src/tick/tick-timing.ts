@@ -3,7 +3,7 @@ import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import type { InFlightLanding } from "../merge/merge-pipeline.js";
-import { landingStatePath } from "../paths.js";
+import { mergeStatePath } from "../paths.js";
 import { runOnAbort } from "../process/process.js";
 import type { TickOutcome } from "./tick-outcome.js";
 
@@ -181,7 +181,7 @@ export async function awaitLandingForHandoff(
     `restart: the merge for ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next restart`,
   );
   if (await settlesWithin(landing.promise, windowMs, after)) return "aborted";
-  removeQuiet(landingStatePath(root));
+  removeQuiet(mergeStatePath(root));
   warnEvent(
     root,
     TUMWATER_SOURCE,

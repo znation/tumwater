@@ -7,7 +7,7 @@ import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
-import { queueEntryLandingLabel } from "../merge/merge-queue-render.js";
+import { queueEntryMergeLabel } from "../merge/merge-queue-render.js";
 import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";
@@ -190,10 +190,10 @@ export function statusPayload(root: string, now = Date.now()): object {
     // preformatted through badges.ts's landingBadge, so the page cannot re-derive it.
     mergeQueue: snap.landQueue,
     mergeBadge: landingBadge(snap.landQueue),
-    // One bracketed landing label per land-queue entry (queueEntryLandingLabel, "" for none),
+    // One bracketed landing label per land-queue entry (queueEntryMergeLabel, "" for none),
     // parallel to landQueue.entries — display-ready like landingBadge, since browser JS cannot
     // import the TypeScript stage labels.
-    mergeQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryLandingLabel(e.sha, snap.landQueue.inFlight, now)),
+    mergeQueueLabels: (snap.landQueue.entries ?? []).map((e) => queueEntryMergeLabel(e.sha, snap.landQueue.inFlight, now)),
     // Main's newest merge-scope check: the
     // raw block is machine-readable for `status --json`, and the header badge is
     // preformatted through badges.ts's mainCheckBadge — the same string the TUI/status

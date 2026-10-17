@@ -1,4 +1,4 @@
-/** The landing-diff module's line multiset (src/merge/merge-diff.ts): diffLineMultiset is
+/** The merge-diff module's line multiset (src/merge/merge-diff.ts): diffLineMultiset is
  * used to tell a rebased patch that gained or lost content lines, and counts a markdown rule
  * `---` inside a hunk as content rather than a file header. Extracted from
  * merge-to-main.test.ts (2026-10-11). */

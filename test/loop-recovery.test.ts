@@ -12,14 +12,14 @@ import path from "node:path";
 import { refSha } from "../src/git/git.js";
 import { inboxSize } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
-import type { LandingEntry } from "../src/merge/merge-queue.js";
+import type { MergeEntry } from "../src/merge/merge-queue.js";
 import {
   finishAbortedTickPhase,
   finishRecoveryTickPhase,
   pinAndResetPhase,
 } from "../src/loop/loop-recovery.js";
 import type { LoopState } from "../src/loop/loop-state.js";
-import { landingRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { shortSha } from "../src/text/format.js";
 import { commitIn, headSha, initializedRepo, initializedWorktree, mainSha, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -68,7 +68,7 @@ test("pinAndResetPhase pins the sha and resets the worktree to main on success",
 
   const ok = await pinAndResetPhase(ctx, wt, sha);
   assert.equal(ok, true);
-  assert.equal(await refSha(root, landingRefName("improve")), sha);
+  assert.equal(await refSha(root, mergeRefName("improve")), sha);
   assert.equal(headSha(wt), mainSha(root), "the branch moved back to main once the pin held the commit");
 });
 
@@ -143,7 +143,7 @@ test("finishRecoveryTickPhase ends error on a held pin and keeps its message", a
 test("finishRecoveryTickPhase maps an already-queued pin to queued without a recovery failure", async () => {
   const root = await initializedRepo();
   const { ctx, failures } = makeCtx(root);
-  const entry: LandingEntry = { role: "improve", sha: "sha1", run: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
+  const entry: MergeEntry = { role: "improve", sha: "sha1", run: 3, summary: "the summary", highFriction: true, enqueuedAt: 0 };
 
   const outcome = await finishRecoveryTickPhase(ctx, { kind: "already_queued", entry }, null, path.join(root, "unused"), "prior failure");
   assert.deepEqual(outcome, { result: "queued", summary: "the summary", commit: "sha1", highFriction: true, recoveredLeftover: true });
@@ -153,7 +153,7 @@ test("finishRecoveryTickPhase maps an already-queued pin to queued without a rec
 test("finishRecoveryTickPhase queues a freshly enqueued pin, resets the worktree, and carries the prior failure", async () => {
   const { root, wt } = await initializedWorktree();
   const { ctx, failures } = makeCtx(root);
-  const entry: LandingEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
+  const entry: MergeEntry = { role: "improve", sha: "sha1", run: 4, summary: "the summary", enqueuedAt: 0 };
   fs.writeFileSync(path.join(wt, "dirty.txt"), "uncommitted leftover\n");
 
   const outcome = await finishRecoveryTickPhase(ctx, { kind: "enqueued", entry }, null, wt, "the prior failure");

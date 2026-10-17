@@ -21,7 +21,7 @@ import { readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { awaitSettledTick, fastConfig, runRepoOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
-import { landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, logFlagsTo, readRunLines, recordingFakePi, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -82,7 +82,7 @@ test("a reached daily cap pauses role ticks but not the director; raising the ca
     assert.equal(resumed[0]?.capUsd, 100);
     // clean is deferrable and no work has landed since its first tick — a work commit supplies
     // the wake for the post-resume tick.
-    landWork(repo);
+    mergeWork(repo);
     await awaitSettledTick(repo, "clean", 2, "the paused role to tick again after the cap raise");
 
     // Exactly one of each transition for the whole run — no per-poll event spam.
@@ -225,7 +225,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     // And the team keeps working: clean's next tick runs on the free pair, with its paid
     // role override dropped. (clean is deferrable and did nothing last tick, so work supplies
     // the wake — the same as every other budget test.)
-    landWork(repo);
+    mergeWork(repo);
     await awaitSettledTick(repo, "clean", 2, "a role tick after the cap was reached");
     assert.match(
       runs().find((l) => l.includes("session=tumwater-clean-2")) ?? "",
@@ -248,7 +248,7 @@ test("a reached cap switches role loops to the free fallback model instead of st
     const raised = { ...config, maxDailyCostUsd: 100 };
     saveConfig(repo, raised);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_resumed"), "a budget_resumed event");
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(
       () => runs().some((l) => l.includes("session=tumwater-clean-3")),
       "a role tick after the cap was raised",
@@ -282,7 +282,7 @@ test("a fallback pi cannot price at zero is refused and the team pauses as befor
     assert.ok(!readEvents(repo).some((e) => e.type === "budget_fallback"));
 
     // And it really is paused: several poll cycles past its schedule, no second tick.
-    landWork(repo);
+    mergeWork(repo);
     await sleep(600);
     assert.equal(loadLoopState(repo, "clean").runs, 1, "a refused fallback leaves the team paused");
   } finally {
@@ -335,11 +335,11 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the switch to the fallback");
     // Two fallback ticks, both rejected. Main-moved wakes supply them: an errored loop backs off
     // 30 s, and a main move wakes it early.
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => clean().runs >= 2 && !clean().running, "the first fallback tick");
     assert.equal(clean().lastResult, "error");
     assert.match(runFor(2), /model=local-free/);
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_paused"), "the demotion to a pause");
     assert.equal(clean().runs, 3);
 
@@ -355,7 +355,7 @@ test("a free fallback whose ticks keep failing is demoted to a pause, then probe
     assert.equal(snapshot(repo, models).budget.fallback, null, "the dashboards read budget paused");
 
     // Paused means paused: a main move during the cool-down starts no role tick.
-    landWork(repo);
+    mergeWork(repo);
     await sleep(400);
     assert.equal(clean().runs, 3, "no role tick starts while the fallback is demoted");
 
@@ -414,7 +414,7 @@ test("budget_resumed hands the in-flight fallback ticks back to the primary", as
     // argv, so a fragment after it sees no arguments.
     restore();
     restore = fakePi([TOUCH_SESSION, logFlagsTo(flagsFile), rec, `touch "${marker}"`, `exec sleep 30`].join("\n"));
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => fs.existsSync(marker), "the in-flight fallback tick to start");
     assert.equal(loadLoopState(repo, "clean").running, true);
     await waitFor(() => readEvents(repo).some((e) => e.type === "budget_fallback"), "the budget_fallback event");

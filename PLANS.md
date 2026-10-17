@@ -21,44 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 2/11: Rename the merge queue and merge-to-main and paths identifiers to merge (planned 2026-10-16 by user; requires part 1/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-queue*.ts src/merge/merge-to-main.ts and its helpers src/paths.ts and their tests)
-
-**Goal.** The merge queue, merge-to-main and check-failure modules, src/paths.ts' merge helpers and three test-fixture helpers take merge names in identifiers, comments and test names. Later parts' callers keep compiling through deprecated aliases. A mechanical rename of about 410 lines with no behavior change.
-
-**Approach.**
-- **Rename rule** (the merge row of "Code names"):
-  - in identifiers, `landing`/`Landing`/`LANDING` and `land`/`Land`/`LAND` → `merge`/`Merge`/`MERGE`, and `landings`/`lands` → `merges`;
-  - `lander` → `merger`, `vet`/`vetting` → `verify` and `vetted` → `approved`;
-  - a bare `landed` → `mergeDone`, because `merged` already names the fast-forward;
-  - in comments, "landing" → "merge", "land/lands/landed" → "merge/merges/merged", "land queue" → "merge queue", "vetted" → "approved", "unlanded" → "not yet merged" (not "unmerged", which means git's conflicted paths), and old event names → `merge_queued`/`merge_done`/`merge_failed`. Where "land" means something other than reaching main, use a plain verb;
-  - the same in test names, temp-dir prefixes and assertion messages. Comment lines wrap at 100 columns (test/comment-width.test.ts), and `land` → `merge` lengthens them.
-- **Renames:**
-  - merge-queue.ts: `enqueueLanding` → `enqueueMerge`, `LandingEntry` → `MergeEntry`, `queuedLandings` → `queuedMerges`, `readLandingQueue` → `readMergeQueue`, `queuedLandingFiles` → `queuedMergeFiles`, `headLanding` → `headMerge`, `queuedLandingRoles` → `queuedMergeRoles`, `dropLanding` → `dropMerge`, `LandingQueueView` → `MergeQueueView`, `isLandingEntry` → `isMergeEntry`;
-  - merge-queue-render.ts: `renderLandingQueue` → `renderMergeQueue`, `queueEntryLandingLabel` → `queueEntryMergeLabel`;
-  - src/paths.ts: `landingRefName` → `mergeRefName`, `landQueueDir` → `mergeQueueDir`, `landingStatePath` → `mergeStatePath`;
-  - merge-check-failures.ts: `LANDING_CHECK_FAILURE_LIMIT` → `MERGE_CHECK_FAILURE_LIMIT`, `landingCheckRed` → `mergeCheckRed`, `landingBlocked` → `mergeBlocked`;
-  - merge-to-main.ts: the local `verifyLanding` → `verifyMerge`. The `MergeContext` members `onLandingBlocked` → `onMergeBlocked` and `onLandingCheckRed` → `onMergeCheckRed` are members, so rename them at every use, src/merge/merge-core.ts included;
-  - test helpers, renamed here so every later part can call the new names: `landHead` → `mergeHead` and `landingRefExists` → `mergeRefExists` in test/fixtures/orchestrator-fixtures.ts, and `landWork` → `mergeWork` in test/fixtures/repo-fixtures.ts. Change only these three declarations and their doc comments; part 8/11 owns the rest of those files.
-  - Locals follow the rule (`landed` → `mergeDone`, `landingChecks` → `mergeChecks`, `landingGit` → `mergeGit`).
-- **Aliases.** Every export above except `LandingQueueView` and `isLandingEntry` has callers in files a later part owns. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use mergeRefName. */`, then `export const landingRefName = mergeRefName;` (use `export type` for types). This part's own files and tests use only the new names, which gives each new name the outside user that test/exports.test.ts requires.
-- **Leave for their parts** the names these files use but other parts declare: `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` (part 3/11), and `LanderContext` and `LandRequest` (part 5/11).
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - helpers and fixtures the state series added to read the old `land-queue/`, `landing.json` and `refs/tumwater/landing/` layout. These are the `legacyLand*` path helpers in src/paths.ts and anything in `src/orchestrator/startup-migrations.ts` and `startup-migration-steps.ts`, and their names keep the `legacy` prefix;
-  - the `_land-<role>` legacy worktree name;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts), such as "Robust conflict landing, part 2/2" in merge-git.ts.
-- Names that an earlier series already renamed are not listed. Skip a listed name that is already gone.
-- docs/how-it-works.md: `readLandingQueue`/`renderLandingQueue` → the new names.
-
-**Files touched.** `src/merge/merge-queue.ts`, `merge-queue-render.ts`, `merge-to-main.ts`, `merge-check-failures.ts`, `merge-git.ts`, `merge-diff.ts`, `merge-questions.ts`, `backlog-conflicts.ts`; `src/merge/merge-core.ts` (member uses only); `src/paths.ts`; `test/fixtures/orchestrator-fixtures.ts` and `test/fixtures/repo-fixtures.ts` (three helpers); `test/fixtures/merge-to-main-fixtures.ts`. Tests: `test/merge-queue.test.ts`, `test/cli-queue.test.ts`, `test/paths.test.ts`, `test/git-ref-files.test.ts`, `test/merge-to-main.test.ts`, `test/merge-to-main-recheck.test.ts`, `test/merge-config.test.ts`, `test/merge-git.test.ts`, `test/merge-diff.test.ts`, `test/backlog-conflicts.test.ts`. Docs: docs/how-it-works.md.
-
-**Acceptance criteria.**
-- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
-- In the listed files, no identifier, comment or test name uses a retired merge word, except the aliases, the part 3/11 and 5/11 names listed above, quoted backlog titles and legacy-layout names.
-- `onLandingBlocked` and `onLandingCheckRed` no longer appear anywhere.
-- `npm run test` passes, test/exports.test.ts included.
-
 ### Plain terms code merge, part 3/11: Rename the merge slot identifiers to merge (planned 2026-10-16 by user; requires part 2/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-slot.ts and test/merge-slot.test.ts)
 
 **Goal.** The merge slot module, which holds the in-flight marker, the changes, the usage and the outcome writers, takes merge names in identifiers, comments and test names. A mechanical rename of about 355 lines with no behavior change.
@@ -1496,6 +1458,46 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - With 7 entries, it lists 5 and ends its list with `- …and 2 more`.
 - `test/tick-prompt.test.ts`, next to "the assignment names the claimed entry's paths missing from the checkout", new test "a feature instance's claimed series part names the parts waiting on it". It writes the PLANS.md above and calls `promptFor(dir, "feature", { state: { claim: { file: "PLANS.md", key: "s, part 1/3: a", title: "S, part 1/3: a", at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<waiting-parts>`, which names both later titles with their ranges. A claim on part 3/3 gives no `<waiting-parts>`. A BUGS.md claim gives no `<waiting-parts>` either.
 - `npm run test` passes.
+
+### Plain terms code merge, part 2/11: Rename the merge queue and merge-to-main and paths identifiers to merge (planned 2026-10-16 by user; done 2026-10-16; requires part 1/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-queue*.ts src/merge/merge-to-main.ts and its helpers src/paths.ts and their tests)
+
+**Goal.** The merge queue, merge-to-main and check-failure modules, src/paths.ts' merge helpers and three test-fixture helpers take merge names in identifiers, comments and test names. Later parts' callers keep compiling through deprecated aliases. A mechanical rename of about 410 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the merge row of "Code names"):
+  - in identifiers, `landing`/`Landing`/`LANDING` and `land`/`Land`/`LAND` → `merge`/`Merge`/`MERGE`, and `landings`/`lands` → `merges`;
+  - `lander` → `merger`, `vet`/`vetting` → `verify` and `vetted` → `approved`;
+  - a bare `landed` → `mergeDone`, because `merged` already names the fast-forward;
+  - in comments, "landing" → "merge", "land/lands/landed" → "merge/merges/merged", "land queue" → "merge queue", "vetted" → "approved", "unlanded" → "not yet merged" (not "unmerged", which means git's conflicted paths), and old event names → `merge_queued`/`merge_done`/`merge_failed`. Where "land" means something other than reaching main, use a plain verb;
+  - the same in test names, temp-dir prefixes and assertion messages. Comment lines wrap at 100 columns (test/comment-width.test.ts), and `land` → `merge` lengthens them.
+- **Renames:**
+  - merge-queue.ts: `enqueueLanding` → `enqueueMerge`, `LandingEntry` → `MergeEntry`, `queuedLandings` → `queuedMerges`, `readLandingQueue` → `readMergeQueue`, `queuedLandingFiles` → `queuedMergeFiles`, `headLanding` → `headMerge`, `queuedLandingRoles` → `queuedMergeRoles`, `dropLanding` → `dropMerge`, `LandingQueueView` → `MergeQueueView`, `isLandingEntry` → `isMergeEntry`;
+  - merge-queue-render.ts: `renderLandingQueue` → `renderMergeQueue`, `queueEntryLandingLabel` → `queueEntryMergeLabel`;
+  - src/paths.ts: `landingRefName` → `mergeRefName`, `landQueueDir` → `mergeQueueDir`, `landingStatePath` → `mergeStatePath`;
+  - merge-check-failures.ts: `LANDING_CHECK_FAILURE_LIMIT` → `MERGE_CHECK_FAILURE_LIMIT`, `landingCheckRed` → `mergeCheckRed`, `landingBlocked` → `mergeBlocked`;
+  - merge-to-main.ts: the local `verifyLanding` → `verifyMerge`. The `MergeContext` members `onLandingBlocked` → `onMergeBlocked` and `onLandingCheckRed` → `onMergeCheckRed` are members, so rename them at every use, src/merge/merge-core.ts included;
+  - test helpers, renamed here so every later part can call the new names: `landHead` → `mergeHead` and `landingRefExists` → `mergeRefExists` in test/fixtures/orchestrator-fixtures.ts, and `landWork` → `mergeWork` in test/fixtures/repo-fixtures.ts. Change only these three declarations and their doc comments; part 8/11 owns the rest of those files.
+  - Locals follow the rule (`landed` → `mergeDone`, `landingChecks` → `mergeChecks`, `landingGit` → `mergeGit`).
+- **Aliases.** Every export above except `LandingQueueView` and `isLandingEntry` has callers in files a later part owns. Keep each old name as a two-line alias after its declaration: `/** @deprecated Use mergeRefName. */`, then `export const landingRefName = mergeRefName;` (use `export type` for types). This part's own files and tests use only the new names, which gives each new name the outside user that test/exports.test.ts requires.
+- **Leave for their parts** the names these files use but other parts declare: `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` (part 3/11), and `LanderContext` and `LandRequest` (part 5/11).
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - helpers and fixtures the state series added to read the old `land-queue/`, `landing.json` and `refs/tumwater/landing/` layout. These are the `legacyLand*` path helpers in src/paths.ts and anything in `src/orchestrator/startup-migrations.ts` and `startup-migration-steps.ts`, and their names keep the `legacy` prefix;
+  - the `_land-<role>` legacy worktree name;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts), such as "Robust conflict landing, part 2/2" in merge-git.ts.
+- Names that an earlier series already renamed are not listed. Skip a listed name that is already gone.
+- docs/how-it-works.md: `readLandingQueue`/`renderLandingQueue` → the new names.
+
+**Files touched.** `src/merge/merge-queue.ts`, `merge-queue-render.ts`, `merge-to-main.ts`, `merge-check-failures.ts`, `merge-git.ts`, `merge-diff.ts`, `merge-questions.ts`, `backlog-conflicts.ts`; `src/merge/merge-core.ts` (member uses only); `src/paths.ts`; `test/fixtures/orchestrator-fixtures.ts` and `test/fixtures/repo-fixtures.ts` (three helpers); `test/fixtures/merge-to-main-fixtures.ts`. Tests: `test/merge-queue.test.ts`, `test/cli-queue.test.ts`, `test/paths.test.ts`, `test/git-ref-files.test.ts`, `test/merge-to-main.test.ts`, `test/merge-to-main-recheck.test.ts`, `test/merge-config.test.ts`, `test/merge-git.test.ts`, `test/merge-diff.test.ts`, `test/backlog-conflicts.test.ts`. Docs: docs/how-it-works.md.
+
+**Acceptance criteria.**
+- Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
+- In the listed files, no identifier, comment or test name uses a retired merge word, except the aliases, the part 3/11 and 5/11 names listed above, quoted backlog titles and legacy-layout names.
+- `onLandingBlocked` and `onLandingCheckRed` no longer appear anywhere.
+- `npm run test` passes, test/exports.test.ts included.
+
+**Done note.** The listed identifiers were renamed at every use across src/ and test/ instead of leaving deprecated aliases, so no old name remains and later parts need no alias cleanup.
 
 ### An assigned series part names the Done entries of the parts it requires (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; done 2026-10-16)
 

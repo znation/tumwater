@@ -10,7 +10,7 @@ import path from "node:path";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { groupBlockedSeries, partsLabel } from "../src/backlog/backlog-structure.js";
 import { statusPayload } from "../src/ui/status-payload.js";
-import { enqueueLanding } from "../src/merge/merge-queue.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { initProject } from "../src/init/init.js";
 import { dequeuePrompt } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
@@ -692,7 +692,7 @@ test("the status payload carries no retired script key anywhere in its tree", as
   const repo = makeRepo();
   await initProject(repo, "retired keys test");
   saveLoopState(repo, freshLoopState("qa"));
-  enqueueLanding(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "qa", sha: "abc1234", run: 3, summary: "queued", enqueuedAt: Date.now() });
   writeEvents(repo, [{ ts: 123, loop: "qa", type: "wake", reason: "main moved" }]);
   const payload = statusPayload(repo) as {
     roles: Array<Record<string, unknown>>;

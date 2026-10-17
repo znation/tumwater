@@ -28,7 +28,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { loadLoopState } from "../src/loop/loop-state.js";
-import { enqueueLanding, queueDepth } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { pauseTeam } from "../src/team/team-state.js";
 import { submitRolePrompt } from "../src/inbox/inbox-submit.js";
 import {
@@ -160,7 +160,7 @@ test("merge queue interlock: a role with a queued landing starts no tick until t
   // A queued change main does not hold: its vet runs a real review run (the idle reply has no
   // verdict, so the landing ends rejected and the entry is dropped), and until that outcome
   // the interlock must keep clean's own tick from starting.
-  enqueueLanding(repo, {
+  enqueueMerge(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),
     run: 1,
@@ -192,7 +192,7 @@ test("restart hand-off: an in-flight landing outliving its deadline is aborted, 
   const restore = fakePi(
     `for a in "$@"; do case "$a" in *"VERDICT:"*) touch '${reviewing}'; exec sleep 60;; esac; done`,
   );
-  enqueueLanding(repo, {
+  enqueueMerge(repo, {
     role: "clean",
     sha: shaOnSideBranch(repo),
     run: 1,

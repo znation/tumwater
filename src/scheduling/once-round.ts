@@ -89,14 +89,14 @@ export class OnceRound {
     roleTicks: number;
     directorTicks: number;
     landings: number;
-    queuedLandings: number;
+    queuedMerges: number;
   }): boolean {
     const quiet =
       this.runners.every((r) => this.isSettled(r)) &&
       flight.roleTicks === 0 &&
       flight.directorTicks === 0 &&
       flight.landings === 0 &&
-      flight.queuedLandings === 0;
+      flight.queuedMerges === 0;
     if (!(this.active && quiet)) {
       this.idlePolls = 0;
       return false;

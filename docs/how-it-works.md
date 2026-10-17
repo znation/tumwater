@@ -369,7 +369,7 @@ validation, and atomic write, so you never have to hand-edit the file.
   <n> --stat`'s text, loaded async so the trail shows at once); the tab strip reads `Run` and
   `Ctrl+N` again returns to the rows.
   The Pending pane shows the durable merge queue above the pending-change roster, reading and
-  rendering it through the same `readLandingQueue`/`renderLandingQueue` pair `tumwater queue`
+  rendering it through the same `readMergeQueue`/`renderMergeQueue` pair `tumwater queue`
   prints, so the queue's order, age, skips, and wording match the CLI — including the bracketed
   label (`[merging 2m · reviewing]`, `[approved, waiting to merge]`) on an entry a running team
   is merging.

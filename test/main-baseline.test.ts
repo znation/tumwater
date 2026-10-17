@@ -227,7 +227,7 @@ test("noteGreenBaseline records a directly-observed green verdict: checkMainBase
   const counter = path.join(tmpdir(), "runs");
   const { root, wt } = baselineFixture(ROLE, `echo run >> ${counter}; echo ok`);
   // The landing path just verified this exact tree (branch HEAD == main here) and passed:
-  // record that verdict the way verifyLanding does after a green runBuildCheck.
+  // record that verdict the way verifyMerge does after a green runBuildCheck.
   noteGreenBaseline(headSha(root));
   const result = await checkMainBaseline(wt, CFG);
   assert.equal(result.baseline?.status, "green");

@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
-import { enqueueLanding } from "../src/merge/merge-queue.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { writeLandingMarker } from "../src/merge/merge-slot.js";
-import { landQueueDir } from "../src/paths.js";
+import { mergeQueueDir } from "../src/paths.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { vanishOnReadFile } from "./helpers/fs-faults.js";
 
@@ -391,7 +391,7 @@ function advice(role: string, summary: string): { role: string; summary: string;
 
 function queueRoot(): string {
   const root = tmpdir("doctor-stale-landing-");
-  fs.mkdirSync(landQueueDir(root), { recursive: true });
+  fs.mkdirSync(mergeQueueDir(root), { recursive: true });
   return root;
 }
 
@@ -399,17 +399,17 @@ test("checkStaleQueuedLandings reads ok for an empty queue and one whose entries
   const now = Date.now();
   assert.equal(checkStaleQueuedLandings(queueRoot(), now).level, "ok");
   const root = queueRoot();
-  enqueueLanding(root, advice("improve", "tidy parser"));
+  enqueueMerge(root, advice("improve", "tidy parser"));
   assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
   // An entry exactly at the threshold boundary (not strictly past it) is not stale yet.
-  enqueueLanding(root, { ...advice("clean", "split module"), enqueuedAt: now - 6 * 60 * 60 * 1000 });
+  enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 6 * 60 * 60 * 1000 });
   assert.equal(checkStaleQueuedLandings(root, now).level, "ok");
 });
 
 test("checkStaleQueuedLandings warns naming the oldest stale role, its summary, and its age", () => {
   const now = Date.now();
   const root = queueRoot();
-  enqueueLanding(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
+  enqueueMerge(root, { ...advice("organize", "move the helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
   const out = checkStaleQueuedLandings(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /organize/);
@@ -420,15 +420,15 @@ test("checkStaleQueuedLandings warns naming the oldest stale role, its summary, 
 test("checkStaleQueuedLandings warns once, resting via andMore, and never flags an in-flight role", () => {
   const now = Date.now();
   const root = queueRoot();
-  enqueueLanding(root, { ...advice("clean", "split module"), enqueuedAt: now - 8 * 60 * 60 * 1000 });
-  enqueueLanding(root, { ...advice("organize", "move helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
+  enqueueMerge(root, { ...advice("clean", "split module"), enqueuedAt: now - 8 * 60 * 60 * 1000 });
+  enqueueMerge(root, { ...advice("organize", "move helpers"), enqueuedAt: now - 7 * 60 * 60 * 1000 });
   // The freshest is the in-flight one: the marker shows `improve` being merged, so it must
   // not be flagged even though it too is older than the threshold.
   writeLandingMarker(root, {
     role: "improve", sha: "abc1234", summary: "tidy parser", startedAt: now - 1000, stage: "merging",
     changes: [{ role: "improve", sha: "abc1234", summary: "tidy parser", status: "merging", startedAt: now - 1000 }],
   });
-  enqueueLanding(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
+  enqueueMerge(root, { ...advice("improve", "tidy parser"), enqueuedAt: now - 5 * 60 * 60 * 1000 });
   const out = checkStaleQueuedLandings(root, now);
   assert.equal(out.level, "warn");
   assert.match(out.detail, /clean/);

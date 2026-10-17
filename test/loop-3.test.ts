@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
-import { landHead, landingRefExists } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead, mergeRefExists } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
@@ -39,11 +39,11 @@ test("a rejected change is re-applied on the role's next tick and its reasons ri
     // Tick 1: the change is committed and enqueued, then the LANDING rejects it — nothing
     // lands on main.
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
     const wt = roleWt(repo, "improve");
     assertClean(wt, "a rejected tick leaves the role worktree clean at main");
-    assert.ok(!landingRefExists(repo, "improve"), "a rejection is terminal: the pin was deleted with it");
+    assert.ok(!mergeRefExists(repo, "improve"), "a rejection is terminal: the pin was deleted with it");
     assert.ok(!fs.existsSync(path.join(repo, "rejected.txt")), "the rejected change did not merge");
 
     // Tick 2: the rejection is the only cross-tick memory — every tick starts a fresh pi
@@ -79,7 +79,7 @@ test("concurrent-main-advance still lands (rebase path, linear history)", async 
     const runner = makeLoopRunner(repo, "organize");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "organize"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "slow.txt")));
     // The tick's commit was rebased onto the concurrent main advance: no merge commits.
     assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
@@ -112,7 +112,7 @@ test("a clean resolution of a conflicted file with setext underlines lands (regr
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(
-      await landHead(repo, runner, defaultConfig(), "improve"),
+      await mergeHead(repo, runner, defaultConfig(), "improve"),
       "changed",
       "a clean resolution must not be rejected as conflicted",
     );

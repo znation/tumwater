@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LandingEntry } from "../merge/merge-queue.js";
+import type { MergeEntry } from "../merge/merge-queue.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -290,7 +290,7 @@ export function applyTickOutcome(
 export function applyLandingOutcome(
   s: LoopState,
   result: TickResult,
-  change: Pick<LandingEntry, "sha" | "summary">,
+  change: Pick<MergeEntry, "sha" | "summary">,
 ): void {
   s.lastResult = result;
   s.lastSummary = s.queuedSummary?.sha === change.sha ? s.queuedSummary.summary : change.summary;

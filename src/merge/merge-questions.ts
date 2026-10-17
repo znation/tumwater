@@ -7,7 +7,7 @@ import { logEventBestEffort } from "../events/events.js";
  * merge lock, before the ff) stays with the callers: the lock window is theirs to define, and the
  * diff is only exact while the capture and this call share it. Best-effort: the questions have
  * already been posted to QUESTIONS.md and main already fast-forwarded, so an unwritable feed
- * must not reject the landing around it. `position` is the entry's 1-based place in ## Open (the
+ * must not reject the merge around it. `position` is the entry's 1-based place in ## Open (the
  * `<n>` `tumwater questions answer` takes now) and `open` is the list's length, so the page can
  * name the answering command (merge-to-main.ts's tryMerge, merge-stack.ts). */
 export function logNewQuestions(root: string, before: string[], role: string): void {

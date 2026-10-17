@@ -10,8 +10,8 @@ import {
   type LandingPipelineContext,
 } from "../../src/merge/merge-pipeline.js";
 import type { LoopRunner } from "../../src/loop/loop.js";
-import { enqueueLanding, queueDepth } from "../../src/merge/merge-queue.js";
-import { landingRefName } from "../../src/paths.js";
+import { enqueueMerge, queueDepth } from "../../src/merge/merge-queue.js";
+import { mergeRefName } from "../../src/paths.js";
 import { setRef } from "../../src/git/git.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { defaultConfig } from "../../src/config/config.js";
@@ -19,7 +19,7 @@ import { freshLoopState } from "../../src/loop/loop-state.js";
 import { snapshot } from "../../src/status/status-data.js";
 import { landingForRole, loopPhase } from "../../src/ui/status-model.js";
 import type { TumwaterConfig } from "../../src/config/config-schema.js";
-import type { LandingEntry } from "../../src/merge/merge-queue.js";
+import type { MergeEntry } from "../../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./log-fixtures.js";
 import { makeLoopRunner } from "./loop-fixtures.js";
 import { pinOffMain, tmpdir } from "./repo-fixtures.js";
@@ -46,7 +46,7 @@ export function pinnedCommit(root: string, role: string): string {
   );
 }
 
-export function entry(role: string, sha: string, enqueuedAt = Date.now()): LandingEntry {
+export function entry(role: string, sha: string, enqueuedAt = Date.now()): MergeEntry {
   return { role, sha, run: 7, summary: "the work", enqueuedAt };
 }
 
@@ -130,8 +130,8 @@ export const allTasks = (p: LandingPipeline) =>
 export async function queueChanges(root: string, roles: string[]): Promise<Record<string, string>> {
   const shas = Object.fromEntries(roles.map((role) => [role, pinnedCommit(root, role)]));
   for (const role of roles) {
-    await setRef(root, landingRefName(role), shas[role]!);
-    enqueueLanding(root, entry(role, shas[role]!));
+    await setRef(root, mergeRefName(role), shas[role]!);
+    enqueueMerge(root, entry(role, shas[role]!));
   }
   return shas;
 }

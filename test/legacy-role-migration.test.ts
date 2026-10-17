@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { refSha } from "../src/git/git.js";
-import { landingRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
+import { mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../src/paths.js";
 import { migrateLegacyRoleIds } from "../src/roles/legacy-role-migration.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 
@@ -17,7 +17,7 @@ function put(file: string, text: string): void {
 function oldRole(root: string): { sha: string; log: string } {
   const sha = sh(root, "git", "rev-parse", "HEAD");
   sh(root, "git", "branch", "tumwater/oldy");
-  sh(root, "git", "update-ref", landingRefName("oldy"), sha);
+  sh(root, "git", "update-ref", mergeRefName("oldy"), sha);
   sh(root, "git", "update-ref", rejectedRefName("oldy"), sha);
   put(statePath(root, "oldy"), "state");
   put(roleNotesPath(root, "oldy"), "notes");
@@ -36,7 +36,7 @@ test("a legacy role id's branch, refs and files move to the new id; logs stay", 
   assert.equal(notes.length, 8);
   assert.equal(await refSha(root, "refs/heads/tumwater/newy"), sha);
   assert.equal(await refSha(root, "refs/heads/tumwater/oldy"), null);
-  for (const ref of [landingRefName, rejectedRefName]) {
+  for (const ref of [mergeRefName, rejectedRefName]) {
     assert.equal(await refSha(root, ref("newy")), sha);
     assert.equal(await refSha(root, ref("oldy")), null);
   }

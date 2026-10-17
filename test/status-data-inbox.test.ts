@@ -13,11 +13,11 @@ import { queueFileStamp } from "../src/files/file-queue.js";
 import { renderStatus } from "../src/ui/status-render.js";
 import { initProject } from "../src/init/init.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
-import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/paths.js";
+import { mergeQueueDir, mergeStatePath, orchestratorStatePath } from "../src/paths.js";
 import { writeJsonFile } from "../src/files/json-files.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
-import { enqueueLanding, queuedLandingFiles } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queuedMergeFiles } from "../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {
@@ -73,7 +73,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
 
   // One queued entry (3/5's enqueue) lifts the depth — but a merely queued landing is not
   // in flight, and the queue file alone never names an in-flight record.
-  enqueueLanding(repo, {
+  enqueueMerge(repo, {
     role: "clean",
     sha: "abc1234",
     run: 1,
@@ -90,7 +90,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   ]);
 
   // Two queued entries list oldest first, in the queue's filename order.
-  enqueueLanding(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "feature", sha: "def5678", run: 2, summary: "add a thing", enqueuedAt: Date.now() });
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 2);
   assert.deepEqual(snap.landQueue.entries!.map((e) => e.role), ["clean", "feature"]);
@@ -104,7 +104,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   assert.equal("highFriction" in snap.landQueue.entries![0]!, false);
 
   // Back to the single queued entry the rest of this test reasons about.
-  const featureFile = queuedLandingFiles(repo).find((e) => e.entry.sha === "def5678")!.file;
+  const featureFile = queuedMergeFiles(repo).find((e) => e.entry.sha === "def5678")!.file;
   fs.rmSync(featureFile);
 
   // The 4/5 marker plus a live orchestrator plus the matching entry → in flight, with the
@@ -112,7 +112,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   const startedAt = Date.now();
   writeOrchestratorMarker(repo, ["clean"]);
   const infoFile = orchestratorStatePath(repo);
-  writeJsonFile(landingStatePath(repo), {
+  writeJsonFile(mergeStatePath(repo), {
     role: "clean",
     sha: "abc1234",
     summary: "tidy something",
@@ -133,7 +133,7 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
   // …and a marker whose sha no longer has a matching queue entry (a crash between the entry
   // drop and the marker removal) is stale — never displayed, even with a live orchestrator.
   writeOrchestratorMarker(repo, ["clean"]);
-  writeJsonFile(landingStatePath(repo), {
+  writeJsonFile(mergeStatePath(repo), {
     role: "clean",
     sha: "deadbee",
     summary: "stale marker",
@@ -145,8 +145,8 @@ test("snapshot reports the land queue depth and the in-flight landing", async ()
 
   // The queue drains and the marker is removed (the drain's own bookkeeping): back to idle,
   // with the entries gone too.
-  fs.rmSync(path.join(landQueueDir(repo), fs.readdirSync(landQueueDir(repo))[0]!));
-  fs.rmSync(landingStatePath(repo));
+  fs.rmSync(path.join(mergeQueueDir(repo), fs.readdirSync(mergeQueueDir(repo))[0]!));
+  fs.rmSync(mergeStatePath(repo));
   snap = snapshot(repo);
   assert.equal(snap.landQueue.depth, 0);
   assert.equal(snap.landQueue.inFlight, undefined);
@@ -162,11 +162,11 @@ test("the marker is cross-checked per change and each row reads its own change's
   await initProject(repo, "batch marker snapshot");
   const t0 = Date.now() - 20 * 60_000;
   for (const [role, sha] of [["clean", "c1ea000"], ["bugfix", "b0f1000"], ["feature", "fea7000"], ["dedupe", "d1a0000"]]) {
-    enqueueLanding(repo, { role: role!, sha: sha!, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+    enqueueMerge(repo, { role: role!, sha: sha!, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
   writeOrchestratorMarker(repo, []);
   const betaStart = Date.now() - 90_000;
-  writeJsonFile(landingStatePath(repo), {
+  writeJsonFile(mergeStatePath(repo), {
     role: "bugfix",
     sha: "b0f1000",
     summary: "bugfix work",
@@ -196,9 +196,9 @@ test("the marker is cross-checked per change and each row reads its own change's
   assert.doesNotMatch(text, /^plan +merging/m, "a record with no queued entry never displays");
 
   // Only finished records left with a queued entry: nothing is in flight any more.
-  for (const f of fs.readdirSync(landQueueDir(repo))) {
-    if (!readJson<{ role: string }>(path.join(landQueueDir(repo), f)).role.startsWith("clean")) {
-      fs.rmSync(path.join(landQueueDir(repo), f));
+  for (const f of fs.readdirSync(mergeQueueDir(repo))) {
+    if (!readJson<{ role: string }>(path.join(mergeQueueDir(repo), f)).role.startsWith("clean")) {
+      fs.rmSync(path.join(mergeQueueDir(repo), f));
     }
   }
   snap = snapshot(repo);

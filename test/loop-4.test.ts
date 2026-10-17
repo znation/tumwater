@@ -15,7 +15,7 @@ import { piLogPath } from "../src/paths.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { projManifest, writeScript } from "./fakes/fake-commands.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { firstRunThenIdle, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
@@ -141,7 +141,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
       // Tick 1: the change is committed and enqueued; the LANDING's build pre-check rejects it
       // (red twice, on a main that is green) — no pi run at all, reviewer or otherwise.
       assert.equal((await runner.tick()).result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "rejected");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "rejected");
       assert.ok(!fs.existsSync(path.join(repo, "broken.ts")), "the failing build did not merge");
 
       // Tick 2: the machine-generated reasons are the cross-tick memory of what broke — every
@@ -185,7 +185,7 @@ test("a tick that posts a question merges it and emits question_posted with the 
       const runner = makeLoopRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
 
       // The question landed on main under ## Open…
       const questionsMd = fs.readFileSync(path.join(repo, "QUESTIONS.md"), "utf8");
@@ -225,7 +225,7 @@ test("a tick that changes other files emits no question_posted event", async () 
     async () => {
       const runner = makeLoopRunner(repo, "improve");
       assert.equal((await runner.tick()).result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The seeded QUESTIONS.md has no Open entries before or after: nothing to emit.
       const events = readEvents(repo);
       assert.ok(events.some((e) => e.type === "merged"), "the tick merged");
@@ -280,7 +280,7 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
       const pa = (async () => {
         const tickOutcome = await a.tick();
         assert.equal(tickOutcome.result, "queued");
-        const landed = await landHead(repo, a, defaultConfig(), "improve");
+        const landed = await mergeHead(repo, a, defaultConfig(), "improve");
         aLandEndAt = Date.now();
         return landed;
       })();
@@ -300,7 +300,7 @@ test("the landing slot is the only merge-lock holder: another loop ticks and que
         `B finished at ${bEndAt} before A's landing ended at ${aLandEndAt}: its tick must not need the lock`,
       );
       // Then B drains behind A: the slot is free again and both merges land linearly.
-      assert.equal(await landHead(repo, b, defaultConfig(), "organize"), "changed");
+      assert.equal(await mergeHead(repo, b, defaultConfig(), "organize"), "changed");
       // Both commits are on main, linearly — no lock contention broke either merge.
       assert.ok(fs.existsSync(path.join(repo, "a.txt")));
       assert.ok(fs.existsSync(path.join(repo, "b.txt")));

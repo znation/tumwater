@@ -2,7 +2,7 @@
  * (plans/parallel-work-instances.md, "Insert-only backlog conflicts", part 3/7).
  *
  * The move guidance pastes every finished entry as the first one under `## Done` or
- * `## Fixed`, so two landings off the same base insert different entries at the same
+ * `## Fixed`, so two merges off the same base insert different entries at the same
  * location. Git's diff3 conflict for that shape has an empty base section and both sides
  * non-empty; keeping both inserted sides adds no authored bytes, so no model run is
  * needed. Anything else — the same entry edited on both sides, a code file, a deleted
@@ -28,7 +28,7 @@ interface ConflictHunk {
  * hunk is not insert-only (or the markers are malformed) — the caller then leaves the file
  * for the model resolver. A hunk is insert-only when its base section is empty and both sides
  * carry lines; it is replaced by the change's (theirs) lines, a blank separator when neither
- * side already supplies one, then main's (ours) lines, so the later landing stays first. */
+ * side already supplies one, then main's (ours) lines, so the later merge stays first. */
 export function resolveInsertOnlyText(text: string): string | null {
   const lines = text.split("\n");
   const hunks = parseHunks(lines);
@@ -121,7 +121,7 @@ export async function resolveBacklogInsertConflicts(
       remaining.push(file);
       continue;
     }
-    // Atomic (tmp + rename): a landing process killed mid-write (SIGKILL, the timeout
+    // Atomic (tmp + rename): a merge process killed mid-write (SIGKILL, the timeout
     // group-kill) must leave either the conflicted file or the fully resolved one, never a
     // truncated backlog — the CLI's backlog writers (backlog-write.ts, question-answer.ts)
     // already write these unbounded-history files through this helper.

@@ -39,7 +39,7 @@ import {
   startLiveOrchestrator,
   stopOrchestrator,
 } from "./fixtures/orchestrator-fixtures.js";
-import { headSha, landWork, makeRepo, seedOpenBug, sh, tmpdir, twoPlansDoc, writeMalformedJson } from "./fixtures/repo-fixtures.js";
+import { headSha, mergeWork, makeRepo, seedOpenBug, sh, tmpdir, twoPlansDoc, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -663,7 +663,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // Let a couple of ticks accumulate counters in the runner's memory. clean is deferrable
     // (need-based prioritization), so the second tick needs a work landing to wake it.
     await awaitSettledTick(repo, "clean", 1, "the first tick to finish");
-    landWork(repo);
+    mergeWork(repo);
     await awaitSettledTick(repo, "clean", 2, "two finished ticks");
 
     // Reproduce what `tumwater reset-counters` does from the CLI side: zero the state file
@@ -684,7 +684,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     // The reset survives tick boundaries: the next completed tick counts from zero — a stale
     // in-memory copy would have saved ticks >= 3 here instead. A work landing wakes the
     // deferred role for that post-reset tick.
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(
       () => loadLoopState(repo, "clean").runs === 1 && !loadLoopState(repo, "clean").running,
       "a post-reset tick to finish",

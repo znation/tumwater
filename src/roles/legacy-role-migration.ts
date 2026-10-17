@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { deleteRefIfAt, refSha } from "../git/git.js";
 import { gitTry, runGit } from "../git/git-run.js";
-import { branchName, landingRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
+import { branchName, mergeRefName, rejectedRefName, reviewSessionDir, roleInboxDir, roleNotesPath, sessionDir, statePath } from "../paths.js";
 import { errorMessage } from "../text/text.js";
 import { LEGACY_ROLE_IDS } from "./legacy-role-ids.js";
 
@@ -29,7 +29,7 @@ export async function migrateLegacyRoleIds(root: string, legacy: Readonly<Record
       return `renamed branch ${from} to ${to}`;
     });
 
-    for (const refFor of [landingRefName, rejectedRefName]) {
+    for (const refFor of [mergeRefName, rejectedRefName]) {
       const from = refFor(oldId);
       const to = refFor(newId);
       await attempt(from, async () => {

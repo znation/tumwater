@@ -1,7 +1,7 @@
 /** The git-repo and project-dir fixtures tests stand their scenarios on: the per-process
  * temp root (tmpdir), raw shell plumbing (sh), makeRepo / initializedRepo (a repo, plain or
  * run through initProject), worktreeAt (a linked role worktree), writeConfig (a seeded
- * tumwater.json), and landWork (a commit on main that counts as work for the deferral rule).
+ * tumwater.json), and mergeWork (a commit on main that counts as work for the deferral rule).
  * Split from the old util.ts grab-bag, now dissolved into the topic-named modules
  * (oracles.ts, log-fixtures.ts, loop-fixtures.ts, gui-fixtures.ts); the live-orchestrator,
  * fake-pi, and fake-command families live in their own modules (orchestrator-fixtures.ts,
@@ -366,7 +366,7 @@ export function worktreeAt(root: string, role: string): string {
  * maintenance roles wake and re-tick. Tests that pin scheduling-adjacent behavior (config
  * reloads, resets, gates) use it to keep their maintenance roles ticking — the deferral rule
  * itself is pinned in its own test in orchestrator.e2e.test.ts. */
-export function landWork(repo: string): void {
+export function mergeWork(repo: string): void {
   fs.writeFileSync(
     path.join(repo, `work-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`),
     "work\n",

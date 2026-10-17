@@ -174,7 +174,7 @@ export function workReserveCount(
     /** The loop ids the live config enables (loopEnabled). */
     enabled: ReadonlySet<string>;
     /** The loop ids with a queued or in-flight landing. */
-    queuedLandingRoles: ReadonlySet<string>;
+    queuedMergeRoles: ReadonlySet<string>;
     /** Whether an idle work loop's provider still has headroom to use a reserved permit
      * (plans/provider-concurrency.md §6). With per-provider caps, withholding a team permit
      * for a loop whose provider is full only idles a slot another provider's maintenance tick
@@ -211,7 +211,7 @@ export function workReserveCount(
     const base = baseRoleOf(r.role);
     if (!INSTANCE_ROLES.has(base)) continue;
     if (!opts.enabled.has(r.role)) continue;
-    if (r.state.running || opts.queuedLandingRoles.has(r.role)) continue;
+    if (r.state.running || opts.queuedMergeRoles.has(r.role)) continue;
     // A work loop whose provider is full (capped and at its cap) cannot use a reserved permit
     // anyway, so it must not withhold one from another provider's maintenance tick (§6).
     if (opts.providerHasHeadroom !== undefined && !opts.providerHasHeadroom(r)) continue;

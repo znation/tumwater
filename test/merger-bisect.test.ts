@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { refSha } from "../src/git/git.js";
-import { landingRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -59,10 +59,10 @@ test("a stack of three whose second change breaks the check lands the first, rej
     assert.equal(states.beta!.unreviewFailures, 0);
     const rejected = eventsOfType(root, "review_rejected");
     assert.deepEqual(rejected.map((e) => e.source), ["beta"], "one review_rejected, for beta");
-    assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "the rejection deleted beta's ref");
     // gamma: unattempted — entry and ref kept for the next drain.
-    assert.equal(await refSha(root, landingRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha landed: its ref is gone");
+    assert.equal(await refSha(root, mergeRefName("gamma")), shas.gamma!, "gamma keeps its pin for the next drain");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "alpha landed: its ref is gone");
     // No model run past the vets, and main's baseline was a cache hit (alpha's prefix seeded it).
     assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, in its vet only");
     for (const role of roles) assert.equal(folded.get(role)!.length, 1, `${role}: only its vet's reviewer run`);
@@ -89,7 +89,7 @@ test("a stack whose every change passes still takes exactly one batch check", as
 
 // ── A stack whose delta ahead of its assembly base is doc-only pays no check ────────────
 // A doc-only delta cannot break the build — the gate skips its pre-check for one, and
-// verifyLanding's exempt arm skips its in-lock re-check (BUGS.md 2026-09-30: a docs-only
+// verifyMerge's exempt arm skips its in-lock re-check (BUGS.md 2026-09-30: a docs-only
 // change batched with others, or left alone as a bisect's last step, paid a full suite run
 // and could be rejected on its failure).
 
@@ -118,7 +118,7 @@ test("a stack whose every change is doc-only lands with no batch check", async (
 test("a doc-only stack that breaks backlog structure is blocked, not waved through", async () => {
   // The exemption is a fast path, not a blind eye: two changes each clean alone — each adds
   // its own new "## Notes" section to PLANS.md — stack into a duplicate heading. landStack's
-  // exempt arm must run the same structure cross-check verifyLanding's does: warn with the
+  // exempt arm must run the same structure cross-check verifyMerge's does: warn with the
   // one "merge blocked:" phrasing and hand the stack to the one-at-a-time fallback instead
   // of landing a malformed backlog with no check ever running.
   const roles = ["alpha", "beta"];
@@ -215,17 +215,17 @@ for (const baseline of ["red", "unavailable"] as const) {
       assert.deepEqual(baselineChecks.map((e) => e.status), [baseline === "red" ? "failed" : "skipped"]);
       assert.equal(mainSha(root), tip, "nothing landed");
       assert.equal(results[1]!.result, undefined, "beta is unattempted: entry and ref kept");
-      assert.ok(await refSha(root, landingRefName("beta")));
+      assert.ok(await refSha(root, mergeRefName("beta")));
       if (baseline === "red") {
         assert.equal(results[0]!.result, "main_red");
-        assert.ok(await refSha(root, landingRefName("alpha")), "the pin is kept for a re-land once main is green");
+        assert.ok(await refSha(root, mergeRefName("alpha")), "the pin is kept for a re-land once main is green");
         assert.equal(states.alpha.lastReview?.verdict, "approve", "no rejection recorded against the author");
         assert.equal(states.alpha.unreviewFailures, 0, "and no strike");
         assert.match(states.alpha.lastError ?? "", /main \S+ is red — not this change's failure/);
         assert.equal(eventsOfType(root, "review_rejected").length, 0);
       } else {
         assert.equal(results[0]!.result, "rejected");
-        assert.equal(await refSha(root, landingRefName("alpha")), null);
+        assert.equal(await refSha(root, mergeRefName("alpha")), null);
         const reasons = states.alpha.lastReview!.reasons;
         assert.match(reasons[0]!, /: planted failure$/);
         assert.match(reasons.at(-1)!, /baseline was unavailable \(its check was skipped \(toolchain\)\), so the failed merge check is attributed to this change$/);
@@ -364,7 +364,7 @@ test("a cherry-pick conflict abandons to one-at-a-time and the conflicting chang
     assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "both\n", "the resolution landed on main");
     assert.equal(calls.length, 1, "one resolution run — only the conflicting change needs it");
     assert.equal(eventsOfType(root, "merged").length, 2);
-    assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "the fallback deleted its ref");
   });
 });
 
@@ -376,7 +376,7 @@ test("a lost pin degrades its vet to a terminal error instead of starving the qu
   // interlocked forever. The other changes' vets and merge are untouched by it.
   await withApprovePi(async () => {
     const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta", "gamma"]);
-    sh(root, "git", "update-ref", "-d", landingRefName("alpha")); // the pin is gone
+    sh(root, "git", "update-ref", "-d", mergeRefName("alpha")); // the pin is gone
     const mainBefore = mainSha(root);
     const lost = "0".repeat(40); // a sha git cannot check out
 
@@ -421,8 +421,8 @@ test("an unlandable first bisect step after a red stack check degrades to error 
     assert.equal(results[0]!.result, "error", "the first fallback entry's throw is a terminal error");
     assert.ok(states.alpha!.lastError, "the failure is visible in the role's state");
     assert.equal(results[1]!.result, undefined, "the rest stay unattempted for the next drain");
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an error keeps its ref for recovery");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and so does the unattempted one");
+    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "an error keeps its ref for recovery");
+    assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!, "and so does the unattempted one");
     assert.equal(mainSha(root), mainBefore, "nothing landed");
   });
 });

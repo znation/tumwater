@@ -17,7 +17,7 @@ import {
   stampedSubject,
 } from "../git/commit-message.js";
 import { logEventBestEffort } from "../events/events.js";
-import { enqueueLanding } from "../merge/merge-queue.js";
+import { enqueueMerge } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
@@ -291,7 +291,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts landed changes only.
-  enqueueLanding(ctx.root, {
+  enqueueMerge(ctx.root, {
     role: ctx.role,
     sha: commit,
     run: s.runs,

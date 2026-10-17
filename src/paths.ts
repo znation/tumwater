@@ -42,10 +42,10 @@ export function configLockPath(root: string): string {
 /** The cross-process lock serializing writes to the primary checkout's tracked backlog files:
  * `tumwater bug`/`plan` (backlog-write.ts's appendEntry) and `tumwater questions answer`
  * (backlog/question-answer.ts's tryAnswerQuestion) each read a whole backlog file and rewrite
- * it, while a landing's working-tree fast-forward (merge-git.ts's ffMainTo) updates those
+ * it, while a merge's working-tree fast-forward (merge-git.ts's ffMainTo) updates those
  * same files in
  * the same checkout by `git merge --ff-only`. Without a shared lock the CLI's stale read can
- * overwrite the landed change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under
+ * overwrite the merged change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under
  * .tumwater/state so it never enters the tracked tree; its critical sections are one file read
  * plus one atomic rename, short enough to exclude a merge without stalling the build re-check. */
 export function primaryWorktreeLockPath(root: string): string {
@@ -66,7 +66,7 @@ export function configRequestPath(wt: string): string {
   return path.join(wt, ".tumwater-config-request.json");
 }
 
-/** The directory every harness worktree lives under — role, lander and mirror alike. The
+/** The directory every harness worktree lives under — role, merger and mirror alike. The
  * single home of the tumwaterDir + worktrees pair: every worktree path helper below joins
  * its leaf through this, so the layout moves in one place. */
 export function worktreesDir(root: string): string {
@@ -137,11 +137,11 @@ export function roleNotesPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), "state", "notes", `${role}.md`);
 }
 
-/** The in-flight landing marker (merge queue 4/5): the orchestrator's drain task
+/** The in-flight merge marker (merge queue 4/5): the orchestrator's drain task
  * writes it (merge-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */
-export function landingStatePath(root: string): string {
+export function mergeStatePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "merging.json");
 }
 
@@ -323,17 +323,17 @@ export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
-/** The durable land queue (src/merge/merge-queue.ts): a changed tick's pinned commit waits here
+/** The durable merge queue (src/merge/merge-queue.ts): a changed tick's pinned commit waits here
  * as one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
  * scheduler. */
-export function landQueueDir(root: string): string {
+export function mergeQueueDir(root: string): string {
   return path.join(tumwaterDir(root), "merge-queue");
 }
 
 /** The merge queue's old directory, still read by observers until the startup migration
- * (src/orchestrator/startup-migration-steps.ts) moves its files into `landQueueDir`. */
+ * (src/orchestrator/startup-migration-steps.ts) moves its files into `mergeQueueDir`. */
 export function legacyLandQueueDir(root: string): string {
   return path.join(tumwaterDir(root), "land-queue"); // vocabulary-ok: legacy path read from old layouts
 }
@@ -369,13 +369,13 @@ export function witnessWorktreePath(root: string): string {
 }
 
 /** One slot of the worktree pool (plans/worktree-pool.md): a fixed `.tumwater/worktrees/_slot-<n>`
- * checkout that ticks and vets lease and switch commits in place, instead of one `_land-<role>`
+ * checkout that ticks and verifies lease and switch commits in place, instead of one `_land-<role>`
  * per role. The leading underscore keeps it from colliding with a role worktree. */
 export function slotWorktreePath(root: string, n: number): string {
   return path.join(worktreesDir(root), `_slot-${n}`);
 }
 
-/** The worktree pool's dedicated checkout for the landing drain's merge-side work
+/** The worktree pool's dedicated checkout for the merge drain's merge-side work
  * (plans/worktree-pool.md, "Layout"): a single change, a stack and its bisect, the conflict
  * resolver and the post-resolve re-review. Kept out of the pool so a permit-waiting lease can
  * never deadlock behind the merge lock, and the leading underscore keeps it from colliding with
@@ -398,15 +398,15 @@ export function slotsLockPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "slots.lock");
 }
 
-/** The ref pinning a role's committed-but-unlanded sha (plans/merge-queue.md invariant 4):
+/** The ref pinning a role's committed-but-not yet merged sha (plans/merge-queue.md invariant 4):
  * written right after the tick's commit, before its branch resets to main, so the reset cannot
- * orphan the work. Deleted on every terminal landing outcome; kept until re-landed otherwise. */
-export function landingRefName(role: string): string {
+ * orphan the work. Deleted on every terminal merge outcome; kept until re-merged otherwise. */
+export function mergeRefName(role: string): string {
   return `refs/tumwater/merge/${role}`;
 }
 
 /** The pre-rename pin name (`refs/tumwater/landing/<role>`): the startup step moves these to
- * landingRefName, and retire still reads and deletes it for a team stopped before its first
+ * mergeRefName, and retire still reads and deletes it for a team stopped before its first
  * start on this build. */
 export function legacyLandingRefName(role: string): string {
   return `refs/tumwater/landing/${role}`; // vocabulary-ok: legacy name read from old refs or commits
@@ -414,7 +414,7 @@ export function legacyLandingRefName(role: string): string {
 
 /** The ref naming a role's rejected change while a revision is due (plans/revise-rejected.md):
  * written at the gate's rejection, read by the author's next tick to re-apply the rejected diff,
- * and deleted once the revision lands, is dropped, conflicts, or exhausts its rounds. Keeping
+ * and deleted once the revision merges, is dropped, conflicts, or exhausts its rounds. Keeping
  * the head reachable here stops git gc from collecting the one commit the revision re-applies. */
 export function rejectedRefName(role: string): string {
   return `refs/tumwater/rejected/${role}`;

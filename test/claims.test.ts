@@ -212,7 +212,7 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, "PLANS.md"), PLANNED);
   const idle = runner("feature", state());
-  const opts = { maxConcurrent: 6, enabled: new Set(["feature"]), queuedLandingRoles: new Set<string>() };
+  const opts = { maxConcurrent: 6, enabled: new Set(["feature"]), queuedMergeRoles: new Set<string>() };
   // One idle feature with two eligible entries: min(floor(6/3), 1) = 1.
   assert.equal(workReserveCount(repo, [idle], opts), 1);
   // Floor(cap/3) bounds the count.
@@ -223,7 +223,7 @@ test("workReserveCount withholds permits only while a claim role is idle with wo
     0,
   );
   assert.equal(
-    workReserveCount(repo, [idle], { ...opts, queuedLandingRoles: new Set(["feature"]) }),
+    workReserveCount(repo, [idle], { ...opts, queuedMergeRoles: new Set(["feature"]) }),
     0,
   );
   // A disabled loop reserves nothing.
@@ -237,7 +237,7 @@ test("workReserveCount drops an idle work loop whose provider is full (per-provi
   const opts = {
     maxConcurrent: 6,
     enabled: new Set(["feature"]),
-    queuedLandingRoles: new Set<string>(),
+    queuedMergeRoles: new Set<string>(),
   };
   // No predicate (or one that says the provider has headroom): the idle work loop reserves.
   assert.equal(workReserveCount(repo, [idle], opts), 1);
@@ -253,7 +253,7 @@ test("workReserveCount caps at a third of maxConcurrent and counts claim holders
   const opts = {
     maxConcurrent: 6,
     enabled: new Set(["feature", "feature-2"]),
-    queuedLandingRoles: new Set<string>(),
+    queuedMergeRoles: new Set<string>(),
   };
   // Two idle instances and two eligible entries: both reserve, capped at floor(6/3) = 2.
   assert.equal(workReserveCount(repo, [runner("feature", state()), runner("feature-2", state())], opts), 2);

@@ -13,7 +13,7 @@ import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { queuedLandings } from "../merge/merge-queue.js";
+import { queuedMerges } from "../merge/merge-queue.js";
 import { landingChanges, readLandingMarker } from "../merge/merge-slot.js";
 import { humanSeconds, secondsSince } from "../text/datetime.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
@@ -266,7 +266,7 @@ const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
 export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {
   const marker = readLandingMarker(root);
   const inFlight = new Set(marker ? landingChanges(marker).map((c) => c.role) : []);
-  const stale = queuedLandings(root)
+  const stale = queuedMerges(root)
     .filter((e) => !inFlight.has(e.role) && now - e.enqueuedAt > LAND_QUEUE_STALE_MS)
     .map((e) => ({ role: e.role, summary: e.summary, age: humanSeconds(secondsSince(e.enqueuedAt, now)) }));
   const [first, ...rest] = stale;

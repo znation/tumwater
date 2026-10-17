@@ -48,7 +48,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
       "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
   // The Land queue card's body: every queued landing in execution order (oldest first), one
-  // line each mirroring tumwater queue's renderLandingQueue — 1-based position, loop, tick,
+  // line each mirroring tumwater queue's renderMergeQueue — 1-based position, loop, tick,
   // short sha, age, summary — so the page and the CLI cannot drift. Painted from the status
   // payload the page already polls; depth counts the unreadable queue files the status reader
   // skips, so a positive depth with no readable list states the count instead of inventing rows.

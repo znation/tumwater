@@ -21,7 +21,7 @@ function gitRevParse(dir: string, ref: string): string | null {
 }
 
 /** A repo with history on main, a feature branch, a lightweight and an annotated tag, and a
- * landing-style pin under a custom namespace. */
+ * merge-style pin under a custom namespace. */
 function richRepo(): string {
   const root = makeRepo();
   fs.writeFileSync(path.join(root, "a.txt"), "a\n");

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { landVetted, vetRequest, type BatchRoleWiring } from "../src/merge/merge-batch.js";
 import { refSha } from "../src/git/git.js";
-import { landingRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { mainSha } from "./fixtures/repo-fixtures.js";
 import { withApprovePi } from "./fakes/fake-pi.js";
 import { advanceMain, batchFixture, makeBatchCtx, request, runBatch } from "./fixtures/merger-fixtures.js";
@@ -46,7 +46,7 @@ test("a single vetted change whose conflict resolver throws degrades to 'error' 
     // Nothing half-landed: main sits at the moved tip, and the pin survives so the next
     // drain (or leftover recovery) can re-land the change.
     assert.equal(mainSha(root), mainAtMerge);
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!);
+    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!);
   });
 });
 
@@ -66,6 +66,6 @@ test("a stack abandoned to one-at-a-time keeps the prefix that landed and degrad
     assert.match(shared, /alpha's line/);
     assert.doesNotMatch(shared, /beta's line/);
     // Beta's pin is kept for the next drain's recovery.
-    assert.notEqual(await refSha(root, landingRefName("beta")), null);
+    assert.notEqual(await refSha(root, mergeRefName("beta")), null);
   });
 });

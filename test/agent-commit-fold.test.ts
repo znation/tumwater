@@ -7,7 +7,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { foldCommitsSince, headOf } from "../src/git/git.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { commitIn, initializedRepo, sh } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
@@ -21,7 +21,7 @@ async function tickAndLand(script: string[]): Promise<{ repo: string; before: st
   await withPi([APPROVE_PI, ...script].join("\n"), async () => {
     const runner = makeLoopRunner(repo, "organize");
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "organize"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "organize"), "changed");
   });
   return { repo, before };
 }

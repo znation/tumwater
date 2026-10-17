@@ -13,7 +13,7 @@ import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType, mainRedHolds } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { pathReplace, projManifest, writeScript } from "./fakes/fake-commands.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { gitOnlyBinDir, initializedRepo, makeMainRed, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logPromptsTo, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
@@ -101,7 +101,7 @@ test("a green main passes the baseline check and authoring proceeds normally", a
     const runner = makeLoopRunner(repo, "feature");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started on a green main");
     // Two priced check runs: main's baseline before authoring, the gate's pre-check before merge.
     const scopes = eventsOfType(repo, "build_check").map((e) => `${e.scope}:${e.status}`);
@@ -127,7 +127,7 @@ test("an exempt role ticks normally while main is red — its markdown-only diff
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
       assert.equal(
-        await landHead(repo, runner, defaultConfig(), "readme"),
+        await mergeHead(repo, runner, defaultConfig(), "readme"),
         "changed",
         "markdown-only diffs are exempt from the build pre-check and land even on red main",
       );
@@ -193,7 +193,7 @@ test("after a fix lands on main, the next tick re-checks the new SHA and authori
     // The next fresh tick resets to the new main and re-checks it — no waiting out backoff.
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "authoring resumed once main is green");
     // Grew past tick one's single red run: the baseline check re-ran for the new SHA. (The
     // review gate's own pre-check of main + changes appends too, so allow more than two.)
@@ -241,7 +241,7 @@ test("an unverifiable main (no npm on PATH) warns and proceeds instead of blocki
 
     // Authoring proceeded and landed: the skip is environmental (warn-and-proceed), not a block.
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "feature"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "feature"), "changed");
     assert.ok(fs.existsSync(marker), "the authoring run started despite the unverifiable main");
 
     // The baseline check's warning names the missing npm and that the MAIN BASELINE check was

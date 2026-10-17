@@ -1,4 +1,4 @@
-/** Shared helpers for the landing-merge suites (merge-to-main.test.ts,
+/** Shared helpers for the merge-merge suites (merge-to-main.test.ts,
  * merge-to-main-recheck.test.ts): a compliant pi result, the recording MergeContext, and the
  * conflict worktree both groups build on. The seedFeatureAPlannedToDone backlog shape is shared
  * by the re-check suite and the structure/events suite. */
@@ -27,7 +27,7 @@ interface PiCall {
 }
 
 /** A MergeContext for role "improve" on tick 7 whose runPi records every call and then
- * defers to `resolve` (or returns a plain ok result when none is given). The landing target is
+ * defers to `resolve` (or returns a plain ok result when none is given). The merge target is
  * derived from the worktree's post-rebase HEAD inside mergeToMain (merge queue 2/5), so there is
  * no ref field. exemptPaths carries the config defaults, as loop-tick.ts does. */
 export function makeCtx(
@@ -69,7 +69,7 @@ export async function conflictedWorktree(
 /** Seed the 2026-09-25 duplicate-`## Done` conflict shape: the worktree commits a Planned
  * Feature A, then main moves that entry to Done (the file's `## Planned` replaced by one
  * `## Done` heading), so the branch's backlog commit rebases against a fully rewritten
- * PLANS.md and a resolver's choice of where Feature B lands is what the gate judges. The
+ * PLANS.md and a resolver's choice of where Feature B merges is what the gate judges. The
  * exact bytes both sibling conflict tests stand on — the twin seed blocks they used to
  * hand-roll — so the gate sees the document it always did. */
 export function seedFeatureAPlannedToDone(root: string, wt: string): void {

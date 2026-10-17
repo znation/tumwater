@@ -3,12 +3,12 @@ import { readJson } from "./helpers/json-read.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { LANDING_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
+import { MERGE_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
 import { landApprovedChange, reviewPinnedChange } from "../src/merge/merge-core.js";
 import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
 import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
 import { readSlotsState } from "../src/git/slots-state.js";
-import { landingRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
+import { mergeRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { readEvents } from "../src/events/event-read.js";
 import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
@@ -426,11 +426,11 @@ test("a failing pre-check on a green main rejects the landing and spends no pi r
 
 // A change whose gate passes but whose in-lock landing check goes red (a cheaper
 // check.gateCommand, say) used to come back merge_blocked on every re-land, its role never
-// authoring again. The first red keeps the pin for one retry; at LANDING_CHECK_FAILURE_LIMIT the
+// authoring again. The first red keeps the pin for one retry; at MERGE_CHECK_FAILURE_LIMIT the
 // red is judged by main's own verdict, like a red gate check.
 for (const main of ["green", "red"] as const) {
   test(`a single landing's red in-lock check retries once, then ${main === "green" ? "rejects on a green main" : "keeps its pin as main_red"}`, async () => {
-    assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+    assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
     const { root, sha } = await pinnedFixture();
     // Main moves after the pin, so the in-lock rebase rewrites it and the landing check runs.
     const tip = advanceMain(root, `main-${main}-${process.pid}-${Date.now()}.txt`, "main moves on\n");
@@ -494,7 +494,7 @@ test("a kept-for-re-land red landing check logs a warning naming the failing tes
 // the pin for one differently-rebased retry, and the second rejects the change with the
 // block's reason (no model run, no main-tip verdict needed).
 test("a fix-claim-blocked landing retries once, then rejects with the block reason", async () => {
-  assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+  assert.equal(MERGE_CHECK_FAILURE_LIMIT, 2);
   const { root } = await pinnedFixture();
   // Seed BUGS.md on main with the bug Open; the pin's md-only commit moves it to Fixed
   // naming a symbol that exists nowhere on the tree — falseFixReason's block.
@@ -518,7 +518,7 @@ test("a fix-claim-blocked landing retries once, then rejects with the block reas
   const sha = headSha(root);
   sh(root, "git", "checkout", "main");
   await setRef(root, REF, sha);
-  // Main moves after the pin, so the in-lock rebase rewrites the head and verifyLanding's
+  // Main moves after the pin, so the in-lock rebase rewrites the head and verifyMerge's
   // exempt arm runs its cross-checks (a no-op rebase would skip them).
   advanceMain(root, `main-unrelated-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   const state = freshLoopState(ROLE);
@@ -543,7 +543,7 @@ test("an unverified red in-lock check — the run timed out — keeps the pin wi
   // verdict about the tree, so it is not a strike against the patch (the red-attribution
   // helper's own unverified arm is pinned in attribute-red-check.test.ts — this drives the
   // same weather through a real landing, where the in-lock check's timeout is remapped to
-  // unverified before landingCheckRed ever sees it).
+  // unverified before mergeCheckRed ever sees it).
   const { root, sha } = await pinnedFixture();
   const tip = advanceMain(root, `main-unverified-${process.pid}-${Date.now()}.txt`, "main moves on\n");
   const state = freshLoopState(ROLE);
@@ -610,8 +610,8 @@ test("an all-rejected batch returns a defined result for every request without t
 
       assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
       assert.equal(mainSha(root), mainBefore, "nothing landed");
-      assert.equal(await refSha(root, landingRefName("alpha")), null, "a rejection deletes its ref");
-      assert.equal(await refSha(root, landingRefName("beta")), null, "and the next request's too — the batch lands nothing");
+      assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes its ref");
+      assert.equal(await refSha(root, mergeRefName("beta")), null, "and the next request's too — the batch lands nothing");
     },
   );
 });
@@ -631,8 +631,8 @@ test("a green batch stacks every approved change, fast-forwards main once, and l
     assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
     assert.equal(merged[1]!.commit, mainSha(root), "the stacked tip is main's head");
     assert.notEqual(merged[1]!.commit, shas.beta!, "the second change re-committed on top of the first");
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "the ff deleted the head's ref");
-    assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked one's");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "the ff deleted the head's ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "and the stacked one's");
     assert.equal(folded.get("alpha")!.length, 1, "the gate's reviewer run folded into its own role");
     assert.equal(folded.get("beta")!.length, 1);
     assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
@@ -649,7 +649,7 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
   sh(root, "git", "add", "more.txt");
   sh(root, "git", "commit", "-m", "more alpha work");
   shas.alpha = headSha(root);
-  await setRef(root, landingRefName("alpha"), shas.alpha);
+  await setRef(root, mergeRefName("alpha"), shas.alpha);
   sh(root, "git", "checkout", "main");
   const mainBefore = mainSha(root);
   await withApprovePi(async () => {
@@ -660,8 +660,8 @@ test("a batch stacks every commit of a multi-commit pin, not its head alone", as
     assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "the work beneath the head landed");
     assert.ok(sh(root, "git", "show", "main:more.txt").includes("more by alpha"));
     assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
-    assert.equal(await refSha(root, landingRefName("alpha")), null);
-    assert.equal(await refSha(root, landingRefName("beta")), null);
+    assert.equal(await refSha(root, mergeRefName("alpha")), null);
+    assert.equal(await refSha(root, mergeRefName("beta")), null);
     assert.equal(folded.get("alpha")!.length, 1);
     assert.equal(folded.get("beta")!.length, 1);
   });
@@ -679,7 +679,7 @@ test("an abort mid-batch routes every request without a terminal outcome to abor
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted", "aborted"]);
     for (const role of roles) {
-      assert.equal(await refSha(root, landingRefName(role)), shas[role]!, `an abort keeps ${role}'s ref for recovery`);
+      assert.equal(await refSha(root, mergeRefName(role)), shas[role]!, `an abort keeps ${role}'s ref for recovery`);
     }
     assert.equal(mainSha(root), mainBefore, "nothing landed");
     // Every vet sees the stop before its gate starts: no reviewer spend on any of them.
@@ -707,8 +707,8 @@ test("an aborted batch lands nothing even when every gate would short-circuit on
 
     assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
     assert.equal(mainSha(root), mainBefore, "nothing landed");
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+    assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
     assert.equal(folded.size, 0, "no gate ran a pi");
   });
 });
@@ -742,8 +742,8 @@ test("an abort after the last gate approved stops the batch before its shared ch
 
       assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both approved changes read aborted");
       assert.equal(mainSha(root), mainBefore, "nothing landed");
-      assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
-      assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+      assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+      assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
       const checks = eventsOfType(root, "build_check");
       assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
       assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
@@ -773,7 +773,7 @@ test("an abort after the gate stops a one-change merge before it lands", async (
 
     assert.deepEqual(results.map((r) => r.result), ["aborted"]);
     assert.equal(mainSha(root), mainBefore, "nothing landed");
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
+    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the ref survives for recovery");
   });
 });
 

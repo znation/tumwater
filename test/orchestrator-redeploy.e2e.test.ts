@@ -25,7 +25,7 @@ import { fastConfig, makeFastRepo, scriptedRedeployer, startRedeployRun } from "
 import { roleWt } from "./fixtures/loop-fixtures.js";
 import { eventTypes, eventsOfType } from "./fixtures/log-fixtures.js";
 import { ownerAliveSh } from "./fixtures/victim-fixture.js";
-import { headSha, landWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { headSha, mergeWork, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -246,7 +246,7 @@ test("a failed compile leaves the team running the old build", async () => {
       () => !loadLoopState(repo, "clean").running && loadLoopState(repo, "clean").lastMainHead !== "",
       "the startup tick to finish",
     );
-    landWork(repo);
+    mergeWork(repo);
     const before = eventsOfType(repo, "run_start").length;
     await waitFor(() => eventsOfType(repo, "run_start").length > before, "ticks resume after the hold lifts");
     assert.deepEqual(swaps, []);

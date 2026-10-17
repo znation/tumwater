@@ -17,7 +17,7 @@ import {
 import { primaryWorktreeLockPath } from "../src/paths.js";
 import { assertWorktreeSettled, commitIn, headSha, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
 
-// Behavioral coverage for the landing flow's git plumbing (merge-git.ts). The export pin in
+// Behavioral coverage for the merge flow's git plumbing (merge-git.ts). The export pin in
 // merge-to-main.test.ts only checks that these helpers exist; these tests drive real rebases,
 // conflicts, and continuations — the mechanics a half-broken helper would silently break.
 
@@ -157,18 +157,18 @@ test("mainCommitsTouching returns nothing for an empty file list", async () => {
   assert.deepEqual(await mainCommitsTouching(wt, "HEAD", "main", []), { commits: [], omitted: 0 });
 });
 
-// The lander's half of the primary-worktree race: `tumwater bug` holds the shared lock while it
+// The merger's half of the primary-worktree race: `tumwater bug` holds the shared lock while it
 // reads and rewrites a backlog file, so the working-tree fast-forward must wait for that lock
-// rather than merging under it. The child holds the lock and watches for the merge's landed.txt
+// rather than merging under it. The child holds the lock and watches for the merge's merged.txt
 // (an unlocked ff writes it immediately; a locked one waits for release), then records what it
 // saw. The ref-push arm is not exercised here: it touches no working tree and takes no lock.
 test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog writer holds", async () => {
   const { root, wt } = await initializedWorktree();
-  fs.writeFileSync(path.join(wt, "landed.txt"), "landed\n");
-  commitIn(wt, "landing candidate");
+  fs.writeFileSync(path.join(wt, "merged.txt"), "merged\n");
+  commitIn(wt, "merge candidate");
   const ref = headSha(wt);
   const lock = primaryWorktreeLockPath(root);
-  const landed = path.join(root, "landed.txt");
+  const merged = path.join(root, "merged.txt");
   const ready = path.join(root, "child-ready");
   const marker = path.join(root, "child-marker");
   const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
@@ -176,7 +176,7 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
     `const fs = require("node:fs");
      import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
        fs.writeFileSync(${JSON.stringify(ready)}, "1");
-       const merged = () => fs.existsSync(${JSON.stringify(landed)});
+       const merged = () => fs.existsSync(${JSON.stringify(merged)});
        const deadline = Date.now() + 1500;
        while (Date.now() < deadline && !merged()) {
          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
@@ -193,9 +193,9 @@ test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog 
     assert.equal(
       fs.readFileSync(marker, "utf8"),
       "not-seen",
-      "the merge did not land while a backlog writer held the primary-worktree lock",
+      "the merge did not merge while a backlog writer held the primary-worktree lock",
     );
-    assert.equal(fs.readFileSync(landed, "utf8"), "landed\n", "the merge landed after the lock was released");
+    assert.equal(fs.readFileSync(merged, "utf8"), "merged\n", "the merge completed after the lock was released");
   } finally {
     await stopChild(holder);
   }

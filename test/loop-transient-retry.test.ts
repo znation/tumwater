@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi } from "./fakes/fake-pi.js";
 import { failingThenIdle } from "./fakes/transient.js";
@@ -104,7 +104,7 @@ test("a transient-retry changed tick's trailer sums both runs' turns", async () 
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "the retry's work is committed and enqueued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The trailer sums both runs' turns (3 + 1) — and only them: the reviewer run folds
     // after the commit. Peak ctx is the retry run's 42; attempt 1 carried no usage.
     const body = sh(repo, "git", "log", "-1", "--format=%B");

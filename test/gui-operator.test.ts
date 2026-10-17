@@ -8,12 +8,12 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
 import { initProject } from "../src/init/init.js";
 import { PAUSE_REASON_MAX } from "../src/team/team-state.js";
-import { landingStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
+import { mergeStatePath, pausedPath, abortRequestPath, wakeRequestPath, pausedRolesPath, scheduledWakeDir } from "../src/paths.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
-import { enqueueLanding } from "../src/merge/merge-queue.js";
+import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { requestResetCounters } from "../src/operator/operator-intent.js";
 import { postJson, withGui } from "./fixtures/gui-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
@@ -90,7 +90,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   assert.equal(payload.mergeBadge, "");
 
   // One queued entry lifts the depth — but a merely queued landing is not in flight.
-  enqueueLanding(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "clean", sha: "abc1234", run: 1, summary: "tidy something", enqueuedAt: Date.now() });
   let p = statusPayload(repo) as typeof payload;
   assert.equal(p.mergeQueue.depth, 1);
   assert.equal(p.mergeBadge, " · merge queue: 1");
@@ -102,7 +102,7 @@ test("status payload carries the land queue depth and the in-flight landing", as
   writeOrchestratorMarker(repo, ["clean"]);
   const startedAt = Date.now();
   fs.writeFileSync(
-    landingStatePath(repo),
+    mergeStatePath(repo),
     JSON.stringify({ role: "clean", sha: "abc1234", summary: "tidy something", startedAt, stage: "build-check" }),
   );
   p = statusPayload(repo) as typeof payload;

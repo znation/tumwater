@@ -8,7 +8,7 @@ import { withProviderLease } from "../concurrency/provider-lease.js";
 import { LoopRunner } from "../loop/loop.js";
 import { branchHead, isMergedInto } from "../git/git.js";
 import { addLandingChange, landingUsage, removeLandingChange, setLandingChangeStatus } from "./merge-slot.js";
-import { dropLanding, queuedLandingFiles, staleHeadFile, type LandingEntry } from "./merge-queue.js";
+import { dropMerge, queuedMergeFiles, staleHeadFile, type MergeEntry } from "./merge-queue.js";
 import { warnEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { errorMessage } from "../text/text.js";
 import { vetRequest, type VetVerdict } from "./merge-batch.js";
@@ -55,7 +55,7 @@ function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
 }
 
 /** Drop a torn queue head. A torn head (torn or foreign — a partial write an older build left,
- * a hand-placed file) makes headLanding read null forever — nothing else drops it, stranding
+ * a hand-placed file) makes headMerge read null forever — nothing else drops it, stranding
  * every live entry behind it and pinning their authors' ticks via the interlock. Drop it with
  * one warning; the healthy entries behind it are vetted in the same poll. The crashed
  * entry's commit, if any, still rides its landing ref into next-tick leftover recovery
@@ -63,7 +63,7 @@ function resolveAuthor(ctx: LandingPipelineContext, role: string): LoopRunner {
 function dropTornHead(root: string): void {
   const stale = staleHeadFile(root);
   if (!stale) return;
-  dropLanding(stale);
+  dropMerge(stale);
   warnEventBestEffort(
     root,
     TUMWATER_SOURCE,
@@ -107,7 +107,7 @@ async function mergedIntoMain(root: string, sha: string, mainBranch: string, hea
  * the established crash semantics. */
 export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeline): Promise<void> {
   dropTornHead(ctx.root);
-  const queue = queuedLandingFiles(ctx.root);
+  const queue = queuedMergeFiles(ctx.root);
   // One main-head read per poll with a non-empty queue (branchHead's ref-file fast path — no
   // spawn), serving every entry's cached dedupe verdict below.
   const mainHead = queue.length === 0 ? "" : ((await branchHead(ctx.root, ctx.mainBranch)) ?? "");
@@ -115,7 +115,7 @@ export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeli
     if (p.vetting.size >= vetLimit(ctx.semaphore.limit)) return;
     if (liveRoles(p).has(entry.role)) continue;
     if (await mergedIntoMain(ctx.root, entry.sha, ctx.mainBranch, mainHead)) {
-      dropLanding(file);
+      dropMerge(file);
       removeLandingChange(ctx.root, entry.role);
       continue;
     }
@@ -137,9 +137,9 @@ export async function drainVetting(ctx: LandingPipelineContext, p: LandingPipeli
  * written at once and its entry dropped, which frees its author on the next poll while the
  * other vets run on (BUGS.md 2026-09-23's early-rejection rule). A user-aborted vet discards its
  * pin; a shutdown keeps it. Never rejects for a failed landing: an unexpected throw becomes an
- * "error" outcome. Exported for test/fixtures/orchestrator-fixtures.ts's landHead, which lands
+ * "error" outcome. Exported for test/fixtures/orchestrator-fixtures.ts's mergeHead, which lands
  * one queue entry through the pipeline without draining the rest of the queue. */
-export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry: LandingEntry, file: string): void {
+export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry: MergeEntry, file: string): void {
   const { root, mainBranch, signal, semaphore } = ctx;
   const { role } = entry;
   const author = resolveAuthor(ctx, role);

@@ -9,9 +9,9 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import type { ModelSelector } from "../config/model-selector.js";
 import { deleteRef } from "../git/git.js";
 import { removeLandingChange, writeLandingOutcome, type LandingUsage } from "./merge-slot.js";
-import { landingRefName, rejectedRefName } from "../paths.js";
+import { mergeRefName, rejectedRefName } from "../paths.js";
 import type { AbortableLanding } from "../operator/operator-requests.js";
-import type { LandingEntry } from "./merge-queue.js";
+import type { MergeEntry } from "./merge-queue.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import type { FoldsUsage } from "../loop/loop-pi.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -39,7 +39,7 @@ export interface InFlightLanding {
  * its check runs once more. It holds no task, so `tumwater abort --role` only flags it
  * (AbortableLanding); the next drain settles it as "aborted" and discards its pin. */
 export interface VettedLanding extends AbortableLanding, FoldsUsage {
-  entry: LandingEntry;
+  entry: MergeEntry;
   /** The queue file to drop once its outcome is written. */
   file: string;
   /** The head its gate approved — the synced pin its landing ref names. */
@@ -186,7 +186,7 @@ export function liveRoles(p: LandingPipeline): Set<string> {
 export async function discardPinnedRefs(root: string, roles: string[]): Promise<void> {
   for (const role of roles) {
     try {
-      await deleteRef(root, landingRefName(role));
+      await deleteRef(root, mergeRefName(role));
     } catch {
       /* already gone */
     }
@@ -203,7 +203,7 @@ export async function discardPinnedRefs(root: string, roles: string[]): Promise<
  * stack at once rather than change by change. */
 export async function settleLandingOutcome(
   root: string,
-  entry: LandingEntry,
+  entry: MergeEntry,
   state: LoopState,
   result: TickResult,
   durationMs: number,

@@ -19,7 +19,7 @@ import {
 } from "../team/orchestrator-info.js";
 import type { LandingInFlight } from "../merge/merge-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
-import { readLandingQueue } from "../merge/merge-queue.js";
+import { readMergeQueue } from "../merge/merge-queue.js";
 import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
@@ -311,7 +311,7 @@ export interface StatusSnapshot {
     depth: number;
     /** Each queued change in execution order (oldest first) for `status --json` readers —
      * position, role, summary, sha, age. Filled from the same
-     * `readLandingQueue` pass the depth already costs (shallow per-entry copies without the
+     * `readMergeQueue` pass the depth already costs (shallow per-entry copies without the
      * optional `body`/`highFriction`), only when at least one readable entry is queued — the
      * same filling discipline `roleInboxPrompts` follows: there is nothing to render, so the
      * common empty case carries no field. (`depth` can be positive with `entries` absent: it
@@ -399,7 +399,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // still has a queue entry for what the marker names (per change, for a batch) — the
   // cross-check makes every crash ordering self-healing (a stale marker alone never displays,
   // and needs no cleanup pass).
-  const queue = readLandingQueue(root);
+  const queue = readMergeQueue(root);
   const landings = queue.entries;
   const landQueue: StatusSnapshot["landQueue"] = {
     depth: landings.length + queue.unreadable,

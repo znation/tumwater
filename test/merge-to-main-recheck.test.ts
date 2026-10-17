@@ -1,7 +1,7 @@
-/** The landing flow's in-lock post-rebase verification (BUGS.md 2026-09-08: the gate checked
- * the pre-rebase tree, so the bytes that landed on main were never run through a check): the
+/** The merge flow's in-lock post-rebase verification (BUGS.md 2026-09-08: the gate checked
+ * the pre-rebase tree, so the bytes that merged on main were never run through a check): the
  * declared check re-runs the rebased tree, a red one blocks, an environmental skip warns and
- * lands, a no-op rebase seeds the baseline, and the duplicate-`## Done` structure gate it
+ * merges, a no-op rebase seeds the baseline, and the duplicate-`## Done` structure gate it
  * consults. Extracted from merge-to-main.test.ts (2026-10-11); shared helpers live in
  * fixtures/merge-to-main-fixtures.ts. */
 import test from "node:test";
@@ -20,7 +20,7 @@ import { assertWorktreeSettled, commitIn, gitOnlyBinDir, headSha, initializedWor
 import { makeCtx, piResult, seedFeatureAPlannedToDone } from "./fixtures/merge-to-main-fixtures.js";
 
 // ── In-lock post-rebase verification (BUGS.md 2026-09-08: the gate checks the pre-rebase tree,
-// so the bytes that land on main were never run through a check) ────────────────────────────
+// so the bytes that reach main were never run through a check) ────────────────────────────
 
 /** Give the project a declared build check, laid out exactly like dogfood: root has
  * package.json + the fake toolchain in node_modules/.bin (the install — node_modules stays
@@ -46,7 +46,7 @@ function declareBuildCheck(root: string, wt: string, toolBody = "exit 0", commit
   fs.writeFileSync(path.join(wt, "package.json"), manifest);
 }
 
-test("a rebase that rewrote the commits re-runs the declared check on the rebased tree before landing", async () => {
+test("a rebase that rewrote the commits re-runs the declared check on the rebased tree before merge", async () => {
   const { root, wt } = await initializedWorktree();
   // The tool passes only when BOTH files exist — true of the post-rebase tree, false of the
   // pre-rebase head (which lacks main's file). A check of the wrong tree would block the merge.
@@ -59,14 +59,14 @@ test("a rebase that rewrote the commits re-runs the declared check on the rebase
   const result = await mergeToMain(ctx, wt, "branch work");
 
   assert.equal(result, "changed");
-  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
-  assert.equal(landingChecks.length, 1, "the rebased tree was re-verified inside the merge lock");
-  assert.equal(landingChecks[0]!.status, "passed");
-  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes landed on main");
+  const mergeChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
+  assert.equal(mergeChecks.length, 1, "the rebased tree was re-verified inside the merge lock");
+  assert.equal(mergeChecks[0]!.status, "passed");
+  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes merged on main");
   assert.equal(fs.readFileSync(path.join(root, "mainfile.txt"), "utf8"), "from main\n");
 });
 
-test("a red post-rebase check blocks the landing and keeps the commit for recovery", async () => {
+test("a red post-rebase check blocks the merge and keeps the commit for recovery", async () => {
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt, "exit 1"); // fails on every tree — a deterministic red
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
@@ -78,7 +78,7 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
   const result = await mergeToMain(ctx, wt, "branch work");
 
   assert.equal(result, "merge_blocked");
-  assert.equal(mainSha(root), mainBefore, "nothing lands on a red tree");
+  assert.equal(mainSha(root), mainBefore, "nothing merges on a red tree");
   assert.ok(
     readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge" && e.status === "failed"),
     "the failed re-check is priced in the feed",
@@ -90,7 +90,7 @@ test("a red post-rebase check blocks the landing and keeps the commit for recove
   assertWorktreeSettled(wt); // no rebase left in progress
 });
 
-test("an environmental skip of the re-check warns and still lands — never fail-closed", async () => {
+test("an environmental skip of the re-check warns and still merges — never fail-closed", async () => {
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt); // would pass if it could run at all
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
@@ -100,7 +100,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
 
   // Drop npm from PATH for the merge: runBuildCheck's spawn then fails with ENOENT — an
   // environmental skip, not a red build. git alone is symlinked into the restricted bin dir,
-  // so every other step of the landing resolves exactly as usual.
+  // so every other step of the merge resolves exactly as usual.
   const binDir = gitOnlyBinDir("no-npm-bin-");
   const restorePath = pathReplace(binDir);
   let result: string;
@@ -110,7 +110,7 @@ test("an environmental skip of the re-check warns and still lands — never fail
     restorePath();
   }
 
-  assert.equal(result, "changed", "a skip is environmental — the landing proceeds (fail-open)");
+  assert.equal(result, "changed", "a skip is environmental — the merge proceeds (fail-open)");
   const events = readEvents(root);
   assert.ok(
     events.some((e) => e.type === "build_check" && e.scope === "merge" && e.status === "skipped"),
@@ -122,12 +122,12 @@ test("an environmental skip of the re-check warns and still lands — never fail
     `the operator sees why the check did not run: ${JSON.stringify(warnings)}`,
   );
   assert.equal(events.filter((e) => e.type === "merged").length, 1);
-  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes landed on main");
+  assert.ok(fs.existsSync(path.join(root, "app.js")), "both changes merged on main");
 });
 
-test("a no-op rebase skips the re-check and seeds the baseline for the landed SHA", async () => {
+test("a no-op rebase skips the re-check and seeds the baseline for the merged SHA", async () => {
   const { root, wt } = await initializedWorktree();
-  declareBuildCheck(root, wt); // would pass if run — but must NOT run (no landing event)
+  declareBuildCheck(root, wt); // would pass if run — but must NOT run (no merge event)
   sh(wt, "git", "reset", "--hard", "main"); // tick-start reset: author on top of CURRENT main
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
   commitIn(wt, "branch work");
@@ -142,16 +142,16 @@ test("a no-op rebase skips the re-check and seeds the baseline for the landed SH
     !readEvents(root).some((e) => e.type === "build_check"),
     "no-op rebase: the gate's run is trusted — no second suite run",
   );
-  // The landed SHA (== main now) must be a baseline cache hit: checkMainBaseline runs nothing.
+  // The merged SHA (== main now) must be a baseline cache hit: checkMainBaseline runs nothing.
   const runs: unknown[] = [];
   await checkMainBaseline(root, defaultConfig(), (run) => runs.push(run));
-  assert.equal(runs.length, 0, "the landing path seeded the green verdict for the SHA that became main");
+  assert.equal(runs.length, 0, "the merge path seeded the green verdict for the SHA that became main");
 });
 
-test("a no-op rebase with no verified head still runs the landing check and fails closed", async () => {
+test("a no-op rebase with no verified head still runs the merge check and fails closed", async () => {
   // The gate's build pre-check timing out leaves GateResult.verifiedHead undefined while the
-  // landing rebase stays a no-op (main did not move under review). Trusting the no-op alone
-  // would land a tree no check ever judged; the landing-scope check must run and reject.
+  // merge rebase stays a no-op (main did not move under review). Trusting the no-op alone
+  // would merge a tree no check ever judged; the merge-scope check must run and reject.
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt, "exit 1"); // a deterministic red the gate never ran
   sh(wt, "git", "reset", "--hard", "main"); // the branch sits on current main → no-op rebase
@@ -163,20 +163,20 @@ test("a no-op rebase with no verified head still runs the landing check and fail
   // No fourth argument: the gate made no green observation of this tree (a skipped pre-check).
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "an unverified no-op rebase must not land unchecked");
-  assert.equal(mainSha(root), mainBefore, "nothing lands on the unverified tree");
+  assert.equal(result, "merge_blocked", "an unverified no-op rebase must not merge unchecked");
+  assert.equal(mainSha(root), mainBefore, "nothing merges on the unverified tree");
   assert.deepEqual(
     eventsOfType(root, "build_check").map((e) => [e.scope, e.status]),
     [["merge", "failed"]],
-    "the landing-scope check ran and rejected the tree",
+    "the merge-scope check ran and rejected the tree",
   );
   assert.equal(eventsOfType(root, "merged").length, 0);
   assertWorktreeSettled(wt); // no rebase left in progress
 });
 
-test("with check.gateCommand set, a no-op rebase still runs the full check before landing", async () => {
-  // PLANS.md Land-queue speed 3e: the gate ran only the cheaper gateCommand, so its green says
-  // nothing about check.command — the no-op skip would land a tree the full suite never saw.
+test("with check.gateCommand set, a no-op rebase still runs the full check before merge", async () => {
+  // PLANS.md Merge-queue speed 3e: the gate ran only the cheaper gateCommand, so its green says
+  // nothing about check.command — the no-op skip would merge a tree the full suite never saw.
   const { root, wt } = await initializedWorktree();
   sh(wt, "git", "reset", "--hard", "main");
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
@@ -189,18 +189,18 @@ test("with check.gateCommand set, a no-op rebase still runs the full check befor
   // The gate's pre-check (the gateCommand) ran green on exactly this head.
   const result = await mergeToMain(ctx, wt, "branch work", head);
 
-  assert.equal(result, "merge_blocked", "the red full check blocks the landing");
+  assert.equal(result, "merge_blocked", "the red full check blocks the merge");
   assert.equal(mainSha(root), mainBefore);
   const checks = eventsOfType(root, "build_check");
   assert.deepEqual(
     checks.map((e) => [e.scope, e.status, (e as { script?: string }).script]),
     [["merge", "failed", "exit 1"]],
-    "one landing-scope run of check.command, never the gate command",
+    "one merge-scope run of check.command, never the gate command",
   );
 });
 
 /** A code change whose gate verified `head`, on a project whose declared check is red if it ever
- * runs: what each doc-drift test below lands. */
+ * runs: what each doc-drift test below merges. */
 async function verifiedCodeChange(): Promise<{ root: string; wt: string; head: string }> {
   const { root, wt } = await initializedWorktree();
   declareBuildCheck(root, wt, "exit 1");
@@ -221,7 +221,7 @@ test("main moving under the verified head by doc commits alone skips the re-chec
   assert.equal(result, "changed", "the red check never ran: the tree is the verified one plus docs");
   assert.equal(eventsOfType(root, "build_check").length, 0);
   assert.ok(fs.existsSync(path.join(root, "app.js")) && fs.existsSync(path.join(root, "NOTES.md")));
-  // The landed SHA carries a green inherited from the verified head: the red-main gate trusts it
+  // The merged SHA carries a green inherited from the verified head: the red-main gate trusts it
   // without a run, and attribution (observedOnly) would still run the suite itself.
   const runs: unknown[] = [];
   const baseline = await checkMainBaseline(root, defaultConfig(), (run) => runs.push(run));
@@ -229,7 +229,7 @@ test("main moving under the verified head by doc commits alone skips the re-chec
   assert.equal(baseline.baseline?.inheritedFrom, head);
 });
 
-test("a rebase that only rewrote SHAs lands the verified bytes unchecked and seeds an observed green", async () => {
+test("a rebase that only rewrote SHAs merges the verified bytes unchecked and seeds an observed green", async () => {
   const { root, wt, head } = await verifiedCodeChange();
   sh(root, "git", "commit", "-q", "--allow-empty", "-m", "main moves without changing a byte");
   const { ctx } = makeCtx(root);
@@ -290,7 +290,7 @@ test("a doc-only delta skips the re-check even when main moved under it", async 
   );
 });
 
-test("a conflict resolution is re-verified inside the lock before landing", async () => {
+test("a conflict resolution is re-verified inside the lock before merge", async () => {
   const { root, wt } = await initializedWorktree();
   // The tool passes only when seed.txt holds the RESOLVED content — true of the post-resolution
   // tree, false of both pre-conflict sides. A check of either original head would block.
@@ -306,10 +306,10 @@ test("a conflict resolution is re-verified inside the lock before landing", asyn
   const result = await mergeToMain(ctx, wt, "branch edit");
 
   assert.equal(result, "changed");
-  const landingChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
+  const mergeChecks = readEvents(root).filter((e) => e.type === "build_check" && e.scope === "merge");
   // The second rebase is a no-op, but its bytes (pi's resolution) were never checked — the
   // pre-merge head captured before the FIRST rebase is what makes this run.
-  assert.equal(landingChecks.length, 1, "the post-resolution tree was re-verified");
+  assert.equal(mergeChecks.length, 1, "the post-resolution tree was re-verified");
 });
 
 test("a conflict resolution that duplicates ## Done is blocked with a warning, main unchanged", async () => {
@@ -333,7 +333,7 @@ test("a conflict resolution that duplicates ## Done is blocked with a warning, m
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
+  assert.equal(result, "merge_blocked", "the duplicated heading blocks the merge");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
   const warnings = warningMessages(root);
   assert.ok(
@@ -364,7 +364,7 @@ test("a conflict resolution that files a new plan under a single ## Done is bloc
 
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "merge_blocked", "the misfiled new plan blocks the landing");
+  assert.equal(result, "merge_blocked", "the misfiled new plan blocks the merge");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
   const warnings = warningMessages(root);
   assert.ok(
@@ -378,11 +378,11 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
   // The exempt path's duplicate-heading block is covered above; this pins the sibling block
   // for CODE diffs, which must fire BEFORE runScopedBuildCheck so a conflict resolution that
   // broke backlog structure reads as an explained block, never as an unexplained red check
-  // run on a tree that could never land.
+  // run on a tree that could never merge.
   const { root, wt } = await initializedWorktree();
-  // A deterministic red: if the structure block failed to fire, the landing would still be
+  // A deterministic red: if the structure block failed to fire, the merge would still be
   // rejected — but as a failed build_check, so the absence of any build_check event below
-  // proves the structure block is what blocked this landing.
+  // proves the structure block is what blocked this merge.
   declareBuildCheck(root, wt, "exit 1");
   // A code file makes the delta non-exempt (an .md-only delta would take the exempt block).
   fs.writeFileSync(path.join(wt, "app.js"), "branch\n");
@@ -398,7 +398,7 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
 
   const result = await mergeToMain(ctx, wt, "code work");
 
-  assert.equal(result, "merge_blocked", "the duplicated heading blocks the landing");
+  assert.equal(result, "merge_blocked", "the duplicated heading blocks the merge");
   assert.equal(mainSha(root), mainBefore, "main is untouched");
   const warnings = warningMessages(root);
   assert.ok(
@@ -407,7 +407,7 @@ test("a code diff that duplicates ## Done is blocked by the structure check befo
   );
   assert.ok(
     !readEvents(root).some((e) => e.type === "build_check" && e.scope === "merge"),
-    "no landing build check ran — the structure block fires first",
+    "no merge build check ran — the structure block fires first",
   );
   assertWorktreeSettled(wt);
 });

@@ -19,7 +19,7 @@ import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
-import { queuedLandingFiles, queuedLandingRoles } from "../merge/merge-queue.js";
+import { queuedMergeFiles, queuedMergeRoles } from "../merge/merge-queue.js";
 import { drainLandings, settleAbortedVetted } from "../merge/merge-drain.js";
 import { abortableLandings, landingTasks, newLandingPipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -589,7 +589,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       const reserve = workReserveCount(root, runners, {
         maxConcurrent: liveConfig.maxConcurrent,
         enabled: new Set(runners.filter((r) => loopEnabled(r.config, r.role)).map((r) => r.role)),
-        queuedLandingRoles: queuedLandingRoles(root),
+        queuedMergeRoles: queuedMergeRoles(root),
         // Per-provider headroom (plans/provider-concurrency.md §6): an idle work loop reserves a
         // permit only when its own provider could use it — capped and full, it would only idle
         // the slot another provider's maintenance tick could take. Read from the pool's live
@@ -622,7 +622,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
           roleTicks: roleInFlight.size,
           directorTicks: directorInFlight.size,
           landings: landingTasks(landings).length,
-          queuedLandings: queuedLandingFiles(root).length,
+          queuedMerges: queuedMergeFiles(root).length,
         })
       ) {
         internalStop.abort();

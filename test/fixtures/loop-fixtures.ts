@@ -15,10 +15,10 @@ import { gitInit, sh, tmpdir } from "./repo-fixtures.js";
 import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.js";
 import { ensureParentDir } from "../../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
-import { landingRefName, worktreePath } from "../../src/paths.js";
-import { headLanding, queueDepth } from "../../src/merge/merge-queue.js";
+import { mergeRefName, worktreePath } from "../../src/paths.js";
+import { headMerge, queueDepth } from "../../src/merge/merge-queue.js";
 import { enqueuePrompt, inboxSize } from "../../src/inbox/inbox.js";
-import { landHead } from "./orchestrator-fixtures.js";
+import { mergeHead } from "./orchestrator-fixtures.js";
 import { withPi } from "../fakes/fake-pi.js";
 import { assistantLine } from "./pi-events.js";
 import { waitForFile } from "../helpers/wait.js";
@@ -76,9 +76,9 @@ export async function runAbortedDirectorLanding(repo: string): Promise<void> {
         const runner = makeLoopRunner(repo, "director");
         const outcome = await runner.tick();
         assert.equal(outcome.result, "queued", "the tick ends at the pin; the review is the landing's");
-        const head = headLanding(repo);
+        const head = headMerge(repo);
         assert.ok(head, "the landing is queued");
-        const landing = landHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
+        const landing = mergeHead(repo, runner, defaultConfig(), "director", "main", controller.signal);
         // Abort only once the vet's pooled checkout exists: an earlier abort would hit nothing.
         await waitForFile(path.join(repo, ".tumwater/worktrees/_slot-1"));
         controller.abort();
@@ -88,7 +88,7 @@ export async function runAbortedDirectorLanding(repo: string): Promise<void> {
         // the abort for next-start recovery. The queue entry is dropped; the prompt was consumed
         // by the completed tick, so recovery rides the pin, never a re-queued prompt.
         assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/director"), "0");
-        const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("director")).trim();
+        const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("director")).trim();
         assert.ok(pinned.length === 40, "the pin survived the aborted landing");
         assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
         assert.equal(queueDepth(repo), 0, "the entry is dropped after the aborted landing");

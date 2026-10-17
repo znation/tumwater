@@ -1,5 +1,5 @@
-/** mergeToMain's core landing flow: a clean rebase, a re-land, the exempt fix-claim arm,
- * conflict resolution and its re-review, the pinned-sha fast-forward, and the parallel-landing
+/** mergeToMain's core merge flow: a clean rebase, a re-merge, the exempt fix-claim arm,
+ * conflict resolution and its re-review, the pinned-sha fast-forward, and the parallel-merge
  * structure and unwritable-events guards. The in-lock post-rebase re-check lives in
  * merge-to-main-recheck.test.ts, the diff-line multiset in merge-diff.test.ts; shared helpers
  * in fixtures/merge-to-main-fixtures.ts. */
@@ -19,7 +19,7 @@ import { advanceMain } from "./fixtures/merger-fixtures.js";
 import { assertWorktreeSettled, commitIn, headSha, initializedRepo, initializedWorktree, mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { conflictedWorktree, makeCtx, piResult, seedFeatureAPlannedToDone } from "./fixtures/merge-to-main-fixtures.js";
 
-test("a clean rebase lands as changed with a merged event and linear history", async () => {
+test("a clean rebase merges as changed with a merged event and linear history", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
@@ -38,55 +38,55 @@ test("a clean rebase lands as changed with a merged event and linear history", a
   assert.equal(merged[0]!.summary, "branch work");
 });
 
-test("a re-land of a change main already holds logs no second merged event", async () => {
+test("a re-merge of a change main already holds logs no second merged event", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
   const changeHead = headSha(wt);
-  // Main already holds this change and has moved on past it — the leftover-recovery re-land
-  // shape: the landing's fast-forward is a no-op, so main's head is a later commit.
+  // Main already holds this change and has moved on past it — the leftover-recovery re-merge
+  // shape: the merge's fast-forward is a no-op, so main's head is a later commit.
   sh(root, "git", "merge", "--ff-only", changeHead);
   const laterMain = advanceMain(root, "after.txt", "after\n");
 
   const { ctx } = makeCtx(root);
   const result = await mergeToMain(ctx, wt, "branch work");
 
-  assert.equal(result, "changed", "the change is on main, so the landing is done, not blocked");
+  assert.equal(result, "changed", "the change is on main, so the merge is done, not blocked");
   assert.equal(mainSha(root), laterMain, "the no-op fast-forward leaves main where it was");
   assert.equal(
     eventsOfType(root, "merged").length,
     0,
-    "an already-held change is not re-counted as a fresh landing",
+    "an already-held change is not re-counted as a fresh merge",
   );
 });
 
-test("a fix-claim block in the landing's exempt arm warns, names the reason to the lander, and never runs pi", async () => {
+test("a fix-claim block in the merge's exempt arm warns, names the reason to the merger, and never runs pi", async () => {
   const { root, wt } = await initializedWorktree();
-  // BUGS.md's template ends with "## Fixed"; an appended entry lands in that section. Its body
+  // BUGS.md's template ends with "## Fixed"; an appended entry merges in that section. Its body
   // names no symbol that exists on the tree, so the exempt arm's fix-claim cross-check
-  // (falseFixReason, src/verdict/fix-claim.ts) must block the landing — and, per BUGS.md
-  // 2026-10-02, say so on the feed and to the lander instead of failing silently.
+  // (falseFixReason, src/verdict/fix-claim.ts) must block the merge — and, per BUGS.md
+  // 2026-10-02, say so on the feed and to the merger instead of failing silently.
   fs.appendFileSync(
     wt + "/BUGS.md",
     "\n### A bug nobody fixed (found by test 2026-10-02)\n\n- Fix: `noSuchHelperFn` handles it.\n",
   );
   commitIn(wt, "md-only fix record");
-  // Move main so the landing rebase rewrites the branch head: a no-op rebase takes the
-  // "byte-identical to what the gate already checked" skip, and this landing was never
+  // Move main so the merge rebase rewrites the branch head: a no-op rebase takes the
+  // "byte-identical to what the gate already checked" skip, and this merge was never
   // reviewed — the rewrite is what routes it through the exempt arm's cross-checks.
   fs.writeFileSync(path.join(root, "unrelated.txt"), "main moved\n");
   commitIn(root, "main moves on");
   const { ctx, calls } = makeCtx(root);
   const blocked: string[] = [];
-  ctx.onLandingBlocked = (reason) => blocked.push(reason);
+  ctx.onMergeBlocked = (reason) => blocked.push(reason);
   const mainBefore = mainSha(root);
 
   const result = await mergeToMain(ctx, wt, "md-only fix record");
 
   assert.equal(result, "merge_blocked");
   assert.equal(calls.length, 0, "no check ran on an exempt diff — and no pi run either");
-  assert.equal(mainSha(root), mainBefore, "nothing landed");
-  assert.equal(blocked.length, 1, "the lander is told the block reason for lastError");
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
+  assert.equal(blocked.length, 1, "the merger is told the block reason for lastError");
   assert.match(blocked[0]!, /^md-only BUGS.md edit moves/);
   assert.deepEqual(
     warningMessages(root).filter((m) => m.startsWith("merge blocked:")),
@@ -96,7 +96,7 @@ test("a fix-claim block in the landing's exempt arm warns, names the reason to t
   assertWorktreeSettled(wt);
 });
 
-test("a rebase conflict is resolved by one pi run and lands with linear history", async () => {
+test("a rebase conflict is resolved by one pi run and merges with linear history", async () => {
   // Advance main with a conflicting edit while the tick's work is unmerged.
   const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
@@ -138,7 +138,7 @@ test("the conflict resolver prompt carries both sides' intent", async () => {
   assert.match(prompt, /see "What main changed in these files" above/);
 });
 
-test("the conflict resolver runs on the strong tier over the config the landing was handed", async () => {
+test("the conflict resolver runs on the strong tier over the config the merge was handed", async () => {
   const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\n");
@@ -156,7 +156,7 @@ test("the conflict resolver runs on the strong tier over the config the landing 
   assert.equal(calls[0]!.config?.model, "strong", "the resolver run was handed the strong tier's selector");
 });
 
-test("a conflict resolution that adds lines the reviewed change never added is re-reviewed before landing", async () => {
+test("a conflict resolution that adds lines the reviewed change never added is re-reviewed before merge", async () => {
   const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     // The resolution goes beyond combining the two sides: "sneaky extra" is a line neither the
@@ -178,7 +178,7 @@ test("a conflict resolution that adds lines the reviewed change never added is r
   assert.equal(calls.length, 1, "exactly one resolution attempt per tick");
 });
 
-test("a conflict resolution that stays inside the reviewed change's lines lands with no re-review", async () => {
+test("a conflict resolution that stays inside the reviewed change's lines merges with no re-review", async () => {
   const { root, wt } = await conflictedWorktree();
   const { ctx, calls } = makeCtx(root, async (w) => {
     // Keep both sides verbatim: the resolved diff ahead of main adds only "branch", which the
@@ -194,13 +194,13 @@ test("a conflict resolution that stays inside the reviewed change's lines lands 
 
   const result = await mergeToMain(ctx, wt, "branch edit");
 
-  assert.equal(result, "changed", "a faithful resolution lands");
+  assert.equal(result, "changed", "a faithful resolution merges");
   assert.equal(rechecked, 0, "no re-review was charged for it");
   assert.equal(calls.length, 1);
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "main\nbranch\n");
 });
 
-test("a re-review that rejects a diverging conflict resolution is terminal — nothing lands", async () => {
+test("a re-review that rejects a diverging conflict resolution is terminal — nothing merges", async () => {
   const { root, wt } = await conflictedWorktree();
   const { ctx } = makeCtx(root, async (w) => {
     fs.writeFileSync(path.join(w, "seed.txt"), "combined\nsneaky extra\n");
@@ -212,7 +212,7 @@ test("a re-review that rejects a diverging conflict resolution is terminal — n
   const result = await mergeToMain(ctx, wt, "branch edit");
 
   assert.equal(result, "rejected");
-  assert.equal(mainSha(root), mainBefore, "nothing landed");
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
   assertWorktreeSettled(wt);
 });
 
@@ -275,7 +275,7 @@ test("a second conflict on replay aborts after one resolution attempt", async ()
   assert.equal(await aheadOfMain(wt, "main"), 2, "both commits survive for the next attempt");
 });
 
-test("a fast-forward that git refuses reports merge_blocked without landing", async () => {
+test("a fast-forward that git refuses reports merge_blocked without merge", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "seed.txt"), "branch\n");
   commitIn(wt, "branch edit");
@@ -290,16 +290,16 @@ test("a fast-forward that git refuses reports merge_blocked without landing", as
   assert.equal(result, "merge_blocked");
   assert.equal(mainSha(root), mainBefore, "main never moved");
   assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "local\n", "the local edit survives");
-  assert.equal(await aheadOfMain(wt, "main"), 1, "the branch keeps its commit for a later landing");
+  assert.equal(await aheadOfMain(wt, "main"), 1, "the branch keeps its commit for a later merge");
   assert.equal(eventsOfType(root, "merged").length, 0);
 });
 
-test("the landing-flow git helpers are exported from merge-git.js (regression)", async () => {
+test("the merge-flow git helpers are exported from merge-git.js (regression)", async () => {
   // These helpers have moved twice — git.ts → merge-to-main.ts (the bugfix that completed the
-  // half-finished organize tick 78 move) → merge-git.ts (when the lander and batch lander
+  // half-finished organize tick 78 move) → merge-git.ts (when the merger and batch merger
   // started calling them directly). Pin the placement at runtime so a half-finished move
-  // fails loudly instead of silently stranding the landing flow.
-  const landingGit = await import("../src/merge/merge-git.js");
+  // fails loudly instead of silently stranding the merge flow.
+  const mergeGit = await import("../src/merge/merge-git.js");
   for (const name of [
     "conflictedFiles",
     "rebaseOntoMain",
@@ -308,7 +308,7 @@ test("the landing-flow git helpers are exported from merge-git.js (regression)",
     "continueRebase",
     "ffMainTo",
   ] as const) {
-    assert.equal(typeof landingGit[name], "function", `merge-git.js exports ${name}`);
+    assert.equal(typeof mergeGit[name], "function", `merge-git.js exports ${name}`);
   }
   // And one of them actually works from its new home: a real rebase onto an advanced main.
   const { root, wt } = await initializedWorktree();
@@ -316,13 +316,13 @@ test("the landing-flow git helpers are exported from merge-git.js (regression)",
   commitIn(wt, "branch work");
   fs.writeFileSync(path.join(root, "seed.txt"), "main advanced\n");
   commitIn(root, "main edit");
-  assert.equal(await landingGit.rebaseOntoMain(wt, "main"), true);
-  assert.equal(await landingGit.ffMainTo(root, branchName("improve"), "main"), true);
+  assert.equal(await mergeGit.rebaseOntoMain(wt, "main"), true);
+  assert.equal(await mergeGit.ffMainTo(root, branchName("improve"), "main"), true);
   assert.equal(mainSha(root), headSha(wt));
 });
 
 /** A detached worktree (no branch) with one commit ahead of main; returns its head sha.
- * The seam merge queue 2/5 builds on: landing takes a ref from any worktree. */
+ * The seam merge queue 2/5 builds on: merge takes a ref from any worktree. */
 function detachedAheadOfMain(repo: string): string {
   const wt = path.join(repo, ".detached");
   sh(repo, "git", "worktree", "add", "-d", wt);
@@ -332,12 +332,12 @@ function detachedAheadOfMain(repo: string): string {
   return headSha(wt);
 }
 
-/** The regression merge queue 2/5 exists for: the lander pins a BARE SHA (a branch ref tracks
+/** The regression merge queue 2/5 exists for: the merger pins a BARE SHA (a branch ref tracks
  * its own tip through the rebase, but a pinned sha does not move when git rebase rewrites it).
- * When main moves between commit and landing — the common case under concurrency, since review
+ * When main moves between commit and merge — the common case under concurrency, since review
  * runs outside the merge lock — fast-forwarding to the original pin would fail as merge_blocked;
- * ff'ing to the worktree's post-rebase HEAD lands cleanly. */
-test("a detached worktree's pinned sha lands when main moved after the commit (ff to post-rebase tip)", async () => {
+ * ff'ing to the worktree's post-rebase HEAD merges cleanly. */
+test("a detached worktree's pinned sha merges when main moved after the commit (ff to post-rebase tip)", async () => {
   const root = await initializedRepo();
   // A merge-style detached worktree at its production path: checked out at a bare sha, not on
   // a branch ref. Under root so .tumwater/ exists for the merge lock (as in the real flow).
@@ -359,7 +359,7 @@ test("a detached worktree's pinned sha lands when main moved after the commit (f
   assert.equal(fs.readFileSync(path.join(root, "hello.txt"), "utf8"), "hi\n");
 });
 
-test("ffMainTo lands a bare sha from a detached worktree while root is on main", async () => {
+test("ffMainTo merges a bare sha from a detached worktree while root is on main", async () => {
   const repo = makeRepo();
   const sha = detachedAheadOfMain(repo);
 
@@ -369,7 +369,7 @@ test("ffMainTo lands a bare sha from a detached worktree while root is on main",
   assert.ok(fs.existsSync(path.join(repo, "new.txt")));
 });
 
-test("ffMainTo lands a bare sha via ref push when root is on another branch", async () => {
+test("ffMainTo merges a bare sha via ref push when root is on another branch", async () => {
   const repo = makeRepo();
   sh(repo, "git", "checkout", "-b", "scratch");
   const sha = detachedAheadOfMain(repo);
@@ -410,7 +410,7 @@ test("a merged diff that posts new Open questions emits one question_posted per 
 });
 
 /** A PLANS.md with the named entries under ## Planned and ## Done — the shape two parallel
- * landings stand on when each moves a different entry to the top of ## Done. */
+ * merges stand on when each moves a different entry to the top of ## Done. */
 function plansDoc(planned: string[], done: string[]): string {
   const entry = (name: string, isDone: boolean) =>
     `### Entry ${name} (planned 2026-10-07${isDone ? ", done 2026-10-07" : ""})\n\n**Goal.** ${name}.`;
@@ -421,10 +421,10 @@ function occurrences(text: string, needle: string): number {
   return text.split(needle).length - 1;
 }
 
-test("two changes each moving a different plan to Done land with no conflict-resolution pi run", async () => {
+test("two changes each moving a different plan to Done merge with no conflict-resolution pi run", async () => {
   // plans/parallel-work-instances.md part 3/7: with A and C apart in the file, the diff3 conflict
   // is the insert-only hunk at the top of ## Done (empty base, both sides non-empty). The
-  // deterministic pass settles it; no model run, and the later landing (A) stays first.
+  // deterministic pass settles it; no model run, and the later merge (A) stays first.
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(root, "PLANS.md"), plansDoc(["A", "B", "C", "D", "E"], ["Z"]));
   commitIn(root, "seed the backlog");
@@ -449,9 +449,9 @@ test("two changes each moving a different plan to Done land with no conflict-res
   const text = fs.readFileSync(path.join(root, "PLANS.md"), "utf8");
   const a = "### Entry A (planned 2026-10-07, done 2026-10-07)";
   const c = "### Entry C (planned 2026-10-07, done 2026-10-07)";
-  assert.equal(occurrences(text, a), 1, "the change's entry landed once");
+  assert.equal(occurrences(text, a), 1, "the change's entry merged once");
   assert.equal(occurrences(text, c), 1, "main's entry is present once");
-  assert.ok(text.indexOf(a) < text.indexOf(c), "the later landing (A) sits first under ## Done");
+  assert.ok(text.indexOf(a) < text.indexOf(c), "the later merge (A) sits first under ## Done");
   assert.equal(eventsOfType(root, "merged").length, 1);
 });
 
@@ -484,7 +484,7 @@ test("a code conflict beside an insert-only PLANS.md conflict sends only the cod
   assert.equal(fs.readFileSync(path.join(root, "code.txt"), "utf8"), "resolved\n");
 });
 
-test("a merge whose events feed is unwritable still lands and reports changed", async () => {
+test("a merge whose events feed is unwritable still merges and reports changed", async () => {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
   commitIn(wt, "branch work");
@@ -501,9 +501,9 @@ test("a merge whose events feed is unwritable still lands and reports changed", 
   assert.equal(mainSha(root), headSha(wt), "the fast-forward happened despite the broken feed");
 });
 
-test("a duplicate ## Done still blocks the landing when the events feed is unwritable", async () => {
+test("a duplicate ## Done still blocks the merge when the events feed is unwritable", async () => {
   // structureBlocked (merge-to-main.ts) warns and then RETURNS the block reason; an EISDIR on
-  // that warning must not turn the designed "merge_blocked" into a thrown landing error. Replace
+  // that warning must not turn the designed "merge_blocked" into a thrown merge error. Replace
   // the feed with a directory so the block's append throws while every other file still writes.
   const { root, wt } = await initializedWorktree();
   seedFeatureAPlannedToDone(root, wt);
@@ -524,9 +524,9 @@ test("a duplicate ## Done still blocks the landing when the events feed is unwri
   assert.equal(mainSha(root), mainBefore, "main is untouched");
 });
 
-test("a fix-claim block still blocks the landing when the events feed is unwritable", async () => {
+test("a fix-claim block still blocks the merge when the events feed is unwritable", async () => {
   // exemptSkipBlockReason (merge-to-main.ts) warns for the fix-claim block and then returns it;
-  // the warning is best-effort so the block reason still reaches the lander on a broken feed.
+  // the warning is best-effort so the block reason still reaches the merger on a broken feed.
   const { root, wt } = await initializedWorktree();
   fs.appendFileSync(
     wt + "/BUGS.md",
@@ -537,13 +537,13 @@ test("a fix-claim block still blocks the landing when the events feed is unwrita
   commitIn(root, "main moves on");
   const { ctx } = makeCtx(root);
   const blocked: string[] = [];
-  ctx.onLandingBlocked = (reason) => blocked.push(reason);
+  ctx.onMergeBlocked = (reason) => blocked.push(reason);
   const mainBefore = mainSha(root);
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
 
   const result = await mergeToMain(ctx, wt, "md-only fix record");
 
   assert.equal(result, "merge_blocked", "the fix-claim block stands despite the broken feed");
-  assert.equal(mainSha(root), mainBefore, "nothing landed");
-  assert.equal(blocked.length, 1, "the lander is still told the block reason for lastError");
+  assert.equal(mainSha(root), mainBefore, "nothing merged");
+  assert.equal(blocked.length, 1, "the merger is still told the block reason for lastError");
 });

@@ -2,33 +2,33 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
-import { enqueueLanding, type LandingEntry } from "../src/merge/merge-queue.js";
+import { enqueueMerge, type MergeEntry } from "../src/merge/merge-queue.js";
 import path from "node:path";
-import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/paths.js";
+import { mergeQueueDir, mergeStatePath, orchestratorStatePath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 
 // The `queue` command: the durable merge queue in execution order, via the CLI the way the
 // cli-diff tests `diff` — an initialized repo, child-process runs, output assertions.
 
-function entry(role: string, sha: string, run = 1, summary = `summary from ${role} #${run}`): LandingEntry {
+function entry(role: string, sha: string, run = 1, summary = `summary from ${role} #${run}`): MergeEntry {
   return { role, sha, run, summary, enqueuedAt: Date.now() };
 }
 
 test("an empty queue prints the empty line and exits 0", async () => {
   const repo = makeRepo();
   await initProject(repo, "queue empty test");
-  assert.ok(!fs.existsSync(landQueueDir(repo)), "no queue dir yet");
+  assert.ok(!fs.existsSync(mergeQueueDir(repo)), "no queue dir yet");
   const r = await cli(repo, "queue");
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "merge queue empty");
 });
 
-test("queue lists each waiting landing in execution order with its fields", async () => {
+test("queue lists each waiting merge in execution order with its fields", async () => {
   const repo = makeRepo();
   await initProject(repo, "queue list test");
-  enqueueLanding(repo, entry("improve", "a".repeat(40), 3, "tidy the parser"));
-  enqueueLanding(repo, entry("organize", "b".repeat(40), 4, "split the module"));
+  enqueueMerge(repo, entry("improve", "a".repeat(40), 3, "tidy the parser"));
+  enqueueMerge(repo, entry("organize", "b".repeat(40), 4, "split the module"));
   const r = await cli(repo, "queue");
   assert.equal(r.code, 0);
   const lines = r.stdout.trimEnd().split("\n");
@@ -43,7 +43,7 @@ test("queue --json prints the collector's {entries, unreadable} document with ra
   await initProject(repo, "queue json test");
   const sha = "c".repeat(40);
   const before = Date.now();
-  enqueueLanding(repo, entry("improve", sha, 7, "raw payload"));
+  enqueueMerge(repo, entry("improve", sha, 7, "raw payload"));
   const r = await cli(repo, "queue", "--json");
   assert.equal(r.code, 0);
   const payload = JSON.parse(r.stdout) as {
@@ -73,12 +73,12 @@ test("queue prints the in-flight label only while an orchestrator is alive", asy
   const repo = makeRepo();
   await initProject(repo, "queue inflight test");
   const sha = "a".repeat(40);
-  enqueueLanding(repo, entry("improve", sha, 3, "tidy the parser"));
+  enqueueMerge(repo, entry("improve", sha, 3, "tidy the parser"));
   const marker = { role: "improve", sha, summary: "tidy", startedAt: Date.now() - 120_000, stage: "reviewing" };
-  fs.mkdirSync(path.dirname(landingStatePath(repo)), { recursive: true });
-  fs.writeFileSync(landingStatePath(repo), JSON.stringify(marker));
+  fs.mkdirSync(path.dirname(mergeStatePath(repo)), { recursive: true });
+  fs.writeFileSync(mergeStatePath(repo), JSON.stringify(marker));
   const stopped = await cli(repo, "queue");
-  assert.doesNotMatch(stopped.stdout, /\[landing/, "no orchestrator alive: today's line");
+  assert.doesNotMatch(stopped.stdout, /\[merge/, "no orchestrator alive: today's line");
   assert.equal(JSON.parse((await cli(repo, "queue", "--json")).stdout).inFlight, undefined);
   // This test process stands in for a live orchestrator (its pid is alive).
   fs.mkdirSync(path.dirname(orchestratorStatePath(repo)), { recursive: true });

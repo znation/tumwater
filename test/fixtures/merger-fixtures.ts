@@ -4,7 +4,7 @@ import type { LandRequest, LanderContext } from "../../src/merge/merge-core.js";
 import { landVetted, vetRequest, type BatchContext, type BatchRoleWiring } from "../../src/merge/merge-batch.js";
 import { setRef } from "../../src/git/git.js";
 import { ensureWorktree } from "../../src/git/worktree.js";
-import { eventsLogPath, landingRefName } from "../../src/paths.js";
+import { eventsLogPath, mergeRefName } from "../../src/paths.js";
 import { defaultConfig } from "../../src/config/config.js";
 import { freshLoopState } from "../../src/loop/loop-state.js";
 import { readEvents } from "../../src/events/event-read.js";
@@ -27,7 +27,7 @@ import { ensureParentDir } from "../../src/files/files.js";
  * them, pinned-change repos in the queue shape the pipeline reads, and reviewer/check shims. */
 
 export const ROLE = "improve";
-export const REF = landingRefName(ROLE);
+export const REF = mergeRefName(ROLE);
 
 /** A compliant pi run result for the stubbed conflict-resolution runs. */
 export function piResult(over: Partial<PiRunResult> = {}): PiRunResult {
@@ -150,7 +150,7 @@ async function batchPinnedFixture(
       { reset: true },
     );
     shas[role] = sha;
-    await setRef(root, landingRefName(role), sha);
+    await setRef(root, mergeRefName(role), sha);
   }
   return { root, shas };
 }

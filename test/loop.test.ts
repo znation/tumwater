@@ -16,7 +16,7 @@ import { configRequestPath, piLogPath, worktreePath } from "../src/paths.js";
 import { readQaCoverage, recordFlow } from "../src/tick/qa-coverage.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { withPi, withIdlePi, logFlagsTo, TOUCH_SESSION } from "./fakes/fake-pi.js";
 import { waitForLogLines, watchdogClock } from "./helpers/wait.js";
@@ -35,11 +35,11 @@ test("a tick that changes files commits and merges to main", async () => {
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     // Merge queue 3/5: the tick ends at commit + pin — the landing is the orchestrator's
-    // separate step, and landHead drives it through the landing pipeline's own vet and merge,
+    // separate step, and mergeHead drives it through the landing pipeline's own vet and merge,
     // so the whole flow below is the production path.
     assert.equal(outcome.result, "queued");
     assert.equal(outcome.summary, "add hello file");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")));
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(runner.state.commits, 1);
@@ -68,8 +68,8 @@ test("run_start and review_start record the model each run starts on", async () 
     const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    // The review gate runs in the landing slot (landHead), not inside tick().
-    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
+    // The review gate runs in the landing slot (mergeHead), not inside tick().
+    assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     const starts = eventsOfType(repo, "run_start");
     assert.equal(starts[starts.length - 1]!.model, "prov/m1");
     const reviews = eventsOfType(repo, "review_start");
@@ -88,7 +88,7 @@ test("run_start and review_start omit model when none is configured (pi's own de
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const starts = eventsOfType(repo, "run_start");
     assert.equal("model" in starts[starts.length - 1]!, false);
     const reviews = eventsOfType(repo, "review_start");
@@ -114,7 +114,7 @@ test("a full tick → review → merge cycle lands on a repo whose only branch i
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(
-      await landHead(repo, runner, config, "improve", "trunk"),
+      await mergeHead(repo, runner, config, "improve", "trunk"),
       "changed",
       "the landing lands on trunk, the only branch there is",
     );
@@ -169,13 +169,13 @@ test("gen / peak ctx are per-tick windows: a second tick does not accumulate on 
     const runner = makeLoopRunner(repo, "improve");
     assert.equal((await runner.tick()).result, "queued");
     // After the first completed tick + its landing the state file holds that tick's usage only.
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.equal(runner.state.generatedTokens, 42);
     assert.equal(runner.state.peakContextTokens, 42);
     assert.equal(loadLoopState(repo, "improve").generatedTokens, 42);
 
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     // The second tick's totals REPLACE the first — not summed onto it (the old cumulative
     // bug showed 49 here). Peak ctx is a per-tick window too: 7, not max(42, 7).
     assert.equal(runner.state.generatedTokens, 7);
@@ -474,7 +474,7 @@ test("director skips with an empty inbox and runs a queued prompt", async () => 
     enqueuePrompt(repo, "please add request.txt");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "director"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "director"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "request.txt")));
     assert.equal(inboxSize(repo), 0, "a fulfilled prompt is not re-queued");
   });
@@ -540,7 +540,7 @@ test("worktree changes commit even when pi forgets the summary line: the subject
     const runner = makeLoopRunner(repo, "dedupe");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "dedupe"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "dedupe"), "changed");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /^tumwater\(dedupe\): Update x\.txt$/);
     const warnings = warningMessages(repo);
     assert.ok(warnings.some((w) => w.includes('reply had no SUMMARY line — follow-up gave none; subject derived from the changed files: "Update x.txt"')), JSON.stringify(warnings));
@@ -566,7 +566,7 @@ test("a missing SUMMARY is recovered with one follow-up turn in the tick's own s
   await withPi(script, async () => {
     const runner = makeLoopRunner(repo, "dedupe");
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "dedupe"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "dedupe"), "changed");
     const message = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(message, /^tumwater\(dedupe\): Add the x marker file\n/);
     assert.match(message, /WHY: the harness needed a fixture/);

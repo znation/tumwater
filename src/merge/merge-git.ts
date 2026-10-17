@@ -7,12 +7,12 @@ import { unquotePorcelainPath } from "../git/git-diff.js";
 import { CONFIG_BASENAME, configPath, primaryWorktreeLockPath } from "../paths.js";
 import { withStateLockAsync } from "../concurrency/lock.js";
 
-/** Git plumbing for the landing flow: rebasing a worktree branch onto main, inspecting and
- * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no landing policy
- * of their own. Landing policy (lock → rebase → verify → ff, conflict resolution, batch ff)
+/** Git plumbing for the merge flow: rebasing a worktree branch onto main, inspecting and
+ * finishing a conflicted rebase, and fast-forwarding main — the mechanics, with no merge policy
+ * of their own. Merge policy (lock → rebase → verify → ff, conflict resolution, batch ff)
  * lives in merge-to-main.ts on top of these. Moved here from merge-to-main.ts: the cluster started
  * as merge-to-main.ts-only helpers (organize tick 78, moving them out of git/git.ts), but the
- * lander and the batch lander grew to call them directly, leaving merge-to-main.ts exporting
+ * merger and the batch merger grew to call them directly, leaving merge-to-main.ts exporting
  * generic rebase/ff plumbing that had nothing to do with merging. */
 
 /** Paths currently in conflict (unmerged) in the worktree. C-quoted names are decoded to
@@ -83,7 +83,7 @@ export async function mainCommitsTouching(
  * cleaning up: "rebased" (including already up to date), "conflict" (the rebase stopped on
  * unmerged paths, which remain in the worktree for a resolver), or "other" (any other
  * failure). Shared by the two rebase wrappers below, which differ only in cleanup policy.
- * Rebase — not merge — keeps main's history linear: each tick lands as its own commit on top
+ * Rebase — not merge — keeps main's history linear: each tick merges as its own commit on top
  * of whatever main holds. */
 async function attemptRebase(
   wt: string,
@@ -144,7 +144,7 @@ export function hasConflictMarkers(wt: string, files: string[]): boolean {
 /** The reason naming every changed file that still carries a conflict marker, or undefined when
  * none do — the one home of the wording, shared by the stage check's pre-queue finding
  * (stage-check.ts) and the review gate's hard rejection (review.ts), so the two surfaces cannot
- * name the same leftover marker differently. Committing or landing one would put raw `<<<<<<<`
+ * name the same leftover marker differently. Committing or merge one would put raw `<<<<<<<`
  * lines on main (PLANS.md "Robust conflict landing, part 2/2"). Builds on hasConflictMarkers
  * above, the shared definition of what a marker is. */
 export function conflictMarkerReason(wt: string, files: string[]): string | undefined {
@@ -164,7 +164,7 @@ export async function continueRebase(wt: string): Promise<string> {
   return headOf(wt, "HEAD");
 }
 
-/** The live config's bytes, when the landing about to fast-forward `ref` would delete it
+/** The live config's bytes, when the merge about to fast-forward `ref` would delete it
  * (plans/portability.md §4b/7): the config file exists, is tracked in the current index (and
  * HEAD — a staged-or-dirty config makes `git merge --ff-only` refuse below, so the two agree
  * on every merge that can succeed), and is absent from the incoming tree. Anything else —
@@ -196,7 +196,7 @@ export function restoreConfigBytes(root: string, saved: Buffer | null): void {
  * post-rebase HEAD — a bare sha, which both arms accept (`merge --ff-only <sha>` and
  * `push . <sha>:<main>`). Uses a working-tree merge when the primary checkout is on main (so its
  * files update), otherwise a local ref push. Returns true on success. The working-tree arm
- * preserves the live config across a landing that untracks it (plans/portability.md §4b/7):
+ * preserves the live config across a merge that untracks it (plans/portability.md §4b/7):
  * without the write-back, the commit that removes the tracked config would delete the team's
  * running config out from under it and the next config poll would fall back to defaults. */
 export async function ffMainToOrWhy(
@@ -208,7 +208,7 @@ export async function ffMainToOrWhy(
   if (primaryBranch === mainBranch) {
     // The working-tree arm rewrites the same tracked files the CLI backlog writers read and
     // rewrite, so it shares their primary-worktree lock (paths.ts): without it a `tumwater bug`
-    // that read before this merge can rename its stale whole-file write over the landed change.
+    // that read before this merge can rename its stale whole-file write over the merged change.
     // The ref-push arm below touches no working tree and needs no lock; the save/merge/restore
     // stays one short section, never held across a build re-check.
     return withStateLockAsync(primaryWorktreeLockPath(root), async () => {

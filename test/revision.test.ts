@@ -6,14 +6,14 @@ import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/loo
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
 import { vetRequest } from "../src/merge/merge-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
-import { rejectedRefName, landingRefName } from "../src/paths.js";
+import { rejectedRefName, mergeRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { stageTickLanding } from "../src/tick/tick-stage.js";
-import { queuedLandings } from "../src/merge/merge-queue.js";
+import { queuedMerges } from "../src/merge/merge-queue.js";
 import { settleLandingOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/loop/leftover.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../src/git/commit-message.js";
@@ -287,7 +287,7 @@ test("a permanent reviewer config error still holds the pin when the events feed
     if (verdict.kind !== "result") return;
     assert.equal(verdict.result, "review_error", "the held pin reports review_error, not a throw");
     assert.equal(state.mergeReviewError?.selector, "bad/model", "the hold still names the selector");
-    assert.equal(await refSha(root, landingRefName(ROLE)), sha, "the pin is kept for a config change");
+    assert.equal(await refSha(root, mergeRefName(ROLE)), sha, "the pin is kept for a config change");
   });
 });
 
@@ -337,7 +337,7 @@ test("stageTickLanding carries the revision round onto the entry and clears stat
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.revision, undefined, "staging consumes the revision");
-  assert.equal(queuedLandings(root)[0]?.revisionRound, 1, "the round rides the queued merge");
+  assert.equal(queuedMerges(root)[0]?.revisionRound, 1, "the round rides the queued merge");
 });
 
 test("a user-request run that leaves a pending revision stages no round and keeps the revision", async () => {
@@ -354,7 +354,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
   const outcome = await stageTickLanding(ctx);
 
   assert.equal(outcome.result, "queued");
-  assert.equal(queuedLandings(root)[0]?.revisionRound, undefined, "a user change is not a revision");
+  assert.equal(queuedMerges(root)[0]?.revisionRound, undefined, "a user change is not a revision");
   assert.deepEqual(state.revision, revision, "the pending revision is left untouched");
 });
 
@@ -457,7 +457,7 @@ test("the run prompt skips the plain rejection note while a revision is due", ()
 test("the director never gets a revision: a rejection leaves no revision state", async () => {
   await withPi(reviewerPi("VERDICT: reject\n1. no good"), async () => {
     const { root, sha } = commitOffMain("seed.txt", "director work\n", "director work");
-    await setRef(root, landingRefName(DIRECTOR_ROLE), sha);
+    await setRef(root, mergeRefName(DIRECTOR_ROLE), sha);
     const state = freshLoopState(DIRECTOR_ROLE);
     const { ctx } = makeCtx(root, state);
     const w = batchWiring(ctx);
@@ -502,7 +502,7 @@ test("leftover recovery rebuilds a revision's round from its commit trailer", as
     ),
   );
   const sha = headSha(root);
-  await setRef(root, landingRefName(role), sha);
+  await setRef(root, mergeRefName(role), sha);
 
   const recovered = await recoverLeftover({ root, role, mainBranch: "main", tick: 8, wt: root });
 
@@ -549,7 +549,7 @@ test("a revision whose re-apply conflicts reaches the author with markers, not a
       assert.equal(runner.state.revision, undefined, "the revision is consumed by staging");
       assert.equal(runner.state.conflictHandback?.reason, "revision");
       assert.equal(runner.state.conflictHandback?.applied, true);
-      assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
+      assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "it still rides as revision round 1");
       assert.deepEqual(eventsOfType(repo, "conflict_handback").map((e) => e.reason), ["revision"]);
     },
   );

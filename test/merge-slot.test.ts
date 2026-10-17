@@ -2,7 +2,7 @@
  * charges a landing's own pi runs (reviewer + conflict resolution) to the AUTHORING role's live
  * state and records them on the merge_done/merge_failed event, the write-back, and the 4/5 marker's
  * per-change records. The full landing flow is pinned end-to-end through the pipeline
- * (orchestrator-fixtures.ts's landHead) in the loop and orchestrator tests, but those drive a fake
+ * (orchestrator-fixtures.ts's mergeHead) in the loop and orchestrator tests, but those drive a fake
  * pi that reports no usage, so the nonzero-usage branches were never exercised: a landing whose
  * reviewer burns tokens and cost is exactly what feeds `tumwater report` and the daily budget cap,
  * and a broken fold there would silently lose that spend. These pin the accounting branches
@@ -24,19 +24,19 @@ import {
   writeLandingMarker,
   writeLandingOutcome,
 } from "../src/merge/merge-slot.js";
-import { eventsLogPath, landingRefName, landingStatePath } from "../src/paths.js";
+import { eventsLogPath, mergeRefName, mergeStatePath } from "../src/paths.js";
 import { refSha, setRef } from "../src/git/git.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { applyTickOutcome, ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
-import { enqueueLanding, headLanding, queueDepth } from "../src/merge/merge-queue.js";
+import { enqueueMerge, headMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { warningEvents } from "./fixtures/log-fixtures.js";
 import { readClaudeAccount } from "../src/agent/claude/claude-account.js";
 import type { LoopRunner } from "../src/loop/loop.js";
-import type { LandingEntry } from "../src/merge/merge-queue.js";
+import type { MergeEntry } from "../src/merge/merge-queue.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { makeRepo, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
@@ -49,10 +49,10 @@ function piRun(outputTokens: number, costUsd: number): PiRunResult {
 }
 
 /** Queue one landing in a fresh repo and return its entry plus the file a drop removes. */
-function queued(root: string, role = "improve"): { entry: LandingEntry; file: string } {
-  const entry: LandingEntry = { role, sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: Date.now() };
-  enqueueLanding(root, entry);
-  const head = headLanding(root);
+function queued(root: string, role = "improve"): { entry: MergeEntry; file: string } {
+  const entry: MergeEntry = { role, sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: Date.now() };
+  enqueueMerge(root, entry);
+  const head = headMerge(root);
   assert.ok(head, "fixture sanity: the landing is queued");
   return head;
 }
@@ -190,9 +190,9 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   const author = makeLoopRunner(root, "improve");
   const { state } = author;
   state.phase = "review"; // the tick lifecycle's in-flight landing marker on the author's state
-  assert.ok(await refSha(root, landingRefName("improve")) === null, "fixture sanity: no pin exists");
+  assert.ok(await refSha(root, mergeRefName("improve")) === null, "fixture sanity: no pin exists");
 
-  const result = await landHead(root, author, defaultConfig(), "improve");
+  const result = await mergeHead(root, author, defaultConfig(), "improve");
 
   assert.equal(result, "error", "the throw surfaces as an outcome, never a rejection");
   assert.equal(state.lastResult, "error");
@@ -201,7 +201,7 @@ test("an unexpected throw inside the landing degrades to an error outcome — th
   assert.ok(failed, "even a throw logs merge_failed");
   assert.equal(failed.result, "error");
   assert.equal(queueDepth(root), 0, "every outcome drops the entry — a poison entry must not wedge the drain");
-  assert.equal(await refSha(root, landingRefName("improve")), null, "no pin existed and the error path fabricates none");
+  assert.equal(await refSha(root, mergeRefName("improve")), null, "no pin existed and the error path fabricates none");
   assert.equal(readLandingMarker(root), null, "the in-flight marker is removed even on the error path");
   assert.equal(loadLoopState(root, "improve").lastResult, "error", "the outcome is persisted, not just folded in memory");
 });
@@ -341,7 +341,7 @@ test("addLandingChange and setLandingStage stamp stageSince on each stage entry"
   assert.equal(b.stageSince, b.startedAt, "a never-transitioned change's stageSince is its start");
   // A foreign stageSince is dropped by isLandingChange rather than read field-by-field.
   fs.writeFileSync(
-    landingStatePath(root2),
+    mergeStatePath(root2),
     JSON.stringify({
       role: "beta", sha: "b".repeat(40), summary: "s", startedAt: 1, stage: "rebasing", stageSince: "oops",
       changes: [{ role: "beta", sha: "b".repeat(40), summary: "s", status: "merging", stageSince: "oops" }],
@@ -388,7 +388,7 @@ test("the marker's records come and go per change, and its top level follows the
   const root = makeRepo();
   const entries = Object.fromEntries(
     ["alpha", "beta", "gamma"].map((role) => [role, { role, sha: `${role}-sha`, run: 1, summary: `${role} work`, enqueuedAt: 1 }]),
-  ) as Record<string, LandingEntry>;
+  ) as Record<string, MergeEntry>;
   const records = () => readLandingMarker(root)!.changes!.map((c) => `${c.role}=${c.status}/${c.stage ?? "-"}`);
 
   // Two vets at once: each opens its own record, with its own start, at its rebase onto main.
@@ -449,11 +449,11 @@ test("landingChanges reads a one-change marker as one landing record", () => {
 
 test("a foreign changes shape or a null record degrades instead of crashing a landing", () => {
   const root = makeRepo();
-  fs.mkdirSync(path.dirname(landingStatePath(root)), { recursive: true });
+  fs.mkdirSync(path.dirname(mergeStatePath(root)), { recursive: true });
   // `changes` present but not an array: as unusable as an absent field. The reads fall back to
   // the legacy top-level shape and the writers no-op — never `scalar.find`.
   fs.writeFileSync(
-    landingStatePath(root),
+    mergeStatePath(root),
     JSON.stringify({ role: "improve", sha: "a", summary: "s", startedAt: 1, changes: "oops" }),
   );
   assert.doesNotThrow(() => setLandingChangeStatus(root, "improve", "approved"));
@@ -462,7 +462,7 @@ test("a foreign changes shape or a null record degrades instead of crashing a la
   // A record array carrying a null entry: the bad entries read as absent and the good one still
   // advances, so the pipeline and the observers keep working.
   fs.writeFileSync(
-    landingStatePath(root),
+    mergeStatePath(root),
     JSON.stringify({
       role: "x",
       sha: "x",
@@ -485,9 +485,9 @@ test("a queued landing's record names each phase while it runs: the gate's check
     (d) => fs.appendFileSync(path.join(d, "seed.txt"), "the work\n"),
     "the work",
   );
-  await setRef(root, landingRefName("improve"), sha);
-  const entry: LandingEntry = { role: "improve", sha, run: 3, summary: "the work", enqueuedAt: Date.now() };
-  enqueueLanding(root, entry);
+  await setRef(root, mergeRefName("improve"), sha);
+  const entry: MergeEntry = { role: "improve", sha, run: 3, summary: "the work", enqueuedAt: Date.now() };
+  enqueueMerge(root, entry);
 
   // Every observation point appends the marker's stage as the observers would read it: the
   // project's declared check (the vet's gate pre-check, then the merge's in-lock re-check), and
@@ -496,7 +496,7 @@ test("a queued landing's record names each phase while it runs: the gate's check
   // too. (An empty or doc-only move would leave the verified tree's bytes, plus at most exempt
   // paths, and the re-check would rightly be skipped.)
   const rec = path.join(tmpdir(), "stages");
-  const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${landingStatePath(root)}' | head -n 1`;
+  const stageOf = `sed -n 's/.*"stage": *"\\([a-z-]*\\)".*/\\1/p' '${mergeStatePath(root)}' | head -n 1`;
   const config = { ...defaultConfig(), check: { command: `echo "check:$(${stageOf})" >> '${rec}'` } };
   await withPi(
     [
@@ -509,7 +509,7 @@ test("a queued landing's record names each phase while it runs: the gate's check
     async () => {
       const author = makeLoopRunner(root, "improve", config);
 
-      const result = await landHead(root, author, config, "improve");
+      const result = await mergeHead(root, author, config, "improve");
 
       assert.equal(result, "changed", `the landing lands: ${author.state.lastError ?? ""}`);
       assert.deepEqual(
@@ -546,7 +546,7 @@ test("a kept legacy record without startedAt or stage never leaves the top level
   // Overwrite with a marker an older generation wrote: a landing record with no startedAt and
   // no stage of its own (the documented old shape).
   fs.writeFileSync(
-    landingStatePath(root),
+    mergeStatePath(root),
     JSON.stringify({
       role: "beta",
       sha: "b".repeat(40),
@@ -572,7 +572,7 @@ test("a marker whose top level lost its stage falls back to merging on the next 
   // elapsed label). The next status move rewrites it — the write must name a stage, not
   // propagate the missing one.
   fs.writeFileSync(
-    landingStatePath(root),
+    mergeStatePath(root),
     JSON.stringify({
       role: "alpha",
       sha: "a".repeat(40),
@@ -593,7 +593,7 @@ test("a failing marker write never throws — the landing proceeds and the old f
   const before = readLandingMarker(root)!;
   // The state directory gone read-only: the atomic write cannot create its tmp file. The
   // marker is display-only, so the call must swallow the failure rather than fail a landing.
-  const dir = path.dirname(landingStatePath(root));
+  const dir = path.dirname(mergeStatePath(root));
   fs.chmodSync(dir, 0o555);
   try {
     assert.doesNotThrow(() => setLandingStage(root, "improve", "reviewing"));

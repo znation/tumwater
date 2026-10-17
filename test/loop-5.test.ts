@@ -13,7 +13,7 @@ import { defaultConfig } from "../src/config/config.js";
 import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { refSha } from "../src/git/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { landingRefName, worktreePath } from "../src/paths.js";
+import { mergeRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
@@ -56,7 +56,7 @@ test("a leftover whose pin cannot be written ends the tick in error and stays on
     // The commit stays on the branch (invariant 1: nothing lost) and nothing was queued —
     // the pin never took, so no landing entry can hold it.
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "1");
-    assert.equal(await refSha(repo, landingRefName("improve")), null, "no pin was written");
+    assert.equal(await refSha(repo, mergeRefName("improve")), null, "no pin was written");
     assert.equal(queueDepth(repo), 0, "nothing was queued without a pin");
   });
 });

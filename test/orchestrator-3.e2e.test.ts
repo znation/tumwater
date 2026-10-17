@@ -17,16 +17,16 @@ import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import {
   abortRequestPath,
   branchName,
-  landQueueDir,
-  landingRefName,
-  landingStatePath,
+  mergeQueueDir,
+  mergeRefName,
+  mergeStatePath,
 } from "../src/paths.js";
-import { enqueueLanding, queueDepth } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queueDepth } from "../src/merge/merge-queue.js";
 import { setRef } from "../src/git/git.js";
 import {
   fastConfig,
-  landHead,
-  landingRefExists,
+  mergeHead,
+  mergeRefExists,
   makeFastRepo,
   scriptedRedeployer,
   startRedeployRun,
@@ -66,8 +66,8 @@ function seedSurvivorCommit(repo: string, file: string, label: string): string {
     "",
   );
   sh(repo, "git", "update-ref", `refs/heads/${branchName("clean")}`, sha);
-  sh(repo, "git", "update-ref", landingRefName("clean"), sha);
-  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: label, enqueuedAt: Date.now() });
+  sh(repo, "git", "update-ref", mergeRefName("clean"), sha);
+  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: label, enqueuedAt: Date.now() });
   return sha;
 }
 
@@ -105,13 +105,13 @@ test("a user abort during a landing kills it and discards the pinned ref", async
     // the pinned ref: a deliberate stop kills the work under review, the landing's
     // counterpart of the pre-3/5 mid-review user abort. (A shutdown abort keeps the ref.)
     await waitFor(
-      () => loadLoopState(repo, "clean").lastResult === "aborted" && !landingRefExists(repo, "clean"),
+      () => loadLoopState(repo, "clean").lastResult === "aborted" && !mergeRefExists(repo, "clean"),
       "the aborted landing to settle and discard its pinned ref",
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
     assert.ok(!fs.existsSync(path.join(repo, "hello.txt")), "nothing landed on main");
     assert.equal(queueDepth(repo), 0, "the entry was dropped after the aborted landing");
-    assert.ok(!landingRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
+    assert.ok(!mergeRefExists(repo, "clean"), "the pinned commit was discarded with the deliberate stop");
 
     // The landing, not the tick, was aborted: one merge_failed, no run_aborted, no second tick.
     const failed = eventsOfType(repo, "merge_failed");
@@ -199,7 +199,7 @@ test("a queue entry surviving a restart drains through the gate on next start", 
       "no failed landing",
     );
     assert.equal(loadLoopState(repo, "clean").commits, 1, "the landed change counts as one commit");
-    assert.ok(!landingRefExists(repo, "clean"), "the pin is deleted with a successful landing");
+    assert.ok(!mergeRefExists(repo, "clean"), "the pin is deleted with a successful landing");
   } finally {
     await stopOrchestrator(orch, restore);
   }
@@ -226,7 +226,7 @@ test("an entry whose sha main already holds is dropped at the drain without a la
     );
     // …and the crash-between-ff-and-drop residue is simulated: the same sha re-enqueued.
     const sha = headSha(repo);
-    enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
+    enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "stale duplicate", enqueuedAt: Date.now() });
     await waitFor(() => queueDepth(repo) === 0, "the stale entry to be dropped");
     assert.equal(
       fs.readFileSync(rev, "utf8").trim(),
@@ -257,14 +257,14 @@ test("a stale marker beside an already-merged queue head is cleared so an idle t
   // Nothing-to-do runs: the drain must drop the entry without any author or reviewer run.
   const restore = fakePi(["printf '%s\\n' '" + assistantLine("TUMWATER_NOTHING_TO_DO") + "'"].join("\n"));
   const sha = headSha(repo);
-  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "already merged", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "already merged", enqueuedAt: Date.now() });
   writeLandingMarker(repo, { role: "clean", sha, summary: "already merged", startedAt: Date.now(), stage: "merging" });
-  assert.ok(fs.existsSync(landingStatePath(repo)), "fixture sanity: the stale marker exists");
+  assert.ok(fs.existsSync(mergeStatePath(repo)), "fixture sanity: the stale marker exists");
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(() => queueDepth(repo) === 0, "the already-merged entry to be dropped");
     assert.ok(
-      !fs.existsSync(landingStatePath(repo)),
+      !fs.existsSync(mergeStatePath(repo)),
       "the stale marker naming the dropped head is cleared",
     );
     assert.equal(
@@ -278,8 +278,8 @@ test("a stale marker beside an already-merged queue head is cleared so an idle t
 });
 
 test("a torn queue-head file is dropped at the drain so the queue drains", async () => {
-  // Seeds exactly what a hard crash mid-enqueueLanding leaves behind: a truncated queue
-  // file that sorts before a live entry. headLanding reads null for the torn head and
+  // Seeds exactly what a hard crash mid-enqueueMerge leaves behind: a truncated queue
+  // file that sorts before a live entry. headMerge reads null for the torn head and
   // nothing else drops it, so before the fix the live entry behind it never landed and
   // its role's interlock (a non-empty land queue) held the role's ticks forever.
   const repo = await makeFastRepo("torn head drain e2e test", ["clean"]);
@@ -295,7 +295,7 @@ test("a torn queue-head file is dropped at the drain so the queue drains", async
   // restart-drain test uses.
   seedSurvivorCommit(repo, "torn.txt", "torn survivor");
   // The torn file sorts BEFORE the live entry: an interrupted write of the same shape.
-  fs.writeFileSync(path.join(landQueueDir(repo), "0000000000-000000-1.json"), '{"role": "clean", "sha": "abc');
+  fs.writeFileSync(path.join(mergeQueueDir(repo), "0000000000-000000-1.json"), '{"role": "clean", "sha": "abc');
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
   try {
     await waitFor(
@@ -330,18 +330,18 @@ test("a landing whose pinned sha no longer exists degrades to an error outcome, 
   // down with it.
   const repo = makeRepo();
   const sha = "0".repeat(40); // a commit git cannot check out
-  enqueueLanding(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
+  enqueueMerge(repo, { role: "clean", sha, run: 1, summary: "lost pin", enqueuedAt: Date.now() });
   const config = fastConfig(["clean"]);
   const author = makeLoopRunner(repo, "clean", config);
 
-  const result = await landHead(repo, author, config, "clean");
+  const result = await mergeHead(repo, author, config, "clean");
 
   assert.equal(result, "error");
   // The git failure is recorded where the next tick's prompt reads it.
   assert.match(author.state.lastError ?? "", /invalid reference/);
   // The 4/5 in-flight marker is cleared, the entry dropped, and the failure logged —
   // the same tail a landed or rejected entry goes through.
-  assert.ok(!fs.existsSync(landingStatePath(repo)), "the landing marker survives the error outcome");
+  assert.ok(!fs.existsSync(mergeStatePath(repo)), "the landing marker survives the error outcome");
   assert.equal(queueDepth(repo), 0, "the entry is dropped after the error outcome");
   const failed = eventsOfType(repo, "merge_failed");
   assert.equal(failed.length, 1);
@@ -462,8 +462,8 @@ async function seedLandQueue(repo: string, ...roles: string[]): Promise<void> {
       `${role} work`,
       { reset: true },
     );
-    await setRef(repo, landingRefName(role), sha);
-    enqueueLanding(repo, { role, sha, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
+    await setRef(repo, mergeRefName(role), sha);
+    enqueueMerge(repo, { role, sha, run: 1, summary: `${role} work`, enqueuedAt: Date.now() });
   }
 }
 
@@ -513,12 +513,12 @@ test("an abort for one queued role stops only that role's vet and discards its p
     writeMarker(markerFile, { at: Date.now() });
 
     await waitFor(
-      () => loadLoopState(repo, "dedupe").lastResult === "aborted" && !landingRefExists(repo, "dedupe"),
+      () => loadLoopState(repo, "dedupe").lastResult === "aborted" && !mergeRefExists(repo, "dedupe"),
       "dedupe's aborted vet to settle and discard its pin",
       60_000,
     );
     assert.ok(!fs.existsSync(markerFile), "the abort marker was consumed");
-    assert.ok(landingRefExists(repo, "clean"), "clean's pin is untouched");
+    assert.ok(mergeRefExists(repo, "clean"), "clean's pin is untouched");
     assert.equal(queueDepth(repo), 1, "only dedupe's entry was dropped");
     assert.deepEqual(
       readEvents(repo)
@@ -745,7 +745,7 @@ test("a restart's hand-off aborts the landings that outlive its deadline instead
     // kept for the new build's recovery, nothing landed, and no in-flight marker left behind.
     const failed = events.filter((e) => e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`);
     assert.deepEqual(failed.sort(), ["clean:aborted", "dedupe:aborted"]);
-    assert.ok(landingRefExists(repo, "clean") && landingRefExists(repo, "dedupe"), "both pins survive for the next generation");
+    assert.ok(mergeRefExists(repo, "clean") && mergeRefExists(repo, "dedupe"), "both pins survive for the next generation");
     assert.ok(!fs.existsSync(path.join(repo, "clean.txt")), "nothing landed");
     assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
@@ -820,7 +820,7 @@ test("a restart's drain aborts only its permit-holding role ticks — the in-fli
 
     // The landing's abort is the hand-off's, recorded like any shutdown abort: pin kept for the
     // next generation, nothing landed, no stale marker.
-    assert.ok(landingRefExists(repo, "dedupe"), "dedupe's pin survives for the next generation");
+    assert.ok(mergeRefExists(repo, "dedupe"), "dedupe's pin survives for the next generation");
     assert.equal(readLandingMarker(repo), null, "no stale in-flight marker is left for the next generation");
   } finally {
     await stop();

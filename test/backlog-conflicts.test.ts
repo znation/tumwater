@@ -10,7 +10,7 @@ import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 
 // Coverage for the deterministic insert-only backlog resolver (plans/parallel-work-instances.md,
-// part 3/7): two landings pasting different entries as the first under ## Done produce a diff3
+// part 3/7): two merges pasting different entries as the first under ## Done produce a diff3
 // hunk with an empty base and two non-empty sides. Such a hunk carries no authored bytes and
 // must settle without a model run; anything else must be left for the resolver untouched.
 
@@ -116,7 +116,7 @@ test("resolveBacklogInsertConflicts leaves the conflicted file intact when a wri
   const file = path.join(root, "PLANS.md");
   fs.writeFileSync(file, text);
   // Simulate the process dying mid-write: put a truncated prefix on disk, then fail. The
-  // atomic helper's tmp file matches the same predicate, so the injection lands on it — the
+  // atomic helper's tmp file matches the same predicate, so the injection merges on it — the
   // target changes only if a partial file is written straight to it (the pre-fix shape).
   const restoreWrite = patchFsMethod("writeFileSync", (orig) => (target, data, ...rest) => {
     orig(target, String(data).slice(0, 8), ...rest);

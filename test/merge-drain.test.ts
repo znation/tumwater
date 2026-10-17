@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { drainLandings } from "../src/merge/merge-drain.js";
 import { landingTasks } from "../src/merge/merge-pipeline.js";
-import { enqueueLanding, queueDepth, staleHeadFile } from "../src/merge/merge-queue.js";
+import { enqueueMerge, queueDepth, staleHeadFile } from "../src/merge/merge-queue.js";
 import { readEvents } from "../src/events/event-read.js";
 import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
-import { landQueueDir } from "../src/paths.js";
+import { mergeQueueDir } from "../src/paths.js";
 import { drained, entry, makePipeline, pumpUntil, runnersFor } from "./fixtures/merge-fixtures.js";
 import { unwritableEvents } from "./fixtures/log-fixtures.js";
 import { mainSha, makeRepo, sh } from "./fixtures/repo-fixtures.js";
@@ -38,7 +38,7 @@ test("a torn land-queue head is dropped and the drain continues when the events 
   // that warning must not reject the whole drain poll, or one torn file plus a full disk stops
   // every role's queued landing from being vetted. The drop itself still happens.
   const root = makeRepo();
-  const dir = landQueueDir(root);
+  const dir = mergeQueueDir(root);
   fs.mkdirSync(dir, { recursive: true });
   const torn = path.join(dir, "0000000000-000000-1.json");
   fs.writeFileSync(torn, "{ torn mid-write");
@@ -55,7 +55,7 @@ test("a torn land-queue head is dropped and the drain continues when the events 
 test("a queued entry whose sha main already holds is dropped without a vet", async () => {
   const root = makeRepo();
   const sha = mainSha(root);
-  enqueueLanding(root, entry("improve", sha));
+  enqueueMerge(root, entry("improve", sha));
   // A crash between the fast-forward and the entry drop leaves a marker naming a change main
   // already holds; the dedupe clears its record alongside the entry.
   writeLandingMarker(root, { role: "improve", sha, summary: "the work", startedAt: Date.now(), stage: "merging" });
@@ -90,7 +90,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
   );
   const phaseOne = sh(root, "git", "rev-list", "main", `^${initialTip}`).split("\n");
   assert.equal(phaseOne.length, 300);
-  for (const sha of phaseOne) enqueueLanding(root, entry("improve", sha));
+  for (const sha of phaseOne) enqueueMerge(root, entry("improve", sha));
   assert.equal(queueDepth(root), 300);
   const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
 
@@ -113,7 +113,7 @@ test("a full dedupe cache never wedges the drain: every already-merged entry sti
   );
   const phaseTwo = sh(root, "git", "rev-list", "main", `^${phaseOne[0]}`).split("\n");
   assert.equal(phaseTwo.length, 200);
-  for (const sha of phaseTwo) enqueueLanding(root, entry("improve", sha));
+  for (const sha of phaseTwo) enqueueMerge(root, entry("improve", sha));
 
   await pumpUntil(ctx, pipeline, drained(root, pipeline), "the stale-head queue to drain");
   assert.equal(queueDepth(root), 0, "every entry deduped against the new head");

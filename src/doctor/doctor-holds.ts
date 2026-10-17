@@ -7,7 +7,7 @@ import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
-import { readLandingQueue } from "../merge/merge-queue.js";
+import { readMergeQueue } from "../merge/merge-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState, type LoopState } from "../loop/loop-state.js";
@@ -140,7 +140,7 @@ export function checkMaintenanceQuota(
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const loops = loadLoopStates(root, config).map((s) => ({ role: s.role, running: aliveTeam && s.running === true }));
-  const queued = aliveTeam ? new Set(readLandingQueue(root).entries.map((e) => e.role)) : new Set<string>();
+  const queued = aliveTeam ? new Set(readMergeQueue(root).entries.map((e) => e.role)) : new Set<string>();
   const { allowance, used, held } = maintenanceQuotaForPoll(root, config.maintenancePerWorkMerge, loops, queued, now);
   if (held.length > 0) {
     return warnOutcome(

@@ -8,8 +8,8 @@ import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
 import { drainMerge } from "../../src/merge/merge-drain.js";
 import { newLandingPipeline, type LandingPipelineContext } from "../../src/merge/merge-pipeline.js";
 import { startVet } from "../../src/merge/merge-verify.js";
-import { headLanding } from "../../src/merge/merge-queue.js";
-import { landingRefName } from "../../src/paths.js";
+import { headMerge } from "../../src/merge/merge-queue.js";
+import { mergeRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { loadLoopState } from "../../src/loop/loop-state.js";
 import { logEvent } from "../../src/events/events.js";
@@ -45,9 +45,9 @@ export const FAST_POLL_MS = 100;
  * BUGS.md, 2026-09-18). Single home of that try/rev-parse/catch probe: the loop-tier suites
  * (loop-3.test.ts, loop-leftover-recovery.test.ts) each held an inline copy before this was
  * extracted, and orchestrator-3.e2e.test.ts a file-local one. */
-export function landingRefExists(repo: string, role: string): boolean {
+export function mergeRefExists(repo: string, role: string): boolean {
   try {
-    sh(repo, "git", "rev-parse", "--verify", landingRefName(role));
+    sh(repo, "git", "rev-parse", "--verify", mergeRefName(role));
     return true;
   } catch {
     return false; // a missing ref makes rev-parse --verify exit nonzero
@@ -261,7 +261,7 @@ export async function awaitSettledTick(
  * `signal` stands in for harness shutdown (the orchestrator's stop signal). Returns the
  * landing's outcome as folded into `runner`'s state; the entry is dropped after every outcome,
  * exactly as the pipeline does. */
-export async function landHead(
+export async function mergeHead(
   repo: string,
   runner: LoopRunner,
   config: TumwaterConfig,
@@ -269,7 +269,7 @@ export async function landHead(
   branch = "main",
   signal: AbortSignal = new AbortController().signal,
 ): Promise<TickResult> {
-  const head = headLanding(repo);
+  const head = headMerge(repo);
   if (!head) throw new Error("expected a queued landing");
   assert.equal(head.entry.role, role, "the queue head belongs to the expected role");
   assert.equal(runner.role, role, "the landing folds into its own role's runner");

@@ -16,7 +16,7 @@ import {
 } from "../git/git.js";
 import { errorMessage } from "../text/text.js";
 import { loadLoopState } from "../loop/loop-state.js";
-import { branchName, landingRefName, legacyLandingRefName, worktreePath } from "../paths.js";
+import { branchName, mergeRefName, legacyLandingRefName, worktreePath } from "../paths.js";
 import { isUsableWorktree, removeWorktree } from "../git/worktree.js";
 import { roleWorktreeDir, slotForDir, updateSlotsState } from "../git/slots-state.js";
 import { pausedRoles, resumeRole } from "../team/team-state.js";
@@ -28,7 +28,7 @@ import { git } from "../git/git-run.js";
 
 /** The role's merge pin, falling back to the legacy-named one a not-yet-migrated repo holds. */
 async function mergeRefSha(root: string, role: string): Promise<string | null> {
-  return (await refSha(root, landingRefName(role))) ?? (await refSha(root, legacyLandingRefName(role)));
+  return (await refSha(root, mergeRefName(role))) ?? (await refSha(root, legacyLandingRefName(role)));
 }
 
 /** The id gate for ids no config names (a lowered `instances`, a removed custom role): the id is
@@ -180,7 +180,7 @@ export async function retireRole(root: string, role: string, { force }: { force?
     mark("branch", true);
   } else mark("branch", false);
   if (status.mergeRefPresent) {
-    await deleteRef(root, landingRefName(status.role));
+    await deleteRef(root, mergeRefName(status.role));
     await deleteRef(root, legacyLandingRefName(status.role)); // a team stopped before its first start here
     mark("mergeRef", true);
   } else mark("mergeRef", false);
@@ -224,7 +224,7 @@ export function artifactPhrase(name: string, role: string): string {
     case "branch":
       return `the branch (${branchName(role)})`;
     case "mergeRef":
-      return `the merge ref (${landingRefName(role)})`;
+      return `the merge ref (${mergeRefName(role)})`;
     case "pausedMarker":
       return `the paused-state marker`;
     default:

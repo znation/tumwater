@@ -48,7 +48,7 @@ import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import { baseRoleOf, instancePauseKey, loopEnabled } from "../roles/loop-ids.js";
-import { queuedLandingRoles } from "../merge/merge-queue.js";
+import { queuedMergeRoles } from "../merge/merge-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { publishInfoFields, type OrchestratorInfo } from "../team/orchestrator-info.js";
@@ -369,7 +369,7 @@ export function pollTeamGates(
   // hold/resume event per transition. Enabled only: a disabled loop runs no tick to count. The
   // scheduling pass spends the returned headroom one due maintenance loop at a time, beside
   // capPaused, with the fresh-wake/queued-prompt override the need-based deferral honors.
-  const queuedRoles = queuedLandingRoles(root);
+  const queuedRoles = queuedMergeRoles(root);
   const maintenanceQuota = pollMaintenanceQuotaGate(
     root,
     states.quota,

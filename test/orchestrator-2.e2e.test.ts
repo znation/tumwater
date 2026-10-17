@@ -22,7 +22,7 @@ import { statusPayload } from "../src/ui/status-payload.js";
 import { eventsOfType, writeMarker } from "./fixtures/log-fixtures.js";
 import { roleWt, seedCounters } from "./fixtures/loop-fixtures.js";
 import { fastConfig, makeFastRepo, startIdleOrchestrator, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
-import { landWork, makeRepo, seedOpenBug, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { mergeWork, makeRepo, seedOpenBug, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, readRunLines, recordingFakePi } from "./fakes/fake-pi.js";
 import { sleep, waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -311,7 +311,7 @@ test("roles can be enabled and disabled mid-run without a restart", async () => 
     // role had that same window and must not have used it. clean is deferrable (need-based
     // prioritization), so a work landing supplies its wake; the re-enabled dedupe below wakes on
     // the same commit.
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").runs > cleanTicks, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "dedupe").runs, dryTicks, "disabled role stops ticking");
     assert.ok(messages().some((m) => m.includes("role dedupe disabled — no new runs")), "disable transition logged");
@@ -461,7 +461,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     assert.ok(branches.some((b) => b.includes(branchName("docs-auditor"))), "its branch");
 
     // A main move wakes it — customs are never deferred by need-based prioritization.
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => loadLoopState(repo, "docs-auditor").runs >= 2, "a second tick after a main move");
 
     // Removing the entry logs one warning and stops its ticks.
@@ -475,7 +475,7 @@ test("custom loops can be added, removed, and reordered mid-run without a restar
     const removedTicks = loadLoopState(repo, "docs-auditor").runs;
     // The enabled role's next tick proves the team is alive and main moved — a still-enabled
     // custom would have used that same wake (it never defers), so its count must not move.
-    landWork(repo);
+    mergeWork(repo);
     await waitFor(() => loadLoopState(repo, "clean").runs > 1, "an enabled role to tick again");
     assert.equal(loadLoopState(repo, "docs-auditor").runs, removedTicks, "removed loop stops ticking");
 

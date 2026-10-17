@@ -12,7 +12,7 @@ import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { fastConfig, readSamples, startLiveOrchestrator, stopOrchestrator } from "./fixtures/orchestrator-fixtures.js";
-import { landWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
+import { mergeWork, makeRepo, seedOpenBug, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { waitFor } from "./helpers/wait.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -77,7 +77,7 @@ test("a live maxConcurrent edit resizes the cap without a restart", async () => 
     // is no queued work for the grow to admit and no overlap can ever form — phase 2 would
     // then pass only by racing the startup burst's tail. Land work to wake the deferred roles:
     // with cap 2 at least two of them tick concurrently, making the overlap deterministic.
-    landWork(repo);
+    mergeWork(repo);
     // 60s, not the 20s default: this is the one assertion in the suite that waits on the
     // orchestrator's real poll loop scheduling two live pi shims at once, and under the load the
     // team runs it at, 20s expired before the grow was observable (BUGS.md 2026-09-18).

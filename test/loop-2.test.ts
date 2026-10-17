@@ -14,10 +14,10 @@ import { readEvents } from "../src/events/event-read.js";
 import { refSha } from "../src/git/git.js";
 import { queueDepth } from "../src/merge/merge-queue.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
-import { landingRefName, sessionDir } from "../src/paths.js";
+import { mergeRefName, sessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, firstRunThenIdle, logFlagsTo, logPromptsTo, readRunBlocks, TOUCH_SESSION, withPi } from "./fakes/fake-pi.js";
 import { waitForFile } from "./helpers/wait.js";
@@ -50,7 +50,7 @@ test("a changed run past thrashTurns is flagged high-friction end to end", async
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
     assert.equal(runner.state.lastResult, undefined, "a queued run records no completed result");
-    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     assert.ok(outcome.highFriction, "the run is flagged high-friction");
     // The flag annotates the summary for dashboards and lastSummary — the latter once the
     // landing resolves, paired with the landing's result (BUGS.md 2026-09-23).
@@ -96,7 +96,7 @@ test("a changed run past only thrashTurns is not flagged high-friction", async (
     const runner = makeLoopRunner(repo, "improve", config);
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, config, "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, config, "improve"), "changed");
     assert.ok(!outcome.highFriction, "a turns-only fast run is not flagged high-friction");
 
     // No high-friction warning event, no marker on the reviewer prompt, and no Friction
@@ -124,7 +124,7 @@ test("an ordinary changed run under both thresholds is not flagged high-friction
     const runner = makeLoopRunner(repo, "improve");
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(!outcome.highFriction, "an ordinary run is not flagged high-friction");
 
     // No high-friction warning event…
@@ -175,7 +175,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
     // in contract order), and the harness-stamped trailer as separate paragraphs. One author
     // turn plus one reviewer run — the trailer counts only the pre-commit author turns.
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const first = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(
       first,
@@ -184,7 +184,7 @@ test("a compliant reply commits WHY/RISK/VERIFIED plus trailer; a SUMMARY-only r
 
     // Tick 2: SUMMARY-only reply → subject + trailer only; no body paragraph at all.
     assert.equal((await runner.tick()).result, "queued");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const second = sh(repo, "git", "log", "-1", "--format=%B");
     assert.match(second, /^tumwater\(improve\): add world file\n\nRun: improve #2 · turns 1 · ctx 7$/m);
     assert.doesNotMatch(second, /WHY:|RISK:|VERIFIED:/);
@@ -219,7 +219,7 @@ test("a changed run's run_end event carries its per-run tokens and cost", async 
     // The state file still carries the same per-tick window (the gen column's source).
     assert.equal(runner.state.generatedTokens, 18400);
 
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     const landed = eventsOfType(repo, "merge_done");
     assert.equal(landed.length, 1, "the merge slot logged its own outcome");
     assert.equal(landed[0]!.result, "changed");
@@ -376,7 +376,7 @@ test("a failed pin leaves the commit on the branch; the next run recovers and la
 
     // Nothing was enqueued, and the ref was never pinned.
     assert.equal(queueDepth(repo), 0);
-    assert.equal(await refSha(repo, landingRefName("improve")), null);
+    assert.equal(await refSha(repo, mergeRefName("improve")), null);
 
     // The failure is observable as a warning naming the recovery plan.
     const warnings = warningMessages(repo);
@@ -403,11 +403,11 @@ test("a failed pin leaves the commit on the branch; the next run recovers and la
     const outcome = await runner.tick();
     assert.equal(outcome.result, "queued", "recovery queued the unpinned commit; no authoring run");
     assert.equal(fs.existsSync(path.join(repo, "hello.txt")), false, "nothing lands inside the run");
-    assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
     assert.ok(fs.existsSync(path.join(repo, "hello.txt")), "the recovered commit merged on main");
     assert.match(sh(repo, "git", "log", "-1", "--format=%s"), /tumwater\(improve\): add hello file/);
     assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve").trim(), "0", "the branch is back at main");
-    assert.equal(await refSha(repo, landingRefName("improve")), null, "the merged pin is deleted");
+    assert.equal(await refSha(repo, mergeRefName("improve")), null, "the merged pin is deleted");
     assert.equal(queueDepth(repo), 0);
     // Like the pinned-recovery case, the landing is recorded as a merged event (what the
     // usage report counts), from the landing slot rather than the tick.

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { BATCH_RESTACK_ATTEMPTS } from "../src/merge/merge-stack.js";
 import { refSha } from "../src/git/git.js";
-import { landingRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { mainSha, sh } from "./fixtures/repo-fixtures.js";
@@ -68,8 +68,8 @@ test("a batch whose base main moves mid-check through a tick-path landing re-sta
         ["passed", "passed"],
         "the first check, then one re-check of the re-stacked tree",
       );
-      assert.equal(await refSha(root, landingRefName("alpha")), null, "landed: the head's ref is gone");
-      assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked change's");
+      assert.equal(await refSha(root, mergeRefName("alpha")), null, "landed: the head's ref is gone");
+      assert.equal(await refSha(root, mergeRefName("beta")), null, "and the stacked change's");
     });
   } finally {
     fs.writeFileSync(release, ""); // never leave the parked check waiting out its bound
@@ -112,8 +112,8 @@ test("a batch that loses the fast-forward race on every attempt keeps every ref 
       String(1 + BATCH_RESTACK_ATTEMPTS),
       "only the concurrent commits are new on main",
     );
-    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the head keeps its ref");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!, "and the stacked change keeps its");
+    assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "the head keeps its ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!, "and the stacked change keeps its");
     assert.equal(eventsOfType(root, "merged").length, 0, "nothing merged");
   });
 });
@@ -134,7 +134,7 @@ test("a re-stack that conflicts with what main gained falls back to one-at-a-tim
     assert.equal(calls.length, 1, "one resolution run, for the conflicting change");
     assert.equal(sh(root, "git", "show", "main:beta.txt"), "both", "the resolution landed on main");
     assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"));
-    assert.equal(await refSha(root, landingRefName("beta")), null, "the fallback deleted its ref");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "the fallback deleted its ref");
   });
 });
 
@@ -162,8 +162,8 @@ test("an abort between re-stack attempts stops the batch: aborted, refs kept, no
       assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
       assert.equal(batchChecks(root).length, 1, "no re-stack check after the abort");
       assert.equal(mainSha(root), mainMid, "nothing landed after the racer");
-      assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
-      assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+      assert.equal(await refSha(root, mergeRefName("alpha")), shas.alpha!, "an abort keeps the refs for recovery");
+      assert.equal(await refSha(root, mergeRefName("beta")), shas.beta!);
     });
   } finally {
     fs.writeFileSync(release, "");

@@ -2,8 +2,8 @@
 import { aheadOfMain, commitMessage, deleteRef, headOf, isMergedInto, refSha, setRef } from "../git/git.js";
 import { parseCommitMetadata, type CommitMetadata } from "../git/commit-message.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
-import { enqueueLanding, queuedLandings, type LandingEntry } from "../merge/merge-queue.js";
-import { landingRefName } from "../paths.js";
+import { enqueueMerge, queuedMerges, type MergeEntry } from "../merge/merge-queue.js";
+import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
 import type { LoopState } from "./loop-state.js";
 
@@ -74,8 +74,8 @@ export interface LeftoverContext {
  *   is unchanged — the pin stays, nothing is queued, and the tick ends on the error ladder
  *   instead of re-paying a gate check at suite speed (BUGS.md 2026-10-06). */
 export type LeftoverRecovery =
-  | { kind: "enqueued"; entry: LandingEntry }
-  | { kind: "already_queued"; entry: LandingEntry }
+  | { kind: "enqueued"; entry: MergeEntry }
+  | { kind: "already_queued"; entry: MergeEntry }
   | { kind: "unpinned"; sha: string }
   | { kind: "held"; sha: string; message: string }
   | { kind: "handback"; sha: string; summary: string; attempts: number }
@@ -93,9 +93,9 @@ export type LeftoverRecovery =
 export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRecovery | null> {
   // One landing ref per role, so at most one outstanding landing per role: a second entry beside
   // one the slot has yet to finish would share — and fight over — the same ref.
-  const queued = queuedLandings(ctx.root).find((e) => e.role === ctx.role);
+  const queued = queuedMerges(ctx.root).find((e) => e.role === ctx.role);
   if (queued) return { kind: "already_queued", entry: queued };
-  const ref = landingRefName(ctx.role);
+  const ref = mergeRefName(ctx.role);
   let sha = await refSha(ctx.root, ref).catch(() => null);
   if (sha) {
     if (await isMergedInto(ctx.root, sha, ctx.mainBranch)) {
@@ -153,7 +153,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     // LoopState.conflictHandback (the pin survives until that re-apply).
     return { kind: "handback", sha, summary, attempts };
   }
-  const entry: LandingEntry = {
+  const entry: MergeEntry = {
     role: ctx.role,
     sha,
     run: ctx.tick,
@@ -172,7 +172,7 @@ export async function recoverLeftover(ctx: LeftoverContext): Promise<LeftoverRec
     ...(meta.revisionRound !== undefined ? { revisionRound: meta.revisionRound } : {}),
     enqueuedAt: Date.now(),
   };
-  enqueueLanding(ctx.root, entry);
+  enqueueMerge(ctx.root, entry);
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit: sha, summary: entry.summary });
   return { kind: "enqueued", entry };
 }

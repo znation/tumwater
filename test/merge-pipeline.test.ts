@@ -11,8 +11,8 @@ import {
 } from "../src/merge/merge-pipeline.js";
 import { vetLimit } from "../src/merge/merge-verify.js";
 import { consumeAbortRequests } from "../src/operator/operator-requests.js";
-import { enqueueLanding, queueDepth, queuedLandingFiles } from "../src/merge/merge-queue.js";
-import { abortRequestPath, landQueueDir, landingRefName, landingStatePath, statePath } from "../src/paths.js";
+import { enqueueMerge, queueDepth, queuedMergeFiles } from "../src/merge/merge-queue.js";
+import { abortRequestPath, mergeQueueDir, mergeRefName, mergeStatePath, statePath } from "../src/paths.js";
 import { deleteRef, isMergedInto, refSha, setRef } from "../src/git/git.js";
 import { readEvents } from "../src/events/event-read.js";
 import { landingChanges, readLandingMarker } from "../src/merge/merge-slot.js";
@@ -73,18 +73,18 @@ async function busyMergePipeline() {
 test("a torn head is dropped with a warning and the healthy entry behind it lands", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
-  await setRef(root, landingRefName("improve"), sha);
-  // A hard crash mid enqueueLanding write: a file that sorts FIRST but parses to no entry.
-  fs.mkdirSync(landQueueDir(root), { recursive: true });
-  fs.writeFileSync(path.join(landQueueDir(root), "1-000000-0.json"), '{"role":"improve"');
-  enqueueLanding(root, entry("improve", sha));
+  await setRef(root, mergeRefName("improve"), sha);
+  // A hard crash mid enqueueMerge write: a file that sorts FIRST but parses to no entry.
+  fs.mkdirSync(mergeQueueDir(root), { recursive: true });
+  fs.writeFileSync(path.join(mergeQueueDir(root), "1-000000-0.json"), '{"role":"improve"');
+  enqueueMerge(root, entry("improve", sha));
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
     await drainLandings(ctx, pipeline);
     assert.deepEqual([...pipeline.vetting.keys()], ["improve"], "the healthy entry behind the torn head is vetted");
     await pumpUntil(ctx, pipeline, drained(root, pipeline), "the healthy entry to land");
 
-    const torn = path.join(landQueueDir(root), "1-000000-0.json");
+    const torn = path.join(mergeQueueDir(root), "1-000000-0.json");
     assert.equal(fs.existsSync(torn), false, "the torn head was dropped");
     assert.ok(
       readEvents(root).some(
@@ -99,8 +99,8 @@ test("a torn head is dropped with a warning and the healthy entry behind it land
 test("a single queued pinned entry lands through the pipeline: main advances, ref and entry and marker clear", async () => {
   const root = makeRepo();
   const sha = pinnedCommit(root, "improve");
-  await setRef(root, landingRefName("improve"), sha);
-  enqueueLanding(root, entry("improve", sha));
+  await setRef(root, mergeRefName("improve"), sha);
+  enqueueMerge(root, entry("improve", sha));
   const mainBefore = mainSha(root);
   await withPi(APPROVE(), async () => {
     const { ctx, pipeline } = makePipeline(root, runnersFor(root, ["improve"]));
@@ -108,7 +108,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
 
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "the change landed on main");
     assert.ok(await isMergedInto(root, sha, "main"), "the pinned commit is contained in main");
-    assert.equal(await refSha(root, landingRefName("improve")), null, "the ff deleted the landing ref");
+    assert.equal(await refSha(root, mergeRefName("improve")), null, "the ff deleted the landing ref");
     assert.equal(readLandingMarker(root), null, "the in-flight marker was cleared");
     const landed = eventsOfType(root, "merge_done");
     assert.equal(landed.length, 1, "one landed event for the queue's bookkeeping");
@@ -155,7 +155,7 @@ test("changes vetted while the merge slot is busy merge as one stack: one shared
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed on main");
     for (const role of ["alpha", "beta"]) {
       assert.ok(sh(root, "git", "show", `main:${role}.txt`).includes(`work by ${role}`), `${role}'s work is on main`);
-      assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s ref was deleted`);
+      assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted`);
     }
     assert.equal(readLandingMarker(root), null, "the marker was cleared");
     const checks = eventsOfType(root, "build_check");
@@ -179,7 +179,7 @@ test("a vetted change whose queue entry is gone is forgotten while its neighbor 
     // beta's queue entry vanishes while beta sits vetted — the only way an entry leaves the
     // queue between its vet settling and the next merge: a hand outside the pipeline on the
     // queue dir. drainMerge must forget beta without writing it an outcome or a merge.
-    fs.rmSync(queuedLandingFiles(root).find((q) => q.entry.role === "beta")!.file);
+    fs.rmSync(queuedMergeFiles(root).find((q) => q.entry.role === "beta")!.file);
     pipeline.merge = null; // the busy slot frees
     await drainLandings(ctx, pipeline);
     assert.deepEqual(landingTasks(pipeline).flatMap((t) => t.roles), ["alpha"], "only alpha is picked for the merge");
@@ -193,8 +193,8 @@ test("a vetted change whose queue entry is gone is forgotten while its neighbor 
 
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "1", "only alpha reached main");
     assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "alpha's work is on main");
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha's pin was deleted after landing");
-    assert.ok(await refSha(root, landingRefName("beta")), "beta's pin survives: its approved work is still real");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "alpha's pin was deleted after landing");
+    assert.ok(await refSha(root, mergeRefName("beta")), "beta's pin survives: its approved work is still real");
     assert.deepEqual(
       readEvents(root).filter(
         (e) => e.source === "beta" && (e.type === "merged" || e.type === "merge_done" || e.type === "merge_failed"),
@@ -221,9 +221,9 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
   fs.writeFileSync(path.join(root, "alpha.txt"), "main's alpha\n");
   sh(root, "git", "add", "alpha.txt");
   sh(root, "git", "commit", "-m", "main edits alpha.txt");
-  await setRef(root, landingRefName("alpha"), alpha);
-  await setRef(root, landingRefName("beta"), beta);
-  enqueueLanding(root, entry("alpha", alpha));
+  await setRef(root, mergeRefName("alpha"), alpha);
+  await setRef(root, mergeRefName("beta"), beta);
+  enqueueMerge(root, entry("alpha", alpha));
   const flags = tmpdir("resolver-permit-");
   const order = path.join(flags, "order");
   const restore = fakePi(
@@ -243,7 +243,7 @@ test("the merge's conflict resolver takes a shared permit, ahead of a vet parked
     // A role tick takes the only permit, and beta's change queues behind it: its vet parks.
     await ctx.semaphore.acquire(0);
     held = true;
-    enqueueLanding(root, entry("beta", beta));
+    enqueueMerge(root, entry("beta", beta));
     await drainLandings(ctx, pipeline);
     assert.equal(pipeline.vetting.get("beta")?.parked, true, "beta's vet parks for the permit");
     pipeline.merge = null;
@@ -387,7 +387,7 @@ test("a red stack lands its passing prefix, rejects the change red alone, and me
     assert.match(beta.lastReview!.reasons[0]!, /: planted failure: beta breaks the suite$/);
     assert.deepEqual(eventsOfType(root, "review_rejected").map((e) => e.source), ["beta"]);
     assert.equal(eventsOfType(root, "review_start").length, 3, "one review per change, all in the vets");
-    assert.equal(await refSha(root, landingRefName("beta")), null, "the rejection deleted beta's pin");
+    assert.equal(await refSha(root, mergeRefName("beta")), null, "the rejection deleted beta's pin");
     assert.equal(await isMergedInto(root, shas.beta!, "main"), false);
     assert.deepEqual(
       readEvents(root).filter((e) => e.type === "merge_done" || e.type === "merge_failed").map((e) => `${e.source}:${String(e.result)}`),
@@ -444,16 +444,16 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
   const bg = pump(ctx, pipeline);
   try {
     await waitForFile(path.join(flags, "beta-reviewing"));
-    await waitFor(() => queuedLandingFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
+    await waitFor(() => queuedMergeFiles(root).length === 1, "alpha's entry to drop at its verdict", 30_000);
 
     assert.deepEqual(
-      queuedLandingFiles(root).map((q) => q.entry.role),
+      queuedMergeFiles(root).map((q) => q.entry.role),
       ["beta"],
       "alpha's entry is gone: the scheduler's interlock no longer holds alpha",
     );
     assert.equal(loadLoopState(root, "alpha").lastResult, "rejected", "the outcome is saved before the drop");
     assert.equal(readEvents(root).filter((e) => e.type === "merge_failed" && e.source === "alpha").length, 1);
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "a rejection deletes the pin");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "a rejection deletes the pin");
     assert.deepEqual([...pipeline.vetting.keys()], ["beta"], "beta's vet is still running");
     const marker = readLandingMarker(root);
     assert.deepEqual(
@@ -524,7 +524,7 @@ test("abort --role settles a vetted change whose pin is already gone without thr
     await waitFor(() => pipeline.vetted.has("alpha") && pipeline.vetted.has("beta"), "both changes to be vetted", 30_000);
 
     // The pin vanishes before the abort lands: the race the catch exists for.
-    await deleteRef(root, landingRefName("alpha"));
+    await deleteRef(root, mergeRefName("alpha"));
     writeJsonFile(abortRequestPath(root, "alpha"), { at: Date.now() });
     consumeAbortRequests(root, [], abortableLandings(pipeline));
     await settleAbortedVetted(root, pipeline); // must resolve: the missing ref is not an error
@@ -536,11 +536,11 @@ test("abort --role settles a vetted change whose pin is already gone without thr
       "the outcome was still written and reported",
     );
     assert.deepEqual(
-      queuedLandingFiles(root).map((q) => q.entry.role),
+      queuedMergeFiles(root).map((q) => q.entry.role),
       ["beta"],
       "alpha's queue entry dropped with its outcome; beta still waits, vetted",
     );
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta, "beta's pin was untouched");
+    assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, "beta's pin was untouched");
   } finally {
     await bg.stop();
     await Promise.allSettled(allTasks(pipeline));
@@ -574,12 +574,12 @@ test("an aborted vetted change settles despite an unwritable state file: no thro
 
     assert.ok(!pipeline.vetted.has("alpha"), "the aborted entry left the pipeline");
     assert.deepEqual(
-      queuedLandingFiles(root).map((q) => q.entry.role),
+      queuedMergeFiles(root).map((q) => q.entry.role),
       ["beta"],
       "alpha's queue entry dropped with its abort; beta still waits, vetted",
     );
-    assert.equal(await refSha(root, landingRefName("alpha")), null, "alpha's pin was discarded");
-    assert.equal(await refSha(root, landingRefName("beta")), shas.beta, "beta's pin was untouched");
+    assert.equal(await refSha(root, mergeRefName("alpha")), null, "alpha's pin was discarded");
+    assert.equal(await refSha(root, mergeRefName("beta")), shas.beta, "beta's pin was untouched");
     assert.ok(
       readEvents(root).some(
         (e) => e.type === "warning" && String(e.message).includes('the stopped merge for alpha could not be settled'),
@@ -651,14 +651,14 @@ test("a shutdown reaches every vet and keeps their pins; a vetted change waits o
     for (const role of ["alpha", "beta"]) {
       const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);
       assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role}'s vet ended aborted`);
-      assert.equal(await refSha(root, landingRefName(role)), shas[role], `${role}'s pin survives the shutdown`);
+      assert.equal(await refSha(root, mergeRefName(role)), shas[role], `${role}'s pin survives the shutdown`);
     }
     assert.deepEqual(
-      queuedLandingFiles(root).map((q) => q.entry.role),
+      queuedMergeFiles(root).map((q) => q.entry.role),
       ["gamma"],
       "the vetted change stays queued for the next start",
     );
-    assert.ok(await refSha(root, landingRefName("gamma")), "with its pin");
+    assert.ok(await refSha(root, mergeRefName("gamma")), "with its pin");
   } finally {
     fs.writeFileSync(path.join(flags, "alpha-release"), "");
     fs.writeFileSync(path.join(flags, "beta-release"), "");
@@ -690,12 +690,12 @@ test("abort --role stops that role's vet, or discards its vetted change, pin and
     // The aborted vet drops its entry before it discards its pin and leaves the pipeline, so
     // wait for the task itself: its outcome, pin discard and exit are all done once it settles.
     await alphaVet;
-    await waitFor(() => queuedLandingFiles(root).length === 1, "both aborted entries to drop", 30_000);
+    await waitFor(() => queuedMergeFiles(root).length === 1, "both aborted entries to drop", 30_000);
 
     for (const role of ["alpha", "gamma"]) {
       const failed = readEvents(root).filter((e) => e.type === "merge_failed" && e.source === role);
       assert.deepEqual(failed.map((e) => e.result), ["aborted"], `${role} ended aborted`);
-      assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s pin was discarded`);
+      assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s pin was discarded`);
     }
     assert.deepEqual([...pipeline.vetting.keys()], ["beta"], "beta's vet runs on");
 
@@ -734,7 +734,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
         `let m = {};\ntry { m = JSON.parse(fs.readFileSync(process.argv[2], "utf8")); } catch {}\n` +
         `process.stdout.write((m.changes ?? []).map((c) => c.role + "=" + c.status + "/" + (c.stage ?? "-")).join(","));\n`,
     );
-    const stagesOf = `'${process.execPath}' '${script}' '${landingStatePath(root)}'`;
+    const stagesOf = `'${process.execPath}' '${script}' '${mergeStatePath(root)}'`;
     const config = { ...defaultConfig(), check: { command: `echo "check:$(${stagesOf})" >> '${rec}'` } };
     const headReply = headVerdict === "reject" ? "VERDICT: reject\n1. no" : "VERDICT: approve";
     const restore = fakePi(
@@ -823,7 +823,7 @@ test("a plumbing throw in the merge keeps every entry queued and un-vetted, reco
     assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed after the retry");
     for (const role of ["alpha", "beta"]) {
       assert.ok(sh(root, "git", "show", `main:${role}.txt`).includes(`work by ${role}`), `${role}'s work is on main`);
-      assert.equal(await refSha(root, landingRefName(role)), null, `${role}'s ref was deleted once landed`);
+      assert.equal(await refSha(root, mergeRefName(role)), null, `${role}'s ref was deleted once landed`);
     }
   } finally {
     fs.rmSync(worktreesHome, { recursive: true, force: true });
@@ -901,7 +901,7 @@ test("a git failure inside the gate's reject path settles the vet as an error ou
   assert.equal(failed[0]!.result, "error");
   assert.equal(failed[0]!.commit, shas[role], "the event names the commit whose vet failed");
   assert.equal(
-    await refSha(root, landingRefName(role)),
+    await refSha(root, mergeRefName(role)),
     shas[role],
     "the pin survives the error outcome (only a rejection deletes it) for the next re-land",
   );

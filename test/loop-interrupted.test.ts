@@ -14,10 +14,10 @@ import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { piLogPath, rejectedRefName, sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
-import { queuedLandings } from "../src/merge/merge-queue.js";
+import { queuedMerges } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { initializedRepo, mainSha, pinOffMain, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, logFlagsTo, logPromptsTo, readRunBlocks, withPi } from "./fakes/fake-pi.js";
 import { waitForFile, waitForLogLines, watchdogClock } from "./helpers/wait.js";
@@ -177,7 +177,7 @@ test("a resumed run continues the interrupted session and keeps the worktree edi
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     const run = fs.readFileSync(argsFile, "utf8").trim();
     assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
     assert.ok(!run.includes(" -n"), "no fresh session is started");
@@ -216,7 +216,7 @@ test("a cross-agent handoff runs fresh and keeps the interrupted worktree edits"
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     const run = readRunBlocks(argsFile).join("\n");
     assert.ok(!run.includes("--continue"), "the handoff starts a fresh session");
     assert.match(
@@ -271,8 +271,8 @@ test("a cross-agent handoff over an interrupted revision keeps its edits and car
     const run = readRunBlocks(argsFile).join("\n");
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising the rejected change");
     assert.match(run, /fix it/, "the fresh handoff receives the review objections");
-    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
-    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+    assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     assert.ok(
       fs.existsSync(path.join(repo, "partial.txt")),
       "the handoff must not reset the interrupted revision's edits",
@@ -314,7 +314,7 @@ test("a cross-agent handoff does not re-apply a pending conflict hand-back", asy
       0,
       "the handoff does not touch the pending hand-back",
     );
-    assert.equal(await landHead(repo, resumed, defaultConfig(), "improve"), "changed");
+    assert.equal(await mergeHead(repo, resumed, defaultConfig(), "improve"), "changed");
     assert.ok(
       fs.existsSync(path.join(repo, "partial.txt")),
       "the handoff must not reset the kept edits by re-applying the hand-back",
@@ -408,7 +408,7 @@ test("a cross-agent handoff over an applied revision conflict carries both notes
     assert.match(run, /is revision 1\b/, "the fresh handoff is told it is revising");
     assert.match(run, /<conflict-handback>/, "the fresh handoff is told about the markers too");
     assert.match(run, /no longer applies cleanly/, "the note names the revision hand-back");
-    assert.equal(queuedLandings(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
+    assert.equal(queuedMerges(repo)[0]?.revisionRound, 1, "the handoff still owns the revision");
   } finally {
     restore();
   }
@@ -471,7 +471,7 @@ test("a quiet-killed run keeps its edits and resumes promptly instead of discard
     assert.equal(resumed.state.resumePending, true, "the flag survives the restart");
     const outcome = await resumed.tick();
     assert.equal(outcome.result, "queued");
-    assert.equal(await landHead(repo, resumed, config, "improve"), "changed");
+    assert.equal(await mergeHead(repo, resumed, config, "improve"), "changed");
     const run = fs.readFileSync(argsFile, "utf8").trim();
     assert.ok(run.includes("--continue"), "the resume continues the interrupted session");
     assert.ok(fs.existsSync(path.join(repo, "kept.txt")), "the kept edits merged on main");

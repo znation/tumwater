@@ -14,8 +14,8 @@ import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
 import { renderRoleChange } from "../src/change/change-render.js";
-import { enqueueLanding, readLandingQueue } from "../src/merge/merge-queue.js";
-import { renderLandingQueue } from "../src/merge/merge-queue-render.js";
+import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
+import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
@@ -1230,7 +1230,7 @@ test("the Pending pane caches the rendered team roster when collectPending resol
 
 test("the Pending pane renders the durable land queue on entry, above the resolved team roster", async () => {
   const root = makeRoot();
-  enqueueLanding(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
+  enqueueMerge(root, { role: "feature", sha: "a".repeat(40), run: 3, summary: "add a thing", enqueuedAt: 0 });
   const team = {
     mainBranch: "main",
     roles: [
@@ -1251,13 +1251,13 @@ test("the Pending pane renders the durable land queue on entry, above the resolv
   for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
   assert.equal(keys.state().view, 5);
   // The queue needs no git read, so it is already rendered when the collector is still in flight.
-  assert.equal(keys.state().paneCache, renderLandingQueue(readLandingQueue(root), 0));
+  assert.equal(keys.state().paneCache, renderMergeQueue(readMergeQueue(root), 0));
 
   resolvePending(team);
   await pending;
   assert.equal(
     keys.state().paneCache,
-    renderLandingQueue(readLandingQueue(root), 0) +
+    renderMergeQueue(readMergeQueue(root), 0) +
       "\n\nfeature: 2 commits ahead of main\nclean: 0 commits ahead of main, 1 uncommitted file",
     "the two-role roster is appended below the same queue text",
   );

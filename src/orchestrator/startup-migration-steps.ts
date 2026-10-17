@@ -1,7 +1,7 @@
 import { migrateLandQueueDir } from "../merge/merge-queue.js";
 import fs from "node:fs";
 import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
-import { landingRefName, legacyLandingStatePath } from "../paths.js";
+import { mergeRefName, legacyLandingStatePath } from "../paths.js";
 import { migrateLegacyRoleIds } from "../roles/legacy-role-migration.js";
 import { registerStartupMigration } from "./startup-migrations.js";
 
@@ -28,7 +28,7 @@ registerStartupMigration({
     const notes: string[] = [];
     for (const { ref, sha } of await refsUnder(root, legacyPrefix)) {
       const role = ref.slice(legacyPrefix.length);
-      const target = landingRefName(role);
+      const target = mergeRefName(role);
       const existing = await refSha(root, target);
       if (existing === null) {
         if (!(await setRef(root, target, sha))) continue; // keep the legacy pin; the next start retries

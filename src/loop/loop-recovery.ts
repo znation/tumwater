@@ -4,7 +4,7 @@ import type { LoopState } from "./loop-state.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
 import { setRef } from "../git/git.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { landingRefName } from "../paths.js";
+import { mergeRefName } from "../paths.js";
 import { shortSha } from "../text/format.js";
 import type { LeftoverRecovery } from "./leftover.js";
 
@@ -66,7 +66,7 @@ export async function finishAbortedTickPhase(
  * After a successful pin the review gate and the rebase run in the vet's leased pool slot —
  * never in this worktree (merge queue 2/5). */
 export async function pinAndResetPhase(ctx: RecoveryContext, wt: string, sha: string): Promise<boolean> {
-  const pinned = await setRef(ctx.root, landingRefName(ctx.role), sha);
+  const pinned = await setRef(ctx.root, mergeRefName(ctx.role), sha);
   if (!pinned) {
     ctx.warn(
       `failed to pin ${shortSha(sha)} by its merge ref — leaving the commit on the branch for the next run's recovery`,

@@ -1,11 +1,11 @@
 // vocabulary: plain
 import { deleteRef, headOf, setRef } from "../git/git.js";
-import { landingRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
+import { mergeRefName, mergeWorktreePath, rejectedRefName, reviewRunSessionDir } from "../paths.js";
 import { ensureDetachedWorktree } from "../git/worktree.js";
 import { useWorktree } from "../git/worktree-use.js";
 import { mergeToMain } from "./merge-to-main.js";
 import { rebaseOntoMain } from "./merge-git.js";
-import { landingCheckRed, landingBlocked } from "./merge-check-failures.js";
+import { mergeCheckRed, mergeBlocked } from "./merge-check-failures.js";
 import { reviewAheadOfMain, type GateResult, type ReviewContext } from "../review/review.js";
 import { reviewRunConfig, modelSelectorField } from "../config/config-views.js";
 import { warnEventBestEffort, logEventBestEffort } from "../events/events.js";
@@ -51,11 +51,11 @@ export interface LandRequest {
   body?: string;
   highFriction?: boolean;
   /** The revision round this change is, absent for a fresh change (plans/revise-rejected.md):
-   * carried from the LandingEntry so a rejection at round N records round N+1, and a rejection
+   * carried from the MergeEntry so a rejection at round N records round N+1, and a rejection
    * that is final stops the revision there instead of continuing (BUGS.md 2026-10-14). */
   revisionRound?: number;
   /** The prior rejection this landing is revising, absent for a fresh change
-   * (plans/revise-rejected.md part 2/2): carried from the LandingEntry so the re-review sees the
+   * (plans/revise-rejected.md part 2/2): carried from the MergeEntry so the re-review sees the
    * prior objections and the interdiff. Absent on a recovery landing. */
   priorReview?: PriorReview;
   /** The head its vet's gate pre-check ran green on, when it ran one on exactly `sha`
@@ -123,7 +123,7 @@ export async function syncPinToMain(
   if (!(await rebaseOntoMain(wt, ctx.mainBranch))) return req;
   const syncedHead = await headOf(wt, "HEAD");
   if (syncedHead === req.sha) return req;
-  await setRef(ctx.root, landingRefName(req.role), syncedHead);
+  await setRef(ctx.root, mergeRefName(req.role), syncedHead);
   return { ...req, sha: syncedHead };
 }
 
@@ -177,7 +177,7 @@ export async function reviewPinnedChange(
 ): Promise<GateOutcome> {
   const { root, config } = ctx;
   const { role } = req;
-  const ref = landingRefName(role);
+  const ref = mergeRefName(role);
   // Both uses below — a rejection and a strike-cap discard — end a pinned change without
   // keeping it: drop the held-selector note and the pin ref together, so the two-part cleanup
   // cannot drift between them. The vet's checkout is a pooled slot (plans/worktree-pool.md,
@@ -361,7 +361,7 @@ async function recordRejectedChange(
  * check and model review of a change it had already approved (BUGS.md 2026-09-23). Here a clean
  * rebase of the approved head is accepted as-is: mergeToMain's own in-lock rebase moves it onto
  * main's tip, and because the pre-merge head it captures is the approved `req.sha`,
- * verifyLanding runs one bounded scope-`landing` check whenever that rebase rewrote anything
+ * verifyMerge runs one bounded scope-`landing` check whenever that rebase rewrote anything
  * (and skips only for the exact bytes the gate judged, seeding the red-main baseline when
  * `req.verifiedHead` names them). A conflicting rebase gets mergeToMain's resolver — the rule for
  * a pin whose pre-gate rebase conflicted. `lastApprovedHead` is neither read nor widened: the
@@ -392,10 +392,10 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
       config: ctx.config,
       tick: req.tick,
       runPi: ctx.runPi,
-      onLandingCheckRed: (check, outcome) => {
+      onMergeCheckRed: (check, outcome) => {
         red = { check, outcome };
       },
-      onLandingBlocked: (reason) => {
+      onMergeBlocked: (reason) => {
         blocked = reason;
       },
       recheckResolved: async (resolvedWt) => {
@@ -435,7 +435,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
             req.priorReview?.counts,
           );
           saveLoopState(ctx.root, ctx.state);
-          await deleteRef(ctx.root, landingRefName(req.role)); // the verdict is final for this pin
+          await deleteRef(ctx.root, mergeRefName(req.role)); // the verdict is final for this pin
           ctx.state.lastError = "merge failed: conflict resolution rejected on re-review";
           return { verdict: "rejected" };
         }
@@ -444,7 +444,7 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
         // "discarded", and then the commit is gone anyway).
         ctx.state.lastError = `merge failed: re-review failed: ${gate.detail}`;
         if (gate.discarded) {
-          await deleteRef(ctx.root, landingRefName(req.role));
+          await deleteRef(ctx.root, mergeRefName(req.role));
           return { verdict: "rejected" };
         }
         return { verdict: "retry" };
@@ -455,15 +455,15 @@ async function landApprovedChangeIn(ctx: LanderContext, req: LandRequest): Promi
     req.verifiedHead,
   );
   if (result === "changed") {
-    await deleteRef(ctx.root, landingRefName(req.role)); // landed: the pin has done its job
+    await deleteRef(ctx.root, mergeRefName(req.role)); // landed: the pin has done its job
     return result;
   }
-  if (result === "merge_blocked" && red) return landingCheckRed(ctx, req.role, wt, red);
+  if (result === "merge_blocked" && red) return mergeCheckRed(ctx, req.role, wt, red);
   if (result === "merge_blocked" && blocked !== undefined) {
-    return landingBlocked(ctx, req.role, wt, blocked);
+    return mergeBlocked(ctx, req.role, wt, blocked);
   }
   // merge_conflict / merge_blocked: keep the ref — the next tick's recovery re-lands it.
-  // (Cross-check blocks no longer come through here: merge-check-failures.ts's landingBlocked
+  // (Cross-check blocks no longer come through here: merge-check-failures.ts's mergeBlocked
   // counts them.)
   // A rejected recheck already wrote its own lastError and deleted its ref — leave it.
   if (result !== "rejected") ctx.state.lastError = `merge failed: ${result}`;

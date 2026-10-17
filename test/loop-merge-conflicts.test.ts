@@ -12,10 +12,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
-import { landingRefName } from "../src/paths.js";
+import { mergeRefName } from "../src/paths.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
-import { landHead } from "./fixtures/orchestrator-fixtures.js";
+import { mergeHead } from "./fixtures/orchestrator-fixtures.js";
 import { assertClean, initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { conflictingMainEdit, seedBranchEdit, withPi } from "./fakes/fake-pi.js";
 import { APPROVE_PI, assistantLine, reviewerPi } from "./fixtures/pi-events.js";
@@ -45,9 +45,9 @@ test("a rebase conflict is resolved by a second pi run and lands with linear his
       const runner = makeLoopRunner(repo, "improve");
       const outcome = await runner.tick();
       // The tick commits and enqueues; the LANDING is where the conflict is resolved now —
-      // phase 2 (the resolution run) runs inside landHead.
+      // phase 2 (the resolution run) runs inside mergeHead.
       assert.equal(outcome.result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
       // The resolution landed as a plain rebased commit: no merge commits on main.
       assert.equal(sh(repo, "git", "log", "--merges", "--oneline"), "", "main's history stays linear");
@@ -85,7 +85,7 @@ test("an unresolvable conflict aborts cleanly and reports merge_conflict", async
       const runner = makeLoopRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "main change\n", "main keeps its version");
       const wt = roleWt(repo, "improve");
       assert.ok(!sh(wt, "git", "status", "--porcelain").includes("UU"));
@@ -114,13 +114,13 @@ test("a dirty primary checkout blocks the fast-forward: merge_blocked, commit ke
       const runner = makeLoopRunner(repo, "improve");
       const outcome = await runner.tick();
       assert.equal(outcome.result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_blocked");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_blocked");
       // The user's local edit survives — the blocked merge must not touch it.
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "user's uncommitted edit\n");
       // main did not move; the tick's commit is kept in its landing pin for the next tick's
       // recovery — and the role worktree is clean at main whatever the landing outcome.
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
-      const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+      const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
       assert.ok(pinned.length === 40, "the blocked commit is pinned for recovery");
       assertClean(roleWt(repo, "improve"), "role worktree clean at main");
       assert.match(sh(repo, "git", "show", "main:seed.txt"), /^seed$/);
@@ -162,17 +162,17 @@ test("leftover commits from a failed merge are recovered on the next tick", asyn
       // Tick 1 commits and enqueues; its landing hits the conflict and fails (the m2 phase
       // leaves the markers): that conflict state is what tick 2's recovery must salvage.
       assert.equal((await runner.tick()).result, "queued");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "merge_conflict");
       // The landing's commit is pinned by its landing ref: that is what recovery must salvage.
       // (The role branch itself is clean at main — the pin is the leftover now.)
       assert.equal(sh(repo, "git", "rev-list", "--count", "main..tumwater/improve"), "0");
-      const pinned = sh(repo, "git", "rev-parse", "--verify", landingRefName("improve")).trim();
+      const pinned = sh(repo, "git", "rev-parse", "--verify", mergeRefName("improve")).trim();
       assert.ok(pinned.length === 40, "the failed merge's commit is pinned for recovery");
 
       // Tick 2's recovery puts the pin back on the land queue and ends the tick there; the
       // landing slot then lands it.
       assert.equal((await runner.tick()).result, "queued", "tick 2 re-queued the leftover instead of authoring");
-      assert.equal(await landHead(repo, runner, defaultConfig(), "improve"), "changed");
+      assert.equal(await mergeHead(repo, runner, defaultConfig(), "improve"), "changed");
       // The stranded work landed on main via recovery.
       assert.equal(fs.readFileSync(path.join(repo, "seed.txt"), "utf8"), "resolved\n");
       const merged = eventsOfType(repo, "merged");

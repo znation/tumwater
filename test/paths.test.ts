@@ -8,7 +8,7 @@ import {
   configPath,
   eventsLogPath,
   inboxDir,
-  landingRefName,
+  mergeRefName,
   mergeLockDir,
   mergeWorktreePath,
   orchestratorStatePath,
@@ -102,14 +102,14 @@ test("review sessions live outside the role's own session dir but inside the pru
   }
 });
 
-// The landing ref's namespace (plans/merge-queue.md): one ref per role, and never equal to a
+// The merge ref's namespace (plans/merge-queue.md): one ref per role, and never equal to a
 // role's worktree path.
-test("a landing ref is unique per role and never collides with a role worktree path", () => {
+test("a merge ref is unique per role and never collides with a role worktree path", () => {
   const ids = allRoleIds();
   const seen = new Map<string, string>();
   for (const id of ids) {
-    const ref = landingRefName(id);
-    assert.notEqual(ref, worktreePath(ROOT, id), `role ${id} shares its landing ref with its worktree path`);
+    const ref = mergeRefName(id);
+    assert.notEqual(ref, worktreePath(ROOT, id), `role ${id} shares its merge ref with its worktree path`);
     assert.ok(!seen.has(ref), `role ${id} shares ${ref} with role ${seen.get(ref)}`);
     seen.set(ref, id);
   }
