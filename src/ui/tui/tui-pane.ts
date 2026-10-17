@@ -122,7 +122,8 @@ export function paneBody(
   }
   if (pane.kind === "backlog") {
     // The flat, labeled entry list is the one backlog read this frame needs: it carries every
-    // planned feature, open bug, and open question (then the newest done plans and fixed bugs)
+    // planned feature, open bug, and open question (then the newest answered questions, done
+    // plans and fixed bugs)
     // from PLANS.md/BUGS.md/QUESTIONS.md with its section label and eligibility mark (the same
     // entryHold verdict `tumwater backlog` renders). List and entry mode share this one pass;
     // entry mode used to read the three sections and derive the holds directly and
@@ -138,13 +139,12 @@ export function paneBody(
       // Plans list a series' blocked parts as one line (as `plan --list` does); the selection
       // below still walks the flat list, one entry per part.
       const plans = flat.filter((e) => e.label === "plan");
-      // The newest answered questions follow the open ones, read-only: they stay out of `flat`,
-      // so selection and the edit keys never reach them.
+      // The newest answered questions follow the open ones: they are in `flat` (up/down open
+      // their bodies), but no edit key acts on them.
       const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
         q.decision ? `${q.title} — ${q.decision}` : q.title,
       );
-      // Done plans and fixed bugs follow; they are in `flat` (up/down open their
-      // bodies) but no edit key acts on them.
+      // Done plans and fixed bugs follow, browsable and read-only the same way.
       const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
         rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
       const finished = {

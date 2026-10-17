@@ -672,8 +672,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         const picked = entries[sel];
         if (picked === undefined) {
           // an emptied list has nothing to edit
-        } else if (picked.label === "done" || picked.label === "fixed") {
-          deps.flashMessage("a done plan or fixed bug is read-only");
+        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
+          deps.flashMessage("a done plan, fixed bug or answered question is read-only");
         } else if (picked.label === "question") {
           deps.flashMessage("only a plan or open bug can be edited here");
         } else {

@@ -1190,7 +1190,9 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The TUI backlog pane's up/down reach the "answered recently" rows and open each answered question's full context and recorded answer read-only (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series and of the in-flight GUI "Answered recently" drawer plan — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-panes.ts, tui-editors.ts, docs/cli.md and their tests)
+## Done
+
+### The TUI backlog pane's up/down reach the "answered recently" rows and open each answered question's full context and recorded answer read-only (planned 2026-10-17 by the plan role; done 2026-10-17 by the feature role; independent of the waiting plain-terms rename series and of the in-flight GUI "Answered recently" drawer plan — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-panes.ts, tui-editors.ts, docs/cli.md and their tests)
 
 **Goal.** The TUI's backlog pane lists the 5 newest answered questions under `answered recently (K):`, but they are text only: a title and a truncated `**Answered …` preview. The done Done/Fixed browse plan made up/down continue from the open entries into the `done recently` / `fixed recently` rows and skipped the answered rows, so the operator still cannot reread an answered question's context or the full answer the director acted on without leaving the TUI. (The GUI gets the same capability in the in-flight "Answered recently" drawer plan.) Let up/down walk the answered rows too, in the list's visual order, and show each one's full body in entry mode, read-only.
 
@@ -1220,8 +1222,6 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
   - Then up twice onto the open question, where Ctrl+A flashes `answering question #1`.
 - The other `test/tui-keys.test.ts` backlog tests pass unchanged ("backlog Ctrl+X arms…", "…refuses questions and list mode", the Ctrl+A answer tests, "Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body"). If one of their fixtures has a `## Answered` section that moves a wrap point, adjust only that step count and say so in the change.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's "Answered recently" rows open the entry drawer read-only, showing the answered question's full context and recorded answer (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series and of the done TUI Done/Fixed browsing plan — touches only src/gui/gui-endpoints.ts, src/ui/gui/gui-client-team.ts, src/ui/gui/gui-client-drawer.ts and their tests) — done 2026-10-17
 

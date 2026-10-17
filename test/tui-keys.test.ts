@@ -293,22 +293,31 @@ test("backlog Ctrl+X disarms on any other key, and refuses questions and list mo
   assert.equal(read("PLANS.md"), plans);
 });
 
-test("a done plan or fixed bug selected in the backlog pane is read-only to Ctrl+X, Ctrl+E and Ctrl+A", () => {
+test("a done plan, fixed bug or answered question selected in the backlog pane is read-only to Ctrl+X, Ctrl+E and Ctrl+A", () => {
   const { root, keys, down, ctrlX, read, plans } = backlogCancelRig();
   const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
   fs.writeFileSync(path.join(root, "PLANS.md"), withDone);
-  down(6); // five open entries, then the done row
+  const withAnswered =
+    read("QUESTIONS.md") + "\n## Answered\n\n### Decided (asked by test 2026-10-01)\n\nbody\n\n**Answered 2026-10-02 by operator:** go\n";
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), withAnswered);
+  down(6); // five open entries, then the answered row
   assert.equal(keys.state().selectedEntry, 5);
   ctrlX();
-  assert.match(keys.state().flash ?? "", /a done plan or fixed bug is read-only/);
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
   assert.equal(keys.state().cancelArmed, null);
   ctrlX();
   assert.equal(read("PLANS.md"), withDone);
   keys.handleKey(undefined, { ctrl: true, name: "e" });
-  assert.match(keys.state().flash ?? "", /a done plan or fixed bug is read-only/);
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
   assert.equal(keys.state().entryEditFor, null);
   keys.handleKey(undefined, { ctrl: true, name: "a" });
   assert.match(keys.state().flash ?? "", /only an open question can be answered here/);
+  assert.equal(read("QUESTIONS.md"), withAnswered);
+  down(1); // onto the done row
+  assert.equal(keys.state().selectedEntry, 6);
+  ctrlX();
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
+  keys.handleKey(undefined, { name: "up" });
   keys.handleKey(undefined, { name: "up" }); // onto the open question
   keys.handleKey(undefined, { ctrl: true, name: "a" });
   assert.match(keys.state().flash ?? "", /answering question #1/);

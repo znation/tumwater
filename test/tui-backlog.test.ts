@@ -330,7 +330,7 @@ test("backlogLines appends an answered recently section only when there are answ
   ]);
 });
 
-test("paneBody's backlog list shows the newest answered questions, read-only", () => {
+test("paneBody's backlog list shows the newest answered questions", () => {
   const dir = tmpdir();
   const answered = [1, 2, 3, 4, 5, 6]
     .map((n) => `### A${n}\n\nBody.\n\n**Answered 2026-10-0${n} by operator:** pick ${n}`)
@@ -348,9 +348,14 @@ test("paneBody's backlog list shows the newest answered questions, read-only", (
   assert.ok(text[at + 1]!.startsWith("A6") && text[at + 1]!.includes("pick 6"));
   assert.ok(!text.some((l) => l.includes("A1")));
   assert.ok(rows[at]!.every((s) => s.tone === "bold"), "the subheader is bold");
-  const sel = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 1 } }).body;
-  assert.equal(sel[0]!.map((s) => s.text).join(""), "question: Open one");
-  assert.ok(!sel.some((l) => l.some((s) => s.text.includes("A6"))));
+  const line = (selectedEntry: number) =>
+    paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry } }).body.map((l) => l.map((s) => s.text).join(""));
+  assert.equal(line(0)[0], "question: Open one");
+  assert.ok(!line(0).some((l) => l.includes("A6")));
+  assert.equal(line(1)[0], "answered: A6");
+  assert.ok(line(1).includes("**Answered 2026-10-06 by operator:** pick 6"));
+  assert.equal(line(5)[0], "answered: A2");
+  assert.equal(line(99)[0], "answered: A2");
 
   const none = tmpdir();
   writeBacklogFile(none, "QUESTIONS.md", [{ heading: "## Open", body: "### Q\n\nx" }, { heading: "## Answered" }]);
@@ -394,15 +399,22 @@ test("paneBody's backlog list shows the newest done plans and fixed bugs, read-o
   assert.equal(line(99)[0], "fixed: Old bug (fixed 2026-10-02)");
 });
 
-test("browsableBacklogEntries appends the newest five done plans, then the newest five fixed bugs, after the open entries", () => {
+test("browsableBacklogEntries appends the newest answered questions, then done plans, then fixed bugs, after the open entries", () => {
   const dir = tmpdir();
   const done = [1, 2, 3, 4, 5, 6].map((n) => `### D${n} (planned 2026-09-01, done 2026-10-0${n})\n\nBody ${n}.`).reverse().join("\n\n");
   writeBacklogFile(dir, "PLANS.md", [{ heading: "## Planned", body: "### Open plan\n\nGoal." }, { heading: "## Done", body: done }]);
   writeBacklogFile(dir, "BUGS.md", [{ heading: "## Open", body: "### Open bug\n\nx" }, { heading: "## Fixed", body: "### Old bug (fixed 2026-10-02)\n\ny" }]);
-  writeBacklogFile(dir, "QUESTIONS.md", [{ heading: "## Open", body: "### Q one\n\nz" }]);
+  const answered = [1, 2, 3, 4, 5, 6]
+    .map((n) => `### A${n}\n\nBody a${n}.\n\n**Answered 2026-10-0${n} by operator:** pick ${n}`)
+    .join("\n\n");
+  writeBacklogFile(dir, "QUESTIONS.md", [{ heading: "## Open", body: "### Q one\n\nz" }, { heading: "## Answered", body: answered }]);
   const rows = browsableBacklogEntries(dir);
-  assert.equal(rows.length, 9);
+  assert.equal(rows.length, 14);
   assert.deepEqual(rows.slice(0, 3), labeledBacklogEntries(dir));
-  assert.deepEqual(rows.slice(3, 8).map((r) => [r.label, r.title, r.body, r.mark, r.hold]), [6, 5, 4, 3, 2].map((n) => ["done", `D${n} (planned 2026-09-01, done 2026-10-0${n})`, `Body ${n}.`, "", null]));
-  assert.deepEqual([rows[8]!.label, rows[8]!.title, rows[8]!.body], ["fixed", "Old bug (fixed 2026-10-02)", "y"]);
+  assert.deepEqual(
+    rows.slice(3, 8).map((r) => [r.label, r.title, r.body, r.mark, r.hold]),
+    [6, 5, 4, 3, 2].map((n) => ["answered", `A${n}`, `Body a${n}.\n\n**Answered 2026-10-0${n} by operator:** pick ${n}`, "", null]),
+  );
+  assert.deepEqual(rows.slice(8, 13).map((r) => [r.label, r.title, r.body, r.mark, r.hold]), [6, 5, 4, 3, 2].map((n) => ["done", `D${n} (planned 2026-09-01, done 2026-10-0${n})`, `Body ${n}.`, "", null]));
+  assert.deepEqual([rows[13]!.label, rows[13]!.title, rows[13]!.body], ["fixed", "Old bug (fixed 2026-10-02)", "y"]);
 });
