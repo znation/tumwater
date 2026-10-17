@@ -1190,7 +1190,9 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The TUI backlog pane's up/down reach the "done recently" and "fixed recently" rows and open each finished entry's full body read-only (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series and of the in-flight GUI drawer and `--show <n> --done` plans — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-keys.ts, tui-panes.ts, tui-editors.ts, src/ui/status-payload.ts, docs/cli.md and their tests)
+## Done
+
+### The TUI backlog pane's up/down reach the "done recently" and "fixed recently" rows and open each finished entry's full body read-only (planned 2026-10-17 by the plan role; done 2026-10-17 by the feature role; independent of the waiting plain-terms rename series and of the in-flight GUI drawer and `--show <n> --done` plans — touches only src/ui/tui/tui-backlog.ts, tui-pane.ts, tui-keys.ts, tui-panes.ts, tui-editors.ts, src/ui/status-payload.ts, docs/cli.md and their tests)
 
 **Goal.** The TUI's backlog pane lists the 5 newest Done plans and Fixed bugs under `done recently (N):` / `fixed recently (N):`, but they are text only. Up/down walk `labeledBacklogEntries` (open plans, bugs, questions), so the operator sees a finished entry's title and date and cannot read what the plan specified or how the bug was fixed without leaving the TUI. The GUI is getting the same capability in the in-flight "Done recently"/"Fixed recently" drawer plan. Let up/down continue past the open entries into those finished rows, and show each one's full body in entry mode, read-only. Answered questions stay text only: their newest-first order comes from `answeredQuestionsNewestFirst` (src/backlog/question-answer.ts), not file order, so they are out of scope here.
 
@@ -1218,8 +1220,6 @@ the listed directories, and adds a grep for leftover words to the acceptance cri
   - Moving back up onto the open question and pressing Ctrl+A flashes `answering question #1`, which checks the position fix while finished rows are present.
 - The existing `test/tui-keys.test.ts` backlog tests ("backlog Ctrl+X arms…", "…refuses questions and list mode", "Ctrl+T cycles the views and PgDn/PgUp page a selected backlog entry's body") pass unchanged. Their fixtures have no Done/Fixed entries, so the selection still wraps where it did.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's "Done recently" and "Fixed recently" rows open the entry drawer read-only, showing the finished entry's full body (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/gui/gui-endpoints.ts, src/ui/gui/gui-client-team.ts, src/ui/gui/gui-client-drawer.ts and their tests; the GUI counterpart of the `plan|bug --show <n> --done` plan, but neither depends on the other) — done 2026-10-17
 

@@ -763,6 +763,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
         const picked = entries[sel];
         if (picked === undefined) {
           // an emptied list has nothing to cancel
+        } else if (picked.label === "done" || picked.label === "fixed") {
+          flashMessage("a done plan or fixed bug is read-only");
         } else if (picked.label === "question") {
           flashMessage("only a plan or open bug can be cancelled here");
         } else {

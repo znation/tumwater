@@ -1,5 +1,7 @@
 // vocabulary: plain
 import {
+  donePlanEntries,
+  fixedBugEntries,
   openBugEntries,
   openQuestionEntries,
   plannedPlanEntries,
@@ -13,6 +15,7 @@ import {
 } from "../../backlog/backlog-eligibility.js";
 import { groupBlockedSeries, partsLabel } from "../../backlog/backlog-structure.js";
 import { clipToWidth } from "../../text/text-width.js";
+import { DASHBOARD_RECENT_FINISHED } from "../status-payload.js";
 
 /** Pure project-status pane logic for the TUI (src/ui/tui/tui.tsx): the three-section backlog body
  * (`backlogLines`) and the entry browser — selection movement and the entry body's scroll
@@ -54,6 +57,26 @@ export function labeledBacklogEntries(
       claimer: undefined,
       ...e,
     })),
+  ];
+}
+
+/** The entries up/down browse in the project-status pane: `labeledBacklogEntries`, then the newest
+ * done plans and fixed bugs the list shows under "done recently" / "fixed recently". That is the
+ * list's visual order minus the answered rows. Finished rows are read-only: no edit key acts on
+ * them, and the open entries keep their indexes. */
+export function browsableBacklogEntries(root: string): ReturnType<typeof labeledBacklogEntries> {
+  const finished = (label: string, entries: BacklogEntry[]) =>
+    entries.slice(0, DASHBOARD_RECENT_FINISHED).map((e) => ({
+      label,
+      mark: "",
+      hold: null,
+      claimer: undefined,
+      ...e,
+    }));
+  return [
+    ...labeledBacklogEntries(root),
+    ...finished("done", donePlanEntries(root)),
+    ...finished("fixed", fixedBugEntries(root)),
   ];
 }
 

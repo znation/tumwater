@@ -12,7 +12,7 @@ import { readTranscript } from "../transcript.js";
 import { eventRole, readEvents } from "../../events/event-read.js";
 import { eventMatchesGrep, formatEvent } from "../../events/event-format.js";
 import type { HarnessEvent } from "../../events/events.js";
-import { backlogLines, entryBodyWindow, labeledBacklogEntries, planListLines } from "./tui-backlog.js";
+import { backlogLines, entryBodyWindow, browsableBacklogEntries, planListLines } from "./tui-backlog.js";
 import { answeredQuestionSummaries } from "../../backlog/question-answer.js";
 import { DASHBOARD_ANSWERED_QUESTIONS, recentFinished } from "../status-payload.js";
 import { donePlanEntries, DONE_DATE_RE, FIXED_DATE_RE, fixedBugEntries } from "../../backlog/backlog.js";
@@ -122,12 +122,12 @@ export function paneBody(
   }
   if (pane.kind === "backlog") {
     // The flat, labeled entry list is the one backlog read this frame needs: it carries every
-    // planned feature, open bug, and open question from PLANS.md/BUGS.md/QUESTIONS.md with its
-    // section label and eligibility mark (the same entryHold verdict `tumwater backlog`
-    // renders). List and entry mode share this one pass; entry mode used to read the three
-    // sections and derive the holds directly and then again inside labeledBacklogEntries, so
-    // every render paid twice for the same reads and verdicts.
-    const flat = labeledBacklogEntries(root);
+    // planned feature, open bug, and open question (then the newest done plans and fixed bugs)
+    // from PLANS.md/BUGS.md/QUESTIONS.md with its section label and eligibility mark (the same
+    // entryHold verdict `tumwater backlog` renders). List and entry mode share this one pass;
+    // entry mode used to read the three sections and derive the holds directly and
+    // then again inside the flat list, so every render paid twice for the same reads and verdicts.
+    const flat = browsableBacklogEntries(root);
     // A stale selection (an entry removed since the last render) clamps to the last; no
     // entries at all falls back to list mode.
     const sel = state.selectedEntry === null || flat.length === 0 ? null : Math.min(state.selectedEntry, flat.length - 1);
@@ -139,11 +139,12 @@ export function paneBody(
       // below still walks the flat list, one entry per part.
       const plans = flat.filter((e) => e.label === "plan");
       // The newest answered questions follow the open ones, read-only: they stay out of `flat`,
-      // so selection and the edit keys reach only open entries.
+      // so selection and the edit keys never reach them.
       const answered = answeredQuestionSummaries(root, DASHBOARD_ANSWERED_QUESTIONS).map((q) =>
         q.decision ? `${q.title} — ${q.decision}` : q.title,
       );
-      // Done plans and fixed bugs follow, read-only for the same reason.
+      // Done plans and fixed bugs follow; they are in `flat` (up/down open their
+      // bodies) but no edit key acts on them.
       const finishedRows = (rows: ReturnType<typeof recentFinished>, verb: string) =>
         rows.map((r) => (r.completedOn ? `${r.title} — ${verb} ${r.completedOn}` : r.title));
       const finished = {

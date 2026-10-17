@@ -638,7 +638,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
       // Ctrl+A opens the answer editor on the selected open question (mnemonic: **A**nswer);
       // Enter records the decision through tryAnswerQuestion, the core `tumwater questions
       // answer` and the dashboard's form share. The position is the question's 1-based index
-      // among the open questions: labeledBacklogEntries lists plans, then bugs, then questions.
+      // among the open questions: the browsable list puts plans, then bugs, then questions first.
       try {
         const entries = deps.flat();
         const sel = Math.min(ctx.selectedEntry, entries.length - 1);
@@ -646,7 +646,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         if (entry?.label !== "question") {
           deps.flashMessage("only an open question can be answered here");
         } else {
-          const position = sel - entries.filter((e) => e.label !== "question").length + 1;
+          const position = sel - entries.filter((e) => e.label === "plan" || e.label === "bug").length + 1;
           settleDraft((t) => (answerSavedInput = t), (n) => (answerSavedCursor = n));
           answerFor = { position, title: entry.title };
           input = "";
@@ -672,6 +672,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         const picked = entries[sel];
         if (picked === undefined) {
           // an emptied list has nothing to edit
+        } else if (picked.label === "done" || picked.label === "fixed") {
+          deps.flashMessage("a done plan or fixed bug is read-only");
         } else if (picked.label === "question") {
           deps.flashMessage("only a plan or open bug can be edited here");
         } else {

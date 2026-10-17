@@ -293,6 +293,27 @@ test("backlog Ctrl+X disarms on any other key, and refuses questions and list mo
   assert.equal(read("PLANS.md"), plans);
 });
 
+test("a done plan or fixed bug selected in the backlog pane is read-only to Ctrl+X, Ctrl+E and Ctrl+A", () => {
+  const { root, keys, down, ctrlX, read, plans } = backlogCancelRig();
+  const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), withDone);
+  down(6); // five open entries, then the done row
+  assert.equal(keys.state().selectedEntry, 5);
+  ctrlX();
+  assert.match(keys.state().flash ?? "", /a done plan or fixed bug is read-only/);
+  assert.equal(keys.state().cancelArmed, null);
+  ctrlX();
+  assert.equal(read("PLANS.md"), withDone);
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.match(keys.state().flash ?? "", /a done plan or fixed bug is read-only/);
+  assert.equal(keys.state().entryEditFor, null);
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.match(keys.state().flash ?? "", /only an open question can be answered here/);
+  keys.handleKey(undefined, { name: "up" }); // onto the open question
+  keys.handleKey(undefined, { ctrl: true, name: "a" });
+  assert.match(keys.state().flash ?? "", /answering question #1/);
+});
+
 test("backlog Ctrl+X on a moved entry cancels nothing, and the budget editor blocks it", () => {
   const { root, keys, down, ctrlX, read } = backlogCancelRig();
   down(1);

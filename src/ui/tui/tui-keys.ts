@@ -10,7 +10,7 @@ import { stampedSubject } from "../../git/commit-message.js";
 import { requestAbort } from "../../operator/operator-intent.js";
 import { errorMessage } from "../../text/text.js";
 import { DIRECTOR_ROLE } from "../../roles/roles.js";
-import { labeledBacklogEntries } from "./tui-backlog.js";
+import { browsableBacklogEntries } from "./tui-backlog.js";
 import { arrowDir } from "./tui-keymap.js";
 import { createTuiEditors } from "./tui-editors.js";
 import { createTuiPanes } from "./tui-panes.js";
@@ -187,10 +187,10 @@ export function createTuiKeys(deps: TuiKeysDeps): TuiKeys {
   const runDoctorSeam = deps.runDoctor ?? ((r: string) => runDoctor(r, undefined, undefined, "never"));
   const collectChange = deps.collectChange ?? collectRoleChange;
   const tickStat = deps.tickStat ?? tickDetailStat;
-  // The project-status pane's flat entry list (plans, then bugs, then questions), read fresh —
-  // tui-backlog.ts's one definition, shared with the render so stale-selection clamping cannot
-  // drift.
-  const flat = () => labeledBacklogEntries(root);
+  // The project-status pane's flat entry list (plans, bugs, questions, then the newest done plans
+  // and fixed bugs), read fresh — tui-backlog.ts's one definition, shared with the render so
+  // stale-selection clamping cannot drift.
+  const flat = () => browsableBacklogEntries(root);
 
   let flash = "";
   let flashUntil = 0;

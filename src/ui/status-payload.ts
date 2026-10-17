@@ -22,7 +22,7 @@ const RECENT_EVENTS = 80;
 export const DASHBOARD_ANSWERED_QUESTIONS = 5;
 
 /** How many done plans / fixed bugs the dashboard lists under the open ones (a default). */
-const DASHBOARD_RECENT_FINISHED = 5;
+export const DASHBOARD_RECENT_FINISHED = 5;
 
 /** The newest finished entries (sections are newest first), titles cleaned of their stamp. */
 export function recentFinished(entries: BacklogEntry[], dateRe: RegExp): { title: string; completedOn: string | null }[] {

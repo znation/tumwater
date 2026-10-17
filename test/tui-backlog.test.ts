@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   backlogLines,
+  browsableBacklogEntries,
   entryBodyWindow,
   labeledBacklogEntries,
   moveEntrySelection,
@@ -386,4 +387,22 @@ test("paneBody's backlog list shows the newest done plans and fixed bugs, read-o
   const sel = paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry: 0 } }).body;
   assert.equal(sel[0]!.map((s) => s.text).join(""), "plan: Open plan");
   assert.ok(!sel.some((l) => l.some((s) => s.text.includes("D6") || s.text.includes("Old bug"))));
+  const line = (selectedEntry: number) =>
+    paneBody({ kind: "backlog" }, { ...opts, state: { ...state, selectedEntry } }).body.map((l) => l.map((s) => s.text).join(""));
+  assert.deepEqual(line(1).slice(0, 2), ["done: D6 (planned 2026-09-01, done 2026-10-06)", "Body."]);
+  assert.equal(line(6)[0], "fixed: Old bug (fixed 2026-10-02)");
+  assert.equal(line(99)[0], "fixed: Old bug (fixed 2026-10-02)");
+});
+
+test("browsableBacklogEntries appends the newest five done plans, then the newest five fixed bugs, after the open entries", () => {
+  const dir = tmpdir();
+  const done = [1, 2, 3, 4, 5, 6].map((n) => `### D${n} (planned 2026-09-01, done 2026-10-0${n})\n\nBody ${n}.`).reverse().join("\n\n");
+  writeBacklogFile(dir, "PLANS.md", [{ heading: "## Planned", body: "### Open plan\n\nGoal." }, { heading: "## Done", body: done }]);
+  writeBacklogFile(dir, "BUGS.md", [{ heading: "## Open", body: "### Open bug\n\nx" }, { heading: "## Fixed", body: "### Old bug (fixed 2026-10-02)\n\ny" }]);
+  writeBacklogFile(dir, "QUESTIONS.md", [{ heading: "## Open", body: "### Q one\n\nz" }]);
+  const rows = browsableBacklogEntries(dir);
+  assert.equal(rows.length, 9);
+  assert.deepEqual(rows.slice(0, 3), labeledBacklogEntries(dir));
+  assert.deepEqual(rows.slice(3, 8).map((r) => [r.label, r.title, r.body, r.mark, r.hold]), [6, 5, 4, 3, 2].map((n) => ["done", `D${n} (planned 2026-09-01, done 2026-10-0${n})`, `Body ${n}.`, "", null]));
+  assert.deepEqual([rows[8]!.label, rows[8]!.title, rows[8]!.body], ["fixed", "Old bug (fixed 2026-10-02)", "y"]);
 });
