@@ -74,7 +74,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; images?: number }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
-  else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Ctrl+E", "body file"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.answerFor) keys = [["Enter", "record answer"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.queuedEditFor) keys = [["Enter", "save the edit"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.pauseEditMode && mode.pauseEditStop) keys = [["Enter", "schedule stop"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];

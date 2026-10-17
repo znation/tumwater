@@ -1,6 +1,7 @@
 // vocabulary: plain
-import { fileEntryWithBody, OPERATOR_FILE_KINDS, tryEditEntry } from "../../backlog/backlog-write.js";
+import { bodyStructureProblem, fileEntryWithBody, OPERATOR_FILE_KINDS, splitEntryFile, tryEditEntry } from "../../backlog/backlog-write.js";
 import { stripEntryStamp } from "../../backlog/backlog-structure.js";
+import { readTextIfExists } from "../../files/files.js";
 import { submitRolePromptAndWake } from "../../operator/operator-intent.js";
 import { promptLengthProblem } from "../../inbox/inbox-submit.js";
 import { collapseWhitespace } from "../../text/text.js";
@@ -16,12 +17,20 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
   let entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null = null;
   let entryEditSavedInput = "";
   let entryEditSavedCursor = 0;
+  // The triple state of the entry editor's prompt line: false (the title field), true (the
+  // file-path field whose contents replace the whole entry), and the draft the toggle parks
+  // when it hands the line to a different field.
+  let entryBodyFile = false;
+  let entryBodySavedInput = "";
+  let entryBodySavedCursor = 0;
 
   // Leave the backlog pane's title editor (Esc, a saved edit, or Ctrl+T): the same settle
-  // contract as exitAnswerMode.
+  // contract as exitAnswerMode. Any open file mode is dropped too, so the editor always lands
+  // back in the title state on the next Ctrl+E.
   const exitEntryEdit = (): void => {
     if (!entryEditFor) return;
     entryEditFor = null;
+    entryBodyFile = false;
     session.held.entry = null;
     session.restorePromptFrom(entryEditSavedInput, entryEditSavedCursor);
   };
@@ -59,6 +68,25 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         return true;
       }
       return false;
+    }
+    if (key.ctrl && key.name === "e" && entryEditFor !== null && entryEditFor.position !== null) {
+      // A second Ctrl+E inside the entry editor toggles the same prompt line into the file
+      // field, whose path's contents replace the whole entry (splitEntryFile's rule) through
+      // tryEditEntry — the terminal twin of `tumwater plan|bug --edit <n> --file <path>`. A
+      // third Ctrl+E returns to the title draft, parked in the saved pair; Esc cancels all.
+      entryBodyFile = !entryBodyFile;
+      if (entryBodyFile) {
+        entryBodySavedInput = session.input;
+        entryBodySavedCursor = session.cursor;
+        session.input = "";
+        session.cursor = 0;
+        session.flashMessage(`replace ${entryEditFor.kind} #${entryEditFor.position} from a file — Enter to save, Ctrl+E back to the title, Esc cancels`);
+      } else {
+        session.input = entryBodySavedInput;
+        session.cursor = entryBodySavedCursor;
+        session.flashMessage(`editing ${entryEditFor.kind} #${entryEditFor.position} title — Enter to save, Ctrl+E to replace from a file, Esc cancels`);
+      }
+      return true;
     }
     if (
       key.ctrl && key.name === "e" &&
@@ -108,6 +136,59 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       // index and title; a mismatch is treated as moved without writing. A blank title and a
       // throw flash and STAY in the editor so the text survives.
       const target = entryEditFor;
+      if (entryBodyFile && target.position !== null) {
+        // File mode: the line holds a path whose contents replace title and body through the
+        // same title-checked tryEditEntry core the title edit uses, keeping the entry's
+        // position and its (planned …)/(found by …) stamp. A missing file, an empty path, a
+        // file with no title line, and a structurally unsound body all flash and stay here.
+        const p = session.input.trim();
+        if (!p) {
+          session.flashMessage("a file path is required");
+          return true;
+        }
+        let text: string | null;
+        try {
+          text = readTextIfExists(p);
+        } catch (err) {
+          session.flashError(err);
+          return true;
+        }
+        if (text === null) {
+          session.flashMessage(`no such file: ${p}`);
+          return true;
+        }
+        const { title: rawTitle, body } = splitEntryFile(text);
+        const newTitle = stripEntryStamp(rawTitle);
+        if (!newTitle) {
+          session.flashMessage("the file needs a title line");
+          return true;
+        }
+        const problem = bodyStructureProblem(body);
+        if (problem !== null) {
+          session.flashMessage(problem);
+          return true;
+        }
+        try {
+          const entries = session.flat();
+          const plans = entries.filter((e) => e.label === "plan").length;
+          const entry = entries[target.kind === "plan" ? target.position - 1 : plans + target.position - 1];
+          const outcome =
+            entry?.label === target.kind && entry.title === target.title
+              ? tryEditEntry(session.root, target.kind, target.position, target.title, newTitle, body)
+              : ({ status: "moved", title: "" } as const);
+          exitEntryEdit();
+          if (outcome.status === "edited") {
+            session.commitBacklogEdit(outcome.file, `Edit ${target.kind}: ${outcome.title}`);
+            session.flashMessage(`edited ${target.kind} #${target.position}: ${outcome.title}`);
+          } else {
+            session.clearBacklogSelection();
+            session.flashMessage(`that ${target.kind} was already removed or moved — nothing edited`);
+          }
+        } catch (err) {
+          session.flashError(err);
+        }
+        return true;
+      }
       if (!session.input.trim()) {
         session.flashMessage("an entry needs a title");
       } else if (target.position === null) {

@@ -220,6 +220,7 @@ test("the prompt line names who Enter sends to", () => {
   const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null };
   assert.equal(plain(promptPrefix({ ...base, entryEditFor: edit })), "edit plan #2 › ");
   assert.match(plain(hintLine({ kind: "backlog" }, { ...base, entryEditFor: edit }, 300)), /Enter save title/);
+  assert.match(plain(hintLine({ kind: "backlog" }, { ...base, entryEditFor: edit }, 300)), /Ctrl\+E body file/);
   const filing = { kind: "bug", position: null, title: "" } as const;
   assert.equal(plain(promptPrefix({ ...base, entryEditFor: filing })), "new bug › ");
   const filingHint = plain(hintLine({ kind: "backlog" }, { ...base, entryEditFor: filing }, 300));

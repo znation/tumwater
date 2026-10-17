@@ -2312,6 +2312,93 @@ test("backlog Ctrl+E on an entry rewritten since the editor opened edits nothing
   assert.equal(read("BUGS.md"), moved);
 });
 
+test("backlog Ctrl+E twice replaces a bug's title and body from a file, keeping its stamp", () => {
+  const { root, keys, down, ctrlE, read } = entryEditRig();
+  const type = (text: string): void => {
+    for (const ch of text) keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  };
+  const rep = path.join(root, "replacement.md");
+  fs.writeFileSync(rep, "Bug one rewritten (found by test 2026-10-02)\n\nline a\n\nline b\n");
+  const before = read("BUGS.md");
+  down(2); // plan 1, bug 1
+  ctrlE(); // title editor
+  assert.deepEqual(keys.state().entryEditFor, { kind: "bug", position: 1, title: "Bug one (found by test 2026-10-02)" });
+  ctrlE(); // second Ctrl+E: the file field
+  assert.deepEqual(keys.state().entryEditFor, { kind: "bug", position: 1, title: "Bug one (found by test 2026-10-02)" });
+  assert.equal(keys.state().input, "");
+  assert.match(keys.state().flash ?? "", /from a file/);
+  type(rep);
+  keys.handleKey(undefined, { name: "return" });
+  assert.equal(keys.state().entryEditFor, null);
+  assert.match(keys.state().flash ?? "", /edited bug #1/);
+  const after = read("BUGS.md");
+  assert.match(after, /### Bug one rewritten \(found by test 2026-10-02\)\n\nline a\n\nline b\n$/);
+  assert.equal(after.includes("Bug one ("), false);
+  assert.notEqual(after, before);
+});
+
+test("backlog Ctrl+E file mode: a missing or empty path and a bad body write nothing", () => {
+  const { root, keys, down, ctrlE, read } = entryEditRig();
+  const type = (text: string): void => {
+    for (const ch of text) keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  };
+  down(2); // plan 1, bug 1
+  ctrlE();
+  ctrlE(); // file field
+  // Empty path flashes and stays in the file mode.
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash ?? "", /a file path is required/);
+  assert.notEqual(keys.state().entryEditFor, null);
+  // A nonexistent path flashes and writes nothing, leaving the editor open.
+  type(path.join(root, "missing.md"));
+  const before = read("BUGS.md");
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash ?? "", /no such file/);
+  assert.notEqual(keys.state().entryEditFor, null);
+  assert.equal(read("BUGS.md"), before);
+});
+
+test("backlog Ctrl+E file mode refuses a heading-line body and a blank title line", () => {
+  const { root, keys, down, ctrlE, read } = entryEditRig();
+  const type = (text: string): void => {
+    for (const ch of text) keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  };
+  down(2);
+  ctrlE();
+  ctrlE();
+  // A body with a `## ` line outside a code fence is refused.
+  const bad = path.join(root, "bad.md");
+  fs.writeFileSync(bad, "New title\n\n## A fresh section\n");
+  type(bad);
+  const before = read("BUGS.md");
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash ?? "", /heading line/);
+  assert.notEqual(keys.state().entryEditFor, null);
+  assert.equal(read("BUGS.md"), before);
+  // A file whose only line is blank has no title line.
+  const blank = path.join(root, "blank.md");
+  fs.writeFileSync(blank, "\n");
+  while (keys.state().input) keys.handleKey(undefined, { name: "backspace" });
+  type(blank);
+  keys.handleKey(undefined, { name: "return" });
+  assert.match(keys.state().flash ?? "", /needs a title line/);
+  assert.notEqual(keys.state().entryEditFor, null);
+  assert.equal(read("BUGS.md"), before);
+});
+
+test("backlog Ctrl+E a third time returns to the title draft unchanged", () => {
+  const { keys, down, ctrlE } = entryEditRig();
+  down(2);
+  ctrlE();
+  for (const ch of " renamed") keys.handleKey(ch, { name: ch === " " ? "space" : ch });
+  const draft = keys.state().input;
+  ctrlE();
+  assert.equal(keys.state().input, "");
+  ctrlE();
+  assert.equal(keys.state().input, draft);
+  assert.match(keys.state().flash ?? "", /title — Enter to save/);
+});
+
 test("backlog Ctrl+E with no selection still advances the report window", () => {
   const { keys, ctrlE } = entryEditRig();
   ctrlE();
