@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  applyLandingOutcome,
+  applyMergeOutcome,
   applyTickOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
@@ -21,7 +21,7 @@ import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../src/roles/roles.js";
 import { todayStamp } from "../src/budget/budget.js";
 
 /** The per-loop scheduling policy's tests (src/tick/tick-apply.ts for the outcome application,
- * src/scheduling/backoff.ts for the clock): what a finished tick or landing does to the loop's
+ * src/scheduling/backoff.ts for the clock): what a finished tick or merge does to the loop's
  * state and
  * clock — the wake semantics, the backoff ladders, the bounded cut-off/quiet-kill resume
  * streaks — and the review-verdict record. Moved out of
@@ -142,19 +142,19 @@ test("yieldMultiplier: ten consecutive empty ticks double the gap, and it caps a
   assert.equal(yieldMultiplier("n".repeat(30).split("")), 8);
 });
 
-test("yieldMultiplier: one landing in the last ten counted ticks resets it to 1", () => {
-  // A landing anywhere in the recent window is the evidence the clock trusts — even with
+test("yieldMultiplier: one merge in the last ten counted ticks resets it to 1", () => {
+  // A merge anywhere in the recent window is the evidence the clock trusts — even with
   // nine empties stacked in front of it.
   assert.equal(yieldMultiplier("nnnnnnnnnL".split("")), 1);
   assert.equal(yieldMultiplier(("n".repeat(19) + "L").split("")), 1);
-  // But a landing older than the last ten does not: it has aged out of the recent window,
+  // But a merge older than the last ten does not: it has aged out of the recent window,
   // and the empties since it are what the clock now answers for (nineteen empties → ×4).
   assert.equal(yieldMultiplier(("L" + "n".repeat(19)).split("")), 4);
-  // A landing exactly ten ticks back is still inside the recent window — the tenth entry.
+  // A merge exactly ten ticks back is still inside the recent window — the tenth entry.
   assert.equal(yieldMultiplier(("nnnnnnnnnnL" + "n".repeat(9)).split("")), 1);
 });
 
-test("applyTickOutcome maintains the yield ring: landings and empties recorded, the error class skipped", () => {
+test("applyTickOutcome maintains the yield ring: merges and empties recorded, the error class skipped", () => {
   const s = freshLoopState("perf");
   // Read through a fresh call each time: the assertions below must see the ring as
   // applyTickOutcome left it, not a narrowed snapshot of an earlier value.
@@ -163,14 +163,14 @@ test("applyTickOutcome maintains the yield ring: landings and empties recorded, 
   assert.equal(s.recentOutcomes, "n");
   applyTickOutcome(s, testConfig(), "perf", { result: "refused" });
   applyTickOutcome(s, testConfig(), "perf", { result: "rejected" });
-  assert.equal(s.recentOutcomes, "nnn", "every non-landing counted result is an empty");
+  assert.equal(s.recentOutcomes, "nnn", "every non-merge counted result is an empty");
   applyTickOutcome(s, testConfig(), "perf", { result: "error" });
   applyTickOutcome(s, testConfig(), "perf", { result: "aborted" });
   applyTickOutcome(s, testConfig(), "perf", { result: "quiet_killed" });
   assert.equal(s.recentOutcomes, "nnn", "the error class is no yield evidence — neither raises nor resets");
   applyTickOutcome(s, testConfig(), "perf", { result: "queued" });
   applyTickOutcome(s, testConfig(), "perf", { result: "changed" });
-  assert.equal(s.recentOutcomes, "nnnLL", "a landing (changed or queued) records L");
+  assert.equal(s.recentOutcomes, "nnnLL", "a merge (changed or queued) records L");
   // The ring is bounded: past YIELD_RING the oldest entries fall off.
   for (let i = 0; i < YIELD_RING; i++) applyTickOutcome(s, testConfig(), "perf", { result: "no_change" });
   assert.equal(ringOf().length, YIELD_RING);
@@ -196,7 +196,7 @@ test("applyTickOutcome records the outcome and schedules a changed tick at the r
   s.running = true;
   s.phase = "review"; // set around the gate's run — must not linger after the tick
   s.commits = 4;
-  s.lastApprovedPatchId = "p1"; // a leftover-recovery landing's approval, spent once it lands
+  s.lastApprovedPatchId = "p1"; // a leftover-recovery merge's approval, spent once it merges
   const cfg = testConfig();
   const before = Date.now();
   applyTickOutcome(s, cfg, "feature", { result: "changed", summary: "did it" });
@@ -221,7 +221,7 @@ test("applyTickOutcome: rejected and skipped ticks wait the minimum interval wit
     s.commits = 2;
     applyTickOutcome(s, testConfig(), s.role, { result });
     assert.equal(s.lastResult, result);
-    assert.equal(s.commits, 2, `${result} lands nothing on main`);
+    assert.equal(s.commits, 2, `${result} merges nothing on main`);
     assert.equal(s.backoffSeconds, 0);
     assert.ok(
       s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 21_000,
@@ -232,8 +232,8 @@ test("applyTickOutcome: rejected and skipped ticks wait the minimum interval wit
 
 test("applyTickOutcome: a queued tick schedules like a change without counting a commit", () => {
   // Merge queue 3/5: the tick committed and enqueued — productive work, so the minimum-interval
-  // schedule applies — but `commits` keeps meaning "landed on main": applyLandingOutcome
-  // increments it when the landing slot actually merges.
+  // schedule applies — but `commits` keeps meaning "merged to main": applyMergeOutcome
+  // increments it when the merge slot actually merges.
   const s = freshLoopState("feature");
   s.commits = 4;
   s.phase = "review"; // any marker from around the pin — must not linger after the tick
@@ -243,12 +243,12 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
   // `queued` is in-flight work, not a completed result (BUGS.md 2026-09-23): the last-result
   // pair keeps the prior outcome WITH its own summary — the queued tick's summary must not be
   // shown beside a result it did not produce — and the summary is stashed, keyed by the pinned
-  // sha, for the landing to pair with its result.
+  // sha, for the merge to pair with its result.
   assert.equal(s.lastResult, "refused", "the prior completed result stays while the change is pending");
   assert.equal(s.lastSummary, "objected to the plan", "…next to its own summary");
   assert.deepEqual(s.queuedSummary, { sha: PINNED, summary: "did it" });
   assert.ok(s.lastRunEndedAt !== undefined, "the tick itself did end");
-  assert.equal(s.commits, 4, "the commit is not counted until it lands");
+  assert.equal(s.commits, 4, "the commit is not counted until it merges");
   assert.equal(s.backoffSeconds, 0);
   assert.ok(
     s.nextRunAt >= Date.now() - 1_000 && s.nextRunAt <= Date.now() + 21_000,
@@ -256,21 +256,21 @@ test("applyTickOutcome: a queued tick schedules like a change without counting a
   );
 });
 
-test("applyLandingOutcome folds the landing's result into the authoring state", () => {
+test("applyMergeOutcome folds the merge's result into the authoring state", () => {
   const change = { sha: PINNED, summary: "did it" };
-  // A landed change counts the commit the tick queued and clears the gate's phase marker.
+  // A merged change counts the commit the tick queued and clears the gate's phase marker.
   const s = freshLoopState("feature");
   s.phase = "review";
   s.lastApprovedPatchId = "p1";
-  applyLandingOutcome(s, "changed", change);
+  applyMergeOutcome(s, "changed", change);
   assert.equal(s.lastResult, "changed");
   assert.equal(s.commits, 1);
-  assert.ok(s.lastMergedAt !== undefined && s.lastMergedAt <= Date.now(), "a changed landing stamps lastMergedAt");
+  assert.ok(s.lastMergedAt !== undefined && s.lastMergedAt <= Date.now(), "a changed merge stamps lastMergedAt");
   assert.equal(s.phase, undefined);
-  // The landed patch's approval is spent: the same patch authored again is a new change.
+  // The merged patch's approval is spent: the same patch authored again is a new change.
   assert.equal(s.lastApprovedPatchId, undefined);
 
-  // A fresh loop starts with no last-landed stamp: the age reads "never" until it lands.
+  // A fresh loop starts with no last-merged stamp: the age reads "never" until it merges.
   assert.equal(freshLoopState("feature").lastMergedAt, undefined);
 
   // Non-terminal outcomes record the failure, count no commit, and clear the marker — the
@@ -278,58 +278,58 @@ test("applyLandingOutcome folds the landing's result into the authoring state", 
   for (const result of ["rejected", "review_error", "merge_conflict", "merge_blocked", "error"] as const) {
     const n = freshLoopState("feature");
     n.lastApprovedPatchId = "p1";
-    n.lastMergedAt = 12345; // a prior landing's stamp
-    applyLandingOutcome(n, result, change);
+    n.lastMergedAt = 12345; // a prior merge's stamp
+    applyMergeOutcome(n, result, change);
     assert.equal(n.lastResult, result);
-    assert.equal(n.commits, 0, `${result} lands nothing on main`);
-    assert.equal(n.lastMergedAt, 12345, `${result} leaves the prior last-landed stamp`);
+    assert.equal(n.commits, 0, `${result} merges nothing on main`);
+    assert.equal(n.lastMergedAt, 12345, `${result} leaves the prior last-merged stamp`);
     assert.equal(n.phase, undefined);
-    // Nothing landed, so the approval stands: a re-land whose rebase leaves the patch alone reuses
+    // Nothing merged, so the approval stands: a re-merge whose rebase leaves the patch alone reuses
     // it.
     assert.equal(n.lastApprovedPatchId, "p1", `${result} keeps the patch-id approval`);
   }
 
-  // An aborted landing keeps the marker: a shutdown mid-review must re-review the pinned work
-  // fresh on the next launch, and the dashboard shows the landing as interrupted, not done.
+  // An aborted merge keeps the marker: a shutdown mid-review must re-review the pinned work
+  // fresh on the next launch, and the dashboard shows the merge as interrupted, not done.
   const a = freshLoopState("feature");
   a.phase = "review";
-  applyLandingOutcome(a, "aborted", change);
+  applyMergeOutcome(a, "aborted", change);
   assert.equal(a.lastResult, "aborted");
   assert.equal(a.commits, 0);
   assert.equal(a.phase, "review");
 });
 
-// A stale reject must not outlive the landing that supersedes it: a review-exempt (or
-// review-disabled) landing records no verdict, so before this fix lastReview stayed "reject"
+// A stale reject must not outlive the merge that supersedes it: a review-exempt (or
+// review-disabled) merge records no verdict, so before this fix lastReview stayed "reject"
 // and tick-prompt.ts injected the rejected note on every later tick, long after main had moved
 // past the objection (BUGS.md 2026-10-07). The clear is conditional on no revision being owed:
-// a landing that left a rejected change's revision pending did not resolve it, so its next
+// a merge that left a rejected change's revision pending did not resolve it, so its next
 // revision tick still needs the objections.
-test("a landed change clears a stale review rejection unless a revision is still owed", () => {
+test("a merged change clears a stale review rejection unless a revision is still owed", () => {
   const change = { sha: PINNED, summary: "did it" };
 
   const s = freshLoopState("feature");
   s.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
-  applyLandingOutcome(s, "changed", change);
-  assert.equal(s.lastReview, undefined, "the landed change supersedes the rejection");
+  applyMergeOutcome(s, "changed", change);
+  assert.equal(s.lastReview, undefined, "the merged change supersedes the rejection");
 
-  // A per-role user-request tick can land an unrelated change while the rejected change still
+  // A per-role user-request tick can merge an unrelated change while the rejected change still
   // owes a revision (merge-core.ts sets `state.revision` for it): the objections must survive.
   const pending = freshLoopState("feature");
   pending.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
   pending.revision = { sha: PINNED, round: 1, at: 2 };
-  applyLandingOutcome(pending, "changed", change);
+  applyMergeOutcome(pending, "changed", change);
   assert.equal(pending.lastReview?.verdict, "reject", "a pending revision keeps the rejection");
 
-  // A non-landing outcome must keep it: the objection still stands until a change lands.
+  // A non-merge outcome must keep it: the objection still stands until a change merges.
   const n = freshLoopState("feature");
   n.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
-  applyLandingOutcome(n, "merge_conflict", change);
-  assert.equal(n.lastReview?.verdict, "reject", "an unlanded change leaves the rejection standing");
+  applyMergeOutcome(n, "merge_conflict", change);
+  assert.equal(n.lastReview?.verdict, "reject", "an unmerged change leaves the rejection standing");
 });
 
 test("a rejection past the warn bar backs the re-author off on the error ladder", () => {
-  // BUGS.md 2026-09-30: the rejection episode's accumulation point is applyLandingOutcome's
+  // BUGS.md 2026-09-30: the rejection episode's accumulation point is applyMergeOutcome's
   // rejected branch — the authoring tick ends `queued`, which only preserves the streak — so
   // the ladder the tick-side errors climb must be reachable from here too. The rung derives
   // from the streak, because every queued tick zeroes backoffSeconds on its way out (a rung
@@ -343,7 +343,7 @@ test("a rejection past the warn bar backs the re-author off on the error ladder"
     applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
     assert.equal(s.backoffSeconds, 0, `queued tick ${i} zeroes the ladder on its way out`);
     const scheduledAt = s.nextRunAt!;
-    applyLandingOutcome(s, "rejected", change);
+    applyMergeOutcome(s, "rejected", change);
     assert.equal(s.consecutiveErrors, i, `rejection ${i} feeds the streak`);
     rungs.push(s.backoffSeconds);
     if (i < ERROR_STREAK_WARN) {
@@ -372,7 +372,7 @@ test("a revision-round rejection leaves the error streak unchanged; only a final
   // only the FINAL rejection, so ONE change's revision chain (however many rounds) never
   // crosses the warn bar by itself — the exhausted third round of a chain is streak 1, not
   // streak 3. A clear revision ever after stands for the director (it never revises) and a
-  // deterministic landing-check reject, which have no revision to begin with.
+  // deterministic merge-check reject, which have no revision to begin with.
   const cfg = testConfig();
   const change = { sha: PINNED, summary: "did it" };
 
@@ -383,7 +383,7 @@ test("a revision-round rejection leaves the error streak unchanged; only a final
     applyTickOutcome(s, cfg, "feature", { result: "queued", commit: PINNED });
     s.revision = { sha: PINNED, round, at: Date.now() };
     const scheduledAt = s.nextRunAt!;
-    applyLandingOutcome(s, "rejected", change);
+    applyMergeOutcome(s, "rejected", change);
     assert.equal(s.consecutiveErrors ?? 0, 0, `round ${round} rejection does not feed the streak`);
     assert.equal(s.backoffSeconds, 0, `round ${round} rejection keeps the fast retry`);
     assert.equal(s.nextRunAt, scheduledAt, `round ${round} rejection keeps the min-interval schedule`);
@@ -392,13 +392,13 @@ test("a revision-round rejection leaves the error streak unchanged; only a final
   // The exhausted (final) rejection clears the revision and counts once — so a chain that
   // exhausts its rounds reads streak 1, not streak 3, and does not cross the warn bar.
   s.revision = undefined;
-  applyLandingOutcome(s, "rejected", change);
+  applyMergeOutcome(s, "rejected", change);
   assert.equal(s.consecutiveErrors, 1, "the exhausted chain's final rejection counts once");
   assert.equal(s.backoffSeconds, 0, "a single final rejection sits below the warn bar");
   assert.match(s.lastError!, /^review rejected:/, "the final rejection records its reason");
 });
 
-// A hand-back record must live exactly as long as the resolution it encodes: a landing
+// A hand-back record must live exactly as long as the resolution it encodes: a merge
 // hand-back tick that ends without committing its edits (no_change, user_aborted, a spent
 // quiet-kill resume) abandons them, and a stale record would make a later change's cap
 // conflict be discarded as "already handed back" instead of handed back (PLANS.md
@@ -435,36 +435,36 @@ test("a hand-back record is cleared when the tick abandons its edits", () => {
   assert.notEqual(revision.conflictHandback, undefined, "an owed revision still needs it");
 });
 
-// A pin that keeps failing to merge used to re-queue forever (land-queue speed 3c made recovery
+// A pin that keeps failing to merge used to re-queue forever (merge-queue speed 3c made recovery
 // re-queue instead of the next authored commit dropping it): the streak leftover recovery caps
-// counts consecutive merge_conflict landings of ONE sha.
-test("applyLandingOutcome counts consecutive merge conflicts per pinned sha", () => {
+// counts consecutive merge_conflict merges of ONE sha.
+test("applyMergeOutcome counts consecutive merge conflicts per pinned sha", () => {
   const s = freshLoopState("feature");
-  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
-  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
   // Outcomes that keep the pin as it was leave the count standing.
   for (const result of ["review_error", "merge_blocked", "main_red", "aborted"] as const) {
-    applyLandingOutcome(s, result, { sha: "aaa", summary: "x" });
+    applyMergeOutcome(s, result, { sha: "aaa", summary: "x" });
   }
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 2 });
-  applyLandingOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
+  applyMergeOutcome(s, "merge_conflict", { sha: "aaa", summary: "x" });
   assert.deepEqual(s.mergeConflicts, { sha: "aaa", count: 3 });
   // A different sha (the pin rebased cleanly onto a moved main) is a new attempt.
-  applyLandingOutcome(s, "merge_conflict", { sha: "bbb", summary: "x" });
+  applyMergeOutcome(s, "merge_conflict", { sha: "bbb", summary: "x" });
   assert.deepEqual(s.mergeConflicts, { sha: "bbb", count: 1 });
-  // Landing or rejection ends the pin's life, and the streak with it.
+  // Merge or rejection ends the pin's life, and the streak with it.
   for (const result of ["changed", "rejected"] as const) {
     const n = freshLoopState("feature");
     n.mergeConflicts = { sha: "aaa", count: 2 };
     n.mergeCheckFailures = { patchId: "p1", count: 1 };
-    applyLandingOutcome(n, result, { sha: "aaa", summary: "x" });
+    applyMergeOutcome(n, result, { sha: "aaa", summary: "x" });
     assert.equal(n.mergeConflicts, undefined, `${result} clears the streak`);
-    assert.equal(n.mergeCheckFailures, undefined, `${result} clears the red-landing-check streak`);
+    assert.equal(n.mergeCheckFailures, undefined, `${result} clears the red-merge-check streak`);
   }
 });
 
-test("the conflict-discard note is cleared once the role queues or lands its next change", () => {
+test("the conflict-discard note is cleared once the role queues or merges its next change", () => {
   for (const result of ["queued", "changed"] as const) {
     const s = freshLoopState("feature");
     s.conflictDiscard = { sha: "aaa", summary: "old work", attempts: 3, at: 1 };
@@ -478,9 +478,9 @@ test("the conflict-discard note is cleared once the role queues or lands its nex
   assert.deepEqual(s.conflictDiscard, { sha: "aaa", summary: "old work", attempts: 3, at: 1 });
 });
 
-test("a resolved landing pairs its result with the summary of the change it landed", () => {
+test("a resolved merge pairs its result with the summary of the change it merged", () => {
   // BUGS.md 2026-09-23, the second window: the queued tick held its summary back, so the
-  // landing's result must arrive with THAT summary — never beside the prior tick's.
+  // merge's result must arrive with THAT summary — never beside the prior tick's.
   for (const result of ["changed", "rejected", "merge_conflict", "aborted"] as const) {
     const s = freshLoopState("feature");
     applyTickOutcome(s, testConfig(), "feature", { result: "no_change", summary: "found nothing" });
@@ -489,33 +489,33 @@ test("a resolved landing pairs its result with the summary of the change it land
       summary: "did it (high friction: 90 turns / 45m)",
       commit: PINNED,
     });
-    applyLandingOutcome(s, result, { sha: PINNED, summary: "did it" });
+    applyMergeOutcome(s, result, { sha: PINNED, summary: "did it" });
     assert.equal(s.lastResult, result);
     assert.equal(
       s.lastSummary,
       "did it (high friction: 90 turns / 45m)",
       `the tick's own summary — annotation included — pairs with ${result}`,
     );
-    assert.equal(s.queuedSummary, undefined, "the stash is consumed by the landing");
+    assert.equal(s.queuedSummary, undefined, "the stash is consumed by the merge");
   }
 
-  // No stash for this sha — a crash between enqueue and the tick's state save, or a landing
+  // No stash for this sha — a crash between enqueue and the tick's state save, or a merge
   // that resolved before its tick's outcome was applied: the entry's own summary names the
-  // change, so the prior tick's summary still never pairs with the landing's result.
+  // change, so the prior tick's summary still never pairs with the merge's result.
   const lost = freshLoopState("feature");
   lost.lastResult = "no_change";
   lost.lastSummary = "found nothing";
-  applyLandingOutcome(lost, "changed", { sha: PINNED, summary: "did it" });
+  applyMergeOutcome(lost, "changed", { sha: PINNED, summary: "did it" });
   assert.equal(lost.lastSummary, "did it");
   const other = freshLoopState("feature");
   other.queuedSummary = { sha: "c".repeat(40), summary: "some other change" };
-  applyLandingOutcome(other, "changed", { sha: PINNED, summary: "did it" });
+  applyMergeOutcome(other, "changed", { sha: PINNED, summary: "did it" });
   assert.equal(other.lastSummary, "did it", "a stash naming another sha is not this change's");
   assert.equal(other.queuedSummary, undefined);
 });
 
 test("any completed tick clears a stale queued-summary stash", () => {
-  // A role with a queued landing never ticks, so a stash that survives to a later tick names a
+  // A role with a queued merge never ticks, so a stash that survives to a later tick names a
   // change that is no longer waiting: the completed tick records its own pair and drops it.
   const s = freshLoopState("feature");
   s.queuedSummary = { sha: PINNED, summary: "did it" };
@@ -648,7 +648,7 @@ test("applyTickOutcome: a no_change tick grows the no-change streak; any other r
   assert.equal(s.noChangeStreak, 1);
   applyTickOutcome(s, cfg, "feature", { result: "no_change" });
   assert.equal(s.noChangeStreak, 2, "consecutive no_change ticks grow the streak");
-  // Every completed result other than no_change resets it, so a loop that lands between
+  // Every completed result other than no_change resets it, so a loop that merges between
   // no-ops never shows a stale streak.
   for (const result of ["changed", "queued", "error", "aborted", "quiet_killed", "user_aborted", "skipped", "refused", "main_red"] as const) {
     const r = freshLoopState("feature");
@@ -675,7 +675,7 @@ test("applyTickOutcome: other unproductive outcomes grow the idle backoff and cl
   // A summary-less completed outcome CLEARS the previous lastSummary: the pair must describe
   // ONE tick, so a no_change tick never renders beside another tick's work description
   // (BUGS.md 2026-09-30: both dashboards read "No change — <prior tick's summary>" beside
-  // work that had already landed; the retention the old code kept is gone).
+  // work that had already merged; the retention the old code kept is gone).
   const s2 = freshLoopState("feature");
   s2.lastResult = "changed";
   s2.lastSummary = "previous";
@@ -759,17 +759,17 @@ test("applyTickOutcome: the error streak counts consecutive failures and resets 
   assert.equal(s.consecutiveErrors, 1, "the next episode re-arms from scratch");
 });
 
-test("applyTickOutcome: a recovery landing failure feeds the error streak on a healthy tick", () => {
-  // BUGS.md 2026-09-21: a dead reviewer backend leaves every leftover pin failing to land
+test("applyTickOutcome: a recovery merge failure feeds the error streak on a healthy tick", () => {
+  // BUGS.md 2026-09-21: a dead reviewer backend leaves every leftover pin failing to merge
   // while the tick's own authoring run succeeds (`no_change`/`queued`). The streak must count
-  // that landing failure, or it resets every tick and the alarm never fires.
+  // that merge failure, or it resets every tick and the alarm never fires.
   const cfg = testConfig();
   const s = freshLoopState("clean");
   applyTickOutcome(s, cfg, "clean", {
     result: "no_change",
     recoveryFailure: "review failed: no parseable VERDICT",
   });
-  assert.equal(s.consecutiveErrors, 1, "the landing failure arms the streak");
+  assert.equal(s.consecutiveErrors, 1, "the merge failure arms the streak");
   applyTickOutcome(s, cfg, "clean", {
     result: "queued",
     recoveryFailure: "review failed: no parseable VERDICT",
@@ -777,7 +777,7 @@ test("applyTickOutcome: a recovery landing failure feeds the error streak on a h
   assert.equal(s.consecutiveErrors, 2, "a queued tick that also failed recovery keeps counting");
   // A tick with no recovery failure at all is healthy and breaks the episode.
   applyTickOutcome(s, cfg, "clean", { result: "no_change" });
-  assert.equal(s.consecutiveErrors, 0, "a healthy tick with no landing failure resets the streak");
+  assert.equal(s.consecutiveErrors, 0, "a healthy tick with no merge failure resets the streak");
 });
 
 test("applyTickOutcome: no_change laddering is unchanged by the error ladder", () => {

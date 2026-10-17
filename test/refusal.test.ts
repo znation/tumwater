@@ -153,7 +153,7 @@ test("a failed note merge records lastError and still reports the commit", async
   assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 0, "a failed merge pages nothing");
 });
 
-// The refusal-note merge bypasses applyLandingOutcome, so it must clear a stale rejection
+// The refusal-note merge bypasses applyMergeOutcome, so it must clear a stale rejection
 // itself — otherwise a role whose refused note landed is still told to address an objection
 // main has moved past (BUGS.md 2026-10-07). A still-owed revision keeps it, exactly as the
 // landing fold does; a failed merge lands nothing and clears nothing.

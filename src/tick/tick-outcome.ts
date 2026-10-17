@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** What a finished tick or landing is (the TickResult/TickOutcome vocabulary), shared by the
+/** What a finished tick or merge is (the TickResult/TickOutcome vocabulary), shared by the
  * runner that produces it, the dashboards that render it, and the state machine that applies
  * it. The application policy — which outcomes count which streaks, when a session resumes,
  * how the next run is scheduled — lives next door in tick-apply.ts; the clock arithmetic it
@@ -8,14 +8,14 @@
  * HarnessEvent were before it. */
 
 export type TickResult =
-  /** A landing completed: the change is merged to main. */
+  /** A merge completed: the change is merged to main. */
   | "changed"
-  /** The tick's change is committed and pinned; the orchestrator's landing slot will pick it up
-   * from the durable land queue (plans/merge-queue.md 3/5); the commit count and final outcome
-   * are recorded when the landing completes; never stored as `lastResult`, which keeps the last
+  /** The tick's change is committed and pinned; the orchestrator's merge slot will pick it up
+   * from the durable merge queue (plans/merge-queue.md 3/5); the commit count and final outcome
+   * are recorded when the merge completes; never stored as `lastResult`, which keeps the last
    * completed outcome. */
   | "queued"
-  /** pi declined the work (TUMWATER_REFUSED); only its markdown objection note landed. */
+  /** pi declined the work (TUMWATER_REFUSED); only its markdown objection note merged. */
   | "refused"
   /** pi decided there was nothing to do. */
   | "no_change"
@@ -40,7 +40,7 @@ export type TickResult =
    * loop backed off. */
   | "user_aborted"
   /** Main's build/test suite is red: a tick's baseline check skipped the authoring run, or
-   * a landing's check failed on a red main (pin kept, no strike). */
+   * a merge's check failed on a red main (pin kept, no strike). */
   | "main_red"
   /** Nothing to run (e.g. director with an empty inbox). */
   | "skipped";
@@ -61,14 +61,14 @@ export interface TickOutcome {
    * survives in the pi session, which pi compacted at end of run — so the loop resumes
    * it promptly instead of backing off as if the role were idle. */
   cutOff?: boolean;
-  /** The tick's leftover recovery re-queued a pin whose last landing failed and kept it for
+  /** The tick's leftover recovery re-queued a pin whose last merge failed and kept it for
    * another attempt (review_error, merge_conflict, merge_blocked): the tick itself ends
-   * `queued`, but the persistent landing failure must still feed the error streak so a dead
+   * `queued`, but the persistent merge failure must still feed the error streak so a dead
    * reviewer backend raises the alarm instead of resetting it every tick (BUGS.md 2026-09-21).
    * Carries the failure detail for the warning: `lastError` is deliberately cleared off the tick
    * so the failure never rides its `run_end` (the sibling mislabel fix). */
   recoveryFailure?: string;
-  /** The outcome's own cause, written deliberately for this result — never a leftover landing
+  /** The outcome's own cause, written deliberately for this result — never a leftover merge
    * failure (those ride `state.lastError` and the recoveryFailure field above). Set by the
    * red-main baseline gate (src/baseline/main-red.ts) so the tick's `run_end` names what broke:
    * the failure digest's error clusters include main_red ticks, and without a cause on the event
@@ -88,7 +88,7 @@ export interface TickOutcome {
    * only by those outcomes; every other resume cause is derived from state (cut-off streak,
    * restart). */
   resumeCause?: "hung-tool" | "timeout" | "budget-resumed" | "rate-limit" | "budget-capped" | "image-reroute";
-  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the land
+  /** The tick ended on leftover recovery (src/loop/leftover.ts) — the leftover went on the merge
    * queue (or already was there, or could not be pinned) — without an authoring run. No model
    * ran, so the orchestrator's fallback breaker takes the tick as no evidence about the backend. */
   recoveredLeftover?: boolean;

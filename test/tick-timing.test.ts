@@ -8,18 +8,18 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";
 
 // drainInFlightWork is the shutdown drain's policy: on an operator stop it waits out the
-// reserved ticks and every landing task unboundedly (the harness signal already aborted the
-// landings), while on a restart it bounds the landing behind the hand-off and — when the
-// landing is wedged past even the post-abort window — goes ahead WITHOUT waiting out the
-// reserved ticks (an abandoned landing still holds its permit, so a waiter parked behind it
+// reserved ticks and every merge task unboundedly (the harness signal already aborted the
+// merges), while on a restart it bounds the merge behind the hand-off and — when the
+// merge is wedged past even the post-abort window — goes ahead WITHOUT waiting out the
+// reserved ticks (an abandoned merge still holds its permit, so a waiter parked behind it
 // would never settle). The abandoned path is the one that hangs the restart forever if the
 // condition regresses, so its tick stands in as a promise that never settles under a test
 // timeout: a regression fails the test instead of passing silently. The hand-off's deadlines
 // come from the injected `AfterDelay` seam (scriptedTimers), so the verdict is crossed by hand
 // and no assertion reads elapsed wall time.
 
-/** A minimal in-flight landing whose promise the test controls. */
-function landing(promise: Promise<void>, roles: string[]): InFlightMerge {
+/** A minimal in-flight merge whose promise the test controls. */
+function merge(promise: Promise<void>, roles: string[]): InFlightMerge {
   return { promise, controller: new AbortController(), roles, userAborted: false };
 }
 
@@ -50,66 +50,66 @@ function scriptedTimers(): {
   };
 }
 
-test("drainInFlightWork on an operator stop waits out ticks and landings, announcing the landing", async () => {
+test("drainInFlightWork on an operator stop waits out ticks and merges, announcing the merge", async () => {
   const root = tmpdir();
   let releaseTick!: () => void;
-  let releaseLanding!: () => void;
+  let releaseMerge!: () => void;
   const tick = new Promise<void>((r) => (releaseTick = r));
-  const task = new Promise<void>((r) => (releaseLanding = r));
+  const task = new Promise<void>((r) => (releaseMerge = r));
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["clean", "dedupe"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [merge(task, ["clean", "dedupe"])], false, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
   await flushImmediate();
-  assert.equal(returned, false, "the drain waits for the tick and the landing");
+  assert.equal(returned, false, "the drain waits for the tick and the merge");
   assert.equal(timers.pending(), 0, "an operator stop arms no hand-off window");
   releaseTick();
-  releaseLanding();
+  releaseMerge();
   await drain;
   assert.equal(aborts, 0, "an operator stop never aborts: the signal already did");
   const w = warningMessages(root);
-  assert.equal(w.length, 1, "only the landing wait is announced");
+  assert.equal(w.length, 1, "only the merge wait is announced");
   assert.match(w[0]!, /^shutdown waiting on the merge in progress for clean, dedupe$/);
 });
 
-test("drainInFlightWork on a restart with a landing inside its window waits out the ticks too", async () => {
+test("drainInFlightWork on a restart with a merge inside its window waits out the ticks too", async () => {
   const root = tmpdir();
   let releaseTick!: () => void;
-  let releaseLanding!: () => void;
+  let releaseMerge!: () => void;
   const tick = new Promise<void>((r) => (releaseTick = r));
-  const task = new Promise<void>((r) => (releaseLanding = r));
+  const task = new Promise<void>((r) => (releaseMerge = r));
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [landing(task, ["organize"])], true, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
-  assert.deepEqual(timers.delays, [5_000], "the landing gets one hand-off window");
-  releaseLanding(); // finishes inside the hand-off window
+  const drain = drainInFlightWork(root, new Set([tick]), new Set(), [merge(task, ["organize"])], true, 5_000, () => void aborts++, timers.after).then(() => (returned = true));
+  assert.deepEqual(timers.delays, [5_000], "the merge gets one hand-off window");
+  releaseMerge(); // finishes inside the hand-off window
   await flushImmediate();
-  assert.equal(timers.pending(), 0, "a landing that finished inside its window clears the deadline");
+  assert.equal(timers.pending(), 0, "a merge that finished inside its window clears the deadline");
   assert.equal(returned, false, "the restart still waits out the reserved tick");
   releaseTick();
   await drain;
-  assert.equal(aborts, 0, "a landing inside its window is never aborted");
+  assert.equal(aborts, 0, "a merge inside its window is never aborted");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "the hand-off's own wait announcement, not the shutdown one");
   assert.match(w[0]!, /^restart waiting on the merge in progress for organize/);
 });
 
-test("drainInFlightWork hands off without a wedged landing and without waiting on reserved ticks", { timeout: 5_000 }, async () => {
+test("drainInFlightWork hands off without a wedged merge and without waiting on reserved ticks", { timeout: 5_000 }, async () => {
   const root = tmpdir();
   writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
   const timers = scriptedTimers();
   let aborts = 0;
   let returned = false;
-  // Both stand-ins never settle: a landing wedged past its post-abort window, and a reserved
+  // Both stand-ins never settle: a merge wedged past its post-abort window, and a reserved
   // tick parked behind its permit. If the drain ever waits on the ticks here, the test times out.
   const never = new Promise<void>(() => {});
-  const drain = drainInFlightWork(root, new Set([never]), new Set(), [landing(never, ["clean"])], true, 50, () => void aborts++, timers.after).then(() => (returned = true));
+  const drain = drainInFlightWork(root, new Set([never]), new Set(), [merge(never, ["clean"])], true, 50, () => void aborts++, timers.after).then(() => (returned = true));
   assert.deepEqual(timers.delays, [50], "the first hand-off window is armed");
   assert.equal(returned, false, "the drain does not abandon before its deadline lapses");
-  timers.fire(); // the first window lapses: the landing is aborted
+  timers.fire(); // the first window lapses: the merge is aborted
   await flushImmediate();
-  assert.equal(aborts, 1, "the hand-off aborted the wedged landing exactly once");
+  assert.equal(aborts, 1, "the hand-off aborted the wedged merge exactly once");
   assert.deepEqual(timers.delays, [50, 50], "the post-abort window is armed");
   timers.fire(); // the second window lapses: hand off without it
   await drain;

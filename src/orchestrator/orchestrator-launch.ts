@@ -33,7 +33,7 @@ import { DIRECTOR_ROLE, roleTier } from "../roles/roles.js";
 import { runTimedRoleTick } from "../tick/tick-timing.js";
 
 /** How many recent work-bearing tick durations the p75 sample keeps (drainInFlightWork's
- * HANDOFF_LANDING_WINDOW_MS input): the drain window tracks recent tick pace, not all-time
+ * HANDOFF_MERGE_WINDOW_MS input): the drain window tracks recent tick pace, not all-time
  * pace, so the sample is a ring buffer. */
 export const ROLE_TICK_DURATION_SAMPLES = 50;
 

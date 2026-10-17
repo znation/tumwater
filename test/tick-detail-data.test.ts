@@ -160,7 +160,7 @@ test("a tick the scan never saw reads as not found, start or end", () => {
   assert.equal(readTickDetail(root, "helper", 1), null);
 });
 
-test("a queued tick resolves to its landing's verdict and outcome event; a pending landing stays queued", () => {
+test("a queued tick resolves to its merge's verdict and outcome event; a pending merge stays queued", () => {
   const root = tmpdir();
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "feature", ...o }) as HarnessEvent;
   writeEvents(root, [

@@ -1,8 +1,8 @@
 // vocabulary: plain
-/** The landing gate's deterministic checks, run BEFORE a changed tick commits.
+/** The merge gate's deterministic checks, run BEFORE a changed tick commits.
  *
- * The gate runs `backlogStructureReason` and `falseFixReason` at landing time, by which point
- * the author's session is over: a finding costs a queue slot, a vet, and a rejection that
+ * The gate runs `backlogStructureReason` and `falseFixReason` at merge time, by which point
+ * the author's session is over: a finding costs a queue slot, a verification, and a rejection that
  * discards the work (13 phantom-fix rejections between 2026-09-23 and 2026-10-02). Both checks
  * read the worktree and the change's merge-base, so the same questions can be asked at staging
  * time, while the authoring session can still be continued for one fix-up turn. This module
@@ -21,7 +21,7 @@
  * than failing the tick.
  *
  * `planDependencyFinding` is staging-only: it is not part of the review gate or the in-lock
- * landing re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
+ * merge re-check, because `tumwater doctor`'s plan-dependency warning is the backstop for
  * anything that gets past the fix-up turn. `waitingNoteFinding` is staging-only and bugfix-only
  * for the same reason: it nudges a bugfix run that left a Progress note without the hold. */
 
@@ -135,7 +135,7 @@ export function waitingNoteFinding(head: string, base: string): string | undefin
   );
 }
 
-/** The deterministic findings the landing gate would reject this uncommitted change for, or an
+/** The deterministic findings the merge gate would reject this uncommitted change for, or an
  * empty list when it is clean. Checks the worktree at `wt` against `mainBranch`'s merge-base;
  * `exemptPaths` are the config's review-exemption globs that scope the false-fix check.
  *
@@ -182,7 +182,7 @@ export async function stageCheckFindings(
  * (plans/parallel-work-instances.md "Claims", part 4/7): the assigned entry is the instance's
  * one task, so moving another is the same class of mistake `backlogStructureReason` catches
  * and costs one fix-up turn before the change commits. undefined when nothing moved or the
- * claimed entry itself moved — a landed entry is the expected way to release a claim. */
+ * claimed entry itself moved — a merged entry is the expected way to release a claim. */
 export function assignedMovedFinding(
   claimKey: string,
   moved: readonly { key: string; title: string }[],
@@ -197,7 +197,7 @@ export function assignedMovedFinding(
  * point as assignedMovedFinding (BUGS.md 2026-10-12: 24 of 29 staged claims duplicated a
  * sibling's held entry, and each duplicate cost a gate check, a review, and a conflict
  * resolver run holding the merge slot). The fix-up turn is asked to drop the duplicate work.
- * A change that held nothing else then ends with no change to land. undefined when no moved
+ * A change that held nothing else then ends with no change to merge. undefined when no moved
  * entry is held. */
 export function heldMovedFinding(
   heldKeys: ReadonlySet<string>,
@@ -255,7 +255,7 @@ async function gitLevelFindings(wt: string, mainBranch: string): Promise<string[
     return findings;
   } finally {
     // Restore the index to HEAD. Without this, the tick's change detection (changedFiles and
-    // stageTickLanding's "nothing left to land" guard) reads the stale index and reports a
+    // stageTickMerge's "nothing left to merge" guard) reads the stale index and reports a
     // fix-up that reverted the whole change as still changed, so an empty tree would reach
     // commitAll instead of the tick ending no_change.
     await gitTry(wt, "reset");

@@ -24,10 +24,10 @@ import type { HarnessEvent } from "../events/events.js";
  * paired `run_start`/`run_end` themselves plus every event filed under this loop whose
  * timestamp falls inside the pair — the tick-less in-tick events (`review_verdict`,
  * `build_check`, `warning`) included, other loops' events excluded. A tick that ended `queued`
- * has its landing's verdict resolved the way history rows do: `result` becomes the landing's
+ * has its merge's verdict resolved the way history rows do: `result` becomes the merge's
  * result and `merge` the `merge_done`/`merge_failed` event that carries it (logged after the
  * block, so not in `events`); `merge` is null for every other tick, and for a queued tick
- * whose landing is still pending or whose outcome rotated out (`result` stays `queued`). */
+ * whose merge is still pending or whose outcome rotated out (`result` stays `queued`). */
 export interface TickDetail {
   role: string;
   run: number;
@@ -118,7 +118,7 @@ function detailFrom(
 ): TickDetail {
   const usageNums = end === null ? { tokens: 0, costUsd: 0 } : eventUsage(end);
   let result = end === null ? null : outcomeText(end);
-  let landing: HarnessEvent | null = null;
+  let merge: HarnessEvent | null = null;
   if (end !== null && result === "queued") {
     // A fresh claim cursor suits one tick: the walk starts at the newest pin at or before this
     // tick's end, which is its own pin, since later ticks' pins sit after it.
@@ -126,7 +126,7 @@ function detailFrom(
     const resolved = resolveQueuedResult(end, landQueuedByLoop, outcomeByLoop, new Map(), tickStartMap(scoped), null);
     if (resolved !== null) {
       result = resolved.result;
-      landing = resolved.outcome;
+      merge = resolved.outcome;
     }
   }
   return {
@@ -140,6 +140,6 @@ function detailFrom(
     costUsd: usageNums.costUsd,
     usage: end === null ? "" : usageText(end),
     events: block,
-    merge: landing,
+    merge,
   };
 }

@@ -32,7 +32,7 @@ interface FinalizeTickDeps {
   /** The tick's usage accumulator (src/tick/tick-usage.ts): its costUsd rides the run_end
    * event. */
   usage: TickUsage;
-  /** The landing failure this tick's leftover recovery is retrying, if any (set by
+  /** The merge failure this tick's leftover recovery is retrying, if any (set by
    * finishRecoveryTick); undefined for a tick that ran no leftover recovery. */
   recoveryFailure?: string;
 }
@@ -50,26 +50,27 @@ const CLAIM_RELEASING: ReadonlySet<TickResult> = new Set([
  * happens AFTER the pi run, extracted from LoopRunner.tick (src/loop/loop.ts) so the runner keeps
  * only tick lifecycle (worktree, sessions, abort) and this module owns the per-result
  * bookkeeping policy. Order matters here and is pinned by behavior, not by a test seam: the
- * outcome's folds land on state before applyTickOutcome schedules the next run, the main-head
- * read happens while `running` is still true (a poll landing in that window must not double-wake
- * the loop), and the warnings read the streaks exactly once per episode, after the schedule. */
+ * outcome's folds are applied to state before applyTickOutcome schedules the next run, the
+ * main-head read happens while `running` is still true (a poll that runs in that window must not
+ * double-wake the loop), and the warnings read the streaks exactly once per episode, after the
+ * schedule. */
 export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome> {
   const { root, role, mainBranch, config, state: s, usage, tick } = deps;
   let { outcome } = deps;
-  // A re-queued leftover's landing failure is not the tick's own result, so it rides the
+  // A re-queued leftover's merge failure is not the tick's own result, so it rides the
   // outcome separately: applyTickOutcome feeds it into the error streak, and the warning
   // below names it — even though runTick cleared `lastError` so it never latched onto
   // `run_end` (BUGS.md 2026-09-21).
   if (deps.recoveryFailure !== undefined) outcome.recoveryFailure = deps.recoveryFailure;
   // A main_red tick's cause is written for that result (src/baseline/main-red.ts), not a leftover
-  // landing failure: fold it onto the state here so `run_end` logs it like every other
+  // merge failure: fold it onto the state here so `run_end` logs it like every other
   // failure's and the digest can itemize what the Outcome table's main_red cells mean
   // (BUGS.md 2026-09-28). runTick cleared `lastError` at its start, so nothing foreign
   // can precede this.
   if (outcome.error !== undefined) s.lastError = outcome.error;
 
   // Read main's current head while this tick is still reserved (running=true): the
-  // applyTickOutcome below clears running, and a poll landing between that clear and a later
+  // applyTickOutcome below clears running, and a poll that runs between that clear and a later
   // head update would see a stale lastMainHead and wake the loop again on the very move
   // that triggered this tick — a duplicate wake event plus an extra tick for one world change.
   // branchHead reads the ref files first (microsecond-scale, like the orchestrator's per-poll
@@ -102,10 +103,10 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   saveLoopState(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every loop failing identically
   // looked like a quiet team). applyTickOutcome increments the streak on error-class
-  // outcomes, preserves it across a plain `queued` tick (the tick's landing resolves it),
+  // outcomes, preserves it across a plain `queued` tick (the tick's merge resolves it),
   // and resets it on any other completed result — so warn only when THIS outcome incremented
   // the streak up to the threshold: a preserved streak already sitting at the bar must not
-  // re-warn on the queued tick's end. A rejection's crossing warns from the landing side
+  // re-warn on the queued tick's end. A rejection's crossing warns from the merge side
   // instead (writeMergeOutcome, src/merge/merge-slot.ts), which is where rejections resolve.
   if (
     (outcome.result === "error" || outcome.recoveryFailure !== undefined) &&

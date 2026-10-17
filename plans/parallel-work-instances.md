@@ -195,7 +195,7 @@ markdown.
   - the titles other instances hold, with "do not edit these entries".
 
   A revision tick keeps the revision note and also names the claim.
-- **Claims made at staging.** `stageTickLanding` (src/tick/tick-stage.ts) handles both cases:
+- **Claims made at staging.** `stageTickMerge` (src/tick/tick-stage.ts) handles both cases:
   - **An unassigned primary's** staged diff moves an entry out of `## Planned` or `## Open`. The
     harness detects which one with `actionableEntryRanges` on the worktree versus the
     merge-base and records `claim { source: "staged" }`, so no extra instance is assigned it

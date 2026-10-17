@@ -59,7 +59,7 @@ function tickCommitSha(d: TickDetail): string | null {
 }
 
 /** The per-file `git show --stat` summary of a tick's pinned commit. The sha is the authored
- * commit the tick pinned: a landing that rebased gives main a different sha with the same
+ * commit the tick pinned: a merge that rebased gives main a different sha with the same
  * changes, so this describes what the tick changed. */
 async function tickCommitStat(root: string, sha: string | null): Promise<string> {
   if (sha === null) return "(no commit: this run sent nothing to merge)";
@@ -78,8 +78,8 @@ export function tickDetailStat(root: string, d: TickDetail): Promise<string> {
 /** The human view of a TickDetail: one summary line — result (or the in-flight/unpaired
  * marker), duration, usage, and the pinned commit sha when the block's `merge_queued`/`landed`
  * event carries one — then each event through formatEvent, the shared renderer `logs` and the
- * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose landing
- * has finished shows that verdict in the header and ends with the landing's outcome line. */
+ * TUI use, so the trail reads exactly like the feed it came from. A queued tick whose merge
+ * has finished shows that verdict in the header and ends with the merge's outcome line. */
 export function renderTickDetail(d: TickDetail): string {
   const summary: string[] = [];
   if (d.endTs === null) summary.push(d.startTs === null ? "unpaired" : "in flight");

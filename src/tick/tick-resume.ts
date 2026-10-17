@@ -13,11 +13,11 @@ import { buildHandoffPrompt, buildResumePrompt, type ResumeCause } from "../prom
  * a null plan means the loop has nothing to run (the tick is skipped), a resumed tick gets
  * the cause-named bridge prompt, a fresh tick the assembled one. */
 export interface TickStartPlan {
-  /** The last landing's failure (the lander's own vocabulary — review_error, merge_conflict,
+  /** The last merge's failure (the merger's own vocabulary — review_error, merge_conflict,
    * merge_blocked — with the detail it wrote into `lastError`), captured before the plan
-   * clears lastError: a non-terminally failed landing kept its pin, and when this tick's
+   * clears lastError: a non-terminally failed merge kept its pin, and when this tick's
    * recovery re-queues that pin the failure must still feed the error streak
-   * (finishRecoveryTick). Undefined when the last result was not a retriable landing failure. */
+   * (finishRecoveryTick). Undefined when the last result was not a retriable merge failure. */
   priorLandingFailure: string | undefined;
   /** Resume the interrupted session instead of starting fresh. */
   resuming: boolean;
@@ -66,8 +66,8 @@ export function planTickStart(opts: {
   agent?: string;
 }): TickStartPlan | null {
   const s = opts.state;
-  // The last landing's failure, read before the clear below: a landing that failed
-  // non-terminally kept its pin (the lander's own vocabulary — review_error, merge_conflict,
+  // The last merge's failure, read before the clear below: a merge that failed
+  // non-terminally kept its pin (the merger's own vocabulary — review_error, merge_conflict,
   // merge_blocked — with the detail it wrote into `lastError`), and when this tick's recovery
   // re-queues that pin, the failure must still feed the error streak (finishRecoveryTick).
   const priorLandingFailure =
@@ -111,7 +111,7 @@ export function planTickStart(opts: {
   // session over the kept worktree, carrying the assembled tick prompt plus the handoff
   // bridge (plans/agent-backends.md "Sessions"). The failed `resumeMissing` run arms
   // `resumePending` and records `resumeMissing` from the verdict (its error turn carries no
-  // assistant content), so the very next tick lands here with the worktree intact. A dir with
+  // assistant content), so the very next tick ends up here with the worktree intact. A dir with
   // no ledger line at all is not a handoff — there is no recorded interrupted session to carry
   // forward.
   // Captured before the flag is consumed below; a stale cause must not leak into a later resume.

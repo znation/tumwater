@@ -2,7 +2,7 @@ import { sleep } from "./helpers/wait.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  awaitLandingForHandoff,
+  awaitMergeForHandoff,
   p75TickDurationMs,
   runTimedRoleTick,
   sleepInterruptible,
@@ -31,7 +31,7 @@ import { warningMessages } from "./fixtures/log-fixtures.js";
 // The orchestrator's exported unit-test seams (src/orchestrator/orchestrator.ts): the
 // permit-holding
 // wrapper that times a role tick for the p75 redeploy window (and the p75 itself), the
-// abort-wakeable poll sleep, and the restart hand-off's bounded landing wait. Both are small enough
+// abort-wakeable poll sleep, and the restart hand-off's bounded merge wait. Both are small enough
 // to pin without a team — the live orchestrator loop around
 // them is the e2e tier's job — but each carries a documented edge case that could plausibly
 // break (an already-aborted signal that addEventListener alone would never fire; an aborted
@@ -147,9 +147,9 @@ test("sleepInterruptible returns without waiting on an already-aborted signal", 
 // BUGS.md 2026-09-24 — the display fix leans on this wiring: the orchestrator marks a loop
 // `parkedSince` BEFORE the semaphore wait and clears it inside the acquire closure, so a
 // parked waiter renders as an inactive state and the active rows track the real permit
-// holders. Pinned here against the real Semaphore because the landing-holds-a-permit
+// holders. Pinned here against the real Semaphore because the merge-holds-a-permit
 // invariant otherwise lives only in the e2e tier.
-test("a parked waiter holds no permit until acquire grants it, which the landing tier shares", async () => {
+test("a parked waiter holds no permit until acquire grants it, which the merge tier shares", async () => {
   const semaphore = new Semaphore(1);
   // Permit holder: a role tick that holds the only slot until its (gated) tick completes.
   let holderAcquired = false;
@@ -169,9 +169,9 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
   );
   while (!holderAcquired) await sleep(1);
 
-  // A parked waiter and a landing, both queued behind the one held permit. Each clears its
+  // A parked waiter and a merge, both queued behind the one held permit. Each clears its
   // parked marker exactly as the orchestrator's wrapped acquire does.
-  const parked: Record<string, number | undefined> = { waiter: 1, landing: 1 };
+  const parked: Record<string, number | undefined> = { waiter: 1, merge: 1 };
   const waiter = runTimedRoleTick(
     new AbortController().signal,
     async () => {
@@ -181,11 +181,11 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
     () => semaphore.release(),
     async () => ({ result: "changed" } as TickOutcome),
   );
-  const landing = runTimedRoleTick(
+  const merge = runTimedRoleTick(
     new AbortController().signal,
     async () => {
       await semaphore.acquire(-1); // VERIFY_TIER: below every role tier
-      parked.landing = undefined;
+      parked.merge = undefined;
     },
     () => semaphore.release(),
     async () => ({ result: "changed" } as TickOutcome),
@@ -193,15 +193,15 @@ test("a parked waiter holds no permit until acquire grants it, which the landing
   await sleep(5);
   // Neither queued party holds a permit yet — the team serves at most the cap.
   assert.equal(parked.waiter, 1, "the waiter is still parked");
-  assert.equal(parked.landing, 1, "the landing is still parked");
+  assert.equal(parked.merge, 1, "the merge is still parked");
 
-  // Releases hand the permit on: the lower tier number (the landing) goes first, the waiter
+  // Releases hand the permit on: the lower tier number (the merge) goes first, the waiter
   // follows. Both clear their parked marker at grant, so no loop can stay an inactive row
   // while holding a permit.
   releaseHolder();
-  await Promise.all([holder, waiter, landing]);
+  await Promise.all([holder, waiter, merge]);
   assert.equal(parked.waiter, undefined);
-  assert.equal(parked.landing, undefined);
+  assert.equal(parked.merge, undefined);
 });
 
 // BUGS.md 2026-09-23 — the restart drain's `hold` was checked only at scheduling, so a tick
@@ -385,51 +385,51 @@ test("pollTeamHold trips on two roles' same-kind backend failures and names the 
   assert.equal(rlTrip?.holdMs, HOLD_BASE_MS);
 });
 
-// BUGS.md 2026-09-23 — the restart hand-off's bounded wait on an in-flight landing. A landing
+// BUGS.md 2026-09-23 — the restart hand-off's bounded wait on an in-flight merge. A merge
 // promise stands in for the slot's task, so each phase (finished, aborted, abandoned) is
 // reached deterministically: the e2e tier drives the real batch through the first abort.
 
-test("awaitLandingForHandoff announces the wait and lets a landing that finishes in time land", async () => {
+test("awaitMergeForHandoff announces the wait and lets a merge that finishes in time complete", async () => {
   const root = tmpdir();
   let aborts = 0;
-  const outcome = await awaitLandingForHandoff(
+  const outcome = await awaitMergeForHandoff(
     root,
     { promise: sleep(20), roles: ["clean", "dedupe"] },
     5_000,
     () => void aborts++,
   );
   assert.equal(outcome, "finished");
-  assert.equal(aborts, 0, "a landing inside its window is never aborted");
+  assert.equal(aborts, 0, "a merge inside its window is never aborted");
   const w = warningMessages(root);
   assert.equal(w.length, 1, "only the wait itself is announced");
   assert.match(w[0]!, /^restart waiting on the merge in progress for clean, dedupe \(deadline 5s\)$/);
 });
 
-test("awaitLandingForHandoff aborts a landing past its window and waits for it to stop", async () => {
+test("awaitMergeForHandoff aborts a merge past its window and waits for it to stop", async () => {
   const root = tmpdir();
   let stop = () => {};
   const promise = new Promise<void>((r) => (stop = r));
   let aborts = 0;
   const startedAt = Date.now();
-  const outcome = await awaitLandingForHandoff(root, { promise, roles: ["organize"] }, 200, () => {
+  const outcome = await awaitMergeForHandoff(root, { promise, roles: ["organize"] }, 200, () => {
     aborts++;
-    setTimeout(stop, 20); // the aborted landing reaches its next step boundary and settles
+    setTimeout(stop, 20); // the aborted merge reaches its next step boundary and settles
   });
   assert.equal(outcome, "aborted");
   assert.equal(aborts, 1, "aborted exactly once, when the window lapsed");
-  assert.ok(Date.now() - startedAt >= 200, "the landing had its whole window first");
+  assert.ok(Date.now() - startedAt >= 200, "the merge had its whole window first");
   const w = warningMessages(root);
   assert.equal(w.length, 2);
   assert.match(w[1]!, /the merge for organize outlived its 0\.2s deadline — aborted/, "the lapse names what was awaited");
 });
 
-test("awaitLandingForHandoff hands off without a landing still running after the abort, clearing its marker", async () => {
+test("awaitMergeForHandoff hands off without a merge still running after the abort, clearing its marker", async () => {
   const root = tmpdir();
   writeMergeMarker(root, { role: "clean", sha: "a".repeat(40), summary: "wedged", startedAt: Date.now(), stage: "build-check" });
   let aborts = 0;
   const startedAt = Date.now();
   // Never settles: a step wedged past its own bound, which no abort reaches.
-  const outcome = await awaitLandingForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++);
+  const outcome = await awaitMergeForHandoff(root, { promise: new Promise(() => {}), roles: ["clean"] }, 100, () => void aborts++);
   const elapsed = Date.now() - startedAt;
   assert.equal(outcome, "abandoned");
   assert.equal(aborts, 1);

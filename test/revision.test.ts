@@ -12,7 +12,7 @@ import { freshLoopState } from "../src/loop/loop-state.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
-import { stageTickLanding } from "../src/tick/tick-stage.js";
+import { stageTickMerge } from "../src/tick/tick-stage.js";
 import { queuedMerges } from "../src/merge/merge-queue.js";
 import { settleMergeOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/loop/leftover.js";
@@ -291,13 +291,13 @@ test("a permanent reviewer config error still holds the pin when the events feed
   });
 });
 
-/** The `stageTickLanding` context the two staging tests share: the loop wiring every tick
+/** The `stageTickMerge` context the two staging tests share: the loop wiring every tick
  * supplies, with `overrides` layered on for per-test state, prompt, and reply text. */
 function stageCtx(
   root: string,
   wt: string,
-  overrides: Partial<Parameters<typeof stageTickLanding>[0]> = {},
-): Parameters<typeof stageTickLanding>[0] {
+  overrides: Partial<Parameters<typeof stageTickMerge>[0]> = {},
+): Parameters<typeof stageTickMerge>[0] {
   return {
     root,
     role: "improve",
@@ -319,7 +319,7 @@ function stageCtx(
   };
 }
 
-test("stageTickLanding carries the revision round onto the entry and clears state.revision", async () => {
+test("stageTickMerge carries the revision round onto the entry and clears state.revision", async () => {
   const { root, wt } = await initializedWorktree("improve");
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
   const state = {
@@ -333,7 +333,7 @@ test("stageTickLanding carries the revision round onto the entry and clears stat
     finalText: "SUMMARY: revise the change\nWHY: the objection\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.revision, undefined, "staging consumes the revision");
@@ -351,7 +351,7 @@ test("a user-request run that leaves a pending revision stages no round and keep
     finalText: "SUMMARY: do the user thing\nWHY: asked\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(queuedMerges(root)[0]?.revisionRound, undefined, "a user change is not a revision");

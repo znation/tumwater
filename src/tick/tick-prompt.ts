@@ -237,7 +237,7 @@ export function assembleTickPrompt(
       agent: agent ?? configForRole(config, role).agent,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
       // request block; its text is also the tick's userPrompt,
-      // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on landing)
+      // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on merge)
       // treats it exactly like the director's dequeued request.
       userRequest: request ?? undefined,
     });

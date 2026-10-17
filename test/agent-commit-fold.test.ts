@@ -15,7 +15,7 @@ import { APPROVE_PI, assistantLine } from "./fixtures/pi-events.js";
 const PI_COMMIT = `git add -A && git -c user.name=t -c user.email=t@t commit -q -m "pi commit"`;
 const FOLD_WARNING = "folded into tumwater's commit";
 
-async function tickAndLand(script: string[]): Promise<{ repo: string; before: string }> {
+async function tickAndMerge(script: string[]): Promise<{ repo: string; before: string }> {
   const repo = await initializedRepo();
   const before = sh(repo, "git", "rev-parse", "main");
   await withPi([APPROVE_PI, ...script].join("\n"), async () => {
@@ -31,8 +31,8 @@ function assertOneHarnessCommit(repo: string, before: string): void {
   assert.match(sh(repo, "git", "log", "-1", "--format=%s", "main"), /^tumwater\(organize\):/);
 }
 
-test("an agent commit beside uncommitted edits lands as one harness commit", async () => {
-  const { repo, before } = await tickAndLand([
+test("an agent commit beside uncommitted edits becomes one harness commit", async () => {
+  const { repo, before } = await tickAndMerge([
     `printf '%s\n' '${assistantLine("did it\nSUMMARY: add two files")}'`,
     `echo a > a.txt`,
     PI_COMMIT,
@@ -44,7 +44,7 @@ test("an agent commit beside uncommitted edits lands as one harness commit", asy
 });
 
 test("an agent commit with a clean tree is not dropped as no_change", async () => {
-  const { repo, before } = await tickAndLand([
+  const { repo, before } = await tickAndMerge([
     `printf '%s\n' '${assistantLine("did it\nSUMMARY: add a file")}'`,
     `echo a > a.txt`,
     PI_COMMIT,

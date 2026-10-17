@@ -393,8 +393,8 @@ run's single tumwater-stamped commit, and a clean tree after such a run is not `
 
 **Binds.** `src/git/git.ts`, `src/loop/loop-tick.ts`, `src/tick/tick-stage.ts`.
 
-**Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits lands
-as one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
+**Pinned by.** `test/agent-commit-fold.test.ts` — "an agent commit beside uncommitted edits becomes
+one harness commit", "an agent commit with a clean tree is not dropped as no_change", and the
 two `foldCommitsSince` unit tests; `test/tick-stage.test.ts` — "a commit made in the missing-SUMMARY
 follow-up folds into the harness commit" and "a commit made in the over-long-SUMMARY follow-up folds
 into the harness commit".

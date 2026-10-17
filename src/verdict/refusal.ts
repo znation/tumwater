@@ -175,7 +175,7 @@ export async function handleRefusal(
   const result = await ctx.merge(wt, `refused: ${reason}`);
   if (result !== "changed") state.lastError = `refusal note merge failed: ${result}`;
   // A landed refusal note is a landed change too: it supersedes a stale rejection exactly as
-  // applyLandingOutcome's landed branch does (this path merges directly, bypassing that fold).
+  // applyMergeOutcome's landed branch does (this path merges directly, bypassing that fold).
   else {
     clearSupersededRejection(state);
     // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —

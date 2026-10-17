@@ -10,7 +10,7 @@ import type { TickOutcome } from "./tick-outcome.js";
 /** The orchestrator's tick-timing and scheduling seams (src/orchestrator/orchestrator.ts
  * keeps the poll loop itself — the control flow that calls these). Each is exported as a
  * unit-test seam (test/orchestrator-seams.test.ts): timing a semaphore-gated tick, an
- * abort-interruptible sleep, and the restart hand-off's bounded wait on the in-flight landing.
+ * abort-interruptible sleep, and the restart hand-off's bounded wait on the in-flight merge.
  * Split out of orchestrator.ts — which had grown into both the poll loop and the timing helpers
  * it schedules with — so the loop reads as control flow over these named steps. The team-health
  * polls (the team hold, the error-storm warning, the failure-spread alarm) are their own family
@@ -31,20 +31,20 @@ export function p75TickDurationMs(durations: readonly number[]): number | null {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.75))] ?? null;
 }
 
-/** How long a restart's hand-off waits on an in-flight landing, per phase: one window for it to
+/** How long a restart's hand-off waits on an in-flight merge, per phase: one window for it to
  * finish on its own, then — having aborted it — one more for the step it was in to end
- * (awaitLandingForHandoff; BUGS.md 2026-09-23). By the time a restart reaches its `finally` the new
- * build is already in dist/ and every role tick is done or aborted, so the landing is all the team
- * is still running: each minute spent on it is a minute nothing else ticks. A landing's unbounded
+ * (awaitMergeForHandoff; BUGS.md 2026-09-23). By the time a restart reaches its `finally` the new
+ * build is already in dist/ and every role tick is done or aborted, so the merge is all the team
+ * is still running: each minute spent on it is a minute nothing else ticks. A merge's unbounded
  * part is model work — its reviewer run (and, until 2026-09-24, a gate build-fix run: the
  * 2026-09-23 one held the slot for 4 h 35 m and that day's hand-off sat through 97 minutes of it).
  * Its deterministic part is bounded: at most one build check (BUILD_CHECK_TIMEOUT_MS) plus git
- * steps. So a check's bound plus a minute lets a landing already past its model runs — in its
- * last check and fast-forward — land, and gives an aborted landing's current step (a check, which
- * no abort reaches) time to end, so the hand-off does not leave a check running in a lander
+ * steps. So a check's bound plus a minute lets a merge already past its model runs — in its
+ * last check and fast-forward — merge, and gives an aborted merge's current step (a check, which
+ * no abort reaches) time to end, so the hand-off does not leave a check running in a merger
  * worktree the next generation is about to reset. Not the drain's window: that is the p75 of whole
  * role ticks (over an hour on this team) — the very lag this bounds. */
-export const HANDOFF_LANDING_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
+export const HANDOFF_MERGE_WINDOW_MS = BUILD_CHECK_TIMEOUT_MS + 60_000;
 
 /** Run one role tick under the concurrency semaphore and return how long the tick itself ran,
  * in ms — null when it never started (the harness is already stopping, or `held`) or was cut
@@ -138,49 +138,49 @@ function settlesWithin(promise: Promise<unknown>, ms: number, after: AfterDelay)
   });
 }
 
-/** How the restart hand-off's wait on the in-flight landing ended: it finished inside the first
+/** How the restart hand-off's wait on the in-flight merge ended: it finished inside the first
  * window, it settled once aborted, or it was still running a window after the abort and the
  * hand-off went ahead without it. */
-type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
+type HandoffMergeOutcome = "finished" | "aborted" | "abandoned";
 
-/** The restart hand-off's bounded wait on the in-flight landing (BUGS.md 2026-09-23): the shutdown
- * `finally`'s landing await when this process is about to exit for the next generation. The
- * landings run a reviewer and a build check per change and a merge's check after them, so an
+/** The restart hand-off's bounded wait on the in-flight merge (BUGS.md 2026-09-23): the shutdown
+ * `finally`'s merge await when this process is about to exit for the next generation. The
+ * merges run a reviewer and a build check per change and a merge's check after them, so an
  * unbounded await here is a team-wide drain in disguise — the 2026-09-23 hand-off lagged its own
  * swap by 97 minutes, in silence. The wait is announced as it starts (one warning naming the
- * landing's roles), so the feed says why `restarting onto build …` is not yet followed by
- * `orchestrator stopped`. Past `windowMs` the landing is stopped the way the drain gives up on role
+ * merge's roles), so the feed says why `restarting onto build …` is not yet followed by
+ * `orchestrator stopped`. Past `windowMs` the merge is stopped the way the drain gives up on role
  * ticks: `abort` fires the harness's internal stop, which kills its pi runs at once and makes it
  * stop at its next step boundary (merge-core.ts, merge-batch.ts, and merge-stack.ts check the
- * signal before every gate, every approved landing, and each of a stack's check attempts), and a
- * warning names what was still awaited. An aborted landing records `aborted` like any shutdown
+ * signal before every gate, every approved merge, and each of a stack's check attempts), and a
+ * warning names what was still awaited. An aborted merge records `aborted` like any shutdown
  * abort — pins kept, entries dropped, marker removed — for its roles' leftover recovery on the
  * new build. One still running a window after the abort (a step wedged past its own bound) is left
  * behind: its 4/5 marker is cleared here, since this process exits the moment the hand-off returns,
  * and its entries and pins survive exactly as a crash leaves them — the next generation's first
- * drain re-lands them. Exported as a unit-test seam, like runTimedRoleTick. */
-export async function awaitLandingForHandoff(
+ * drain re-merges them. Exported as a unit-test seam, like runTimedRoleTick. */
+export async function awaitMergeForHandoff(
   root: string,
-  landing: Pick<InFlightMerge, "promise" | "roles">,
+  merge: Pick<InFlightMerge, "promise" | "roles">,
   windowMs: number,
   abort: () => void,
   after: AfterDelay = realAfterDelay,
-): Promise<HandoffLandingOutcome> {
-  const roles = landing.roles.join(", ");
+): Promise<HandoffMergeOutcome> {
+  const roles = merge.roles.join(", ");
   const deadline = `${windowMs / 1000}s`;
   warnEvent(
     root,
     TUMWATER_SOURCE,
     `restart waiting on the merge in progress for ${roles} (deadline ${deadline})`,
   );
-  if (await settlesWithin(landing.promise, windowMs, after)) return "finished";
+  if (await settlesWithin(merge.promise, windowMs, after)) return "finished";
   abort();
   warnEvent(
     root,
     TUMWATER_SOURCE,
     `restart: the merge for ${roles} outlived its ${deadline} deadline — aborted; its pinned commits survive for the next restart`,
   );
-  if (await settlesWithin(landing.promise, windowMs, after)) return "aborted";
+  if (await settlesWithin(merge.promise, windowMs, after)) return "aborted";
   removeQuiet(mergeStatePath(root));
   warnEvent(
     root,
@@ -192,20 +192,20 @@ export async function awaitLandingForHandoff(
 
 /**
  * Drain the orchestrator's in-flight work at shutdown: wait out the reserved role and director
- * ticks, and await the landing pipeline's tasks beside them — and how depends on what comes
- * next. On an operator stop the harness signal has already aborted the landing — its pi runs die
+ * ticks, and await the merge pipeline's tasks beside them — and how depends on what comes
+ * next. On an operator stop the harness signal has already aborted the merge — its pi runs die
  * and it stops at its next step boundary, ending "aborted" with its ref kept and its entry
  * dropped for next-start recovery — and it is waited out: returning early would remove
- * orchestrator.json while the process still lands, letting a second `tumwater run` start a
- * concurrent lander (a second Ctrl+C still forces the exit). On a restart the caller exits for
- * the next generation the moment this returns, and a landing is not bounded by one reviewer run
- * — a merge's check follows the vets' — so the wait is a bounded hand-off that announces itself
- * (awaitLandingForHandoff; BUGS.md 2026-09-23). "The landing" is every landing task at once —
- * each vet holding a permit, and the merge — waited on (and, past the hand-off's window,
- * aborted) together under the roles of them all. The vetted changes waiting for the merge have
- * no task, and a vet still parked for its permit has started nothing (a shutdown settles it at
- * once; a restart's closed start gate at its grant): all of them keep their entries and pins
- * for the next start.
+ * orchestrator.json while the process is still merging, letting a second `tumwater run` start a
+ * concurrent merger (a second Ctrl+C still forces the exit). On a restart the caller exits for
+ * the next generation the moment this returns, and a merge is not bounded by one reviewer run
+ * — a merge's check follows the verifications' — so the wait is a bounded hand-off that
+ * announces itself (awaitMergeForHandoff; BUGS.md 2026-09-23). "The merge" is every merge task
+ * at once — each verification holding a permit, and the merge — waited on (and, past the hand-off's
+ * window, aborted) together under the roles of them all. The approved changes waiting for the
+ * merge have no task, and a verification still parked for its permit has started nothing (a
+ * shutdown settles it at once; a restart's closed start gate at its grant): all of them keep their
+ * entries and pins for the next start.
  */
 export async function drainInFlightWork(
   root: string,
@@ -218,27 +218,27 @@ export async function drainInFlightWork(
   after: AfterDelay = realAfterDelay,
 ): Promise<void> {
   const ticks = Promise.allSettled([...roleInFlight, ...directorInFlight]);
-  const landing =
+  const merge =
     inFlight.length === 0
       ? null
       : {
           promise: Promise.allSettled(inFlight.map((t) => t.promise)).then(() => {}),
           roles: inFlight.flatMap((t) => t.roles),
         };
-  if (landing && restart) {
-    // The abort is the caller's internal stop, not just the landing's own controller: each task
+  if (merge && restart) {
+    // The abort is the caller's internal stop, not just the merge's own controller: each task
     // wires the harness signal to its controller, and a conflict-resolution run watches the
     // harness signal alone (runLandingPi). Nothing else it reaches can start work here — the
     // director has finished, permit holders were aborted at the restart, and a parked waiter
     // meets the closed start gate (tickStartHeld) whenever it is granted a permit.
-    const outcome = await awaitLandingForHandoff(root, landing, handoffWindowMs, abort, after);
-    // An abandoned landing still holds its permit, so a waiter parked behind it would never be
+    const outcome = await awaitMergeForHandoff(root, merge, handoffWindowMs, abort, after);
+    // An abandoned merge still holds its permit, so a waiter parked behind it would never be
     // granted one and never settle. The ticks have had both windows beside the hand-off, so
-    // whatever is still reserved then started nothing (or is wedged like the landing): the
+    // whatever is still reserved then started nothing (or is wedged like the merge): the
     // hand-off goes ahead without it too.
     if (outcome !== "abandoned") await ticks;
   } else {
-    if (landing) warnEvent(root, TUMWATER_SOURCE, `shutdown waiting on the merge in progress for ${landing.roles.join(", ")}`);
-    await Promise.allSettled([ticks, landing?.promise]);
+    if (merge) warnEvent(root, TUMWATER_SOURCE, `shutdown waiting on the merge in progress for ${merge.roles.join(", ")}`);
+    await Promise.allSettled([ticks, merge?.promise]);
   }
 }

@@ -21,39 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 6/11: Rename the merge identifiers in the tick modules (planned 2026-10-16 by user; requires part 5/11 landed; design in plans/terminology.md "Code names"; touches src/tick/ and test/tick-*.test.ts and test/agent-commit-fold.test.ts)
-
-**Goal.** The tick modules' merge-related identifiers, comments and test names say merge. The later code-run series turns tick into run. A mechanical rename of about 315 lines with no behavior change.
-
-**Approach.**
-- **Rename rule**, as in this series:
-  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
-  - comments, test names and assertion messages follow the Glossary;
-  - comment lines wrap at 100 columns.
-  - Leave the word tick alone (the code-run series renames it).
-- **Renames:**
-  - tick-apply.ts: `applyLandingOutcome` → `applyMergeOutcome`. Move src/merge/merge-slot.ts's call now.
-  - tick-stage.ts: `stageTickLanding` → `stageTickMerge`.
-  - tick-timing.ts: `awaitLandingForHandoff` → `awaitMergeForHandoff`, `HANDOFF_LANDING_WINDOW_MS` → `HANDOFF_MERGE_WINDOW_MS`, `HandoffLandingOutcome` → `HandoffMergeOutcome`, local `landing` → `merge`.
-  - tick-detail-data.ts and tick-detail.ts: local `landing` → `merge`.
-  - Tests: `releaseLanding` → `releaseMerge`, `tickAndLand` → `tickAndMerge`.
-- **Aliases.** Keep two-line `@deprecated` aliases for `applyLandingOutcome`, `stageTickLanding`, `HANDOFF_LANDING_WINDOW_MS` and `awaitLandingForHandoff`, which src/loop, src/orchestrator and later parts call. Move these files off earlier parts' aliases. Delete any alias that test/exports.test.ts reports unused.
-- **Leave for their parts:** `priorLandingFailure`, `runLandingPi` and `foldLandingUsage` (part 7/11), and `bucketLandingEvents` and `landQueuedByLoop` (part 10/11).
-- **docs/invariants.md** quotes the test name "an agent commit beside uncommitted edits lands as one harness commit". "Lands" there means "ends up as", not a merge. If you reword the test, use a plain verb ("becomes one harness commit") and update the quote.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - the `Run:`/`Tick:` trailer parsing;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-- Skip any name that an earlier series already renamed.
-
-**Files touched.** `src/tick/` (tick-apply.ts, tick-stage.ts, tick-timing.ts, tick-detail-data.ts, tick-detail.ts, tick-outcome.ts, tick-finalize.ts, tick-resume.ts, tick-usage.ts, tick-verdict.ts, stage-check.ts); `test/tick-*.test.ts`; `test/agent-commit-fold.test.ts`; `src/merge/merge-slot.ts` (one call); docs/invariants.md (only if that test is renamed).
-
-**Acceptance criteria.**
-- `applyMergeOutcome`, `stageTickMerge`, `awaitMergeForHandoff` and `HANDOFF_MERGE_WINDOW_MS` are exported. Each old name is either gone or a `@deprecated` alias of it.
-- In src/tick/ and these tests, no identifier, comment or test name uses a retired merge word, except aliases, the part 7/11 and 10/11 names above and quoted backlog titles.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 7/11: Rename the merge identifiers in the loop modules (planned 2026-10-16 by user; requires part 6/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ and test/loop*.test.ts and their fixtures)
 
 **Goal.** The runner modules' merge-related identifiers, comments and test names say merge, including the pi-wiring methods the merge pipeline calls. The later code-runner series turns loop into runner. A mechanical rename of about 490 lines with no behavior change.
@@ -1320,6 +1287,41 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - test/status-payload.test.ts: the existing "status payload carries planned plans and open bugs, fresh per poll" fixture already holds a refused plan and a refused bug. Its payload's `alerts` gains a `refused` alert whose title is `2 refused entries wait on your decision`.
 - `npm run test` passes.
 
+### Plain terms code merge, part 6/11: Rename the merge identifiers in the tick modules (planned 2026-10-16 by user; requires part 5/11 landed; design in plans/terminology.md "Code names"; touches src/tick/ and test/tick-*.test.ts and test/agent-commit-fold.test.ts, done 2026-10-16)
+
+**Goal.** The tick modules' merge-related identifiers, comments and test names say merge. The later code-run series turns tick into run. A mechanical rename of about 315 lines with no behavior change.
+
+**Approach.**
+- **Rename rule**, as in this series:
+  - in identifiers, `landing`/`land` → `merge`, `vet` → `verify`, `vetted` → `approved`, and a bare `landed` → `mergeDone`;
+  - comments, test names and assertion messages follow the Glossary;
+  - comment lines wrap at 100 columns.
+  - Leave the word tick alone (the code-run series renames it).
+- **Renames:**
+  - tick-apply.ts: `applyLandingOutcome` → `applyMergeOutcome`. Move src/merge/merge-slot.ts's call now.
+  - tick-stage.ts: `stageTickLanding` → `stageTickMerge`.
+  - tick-timing.ts: `awaitLandingForHandoff` → `awaitMergeForHandoff`, `HANDOFF_LANDING_WINDOW_MS` → `HANDOFF_MERGE_WINDOW_MS`, `HandoffLandingOutcome` → `HandoffMergeOutcome`, local `landing` → `merge`.
+  - tick-detail-data.ts and tick-detail.ts: local `landing` → `merge`.
+  - Tests: `releaseLanding` → `releaseMerge`, `tickAndLand` → `tickAndMerge`.
+- **Aliases.** None kept (see the Done note below): the old names `applyLandingOutcome`, `stageTickLanding`, `HANDOFF_LANDING_WINDOW_MS` and `awaitLandingForHandoff` are gone, and every caller moved to the new names.
+- **Leave for their parts:** `priorLandingFailure`, `runLandingPi` and `foldLandingUsage` (part 7/11), and `bucketLandingEvents` and `landQueuedByLoop` (part 10/11).
+- **docs/invariants.md** quotes the test name "an agent commit beside uncommitted edits lands as one harness commit". "Lands" there means "ends up as", not a merge. If you reword the test, use a plain verb ("becomes one harness commit") and update the quote.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names;
+  - the `Run:`/`Tick:` trailer parsing;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+- Skip any name that an earlier series already renamed.
+
+**Files touched.** `src/tick/` (tick-apply.ts, tick-stage.ts, tick-timing.ts, tick-detail-data.ts, tick-detail.ts, tick-outcome.ts, tick-finalize.ts, tick-resume.ts, tick-usage.ts, tick-verdict.ts, stage-check.ts); `test/tick-*.test.ts`; `test/agent-commit-fold.test.ts`; `src/merge/merge-slot.ts` (one call); docs/invariants.md (only if that test is renamed).
+
+**Acceptance criteria.**
+- `applyMergeOutcome`, `stageTickMerge`, `awaitMergeForHandoff` and `HANDOFF_MERGE_WINDOW_MS` are exported. Each old name is either gone or a `@deprecated` alias of it.
+- In src/tick/ and these tests, no identifier, comment or test name uses a retired merge word, except aliases, the part 7/11 and 10/11 names above and quoted backlog titles.
+- `npm run test` passes.
+
+**Done 2026-10-16.** Old names are gone rather than aliased: every caller in src/ and test/ moved to the new names in this change, so no `@deprecated` alias remained to keep.
+
 ### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
 
 **Goal.** BUGS.md's ## Fixed section holds flake bugs whose headings quote the test name. Two of today's are `"runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"` (fixed 2026-10-16) and `"a later wake request leaves a pending scheduled wake standing"` (fixed 2026-10-14). When such a test fails again, nothing links the failure to the Fixed record. The open `startParentDeathWatch` bug was filed by hand, after its 10-01 and 10-09 Fixed entries, when an operator session happened to read improve's red merge check. `checkWaitingBugs` (src/doctor/doctor-backlog.ts) already does this matching for Open bugs that carry a Waiting note: `quotedTestName` on the heading, then `failureMentions` over the event log since the day after the note. This plan applies the same matching to the newest Fixed records. It adds one doctor row, `regressed fixes`, which warns when a Fixed record's quoted test has failed since the day after its fix and no Open bug quotes the same test. Like every backlog check, it is a warn, never a fail, and doctor writes nothing to BUGS.md.
@@ -1467,7 +1469,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - The first call returns `"merge_blocked"`. The pin ref still exists, `state.lastReview` is unchanged (no reject), `state.lastError` contains `known-flaky failure, merge kept` and `the flaky test`, and `loadLoopState(root, ROLE).mergeFlakeExcused` is set.
   - A second call with the same state returns `"rejected"` and deletes the pin.
 - The same file: a red whose headline matches no flake warning still returns `"rejected"` on a green main. The existing first test covers this, since it seeds no flake warning. It must still pass unchanged.
-- A test in `test/streak-gate.test.ts`, which already drives `applyLandingOutcome` (`src/tick/tick-apply.ts`): `mergeFlakeExcused` is cleared on `"changed"` and on `"rejected"` and kept on `"merge_blocked"`.
+- A test in `test/streak-gate.test.ts`, which already drives `applyMergeOutcome` (`src/tick/tick-apply.ts`): `mergeFlakeExcused` is cleared on `"changed"` and on `"rejected"` and kept on `"merge_blocked"`.
 - `test/loop-state.test.ts`: a saved state with a non-string `mergeFlakeExcused` loads with the field absent.
 - `npm run test` passes, including `test/vocabulary.test.ts` and `test/comment-width.test.ts`.
 
@@ -1502,7 +1504,7 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 **Acceptance criteria.**
 - `MergerContext`, `MergeRequest`, `mergeApproved`, `verifyRequest`, `VerifyVerdict`, `mergeStack` and the other new names are exported. Each old name is either gone or a `@deprecated` alias of it.
 - `MergeContext` (merge-to-main.ts) and `MergerContext` (merge-core.ts) both exist, and each doc comment names its role.
-- After this part, no file under `src/merge/` has an identifier, comment or test name with a retired merge word, except aliases, `runLandingPi`/`foldLandingUsage`/`AbortableLanding`/`applyLandingOutcome` (parts 6, 7 and 9), quoted backlog titles and legacy-layout names.
+- After this part, no file under `src/merge/` has an identifier, comment or test name with a retired merge word, except aliases, `runLandingPi`/`foldLandingUsage`/`AbortableLanding`/`applyMergeOutcome` (parts 6, 7 and 9), quoted backlog titles and legacy-layout names.
 - `npm run test` passes.
 
 ### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
@@ -1589,7 +1591,7 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - `src/loop/loop-state.ts`: widen `LoopState.mergeCheckFailures` to `{ patchId: string; count: number; headline?: string }`. Extend the doc comment: `headline` is the failing test's headline, set only by a red merge check (never by a cross-check block). In the existing `healRecord` call for `mergeCheckFailures`, delete `headline` when it is not a string.
 - `src/merge/merge-check-failures.ts`, `mergeCheckRed`: when `keepPinOrAttribute` returns `"merge_blocked"` and `ctx.state.mergeCheckFailures` is set, store `headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check)`. That is the expression review-precheck.ts uses for its flake warning; import both helpers from `src/build/build-check-report.ts`. The unverified-tree branch (host sleep) returns before the tally and stores nothing. `mergeBlocked` stores no headline. Its `tallyCheckFailure` writes a fresh `{ patchId, count }` record, which drops any earlier headline, so a cross-check block is never counted as a flake.
 - Add an exported `noteMergeRetryPassed(ctx: LanderContext, role: string): void` to the same module. If `ctx.state.mergeCheckFailures?.headline` is set, it calls `warnEventBestEffort` for `role` with the message `MERGE_FLAKY_WARNING_PREFIX + headline`. Give it a doc comment naming this plan's reason.
-- `src/merge/merge-core.ts`: in the `if (result === "changed")` branch that deletes the pin ref, call `noteMergeRetryPassed(ctx, req.role)` before returning. `applyLandingOutcome` in `src/tick/tick-apply.ts` clears `mergeCheckFailures` on `changed` afterwards, so the record is read once, while it still belongs to this pin.
+- `src/merge/merge-core.ts`: in the `if (result === "changed")` branch that deletes the pin ref, call `noteMergeRetryPassed(ctx, req.role)` before returning. `applyMergeOutcome` in `src/tick/tick-apply.ts` clears `mergeCheckFailures` on `changed` afterwards, so the record is read once, while it still belongs to this pin.
 - `src/review/known-flakes.ts`: export `MERGE_FLAKY_WARNING_PREFIX = "merge check failed then passed on retry — flaky: "` beside `FLAKY_WARNING_PREFIX`. Change `flakeWarningKeys` to match either prefix: take the first prefix found in the message and slice past it. Update the module and `checkFlakyChecks` doc comments (`src/doctor/doctor-checks.ts`) to name both sources. Keep `isKnownFlake`, `flakeKeys` and `flakeCounts` signatures unchanged.
 
 **Files touched.** `src/review/known-flakes.ts`, `src/merge/merge-check-failures.ts`, `src/merge/merge-core.ts`, `src/loop/loop-state.ts`, `src/doctor/doctor-checks.ts` (comment only), `test/known-flakes.test.ts`, `test/merger.test.ts`.
@@ -1700,7 +1702,7 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - **Near-collision.** `MergeInFlight` (this marker) and part 4's `InFlightMerge` (a pipeline task) differ only in word order, as their old names did. Keep both, and start each doc comment by saying which one it is.
 - **Earlier callers move now.** `setLandingStage`, `landingChanges`, `LandingInFlight` and `LANDING_STAGE_LABELS` are called in part 2/11's files.
 - **Aliases.** Keep two-line `/** @deprecated Use …. */` aliases for every export that later parts still call: all of the names above except `LandingStage` and `updateLandingChange`. Move this part's files off part 2/11's aliases. Delete any alias that test/exports.test.ts reports unused.
-- **Leave for their parts:** `foldLandingUsage` (part 7/11) and `applyLandingOutcome` (part 6/11).
+- **Leave for their parts:** `foldLandingUsage` (part 7/11) and `applyMergeOutcome` (part 6/11).
 - **Leave alone:**
   - user-visible strings and expected-output literals;
   - event type names;
@@ -1712,7 +1714,7 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 
 **Acceptance criteria.**
 - Every new name above is exported. Each old name is either gone or a `@deprecated` alias of it.
-- In merge-slot.ts and its test, no identifier, comment or test name uses a retired merge word, except the aliases, `foldLandingUsage`, `applyLandingOutcome` and quoted backlog titles.
+- In merge-slot.ts and its test, no identifier, comment or test name uses a retired merge word, except the aliases, `foldLandingUsage`, `applyMergeOutcome` and quoted backlog titles.
 - Part 2/11's files no longer use the four early names.
 - `npm run test` passes.
 **Landed as.** Every caller of every renamed name moved in this change, so no `@deprecated` aliases were added; only the comments and test names in the two merge-slot files were reworded.
@@ -2982,7 +2984,7 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
   - `queueFiles` lists the new directory plus any files still in the legacy one, sorted by basename. `tumwater queue`, `status`, doctor and the dashboard, running in another process before the new orchestrator's first start, therefore show the full queue.
   - `dropLanding` removes by full path, so either directory works.
   - If the vocabulary guard flags a legacy path literal, end its line with `// vocabulary-ok: legacy path read from old layouts`.
-- Callers (tsc): `stageTickLanding` (tick-stage.ts), `recoverLeftover` (leftover.ts), landing-vetting.ts, landing-drain.ts, landing-queue-render.ts and status-data.ts. In status-data.ts the `--json`/API key is already `run`. The in-memory `LandRequest.tick` stays; Plain terms code run renames it.
+- Callers (tsc): `stageTickMerge` (tick-stage.ts), `recoverLeftover` (leftover.ts), landing-vetting.ts, landing-drain.ts, landing-queue-render.ts and status-data.ts. In status-data.ts the `--json`/API key is already `run`. The in-memory `LandRequest.tick` stays; Plain terms code run renames it.
 - **Self-hosting:** safe in one part.
   - The old orchestrator enqueues into `land-queue/` until it exits.
   - The new one moves those entries before its first read.
@@ -3012,7 +3014,7 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - Add the five pairs to `LEGACY_STATE_KEYS` (src/loop/loop-state.ts) and rename the `LoopState` properties and their doc comments.
 - In `loadLoopState`, the `healOptionalNumber` calls and `landingCheckFailures`' `healRecord` follow the new names. The legacy keys are mapped before healing, so an old value is healed exactly as before.
 - Consumers: tsc lists ~46 src sites in 13 files:
-  - the `applyTickOutcome`/`applyLandingOutcome` writers (tick-apply.ts);
+  - the `applyTickOutcome`/`applyMergeOutcome` writers (tick-apply.ts);
   - the interval, wake and backoff arithmetic (scheduling.ts, backoff.ts, orchestrator-scheduling.ts);
   - the review-error pin hold (landing-core.ts, leftover.ts, loop-tick.ts);
   - the check-failure counter (landing-check-failures.ts);
@@ -3654,7 +3656,7 @@ This part makes a used-up window a reason to move. While a window is rejected, e
   3. Map `source: "harness"` to `TUMWATER_SOURCE`.
 
   Role ids are not touched; the role-ids series aliases them elsewhere (see part 1/9).
-- Collision: the staged-claim event in `stageTickLanding` (src/tick/tick-stage.ts) writes its payload as `origin: "staged"`. Nothing reads that field.
+- Collision: the staged-claim event in `stageTickMerge` (src/tick/tick-stage.ts) writes its payload as `origin: "staged"`. Nothing reads that field.
 - Readers. tsc misses most of these because the index signature is `unknown`, so grep for `.loop` on events:
   - `eventRole`, `tickStartMap` and `tickSpanMs` (event-read.ts);
   - `isNotifyFailure`, which compares against `TUMWATER_SOURCE`, and `spawnNotifyCommand`'s env value `event.source` (notify.ts);
@@ -3725,7 +3727,7 @@ This part makes a used-up window a reason to move. While a window is rejected, e
 
 **Approach.**
 - Add the three pairs to `LEGACY_EVENT_TYPES` and rename the union members and their comments.
-  - Writers: `stageTickLanding` (src/tick/tick-stage.ts), `recoverLeftover` (src/loop/leftover.ts) and `writeLandingOutcome` (src/landing/landing-slot.ts).
+  - Writers: `stageTickMerge` (src/tick/tick-stage.ts), `recoverLeftover` (src/loop/leftover.ts) and `writeLandingOutcome` (src/landing/landing-slot.ts).
   - Readers: `bucketLandingEvents` and `resolveQueuedResult` (history-data.ts), `foldUsageEvent` (report-data.ts), `scanMainCheck` (status-polls.ts), tick-detail.ts, event-format.ts, tone.ts `ROUTINE_EVENTS`/`PROBLEM_EVENTS` (they reach the dashboard through gui-client-model.ts's JSON injection), and the label map in its server and browser forms.
 - Collision: `"landed"` also names things that are not event types. Leave `OUTCOME_CLASS`'s `landed` class (time-spend.ts, failure-render.ts) and landing-stack.ts's `{ kind: "landed" }`. The text, scripting and code series own those. Rename only the event type.
 - Notify:
@@ -6413,7 +6415,7 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 
 **Approach.** Persist one timestamp and render it, mirroring how `lastError` rides LoopState → status-payload → the table/dashboard.
 - `src/loop/loop-state.ts`: add `lastLandedAt?: number` to `LoopState` beside `lastError`/`lastTickEndedAt` (epoch ms; absent until the first landing, absent on states written before the field existed).
-- `src/tick/tick-apply.ts` `applyLandingOutcome`'s `changed` branch — the same site that does `s.commits += 1` and resets `consecutiveErrors`: set `s.lastLandedAt = Date.now()`. `Date.now()` is already used in this function (the rejected branch's backoff rung), so no new clock seam; a `rejected`/`merge_conflict`/`aborted` landing leaves the prior value, so the age means "last successful landing".
+- `src/tick/tick-apply.ts` `applyMergeOutcome`'s `changed` branch — the same site that does `s.commits += 1` and resets `consecutiveErrors`: set `s.lastLandedAt = Date.now()`. `Date.now()` is already used in this function (the rejected branch's backoff rung), so no new clock seam; a `rejected`/`merge_conflict`/`aborted` landing leaves the prior value, so the age means "last successful landing".
 - src/ui/status-payload.ts per-loop row: carry `lastLandedAt: s.lastLandedAt ?? null` beside `lastTickEndedAt`, so `tumwater status --json` exposes the epoch ms.
 - `src/ui/status-render.ts`: add a last-landed cell to each loop row (a `· <N> ago` suffix, reusing the existing `ago`/`lastTickCell` relative-time formatter so the last-tick and last-landed columns cannot drift on what "ago" means); a loop that has never landed shows the same dash `lastTickCell` uses for a never-ticked loop.
 - `src/ui/gui/gui-client-loops.ts` (the fleet rows, where the drawer also lists the last tick): render "landed <N> ago" from the payload field with the GUI's own `fmtAgo`, matching the `ago` rule client-side.
@@ -6423,7 +6425,7 @@ The stamps these commands write into BUGS.md, PLANS.md and QUESTIONS.md say "the
 
 **Acceptance criteria.**
 - A loop whose change lands shows a last-landed age in `tumwater status`, the TUI fleet table, and the dashboard Fleet rows; a loop that has never landed shows the same dash as a never-ticked loop; the age is unchanged by a `rejected`/`merge_conflict`/`no_change` outcome.
-- `lastLandedAt` is set only in `applyLandingOutcome`'s `changed` branch, pinned by the tick-apply test; it rides the persisted `LoopState` like `lastError`/`lastTickEndedAt`, so a restart keeps it.
+- `lastLandedAt` is set only in `applyMergeOutcome`'s `changed` branch, pinned by the tick-apply test; it rides the persisted `LoopState` like `lastError`/`lastTickEndedAt`, so a restart keeps it.
 - The status table and the dashboard render the age with the same relative-time formatter as the last-tick column (no drift), and `tumwater status --json` carries the `lastLandedAt` epoch ms.
 - `npm run test` passes.
 
@@ -8173,7 +8175,7 @@ only by running `git status` by hand.
 
 ### A commit the agent makes in a SUMMARY follow-up turn folds into the tick's harness commit too (planned 2026-10-12 by plan; independent of every other entry. It extends the Done entry "The harness folds commits the agent made during a tick into the tick's own `tumwater(<role>)` commit" (INV-H1), which covered the authoring run and the stage-fix turn) — done 2026-10-13
 
-**Goal.** INV-H1 says the harness owns every commit, but `stageTickLanding` in `src/tick/tick-stage.ts` calls
+**Goal.** INV-H1 says the harness owns every commit, but `stageTickMerge` in `src/tick/tick-stage.ts` calls
 `foldCommitsSince` (`src/git/git.ts`) only around `ctx.requestStageFix`. The two `ctx.requestSummary`
 calls (the missing-SUMMARY recovery, and the over-long-SUMMARY shortening turn added 2026-10-12) also
 continue the author's session in the tick's worktree. Both run before `commitAll`, and neither is
@@ -8247,7 +8249,7 @@ fallback only when that turn yields nothing that fits.
    `src/tick/tick-stage.ts` `TickStageContext.requestSummary` becomes
    `requestSummary(wt: string, overLength?: number)`. The wiring in
    `src/loop/loop-tick.ts` becomes `(w, n) => ctx.pi.requestSummary(w, cfg, n)`.
-4. `stageTickLanding` (`src/tick/tick-stage.ts`): right after the existing missing-SUMMARY
+4. `stageTickMerge` (`src/tick/tick-stage.ts`): right after the existing missing-SUMMARY
    block, when the authoring reply had a SUMMARY (that block did not run) and
    `summaryOverCap(ctx.finalText)` is a number `n`:
    - call `ctx.requestSummary(ctx.wt, n)`;
@@ -8412,7 +8414,7 @@ did to HEAD.
      counted with `plural(n, "commit")` from `src/text/phrases.ts`.
    - This runs before `handlePiResultPhase`, so every verdict path (abort, resume, refusal,
      no-change, staging) sees the folded tree.
-3. In `stageTickLanding` (`src/tick/tick-stage.ts`), apply the same fold around
+3. In `stageTickMerge` (`src/tick/tick-stage.ts`), apply the same fold around
    `ctx.requestStageFix`:
    - Read `headOf(ctx.wt, "HEAD")` before the call and fold after it, before the
      `changedFiles` emptiness check.
@@ -9658,7 +9660,7 @@ A refusal note on a blocked plan holds it for good. On 2026-10-12, `feature-2` t
 **Approach.**
 1. In `src/cli/cli-run.ts`, add an exported `ONCE_FAILURE_RESULTS: ReadonlySet<TickResult>` with `error`, `review_error`, `merge_conflict`, `merge_blocked`, and `main_red`. Its doc comment states the rule: these mean the harness or the project's check failed and the round's work did not land. `rejected` and `refused` are deliberately excluded because they are the review gate and the agent working as designed. `aborted`, `quiet_killed`, and `user_aborted` are excluded too: a once round only sees them on a shutdown or an operator abort, which already has its own exit path (130). This is one opinionated set, not a knob.
 2. Pull the per-role "ticks this round" computation out of `onceSummary` into a private helper, `ticksThisRound(s, role, ticksBefore, ticksRun?)`. It returns `ticksRun ? (ticksRun.get(role) ?? 0) : s.ticks - (ticksBefore.get(role) ?? 0)`, and `onceSummary` calls it in place of its inline expression. Output stays byte-for-byte the same, so the existing `test/cli-run.test.ts` `onceSummary` tests pass unedited.
-3. Add an exported `onceFailures(root, roles, ticksBefore, ticksRun?): { role: string; result: TickResult }[]`. It walks `[...roles, ...extra]`, using the same `extra` rule as `onceSummary` (roles that appear only in `ticksRun`). It loads each role's state with `loadLoopState` and keeps the roles where `ticksThisRound(…) > 0` and `ONCE_FAILURE_RESULTS.has(s.lastResult)`. By the time the round exits, `exitReady` has required an empty land queue and no landing in flight. So a queued tick's `lastResult` already holds its landing's outcome, which `applyLandingOutcome` in `src/tick/tick-apply.ts` writes.
+3. Add an exported `onceFailures(root, roles, ticksBefore, ticksRun?): { role: string; result: TickResult }[]`. It walks `[...roles, ...extra]`, using the same `extra` rule as `onceSummary` (roles that appear only in `ticksRun`). It loads each role's state with `loadLoopState` and keeps the roles where `ticksThisRound(…) > 0` and `ONCE_FAILURE_RESULTS.has(s.lastResult)`. By the time the round exits, `exitReady` has required an empty land queue and no landing in flight. So a queued tick's `lastResult` already holds its landing's outcome, which `applyMergeOutcome` in `src/tick/tick-apply.ts` writes.
 4. **The exit code must not read as a crash.** `tumwater run` executes the round in a supervised child (`superviseRunCommand` → `superviseRun` in `src/process/supervisor.ts`). The supervisor calls `fleetDown`, which logs a `supervisor_exit` event and pages the notify hook as "fleet down", for any nonzero child exit that is not `RESTART_EXIT_CODE` while not stopping. So a plain exit 1 would page the operator on every failed CI round. In `src/process/supervisor.ts`, export `ONCE_FAILED_EXIT_CODE = 3`, with a doc comment: a once round that finished and found failures, an asked-for ending. Then change `superviseRun`'s asked-for test so that `exit.code === ONCE_FAILED_EXIT_CODE` skips `fleetDown` just as code 0 does, and the code is still returned unchanged. A grep of `src` today finds no other use of exit code 3.
 5. In `cmdRun`, inside the existing `if (once || forMs !== null)` block, after `say(onceSummary(…))` and only when `once` is set, compute `onceFailures(root, roles, ticksBefore, exit.ticksRun)`. When it is non-empty, print `once: failed — <role> <result>, <role> <result>` with `say` (stdout, beside the summary, so a cron log keeps both) and set `process.exitCode = ONCE_FAILED_EXIT_CODE`. Read it from the `supervisor.js` dynamic import `cmdRun` already does (add it to that destructure). Use `exitCode`, not `process.exit`, so the following `exit.restart` check and normal teardown run unchanged. This is the same idiom `doctor` uses in `src/cli.ts`. `src/cli.ts` never calls `process.exit` on the success path, so the child exits with that code and the supervisor passes it through as its own exit. A `--for` windowed run keeps exit 0: it runs many ticks per role, and the last result alone does not describe the window.
 6. Docs: in `src/cli/help.ts`, change the `run` stanza's `--once` lines to say the round exits 3 when a tick ended in error, review_error, merge_conflict, merge_blocked, or main_red. In README.md's Usage block, the `tumwater run --once` comment gains "exits 3 if a loop's tick failed". Add one sentence to the `tumwater run --once` paragraph of `docs/how-it-works.md`. Today no test pins the stanza's `for cron/CI` wording (grep over `test/`).

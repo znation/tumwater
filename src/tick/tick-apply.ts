@@ -13,10 +13,10 @@ import {
 import type { TickOutcome, TickResult } from "./tick-outcome.js";
 import { firstReason } from "../text/phrases.js";
 
-/** The state machine that applies a finished tick or landing to the loop's state: the
+/** The state machine that applies a finished tick or merge to the loop's state: the
  * outcome application (applyTickOutcome — which outcomes count which streaks, when a
- * cut-off or quiet-killed session resumes and when it is abandoned), its landing sibling
- * (applyLandingOutcome), the error-streak thresholds, the resume limits, and the
+ * cut-off or quiet-killed session resumes and when it is abandoned), its merge sibling
+ * (applyMergeOutcome), the error-streak thresholds, the resume limits, and the
  * review-verdict record the next tick's prompt reads. Split out of tick-outcome.ts — which
  * keeps the TickResult/TickOutcome vocabulary the dashboards and call sites share — because
  * "what an outcome is" and "what applying it records" are different concerns that happen to
@@ -31,13 +31,13 @@ export function recordReview(s: LoopState, verdict: string, reasons: string[], h
 }
 
 /** Drop a stale review rejection once the change it objected to is superseded (BUGS.md
- * 2026-10-07): the review-exempt and refusal-note landings record no new verdict, so a reject
+ * 2026-10-07): the review-exempt and refusal-note merges record no new verdict, so a reject
  * would otherwise ride every later tick prompt as if it were the role's last review outcome.
- * Called from the points a change lands (`applyLandingOutcome`'s changed branch and
- * `handleRefusal`'s note merge), never while a revision is still owed: a landing that leaves
+ * Called from the points a change merges (`applyMergeOutcome`'s changed branch and
+ * `handleRefusal`'s note merge), never while a revision is still owed: a merge that leaves
  * `state.revision` set — a per-role user-request tick did not apply the rejected change — did
  * not resolve it, and its next revision tick still needs the objections (loop-tick.ts's revision
- * note). A model-reviewed landing already overwrote `lastReview` with its approve; this only
+ * note). A model-reviewed merge already overwrote `lastReview` with its approve; this only
  * clears a standing `reject`. */
 export function clearSupersededRejection(s: LoopState): void {
   if (s.revision === undefined && s.lastReview?.verdict === "reject") s.lastReview = undefined;
@@ -94,19 +94,19 @@ export function applyTickOutcome(
   s.cutOffStreak = outcome.cutOff ? (s.cutOffStreak ?? 0) + 1 : 0;
   // The error streak counts consecutive failed ticks; any other result resets it
   // (BUGS.md 2026-09-15: 44 identical failures raised no alarm). A tick whose leftover
-  // recovery re-queued a pin its last landing failed to land counts too, even though the tick
+  // recovery re-queued a pin its last merge failed counts too, even though the tick
   // itself ends `queued` (outcome.recoveryFailure): a dead reviewer backend would otherwise
   // reset the streak every tick and never raise the alarm (BUGS.md 2026-09-21).
   // tick-finalize.ts emits one warning when the streak crosses ERROR_STREAK_WARN — once per
   // episode, since the reset re-arms it — and the dashboards read "failing" from the same field.
   // A plain `queued` tick is not yet a verdict about anything: it committed and enqueued, and
-  // its LANDING resolves the streak — applyLandingOutcome resets it when the change lands and
+  // its MERGE resolves the streak — applyMergeOutcome resets it when the change merges and
   // counts a review rejection into it (BUGS.md 2026-09-30: review-rejected authoring, the
-  // digest's #1 loss cause, fell straight through — the tick's `queued` reset and the landing's
+  // digest's #1 loss cause, fell straight through — the tick's `queued` reset and the merge's
   // `rejected` increment met nowhere, so the streak read 0 through the whole episode and the
   // re-author ran at min interval, warning-free and pause-proof). Resetting here would pin a
   // rejection streak at 1 forever, since every authoring tick in a rejection episode ends
-  // `queued` before its landing is decided.
+  // `queued` before its merge is decided.
   const failed = outcome.result === "error" || outcome.recoveryFailure !== undefined;
   if (failed) s.consecutiveErrors = (s.consecutiveErrors ?? 0) + 1;
   else if (outcome.result !== "queued") s.consecutiveErrors = 0;
@@ -116,14 +116,14 @@ export function applyTickOutcome(
   s.quietKillStreak = outcome.result === "quiet_killed" ? (s.quietKillStreak ?? 0) + 1 : 0;
   // The no-change streak counts consecutive completed ticks that ended `no_change` (the
   // resting state cell's ` · no change ×N` suffix — status-model.ts loopPhase). Any other
-  // completed result resets it, so a loop that lands between no-ops never shows a stale
+  // completed result resets it, so a loop that merges between no-ops never shows a stale
   // streak. Every completed result reaches this block (tick-finalize.ts calls
   // applyTickOutcome for every outcome), so `changed`/`queued`/`error`/`aborted`/
   // `quiet_killed`/`user_aborted` all reset it and only a `no_change` tick grows it.
   // Observational only — never warns, unlike the error/quiet-kill streaks: a legitimately
   // idle maintenance loop with an empty backlog can hold a long streak and that is expected.
   s.noChangeStreak = outcome.result === "no_change" ? (s.noChangeStreak ?? 0) + 1 : 0;
-  // The yield ring records the result beside the streaks: a landing or a counted empty
+  // The yield ring records the result beside the streaks: a merge or a counted empty
   // stretches the role's min-tick gap (yieldMultiplier, read by isEligible), an error-class
   // result is skipped entirely — no evidence either way (yield-scaled clocks, PLANS.md).
   pushYieldOutcome(s, outcome.result);
@@ -138,13 +138,13 @@ export function applyTickOutcome(
   // result" cell renders, and they must describe ONE tick: a completed outcome without a
   // summary CLEARS `lastSummary`, so a summary-less result never renders beside another
   // tick's work description (BUGS.md 2026-09-30: a no_change tick read "No change — Implement
-  // the … plan" beside work that had landed, because the prior summary was retained).
+  // the … plan" beside work that had merged, because the prior summary was retained).
   // A `queued` tick is not a completed result: its change is committed but in flight —
-  // the state column shows that (`landing <elapsed>`, the land-queue badge) — so the pair
+  // the state column shows that (`landing <elapsed>`, the merge-queue badge) — so the pair
   // keeps the prior outcome WITH its own summary while the change waits (BUGS.md 2026-09-23),
-  // and the tick's summary is stashed under the pinned sha for applyLandingOutcome to pair with
-  // the landing's result. Every other outcome is completed and clears the stash: a role with a
-  // queued or in-flight landing never ticks (the orchestrator's interlock), so a stash that
+  // and the tick's summary is stashed under the pinned sha for applyMergeOutcome to pair with
+  // the merge's result. Every other outcome is completed and clears the stash: a role with a
+  // queued or in-flight merge never ticks (the orchestrator's interlock), so a stash that
   // survives to a later tick names a change that is no longer waiting.
   if (outcome.result === "queued") {
     s.queuedSummary =
@@ -156,11 +156,11 @@ export function applyTickOutcome(
   }
   if (outcome.result === "changed" || outcome.result === "queued") {
     // "queued" schedules exactly like "changed" — the tick committed and enqueued — but the
-    // commit count waits for the landing: `commits` keeps meaning "landed on main", and
-    // applyLandingOutcome increments it when the change actually lands. The phase-clear above
+    // commit count waits for the merge: `commits` keeps meaning "merged to main", and
+    // applyMergeOutcome increments it when the change actually merges. The phase-clear above
     // (`result !== "aborted"`) covers both.
     if (outcome.result === "changed") s.commits += 1;
-    // A landed change's patch-id approval has done its job: the same patch authored again
+    // A merged change's patch-id approval has done its job: the same patch authored again
     // later (after a revert, say) is a new change and gets its own review.
     if (outcome.result === "changed") s.lastApprovedPatchId = undefined;
     // The role committed new work, so the note about its discarded change has been delivered.
@@ -170,7 +170,7 @@ export function applyTickOutcome(
   } else if (outcome.result === "rejected") {
     // The reviewer objected and the gate already reset the branch: the author should address
     // the recorded reasons on its next eligible tick, not sleep through them — schedule like
-    // a change without counting a commit (nothing landed).
+    // a change without counting a commit (nothing merged).
     s.backoffSeconds = 0;
     scheduleAtMinInterval(s, cfg);
   } else if (outcome.result === "skipped") {
@@ -256,7 +256,7 @@ export function applyTickOutcome(
   // outcome abandons them (the next fresh tick resets the worktree to main), so the hand-back
   // is spent: clear the record, or it would make a later change's cap conflict discard the
   // pin instead of handing it back (PLANS.md "Robust conflict landing, part 2/2"). `changed`
-  // clears too — the resolved change landed in-tick, so its life is over. This runs after the
+  // clears too — the resolved change merged in-tick, so its life is over. This runs after the
   // resume branches above have set `resumePending`.
   if (
     s.conflictHandback &&
@@ -267,27 +267,27 @@ export function applyTickOutcome(
   }
 }
 
-/** Record a completed LANDING on the authoring loop's state (plans/merge-queue.md 3/5):
- * the orchestrator calls this on the state object the landing ran against — the runner's live
+/** Record a completed MERGE on the authoring loop's state (plans/merge-queue.md 3/5):
+ * the orchestrator calls this on the state object the merge ran against — the runner's live
  * copy when one exists, a disk load otherwise — then saves it, the same in-place discipline
  * applyTickOutcome has (the caller's state object is authoritative; a role with a queued or
- * in-flight landing never ticks, so no other writer holds it meanwhile). Sets `lastResult`
- * to the lander's outcome, increments `commits` only on a success (the "landed on main"
- * counter applyTickOutcome's "queued" branch left to the landing), and clears `phase` — the
+ * in-flight merge never ticks, so no other writer holds it meanwhile). Sets `lastResult`
+ * to the merger's outcome, increments `commits` only on a success (the "merged to main"
+ * counter applyTickOutcome's "queued" branch left to the merge), and clears `phase` — the
  * gate persisted `phase = "review"` on this same state object during the run, exactly as it
- * did inside a tick, so the label must not linger past the landing (mirroring
- * applyTickOutcome's rule: every outcome except "aborted" clears it — an aborted landing
+ * did inside a tick, so the label must not linger past the merge (mirroring
+ * applyTickOutcome's rule: every outcome except "aborted" clears it — an aborted merge
  * keeps it, because the interruption hit mid-review and the next launch must recover and
- * re-review the pinned work). `lastSummary` becomes the summary of the change this landing
- * resolved — `change` is its land-queue entry — so the landing's result, success or failure,
+ * re-review the pinned work). `lastSummary` becomes the summary of the change this merge
+ * resolved — `change` is its merge-queue entry — so the merge's result, success or failure,
  * reads beside the work it names (BUGS.md 2026-09-23: the queued tick held its summary back
  * rather than pair it with the prior result). The tick's stashed `queuedSummary` wins when it
  * names this sha: it is the text the tick reported, high-friction annotation included. The
  * entry's own summary (the commit subject) covers a stash that is missing or names another
- * change — a crash between enqueue and the tick's state save, or a landing that finished before
+ * change — a crash between enqueue and the tick's state save, or a merge that finished before
  * its tick's outcome was applied. Either way the stash is consumed. The failure detail rides
  * in `lastReview` and the merge_done/merge_failed events. */
-export function applyLandingOutcome(
+export function applyMergeOutcome(
   s: LoopState,
   result: TickResult,
   change: Pick<MergeEntry, "sha" | "summary">,
@@ -297,20 +297,20 @@ export function applyLandingOutcome(
   s.queuedSummary = undefined;
   if (result === "changed") {
     s.commits += 1;
-    // The last-landed timestamp: set only on a successful landing, so the rendered age means
-    // "time since the loop last actually landed on main" — a rejected/merge_conflict/aborted
-    // landing, like a no_change tick, leaves the prior value standing (PLANS.md "Each loop's
+    // The last-merged timestamp: set only on a successful merge, so the rendered age means
+    // "time since the loop last actually merged to main" — a rejected/merge_conflict/aborted
+    // merge, like a no_change tick, leaves the prior value standing (PLANS.md "Each loop's
     // last-landed age").
     s.lastMergedAt = Date.now();
     s.lastApprovedPatchId = undefined; // see applyTickOutcome
-    // A landing supersedes a stale rejection: a model-reviewed landing has already overwritten
-    // lastReview with its approve, but a review-exempt (or review-disabled) landing records no
+    // A merge supersedes a stale rejection: a model-reviewed merge has already overwritten
+    // lastReview with its approve, but a review-exempt (or review-disabled) merge records no
     // verdict, so a stale reject would otherwise ride every later tick prompt (BUGS.md
     // 2026-10-07). Cleared only with no revision pending — see clearSupersededRejection.
     clearSupersededRejection(s);
-    // A landed change resets the error streak exactly as an error-free tick does (BUGS.md
+    // A merged change resets the error streak exactly as an error-free tick does (BUGS.md
     // 2026-09-30): the queued tick that authored it preserved the streak — a rejection counts
-    // into it below — so the landing, the episode's only clean verdict, ends it.
+    // into it below — so the merge, the episode's only clean verdict, ends it.
     s.consecutiveErrors = 0;
   }
   if (result === "rejected") {
@@ -325,7 +325,7 @@ export function applyLandingOutcome(
     // final rejections makes a streak of 3 mean three changes ended rejected (or errored) —
     // the non-converging author the 2026-09-30 fix meant to catch — while a chain's rounds
     // leave the streak unchanged and keep the fast minimum-interval retry the queued tick
-    // scheduled. This landing outcome is the accumulation point (the authoring tick ends
+    // scheduled. This merge outcome is the accumulation point (the authoring tick ends
     // `queued`, which no longer resets the streak, see applyTickOutcome) — the same field the
     // warn, the breaker (src/gates/streak-gate.ts), and the error-storm observation
     // (src/team/team-polls.ts) already read. No new machinery, no new constants: the warn
@@ -352,10 +352,10 @@ export function applyLandingOutcome(
       }
     }
   }
-  // A landing or a rejection is the end of the change's life; a merge_conflict keeps its pin.
+  // A merge or a rejection is the end of the change's life; a merge_conflict keeps its pin.
   // The per-change markers below all clear on this one outcome set, so name it once.
   const changeGone = result === "changed" || result === "rejected";
-  // The conflict streak counts failed resolutions of one pinned sha; a landing or a rejection
+  // The conflict streak counts failed resolutions of one pinned sha; a merge or a rejection
   // ends that pin's life. Every other outcome kept the pin as it was, so its count stands.
   if (result === "merge_conflict") {
     const prior = s.mergeConflicts?.sha === change.sha ? s.mergeConflicts.count : 0;
@@ -363,14 +363,14 @@ export function applyLandingOutcome(
   } else if (changeGone) {
     s.mergeConflicts = undefined;
   }
-  // Likewise the red-landing-check streak (keyed by patch-id): its change is gone either way.
+  // Likewise the red-merge-check streak (keyed by patch-id): its change is gone either way.
   if (changeGone) {
     s.mergeCheckFailures = undefined;
     s.mergeFlakeExcused = undefined;
   }
-  // A permanent-reviewer-config hold ends with its pin's life: landed, or rejected away.
+  // A permanent-reviewer-config hold ends with its pin's life: merged, or rejected away.
   if (changeGone) s.mergeReviewError = undefined;
-  // A hand-back ends with its change's life too: once the resolved change lands or is rejected,
+  // A hand-back ends with its change's life too: once the resolved change merges or is rejected,
   // a later change gets its own one-hand-back budget (PLANS.md "Robust conflict landing, part
   // 2/2"). A merge_conflict keeps it, so the resolved change's own cap discard fires.
   if (changeGone) s.conflictHandback = undefined;

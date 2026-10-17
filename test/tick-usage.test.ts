@@ -48,7 +48,7 @@ test("fold sums prompt tokens every run and freezes the pre-edit prefix at the f
   assert.equal(u.preEditPromptTokens, 300, "frozen at the editing run's prefix");
 });
 
-test("fold's authoring=false (a landing/review run) never advances the pre-edit prefix", () => {
+test("fold's authoring=false (a merge/review run) never advances the pre-edit prefix", () => {
   const s: LoopState = freshLoopState("coverage");
   const u = new TickUsage();
 

@@ -47,13 +47,13 @@ export interface LoopState {
   /** The last COMPLETED result and its summary — the pair the dashboards' "last result" cell
    * renders. A `queued` tick never writes it (tick-apply.ts's applyTickOutcome): its change is
    * still in flight, which the state column already shows, so the pair keeps the prior outcome
-   * until the landing resolves and applyLandingOutcome records the landing's own. */
+   * until the landing resolves and applyMergeOutcome records the landing's own. */
   lastResult?: TickResult;
   lastSummary?: string;
   /** The summary a `queued` tick reported for the change it pinned (the text its run_end
    * carries, high-friction annotation included), keyed by that change's sha. Held back from
    * `lastSummary` while the change waits, then paired with the landing's result by
-   * applyLandingOutcome, which clears it — so after a landing the cell reads the landing's
+   * applyMergeOutcome, which clears it — so after a landing the cell reads the landing's
    * outcome next to the summary of the change it landed, never next to the prior tick's.
    * Persisted: the land queue is durable, so the landing can resolve in a later process. */
   queuedSummary?: { sha: string; summary: string };
@@ -135,7 +135,7 @@ export interface LoopState {
    * identical tick failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
    * backend left every recovery landing failing silently and reset this streak each tick).
    * A review-rejected landing counts in too (BUGS.md 2026-09-30): the authoring tick ends
-   * `queued`, which preserves the streak, and applyLandingOutcome's rejected branch is the
+   * `queued`, which preserves the streak, and applyMergeOutcome's rejected branch is the
    * accumulation point; a landed change resets it. Reset by any other completed result. */
   consecutiveErrors?: number;
   /** Consecutive completed ticks that ended `no_change`. Observational only — the resting
@@ -278,7 +278,7 @@ export interface LoopState {
   dayCostByPair?: Record<string, number>;
   lastError?: string;
   /** Epoch ms (Date.now()) of the last time this loop landed a change on main (set only in
-   * applyLandingOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
+   * applyMergeOutcome's `changed` branch, src/tick/tick-apply.ts). Absent until the first
    * landing, and absent on state files written before the field existed, so the last-landed
    * age reads "never" until then. Mirrors lastRunEndedAt: an observational timestamp that
    * reset-counters deliberately leaves alone — the dry-spell question it answers is about

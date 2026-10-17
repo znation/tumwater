@@ -3,7 +3,7 @@
  * handlePiResultPhase for the seam): everything that decides a run left nothing landable — abort,
  * config request, quiet kill, timeout, refusal, failure without changes, or no change at all —
  * with the staging handoff (src/tick/tick-stage.ts) staying in the tick pipeline. Returns null when
- * the run IS fulfillable, which the pipeline answers with stageTickLanding. Split out of loop.ts so
+ * the run IS fulfillable, which the pipeline answers with stageTickMerge. Split out of loop.ts so
  * the runner keeps only its plumbing (state saves, prompt assembly, the pi wiring) and the verdict
  * tree reads next to its sibling outcome modules (tick-outcome, tick-apply, tick-stage). */
 import type { LoopState } from "../loop/loop-state.js";
@@ -58,7 +58,7 @@ interface TickVerdictContext {
   pi: PiRunResult;
   flow: FlowResult | null;
   warn(message: string): void;
-  /** Land the worktree branch on main with the loop's shared wiring (refusal-note landings). */
+  /** Merge the worktree branch on main with the loop's shared wiring (refusal-note merges). */
   merge(wt: string, summary: string): Promise<TickOutcome["result"]>;
   finishAbortedTick(): Promise<TickOutcome>;
 }
@@ -121,7 +121,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
   if (pi.timedOut) {
     s.lastError = pi.errorMessage ?? "timed out";
-    // The request never ran to completion and no work landed: put it back so the next
+    // The request never ran to completion and no work merged: put it back so the next
     // tick retries it. (A killed run's half-done edits are discarded by the reset.)
     ctx.pending.requeueUnfulfilled(ctx.userPrompt);
     return { result: "error" };
@@ -269,7 +269,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
       s.resumePending = true;
       ctx.pending.requeueForResume(s, ctx.userPrompt);
     } else {
-      // No work landed, so the request was not fulfilled: re-queue it. A no_change outcome
+      // No work merged, so the request was not fulfilled: re-queue it. A no_change outcome
       // IS fulfillment (a question-type prompt answered without file changes) — never
       // re-queue that, or such prompts would loop forever.
       ctx.pending.requeueUnfulfilled(ctx.userPrompt);
@@ -291,7 +291,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
     await resetWorktreeToMain(ctx.wt, ctx.mainBranch);
     await deleteRef(ctx.root, rejectedRefName(ctx.role));
     // The drop's durable effects — the worktree reset, the rejected ref's deletion, and the
-    // cleared state — have all landed; the event is observability, so an unwritable feed must
+    // cleared state — have all taken effect; the event is observability, so an unwritable feed must
     // not end the tick as an error and mask a change that really was dropped.
     logEventBestEffort(ctx.root, { source: ctx.role, type: "revision", action: "dropped", round: ctx.revisionRound, sha });
     return { result: "no_change" };

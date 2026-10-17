@@ -8,7 +8,7 @@ import { freshLoopState, loadLoopState, zeroCounters } from "../src/loop/loop-st
 import { TickUsage } from "../src/tick/tick-usage.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import {
-  applyLandingOutcome,
+  applyMergeOutcome,
   ERROR_STREAK_WARN,
   QUIET_KILL_RESUME_LIMIT,
 } from "../src/tick/tick-apply.js";
@@ -159,12 +159,12 @@ test("finalizeTick warns once at the error-streak crossing and re-arms after a h
   assert.equal(eventsOfType(root, "warning").length, 2);
 });
 
-test("a queued tick preserving the streak at the bar does not re-warn — the landing resolves the episode", async () => {
+test("a queued tick preserving the streak at the bar does not re-warn — the merge resolves the episode", async () => {
   // BUGS.md 2026-09-30: with review rejections feeding the streak, an authoring tick ends
   // `queued` while the streak stands at the bar — the old `=== ERROR_STREAK_WARN` gate would
   // re-warn on every such tick's end. The warn belongs to the outcome that did the
-  // incrementing; the rejection's own crossing warns from the landing side
-  // (writeMergeOutcome, pinned in the landing-slot tests).
+  // incrementing; the rejection's own crossing warns from the merge side
+  // (writeMergeOutcome, pinned in the merge-slot tests).
   const root = await initializedRepo();
   const s = freshLoopState("organize");
   const error = (n: number): TickOutcome => ({ result: "error", summary: `fail ${n}`, error: `boom ${n}` });
@@ -177,13 +177,13 @@ test("a queued tick preserving the streak at the bar does not re-warn — the la
   await run(root, "organize", s, { result: "queued", commit: "a".repeat(40) });
   assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN, "the queued tick preserves the streak");
   assert.equal(eventsOfType(root, "warning").length, 1, "no re-warn from the preserved streak");
-  // The landing rejects: the streak climbs past the bar, still one episode, one warning.
-  applyLandingOutcome(s, "rejected", { sha: "a".repeat(40), summary: "x" });
+  // The merge rejects: the streak climbs past the bar, still one episode, one warning.
+  applyMergeOutcome(s, "rejected", { sha: "a".repeat(40), summary: "x" });
   assert.equal(s.consecutiveErrors, ERROR_STREAK_WARN + 1);
   assert.equal(eventsOfType(root, "warning").length, 1);
-  // A landed change ends the episode (the landing is its clean verdict); the next one
+  // A merged change ends the episode (the merge is its clean verdict); the next one
   // re-arms from scratch and warns again at its own crossing.
-  applyLandingOutcome(s, "changed", { sha: "b".repeat(40), summary: "y" });
+  applyMergeOutcome(s, "changed", { sha: "b".repeat(40), summary: "y" });
   assert.equal(s.consecutiveErrors, 0);
   await run(root, "organize", s, error(1));
   await run(root, "organize", s, error(2));
@@ -211,7 +211,7 @@ test("finalizeTick warns once at the quiet-kill streak crossing", async () => {
 test("a leftover recovery failure feeds the error streak but never rides the tick's run_end", async () => {
   const root = await initializedRepo();
   const s = freshLoopState("organize");
-  // The tick itself ends `queued`; the re-queued pin's landing failure rides recoveryFailure.
+  // The tick itself ends `queued`; the re-queued pin's merge failure rides recoveryFailure.
   await run(root, "organize", s, { result: "queued", summary: "retried the pin" }, {
     recoveryFailure: "review gate errored",
   });
@@ -324,7 +324,7 @@ test("a cut-off outcome keeps resumePending's delay against a mid-tick wake", as
   assert.ok(s.nextRunAt > Date.now());
 });
 
-test("a claim is released on a terminal result and kept while the change lands", async () => {
+test("a claim is released on a terminal result and kept while the change merges", async () => {
   const root = await initializedRepo();
   const claim = {
     file: "PLANS.md" as const,
@@ -342,7 +342,7 @@ test("a claim is released on a terminal result and kept while the change lands",
   assert.equal(released.length, 1);
   assert.equal(released[0]!.action, "released");
 
-  // queued: the change is in flight, so the claim is held for the landing.
+  // queued: the change is in flight, so the claim is held for the merge.
   const held = freshLoopState("feature-2");
   held.claim = { ...claim };
   await run(root, "feature-2", held, { result: "queued", summary: "did it" });

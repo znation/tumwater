@@ -468,9 +468,9 @@ test("a retriable merge failure feeds the error streak; other lastResults do not
   const noDetail = state({ lastResult: "review_error" });
   assert.equal(plan(dir, noDetail)?.priorLandingFailure, "merge failed: review_error");
 
-  const landed = state({ lastResult: "changed", lastError: "stale" });
-  assert.equal(plan(dir, landed)?.priorLandingFailure, undefined);
-  assert.equal(landed.lastError, undefined);
+  const merged = state({ lastResult: "changed", lastError: "stale" });
+  assert.equal(plan(dir, merged)?.priorLandingFailure, undefined);
+  assert.equal(merged.lastError, undefined);
 });
 
 test("a null assembled prompt skips the run — but the flags are still consumed", () => {

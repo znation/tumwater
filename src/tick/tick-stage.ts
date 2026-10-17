@@ -34,7 +34,7 @@ interface TickFlow {
 
 /** The shared loop wiring a changed worktree's staging needs (src/loop/loop-tick.ts): the per-tick
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
- * the summary follow-up run, the pre-queue self-check with its fix-up run, the landing-ref pin,
+ * the summary follow-up run, the pre-queue self-check with its fix-up run, the merge-ref pin,
  * and the abort finalizer. Mirrors the context-object shapes of leftover.ts, refusal.ts, and
  * merge-core.ts. */
 interface TickStageContext {
@@ -67,11 +67,11 @@ interface TickStageContext {
   warn(message: string): void;
   /** One bounded follow-up turn in the still-open session, to produce a missing SUMMARY. */
   requestSummary(wt: string, overLength?: number): Promise<PiRunResult | null>;
-  /** The landing gate's deterministic backlog checks over the uncommitted change. */
+  /** The merge gate's deterministic backlog checks over the uncommitted change. */
   stageCheck(wt: string): Promise<string[]>;
   /** One bounded follow-up turn in the still-open session, to fix the self-check's findings. */
   requestStageFix(wt: string, findings: string[]): Promise<PiRunResult | null>;
-  /** Pin the commit by the role's landing ref, then free the worktree. */
+  /** Pin the commit by the role's merge ref, then free the worktree. */
   pinAndReset(wt: string, sha: string): Promise<boolean>;
   /** Finalize an aborted follow-up run through the loop (requeue + worktree reset). */
   finishAbortedTick(): Promise<TickOutcome>;
@@ -90,26 +90,26 @@ export async function foldAgentCommitsSince(
   if (folded > 0) ctx.warn(`agent made ${plural(folded, "commit")} during the run; folded into tumwater's commit`);
 }
 
-/** Stage a changed worktree for the land queue: derive the commit message from the reply's
+/** Stage a changed worktree for the merge queue: derive the commit message from the reply's
  * SUMMARY block (one bounded follow-up turn when the run left none), flag high-friction ticks,
- * commit, pin the commit by the role's landing ref, and enqueue the landing. Extracted from
+ * commit, pin the commit by the role's merge ref, and enqueue the merge. Extracted from
  * LoopRunner.runTick so the tick's own method stays the outcome classifier and this module is
- * the commit-staging layer — the only place a fresh tick's work becomes a queued landing.
+ * the commit-staging layer — the only place a fresh tick's work becomes a queued merge.
  * Returns the tick's outcome; a failed pin or an aborted follow-up returns an error/aborted
  * outcome without anything queued. */
-export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutcome> {
+export async function stageTickMerge(ctx: TickStageContext): Promise<TickOutcome> {
   const s = ctx.state;
   // A revision tick carries the round it applied on its context (loop-tick.ts): it rides onto the
-  // queued landing so a rejection of this change records the NEXT round (plans/revise-rejected.md).
+  // queued merge so a rejection of this change records the NEXT round (plans/revise-rejected.md).
   // Undefined for a fresh change — including a user-request tick that leaves a pending revision
   // untouched — so only the tick that actually held the rejected diff is labeled a revision.
   const revisionRound = ctx.revisionRound;
-  // A revision landing carries the review that rejected the change (plans/revise-rejected.md
+  // A revision merge carries the review that rejected the change (plans/revise-rejected.md
   // part 2/2): the prior head, its numbered objections, and each objection's persistence count
   // ride the queued entry so the re-review can check each one against the interdiff and the next
   // rejection can resolve a `(prior N)` restatement (BUGS.md 2026-10-14). Only a tick that
   // actually held the rejected diff attaches it; a fresh change — including a user-request tick
-  // that leaves a pending revision untouched — and a recovery landing carry none.
+  // that leaves a pending revision untouched — and a recovery merge carry none.
   const priorReview =
     revisionRound !== undefined && s.lastReview?.head
       ? {
@@ -167,14 +167,14 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   }
 
   // The gate's deterministic backlog checks run here, before the commit, while the authoring
-  // session can still be continued: a finding that reaches review costs a queue slot, a vet,
-  // and a rejection that discards the work. One bounded follow-up turn on the author's own
-  // session gets to fix them; the gate still has the final say, and the change commits and
-  // queues either way.
+  // session can still be continued: a finding that reaches review costs a queue slot,
+  // a verification, and a rejection that discards the work. One bounded follow-up turn on the
+  // author's own session gets to fix them; the gate still has the final say, and the change commits
+  // and queues either way.
   // Claims made at staging (plans/parallel-work-instances.md "Claims", part 4/7): an
   // unassigned tick of a MULTI-instance base whose diff moved a backlog entry out of its
   // actionable section records the claim so a sibling is not assigned it while this change
-  // lands. A single-runner base has no sibling to hold the entry from, so it stages nothing
+  // merges. A single-runner base has no sibling to hold the entry from, so it stages nothing
   // and is unchanged by claims. An assigned tick that moved a DIFFERENT entry gets a finding,
   // so the one fix-up turn can put it back. So does an unassigned tick that moved an entry a
   // sibling holds (the poll's heldElsewhere, which its prompt listed as off-limits): that entry
@@ -193,7 +193,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     const first = claimable[0]!;
     s.claim = { file: first.file, key: first.key, title: first.title, at: Date.now(), source: "staged" };
     // The assignment is durable in state before this event; an unwritable feed must not reject
-    // the tick and make a claim that did land look unapplied (logEventBestEffort).
+    // the tick and make a claim that did take effect look unapplied (logEventBestEffort).
     logEventBestEffort(ctx.root, {
       source: ctx.role,
       type: "claim",
@@ -273,24 +273,24 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
   );
   const commit = await commitAll(ctx.wt, message);
 
-  // Pin the commit by its landing ref BEFORE freeing the worktree (invariant 4), then hand it
-  // to the land queue: from here on the review gate and the rebase run in a vet's leased pool
-  // slot, never in this worktree (plans/merge-queue.md 2/5). A failed pin defers to next-tick
-  // recovery — landing without a pin would lose the ref lifecycle this whole flow depends on.
-  // The reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff
+  // Pin the commit by its merge ref BEFORE freeing the worktree (invariant 4), then hand it
+  // to the merge queue: from here on the review gate and the rebase run in a verification's
+  // leased pool slot, never in this worktree (plans/merge-queue.md 2/5). A failed pin defers to
+  // next-tick recovery — merge without a pin would lose the ref lifecycle this whole flow depends
+  // on. The reviewer checks the author's claimed WHY/VERIFIED against the actual diff; no diff
   // reaches main unreviewed.
   if (!(await ctx.pinAndReset(ctx.wt, commit))) {
     s.lastError = "failed to pin the merge ref; left for the next run's recovery";
     return { result: "error", summary: s.lastError };
   }
 
-  // The commit is pinned and the worktree is free: enqueue the landing and END the tick — the
-  // orchestrator drains the queue on its single landing slot, outside the author semaphore, so
-  // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The landing
-  // runs the same gate + landing flow through runLandingPi/foldLandingUsage on this same state
+  // The commit is pinned and the worktree is free: enqueue the merge and END the tick — the
+  // orchestrator drains the queue on its single merge slot, outside the author semaphore, so
+  // this slot is free the moment the work is committed (plans/merge-queue.md 3/5). The merge
+  // runs the same gate + merge flow through runLandingPi/foldLandingUsage on this same state
   // object — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
-  // `commits` was NOT incremented above: it counts landed changes only.
+  // `commits` was NOT incremented above: it counts merged changes only.
   enqueueMerge(ctx.root, {
     role: ctx.role,
     sha: commit,
@@ -302,12 +302,12 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     ...(priorReview !== undefined ? { priorReview } : {}),
     enqueuedAt: Date.now(),
   });
-  // The revision is now in flight: the rejected ref's lifecycle continues in the lander
-  // (merge-core.ts), which deletes it when this landing lands and repoints it on a rejection.
+  // The revision is now in flight: the rejected ref's lifecycle continues in the merger
+  // (merge-core.ts), which deletes it when this merge merges and repoints it on a rejection.
   // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
-  // rebuild a retriable revision's landing entry with its round when the queue marker is lost.
+  // rebuild a retriable revision's merge entry with its round when the queue marker is lost.
   if (revisionRound !== undefined) s.revision = undefined;
-  // The landing sits in the durable queue above and the commit is pinned; the event is
+  // The merge sits in the durable queue above and the commit is pinned; the event is
   // observability, so an unwritable feed must not reject a tick whose work is already queued.
   logEventBestEffort(ctx.root, { source: ctx.role, type: "merge_queued", commit, summary });
   // The flag's durable record is the Friction trailer line stamped on the commit above;

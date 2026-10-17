@@ -29,7 +29,7 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
 ### Keep the rejected change
 
 - `rejectedRefName(role)` (`src/paths.ts`) is `refs/tumwater/rejected/<role>`. On a gate
-  rejection, `recordRejectedChange` (`src/landing/landing-core.ts`) points it at the rejected
+  rejection, `recordRejectedChange` (`src/merge/merge-core.ts`) points it at the rejected
   head and sets `LoopState.revision = { sha, round, at, reasonCounts }` while the rejection is
   not final. When final it clears the revision, deletes the ref, marks `lastReview.exhausted`,
   and logs a `revision` `exhausted` event. The director never revises.
@@ -66,7 +66,7 @@ is itself a finding, so rounds cannot drift onto unrelated complaints.
 ### The re-review's prior context
 
 - `LandingEntry` and `LandRequest` carry `priorReview = { sha, reasons }`
-  (`src/landing/landing-queue.ts`, `src/landing/landing-core.ts`). `stageTickLanding`
+  (`src/merge/merge-queue.ts`, `src/merge/merge-core.ts`). `stageTickMerge`
   (`src/tick/tick-stage.ts`) fills it from `LoopState.lastReview` only when the tick held the
   rejected diff. It rides the landing pipeline through `src/landing/landing-vetting.ts` and
   `src/landing/landing-drain.ts` onto the vet's `LandRequest`. A recovery landing (`src/loop/leftover.ts`)

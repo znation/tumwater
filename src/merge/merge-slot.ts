@@ -4,7 +4,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 import { runCostIsReal, type PiRunResult } from "../pi/pi-run-result.js";
 import { reviewRunConfig, seamHoldKey, seamPairName } from "../config/config-views.js";
 import { saveLoopState, type LoopState } from "../loop/loop-state.js";
-import { applyLandingOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
+import { applyMergeOutcome, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { observeClaudeAccount } from "../agent/claude/claude-account.js";
 import { logEventBestEffort, usageFragment, warnEventBestEffort } from "../events/events.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
@@ -336,7 +336,7 @@ export function isMergeChange(value: unknown): value is MergeChange {
 /** Fold one merge's outcome into its role's state and drop its queue entry — the 3/5
  * write-back every pipeline outcome goes through (a verification's final verdict, a merged change,
  * an aborted approved change): apply the result to the live state object (paired with the entry's
- * change for the last-result cell — applyLandingOutcome), persist it, log merge_done/merge_failed
+ * change for the last-result cell — applyMergeOutcome), persist it, log merge_done/merge_failed
  * with the merge's own duration (from its verification's start) and usage (omitted when zero — the
  * 4/5 idiom, so review-exempt merges render bare), and drop the entry: EVERY defined result
  * drops. Both event writes are best-effort: an unwritable feed (ENOSPC, EACCES) must not
@@ -352,7 +352,7 @@ export function writeMergeOutcome(
   usage: MergeUsage,
   file: string,
 ): void {
-  applyLandingOutcome(state, result, entry);
+  applyMergeOutcome(state, result, entry);
   saveLoopState(root, state);
   // One warning per error episode, merge side (BUGS.md 2026-09-30): a review rejection
   // feeds the same streak the tick-side warn reads (src/tick/tick-finalize.ts), but it resolves

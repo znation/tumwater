@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { stageTickLanding } from "../src/tick/tick-stage.js";
+import { stageTickMerge } from "../src/tick/tick-stage.js";
 import { stageCheckFindings } from "../src/tick/stage-check.js";
 import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { commitIn, initializedRepo, initializedWorktree, sh, twoPlansDoc } from "./fixtures/repo-fixtures.js";
@@ -20,7 +20,7 @@ import { truncate } from "../src/text/text.js";
 import { piRunResult } from "./fakes/fake-pi.js";
 
 /** A fresh initialized repo plus the improve role's worktree with one changed file — the
- * staged change stageTickLanding commits in these tests. */
+ * staged change stageTickMerge commits in these tests. */
 async function setup(): Promise<{ root: string; wt: string }> {
   const { root, wt } = await initializedWorktree();
   fs.writeFileSync(path.join(wt, "feature.ts"), "export const feature = true;\n");
@@ -179,7 +179,7 @@ test("an unassigned tick that moves a plan records a staged claim", async () => 
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim?.source, "staged");
@@ -214,7 +214,7 @@ test("an unassigned tick still records its staged claim when the events feed is 
   // while every other file under the root still writes.
   unwritableEvents(root);
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim?.key, "alpha", "the claim is assigned despite the unwritable feed");
@@ -241,7 +241,7 @@ test("a bare feature tick that moves a plan stages no claim and leaves the next 
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(state.claim, undefined, "a single-runner base is never assigned a claim");
@@ -282,7 +282,7 @@ test("an assigned tick that moves a different plan gets a stage-check finding", 
     finalText: "Done.\nSUMMARY: implement\nVERIFIED: npm test\n",
   });
 
-  await stageTickLanding(ctx);
+  await stageTickMerge(ctx);
 
   assert.equal(calls.stageFixRequests.length, 1, "the move costs one fix-up turn");
   assert.match(calls.stageFixRequests[0]!.findings.join("\n"), /moved a different one/);
@@ -322,7 +322,7 @@ test("an unassigned tick that moves a plan a sibling holds gets a finding, not a
     finalText: "Done.\nSUMMARY: implement alpha\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(state.claim, undefined, "the sibling's entry is not claimed a second time");
   assert.equal(calls.stageFixRequests.length, 1, "the duplicate costs one fix-up turn");
@@ -348,7 +348,7 @@ test("a fix-up that drops a sibling's held entry leaves nothing to land", async 
     return null;
   };
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "no_change", "no duplicate reaches the gate, the review, or the merge slot");
   assert.equal(calls.pins.length, 0, "nothing was pinned");
@@ -365,7 +365,7 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
     finalText: "Done.\nSUMMARY: implement both\nVERIFIED: npm test\n",
   });
 
-  await stageTickLanding(ctx);
+  await stageTickMerge(ctx);
 
   assert.equal(state.claim?.key, "beta", "the free entry is this tick's claim");
   assert.equal(state.claim?.source, "staged");
@@ -374,14 +374,14 @@ test("an unassigned tick that moves a held plan and a free one claims the free o
   assert.doesNotMatch(findings, /moved a different one/, "the staged claim's own move is not a finding");
 });
 
-test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () => {
+test("a tick with a SUMMARY commits, pins, and enqueues the merge", async () => {
   const { root, wt } = await setup();
   const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
   const { ctx, calls } = makeCtx(root, wt, state, {
     finalText: "Work done.\nSUMMARY: add the feature\nWHY: it was missing\nVERIFIED: npm test\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "add the feature");
@@ -394,12 +394,12 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   assert.equal(log.split("\n")[0], "tumwater(improve): add the feature");
   assert.match(log, /Run: improve #3 · turns 4/);
 
-  // The commit was pinned by the landing ref before the worktree was freed.
+  // The commit was pinned by the merge ref before the worktree was freed.
   assert.equal(calls.pins.length, 1);
   assert.equal(calls.pins[0]!.wt, wt);
   assert.equal(calls.pins[0]!.sha, outcome.commit);
 
-  // Exactly one landing sits in the queue, pointing at the pinned commit.
+  // Exactly one merge sits in the queue, pointing at the pinned commit.
   assert.equal(queueDepth(root), 1);
   const queued = queuedMerges(root);
   assert.equal(queued.length, 1);
@@ -411,7 +411,7 @@ test("a tick with a SUMMARY commits, pins, and enqueues the landing", async () =
   assert.equal(queued[0]!.priorReview, undefined, "a fresh tick carries no prior review");
 });
 
-test("a tick with a SUMMARY still enqueues its landing when the events feed is unwritable", async () => {
+test("a tick with a SUMMARY still enqueues its merge when the events feed is unwritable", async () => {
   const { root, wt } = await setup();
   const state: LoopState = { ...freshLoopState("improve"), runs: 3 };
   const { ctx } = makeCtx(root, wt, state, {
@@ -421,14 +421,14 @@ test("a tick with a SUMMARY still enqueues its landing when the events feed is u
   // EISDIR while every other file under the root still writes.
   unwritableEvents(root);
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
-  assert.equal(queueDepth(root), 1, "the landing is durably queued despite the unwritable feed");
+  assert.equal(queueDepth(root), 1, "the merge is durably queued despite the unwritable feed");
   assert.equal(queuedMerges(root)[0]!.sha, outcome.commit);
 });
 
-test("a revision tick's queued landing carries the prior review's objections", async () => {
+test("a revision tick's queued merge carries the prior review's objections", async () => {
   const { root, wt } = await setup();
   const rejected = "a".repeat(40);
   const state: LoopState = {
@@ -441,7 +441,7 @@ test("a revision tick's queued landing carries the prior review's objections", a
     finalText: "SUMMARY: revise the feature\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const queued = queuedMerges(root);
@@ -458,7 +458,7 @@ test("a missing SUMMARY is recovered with one follow-up turn", async () => {
     followUp: okPi({ finalText: "SUMMARY: recovered summary\n" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "recovered summary");
@@ -475,7 +475,7 @@ test("an over-long SUMMARY is shortened with one follow-up turn", async () => {
     followUp: okPi({ finalText: "SUMMARY: short form\n" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.summary, "short form");
@@ -493,7 +493,7 @@ test("a follow-up that stays over the cap keeps the truncated subject", async ()
       followUp,
     });
 
-    const outcome = await stageTickLanding(ctx);
+    const outcome = await stageTickMerge(ctx);
 
     assert.equal(outcome.summary, truncate(original, 100));
     assert.ok(outcome.summary!.endsWith("…"));
@@ -506,7 +506,7 @@ test("a SUMMARY within the cap asks no follow-up", async () => {
   const { ctx, calls } = makeCtx(root, wt, freshLoopState("improve"), {
     finalText: `SUMMARY: ${"z".repeat(80)}\n`,
   });
-  await stageTickLanding(ctx);
+  await stageTickMerge(ctx);
   assert.equal(calls.summaryRequests.length, 0);
 });
 
@@ -518,7 +518,7 @@ test("a follow-up that yields no SUMMARY falls back to the changed files", async
     followUp: okPi({ finalText: "still nothing" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.match(outcome.summary!, /feature\.ts/, "the subject names what actually changed");
@@ -537,7 +537,7 @@ test("a follow-up that failed names its error instead of claiming 'gave none'", 
     }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued", "the tick still commits with a derived subject");
   assert.match(outcome.summary!, /feature\.ts/);
@@ -554,7 +554,7 @@ test("a missing SUMMARY with no follow-up session says so", async () => {
     followUp: null,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.match(outcome.summary!, /feature\.ts/);
@@ -570,7 +570,7 @@ test("an aborted follow-up finalizes through the loop and queues nothing", async
     abortedOutcome: { result: "aborted", summary: "aborted mid-summary" },
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-summary" });
   assert.equal(calls.abortedFinalized, 1, "the loop's abort finalizer ran");
@@ -580,7 +580,7 @@ test("an aborted follow-up finalizes through the loop and queues nothing", async
     "no commit was made");
 });
 
-test("a tick past both friction thresholds is flagged, warned, and marked in the landing", async () => {
+test("a tick past both friction thresholds is flagged, warned, and marked in the merge", async () => {
   const { root, wt } = await setup();
   const state: LoopState = { ...freshLoopState("improve"), runs: 5 };
   const { ctx, calls } = makeCtx(root, wt, state, {
@@ -593,7 +593,7 @@ test("a tick past both friction thresholds is flagged, warned, and marked in the
     piStartedAt: Date.now() - 6.5 * 60_000,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(outcome.highFriction, true);
@@ -616,12 +616,12 @@ test("burning turns alone is not friction — the wall clock must pass too", asy
     piStartedAt: Date.now(),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.highFriction, false, "a fast high-turn tick is ordinary work");
   assert.deepEqual(calls.warnings, []);
   assert.doesNotMatch(sh(wt, "git", "log", "-1", "--format=%b"), /Friction:/);
-  assert.equal(queuedMerges(root)[0]!.highFriction, undefined, "the landing is not marked");
+  assert.equal(queuedMerges(root)[0]!.highFriction, undefined, "the merge is not marked");
 });
 
 test("a failed pin reports an error, records lastError, and queues nothing", async () => {
@@ -632,7 +632,7 @@ test("a failed pin reports an error, records lastError, and queues nothing", asy
     pinResult: false,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "error");
   assert.equal(outcome.summary, "failed to pin the merge ref; left for the next run's recovery");
@@ -651,7 +651,7 @@ test("a qa flow record from the reply is written into the coverage file", async 
     flow: { flow: "unit tests", result: "bug" },
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const coverage = readQaCoverage(root);
@@ -670,7 +670,7 @@ test("a passed qa flow records no summary", async () => {
     flow: { flow: "unit tests", result: "passed" },
   });
 
-  await stageTickLanding(ctx);
+  await stageTickMerge(ctx);
 
   const coverage = readQaCoverage(root);
   assert.deepEqual(coverage["unit tests"], {
@@ -692,7 +692,7 @@ test("a self-check finding triggers one follow-up and queues with the fixed warn
     stageFix: okPi({ finalText: "SUMMARY: add the feature\nWHY: fixed the symbol claim\n" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 2, "the check runs before and after the fix-up");
@@ -715,7 +715,7 @@ test("a partial fix-up body keeps the fields it did not restate", async () => {
     stageFix: okPi({ finalText: "WHY: revised why\n" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   const body = sh(wt, "git", "log", "-1", "--format=%b");
@@ -733,7 +733,7 @@ test("a finding the follow-up leaves unfixed still queues, with the still-open w
     stageFix: okPi({ finalText: "RISK: the finding is wrong\n" }),
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 2);
@@ -749,7 +749,7 @@ test("a clean self-check runs no follow-up turn", async () => {
     finalText: "SUMMARY: add the feature\n",
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageChecks.length, 1);
@@ -766,7 +766,7 @@ test("no follow-up session leaves the finding for the gate and still queues", as
     stageFix: null,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "queued");
   assert.equal(calls.stageFixRequests.length, 1, "the fix-up was attempted once");
@@ -783,7 +783,7 @@ test("an aborted self-check follow-up finalizes through the loop and queues noth
     abortedOutcome: { result: "aborted", summary: "aborted mid-fix" },
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.deepEqual(outcome, { result: "aborted", summary: "aborted mid-fix" });
   assert.equal(calls.abortedFinalized, 1, "the loop's abort finalizer ran");
@@ -801,7 +801,7 @@ test("a fix-up that reverts the whole change ends no_change with nothing queued"
     stageFixDrops: true,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "no_change");
   assert.equal(calls.stageFixRequests.length, 1);
@@ -827,7 +827,7 @@ test("the real staging self-check leaves the index clean, so a full revert still
     stageFixDrops: true,
   });
 
-  const outcome = await stageTickLanding(ctx);
+  const outcome = await stageTickMerge(ctx);
 
   assert.equal(outcome.result, "no_change");
   assert.equal(calls.stageFixRequests.length, 1, "the real finding triggered the fix-up");
@@ -851,7 +851,7 @@ for (const [label, finalText] of [
       followUpCommits: true,
     });
 
-    const outcome = await stageTickLanding(ctx);
+    const outcome = await stageTickMerge(ctx);
 
     assert.equal(outcome.result, "queued");
     assert.equal(sh(wt, "git", "rev-list", "--count", `${base}..${calls.pins[0]!.sha}`), "1");

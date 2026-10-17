@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { lastTickCell, lastLandedCell, nextRunCell, renderStatus } from "../src/ui/status-render.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
-import { applyLandingOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
+import { applyMergeOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
 import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -253,7 +253,7 @@ test("the last-result cell shows the landing's outcome beside the summary of the
   // cell, paired with the queued change's summary, never with the prior tick's.
   for (const result of ["changed", "rejected"] as const) {
     const s = pendingFeature();
-    applyLandingOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
+    applyMergeOutcome(s, result, { sha: PENDING_SHA, summary: "add the widget" });
     const row = rowOf(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }), "feature");
     const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), { ...snapshotWith([s]), running: true }));
     assert.equal(cellAt(lines.find((l) => l.startsWith("feature ")) ?? "", headers.indexOf("last result")), `${eventTypeLabel(result)} — add the widget`, `landing pair in the last-result cell: ${row}`);

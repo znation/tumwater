@@ -34,7 +34,7 @@ import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
 import type { PendingPrompt } from "../inbox/pending-prompt.js";
-import { stageTickLanding, foldAgentCommitsSince } from "../tick/tick-stage.js";
+import { stageTickMerge, foldAgentCommitsSince } from "../tick/tick-stage.js";
 import { stageCheckFindings } from "../tick/stage-check.js";
 import { bootstrapStatus } from "../gates/bootstrap-gates.js";
 import { modelFallbackActive, modelFallbackProbe } from "./model-fallback.js";
@@ -722,7 +722,7 @@ export async function handlePiResultPhase(
   // — recording the commit count, the outcome, and the reviewer spend into it — and logs
   // merge_done/merge_failed; a non-terminal outcome keeps the pin for next-tick leftover recovery.
   // `commits` was NOT incremented above: it counts landed changes only.
-  return stageTickLanding({
+  return stageTickMerge({
     root: ctx.root,
     role: ctx.role,
     state: ctx.state,

@@ -11,10 +11,10 @@ import type { TickResult } from "../src/tick/tick-outcome.js";
 // makes this a two-way exhaustive pin at compile time: adding a TickResult without a row here
 // fails the gate's tsc pass, and removing or renaming one fails the same way — exactly the
 // nudge the shared vocabulary deserves, since the dashboards, tick-apply's state machine, and
-// the landing wiring all branch on these literals.
+// the merge wiring all branch on these literals.
 const MEANING: Record<TickResult, string> = {
-  changed: "a landing completed: the change is merged to main",
-  queued: "the tick's change is committed and pinned for the landing slot",
+  changed: "a merge completed: the change is merged to main",
+  queued: "the tick's change is committed and pinned for the merge slot",
   refused: "pi declined the work (TUMWATER_REFUSED)",
   no_change: "pi decided there was nothing to do",
   merge_conflict: "change made but unmergeable; the pin is re-queued, then discarded",

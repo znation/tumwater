@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 
 import { newStreakGateState, pollStreakGate } from "../src/gates/streak-gate.js";
 import {
-  applyLandingOutcome,
+  applyMergeOutcome,
   applyTickOutcome,
   ERROR_STREAK_BREAKER,
 } from "../src/tick/tick-apply.js";
@@ -155,7 +155,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   const change = { sha: "a".repeat(40), summary: "address the objections" };
   for (let i = 1; i < ERROR_STREAK_BREAKER; i++) {
     applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
-    applyLandingOutcome(s, "rejected", change);
+    applyMergeOutcome(s, "rejected", change);
     assert.equal(s.consecutiveErrors, i, `rejection ${i} feeds the streak the gate reads`);
   }
   const state = newStreakGateState();
@@ -167,7 +167,7 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   );
   // The tenth rejection crosses the bar: the gate pauses the role and names the rejection.
   applyTickOutcome(s, cfg, "coverage", { result: "queued", commit: change.sha });
-  applyLandingOutcome(s, "rejected", change);
+  applyMergeOutcome(s, "rejected", change);
   assert.equal(s.consecutiveErrors, ERROR_STREAK_BREAKER);
   assert.deepEqual(pollStreakGate(root, state, [observation], new Set()), ["coverage"]);
   assert.deepEqual(pausedRoles(root), ["coverage"]);
@@ -193,12 +193,12 @@ test("pollStreakGate: instance 1 of a multi-instance role pauses under its own k
   assert.equal(streakEvents(root).length, 1, "a second poll logs nothing more");
 });
 
-test("applyLandingOutcome clears mergeFlakeExcused when the change merges or is rejected, keeps it when blocked", () => {
+test("applyMergeOutcome clears mergeFlakeExcused when the change merges or is rejected, keeps it when blocked", () => {
   const change = { sha: "b".repeat(40), summary: "keep the flake excuse per pin" };
   for (const [result, kept] of [["changed", false], ["rejected", false], ["merge_blocked", true]] as const) {
     const s = freshLoopState("coverage");
     s.mergeFlakeExcused = "the flaky test";
-    applyLandingOutcome(s, result, change);
+    applyMergeOutcome(s, result, change);
     assert.equal(s.mergeFlakeExcused !== undefined, kept, `${result}: excuse ${kept ? "kept" : "cleared"}`);
   }
 });

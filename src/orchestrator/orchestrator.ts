@@ -43,7 +43,7 @@ import { RetentionPruner } from "./retention.js";
 import { WorkLandedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,
-  HANDOFF_LANDING_WINDOW_MS,
+  HANDOFF_MERGE_WINDOW_MS,
   p75TickDurationMs,
   sleepInterruptible,
 } from "../tick/tick-timing.js";
@@ -85,7 +85,7 @@ interface RunOptions {
    * polling keep the wall clock; only the breaker's probe deadlines move with it. */
   breakerNow?: () => number;
   /** The restart hand-off's per-phase wait on an in-flight landing (default
-   * HANDOFF_LANDING_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
+   * HANDOFF_MERGE_WINDOW_MS) — a test seam, like pollMs: tests pass a short window so the
    * deadline path resolves quickly. */
   handoffLandingWindowMs?: number;
   /** Once mode (`tumwater run --once`): give every enabled role at most one tick, wait for
@@ -638,7 +638,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       directorInFlight,
       mergeTasks(landings),
       restart,
-      opts.handoffLandingWindowMs ?? HANDOFF_LANDING_WINDOW_MS,
+      opts.handoffLandingWindowMs ?? HANDOFF_MERGE_WINDOW_MS,
       () => internalStop.abort(),
     );
     emit({ source: TUMWATER_SOURCE, type: "orchestrator_stop" });

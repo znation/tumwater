@@ -14,7 +14,7 @@ import { writeEvents } from "./fixtures/log-fixtures.js";
 import { qaCoveragePath, roleNotesPath } from "../src/paths.js";
 import { ROLE_NOTES_MAX_BYTES } from "../src/pi-extension/role-notes.js";
 import { freshLoopState, type LoopState } from "../src/loop/loop-state.js";
-import { applyLandingOutcome } from "../src/tick/tick-apply.js";
+import { applyMergeOutcome } from "../src/tick/tick-apply.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 /** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
@@ -422,12 +422,12 @@ test("an exhausted feature rejection carries the replan instruction on the next 
   assert.match(result.prompt, /do not re-author it/);
 });
 
-// Feature is told to land a markdown-only Needs-replan note when a change exhausts its revision
-// rounds. That landing is review-exempt, so it records no verdict; the landing fold clears the
+// Feature is told to merge a markdown-only Needs-replan note when a change exhausts its revision
+// rounds. That merge is review-exempt, so it records no verdict; the merge fold clears the
 // standing rejection instead (clearSupersededRejection, tick-apply.ts). This pins that the
-// instruction retires after the note lands rather than re-injecting and letting feature re-mark
+// instruction retires after the note merges rather than re-injecting and letting feature re-mark
 // an entry the plan loop has already replanned.
-test("the exhausted-feature replan instruction retires once the markdown-only note lands", () => {
+test("the exhausted-feature replan instruction retires once the markdown-only note merges", () => {
   const dir = root();
   const s = state({
     role: "feature",
@@ -438,9 +438,9 @@ test("the exhausted-feature replan instruction retires once the markdown-only no
   // The feature charter itself names "Needs replan", so the note is recognized by its
   // exhausted-rejection sentence, not the bare phrase.
   assert.match(before.prompt, /do not re-author it/);
-  // The markdown-only replan note lands review-exempt: no model verdict is recorded, only the
-  // landing fold fires.
-  applyLandingOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X for replan" });
+  // The markdown-only replan note merges review-exempt: no model verdict is recorded, only the
+  // merge fold fires.
+  applyMergeOutcome(s, "changed", { sha: "a".repeat(40), summary: "marked plan X for replan" });
   const after = promptFor(dir, "feature", { state: s });
   assert.ok(after);
   assert.doesNotMatch(after.prompt, /do not re-author it/);

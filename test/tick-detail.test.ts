@@ -357,9 +357,9 @@ test("tick --stat names a missing or foreign commit instead of failing", async (
   assert.match((await expectOkAsync(() => cmdTick(repo, ["bugfix", "3"], false, false, true))).stdout, /\(commit 00000000 is not in this repository\)/);
 });
 
-test("renderTickDetail and cmdTick --json show a queued tick's resolved landing", async () => {
+test("renderTickDetail and cmdTick --json show a queued tick's resolved merge", async () => {
   const repo = makeRepo();
-  await initProject(repo, "tick detail landing test");
+  await initProject(repo, "tick detail merge test");
   const ev = (o: Partial<HarnessEvent>): HarnessEvent => ({ loop: "bugfix", ...o }) as HarnessEvent;
   writeEvents(repo, [
     start({ ts: 1000, run: 1 }),
