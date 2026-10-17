@@ -1117,6 +1117,79 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `plan|bug --list --done` and `questions --answered` take `--grep <text>` to find an old finished entry by its text (planned 2026-10-17 by the plan role)
+
+**Goal.** PLANS.md ## Done, BUGS.md ## Fixed, and QUESTIONS.md ## Answered keep every finished
+entry, and they grow by several a day. The CLI shows only the newest N, and `-n` widens the
+list without searching it. So "did we already do X?" or "how was that bug fixed?" means
+scrolling hundreds of titles or grepping the raw file. Add a `--grep <text>` filter to the three
+finished-entry lists, matching like `history --grep` and `logs --grep` do (case-insensitive
+substring). Each match keeps its number from the unfiltered newest-first list, so the
+number printed beside a match is the one `--show <n> --done` / `--show <n> --answered` takes.
+
+**Approach.**
+1. `src/backlog/backlog-cli.ts` `listAndAnnounce`: in the arg loop, accept `--grep <text>` once
+   (`rejectRepeatFlag`; take `args[++i]`, and when it is missing or empty, fail with
+   `--grep needs text (usage: tumwater <command> --list --done --grep <text>)`). After the
+   loop, fail with `--grep needs --done (it searches the finished entries)` when `--grep` is
+   given without `--done`, beside the existing `-n needs --done` check. In the `done`
+   branch: number `all` first (`{ entry, position: i + 1 }`). Then, when a pattern is set,
+   keep only the entries whose `` `${title}\n${body}` `` lowercased includes the lowercased
+   pattern. Then apply the limit (`count ?? 10`) to the matches. `older` counts matches left
+   out, not all entries. Prose lines print `${position}. ${title}`, not `i + 1`.
+   With a pattern and no match, print `no ${what} match "<text>"`. With a pattern, the
+   header reads `${what} in ${fileName} matching "<text>", newest first:`. The trailing
+   hint keeps its form but names the match count (`-n ${matches.length} shows more`).
+   `--json` entries gain `position` (the unfiltered number) with or without a pattern,
+   and `older` counts matches left out. Without `--grep`, every prose line and key the
+   command prints today is unchanged. Update the function's doc comment.
+2. `src/backlog/question-answer.ts`: give `answeredQuestionsNewestFirst` an optional
+   `pattern?: string` and have it return each kept entry with its unfiltered newest-first
+   `position`, filtered by the same title+body case-insensitive substring rule.
+   `answeredQuestionList(root, count, pattern?)` prints `${position}. …` and, with a pattern,
+   the header `answered questions in QUESTIONS.md matching "<text>", newest first:`, or
+   `no answered questions match "<text>"` when none do.
+   `answeredQuestionPayload(root, count, pattern?)` gives each question its `position`.
+   `answeredQuestionAt` is unchanged.
+   Put the one matcher in `src/backlog/backlog.ts` as an exported
+   `entryMatches(entry: BacklogEntry, pattern: string): boolean`, used by both files.
+3. `src/cli/cli-query-commands.ts` `cmdQuestions`: accept `--grep <text>` under the same
+   `!numbered` guard as `-n` (once; a missing or empty value fails like step 1's). Add
+   `--grep` to the unknown-argument error's flag list and to the `rejectEqualsForm`
+   specs. Fail with `--grep needs --answered (it searches the answered questions)` when
+   `--grep` is given without `--answered`, and refuse it beside `--show`. Pass the pattern
+   to `answeredQuestionList`/`answeredQuestionPayload`.
+4. `src/cli/help.ts`: add `[--grep <text>]` to the `bug --list --done`, `plan --list --done`,
+   and `questions --answered` stanzas, with one line saying it keeps the entries whose
+   heading or body contains the text, case-insensitively, numbered as without it.
+   `docs/cli.md`: name `--grep` in the Steer row's `--list --done` clause and the Answer
+   row's `--answered` clause.
+
+**Files touched.** `src/backlog/backlog.ts`, `src/backlog/backlog-cli.ts`,
+`src/backlog/question-answer.ts`, `src/cli/cli-query-commands.ts`, `src/cli/help.ts`,
+`docs/cli.md`, `test/backlog-write-list.test.ts`, `test/cli-questions-list.test.ts`.
+
+**Acceptance criteria.**
+- `test/backlog-write-list.test.ts`: a new test beside "plan --list --done lists the newest
+  done plans, and bug --list --done an empty Fixed". From a ## Done holding entries whose
+  bodies (not only titles) carry a word in mixed case: `plan --list --done --grep <word>`
+  prints only the matching entries, each under its unfiltered number. The `--show <n> --done`
+  of a printed number prints that same entry. `-n 1 --grep` prints one match plus
+  `(N older; -n M shows more)` counted over matches. `--json` entries carry `position`, and
+  a no-match search prints `no done plans match "<text>"`. The same test, or a sibling, runs
+  `bug --list --done --grep` against a ## Fixed fixture.
+- The same file: `plan --list --grep x` exits 1 with `--grep needs --done`, a repeated
+  `--grep` exits 1 with `--grep may only be given once`, and a valueless `--grep` exits 1.
+- The existing `plan --list --done` test passes unchanged (output without `--grep` is
+  unchanged).
+- `test/cli-questions-list.test.ts`: a new test beside "questions --answered lists the newest
+  answers and refuses misuse". `questions --answered --grep <text>` lists only the matching
+  answered questions under their unfiltered numbers, and `--json` carries `position`.
+  `questions --grep x` (no `--answered`) exits 1.
+- `tumwater help plan`, `help bug`, and `help questions` mention `--grep` (asserted in the
+  existing "help topics name the --list forms" test or a new one).
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater report` shows each day's median merge wait, from a merge's enqueue to its commit on main (planned 2026-10-17 by the plan role) — done 2026-10-17
