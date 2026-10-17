@@ -437,7 +437,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
     refreshEntry();
   }
   function stopEntryEdit() { entryEditing = null; }
-  const ENTRY_KINDS = { plans: "Planned feature", bugs: "Open bug", questions: "Open question" };
+  const ENTRY_KINDS = { plans: "Planned feature", bugs: "Open bug", questions: "Open question", done: "Done plan", fixed: "Fixed bug" };
   async function refreshEntry() {
     if (!drawer || drawer.kind !== "entry") return;
     const file = drawer.file;
@@ -464,7 +464,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "<textarea id='entryeditbody' rows='14'>" + esc(d.body || "") + "</textarea>");
       return;
     }
-    const action = file === "questions"
+    const action = file === "done" || file === "fixed" ? "" : file === "questions"
       ? "<textarea id='answertext' rows='3' placeholder='Your answer — recorded in QUESTIONS.md'></textarea>" +
         "<button type='button' class='btn btn-sm btn-primary' data-act='answer-record' data-arg='" + index + "'>" + icon("chat") + "Record answer</button>" +
         "<button type='button' class='btn btn-sm' data-act='answer' data-arg='" + index + "'>Ask the director instead</button>"
@@ -474,7 +474,7 @@ export const GUI_CLIENT_DRAWER_JS = String.raw`  let drawer = null; // { kind: "
         "<button type='button' class='btn btn-sm' data-act='entry-edit' data-arg='" + esc(file + ":" + index) + "'>Edit this entry</button>" +
         "<button type='button' class='btn btn-sm btn-danger' data-act='entry-cancel' data-arg='" + esc(file + ":" + index) + "'>" + (entryCancelArmed(file + ":" + index) ? "Click again to cancel" : "Cancel this entry") + "</button>";
     // The body is model-written Markdown: renderMarkdown escapes every piece of it.
-    paintPanel("entrybody", "<div class='drawer-actions'>" + action + "</div><div class='md'>" +
+    paintPanel("entrybody", (action ? "<div class='drawer-actions'>" + action + "</div>" : "") + "<div class='md'>" +
       (d.body ? renderMarkdown(d.body) : "<p class='muted'>No details for this entry.</p>") + "</div>");
   }
 

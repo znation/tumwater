@@ -366,6 +366,24 @@ test("the entry drawer offers Release this entry only on a refused or waiting en
   assert.doesNotMatch(t.paintedFor("entrybody"), /entry-release/);
 });
 
+test("a done plan or fixed bug entry opens read-only with its kind and body", async () => {
+  const t = openDrawer(["toggleEntry"], {
+    status: { roles: [] },
+    responses: {
+      "/api/backlog?file=done&index=0": { title: "Shipped (done 2026-10-05)", body: "Did **it**.", refused: false, waiting: false },
+      "/api/backlog?file=fixed&index=0": { title: "Squashed (fixed 2026-10-06)", body: "Cause.", refused: false, waiting: false },
+    },
+  });
+  t.scope.toggleEntry("done", 0);
+  await flush();
+  assert.match(t.paintedFor("drawerhead"), /Done plan/);
+  assert.match(t.paintedFor("entrybody"), /<md>Did \*\*it\*\*\.<\/md>/);
+  assert.doesNotMatch(t.paintedFor("entrybody"), /data-act='mention'|entry-edit|entry-cancel|entry-top|entry-release|drawer-actions/);
+  t.scope.toggleEntry("fixed", 0);
+  await flush();
+  assert.match(t.paintedFor("drawerhead"), /Fixed bug/);
+});
+
 test("the entry drawer offers Move to top on every plan entry but the first", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },

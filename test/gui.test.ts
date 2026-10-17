@@ -418,11 +418,11 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
       heading: "## Planned",
       body: "### First plan (planned 2026-09-05)\n\n**Goal.** The first goal.\n\nA second body line, kept verbatim.\n\n### Second plan (planned 2026-09-04)",
     },
-    { heading: "## Done" },
+    { heading: "## Done", body: "### Newer plan (done 2026-09-03)\n\n**Goal.** Newer goal.\n\nSecond line.\n\n### Older plan (done 2026-09-02)\n\nOlder body." },
   ]);
   writeBacklogFile(repo, "BUGS.md", [
     { heading: "## Open", body: "### One bug (reported 2026-09-05)\n\n**Symptom.** It breaks.\n\n### Held bug (reported 2026-09-05)\n\n**Refused 2026-10-16 by bugfix: x**\n\n### Waiting bug (reported 2026-09-05)\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**" },
-    { heading: "## Fixed" },
+    { heading: "## Fixed", body: "### Fixed bug (fixed 2026-09-03)\n\nRoot cause: x." },
   ]);
   writeBacklogFile(repo, "QUESTIONS.md", [
     { heading: "## Open", body: "### Q1: which database?\n\n**Context:** the storage layer is undecided." },
@@ -460,6 +460,16 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     res = await fetch(base + "/api/backlog?file=questions&index=0");
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { title: "Q1: which database?", body: "**Context:** the storage layer is undecided.", refused: false, waiting: false });
+
+    // done/fixed address the finished sections, newest first, titles verbatim.
+    let fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=done&index=0");
+    assert.deepEqual([fin.title, fin.body], ["Newer plan (done 2026-09-03)", "**Goal.** Newer goal.\n\nSecond line."]);
+    fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=done&index=1");
+    assert.deepEqual([fin.title, fin.body], ["Older plan (done 2026-09-02)", "Older body."]);
+    fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=fixed&index=0");
+    assert.deepEqual([fin.title, fin.body], ["Fixed bug (fixed 2026-09-03)", "Root cause: x."]);
+    const doneRange = await getJson<{ error: string }>(base, "/api/backlog?file=done&index=2");
+    assert.match(doneRange.error, /\(done has 2 entries\)$/);
 
     // Validation: unknown/missing file, missing or bad index, and out-of-range → 400 with a
     // JSON error body (the page's fetch treats any non-2xx as a failed poll).
