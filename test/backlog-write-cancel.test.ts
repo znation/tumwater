@@ -204,6 +204,17 @@ test("tryReleaseEntry leaves the bytes releaseEntry leaves and refuses without w
   assert.equal(fs.readFileSync(path.join(b, "BUGS.md"), "utf8"), md);
 });
 
+test("releaseEntry lifts a waiting-for-the-next-failure note", () => {
+  const md = "# Bugs\n\n## Open\n\n### one\n\n**Waiting for the next failure 2026-10-16 by bugfix: x**\n\nbody\n\n### two\n\nbody\n\n## Fixed\n";
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, "BUGS.md"), md);
+  releaseEntry(repo, "bug", 1);
+  assert.equal(
+    fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"),
+    "# Bugs\n\n## Open\n\n### one\n\nbody\n\n### two\n\nbody\n\n## Fixed\n",
+  );
+});
+
 test("tryCancelEntry answers gone and moved without writing", () => {
   const repo = makeRepo();
   assert.deepEqual(tryCancelEntry(repo, "plan", 1, "x"), { status: "gone" }); // no PLANS.md section entries

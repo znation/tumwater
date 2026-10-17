@@ -138,10 +138,15 @@ discards a role's in-flight merge.
 - `maxConcurrentChecks` (default 2) caps how many runs of the project's check are in flight at
   once: pipeline, merge, batch, and main-baseline checks share it, the rest queue, and merges go
   first.
+- A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure <date> by
+  bugfix: …**` note, which bugfix writes once it has made the failure's message name the cause.
+  The backlog index marks the entry `[blocked: waiting for the next failure]`, so bugfix skips it
+  (and sleeps when it is the only open bug). The hold lifts when whoever records a new occurrence
+  deletes the note line (selfcheck does this), or with `tumwater bug --release <n>`.
 - A maintenance role whose last run did nothing is deferred until feature, bugfix, director,
   you, or another human's work merges to main (your own `tumwater brief`, `plan`, `bug` and
   `questions answer` edits count as human work), and stays deferred while PLANS.md or BUGS.md has
-  work a feature or bugfix instance can take (refused, needs-review/replan and blocked entries do
+  work a feature or bugfix instance can take (refused, needs-review/replan, waiting-for-the-next-failure and blocked entries do
   not count). `qa` is never deferred. `bugfix` is not a maintenance role, but while BUGS.md has no
   open bugs it has nothing assigned and defers like one — with the difference that any
   feature, bugfix, director, you or another human wakes it (your own `tumwater brief`, `plan`, `bug`

@@ -15,6 +15,8 @@ import {
   searchGuidance,
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TALLY,
+  WAITING_FOR_FAILURE_NOTE,
+  WAITING_FOR_FAILURE_PREFIX,
 } from "./role-guidance.js";
 import { roleCommitGrep } from "./legacy-role-ids.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
@@ -98,7 +100,10 @@ than forcing it.`,
       line range; read the one you pick by that range. Skip BUGS.md entries the index block marks
       \`[blocked: …]\` (such as \`[blocked: refused]\`, for a Refused note): when every open entry is marked, there is nothing to do. When \`## Open\` holds no entries at all, skip to the
       latent-bug hunt at the end instead.
-   2. Reproduce it if possible: a failing test or a scratch script.
+   2. Reproduce it if possible: a failing test or a scratch script. When it cannot be reproduced
+      and this run made its failure message name the cause next time (or found it already does),
+      record a Progress note, write ${WAITING_FOR_FAILURE_NOTE} as its own line under the
+      heading, and end the run. Do not keep investigating without new evidence.
    3. Fix it, and add a regression test that fails without the fix — run that test to watch it
       fail before the fix and pass after.
    4. Mark it fixed in BUGS.md — ${backlogMoveGuidance("BUGS.md", "## Open", "## Fixed")}
@@ -373,7 +378,10 @@ the live log lives outside your worktree.
       top loss causes price each cause in agent-hours and dollars, and a cluster that burned hours
       outranks one that burned seconds — cite its cost when it is the reason you file.
    4. Before filing, check BUGS.md's ## Open section and \`git log ${roleCommitGrep("selfcheck")}\`
-      for an entry that already names this cluster — no duplicate filings.
+      for an entry that already names this cluster — no duplicate filings. When that Open entry
+      carries a ${WAITING_FOR_FAILURE_PREFIX}…** note and the cluster failed again after the
+      note's date, add the new occurrence under the entry (time, merged commit, failure message)
+      and delete the note line, instead of filing a duplicate.
    5. File it: cite the cluster's normalized key plus the correlated \`merged\` commit in the
       entry, so the bugfix role can reproduce it.
 BUGS.md is your only write; never edit source, tests, or docs. If every cluster is ordinary

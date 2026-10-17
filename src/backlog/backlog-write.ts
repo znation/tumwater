@@ -16,7 +16,7 @@ import { actionableEntryRanges, stripEntryStamp, type ActionableEntryRange } fro
 import { readTextIfExists, writeTextAtomic } from "../files/files.js";
 import { formatDate } from "../text/datetime.js";
 import { fail } from "../cli/cli-output.js";
-import { backlogHolds, type EntryHold, withoutRefusalNotes } from "./backlog-eligibility.js";
+import { backlogHolds, type EntryHold, withoutRefusalNotes, withoutWaitingNotes } from "./backlog-eligibility.js";
 import { collapseWhitespace, trimLeadingBlankLines, trimTrailingBlankLines } from "../text/text.js";
 import { BUGS_TEMPLATE, PLANS_TEMPLATE } from "../init/init.js";
 import { withStateLock } from "../concurrency/lock.js";
@@ -541,12 +541,14 @@ export function editPlan(
   return editEntry(root, "PLANS.md", "Planned", n, title, body);
 }
 
-/** Drop the Refused note from `entry`'s slice of `lines`, in place. False (and `lines` untouched)
- * when the entry carries no note; shared by releaseEntry and tryReleaseEntry so they cannot
+/** Drop the Refused note from `entry`'s slice of `lines`, in place; an entry with none loses its
+ * Waiting-for-the-next-failure note instead. False (and `lines` untouched) when the entry
+ * carries neither; shared by releaseEntry and tryReleaseEntry so they cannot
  * drift. */
 function liftRefusal(lines: string[], entry: ActionableEntryRange): boolean {
   const slice = lines.slice(entry.start - 1, entry.end);
-  const kept = withoutRefusalNotes(slice);
+  let kept = withoutRefusalNotes(slice);
+  if (kept.length === slice.length) kept = withoutWaitingNotes(slice);
   if (kept.length === slice.length) return false;
   lines.splice(entry.start - 1, slice.length, ...kept);
   return true;
@@ -582,15 +584,16 @@ export function tryReleaseEntry(
   });
 }
 
-/** Lift the Refused note from the `n`th entry (1-based, as `--list` numbers them) of the
- * kind's open section and write the file, under the same lock the cancel and edit writers hold.
- * An out-of-range position fails with locateEntry's wording; an entry without a Refused note
+/** Lift the Refused or Waiting for the next failure note from the
+ * `n`th entry (1-based, as `--list` numbers them) of the kind's open section and write the
+ * file, under the same lock the cancel and edit writers hold.
+ * An out-of-range position fails with locateEntry's wording; an entry with neither note
  * fails too, writing nothing. */
 export function releaseEntry(root: string, kind: "bug" | "plan", n: number): { file: string; title: string } {
   const { fileName, sectionTitle } = backlogTarget(kind);
   return withStateLock(primaryWorktreeLockPath(root), () => {
     const { file, lines, entry } = readEntryLines(root, fileName, sectionTitle, n);
-    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused note`);
+    if (!liftRefusal(lines, entry)) fail(`${kind} #${n} "${entry.title}" carries no Refused or Waiting for the next failure note`);
     writeTextAtomic(file, lines.join("\n"));
     return { file: fileName, title: entry.title };
   });

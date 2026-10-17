@@ -176,9 +176,10 @@ Usage:
                                    non-blank line is the symptom, the rest is the body kept
                                    line for line; wakes the bugfix role
   tumwater bug --release <n> [--json]
-                                   Lift the Refused note from the Nth entry in BUGS.md ## Open
-                                   (as \`tumwater bug --list\` lists it), commit it on main,
-                                   and wake the bugfix role; --json prints {file, title}
+                                   Lift the Refused or Waiting for the next failure note from the
+                                   Nth entry in BUGS.md ## Open (as \`tumwater bug --list\`
+                                   lists it), commit it on main, and wake the bugfix role; --json
+                                   prints {file, title}
   tumwater bug --top <n> [--json]
                                    Move the Nth entry (as \`tumwater bug --list\` lists it) to
                                    the head of BUGS.md ## Open, so bugfix claims it next; commit

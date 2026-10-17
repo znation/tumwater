@@ -140,6 +140,17 @@ test("a body mentioning 'requires' never blocks — only the heading's clause do
   assert.equal(entryHold(entry("Foo (planned 2026-10-01)", "This requires part 1/2 landed eventually."), []), null);
 });
 
+test("a waiting-for-the-next-failure note holds a bug, only as a line prefix", () => {
+  const note = "**Waiting for the next failure 2026-10-16 by bugfix: x**";
+  assert.equal(entryHold(entry("Bug", `body\n  ${note}`), []), "waiting-for-failure");
+  assert.equal(entryHold(entry("Bug", `body ${note} mid-line`), []), null);
+  assert.equal(entryHold(entry("Bug", `**Refused 2026-10-16 by bugfix: y**\n${note}`), []), "refused");
+  assert.equal(holdMark("waiting-for-failure"), " [blocked: waiting for the next failure]");
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `# Bugs\n\n## Open\n\n### one\n\n${note}\n\nbody\n\n## Fixed\n`);
+  assert.deepEqual(eligibleEntries(dir, "bugfix"), []);
+});
+
 test("eligibleEntries drops held entries, keeps file order, and attaches the index line ranges", () => {
   const dir = tmpdir();
   fs.writeFileSync(

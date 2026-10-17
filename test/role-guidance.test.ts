@@ -13,6 +13,8 @@ import {
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TAGS,
   VALIDATION_GAP_TALLY,
+  WAITING_FOR_FAILURE_NOTE,
+  WAITING_FOR_FAILURE_PREFIX,
 } from "../src/roles/role-guidance.js";
 import { oneLine } from "./helpers/oracles.js";
 import { sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -168,4 +170,11 @@ test("the search guidance says a small, clearly useful change clears the bar", (
   // Lab A/B (2026-10-01): with the decision deadline as a numbered step, the improve role declined
   // small real improvements the old wording landed; the bar is value, not size.
   assert.match(oneLine(searchGuidance("improve")), /The bar is real value, not size: a small change that is clearly correct and useful clears it/);
+});
+
+test("bugfix find writes the waiting note and selfcheck find deletes it on a recurrence", () => {
+  assert.ok(oneLine(roleById("bugfix")!.find).includes(oneLine(WAITING_FOR_FAILURE_NOTE)));
+  const selfcheck = oneLine(roleById("selfcheck")!.find);
+  assert.ok(selfcheck.includes(WAITING_FOR_FAILURE_PREFIX));
+  assert.ok(selfcheck.includes("delete the note line"));
 });

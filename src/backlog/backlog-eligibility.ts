@@ -1,7 +1,8 @@
 // vocabulary: plain
 /** Backlog eligibility: which PLANS.md / BUGS.md entries a work loop may take now (plans,
  * parallel-work-instances, part 2/7). An entry is held when its body carries a **Refused …**,
- * **Needs review …** or **Needs replan …** note, or when its heading's trailing parenthetical
+ * **Needs review …**, **Needs replan …** or **Waiting for the next failure …** note, or when
+ * its heading's trailing parenthetical
  * (or a parenthetical left open by a wrapped heading) names a prerequisite (`requires parts
  * 1/5–3/5 landed`) that is itself still listed under `## Planned`. The parsers are pure over
  * markdown text; `eligibleEntries` is the stat-backed reader for a caller that wants the list.
@@ -12,7 +13,7 @@ import path from "node:path";
 import { statOrNull } from "../files/files.js";
 import { allLiveClaims } from "../loop/loop-state.js";
 import { collapseWhitespace } from "../text/text.js";
-import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX } from "../roles/role-guidance.js";
+import { NEEDS_REPLAN_PREFIX, NEEDS_REVIEW_PREFIX, WAITING_FOR_FAILURE_PREFIX } from "../roles/role-guidance.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { openParenthetical, trailingParenthetical, type BacklogEntry } from "./backlog-md.js";
@@ -21,7 +22,7 @@ import { openBugEntries, plannedPlanEntries } from "./backlog.js";
 
 /** Why an entry is held, or null when it is eligible. `blockedBy` names the unlanded
  * prerequisites in the form `Series i/n` so a renderer can show `requires …`. */
-export type EntryHold = "refused" | "needs-review" | "needs-replan" | { blockedBy: string[] } | null;
+export type EntryHold = "refused" | "needs-review" | "needs-replan" | "waiting-for-failure" | { blockedBy: string[] } | null;
 
 /** One entry the reader may take: `key` is the stamp-free identity a claim can match on
  * (entryKey), `title` the verbatim heading, and `start`/`end` the 1-based line range the loop
@@ -62,21 +63,32 @@ export function refusalNote(body: string): string | null {
   return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
 }
 
-/** `lines` without any Refused note line (the same line-prefix rule hasNoteLine applies). When a
- * dropped note sat between two blank lines, the blank line after it goes too, so releasing
- * leaves one blank line where the note was. Every other line, Needs-review and needs-replan
- * notes included, is kept. */
-export function withoutRefusalNotes(lines: string[]): string[] {
+/** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine
+ * applies). When a dropped note sat between two blank lines, the blank line after it goes too,
+ * so releasing leaves one blank line where the note was. Every other line is kept. */
+function withoutNoteLines(lines: string[], prefix: string): string[] {
   const out: string[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] as string;
-    if (!line.trimStart().startsWith(REFUSED_PREFIX)) {
+    if (!line.trimStart().startsWith(prefix)) {
       out.push(line);
       continue;
     }
     if ((lines[i - 1] ?? "x").trim() === "" && (lines[i + 1] ?? "x").trim() === "") i++;
   }
   return out;
+}
+
+/** `lines` without any Refused note line. Every other line, Needs-review, needs-replan and
+ * waiting notes included, is kept, so refusal lifting never lifts another hold. */
+export function withoutRefusalNotes(lines: string[]): string[] {
+  return withoutNoteLines(lines, REFUSED_PREFIX);
+}
+
+/** `lines` without any Waiting-for-the-next-failure note line, collapsing blank lines as
+ * withoutRefusalNotes does. */
+export function withoutWaitingNotes(lines: string[]): string[] {
+  return withoutNoteLines(lines, WAITING_FOR_FAILURE_PREFIX);
 }
 
 /** One prerequisite ref, resolved against the entry's own series when it names none. */
@@ -353,6 +365,7 @@ export function entryHoldAgainst(
   if (hasNoteLine(entry.body, REFUSED_PREFIX)) return "refused";
   if (hasNoteLine(entry.body, NEEDS_REVIEW_PREFIX)) return "needs-review";
   if (hasNoteLine(entry.body, NEEDS_REPLAN_PREFIX)) return "needs-replan";
+  if (hasNoteLine(entry.body, WAITING_FOR_FAILURE_PREFIX)) return "waiting-for-failure";
   const refs = requiredParts(entry.title);
   if (refs.length === 0) return null;
   const blocked = refs.filter((ref) => plannedParts.has(partKey(ref.series, ref.part)));
@@ -370,6 +383,7 @@ export function holdMark(hold: EntryHold): string {
   if (hold === "refused") return " [blocked: refused]";
   if (hold === "needs-review") return " [blocked: needs review]";
   if (hold === "needs-replan") return " [blocked: needs replan]";
+  if (hold === "waiting-for-failure") return " [blocked: waiting for the next failure]";
   return ` [blocked: requires ${hold.blockedBy.join(", ")}]`;
 }
 
