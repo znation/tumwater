@@ -61,12 +61,12 @@ export function defaultConfig(): ResolvedModelConfig {
   // The bookkeeping roles run on slower clocks too. In dogfood readme (95 commits, 82 of them
   // status syncs) and plan (80, 44 of them refine/re-audit notes) were 30% of every commit and
   // 20% of every tick: readme woke on every merge to restamp one line, and plan re-audited plans
-  // nobody had touched. A 30 min readme clock batches a burst of landings into one sync; a 1 h
+  // nobody had touched. A 30 min readme clock batches a burst of merges into one sync; a 1 h
   // plan clock leaves the slots to the loops that ship. Both still wake early when main moves —
   // the clock only bounds how often.
   roles.readme = { enabled: true, minRunIntervalSeconds: 1800 };
   roles.plan = { enabled: true, minRunIntervalSeconds: 3600 };
-  // Organize on a 1 h clock: at the global 20 s clock it landed 45 of 86 commits in four hours
+  // Organize on a 1 h clock: at the global 20 s clock it merged 45 of 86 commits in four hours
   // (2026-10-05/06), a whole-tree reorg one directory at a time, each move conflicting with
   // every in-flight branch. Restructuring pays off at a slower rate than code changes, and
   // fewer, better-considered runs suit its larger changes (its scope is not the others').
@@ -82,13 +82,13 @@ export function defaultConfig(): ResolvedModelConfig {
     backends: {},
     maxConcurrent: 6,
     // Three is the team's realistic concurrent-role count: a busy queue coalesces the
-    // common case (a few roles land in the same poll) while the worst case stays bounded.
+    // common case (a few roles merge in the same poll) while the worst case stays bounded.
     mergeBatchMax: 3,
-    // Two suites at once: one landing can verify while the next author's gate check runs,
+    // Two suites at once: one merge can verify while the next author's gate check runs,
     // without a burst stacking every check on the host beside the authors' own test runs.
     maxConcurrentChecks: 2,
     minRunIntervalSeconds: 20,
-    // Four hours: the largest tick a hosted model legitimately took and still landed work
+    // Four hours: the largest tick a hosted model legitimately took and still merged work
     // measured 185 minutes (BUGS.md 2026-09-29), so 30 minutes discarded real work and burned
     // every resume before the task could finish. A run that stops making progress is still
     // bounded earlier by the quiet watchdog, not by this cap.
@@ -106,8 +106,8 @@ export function defaultConfig(): ResolvedModelConfig {
     // catch a runaway. Local-model teams report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
     // Work ratio 1a/4 and 1b/4 (plans/work-ratio.md): the maintenance allowance is
-    // maintenancePerWorkMerge × work landings + 12 per rolling 24 h, and the scheduler holds
-    // maintenance loops once the window reaches it. Two keeps roughly two upkeep landings per
+    // maintenancePerWorkMerge × work merges + 12 per rolling 24 h, and the scheduler holds
+    // maintenance loops once the window reaches it. Two keeps roughly two upkeep merges per
     // shipped change while the fixed floor lets hygiene run on an empty backlog.
     maintenancePerWorkMerge: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
@@ -138,7 +138,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // writes a request file the harness applies to the live config before any commit, so no
     // diff can ever touch tumwater.json and the exemption — once the only thing keeping an
     // explicit user instruction from being discarded by a rejected review — has nothing left
-    // to exempt. Removing it also closes the path where a director tick could land a mixed
+    // to exempt. Removing it also closes the path where a director tick could merge a mixed
     // doc-plus-config diff unreviewed.
     review: { enabled: true, exemptPaths: ["*.md", "docs/**"] },
     customRoles: [],
@@ -281,7 +281,7 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
  * never cached — each poll retries it fresh so a torn live edit or a repair is picked up on the
  * next cycle. A missing file is `missing` — neither a config nor an error — and never the
  * defaults: once a team has loaded its config, the file vanishing is an incident, not a
- * reconfiguration (BUGS.md 2026-09-23: a landing's fast-forward deleted it and the team ran
+ * reconfiguration (BUGS.md 2026-09-23: a merge's fast-forward deleted it and the team ran
  * 8.6 h on defaults), so callers keep their last-known-good exactly as for a broken file, or
  * fall back to defaults only when they never saw one. Startup's "missing ⇒ not initialized"
  * gate (startup-gate.ts) and loadConfig's first-run defaults are unaffected. */

@@ -62,7 +62,7 @@ export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
  * a red running build is not churn but the exact predicament the self-redeploy exists to end,
  * and the rate limit protects against storms, not against a team knowingly executing code its
  * own tree fails. Still a real delay, so consecutive reds cannot storm: one episode per this
- * window at most, each swap giving the team a chance to land on green. */
+ * window at most, each swap giving the team a chance to merge on green. */
 export const RESTART_URGENT_COOLDOWN_MS = 15 * 60_000;
 
 /** The urgent carve-out in whole minutes — the one home of that ms→min division, beside the

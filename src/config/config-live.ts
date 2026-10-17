@@ -84,7 +84,7 @@ export function newLiveConfigReload(deps: {
       const reloaded = loadConfigCached(deps.root);
       // A missing file keeps the last-known-good config too, and never reloads as defaults: the
       // team was started on a real file (startup refuses to run without one), so its vanishing
-      // mid-run is an incident — a landing's fast-forward deleted it on 2026-09-22 and the team
+      // mid-run is an incident — a merge's fast-forward deleted it on 2026-09-22 and the team
       // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
       // poll; its return logs one line, then the normal reload below diffs it against the
       // retained config — so config_changed names only what the returned file really changed.

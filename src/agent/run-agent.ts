@@ -116,7 +116,7 @@ export interface PiRunOptions {
    * exactly as a broken raw log is. */
   nativeLogFile: string;
   signal?: AbortSignal;
-  /** Which kind of run this is: the tick's own authoring run ("author") or the review/landing
+  /** Which kind of run this is: the tick's own authoring run ("author") or the review/merge
    * gate's run ("gate"). Required, so every call site names it and the dashboards demultiplex
    * the role's interleaved runs by the raw-log marker instead of the run's worktree path
    * (plans/worktree-pool.md part 1/5). */
@@ -142,7 +142,7 @@ export interface PiRunOptions {
   onToolCallStart?: (toolName: string, args: unknown) => void;
   /** The role notebook this run may write through the bundled `role_notes` tool, exported to
    * the child as TUMWATER_NOTES_PATH. Only authoring runs set it (LoopPi.runAuthoringPi);
-   * review, landing, and conflict-resolution runs leave it unset, so the tool never registers
+   * review, merge, and conflict-resolution runs leave it unset, so the tool never registers
    * there (src/pi-extension/role-notes.ts). Undefined: no notebook. */
   notesPath?: string;
   /** Called at settle when this run read an image its model cannot see (plans/image-input.md

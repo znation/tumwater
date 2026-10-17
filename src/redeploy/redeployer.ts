@@ -118,7 +118,7 @@ export class Redeployer {
   private lastEscalationAt: number | null = null;
   /** The cooldown deadline the current episode's deferral was last warned about — one warning
    * per distinct deadline, not one per poll and not one per head: the cooldown condition is
-   * head-independent, so a landing mid-cooldown adds no new information (BUGS.md 2026-09-19).
+   * head-independent, so a merge mid-cooldown adds no new information (BUGS.md 2026-09-19).
    * Keyed to the deadline rather than a bare flag so an urgency onset mid-episode — the running
    * build's red verdict arriving after the ordinary warning (BUGS.md 2026-09-30) — is a real
    * transition and warns once more with the earlier deadline. Cleared when the deadline lapses,
@@ -157,7 +157,7 @@ export class Redeployer {
    * blockedHead: the gate is asked again on every poll, so repairing the environment lets the
    * same head proceed without main moving. Also the dedupe key — one `restart_refused` per
    * distinct reason, not one per poll, and head-independent like the cooldown warning: a
-   * landing mid-refusal adds no new information. */
+   * merge mid-refusal adds no new information. */
   private refusedReason: string | null = null;
   /** The live autoRestart flag as last seen by poll — status() publishes the cooldown reason only
    * while it is on (off means no restart will ever be attempted, so a deadline would mislead). */
@@ -460,7 +460,7 @@ export class Redeployer {
     if (inFlight.directorInFlight > 0) return "hold";
     if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
     // Ask the startup gate once more, right before the point of no return: the environment can
-    // change during a long drain — a landing already in flight when the hold began can still
+    // change during a long drain — a merge already in flight when the hold began can still
     // delete tumwater.json (the 2026-09-22 incident's own cause). Refused, the episode is
     // dropped rather than latched, so the next poll starts over at the gate above: nothing is
     // held while it keeps failing, and a fixed environment gets a full episode with its own drain.
@@ -589,7 +589,7 @@ export class Redeployer {
   /** The sustained-pin warning (BUGS.md 2026-09-29): once the build has stayed stale past
    * STALE_ESCALATE_AFTER_MS and a restart attempt has failed within this same stale episode,
    * say the aggregate out loud — at most once per STALE_ESCALATE_EVERY_MS while it lasts.
-   * Healthy churn never feeds it: a landing restart clears the episode, and a cooldown
+   * Healthy churn never feeds it: a merge restart clears the episode, and a cooldown
    * deferral or red main produces no failed attempt, so no warning. */
   private escalateIfSustained(now: number): void {
     const since = this.staleSince;

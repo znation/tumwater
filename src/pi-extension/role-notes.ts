@@ -4,7 +4,7 @@
  * the harness's runtime state so a role's next fresh tick can read it (PLANS.md "Role
  * notebook"). Loaded on every pi run via `-e <this file>` from src/pi/pi-args.ts, but it
  * registers the tool ONLY when TUMWATER_NOTES_PATH is set: src/loop/loop-pi.ts's
- * runAuthoringPi sets it for authoring ticks, while landing, review, and conflict-resolution
+ * runAuthoringPi sets it for authoring ticks, while merge, review, and conflict-resolution
  * runs leave it unset (the director has no notebook either).
  *
  * Why: every tick is a fresh pi session, which retired session poisoning but also discards the

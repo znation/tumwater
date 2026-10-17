@@ -2,7 +2,7 @@
  * per agent run, written into the run's own session dir before its spawn. Backend-neutral — the
  * runner records and the resume paths query — so a later resume can pick the newest session of
  * its own KIND instead of whatever file happens to be newest in the dir. That is the latent pi
- * hazard: a landing conflict resolver's fresh session shares the author's dir, and pi's
+ * hazard: a merge conflict resolver's fresh session shares the author's dir, and pi's
  * `--continue` (newest file in the dir) would otherwise resume the resolver.
  *
  * pi resumes by session dir and claude by id; the record carries both so each caller reads what

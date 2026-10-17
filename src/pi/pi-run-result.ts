@@ -1,7 +1,7 @@
 /** Distilled result of one pi run (`runPi`) — the shared vocabulary every consumer of a
- * pi run reads: the tick loop, the landing wiring, the usage accounting, the failure
+ * pi run reads: the tick loop, the merge wiring, the usage accounting, the failure
  * digests. It lives apart from pi.ts so callers that only handle run results (tick-usage,
- * failure-data, the landing batch) need not import the spawn machinery to name the type. */
+ * failure-data, the merge batch) need not import the spawn machinery to name the type. */
 import type { BackendFailureKind, RateWindow } from "./pi-stream.js";
 
 export interface PiRunResult {
@@ -90,7 +90,7 @@ export interface PiRunResult {
   backendKind?: BackendFailureKind;
   /** True when the run ended on a permanent provider configuration error (a 4xx other than
    * 408/429, or the provider's model_not_supported/invalid_request_error spelling): the
-   * request can never succeed until the config changes, so the landing path holds the pin
+   * request can never succeed until the config changes, so the merge path holds the pin
    * instead of re-queuing it at suite speed (BUGS.md 2026-10-06). */
   configError: boolean;
   /** The provider's Retry-After delay (seconds) from the rate-limit error text, when one was
@@ -137,7 +137,7 @@ export interface PiRunResult {
 /** Whether a run's cost is real money that charges the daily cap (plans/agent-backends.md
  * part 6a): an API-billed run, or a subscription run that saw overage. A plain subscription
  * run's cost is notional — API-equivalent spend that never moves the cap. The one predicate
- * both the tick-usage fold and the landing accumulator split on, so the two cannot drift. */
+ * both the tick-usage fold and the merge accumulator split on, so the two cannot drift. */
 export function runCostIsReal(run: Pick<PiRunResult, "billing" | "usedOverage">): boolean {
   return run.billing !== "subscription" || run.usedOverage === true;
 }

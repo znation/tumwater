@@ -198,10 +198,10 @@ export function reviewConfig(config: TumwaterConfig): ResolvedModelConfig {
   );
 }
 
-/** The config the landing conflict resolver runs on (plans/model-tiers.md, part 4/8): the
- * strong tier's model installed over the config the landing was handed — resolution is rare,
- * tolerant of latency, and edits code inside landing, so it rides the seam where model quality
- * matters most. It reads whatever config the landing carries — the role's per-tier budget
+/** The config the merge conflict resolver runs on (plans/model-tiers.md, part 4/8): the
+ * strong tier's model installed over the config the merge was handed — resolution is rare,
+ * tolerant of latency, and edits code inside the merge, so it rides the seam where model quality
+ * matters most. It reads whatever config the merge carries — the role's per-tier budget
  * fallback view — so it follows the budget fallback's config (part 5a/8). No other overrides:
  * the session dir, raw log,
  * transient retry, and usage folding stay the authoring run's. */
@@ -210,7 +210,7 @@ export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
 }
 
 /** Default wall-clock budget for one reviewer run (`review.timeoutSeconds`). The reviewer holds
- * the landing slot the whole queue waits on, and its only other limits were the tick's budget
+ * the merge slot the whole queue waits on, and its only other limits were the tick's budget
  * and the quiet watchdog: reviews measured 2026-09-22/23 ran 2.3 min median, 9.2 min p90 and
  * 24.6 min max, while earlier days had 1.5–3.5 h reviews. 15 min clears the ordinary review and
  * kills a wedged one in minutes instead of the tick's hours. */
@@ -222,7 +222,7 @@ export const REVIEW_TIMEOUT_S = 900;
  * model took 7 turns at p50 and 15 at p90, while the local fallback managed one turn every
  * ~150–220 s — so REVIEW_TIMEOUT_S fit 4–7 turns, and none of the 21 reviews started in the
  * 09-28..09-30 fallback windows ever returned a verdict (14 timed out; BUGS.md 2026-09-30).
- * Every code change then looped review → timeout → re-land until midnight. An hour fits ~20
+ * Every code change then looped review → timeout → re-merge until midnight. An hour fits ~20
  * turns, past the p90 review. */
 export const FALLBACK_REVIEW_TIMEOUT_S = 3600;
 

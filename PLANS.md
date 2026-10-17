@@ -21,22 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The diff changes comment lines only.
 - `npm run test` passes.
 
-### Plain terms code merge, part 11e/11: Rewrite the merge family in the config and backend modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/config/ src/pi/ src/redeploy/ src/pi-extension/ and src/agent/)
-
-**Goal.** The same comment rewrite as part 11b for the config, backend-selector, pi, redeploy and pi-extension modules. `src/config/config-schema.ts` and `src/config/config-views.ts` hold the most prose in this part.
-
-**Approach.**
-- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`.
-- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title; a legacy name kept on purpose (`CONFIG_KEY_RENAMES` entries, `landBatchMax`/`maintenancePerWorkLanding`, an old event type); and the ordinary English verb `land` meaning "arrive". The `Land-queue speed` plan citations in the config prose stay as quoted titles.
-- Do not rename identifiers or touch string literals; non-comment matches (the `CONFIG_KEY_RENAMES` literals) are outside this comment-only part and stay exactly as they are.
-
-**Files touched.** Comments in src/config/, src/pi/, src/redeploy/, src/pi-extension/ and src/agent/. plans/terminology.md is read, not edited.
-
-**Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/config src/pi src/redeploy src/pi-extension src/agent`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
-- The diff changes comment lines only.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11f/11: Rewrite the merge family in the backlog, prompt and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11e/11; design in plans/terminology.md "Code names"; touches comments in src/prompt/ src/backlog/ src/doctor/ src/operator/ src/history/ src/text/ src/budget/ src/files/ src/inbox/ src/team/ src/init/ and src/paths.ts)
 
 **Goal.** The same comment rewrite as part 11b for the remaining support modules: the prompt builders, the backlog reader/writer, the doctor, the operator commands, the history, text, budget, files, inbox, team and init modules, and `src/paths.ts`.
@@ -1119,6 +1103,23 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms code merge, part 11e/11: Rewrite the merge family in the config and backend modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/config/ src/pi/ src/redeploy/ src/pi-extension/ and src/agent/) — done 2026-10-17 by the feature role
+
+**Goal.** The same comment rewrite as part 11b for the config, backend-selector, pi, redeploy and pi-extension modules. `src/config/config-schema.ts` and `src/config/config-views.ts` hold the most prose in this part.
+
+**Approach.**
+- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`.
+- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title; a legacy name kept on purpose (`CONFIG_KEY_RENAMES` entries, `landBatchMax`/`maintenancePerWorkLanding`, an old event type); and the ordinary English verb `land` meaning "arrive". The `Land-queue speed` plan citations in the config prose stay as quoted titles.
+- Do not rename identifiers or touch string literals; non-comment matches (the `CONFIG_KEY_RENAMES` literals) are outside this comment-only part and stay exactly as they are.
+
+**Files touched.** Comments in src/config/, src/pi/, src/redeploy/, src/pi-extension/ and src/agent/. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/config src/pi src/redeploy src/pi-extension src/agent`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
 
 ### The GUI Usage view charts each day's output tokens per role, the dashboard twin of the day report's `Tokens by role` line (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites the merge-family comments in src/ui but not this file, whose merge terms are already plain; it shares the `report-chart` region and Usage render chain with the in-flight backlog-items/work-maintenance/provider-spend chart plans, but adds only its own builder and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 

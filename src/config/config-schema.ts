@@ -115,8 +115,8 @@ interface ReviewConfig {
   thinking?: string;
   /** Wall-clock budget for one reviewer run, in seconds (default 900, capped by
    * runTimeoutSeconds). A review that outruns it is a failed run — commit kept, no strike —
-   * so one wedged reviewer cannot hold the land queue for a whole authoring tick. A reviewer
-   * (and the landing conflict resolver, which shares the gate's wiring) that is still making
+   * so one wedged reviewer cannot hold the merge queue for a whole authoring tick. A reviewer
+   * (and the merge conflict resolver, which shares the gate's wiring) that is still making
    * progress at the deadline receives one extension of the same length before it is killed. */
   timeoutSeconds?: number;
 }
@@ -169,8 +169,8 @@ export interface CheckConfig {
   command: string;
   /** Optional cheaper command for the review gate's per-change pre-check only (PLANS.md
    * Land-queue speed 3e) — e.g. just the tests a diff touches. Unset or blank = off: the gate
-   * runs the full check. When set, the batch and landing checks and the red-main baseline
-   * still run the full check (`command`, else the npm walk-up), so every landing is verified
+   * runs the full check. When set, the batch and merge checks and the red-main baseline
+   * still run the full check (`command`, else the npm walk-up), so every merge is verified
    * by it once per stack; shares `cwd` and `timeoutSeconds`. */
   gateCommand?: string;
   /** Working directory for the command, resolved relative to the worktree root; defaults to ".". */
@@ -247,7 +247,7 @@ export interface TumwaterConfig {
    * field absent, and a file may not set both spellings of one field. `defaultConfig()` seeds
    * an empty map. */
   backends?: Record<string, AgentConfig>;
-  /** Max pi runs in flight at once across all loops, landings included: every landing vet
+  /** Max pi runs in flight at once across all loops, merges included: every merge verify run
    * (rebased onto main, gate-checked, reviewed in a leased pool slot) holds one of these
    * permits for its length, and a merge's conflict resolver one for its run, ahead of any
    * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
@@ -255,7 +255,7 @@ export interface TumwaterConfig {
   /** Per-provider concurrency caps (plans/provider-concurrency.md §1): how many runs each
    * model provider serves at once, beside the team-wide `maxConcurrent`. A map from provider
    * key (§2: a backend's own id for claude, else the pi provider) to a positive integer. A
-   * role tick, a landing vet or a conflict resolver starts when BOTH its provider and the
+   * role tick, a merge verify run or a conflict resolver starts when BOTH its provider and the
    * team have headroom; providers never wait on each other. An absent key is uncapped —
    * bounded by `maxConcurrent` alone — and a config without the key behaves exactly as
    * before. Unknown provider names are accepted (doctor warns in part 5/5); an entry at or
@@ -266,19 +266,20 @@ export interface TumwaterConfig {
    * past that utilization the subscription counts as used up for every role but the director
    * until the window resets. Optional and absent by default. */
   claudeWindowReserve?: Record<string, number>;
-  /** Max vetted changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
+  /** Max approved changes the orchestrator's merge slot stacks into ONE merge (plans/merge-queue.md
    * 5/5): the changes are stacked into one worktree, run through ONE shared build check, and
-   * fast-forwarded to main in one ff. 1 lands every vetted change on its own (no coalescing). */
+   * fast-forwarded to main in one ff. 1 merges every approved change on its own (no coalescing). */
   mergeBatchMax: number;
   /** Max runs of the project's declared check (the full suite) in flight at once across the whole
-   * harness process — every gate, landing, batch, and main-baseline check takes one permit
-   * (src/concurrency/check-permit.ts's withCheckPermit), so a burst of landings cannot stack suites
+   * harness process — every gate, merge, batch, and main-baseline check takes one permit
+   * (src/concurrency/check-permit.ts's withCheckPermit), so a burst of merges cannot stack suites
    * on the host. Read at each check's start, so an edit applies live. */
   maxConcurrentChecks: number;
   /** How many pooled worktree slots exist (plans/worktree-pool.md, "Config"): the fixed set of
-   * `.tumwater/worktrees/_slot-<n>` checkouts ticks and vets lease. Omitted, it resolves through
-   * slotCount (src/config/config.ts) to `maxConcurrent + 1`. Must be at least 1; a value below
-   * `maxConcurrent` is allowed — permit holders then wait for a slot to free. */
+   * `.tumwater/worktrees/_slot-<n>` checkouts ticks and verify runs lease. Omitted, it
+   * resolves through slotCount (src/config/config.ts) to `maxConcurrent + 1`. Must be at
+   * least 1; a value below `maxConcurrent` is allowed — permit holders then wait for a
+   * slot to free. */
   worktreeSlots?: number;
   /** Minimum seconds between two ticks of the same loop, even when woken early. */
   minRunIntervalSeconds: number;
@@ -311,8 +312,8 @@ export interface TumwaterConfig {
    * validation error, never a silently inert cap. */
   maxDailyCostUsdPerRole?: Record<string, number>;
   /** Work ratio 1a/4 and 1b/4 (plans/work-ratio.md, "Maintenance follows work"): how many
-   * code-maintenance landings the rolling 24 h window allows per work (feature/bugfix/director)
-   * landing, on top of the fixed 12-landing floor. A number of 0 or more, default 2; there is no
+   * code-maintenance merges the rolling 24 h window allows per work (feature/bugfix/director)
+   * merge, on top of the fixed 12-merge floor. A number of 0 or more, default 2; there is no
    * off switch because a large value effectively disables the allowance. Once the window reaches
    * the allowance the scheduler holds maintenance loops until it rolls under (part 1b/4), except
    * a fresh `tumwater wake` or queued prompt admits one tick. */
@@ -332,7 +333,7 @@ export interface TumwaterConfig {
   quietHoursPerRole?: Record<string, string>;
   /** Disk floor (plans/disk-floor.md, "Disk floor 1/4"): the free-space floor in GB
    * (10^9 bytes) for the volume holding `.tumwater/worktrees`. When free space drops below
-   * it, no new work starts — role ticks, the director, landing vets and merges — until free
+   * it, no new work starts — role ticks, the director, merge verify runs and merges — until free
    * space climbs back to `diskHoldGB` + 5 GB (the hysteresis that keeps a team hovering at
    * the line from flapping). In-flight work runs on. 0 disables the hold, lifting an active
    * one on the next poll. Default 10. */

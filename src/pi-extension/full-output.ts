@@ -18,7 +18,7 @@ import { toolOutputDir } from "../paths.js";
 import { walkUp, writeTextAtomic } from "../files/files.js";
 
 /** Walk up from `startDir` looking for a `.tumwater/` directory — the harness root. Worktrees
- * under it (`.tumwater/worktrees/<role>`, lander, gate alike) reach it three levels up
+ * under it (`.tumwater/worktrees/<role>`, merger, gate alike) reach it three levels up
  * (`../../..`, the repo checkout that owns `.tumwater/`); a harness root carries it directly.
  * Bounded to 64 directories including `startDir` so a bare pi run outside the harness
  * terminates without walking to the filesystem root; returns null when no ancestor within

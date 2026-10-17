@@ -10,7 +10,7 @@ import { isJsonObject, parseJsonObject } from "../files/json-object.js";
 import { isNonBlankString, textOr } from "../text/text.js";
 
 /** Which kind of pi run a raw-log `tumwater_run` marker names (src/agent/run-agent.ts writes
- * it): the tick's own authoring run ("author") or the review/landing gate's run ("gate"). A
+ * it): the tick's own authoring run ("author") or the review/merge gate's run ("gate"). A
  * role's one log interleaves both, and the dashboards demultiplex them by this field rather
  * than by the run's worktree path (plans/worktree-pool.md part 1/5). Declared in this pure
  * module so both the subprocess layer (src/agent/run-agent.ts) and the display layer
