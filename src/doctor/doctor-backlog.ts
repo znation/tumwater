@@ -316,6 +316,15 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
   return `merges in the last 24h waited ${shortSpanPhrase(median)} median, ${shortSpanPhrase(longest)} longest (${plural(waits.length, "merge")})`;
 }
 
+/** The read-events window (ms) that reaches the oldest of `sinces` — `Date.now()` minus the
+ * oldest timestamp, floored at 0 — so a recurrence check reads events past every candidate's
+ * `since`. The single home of the "oldest of a set of since-times" step, shared by
+ * checkWaitingBugs and checkRegressedFixes, so those sites cannot drift on the clamp or the
+ * time base. */
+function sinceWindowMs(sinces: readonly number[]): number {
+  return Math.max(0, Date.now() - Math.min(...sinces));
+}
+
 /** Stale questions — open QUESTIONS.md questions that have waited more than 7 days for an
  * answer. A team can stay parked on a question for days while `tumwater doctor` reports
  * nothing; the `--list` age (`questionAgeSuffix` on `tumwater questions`) is the only other
@@ -421,7 +430,7 @@ export function checkWaitingBugs(root: string): CheckOutcome {
   if (!first) return okOutcome("no open bug is waiting for its next failure");
   const sinces = held.flatMap((b) => (b.since !== null && !Number.isNaN(b.since) ? [b.since] : []));
   if (sinces.length > 0) {
-    const { events } = readEventsSince(root, Math.max(0, Date.now() - Math.min(...sinces)));
+    const { events } = readEventsSince(root, sinceWindowMs(sinces));
     const recurred = held.flatMap((b) => {
       if (b.name === null || b.since === null) return [];
       const mentions = failureMentions(events, b.name, b.since);
@@ -460,7 +469,7 @@ export function checkRegressedFixes(root: string): CheckOutcome {
   const open = candidates.length > 0 ? openBugEntries(root).map((e) => quotedTestName(e.title)) : [];
   const unfiled = candidates.filter((c) => !open.includes(c.name));
   if (unfiled.length > 0) {
-    const { events } = readEventsSince(root, Math.max(0, Date.now() - Math.min(...unfiled.map((c) => c.since))));
+    const { events } = readEventsSince(root, sinceWindowMs(unfiled.map((c) => c.since)));
     const regressed = unfiled.flatMap((c) => {
       const mentions = failureMentions(events, c.name, c.since);
       const newest = mentions[mentions.length - 1];
