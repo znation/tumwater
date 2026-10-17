@@ -1117,6 +1117,70 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role)
+
+**Goal.** `tumwater doctor` now prints well over 50 rows and a routing table. On a healthy team
+almost every row is `ok`, so the one `warn` that explains a slow or stuck team is easy to miss.
+Add `--problems` so the operator sees only what needs attention: the header, the warn and fail
+rows, one line counting the hidden ok rows, and the verdict. The checks that run, the exit-code
+contract, and the default output stay as they are. This is independent of the plain-terms
+series. Its only overlap with the in-flight merge rename part 10/11 is the few lines of the
+`doctor` case in `src/cli.ts`.
+
+**Approach.**
+1. `src/cli/cli-flag-specs.ts`: add `export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };`
+   beside `REPROBE_FLAG`. Give it a doc comment in the same style: a value-less flag accepted by
+   `doctor`.
+2. `src/doctor/doctor-render.ts`:
+   - Pull the check-row loop out of `renderDoctor` into a private
+     `checkLines(checks: DoctorReport["checks"]): string[]`. It keeps the current name-column
+     rule: the width is the longest name, at least 12. `renderDoctor`'s output must stay
+     byte-for-byte the same; the existing `renderDoctor` tests in `test/doctor.test.ts` pin
+     this.
+   - Add `export function problemsOnly(report: DoctorReport): DoctorReport`. It returns
+     `{ ...report, checks: report.checks.filter((c) => c.level !== "ok") }`, keeping header,
+     routing, and verdict unchanged. `--problems --json` prints this.
+   - Add `export function renderDoctorProblems(report: DoctorReport): string`, which takes the
+     full report. It prints the header, then `checkLines` over the non-ok checks (their width is
+     computed over the shown rows only), then the line
+     `<n> ok checks hidden — run tumwater doctor for the full report` (singular `check` when
+     n is 1, using `plural` from `src/text/phrases.ts`; the line is left out when n
+     is 0), then the verdict. It never prints the routing table. A report with no warn or fail
+     rows prints the header, the hidden-count line, and `ready to run`.
+3. `src/cli.ts`, `case "doctor"`: add `PROBLEMS_FLAG` to the `rejectUnknownArgs` list. With
+   `--problems`, call `sayJsonOrRender(args, args.includes("--json") ? problemsOnly(report) : report, renderDoctorProblems)`.
+   `sayJsonOrRender` in `src/cli/cli-output.ts` takes one payload, so the JSON branch gets the
+   filtered report and the render gets the full one. Without the flag the call is unchanged.
+   The exit-code line keeps reading the full `report`.
+4. `src/cli/help.ts`: change the usage line to `tumwater doctor [--json] [--reprobe] [--problems]`
+   and add one sentence to the stanza: `--problems prints only the warn and fail rows (and how
+   many ok rows it hid), the same verdict and exit code; with --json the checks array holds
+   only those rows`. Shell completion reads its words from this usage line through
+   `usageWords` in `src/cli/completion.ts`, so it needs no edit.
+5. `docs/cli.md`: in the Audit row's `tumwater doctor` parenthetical, add `--problems` after the
+   `--json` clause with the same meaning.
+
+**Files touched.** `src/cli/cli-flag-specs.ts`, `src/doctor/doctor-render.ts`, `src/cli.ts`,
+`src/cli/help.ts`, `docs/cli.md`, `test/doctor.test.ts`.
+
+**Acceptance criteria.**
+- `test/doctor.test.ts`: a unit test that calls `renderDoctorProblems` on a hand-built
+  `DoctorReport` with three ok rows, one warn, one fail, and a non-empty `routing`. The output
+  holds the header, exactly the warn and fail rows, `3 ok checks hidden`, and the verdict, in
+  that order. It contains no `routing:` line and none of the ok rows' names.
+- A unit test with all-ok checks: the output is the header, `<n> ok checks hidden …`, and the
+  verdict. A test with `checks: []` gets no hidden-count line.
+- A unit test that `problemsOnly` keeps header, routing, and verdict and drops only the ok
+  checks.
+- The existing `renderDoctor` tests pass unchanged.
+- A CLI test modelled on "doctor --reprobe is accepted and wired". On an initialized repo,
+  `tumwater doctor --problems` exits 0, prints `ready to run`, and does not match
+  `/^ok\s+git binary/m`. `doctor --problems --json` is one `JSON.parse`-able document whose
+  `checks` contain no `level: "ok"` entry.
+- A CLI test reusing the failing-environment fixture of "doctor --json keeps the exit-code
+  contract" with `--problems` added: it still exits 1.
+- `tumwater help doctor` shows `--problems`, and `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` says how long merges waited over the last 24 h, from enqueue to merged on main (planned 2026-10-17 by the plan role) — done 2026-10-17
