@@ -36,6 +36,7 @@ import {
   STOP_CANCEL_FLAG,
   STOP_IN_FLAG,
   REPROBE_FLAG,
+  PROBLEMS_FLAG,
 } from "./cli/cli-flag-specs.js";
 import { fail, say, sayJsonOrRender } from "./cli/cli-output.js";
 import { historyTrailForm, parsePromptArgs, peelPositionals } from "./cli/cli-command-args.js";
@@ -169,9 +170,11 @@ async function main(): Promise<void> {
     case "doctor": {
       // No requireReadyRepo gate: doctor's job is to report WHY the environment isn't ready,
       // so it must run outside a git repo and print fail lines rather than throwing.
-      rejectUnknownArgs("doctor", args, [JSON_FLAG, REPROBE_FLAG]);
+      rejectUnknownArgs("doctor", args, [JSON_FLAG, REPROBE_FLAG, PROBLEMS_FLAG]);
       const { runDoctor } = await import("./doctor/doctor.js");
-      const { renderDoctor } = await import("./doctor/doctor-render.js");
+      const { renderDoctor, renderDoctorProblems, problemsOnly } = await import(
+        "./doctor/doctor-render.js"
+      );
       // The terminal probes unclaimed-verified models by default (7-day cache); --reprobe
       // forces every claimed model. The TUI/GUI call runDoctor with the default "never", so a
       // refresh never spends a model call.
@@ -180,7 +183,11 @@ async function main(): Promise<void> {
       // --json prints the collector's own payload (the DoctorReport object), not a re-parse of
       // the render — the `report --json` precedent. The exit-code contract below holds in both
       // forms: 1 when any check fails, 0 otherwise; warnings never fail the exit.
-      sayJsonOrRender(args, report, renderDoctor);
+      // --problems keeps the full report for the render (it counts the hidden ok rows) and
+      // hands --json the filtered one; the exit code below reads the full report either way.
+      if (args.includes("--problems"))
+        sayJsonOrRender(args, args.includes("--json") ? problemsOnly(report) : report, renderDoctorProblems);
+      else sayJsonOrRender(args, report, renderDoctor);
       if (report.checks.some((c) => c.level === "fail")) process.exitCode = 1; // Warnings never fail the exit.
       break;
     }

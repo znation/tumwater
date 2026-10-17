@@ -67,13 +67,16 @@ Usage:
                                    resolution); --role <id> scopes the totals to one role
                                    (merge runs and backlog tallies omitted); not
                                    combinable with --days
-  tumwater doctor [--json] [--reprobe]
+  tumwater doctor [--json] [--reprobe] [--problems]
                                    Pre-flight check: node, git, repo, config, fallback
                                    model, pi, locks, update, orphans, macOS port leak
                                    (read-only; exit 0/1; --json prints the report object —
                                    header, the checks array with level, name, and detail,
                                    and verdict; probes image-input models — --reprobe
-                                   re-probes every one, bypassing the 7-day cache)
+                                   re-probes every one, bypassing the 7-day cache; --problems prints only the warn
+                                   and fail rows (and how many ok rows it hid), the same
+                                   verdict and exit code; with --json the checks array holds
+                                   only those rows)
   tumwater config [get <key> | set <key> <value> | unset <key>]
                                    Show the effective config (defaults + tumwater.json) as
                                    JSON; get one key's resolved value as JSON; set one

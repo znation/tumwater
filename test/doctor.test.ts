@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { runDoctor } from "../src/doctor/doctor.js";
-import { renderDoctor } from "../src/doctor/doctor-render.js";
+import { renderDoctor, renderDoctorProblems, problemsOnly } from "../src/doctor/doctor-render.js";
 import { helpTopic } from "../src/cli/help.js";
 import { initProject } from "../src/init/init.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeMalformedJson, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -393,4 +393,67 @@ test("doctor rejects unknown arguments", async () => {
   const r = await cli(repo, "doctor", "--verbose");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --verbose/);
+});
+
+const problemsReport = (checks: Array<{ name: string; level: "ok" | "warn" | "fail"; detail: string }>) => ({
+  header: "tumwater doctor — not running",
+  checks,
+  routing: [{ label: "director", selector: "m", backend: "pi" }],
+  verdict: "2 problems",
+});
+
+test("renderDoctorProblems prints header, warn and fail rows, the hidden count, and the verdict", () => {
+  const out = renderDoctorProblems(
+    problemsReport([
+      { name: "okone", level: "ok", detail: "fine" },
+      { name: "warny", level: "warn", detail: "hmm" },
+      { name: "oktwo", level: "ok", detail: "fine" },
+      { name: "faily", level: "fail", detail: "bad" },
+      { name: "okthree", level: "ok", detail: "fine" },
+    ]),
+  );
+  const lines = out.split("\n");
+  assert.equal(lines.length, 5);
+  assert.match(lines[0]!, /^tumwater doctor/);
+  assert.match(lines[1]!, /^warn\s+warny/);
+  assert.match(lines[2]!, /^fail\s+faily/);
+  assert.match(lines[3]!, /^3 ok checks hidden/);
+  assert.equal(lines[4], "2 problems");
+  assert.doesNotMatch(out, /routing:|okone|oktwo|okthree/);
+});
+
+test("renderDoctorProblems with only ok rows, and with none", () => {
+  const ok = { name: "a", level: "ok" as const, detail: "x" };
+  assert.deepEqual(renderDoctorProblems(problemsReport([ok])).split("\n"), [
+    "tumwater doctor — not running",
+    "1 ok check hidden — run tumwater doctor for the full report",
+    "2 problems",
+  ]);
+  assert.equal(renderDoctorProblems(problemsReport([])).split("\n").length, 2);
+});
+
+test("problemsOnly keeps header, routing and verdict and drops only the ok checks", () => {
+  const r = problemsReport([
+    { name: "a", level: "ok", detail: "x" },
+    { name: "b", level: "warn", detail: "y" },
+  ]);
+  assert.deepEqual(problemsOnly(r), { ...r, checks: [r.checks[1]] });
+});
+
+test("doctor --problems is accepted and wired — hides ok rows, JSON holds none, help lists it", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli doctor problems");
+  const r = await cli(repo, "doctor", "--problems");
+  assert.equal(r.code, 0, `${r.stdout}\n${r.stderr}`);
+  assert.match(r.stdout, /ready to run/);
+  assert.doesNotMatch(r.stdout, /^ok\s+git binary/m);
+  const json = await cli(repo, "doctor", "--problems", "--json");
+  const report = JSON.parse(json.stdout);
+  assert.ok(!report.checks.some((c: { level: string }) => c.level === "ok"));
+  assert.match(helpTopic("doctor") ?? "", /--problems/);
+});
+
+test("doctor --problems keeps the exit-code contract on a failing environment", async () => {
+  const r = await cliWithEnv(tmpdir(), { PATH: gitOnlyBinDir() }, ["doctor", "--problems"]);
+  assert.equal(r.code, 1, `${r.stdout}\n${r.stderr}`);
 });

@@ -261,6 +261,10 @@ export const READY_FLAG: FlagSpec = { names: ["--ready"] };
  * bypassing the 7-day cache: `--reprobe` (a value-less flag like JSON_FLAG). */
 export const REPROBE_FLAG: FlagSpec = { names: ["--reprobe"] };
 
+/** The `--problems` flag spec, accepted by `doctor`: print only the warn and fail rows. Value-less,
+ * like REPROBE_FLAG. */
+export const PROBLEMS_FLAG: FlagSpec = { names: ["--problems"] };
+
 /** The `--stat` flag spec, accepted by `diff --role`: print each patch as its `git diff --stat`
  * summary. Value-less, like JSON_FLAG. */
 export const STAT_FLAG: FlagSpec = { names: ["--stat"] };

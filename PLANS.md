@@ -1078,7 +1078,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role)
+## Done
+
+### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role) — done 2026-10-17
 
 **Goal.** `tumwater doctor` now prints well over 50 rows and a routing table. On a healthy team
 almost every row is `ok`, so the one `warn` that explains a slow or stuck team is easy to miss.
@@ -1141,8 +1143,6 @@ series. Its only overlap with the in-flight merge rename part 10/11 is the few l
 - A CLI test reusing the failing-environment fixture of "doctor --json keeps the exit-code
   contract" with `--problems` added: it still exits 1.
 - `tumwater help doctor` shows `--problems`, and `npm run test` passes.
-
-## Done
 
 ### `tumwater doctor` says how long merges waited over the last 24 h, from enqueue to merged on main (planned 2026-10-17 by the plan role) — done 2026-10-17
 
