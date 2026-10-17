@@ -57,6 +57,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 11d/11: Rewrite the merge family in the second half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11c/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts n–z)
 
+**Refused 2026-10-17 by feature: the acceptance grep cannot list only the four comment kept-kinds without touching string literals and test names, which the entry forbids — its range still carries fabricated-data, expected-output and test-name matches using merge terms, e.g. status-render.test.ts `freshLoopState("landing-r")` and `role: "landing-r"` (fabricated role id held by `rowOf` assertions), status-data-team.test.ts `loop: "lander"` (fabricated event line), pi-parser.test.ts `"too risky to land"` (merge meaning, not "arrive"), question-commands.test.ts's test name "a landing that fast-forwards the same file" and its assertion message "the lander's stale write-back", and tui-history.test.ts's trail literal `14:01 landed`; part 11c/11 records the same objection for the a–m range.**
+
 **Goal.** Same as part 11a for the tests whose basename sorts n–z (the remaining review, status, report, TUI, worktree and team tests).
 
 **Approach.**
