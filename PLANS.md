@@ -1775,6 +1775,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The backlog index lists the newest five `## Done` plans and `## Fixed` bugs with line ranges, so a run reads recent history by range instead of grepping for it (planned 2026-10-16 by plan; independent of every other entry)
+
+**Goal.** Every role's orientation rules say to read "Planned plus recent Done entries, Open plus recent Fixed ones" (`commonRules` in `src/prompt/prompt.ts`), but the `<backlog-index>` block that `renderBacklogIndexBlock` (`src/backlog/backlog-structure.ts`) builds lists only the actionable sections (`INDEX_SECTIONS`: PLANS.md `## Planned`, BUGS.md `## Open`, QUESTIONS.md `## Open`). So each run that follows the rule first greps PLANS.md or BUGS.md for the `## Done`/`## Fixed` headings. Those sections hold thousands of lines, so a careless grep re-sends a lot of history on every later turn, which is the cost the index was built to remove (BUGS.md 2026-10-06). Both files keep their closed sections newest first, so the first entries in file order are the recent ones. Append those entries' ranges to the same block.
+
+**Approach.**
+- `src/backlog/backlog-structure.ts`:
+  - Add `const RECENT_CLOSED_MAX = 5;` and `const CLOSED_SECTIONS: readonly { file: string; section: string }[] = [{ file: "PLANS.md", section: "Done" }, { file: "BUGS.md", section: "Fixed" }];` next to `INDEX_SECTIONS`, each with a one-line doc comment (closed sections, newest first by the files' convention).
+  - Add `const closedSectionCache = new Map<string, StatKeyedValue<ActionableEntryRange[]>>();`. Use a separate map because `indexSectionCache` is keyed by the file path alone, and PLANS.md would collide.
+  - In `renderBacklogIndexBlock`, after the `INDEX_SECTIONS` loop, loop over `CLOSED_SECTIONS`. For each, call `cachedTextByStat(closedSectionCache, full, full, (md) => actionableEntryRanges(md, section).slice(0, RECENT_CLOSED_MAX), (v) => v.slice())`. Skip a null or empty result. Otherwise push the line `` `${file} ## ${section} (newest ${entries.length})` `` and then one `` `- ${e.start}-${e.end}: ${indexTitle(e.title)}` `` line per entry. Closed entries get no hold mark, no claimer, and no series collapsing.
+  - The block stays `undefined` only when the actionable and closed lists are both empty. Rewrite the block's lead sentence to: `Backlog index — each actionable entry, then the newest closed ones, with the 1-based line range it occupies in its file.` Keep the remaining two lead lines unchanged. Update the function's doc comment to say that it also lists the newest `RECENT_CLOSED_MAX` entries of PLANS.md `## Done` and BUGS.md `## Fixed`.
+- `src/prompt/prompt.ts`: in the orientation bullet, change "lists the actionable entries (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) with each entry's 1-based line range" to "lists the actionable entries (PLANS.md ## Planned, BUGS.md ## Open, QUESTIONS.md ## Open) and the newest few ## Done and ## Fixed entries, each with its 1-based line range". Keep the "Planned plus recent Done entries, Open plus recent Fixed ones" clause exactly as it is, because `test/prompt.test.ts` pins it. Both modules are `// vocabulary: plain`, so the new text must avoid the retired words (harness, operator, loop, tick, landing).
+- `test/backlog-structure.test.ts`:
+  - The test "renderBacklogIndexBlock lists actionable entries with ranges and strips stamp suffixes" asserts `doesNotMatch(block, /## Done/)` and `/## Fixed/`. Its fixtures hold `_None._` there, so those assertions still hold. Leave them and add the new tests below.
+  - A PLANS.md whose `## Done` holds seven entries headed `### D1 (done 2026-10-0N; planned …)` … `### D7 …`: the block contains `PLANS.md ## Done (newest 5)`, lists D1–D5 with their exact ranges, has no D6/D7, and strips the stamps.
+  - A BUGS.md whose `## Fixed` holds two entries: the block contains `BUGS.md ## Fixed (newest 2)` with both ranges, and the closed lines come after the `QUESTIONS.md ## Open` lines.
+  - A backlog with empty actionable sections but one Done entry still returns a block that lists that entry.
+  - A `### ` line inside a fenced block in a Done body is not listed. This comes for free from `actionableEntryRanges`, but pin it.
+  - A rewrite of PLANS.md's Done section with a new size is re-read, mirroring "renderBacklogIndexBlock re-reads a backlog file whose stat changed".
+
+**Files touched.** `src/backlog/backlog-structure.ts`, `src/prompt/prompt.ts`, `test/backlog-structure.test.ts`.
+
+**Acceptance criteria.**
+- `renderBacklogIndexBlock` on this repo's root lists `PLANS.md ## Done (newest 5)` and `BUGS.md ## Fixed (newest 5)`, each with five ranges, and each range's start line is a `### ` heading in that file's closed section.
+- Closed entries never carry `[blocked: …]` or `[in flight by …]` marks, and they never change `eligibleEntries` or the claim allocator. This change does not touch `INDEX_SECTIONS`, so these readers do not change.
+- A backlog with no `### ` entries in any of the five sections still yields `undefined`.
+- `npm run test` passes.
+
 ## Done
 
 ### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test) (done 2026-10-16)
