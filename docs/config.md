@@ -116,7 +116,7 @@ included usage beside models from other providers on pi; `anthropic/claude-…` 
 
 ## Notify events
 
-The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each type pages at most once a minute, and `tumwater notify --test` sends `merge_failed`.
+The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each type pages at most once a minute; an event that minute held back is sent when the minute ends (the newest one, with a count of the others), and `tumwater notify --test` sends `merge_failed`.
 
 | Event | When it fires |
 | --- | --- |

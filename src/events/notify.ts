@@ -43,8 +43,9 @@ export const NOTIFY_EVENT_TYPES = [
 
 type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];
 
-/** Same-type events within this gap spawn the command once, not once per event: a burst of
- * `merge_failed` events pages once. Keyed per type, so one type's page never suppresses
+/** Same-type events within this gap spawn the command at most once per gap: a burst of
+ * `merge_failed` events pages once at once and once more when the gap ends, carrying the newest
+ * held event and how many were held. Keyed per type, so one type's page never suppresses
  * another's. */
 export const NOTIFY_MIN_GAP_MS = 60_000;
 
@@ -103,11 +104,11 @@ export function notifyExitGloss(code: number): string {
 
 /** Spawn the notify command for one event: detached with stdio ignored, so it outlives the
  * caller, and never awaited. A failed spawn or a nonzero exit is one warning, never a throw. */
-function spawnNotifyCommand(root: string, command: string, event: HarnessEvent): void {
+function spawnNotifyCommand(root: string, command: string, event: HarnessEvent, suffix = ""): void {
   try {
     const child = spawn(command, [], {
       shell: true,
-      env: notifyCommandEnv(event.type, event.source, stripTerminalControls(formatEvent(event))),
+      env: notifyCommandEnv(event.type, event.source, stripTerminalControls(formatEvent(event)) + suffix),
       stdio: "ignore",
       detached: true,
     });
@@ -146,22 +147,52 @@ export function notifyFleetDown(root: string, event: HarnessEvent): void {
  * detached with stdio ignored, so it outlives whatever the orchestrator does next. A nonzero
  * exit or kill is logged as one warning and the page is not retried. `"warning"` is
  * deliberately not on the allowlist, so a failure warning can never recurse into another
- * spawn. */
+ * spawn. A same-type event inside the gap is held, not dropped: the newest one is paged when
+ * the gap ends (or at `dispose`), with a count of the others held with it. */
 export function newNotifier(
   root: string,
   minGapMs: number = NOTIFY_MIN_GAP_MS,
   /** The throttle's clock — a test seam; production reads the wall clock. */
   now: () => number = Date.now,
+  /** Runs `fn` after `delayMs` and returns a cancel function — a test seam; production uses an
+   * unref'd timer so a held page never keeps the process alive. */
+  schedule: (fn: () => void, delayMs: number) => () => void = (fn, delayMs) => {
+    const timer = setTimeout(fn, delayMs);
+    timer.unref();
+    return () => clearTimeout(timer);
+  },
 ): Notifier {
   let command: string | undefined;
   const lastSpawnAt = new Map<NotifyEventType, number>();
+  const pending = new Map<NotifyEventType, { event: HarnessEvent; held: number; cancel: () => void }>();
+  const flush = (type: NotifyEventType): void => {
+    const entry = pending.get(type);
+    if (!entry) return;
+    pending.delete(type);
+    if (typeof command !== "string" || command === "") return;
+    lastSpawnAt.set(type, now());
+    const suffix = entry.held > 1 ? ` (and ${entry.held - 1} more ${type} event(s) in the same minute; \`tumwater logs\` lists them)` : "";
+    spawnNotifyCommand(root, command, entry.event, suffix);
+  };
   const unsubscribe = subscribeEvents((event: HarnessEvent) => {
     if (typeof command !== "string" || command === "") return;
     if (!NOTIFY_EVENT_TYPES.includes(event.type as NotifyEventType)) return;
     const type = event.type as NotifyEventType;
     const at = now();
     const last = lastSpawnAt.get(type);
-    if (last !== undefined && at - last < minGapMs) return;
+    if (last !== undefined && at - last < minGapMs) {
+      const held = pending.get(type);
+      if (held) {
+        held.event = event;
+        held.held += 1;
+      } else {
+        pending.set(type, { event, held: 1, cancel: schedule(() => flush(type), last + minGapMs - at) });
+      }
+      return;
+    }
+    // Past the gap: this event pages now and supersedes anything still held for the type.
+    pending.get(type)?.cancel();
+    pending.delete(type);
     lastSpawnAt.set(type, at);
     spawnNotifyCommand(root, command, event);
   });
@@ -169,6 +200,12 @@ export function newNotifier(
     update(config) {
       command = config.notify;
     },
-    dispose: unsubscribe,
+    dispose() {
+      unsubscribe();
+      for (const [type, entry] of [...pending]) {
+        entry.cancel();
+        flush(type);
+      }
+    },
   };
 }

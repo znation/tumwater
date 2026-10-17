@@ -182,6 +182,24 @@ test("non-allowlisted events spawn nothing, and an absent or empty notify disabl
   }
 });
 
+/** A schedule stub for newNotifier: records `(fn, delayMs)` and hands back a cancel spy. */
+function capturingSchedule(): {
+  schedule: (fn: () => void, delayMs: number) => () => void;
+  scheduled: { fn: () => void; delayMs: number; cancelled: boolean }[];
+} {
+  const scheduled: { fn: () => void; delayMs: number; cancelled: boolean }[] = [];
+  return {
+    scheduled,
+    schedule: (fn, delayMs) => {
+      const item = { fn, delayMs, cancelled: false };
+      scheduled.push(item);
+      return () => {
+        item.cancelled = true;
+      };
+    },
+  };
+}
+
 test("the throttle suppresses same-type events within the gap, per type", async () => {
   const root = tmpdir();
   const out = path.join(root, "notify-out.txt");
@@ -190,13 +208,16 @@ test("the throttle suppresses same-type events within the gap, per type", async 
   // the synchronous shell spawn between two back-to-back events as the gap elapsing whenever
   // the host was loaded, and the second event paged (4 of 24 parallel runs, 2026-10-01).
   let clock = 1_000_000;
-  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => clock);
+  const { schedule, scheduled } = capturingSchedule();
+  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => clock, schedule);
   notifier.update({ notify: recorderCommand(out) });
   try {
     logEvent(root, { source: "feature", type: "budget_paused" });
     clock += NOTIFY_MIN_GAP_MS - 1;
     logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length === 1, "the first spawn");
+    assert.equal(scheduled.length, 1, "the in-gap event registers one held flush");
+    assert.equal(scheduled[0]?.delayMs, 1, "the flush fires when the gap ends: 1 ms after an event at gap - 1");
     clock += 1; // exactly one gap after the first spawn
     logEvent(root, { source: "feature", type: "budget_paused" });
     await waitFor(() => recordedLines(out).length >= 2, "the post-gap spawn");
@@ -208,6 +229,82 @@ test("the throttle suppresses same-type events within the gap, per type", async 
     // one type's throttle never suppresses another's.
     logEvent(root, { source: "feature", type: "merge_failed" });
     await waitFor(() => recordedLines(out).some((l) => parseLine(l).type === "merge_failed"), "the other-type spawn");
+    // An in-gap event is held, and running its scheduled flush pages it.
+    const before = recordedLines(out).filter((l) => parseLine(l).type === "budget_paused").length;
+    logEvent(root, { source: "feature", type: "budget_paused" });
+    assert.equal(scheduled.length, 2);
+    scheduled[1]!.fn();
+    await waitFor(() => recordedLines(out).filter((l) => parseLine(l).type === "budget_paused").length === before + 1, "the flushed page");
+  } finally {
+    notifier.dispose();
+  }
+});
+
+test("a held burst pages the newest event with a count when the gap ends, and the bound holds after", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "notify-out.txt");
+  let clock = 1_000_000;
+  const { schedule, scheduled } = capturingSchedule();
+  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => clock, schedule);
+  notifier.update({ notify: recorderCommand(out) });
+  try {
+    for (const question of ["A", "B", "C"]) {
+      logEvent(root, { source: "feature", type: "question_posted", question });
+      clock += 1;
+    }
+    assert.equal(scheduled.length, 1, "three events in one gap register one flush");
+    await waitFor(() => recordedLines(out).length === 1, "the first page");
+    assert.match(recordedLines(out)[0]!, /A/);
+    clock += NOTIFY_MIN_GAP_MS;
+    scheduled[0]!.fn();
+    await waitFor(() => recordedLines(out).length === 2, "the flushed page");
+    const flushed = recordedLines(out)[1]!;
+    assert.match(flushed, /C/);
+    assert.ok(flushed.endsWith("(and 1 more question_posted event(s) in the same minute; `tumwater logs` lists them)"), flushed);
+    // After the flush the gap restarts: the next event is held again, not spawned.
+    logEvent(root, { source: "feature", type: "question_posted", question: "D" });
+    assert.equal(scheduled.length, 2);
+    await sleep(100);
+    assert.equal(recordedLines(out).length, 2);
+  } finally {
+    notifier.dispose();
+  }
+});
+
+test("dispose pages a held event and cancels its timer; with nothing held it spawns nothing", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "notify-out.txt");
+  const { schedule, scheduled } = capturingSchedule();
+  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => 1_000_000, schedule);
+  notifier.update({ notify: recorderCommand(out) });
+  logEvent(root, { source: "feature", type: "merge_failed" });
+  logEvent(root, { source: "feature", type: "merge_failed" });
+  await waitFor(() => recordedLines(out).length === 1, "the first page");
+  notifier.dispose();
+  assert.equal(scheduled[0]!.cancelled, true);
+  await waitFor(() => recordedLines(out).length === 2, "the held page at dispose");
+
+  const idle = newNotifier(root, NOTIFY_MIN_GAP_MS, () => 1_000_000, schedule);
+  idle.update({ notify: recorderCommand(out) });
+  idle.dispose();
+  await sleep(100);
+  assert.equal(recordedLines(out).length, 2);
+});
+
+test("a held event whose flush runs after notify is cleared spawns nothing", async () => {
+  const root = tmpdir();
+  const out = path.join(root, "notify-out.txt");
+  const { schedule, scheduled } = capturingSchedule();
+  const notifier = newNotifier(root, NOTIFY_MIN_GAP_MS, () => 1_000_000, schedule);
+  notifier.update({ notify: recorderCommand(out) });
+  try {
+    logEvent(root, { source: "feature", type: "merge_failed" });
+    logEvent(root, { source: "feature", type: "merge_failed" });
+    await waitFor(() => recordedLines(out).length === 1, "the first page");
+    notifier.update({ notify: "" });
+    scheduled[0]!.fn();
+    await sleep(100);
+    assert.equal(recordedLines(out).length, 1);
   } finally {
     notifier.dispose();
   }
