@@ -7,6 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator-surface and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/cli/ src/config/ src/prompt/ src/roles/ src/doctor/ src/history/ src/operator/ src/backlog/ src/text/ src/budget/ src/pi/ src/redeploy/ src/files/ src/inbox/ src/team/ src/pi-extension/ src/init/ src/agent/ src/gui/ src/orchestrator/ and src/paths.ts)
 
+**Needs review 2026-10-17 by feature: too large for one run**
+
 **Goal.** Same as part 11a for the operator-facing and support modules: the merge family's identifiers and file names are already renamed and guarded, and this part rewrites the merge family in their comments so the code reads in the glossary's words.
 
 **Approach.**
