@@ -1509,6 +1509,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/tick-prompt.test.ts`, next to "a bugfix instance's claim names the bug's line range from BUGS.md", new test "a feature instance's claimed series part names its landed prerequisites". It writes the PLANS.md above and calls `promptFor(dir, "feature-2", { state: { claim: { file: "PLANS.md", key: …, title: <part 3/3 heading>, at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<landed-prerequisites>`, naming both Done titles with their ranges. A claim on an entry with no requires clause gives a prompt with no `<landed-prerequisites>`.
 - `npm run test` passes.
 
+### An assigned series part names the later parts waiting on it (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; it adds code next to "An assigned series part names the Done entries of the parts it requires", so whichever lands second rebases onto the other)
+
+**Goal.** A feature instance assigned a series part such as "Plain terms code merge, part 1/11" gets an `<assigned-entry>` note (`buildAssignmentNote`, `src/prompt/gate-prompts.ts`) that tells it to "Implement or fix only that entry". It is not told which later parts are waiting on this one, and each of those later parts already plans its own share of the work. If the implementer cannot see where its part ends, it may do a later part's work early, which leaves that part with nothing to do and makes the diff bigger than its plan. Or it may change a name that a later part's plan relies on. Those parts are in PLANS.md's `## Planned`, which the charter says never to read wholesale. This plan adds a short `<waiting-parts>` note that lists, by title and line range, the planned parts that require this one. The implementer then knows where its part ends and what the later parts expect it to leave in place.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`: add and export `waitingPartRanges(root: string, title: string): EligibleEntry[]`. Read `plannedPlanEntries(root)` and `actionableEntryRangesFor(root, "PLANS.md", "Planned")`, pairing them by index the way `eligibleEntries` does. Find the index of the planned entry whose `entryKey(e.title)` equals `entryKey(title)`. If there is none, or the entry has no `seriesPart`, return `[]`. Otherwise return `{ key, title, start, end }` for each index that the existing `plansWaitingOn(planned, index)` returns, in its ascending (file) order. Skip an index that has no range. `plansWaitingOn` is transitive, so a part that waits through a chain is listed too, and every one of those parts is work this part must leave alone. A missing PLANS.md gives `[]`, because both readers already treat a missing file as empty. Write the doc comment in the module's style.
+- `src/prompt/gate-prompts.ts`: add a pure `buildWaitingPartsNote(entries: readonly { title: string; start: number; end: number }[]): string` after `buildMainRedNote`, at the end of the file, so it does not sit beside the in-flight `buildLandedPrerequisitesNote`. Leave `buildAssignmentNote` alone. The note is:
+  ```
+  <waiting-parts>
+  Later parts of your series wait for yours to land, and each one plans its own share of the work: do none of it here, and keep in place the names and files they say your part leaves behind. Read one by its range when you need to know what it expects:
+  - "<title>" (PLANS.md lines <start>-<end>)
+  </waiting-parts>
+  ```
+  List at most 5 entries. After the fifth, add one more line, `- …and N more`, as a literal (`moreSuffix` in `src/text/phrases.ts` renders ` (+N more)`, which does not fit a list line). Give it a doc comment saying why it is a pure function, the same as its neighbours.
+- `src/tick/tick-prompt.ts`, in `assembleTickPrompt`: right after the `if (claim && userPrompt === null) { … }` block, add a separate `if (claim && userPrompt === null && claim.file === "PLANS.md")` block. That block keeps this change out of the lines the in-flight landed-prerequisites plan edits. It computes `waitingPartRanges(root, claim.title)`, and when the result is non-empty it adds `buildWaitingPartsNote(...)` to the prompt with `appendPromptNote`. A BUGS.md claim, an unclaimed tick, and a tick running a dequeued user request get no note. `tumwater role <id>`'s preview calls the same `assembleTickPrompt`, so its next-prompt view shows the note without a change of its own.
+
+**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/prompt/gate-prompts.ts`, `src/tick/tick-prompt.ts`, `test/backlog-eligibility.test.ts`, `test/gate-prompts.test.ts`, `test/tick-prompt.test.ts`.
+
+**Acceptance criteria.**
+- `test/backlog-eligibility.test.ts`, next to "plansWaitingOn follows requires clauses transitively and stops on a cycle", new test "waitingPartRanges names the planned parts that wait on an entry, with their ranges". A temp root's PLANS.md has `## Planned`, which holds `### S, part 1/3: a`, `### Unrelated plan`, `### S, part 2/3: b (requires part 1/3 landed)` and `### S, part 3/3: c (requires part 2/3 landed)`, and then `## Done`. The test checks:
+  - For part 1/3's title, the result is part 2/3, then part 3/3, and each range matches that entry's real heading line and last body line.
+  - Part 3/3's title gives `[]`.
+  - `Unrelated plan` (no series part) gives `[]`.
+  - A title not in Planned gives `[]`.
+  - A root with no PLANS.md gives `[]`.
+- `test/gate-prompts.test.ts`, new test "buildWaitingPartsNote lists each part's title and range and caps at five":
+  - With one entry, the note starts with `<waiting-parts>`, holds `"S, part 2/3: b" (PLANS.md lines 10-20)`, and ends with `</waiting-parts>`.
+  - With 7 entries, it lists 5 and ends its list with `- …and 2 more`.
+- `test/tick-prompt.test.ts`, next to "the assignment names the claimed entry's paths missing from the checkout", new test "a feature instance's claimed series part names the parts waiting on it". It writes the PLANS.md above and calls `promptFor(dir, "feature", { state: { claim: { file: "PLANS.md", key: "s, part 1/3: a", title: "S, part 1/3: a", at: 1, source: "assigned" } } })`. The prompt holds `<assigned-entry>` and `<waiting-parts>`, which names both later titles with their ranges. A claim on part 3/3 gives no `<waiting-parts>`. A BUGS.md claim gives no `<waiting-parts>` either.
+- `npm run test` passes.
+
 ## Done
 
 ### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (closed 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)
