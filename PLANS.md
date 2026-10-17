@@ -1204,6 +1204,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater report` gains a `Fallbacks by role` line counting each role's model-fallback episodes (planned 2026-10-16 by the plan role)
+
+**Goal.** A role that keeps tripping its model-fallback episode (`model_fallback_started`: consecutive provider-class failures on the primary, so its runs move to the fallback pair) shows up today only as one feed line per trip and a Team state changes line in `report --failures`. The usage report already ranks rejections, revisions and failed runs per role, but it has no line for "this role's primary model kept failing over the window". Add a ranked `Fallbacks by role` line to the day report and the `--since` report, with the counts in `--json`, so the operator can see which role's primary provider is unreliable when they look at cost.
+
+**Approach.** Count one episode per `model_fallback_started` event, keyed by loop id (`eventRole(ev)`, the event's `source`, which `src/loop/loop-fallback.ts` sets to `ctx.role`). Follow the `revisionsByRole` counter step for step:
+- `src/report/report-data.ts`:
+  - add `fallbacksByRole: Record<string, number>` to `UsageFold` (doc comment: model_fallback_started events per loop id, so a role whose primary keeps failing is visible beside its runs and cost) and to `DayFold`;
+  - in `foldUsageEvent`, add an `else if (ev.type === "model_fallback_started")` branch that does `addTo(target.fallbacksByRole, eventRole(ev), 1)`. Episode *durations* (`model_fallback_ended.durationMs`) are deliberately not summed: an episode can span the window edge or still be open, and a count needs no such rule;
+  - set `fallbacksByRole: {}` in `dayFoldFor` and in `collectReportSince`'s accumulator literal;
+  - `ReportDay.fallbacksByRole?: Record<string, number>`, absent when the day has none (zero means absent). Set it in `collectReport` in both places that set `revisionsByRole` today: the team branch copies `fold.fallbacksByRole` when it is non-empty, and the role-scoped branch narrows it with `narrowToRole`;
+  - `SinceReport.fallbacksByRole: Record<string, number>`, always present (empty map when none). The returned object uses `base === undefined ? acc.fallbacksByRole : narrowToRole(acc.fallbacksByRole, base)`, like its siblings.
+- `src/report/report-render.ts`: in both renders, push `rankedRoleLine("Fallbacks by role", …filter(([, n]) => n > 0), String)` directly **after** the `Failed runs by role` line. The `--since` render reads `rankedRoleMap(data.fallbacksByRole)`. The day render reads `rankedRoleTotals(data.series, (d) => d.fallbacksByRole ?? {})`. A window with none renders `-`, as the sibling lines do. Placing it after `Failed runs by role` keeps every line index that `test/report.test.ts` asserts today (such as `lines[15]`, the Rejections line); check each `lines[N]` assertion after the change anyway.
+- `docs/cli.md`: in the Audit cell's `tumwater report` description, add "fallbacks (model-fallback episodes started)" to the list of ranked per-role lines.
+
+The GUI report charts (`src/ui/gui/gui-client-report.ts`) are out of scope: the JSON field is there for a later chart.
+
+**Files touched.** `src/report/report-data.ts`, `src/report/report-render.ts`, `docs/cli.md`, `test/report-data.test.ts`, `test/report.test.ts`.
+
+**Acceptance criteria.**
+- `test/report-data.test.ts`: a log with two `model_fallback_started` events from `feature` and one from `qa` today, plus one from `feature` yesterday, gives today's `ReportDay.fallbacksByRole` = `{ feature: 2, qa: 1 }` and yesterday's = `{ feature: 1 }`. A day with no such events has no `fallbacksByRole` key. A `model_fallback_ended` event adds nothing.
+- `collectReportSince` over the same log returns `fallbacksByRole` covering the window. With `role: "feature"` it narrows to `{ feature: … }`, and a `feature-2` source folds into `feature`, as `narrowToRole` does for the other maps.
+- `test/report.test.ts`: the day render prints `**Fallbacks by role:** feature — 3 · qa — 1` for a two-day series carrying those counts, and `**Fallbacks by role:** -` when there are none. The `--since` render prints the same line from `SinceReport.fallbacksByRole`. Every existing `lines[N]` index assertion in the file still passes.
+- `tumwater report --json` (day and `--since`) carries `fallbacksByRole`.
+- `npm run test` passes.
+
 ## Done
 
 ### The event feed gives `backend_binary`, `quiet_hours_started`, `quiet_hours_ended`, and `restart_forced` their own lines, and a test makes every event type render one (planned 2026-10-16 by plan) (done 2026-10-16)
