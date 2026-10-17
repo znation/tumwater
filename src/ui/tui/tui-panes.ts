@@ -29,7 +29,8 @@ import { renderMergeQueue } from "../../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../../team/orchestrator-info.js";
 import { queueInFlight } from "../../status/status-polls.js";
 import { listWideScope, queuedListRows, renderQueuedList, type QueuedListRow } from "../../inbox/inbox.js";
-import { tryCancelEntry } from "../../backlog/backlog-write.js";
+import { tryCancelEntry, tryReleaseEntry, OPERATOR_FILE_KINDS } from "../../backlog/backlog-write.js";
+import { requestWake } from "../../operator/operator-intent.js";
 import { cancelRolePrompt } from "../../inbox/inbox-cancel.js";
 import { saveRoleNote } from "../../agent/role-notes-write.js";
 import { roleNotesPath } from "../../paths.js";
@@ -245,6 +246,8 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   /** The role whose notebook a second Ctrl+X would clear, null once any other key lands. */
   let notesClearArmed: string | null = null;
   let cancelArmed: { kind: "plan" | "bug"; position: number; title: string } | null = null;
+  // The armed Ctrl+R release targets of the previous key, read by the Ctrl+R arm below.
+  let releaseArmed: { kind: "plan" | "bug"; position: number; title: string } | null = null;
   // The Queued pane's row selection (null = list mode): the index into queuedRows of the
   // prompt shown in full. Cleared on every Ctrl+T, like selectedEntry, so cycling back into
   // the pane starts at today's list.
@@ -439,12 +442,15 @@ export function createTuiPanes(deps: TuiPanesDeps) {
 
   // The armed Ctrl+X targets of the previous key, read by the Ctrl+X arms below.
   let armed: { kind: "plan" | "bug"; position: number; title: string } | null = null;
+  let armedRelease: { kind: "plan" | "bug"; position: number; title: string } | null = null;
   let armedNotes: string | null = null;
-  /** Every key starts disarmed; only the backlog Ctrl+X branch reads `armed` and only the
-   * notebook Ctrl+X branch reads `armedNotes`. */
+  /** Every key starts disarmed; only the backlog Ctrl+X/Ctrl+R branches read `armed`/
+   * `armedRelease` and only the notebook Ctrl+X branch reads `armedNotes`. */
   const beginKey = (): void => {
     armed = cancelArmed;
     cancelArmed = null;
+    armedRelease = releaseArmed;
+    releaseArmed = null;
     armedNotes = notesClearArmed;
     notesClearArmed = null;
   };
@@ -848,6 +854,63 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       deps.requestRender();
       return true;
     }
+    if (
+      key.ctrl && key.name === "r" &&
+      promptLineFree() &&
+      view === roleIds.length + 1
+    ) {
+      // Ctrl+R twice releases the Refused or Waiting-for-the-next-failure note on the selected
+      // plan or bug through the non-exiting core the dashboard drawer uses; the title check
+      // inside tryReleaseEntry refuses a stale selection. Releasing is the terminal twin of
+      // `tumwater plan|bug --release <n>`: it lifts the note, commits the file and wakes the
+      // kind's loop, so an operator never has to leave the pane.
+      if (selectedEntry !== null) {
+        const entries = flat();
+        const sel = Math.min(selectedEntry, entries.length - 1);
+        const picked = entries[sel];
+        if (picked === undefined) {
+          // an emptied list has nothing to release
+        } else if (picked.label === "done" || picked.label === "fixed" || picked.label === "answered") {
+          flashMessage("a done plan, fixed bug or answered question is read-only");
+        } else if (picked.label === "question") {
+          flashMessage("only a plan or open bug can be released here");
+        } else if (picked.hold !== "refused" && picked.hold !== "waiting-for-failure") {
+          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+          flashMessage(`that ${kind} carries no Refused or Waiting for the next failure note`);
+        } else {
+          const kind: "plan" | "bug" = picked.label === "plan" ? "plan" : "bug";
+          const position = kind === "plan" ? sel + 1 : sel - entries.filter((e) => e.label === "plan").length + 1;
+          const target = { kind, position, title: picked.title };
+          if (armedRelease !== null && armedRelease.kind === kind && armedRelease.position === position) {
+            // The armed title (not the re-read one) goes to tryReleaseEntry, so an entry that
+            // changed since the arm reports `moved` instead of being released.
+            try {
+              const outcome = tryReleaseEntry(root, kind, position, armedRelease.title);
+              if (outcome.status === "released") {
+                commitBacklogEdit(outcome.file, `Release ${kind}: ${outcome.title}`);
+                requestWake(root, [OPERATOR_FILE_KINDS[kind].role]);
+              }
+              selectedEntry = null;
+              entryScroll = 0;
+              flashMessage(
+                outcome.status === "released"
+                  ? `released ${kind} #${position}: ${outcome.title}`
+                  : outcome.status === "not_refused"
+                    ? `that ${kind} carries no Refused or Waiting for the next failure note`
+                    : `that ${kind} was already removed or moved — nothing released`,
+              );
+            } catch (err) {
+              flashError(err);
+            }
+          } else {
+            releaseArmed = target;
+            flashMessage(`press Ctrl+R again to release ${kind} #${position} — any other key keeps it`);
+          }
+        }
+      }
+      deps.requestRender();
+      return true;
+    }
     const arrow = arrowDir(key.name);
     const page = pageDir(key.name);
     if (view === roleIds.length + 1 && arrow !== null) {
@@ -991,6 +1054,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     historyRole,
     selectedEntry,
     cancelArmed,
+    releaseArmed,
     entryScroll,
     selectedQueued,
     queuedRows,

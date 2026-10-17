@@ -19,7 +19,7 @@ import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath } from "../src/paths.js";
+import { abortRequestPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -338,6 +338,79 @@ test("backlog Ctrl+X on a moved entry cancels nothing, and the budget editor blo
   ctrlX();
   assert.equal(keys.state().cancelArmed, null);
   assert.equal(read("PLANS.md"), rewritten);
+});
+
+function backlogReleaseRig() {
+  const root = makeRoot();
+  const plans =
+    "## Planned\n\n### Plan one (planned 2026-10-02 by test)\n\nbody\n\n### Plan two (planned 2026-10-02 by test)\n\nbody\n";
+  const bugs =
+    "## Open\n\n### Bug one (found by test 2026-10-02)\n\nbody\n\n### Bug two (found by test 2026-10-02)\n\nbody\n\n**Refused 2026-10-02 by feature: no**\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans);
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+  fs.writeFileSync(path.join(root, "QUESTIONS.md"), "## Open\n\n### A question (asked by test 2026-10-02)\n\nbody\n");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  keys.handleKey(undefined, { ctrl: true, name: "t" });
+  const down = (n: number): void => {
+    for (let i = 0; i < n; i++) keys.handleKey(undefined, { name: "down" });
+  };
+  const ctrlR = (): void => keys.handleKey(undefined, { ctrl: true, name: "r" });
+  const read = (f: string): string => fs.readFileSync(path.join(root, f), "utf8");
+  return { root, keys, down, ctrlR, read, plans, bugs };
+}
+
+test("backlog Ctrl+R arms, then a second Ctrl+R releases the selected refused bug", () => {
+  const { root, keys, down, ctrlR, read, plans, bugs } = backlogReleaseRig();
+  down(4); // plan 1, plan 2, bug 1, bug 2
+  ctrlR();
+  assert.deepEqual(keys.state().releaseArmed, {
+    kind: "bug",
+    position: 2,
+    title: "Bug two (found by test 2026-10-02)",
+  });
+  assert.equal(read("BUGS.md"), bugs);
+  assert.match(keys.state().flash ?? "", /press Ctrl\+R again/);
+  ctrlR();
+  assert.ok(!read("BUGS.md").includes("Refused") && read("BUGS.md").includes("Bug two"));
+  assert.equal(read("PLANS.md"), plans);
+  const marker = readJson(wakeRequestPath(root)) as { roles: string[] };
+  assert.deepEqual(marker.roles, ["bugfix"]);
+  assert.equal(keys.state().releaseArmed, null);
+  assert.equal(keys.state().selectedEntry, null);
+  assert.match(keys.state().flash ?? "", /released bug #2/);
+});
+
+test("backlog Ctrl+R on a note-less entry, question, or done row refuses, and budget mode blocks it", () => {
+  const { root, keys, down, ctrlR, read, plans, bugs } = backlogReleaseRig();
+  down(3); // plan 1, plan 2, bug 1 — bug #1 carries no note
+  ctrlR();
+  assert.equal(keys.state().releaseArmed, null);
+  assert.match(keys.state().flash ?? "", /carries no Refused or Waiting for the next failure note/);
+  assert.equal(read("BUGS.md"), bugs);
+  down(2); // → the open question
+  ctrlR();
+  assert.equal(keys.state().releaseArmed, null);
+  assert.match(keys.state().flash ?? "", /only a plan or open bug can be released here/);
+  assert.equal(read("BUGS.md"), bugs);
+  // the budget editor blocks release through the promptLineFree guard
+  keys.handleKey(undefined, { name: "up" }); // back onto bug #2 (refused)
+  ctrlR(); // arm
+  assert.notEqual(keys.state().releaseArmed, null);
+  keys.handleKey(undefined, { ctrl: true, name: "b" });
+  ctrlR();
+  assert.equal(keys.state().releaseArmed, null);
+  assert.equal(read("BUGS.md"), bugs);
+  keys.handleKey(undefined, { ctrl: true, name: "b" }); // close the budget editor
+  // a done plan row is read-only
+  const withDone = plans + "\n## Done\n\n### Shipped (planned 2026-09-01, done 2026-10-06)\n\nbody\n";
+  fs.writeFileSync(path.join(root, "PLANS.md"), withDone);
+  keys.handleKey(undefined, { name: "down" });
+  keys.handleKey(undefined, { name: "down" }); // → the done row
+  ctrlR();
+  assert.equal(keys.state().releaseArmed, null);
+  assert.match(keys.state().flash ?? "", /a done plan, fixed bug or answered question is read-only/);
+  assert.equal(read("PLANS.md"), withDone);
 });
 
 test("PgUp/PgDn page the Activity feed and return to the live tail", () => {
