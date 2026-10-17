@@ -7,6 +7,8 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### OpenCode backend, part 6/7: The models.dev catalog decides OpenCode free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
 
+**Needs review 2026-10-17 by feature: too large for one run**
+
 **Goal.** A model job on OpenCode's free model counts as free:
 
 - an all-free team shows "budget n/a";
