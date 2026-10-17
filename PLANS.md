@@ -2018,6 +2018,62 @@ This part makes every surface say which step each tier is on, why, and when it r
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### Retire a disabled role from the dashboard's Settings view, matching `tumwater retire --role <id>` (planned 2026-10-16 by plan; sibling of the landed CLI `tumwater retire` (`retireRole`/`previewRetire` in `src/operator/retire.ts`) and the dashboard's two-click confirms (`confirmSlot` in `src/ui/gui/gui-client-loops.ts`); independent of the waiting series — reads retire.ts but never edits it, so it does not collide with the in-flight "retire accepts a role id that is no longer configured" entry or Plain terms state 5/5; touches src/gui/gui-endpoints.ts, src/gui/gui-operator-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts, docs/how-it-works.md, and a new test/gui-retire.test.ts plus test/gui-client-settings.test.ts)
+
+**Goal.** Retire is the last operator command without a dashboard equivalent. Today, to clean up after setting `roles.<id>.enabled: false`, the operator needs a terminal. The dashboard does not show disabled roles at all, so their leftover worktree, branch, merge ref, and paused marker stay invisible there. This plan adds a "Disabled roles" card to the Settings view. The card lists each disabled role that still has something to remove, says what a retire would remove and which safety rails object, and has a two-click Retire button. Behind it are the same `previewRetire`/`retireRole` cores the CLI uses, so the rails and wording cannot drift. Opinionated default: the dashboard never forces. A role whose rails object shows the objections and the CLI command that overrides them (`tumwater retire --role <id> --force`), with no button.
+
+**Approach.**
+- `src/gui/gui-endpoints.ts`: add `export async function handleRetireList(res: http.ServerResponse, root: string): Promise<void>` for `GET /api/retire`.
+  - Load the config with `loadConfigSafe(root)`. When `config` is undefined, answer `500 { error }`, as `handleConfig` does.
+  - Candidates are `knownRoleIds(config)` (`src/config/config.ts`) filtered to `id !== DIRECTOR_ROLE && !loopEnabled(config, id)` (`src/roles/loop-ids.ts`). Only configured ids are listed. Ids no config names stay CLI-only in this part (see the in-flight sibling).
+  - For each candidate, call `previewRetire(root, id)`. Keep the ones whose `wouldRemove` is non-empty.
+  - Answer `200 { roles: [{ role, wouldRemove: string[], phrases: string[], objections: string[] }] }` in candidate order. `phrases` is `wouldRemove.map((a) => artifactPhrase(a, role))`.
+  - Doc comment: read-only (previewRetire's contract), works whether or not the team runs, and a throw reaches the server's outer 500.
+- `src/gui/gui-operator-commands.ts`: add `export async function handleRetire(req, res, root)` for `POST /api/retire`, with body `{"role": "<id>"}`.
+  - Validate with `readRoleBody(req, res, '{"role": "improve"}', root)`. Its unknown/missing-role 400s come for free.
+  - When `body.force !== undefined`, answer `badRequest(res, "the dashboard never forces a retire — run \`tumwater retire --role <id> --force\` from the CLI")`.
+  - Call `retireRole(root, role, {})` inside try/catch. A throw (the rails' `refusing to retire role …` message, or collectRetire's "cannot read tumwater.json") answers `409 { error: errorMessage(err) }`.
+  - On success, answer `200 { ok: true, removed, skipped, message }`. `message` is `removed.map((a) => "removed " + artifactPhrase(a, role)).join("; ")`, or `nothing to remove for role <id>` when `removed` is empty. That wording matches `cmdRetire`'s lines.
+  - Update the module doc comment's handler list to name retire.
+- `src/gui/gui-endpoint-commands.ts`: add `handleRetire` to the `gui-operator-commands.js` re-export and to the header comment's operator list.
+- `src/gui/gui-server.ts`: route `"GET /api/retire": (_req, res) => handleRetireList(res, root)` beside `GET /api/doctor`, and `"POST /api/retire": (req, res) => handleRetire(req, res, root)` beside `POST /api/role-notes`. Import both.
+- `src/ui/gui/gui-client-settings.ts`, inside the `settings-view` region:
+  - `buildSettingsView` gains a `<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>` between `doctorcard` and `briefcard`.
+  - Add `let lastRetirable = null;` and `const retireSlot = confirmSlot(paintRetirable);`. `confirmSlot` is defined in the loops splice, which is earlier in `GUI_CLIENT_JS`, the same way the drawer's `noteClear` uses it.
+  - Add `function renderRetirable(d, armed)`, a pure function returning HTML:
+    - The header is `<strong>Disabled roles</strong>` with the line `Leftovers of roles set to enabled: false — the same removal as <code>tumwater retire --role &lt;id&gt;</code>.`
+    - With no rows, it shows `<div class='empty'>No disabled role has anything left to remove.</div>`.
+    - Otherwise each row is a `settings-row` with the esc'd role id and the esc'd phrases joined by `, ` after `would remove `.
+    - A row with objections lists each esc'd objection, then `<code>tumwater retire --role ID --force</code>` (esc'd id) with no button.
+    - A row without objections has a `<button type='button' class='btn btn-sm' data-action='retire' data-role='ID'>` labelled `Retire`, or `Confirm retire` when `armed(role)` is true.
+    - Everything is esc'd.
+  - Add `function paintRetirable()`, which writes `renderRetirable(lastRetirable, retireSlot.armed)` into `$("retirecard")` when `lastRetirable` is set.
+  - Add `async function fetchRetirable()`. It calls `buildSettingsView()`, then `getJson("/api/retire")` into `lastRetirable`, then `paintRetirable()`. On a rejection, `$("retirecard").innerHTML = errorPanel("Disabled roles could not load", err, "empty")`.
+  - Add `async function confirmRetire(role)`.
+    - When `!retireSlot.armed(role)`, call `retireSlot.arm(role)` and return.
+    - Otherwise call `retireSlot.disarm()`, then `postJson("/api/retire", { role })`. On success, `showFlash(d.message)`; on error, `showFlash("error: " + clientErrorMessage(err))`. Either way, then `fetchRetirable()`.
+- `src/ui/gui/gui-client-boot.ts`:
+  - The `settings` view switch becomes `fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief();`.
+  - The Health card's click listener also routes `clickClosest(ev, "button[data-action='retire']")` to `confirmRetire(btn.dataset.role)` with `preventDefault`.
+- `docs/how-it-works.md`: in the Settings-view sentence ending "with a Re-run button.", add one sentence: the view also lists disabled roles that still keep a worktree, branch, merge ref, or paused marker, each with what `tumwater retire` would remove and a two-click Retire button. A role the safety rails object to shows the objections and the `--force` command instead, because the dashboard never forces. Leave docs/cli.md alone: the in-flight sibling edits its retire clause.
+
+**Files touched.** src/gui/gui-endpoints.ts, src/gui/gui-operator-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-settings.ts, src/ui/gui/gui-client-boot.ts, docs/how-it-works.md; new test/gui-retire.test.ts; test/gui-client-settings.test.ts.
+
+**Acceptance criteria.**
+- New `test/gui-retire.test.ts`, offline:
+  - Fixtures: `initializedWorktree()` (`test/fixtures/repo-fixtures.ts`) and `captureJson` (`test/fakes/fake-res.ts`). Also local copies of `test/gui-endpoints.test.ts`'s `fakeReq` and `test/retire.test.ts`'s `disableRole` helpers.
+  - "GET /api/retire lists a disabled role's leftovers and omits enabled roles". After `disableRole(root, "improve")`, `handleRetireList` answers 200. `roles` holds exactly one entry with `role: "improve"`, `wouldRemove` containing `"worktree"` and `"branch"`, `phrases` containing `the branch (tumwater/improve)`, and `objections: []`. With `improve` left enabled, `roles` is `[]`.
+  - "GET /api/retire answers 500 on an unreadable tumwater.json". Write `{` to `tumwater.json`.
+  - "POST /api/retire removes a disabled role's worktree and branch". Answers 200, `removed` includes `"branch"`, `message` matches `/removed the branch \(tumwater\/improve\)/`, and `git rev-parse --verify tumwater/improve` fails afterwards. A second POST answers 200 with `message` `nothing to remove for role improve`.
+  - "POST /api/retire refuses an enabled role with 409 and removes nothing". With `improve` enabled, the answer is 409 with `error` matching `/still enabled/`, and the worktree directory still exists.
+  - "POST /api/retire rejects force, a missing role, and an unknown role with 400". `{"role":"improve","force":true}` answers 400 matching `/never forces/` and removes nothing; `{}` answers 400; `{"role":"bogus"}` answers 400 matching `/unknown role/`.
+- `test/gui-client-settings.test.ts`:
+  - `settingsScope`'s exported-name list gains `renderRetirable`, `fetchRetirable`, and `confirmRetire`, with `confirmSlot` injected where a test needs it.
+  - New test "renderRetirable esc's ids, phrases, and objections; a row with objections has no Retire button". It covers: the empty-list text; a clean row with `data-action='retire'` labelled `Retire`, and `Confirm retire` when `armed` returns true; and a row with an objection containing `<b>`, rendered esc'd, with `--force` and no `data-action='retire'`.
+  - New test "confirmRetire arms on the first click and posts /api/retire on the second". With an injected `confirmSlot` stub, `postJson`, and `showFlash`, the first call posts nothing, the second posts `{ path: "/api/retire", body: { role: "improve" } }` and flashes the reply's `message`, and a rejected post flashes `error: …`.
+  - In the existing test "the settings region is spliced into the served script, and the boot routes #settings to it", update the switchView regex to the new call list (`fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief();`), and assert that the boot carries `button[data-action='retire']`.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater retire --role <id>` accepts a role id that is no longer configured while its branch or merge ref remains (planned 2026-10-16 by plan; done 2026-10-16; independent of the waiting series — touches src/operator/retire.ts, src/operator/operator-commands.ts, src/cli/help.ts, docs/cli.md, test/retire.test.ts, and src/doctor/doctor-checks.ts plus test/doctor-checks.test.ts only when `checkLeftoverRoleBranches` is already on main)
