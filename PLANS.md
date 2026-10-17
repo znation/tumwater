@@ -7,6 +7,12 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ### Plain terms code merge, part 9/11: Rename the merge identifiers in the gates and doctor and backlog and git and operator and concurrency and check modules (planned 2026-10-16 by user; requires part 8/11 landed; design in plans/terminology.md "Code names"; touches src/gates/ src/doctor/ src/backlog/ src/git/ src/operator/ src/concurrency/ src/baseline/ src/build/ and their tests)
 
+**Needs replan 2026-10-17 by feature: rejected after 2 review rounds**
+
+Objections from the final review:
+
+> 1. (prior 2) `test/worktree.test.ts:138`: the comment paragraph this change rewrote still says "the merge pipeline's concurrent vets"; it should say "verifies", as the sibling comment at `:356-357` already does.
+
 **Goal.** These modules' merge-related identifiers, comments and test names say merge. The backlog heading grammar keeps its word. A rename of about 360 lines with no behavior change.
 
 **Approach.**
