@@ -1224,6 +1224,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role)
+
+**Goal.** When a role's model can't read images, its runs move to a tier that can. Each move logs an `image_reroute` event: with `preflight: true` from `src/loop/loop-tick.ts`, where an attachment was routed before any run, or with `preflight: false` from `src/tick/tick-verdict.ts`, after a blind read stopped a run. Today these events reach only the event feed, as one line each through `eventMessage`. The usage report already ranks fallbacks, failed runs, rejections, and revisions per role. A role whose text-only model keeps getting image work spends a hop per image, and a failed run when the hop follows a blind read. The report shows neither. Add a ranked `Image reroutes by role` line to the day report and the `--since` report, with the counts in `--json`. The operator can then see which role should get a vision-capable primary.
+
+**Approach.** Count one reroute per `image_reroute` event, keyed by loop id (`eventRole(ev)`, the event's `source`, which both emitters set to `ctx.role`). Count both values of `preflight`. A split by `preflight` is out of scope: one count answers "which role needs a vision model". Follow the `fallbacksByRole` counter (PLANS.md Done: "`tumwater report` gains a `Fallbacks by role` line") step for step:
+- `src/report/report-data.ts`:
+  - add `imageReroutesByRole: Record<string, number>` to `UsageFold` and `DayFold`. Doc comment: image_reroute events per loop id, so a role whose model keeps being handed images it can't read is visible beside its runs and cost;
+  - in `foldUsageEvent`, add an `else if (ev.type === "image_reroute")` branch right after the `model_fallback_started` branch. It does `addTo(target.imageReroutesByRole, eventRole(ev), 1)`;
+  - set `imageReroutesByRole: {}` everywhere `fallbacksByRole: {}` is initialised today (`dayFoldFor` and `collectReportSince`'s accumulator literal);
+  - add `ReportDay.imageReroutesByRole?: Record<string, number>`, absent when the day has none (zero means absent). Set it in `collectReport` in both places that set `fallbacksByRole`. The team branch copies the fold map when it is non-empty. The role-scoped branch narrows it with `narrowToRole`;
+  - add `SinceReport.imageReroutesByRole: Record<string, number>`, always present (an empty map when there are none). The returned object uses `base === undefined ? acc.imageReroutesByRole : narrowToRole(acc.imageReroutesByRole, base)`.
+- `src/report/report-render.ts`: in both renders, push `rankedRoleLine("Image reroutes by role", …filter(([, n]) => n > 0), String)` directly **after** the `Fallbacks by role` line. The `--since` render reads `rankedRoleMap(data.imageReroutesByRole)`. The day render reads `rankedRoleTotals(data.series, (d) => d.imageReroutesByRole ?? {})`. A window with none renders `-`, like its siblings. The new line follows every line that `test/report.test.ts` indexes up to `Fallbacks by role`, but it shifts the index of every later line by one. Check each `lines[N]` assertion and bump only the ones past the new line.
+- `docs/cli.md`: the Audit cell's `tumwater report` description names "fallbacks (model-fallback episodes started)" among the ranked per-role lines. Add "image reroutes (image_reroute hops to a tier that can read images)" right after it.
+
+The GUI report charts (`src/ui/gui/gui-client-report.ts`) are out of scope. The JSON field is there for a later chart.
+
+**Files touched.** `src/report/report-data.ts`, `src/report/report-render.ts`, `docs/cli.md`, `test/report-data.test.ts`, `test/report.test.ts`.
+
+**Acceptance criteria.**
+- `test/report-data.test.ts`: a log with two `image_reroute` events from `feature` today (one `preflight: true`, one `preflight: false`) and one from `qa` today, plus one from `feature` yesterday, gives today's `ReportDay.imageReroutesByRole` = `{ feature: 2, qa: 1 }` and yesterday's = `{ feature: 1 }`. A day with no such events has no `imageReroutesByRole` key. An `image_blind` event or a `model_fallback_started` event adds nothing to it.
+- `collectReportSince` over the same log returns `imageReroutesByRole` covering the window. With `role: "feature"` it narrows to `{ feature: … }`, and a `feature-2` source folds into `feature`, as `narrowToRole` does for the other maps.
+- `test/report.test.ts`: the day render prints `**Image reroutes by role:** feature — 3 · qa — 1` for a two-day series with those counts, and `**Image reroutes by role:** -` when there are none. The `--since` render prints the same line from `SinceReport.imageReroutesByRole`. Every existing `lines[N]` assertion passes, updated only where the new line shifts its index.
+- `tumwater report --json` carries `imageReroutesByRole` for both the day report and `--since`.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor`'s `disk space` row says what reclaim passes freed over the last 24 h (planned 2026-10-16 by plan; independent of the waiting merge-rename series and the in-flight report fallbacks plan — touches only `src/doctor/doctor-checks.ts`, `test/doctor-checks.test.ts`, and `docs/cli.md`) — done 2026-10-16
