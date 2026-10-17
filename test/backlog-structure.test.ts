@@ -505,6 +505,52 @@ test("renderBacklogIndexBlock re-reads a backlog file whose stat changed", () =>
   assert.doesNotMatch(block, /First/);
 });
 
+function doneDoc(n: number): string {
+  let out = "# Plans\n## Planned\n_None yet._\n## Done\n";
+  for (let i = 1; i <= n; i++) out += `### D${i} (done 2026-10-0${i}; planned 2026-09-01 by plan)\nbody ${i}\n`;
+  return out;
+}
+
+test("renderBacklogIndexBlock lists the newest five Done entries with stripped stamps", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), doneDoc(7));
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /PLANS\.md ## Done \(newest 5\)\n- 5-6: D1\n- 7-8: D2\n- 9-10: D3\n- 11-12: D4\n- 13-14: D5\n/);
+  assert.doesNotMatch(block, /D6|D7|done 2026/);
+});
+
+test("renderBacklogIndexBlock lists Fixed entries after the QUESTIONS.md Open lines", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n## Done\n_None._\n");
+  fs.writeFileSync(
+    path.join(dir, "BUGS.md"),
+    "# Bugs\n## Open\n_None._\n## Fixed\n### F1 (found by bug 2026-10-02)\nx\n### F2 (found by bug 2026-10-01)\ny\n",
+  );
+  fs.writeFileSync(path.join(dir, "QUESTIONS.md"), "# Q\n## Open\n### Q1\nask\n## Answered\n_None._\n");
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /BUGS\.md ## Fixed \(newest 2\)\n- 5-6: F1\n- 7-8: F2\n/);
+  assert.ok(block.indexOf("QUESTIONS.md ## Open") < block.indexOf("BUGS.md ## Fixed"));
+});
+
+test("renderBacklogIndexBlock returns a block for a lone Done entry and ignores fenced headings", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(
+    path.join(dir, "PLANS.md"),
+    "# Plans\n## Planned\n_None yet._\n## Done\n### Only (done 2026-10-01)\n```\n### Fake\n```\n",
+  );
+  const block = renderBacklogIndexBlock(dir) ?? "";
+  assert.match(block, /PLANS\.md ## Done \(newest 1\)\n- 5-8: Only\n/);
+  assert.doesNotMatch(block, /Fake/);
+});
+
+test("renderBacklogIndexBlock re-reads a Done section whose stat changed", () => {
+  const dir = tmpdir();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), doneDoc(1));
+  assert.match(renderBacklogIndexBlock(dir) ?? "", /newest 1\)/);
+  fs.writeFileSync(path.join(dir, "PLANS.md"), doneDoc(3));
+  assert.match(renderBacklogIndexBlock(dir) ?? "", /newest 3\)/);
+});
+
 test("renderBacklogIndexBlock marks an entry another role has claimed as in flight", () => {
   const dir = tmpdir();
   fs.writeFileSync(

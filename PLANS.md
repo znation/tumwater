@@ -1737,7 +1737,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The backlog index lists the newest five `## Done` plans and `## Fixed` bugs with line ranges, so a run reads recent history by range instead of grepping for it (planned 2026-10-16 by plan; independent of every other entry)
+## Done
+
+### The backlog index lists the newest five `## Done` plans and `## Fixed` bugs with line ranges, so a run reads recent history by range instead of grepping for it (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry)
 
 **Goal.** Every role's orientation rules say to read "Planned plus recent Done entries, Open plus recent Fixed ones" (`commonRules` in `src/prompt/prompt.ts`), but the `<backlog-index>` block that `renderBacklogIndexBlock` (`src/backlog/backlog-structure.ts`) builds lists only the actionable sections (`INDEX_SECTIONS`: PLANS.md `## Planned`, BUGS.md `## Open`, QUESTIONS.md `## Open`). So each run that follows the rule first greps PLANS.md or BUGS.md for the `## Done`/`## Fixed` headings. Those sections hold thousands of lines, so a careless grep re-sends a lot of history on every later turn, which is the cost the index was built to remove (BUGS.md 2026-10-06). Both files keep their closed sections newest first, so the first entries in file order are the recent ones. Append those entries' ranges to the same block.
 
@@ -1763,8 +1765,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - Closed entries never carry `[blocked: …]` or `[in flight by …]` marks, and they never change `eligibleEntries` or the claim allocator. This change does not touch `INDEX_SECTIONS`, so these readers do not change.
 - A backlog with no `### ` entries in any of the five sections still yields `undefined`.
 - `npm run test` passes.
-
-## Done
 
 ### The steward's prompt lists how many full entries PLANS.md `## Done` and BUGS.md `## Fixed` hold past the ten the compression policy keeps, with the oldest ones' line ranges (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry; touches a new src/backlog/records-overflow.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts and src/roles/role-catalog.ts. The in-flight bugfix flake plan also adds one field to `buildTickPrompt` and one line to `assembleTickPrompt`, so whichever lands second rebases over adjacent lines)
 

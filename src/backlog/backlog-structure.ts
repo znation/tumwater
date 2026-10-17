@@ -410,6 +410,16 @@ const INDEX_SECTIONS: readonly { file: string; section: string }[] = [
   { file: "QUESTIONS.md", section: "Open" },
 ];
 
+/** How many closed entries per closed section the index lists. */
+const RECENT_CLOSED_MAX = 5;
+
+/** The closed sections whose newest entries the index also lists; both files keep them newest
+ * first, so the first entries in file order are the recent ones. */
+const CLOSED_SECTIONS: readonly { file: string; section: string }[] = [
+  { file: "PLANS.md", section: "Done" },
+  { file: "BUGS.md", section: "Fixed" },
+];
+
 /** One actionable entry as the index renders it: the 1-based range the loop reads, the
  * verbatim heading, and the body a hold note is read from. Cached per file stat
  * (stat-cache.cachedTextByStat): both branches of every tick prompt render this block, and the
@@ -427,6 +437,10 @@ interface IndexEntry {
 
 /** Per-file cache of the parsed actionable entries (indexSectionCache). */
 const indexSectionCache = new Map<string, StatKeyedValue<IndexEntry[]>>();
+
+/** Per-file cache of the newest closed entries' ranges; separate from indexSectionCache, which is
+ * keyed by the file path alone and PLANS.md would collide. */
+const closedSectionCache = new Map<string, StatKeyedValue<ActionableEntryRange[]>>();
 
 /** One actionable entry as the index renders it into a line before series-collapsing: the
  * 1-based range, the verbatim heading, its eligibility hold, and the live claimer (if any).
@@ -624,8 +638,21 @@ export function renderBacklogIndexBlock(root: string): string | undefined {
     const isPlans = file === "PLANS.md" && section === "Planned";
     listed.push(...(isPlans ? collapseBlockedSeries(rows) : rows.map(renderIndexRow)));
   }
+  for (const { file, section } of CLOSED_SECTIONS) {
+    const full = path.join(root, file);
+    const entries = cachedTextByStat(
+      closedSectionCache,
+      full,
+      full,
+      (md) => actionableEntryRanges(md, section).slice(0, RECENT_CLOSED_MAX),
+      (v) => v.slice(),
+    );
+    if (entries === null || entries.length === 0) continue;
+    listed.push(`${file} ## ${section} (newest ${entries.length})`);
+    for (const e of entries) listed.push(`- ${e.start}-${e.end}: ${indexTitle(e.title)}`);
+  }
   if (listed.length === 0) return undefined;
-  return `Actionable backlog — each entry with the 1-based line range it occupies in its file.
+  return `Backlog index — each actionable entry, then the newest closed ones, with the 1-based line range it occupies in its file.
 Read the entries you need by those ranges; the files' closed sections make a full heading map
 grow with every run. Blocked parts of a multi-part series are shown as one line per series.
 <backlog-index>
