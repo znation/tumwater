@@ -1595,6 +1595,58 @@ test("a Pending collector resolution after the roster size changed caches onto t
   );
 });
 
+test("the Pending pane refreshes in place with Ctrl+R: a counting collector re-reads the fresh queue and roster", async () => {
+  const root = makeRoot();
+  const teamA = {
+    mainBranch: "main",
+    roles: [
+      { role: "feature", branch: "tumwater/feature", state: "ready" as const, ahead: 2, behind: 0, commits: [], dirtyFiles: [] },
+    ],
+  };
+  const teamB = { mainBranch: "main", roles: [] };
+  let calls = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    collectPending: () => {
+      calls += 1;
+      return Promise.resolve(calls === 1 ? teamA : teamB);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 5; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Pending
+  assert.equal(keys.state().view, 5);
+  assert.equal(calls, 1, "entering Pending starts the collector once");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    keys.state().paneCache,
+    "merge queue empty\n\nfeature: 2 commits ahead of main",
+    "the first collector resolution paints teamA's roster",
+  );
+  // One Ctrl+R starts the collector a second time, and its resolution paints teamB's roster.
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(calls, 2, "a single Ctrl+R starts the collector a second time");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    keys.state().paneCache,
+    "merge queue empty\n\nno pending changes",
+    "the second collector resolution paints the refreshed roster",
+  );
+  // Ctrl+R on another view never re-reads Pending: this view has no backlog selection, so
+  // the key falls through to no arm at all and no collector re-runs.
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Queued
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Brief
+  keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Activity
+  assert.equal(keys.state().view, 0);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(calls, 2, "Ctrl+R off Pending does not re-read the collector");
+});
+
 test("Ctrl+N cycles transcript → notebook → change and back, caching the collector's render", async () => {
   const root = makeRoot();
   const view = {
@@ -2400,6 +2452,70 @@ test("Ctrl+O on the Health tab toggles the problems-only view; History keeps its
   keys.handleKey(undefined, { ctrl: true, name: "o" });
   assert.equal(keys.state().healthProblems, false);
   assert.equal(keys.state().paneCache, renderDoctor(report));
+});
+
+test("the Health pane re-runs the doctor checks in place with Ctrl+R, honoring the problems-only toggle", async () => {
+  const root = makeRoot();
+  const reportA: DoctorReport = {
+    header: "doctor",
+    checks: [
+      { level: "ok", name: "node", detail: "fine" },
+      { level: "warn", name: "free-disk", detail: "low" },
+    ],
+    routing: [],
+    verdict: "warnings",
+  } as DoctorReport;
+  const reportB: DoctorReport = {
+    header: "doctor",
+    checks: [{ level: "warn", name: "free-disk", detail: "lower" }],
+    routing: [],
+    verdict: "warnings",
+  } as DoctorReport;
+  let calls = 0;
+  let reject = false;
+  let renders = 0;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => (renders += 1),
+    now: () => 0,
+    runDoctor: () => {
+      calls += 1;
+      return reject
+        ? Promise.reject(new Error("boom"))
+        : Promise.resolve(calls === 1 ? reportA : reportB);
+    },
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  assert.equal(calls, 1, "entering Health runs the doctor once");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, renderDoctor(reportA));
+  // Ctrl+O first so healthProblems is true: Ctrl+R's resolution paints the problems view.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().healthProblems, true);
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(calls, 2, "a single Ctrl+R re-runs the doctor a second time");
+  assert.equal(keys.state().paneCache, null, "a refresh shows the loading note until it resolves");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(
+    keys.state().paneCache,
+    renderDoctorProblems(reportB),
+    "the refreshed report paints through the problems-only toggle",
+  );
+  // A rejecting Ctrl+R flashes the error and leaves the loading note.
+  reject = true;
+  const before = renders;
+  keys.handleKey(undefined, { ctrl: true, name: "r" });
+  assert.equal(calls, 3, "Ctrl+R re-runs again even after a change");
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, null, "a rejecting refresh leaves the loading note up");
+  assert.match(keys.state().flash ?? "", /boom/);
+  assert.ok(renders > before);
 });
 
 test("the Brief tab caches renderBrief of the brief file on entry, and holds null with no prompt block", async () => {

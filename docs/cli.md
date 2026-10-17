@@ -72,7 +72,7 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+Y` | History | toggle the per-role Summary table |
 | `Ctrl+N` | History | the newest completed run's event trail, and back |
 | `Ctrl+E` | Usage, Failures | cycle the trailing window |
-| `Ctrl+R` | Transcript, Backlog | send a prompt to that role; release the selected refused or waiting entry |
+| `Ctrl+R` | Transcript, Backlog, Pending, Health | send a prompt to that role; release the selected refused or waiting entry; refresh the merge queue and change roster on Pending / re-run the doctor checks on Health |
 | `Ctrl+P` / `Ctrl+W` / `Ctrl+A` / `Ctrl+V` | Transcript | pause or resume the role / wake it (a duration schedules it, `cancel` drops scheduled wakes) / stop its in-flight run / zero the role's counters |
 | `Ctrl+N` | Transcript | cycle transcript, notes, and pending change; `Ctrl+X` pressed twice on notes clears them |
 | `Ctrl+X` (twice) / `Ctrl+V` / `Ctrl+E` / `Ctrl+N` / `Ctrl+A` | Backlog | cancel the selected entry / move it to the head of its section / edit its title / file a new plan or bug / answer the selected question |

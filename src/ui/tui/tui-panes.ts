@@ -139,7 +139,14 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       if (queued.handleKey?.(key, ctx)) return true;
       return backlog.handleKey?.(key, ctx) ?? false;
     }
-    if (key.ctrl && key.name === "r") return backlog.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "r") {
+      // The in-place Ctrl+R refresh arms: the Pending pane's queue/roster re-read, then the
+      // Health pane's doctor re-run, then the backlog's release — each returns false when
+      // its view does not apply, so the order among the three is immaterial.
+      if (pending.handleKey?.(key, ctx)) return true;
+      if (health.handleKey?.(key, ctx)) return true;
+      return backlog.handleKey?.(key, ctx) ?? false;
+    }
     if (key.ctrl && key.name === "v") {
       // The move-to-top Ctrl+V arms, routed like Ctrl+X's: the queued prompt first, then the
       // backlog entry — each returns false when its view/selection does not apply. The
