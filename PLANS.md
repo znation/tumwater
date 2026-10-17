@@ -1171,7 +1171,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The GUI Usage view charts each day's `Merge check median` as a bar element, so the operator sees the suite slowing on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/ui/gui/gui-client-report.ts and its test)
+## Done
+
+### The GUI Usage view charts each day's `Merge check median` as a bar element, so the operator sees the suite slowing on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/ui/gui/gui-client-report.ts and its test) — done 2026-10-17
 
 **Goal.** `tumwater report` prints a `Merge check median` line (`renderReportMarkdown`, `src/report/report-render.ts`), and each series day already carries the figure to the dashboard as the optional `ReportDay.checkMedianMs` (`src/report/report-data.ts`; set by `collectReport` in the team branch only, absent on days with no passing full-suite check and on every day of a role-scoped report). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) does not draw it, so the trend that tells the operator to act before a merge check times out is only visible in the CLI. Add one single-series bar chart for it, built the way `chartCommits` is (PLANS.md Done: "`tumwater report`'s day report gains a `Merge check median` line" — that plan left charting to a later plan).
 
@@ -1192,8 +1194,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `seriesHasCheckMedian` is false for a series with no `checkMedianMs` on any day, and true for the three-day series.
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The GUI Usage view charts `Revisions by role` as a stacked per-role element (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and of the in-flight `Merge check median` plan, which touches only `src/report/`) — done 2026-10-16
 

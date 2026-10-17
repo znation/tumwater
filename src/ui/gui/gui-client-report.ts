@@ -116,6 +116,13 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       countAxis, true);
   }
 
+  // The lower median of the day's passing full-suite merge checks, from checkMedianMs; a day
+  // without one keeps its empty slot.
+  function chartCheckMedian(data) {
+    return reportSvg(data.series, (d) => [{ value: Number(d.checkMedianMs) || 0, color: "#0ea5e9", title: d.date + ": " + fmtSpan(Number(d.checkMedianMs) || 0) + " median merge check" }],
+      (v) => fmtSpan(v), false);
+  }
+
   // Stacked bars, one color per role in reportRoleOrder's order (the first role at the bottom),
   // with a legend in the same order. Role names are dynamic (custom loops): escaped everywhere.
   function roleStackChart(data, field, fmt, fmtAxis, integer) {
@@ -182,6 +189,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // are rare, so their elements render only then.
   function seriesHasAny(data, field) {
     return data.series.some((d) => Object.values(d[field] || {}).some((n) => n > 0));
+  }
+  // True when some day carries a passing-check median; the element renders only then.
+  function seriesHasCheckMedian(data) {
+    return data.series.some((d) => Number(d.checkMedianMs) > 0);
   }
   // report-chart:end
 
@@ -440,6 +451,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +
         (seriesHasAny(d, "mergeFailedByRole") ? block("Merge failures by role", chartMergeFailuresByRole(d)) : "") +
+        (seriesHasCheckMedian(d) ? block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks") : "") +
         (d.totals.notionalCostUsd > 0
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
