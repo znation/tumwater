@@ -54,6 +54,25 @@ test("renderReportMarkdown pins the header, totals, table shape, and role line",
   assert.equal(lines[15], "**Rejections by role:** -", "no rejections renders the line as '-', the shared zero-means-absent convention");
 });
 
+test("renderReportMarkdown appends the window's newly filed plans and bugs to the totals line", () => {
+  const data: ReportData = {
+    days: 3,
+    from: "2026-09-08",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-08", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, plansAdded: 1, bugsFiled: 1 },
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, plansAdded: 1 },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0, plansAdded: 2, bugsFiled: 1 },
+    coversFullWindow: true,
+  };
+  const lines = renderReportMarkdown(data).split("\n");
+  assert.equal(
+    lines[4],
+    "**Totals:** 0 output tokens · 0 runs · 0 commits · $0.00 · 0 features done · 0 bugs fixed · 2 plans added · 1 bugs filed",
+  );
+});
+
 test("renderReportMarkdown prints a Rejections by role line ranked by count, only when rejections exist", () => {
   const md = renderReportMarkdown({
     days: 2,
@@ -485,7 +504,7 @@ test("renderSinceReportMarkdown pins the header, totals voice, role ranking, and
   assert.match(data, /\*\*Cost by role:\*\* feature — \$0\.75/);
   assert.match(data, /\*\*Rejections by role:\*\* clean — 1 · feature — 1/, "equal rejection counts rank by name asc");
   assert.match(data, /\*\*Revisions by role:\*\* feature — 1/);
-  assert.match(data, /backlog tallies \(features done \/ bugs fixed\) need the day report \(--days\)/);
+  assert.match(data, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report \(--days\)/);
 });
 
 test("renderSinceReportMarkdown shows the merge line under Totals only when merge ran", () => {
@@ -624,7 +643,7 @@ test("tumwater report --since prints the window totals and validates its flags",
   assert.match(ok.out, /777 output tokens/);
   assert.match(ok.out, /\*\*Runs by role:\*\* feature — 1/);
   assert.ok(!ok.out.includes("999"), "the 8h-old event is outside the 6h window");
-  assert.match(ok.out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
+  assert.match(ok.out, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report/);
 
   // --days is the one remaining rival shape; --failures --since dispatches the windowed
   // digest (covered in test/failure-render.test.ts), so it is no longer a failure.
@@ -912,7 +931,7 @@ test("role-scoped day report omits the merge lines (merge runs are the merge slo
   assert.equal(md.code, 0);
   assert.ok(!md.out.includes("**Merged by role:"), "a scoped report omits the merged line");
   assert.ok(!md.out.includes("**Merge failures by role:"), "a scoped report omits the failures line");
-  assert.match(md.out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
+  assert.match(md.out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) are team-wide and omitted/);
 });
 
 test("team report --since breaks merge outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
@@ -993,7 +1012,7 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
   assert.match(out, /^\*\*Totals:\*\* 500 output tokens · 1 runs · 1 commits · \$0\.50$/m);
   assert.ok(!out.includes('features done · 0 bugs fixed'), "the team backlog cells are dropped from the totals line");
   assert.ok(!out.includes("of which merge runs"), "no merge-share line prints");
-  assert.match(out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
+  assert.match(out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) are team-wide and omitted/);
 });
 
 test("tumwater report --role scopes the report, scopes --since/--json, and validates the flag", async () => {

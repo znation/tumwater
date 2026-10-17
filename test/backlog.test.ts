@@ -18,6 +18,7 @@ import {
   openQuestionEntries,
   plannedPlanEntries,
   plannedPlans,
+  sectionFilingDates,
 } from "../src/backlog/backlog.js";
 import {
   parseEntryDetails,
@@ -457,6 +458,29 @@ test("entryDates drops an epitaph whose trailing parenthetical never closes", ()
 - a healthy epitaph (fixed 2026-09-30; commit abc1234)
 `;
   assert.deepEqual(entryDates(md, "Fixed", fixedRe), ["2026-09-30"]);
+});
+
+test("sectionFilingDates reads each entry's FIRST stamp date, matching filingDate", () => {
+  // The filing read must land on the day an entry first opened, not on a later re-filing or
+  // cross-reference's stamp: last-match (the completion rule) would move this bug's filing to
+  // 2026-10-02, while the canonical filingDate first-match (and `plan|bug --list`'s age) keeps
+  // it on 2026-10-01.
+  const root = tmpdir("tw-filing-");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    `# Bugs
+
+## Open
+
+### B1 (found by bugfix 2026-10-01; found by doctor 2026-10-02)
+
+## Fixed
+
+### F1 (found by bugfix 2026-10-01; fixed 2026-10-10; commit abc1234)
+`,
+  );
+  assert.deepEqual(sectionFilingDates(root, "BUGS.md", "Open"), ["2026-10-01"]);
+  assert.deepEqual(sectionFilingDates(root, "BUGS.md", "Fixed"), ["2026-10-01"]);
 });
 
 test("completionDate reads the last completion stamp from a heading only", () => {

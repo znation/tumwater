@@ -555,6 +555,35 @@ test("the Backlog items chart stacks features and bugs per day and seriesHasBack
   assert.equal(seriesHasBacklogItems(data), true);
 });
 
+test("the Backlog items opened chart stacks plans added and bugs filed and seriesHasBacklogAdded gates it", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartBacklogItemsOpened(d: ReportData): string;
+    seriesHasBacklogAdded(d: ReportData): boolean;
+  }
+  const { chartCommits, chartBacklogItemsOpened, seriesHasBacklogAdded } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartBacklogItemsOpened", "seriesHasBacklogAdded"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { plansAdded: 2, bugsFiled: 1 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { bugsFiled: 3 }),
+  ]);
+  const svg = chartBacklogItemsOpened(data);
+  const titles = (s: string) => [...s.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles(svg), ["2026-09-01: 2 plans added", "2026-09-01: 1 bug filed", "2026-09-03: 3 bugs filed"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+  assert.equal(seriesHasBacklogAdded(mk([mkDay("2026-09-01"), mkDay("2026-09-02")])), false);
+  assert.equal(seriesHasBacklogAdded(data), true);
+});
+
 test("the Spend by provider charts stack per provider and reportProviderOrder lists each provider once", () => {
   // The provider charts are the dashboard twin of the day report's "Cost by provider" lines:
   // one segment per (day, provider) stacked in reportProviderOrder's order, with the two

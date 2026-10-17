@@ -314,6 +314,49 @@ Body.
   assert.equal(data.totals.bugsFixed, 3);
 });
 
+test("collectReport counts plans added and bugs filed from backlog filing stamps", () => {
+  // The per-day filing read folds the same entry detection as the completion read, so an
+  // entry's opened day (its `planned`/`reported`/`found by` stamp) drives these two fields
+  // — not its completion stamp, which only the done/fixed read consumes.
+  const root = tmpdir();
+  const d1 = dayKey(at(4));
+  const d2 = dayKey(at(3));
+  const d3 = dayKey(at(2)); // the completion day of the done entries — never a filing day
+
+  writeBacklogFile(root, "PLANS.md", [
+    {
+      heading: "## Planned",
+      body: `### Open plan (planned ${d1})\n\nBody.`,
+    },
+    {
+      heading: "## Done",
+      body: `### Closed plan (planned ${d2}, done ${d3})`,
+    },
+  ]);
+  writeBacklogFile(root, "BUGS.md", [
+    {
+      heading: "## Open",
+      body: `### Open bug (found by qa loop ${d1})\n\nBody.`,
+    },
+    {
+      heading: "## Fixed",
+      body: `### Fixed bug (reported ${d2}, fixed ${d3})`,
+    },
+  ]);
+
+  const data = collectReport(root, 5);
+  const byDate = new Map(data.series.map((d) => [d.date, d]));
+
+  assert.equal(byDate.get(d1)?.plansAdded, 1); // the open plan
+  assert.equal(byDate.get(d2)?.plansAdded, 1); // the done plan's FILING day, not its d3 completion
+  assert.equal(byDate.get(d3)?.plansAdded ?? 0, 0);
+  assert.equal(byDate.get(d1)?.bugsFiled, 1); // the open bug
+  assert.equal(byDate.get(d2)?.bugsFiled, 1); // the fixed bug's filing day
+  assert.equal(byDate.get(d3)?.bugsFiled ?? 0, 0);
+  assert.equal(data.totals.plansAdded, 2);
+  assert.equal(data.totals.bugsFiled, 2);
+});
+
 test("a ### heading quoted in a fenced block inside a Fixed entry adds no phantom completion", () => {
   // An entry quoting a markdown template (or BUGS.md itself) must not count as completions of
   // its own: before the fix each fenced `### `/`- ` date line inflated the report's fixed count.
@@ -642,7 +685,7 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
   assert.equal(data.coversFullWindow, true, "nothing was ever logged, so nothing rotated away");
   const out = renderSinceReportMarkdown(data);
   assert.ok(!out.includes("rotated"), "a missing log must not claim events rotated out");
-  assert.match(out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
+  assert.match(out, /backlog tallies \(features done \/ bugs fixed \/ plans added \/ bugs filed\) need the day report/);
 });
 
 test("collectReport scopes the day series and totals to one role, leaving team cells off", () => {
@@ -671,12 +714,16 @@ test("collectReport scopes the day series and totals to one role, leaving team c
   assert.equal(today?.mergeRuns, undefined, "merge fields stay off the scoped series");
   assert.equal(today?.featuresDone, 0);
   assert.equal(today?.bugsFixed, 0);
+  assert.equal(today?.plansAdded, undefined); // role scope leaves the filing tallies absent
+  assert.equal(today?.bugsFiled, undefined);
   assert.equal(scoped.totals.tokensOut, 500);
   assert.equal(scoped.totals.runs, 1);
   assert.equal(scoped.totals.commits, 1);
   assert.ok(Math.abs(scoped.totals.costUsd - 0.5) < 1e-9);
   assert.equal(scoped.totals.featuresDone, 0);
   assert.equal(scoped.totals.bugsFixed, 0);
+  assert.equal(scoped.totals.plansAdded, undefined);
+  assert.equal(scoped.totals.bugsFiled, undefined);
   assert.equal(scoped.totals.mergeRuns, 0);
 
   // The same fixture without a role totals every role and reads the day-granular backlog tallies.

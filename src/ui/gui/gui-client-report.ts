@@ -280,10 +280,24 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function seriesHasAny(data, field) {
     return data.series.some((d) => Object.values(d[field] || {}).some((n) => n > 0));
   }
+  // The per-day filing-stamp twin of chartBacklogItems: plans added and bugs filed, the same
+  // two colors as the done chart so the opened and done charts read as a pair. A day with
+  // neither carries an empty slot, and zero segments draw no rect.
+  function chartBacklogItemsOpened(data) {
+    return reportSvg(data.series, (d) => [
+      { value: Number(d.plansAdded) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.plansAdded) || 0, "plan") + " added" },
+      { value: Number(d.bugsFiled) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFiled) || 0, "bug") + " filed" },
+    ], countAxis, true);
+  }
   // True when some day carries a feature or bug count; the gate for the backlog chart, whose
   // tally a role-scoped report zeroes, so the element stays out exactly where the two tiles are.
   function seriesHasBacklogItems(data) {
     return data.series.some((d) => Number(d.featuresDone) > 0 || Number(d.bugsFixed) > 0);
+  }
+  // True when some day carries a filing count; the gate for the opened chart, the sibling of
+  // seriesHasBacklogItems, hidden the same way on a role-scoped series.
+  function seriesHasBacklogAdded(data) {
+    return data.series.some((d) => Number(d.plansAdded) > 0 || Number(d.bugsFiled) > 0);
   }
   // True when some day carries a passing-check median; the element renders only then.
   function seriesHasCheckMedian(data) {
@@ -547,7 +561,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
+        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + block("Commits by role", chartCommitsByRole(d)) + (seriesHasBacklogAdded(d) ? block("Backlog items opened", chartBacklogItemsOpened(d), "per day · plans added + bugs filed") : "") + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
@@ -564,7 +578,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
           ? block("Estimated spend by role", chartNotionalByRole(d), "per day · API-equivalent, not in the cap") : "") +
         (!d.role && seriesHasAny(d, "notionalByProvider") ? block("Estimated spend by provider", chartNotionalByProvider(d), "per day · API-equivalent, not in the cap") : "") + "</div>" +
         (d.role ? "<p class='muted scope-note'>Role scope: " + esc(d.role) +
-          " · merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted.</p>" : "") +
+          " · merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted.</p>" : "") +
         (d.from ? "<p class='muted window-note'>" + esc(d.from + " → " + d.to) +
           (!d.coversFullWindow ? " · " + ${JSON.stringify(SPARSE_WINDOW_NOTE)} : "") + "</p>" : "");
     },

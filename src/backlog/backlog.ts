@@ -68,6 +68,38 @@ export function sectionCompletionDates(
   );
 }
 
+/** Filing dates of an entry section (PLANS.md `## Planned` and `## Done`; BUGS.md `## Open`
+ * and `## Fixed`), stat-cached and detected exactly like sectionCompletionDates — the per-day
+ * filing twin of that completion read, but reading each entry's FIRST stamp date (entryDates'
+ * `first` mode) rather than the completion read's last-date: the filing date is the day the
+ * entry first opened, matching the canonical `filingDate` first-match that `plan|bug --list`
+ * and the doctor's unfixed-bug age use, so a later re-filing or a cross-reference
+ * ("found by … <early date>; found by … <later date>") cannot land the filing on the later day.
+ * Where the completion read keys its cache by the section
+ * date regex, this
+ * uses the module's fixed STAMP_DATE_RE, so the cache key carries a distinct `\u0000planned` marker
+ * instead (Plan adds and bug filings share the stamp verb set, so the section title alone cannot
+ * tell this read from a completion read of the same section). Every eligible heading carries its
+ * filing stamp in prose (`planned DATE`, `reported DATE`, `found by … DATE`), and the Usage view
+ * collects them per day so an operator can read net progress (opened vs done). A missing or
+ * unreadable file yields []. */
+export function sectionFilingDates(
+  root: string,
+  fileName: string,
+  sectionTitle: string,
+): string[] {
+  const file = path.join(root, fileName);
+  return (
+    cachedTextByStat(
+      dateCache,
+      `${file}\u0000${sectionTitle}\u0000planned`,
+      file,
+      (md) => entryDates(md, sectionTitle, STAMP_DATE_RE, true),
+      (dates) => dates.slice(), // A copy: callers may treat the result as their own.
+    ) ?? []
+  );
+}
+
 /** The first `YYYY-MM-DD` after a `planned`/`reported`/`found by` stamp word in an entry heading:
  * the filing date every eligible heading carries in prose (plans open with `(planned YYYY-MM-DD…)`,
  * bugs with `(found by …)` or `(reported …)`), parsed so `plan|bug --list` shows how long an entry

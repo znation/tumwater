@@ -15,7 +15,12 @@ import { readCompleteLines } from "../files/tail.js";
 import { eventsLogPath } from "../paths.js";
 import type { HarnessEvent } from "../events/events.js";
 import { isPassingFullCheck, isRedFullCheck } from "../build/build-check-events.js";
-import { DONE_DATE_RE, FIXED_DATE_RE, sectionCompletionDates } from "../backlog/backlog.js";
+import {
+  DONE_DATE_RE,
+  FIXED_DATE_RE,
+  sectionCompletionDates,
+  sectionFilingDates,
+} from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
 import { addTo, lowerMedian, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
@@ -483,6 +488,8 @@ export interface ReportDay {
   costUsd: number;
   featuresDone: number;
   bugsFixed: number;
+  plansAdded?: number; // PLANS.md `## Planned`+`## Done` filing stamps this day (absent when none)
+  bugsFiled?: number; // BUGS.md `## Open`+`## Fixed` filing stamps this day (absent when none)
   mergeRuns?: number; // merge_done/merge_failed events this day folded (absent when none)
   mergeTokens?: number; // their output tokens, also included in tokensOut above
   mergeCostUsd?: number; // their cost, also included in costUsd above
@@ -519,6 +526,8 @@ export interface ReportTotals {
   mergeTokens: number;
   mergeCostUsd: number;
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
+  plansAdded?: number; // window filing-stamp count (absent when zero)
+  bugsFiled?: number; // window filing-stamp count (absent when zero)
 }
 
 /** Team usage over a window of exactly `days` local calendar days ending today. */
@@ -547,9 +556,10 @@ export interface ReportData {
 
 /** Team usage over a trailing window of `sinceMs` ending now: the same run_end/merged
  * aggregation as `collectReport` but keyed to a cutoff instant rather than whole local days.
- * Backlog tallies (features done / bugs fixed) are deliberately absent: they are counted from
- * PLANS.md/BUGS.md `done`/`fixed` dates, which are day-granular file metadata that cannot
- * subdivide a sub-day window — the render says so instead of showing a day-rounded number. */
+ * Backlog tallies (features done / bugs fixed / plans added / bugs filed) are deliberately
+ * absent: they are counted from PLANS.md/BUGS.md `planned`/`reported`/`found by` filing and
+ * `done`/`fixed` completion dates, which are day-granular file metadata that cannot subdivide
+ * a sub-day window — the render says so instead of showing a day-rounded number. */
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
@@ -836,17 +846,28 @@ export function collectReport(root: string, days: number, role?: string): Report
     d.costUsd += d.mergeCostUsd ?? 0;
   }
 
-  const countOn = (date: string, field: "featuresDone" | "bugsFixed"): void => {
+  const countOn = (
+    date: string,
+    field: "featuresDone" | "bugsFixed" | "plansAdded" | "bugsFiled",
+  ): void => {
     const day = byDate.get(date);
-    if (day) day[field] += 1; // Out-of-window dates drop out here.
+    if (day) day[field] = (day[field] ?? 0) + 1; // Out-of-window dates drop out here.
   };
-  // Role scope leaves both tallies at zero: their dates are day-granular file metadata with no
-  // role, so a scoped report cannot attribute a completion (the render states the omission).
+  // Role scope leaves the day-granular backlog tallies at zero: their dates are day-granular
+  // file metadata with no role, so a scoped report cannot attribute a completion or a filing
+  // (the render states the omission).
   if (role === undefined) {
     for (const d of sectionCompletionDates(root, "PLANS.md", "Done", DONE_DATE_RE))
       countOn(d, "featuresDone");
     for (const d of sectionCompletionDates(root, "BUGS.md", "Fixed", FIXED_DATE_RE))
       countOn(d, "bugsFixed");
+    // Fold the filing stamps too: plans/bugs that opened this day, over the same entry
+    // detection `entryDates` applies to the completion reads, so an entry's opened and done
+    // days are read the same way.
+    for (const d of sectionFilingDates(root, "PLANS.md", "Planned")) countOn(d, "plansAdded");
+    for (const d of sectionFilingDates(root, "PLANS.md", "Done")) countOn(d, "plansAdded");
+    for (const d of sectionFilingDates(root, "BUGS.md", "Open")) countOn(d, "bugsFiled");
+    for (const d of sectionFilingDates(root, "BUGS.md", "Fixed")) countOn(d, "bugsFiled");
   }
 
   const totals = {
@@ -864,6 +885,8 @@ export function collectReport(root: string, days: number, role?: string): Report
   // are folded in below).
   let notionalCostUsd = 0;
   let mergeFailed = 0;
+  let plansAdded = 0;
+  let bugsFiled = 0;
   for (const d of series) {
     totals.tokensOut += d.tokensOut;
     for (const n of Object.values(d.runsByRole)) totals.runs += n;
@@ -875,6 +898,8 @@ export function collectReport(root: string, days: number, role?: string): Report
     notionalCostUsd += d.notionalCostUsd ?? 0;
     totals.featuresDone += d.featuresDone;
     totals.bugsFixed += d.bugsFixed;
+    plansAdded += d.plansAdded ?? 0;
+    bugsFiled += d.bugsFiled ?? 0;
     totals.mergeRuns += d.mergeRuns ?? 0;
     totals.mergeTokens += d.mergeTokens ?? 0;
     totals.mergeCostUsd += d.mergeCostUsd ?? 0;
@@ -900,7 +925,13 @@ export function collectReport(root: string, days: number, role?: string): Report
     to,
     ...(role === undefined ? {} : { role: baseRoleOf(role) }),
     series,
-    totals: { ...totals, ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}), ...(mergeFailed > 0 ? { mergeFailed } : {}) },
+    totals: {
+      ...totals,
+      ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
+      ...(mergeFailed > 0 ? { mergeFailed } : {}),
+      ...(plansAdded > 0 ? { plansAdded } : {}),
+      ...(bugsFiled > 0 ? { bugsFiled } : {}),
+    },
     coversFullWindow,
   };
 }

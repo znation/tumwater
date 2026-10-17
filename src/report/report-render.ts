@@ -68,8 +68,9 @@ function pushProviderCostLines(
 
 /** The "**Totals:** …" line both renders print — one home so field order, units, and the ·
  * separators cannot drift between the day report and the --since window. `tail` carries the
- * cells only one shape has: the day report's features/bugs counts (a sub-day window cannot
- * subdivide their day-granular dates, so the --since render passes nothing). */
+ * cells only one shape has: the day report's features/bugs counts and the filing counts
+ * (a sub-day window cannot subdivide their day-granular dates, so the --since render passes
+ * nothing). */
 function totalsLine(t: ReportTotals, tail = ""): string {
   return `**Totals:** ${compactTokens(t.tokensOut)} output tokens · ${t.runs} runs · ${t.commits} commits · ${usd(t.costUsd)}${tail}`;
 }
@@ -94,11 +95,12 @@ function notionalLine(t: ReportTotals): string {
 }
 
 /** The scope note a `--role` report prints: merge runs belong to the merge slot and the
- * features-done/bugs-fixed tallies come from day-granular backlog-file dates, so neither can
- * be scoped to a role and both are omitted from the scoped totals. Shared by the day and
+ * day-granular backlog tallies (features done / bugs fixed / plans added / bugs filed) come
+ * from day-granular backlog-file dates, so none can
+ * be scoped to a role and all are omitted from the scoped totals. Shared by the day and
  * --since renders so the two say the same thing. */
 const ROLE_SCOPE_NOTE =
-  "role scope: merge runs and backlog tallies (features done / bugs fixed) are team-wide and omitted";
+  "role scope: merge runs and backlog tallies (features done / bugs fixed / plans added / bugs filed) are team-wide and omitted";
 
 /** The summary block both report shapes print, in the same order: the totals line (carrying
  * the caller's extra `tail` cells), the merge-share line and the notional line when each is
@@ -124,9 +126,9 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;
-  // Same totals voice as the day report, minus the features/bugs cells: those tallies come
-  // from day-granular backlog-file dates that cannot subdivide a sub-day window, so the final
-  // line below states the omission instead of showing a day-rounded number.
+  // Same totals voice as the day report, minus the features/bugs and filing cells: those tallies
+  // come from day-granular backlog-file dates that cannot subdivide a sub-day window, so the
+  // final line below states the omission instead of showing a day-rounded number.
   pushReportSummary(lines, t, "", data.role !== undefined);
   lines.push("");
   lines.push(rankedRoleLine("Runs by role", rankedRoleMap(data.runsByRole), String));
@@ -184,7 +186,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // pointer, which would imply a scoped day report shows the tallies it too omits.
   if (!data.coversFullWindow) lines.push(SPARSE_WINDOW_NOTE);
   else if (data.role === undefined)
-    lines.push("backlog tallies (features done / bugs fixed) need the day report (--days)");
+    lines.push("backlog tallies (features done / bugs fixed / plans added / bugs filed) need the day report (--days)");
   return lines.join("\n");
 }
 
@@ -237,10 +239,16 @@ export function renderReportMarkdown(data: ReportData): string {
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;
-  // A role-scoped report drops the team-only features/bugs cells from the totals line — their
-  // dates carry no role — and states the omission through ROLE_SCOPE_NOTE below instead.
+  // A role-scoped report drops the team-only features/bugs and filing cells from the totals
+  // line — their dates carry no role — and states the omission through ROLE_SCOPE_NOTE below.
+  const openedTail =
+    (t.plansAdded ?? 0) + (t.bugsFiled ?? 0) > 0
+      ? ` · ${t.plansAdded ?? 0} plans added · ${t.bugsFiled ?? 0} bugs filed`
+      : "";
   const tail =
-    data.role === undefined ? ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed` : "";
+    data.role === undefined
+      ? ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed${openedTail}`
+      : "";
   pushReportSummary(lines, t, tail, data.role !== undefined);
   lines.push("");
   const maxTokens = data.series.reduce((m, d) => Math.max(m, d.tokensOut), 0);

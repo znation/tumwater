@@ -214,9 +214,20 @@ export function parseEntryDetails(md: string, sectionTitle: string): BacklogEntr
  * completion date and the merge commit ("(planned …, done …; commit abc1234)"), so a bullet counts
  * only when its trailing `(…)` group carries the date AND a `commit` reference; a heading entry
  * keeps the plain metadata match (headings are the primary entry format and always close their
- * metadata parenthetical by convention). */
-export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): string[] {
+ * metadata parenthetical by convention).
+ *
+ * The LAST dated match is the completion rule when `first` is false (the default): found-by,
+ * decomposition, and sibling mentions precede the completion record, so a sibling's date must
+ * not steal the count. `first` selects the FIRST dated match instead — the filing rule the
+ * filing read uses, matching the canonical `filingDate` (via firstDate). */
+export function entryDates(
+  md: string,
+  sectionTitle: string,
+  dateRe: RegExp,
+  first = false,
+): string[] {
   const dates: string[] = [];
+  const pick = first ? firstDate : lastDate;
   const lines = sectionBodyLines(md, sectionTitle);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
@@ -230,9 +241,9 @@ export function entryDates(md: string, sectionTitle: string, dateRe: RegExp): st
       // branch: a decomposition cross-reference ("decomposed from the sibling bug fixed
       // <date>, fixed <date>") precedes the entry's own completion record.
       const tail = trailingParenthetical(line);
-      if (/\bcommits?\b/.test(tail)) date = lastDate(tail, dateRe);
+      if (/\bcommits?\b/.test(tail)) date = pick(tail, dateRe);
     } else {
-      date = lastDate(meta.text, dateRe);
+      date = pick(meta.text, dateRe);
     }
     if (date) dates.push(date);
     i = meta.next - 1; // The loop's ++ resumes at the first line not consumed as metadata.
@@ -319,4 +330,18 @@ export function lastDate(text: string, dateRe: RegExp): string | null {
   const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
   const all = [...text.matchAll(global)];
   return all[all.length - 1]?.[1] ?? null;
+}
+
+/** A text's FIRST `<dateRe>` capture — the filing rule, the mirror of lastDate: an entry's
+ * filing month is its FIRST stamp verb, because a later re-filing or a cross-reference
+ * ("found by bugfix <date>; found by doctor <date>") records a later date that must not move
+ * the filing onto a later day. This is the same first-match the canonical `filingDate`
+ * (backlog.ts) applies to a heading line, so the filing read and `plan|bug --list`'s age agree
+ * about when an entry opened. dateRe is cloned with the g flag so matchAll sees every date; a
+ * text with no date yields null. Module-local: entryDates (its only caller) selects it with
+ * `first`, so the walker stays single-homed like lastDate's completion rule. */
+function firstDate(text: string, dateRe: RegExp): string | null {
+  const global = new RegExp(dateRe.source, dateRe.flags.includes("g") ? dateRe.flags : `${dateRe.flags}g`);
+  const match = global.exec(text);
+  return match?.[1] ?? null;
 }
