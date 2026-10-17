@@ -98,15 +98,19 @@ interface ClaimReleaseCtx {
   /** The runner's loop id is enabled in config (`loopEnabled`, so a lowered `instances`
    * disables the surplus runner). */
   enabled: boolean;
+  /** This runner's own loop id is paused while its base role is not. With the base role paused
+   * every instance is paused, so no sibling could take the entry and releasing it would only
+   * churn claims. */
+  paused: boolean;
 }
 
 /** Why a runner drops its queued-landing claim; claimReleaseReason below decides each arm. */
-export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "stale";
+export type ClaimReleaseReason = "left" | "ineligible" | "disabled" | "paused" | "stale";
 
 /** Why a runner must drop its claim, or null when it keeps it. A runner is idle when it is not
- * running, has no queued landing, no outstanding revision and no pending resume; `disabled`
- * and `stale` only release an idle runner, while a claim whose entry left or turned ineligible
- * is released outright (there is nothing left to do). */
+ * running, has no queued landing, no outstanding revision and no pending resume; `disabled`,
+ * `paused` and `stale` only release an idle runner, while a claim whose entry left or turned
+ * ineligible is released outright (there is nothing left to do). */
 export function claimReleaseReason(
   runner: ClaimRunner,
   ctx: ClaimReleaseCtx,
@@ -120,6 +124,7 @@ export function claimReleaseReason(
   if (!ctx.listedKeys.has(claim.key)) return "left";
   if (!ctx.eligibleKeys.has(claim.key)) return "ineligible";
   if (!ctx.enabled && idle) return "disabled";
+  if (ctx.paused && idle) return "paused";
   if (idle && ctx.now - claim.at > CLAIM_IDLE_MAX_MS) return "stale";
   return null;
 }

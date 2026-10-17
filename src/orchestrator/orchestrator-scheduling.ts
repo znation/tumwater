@@ -190,6 +190,9 @@ export async function pollRunnerReasons(
         // place with `loopEnabled` false, and its idle claim must be released so a sibling can
         // take the entry instead of the key staying held until the 24h stale sweep.
         enabled: loopEnabled(r.config, r.role),
+        // Only this instance paused (not its whole role): a sibling can take the entry. With
+        // the base role paused no sibling runs, so the claim stays.
+        paused: r.role !== base && pausedRolesSet.has(r.role) && !pausedRolesSet.has(base),
       });
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";

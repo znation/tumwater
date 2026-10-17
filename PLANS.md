@@ -1596,7 +1596,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A paused work instance gives its claimed entry back, so a sibling picks it up instead of it sitting held for up to a day (planned 2026-10-16 by plan; independent of every other entry — touches src/scheduling/claims.ts, src/orchestrator/orchestrator-scheduling.ts, test/claims.test.ts, test/orchestrator-scheduling.test.ts and docs/how-it-works.md)
+## Done
+
+### A paused work instance gives its claimed entry back, so a sibling picks it up instead of it sitting held for up to a day (planned 2026-10-16 by plan; independent of every other entry — touches src/scheduling/claims.ts, src/orchestrator/orchestrator-scheduling.ts, test/claims.test.ts, test/orchestrator-scheduling.test.ts and docs/how-it-works.md; done 2026-10-16 by feature)
 
 **Goal.** With `roles.feature.instances` above 1 (or `roles.bugfix.instances`), each instance holds a claim on one backlog entry. `claimReleaseReason` (`src/scheduling/claims.ts`) releases a claim when the entry left the section (`left`), turned ineligible (`ineligible`), the instance was disabled while idle (`disabled`), or the claim is older than `CLAIM_IDLE_MAX_MS` (24 h) while idle (`stale`). A paused instance releases nothing. That covers the repeated-failure pause (`pollStreakGate` in `src/gates/streak-gate.ts` calls `pauseRole(root, role)` with the loop id, e.g. `feature-2`) and your own per-role pause from the TUI or dashboard. Its entry stays in `heldKeys`. The scheduler skips the paused runner before assignment (`pausedRolesSet.has(runner.role)` in `pollRunnerReasons`), so the entry gets no work until the 24 h stale sweep. A sibling that is not paused never takes it. Release the claim when the instance alone is paused and idle, the same way `disabled` already does.
 
@@ -1616,8 +1618,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/orchestrator-scheduling.test.ts`: a new test modeled on "lowering feature.instances releases a surplus instance's claim instead of holding it". After a first poll gives `feature-2` the claim on `beta`, a second poll whose `pausedRoles` is `new Set(["feature-2"])` leaves `feature2.state.claim` undefined, and `loadLoopState(root, "feature-2").claim` is undefined too. `feature` keeps `alpha`.
 - A second new test: with `pausedRoles` of `new Set(["feature", "feature-2"])` on the second poll, `feature2.state.claim?.key` is still `"beta"`. Pausing the whole role keeps the claim.
 - `npm run test` passes.
-
-## Done
 
 ### A notify page the once-a-minute throttle holds back is sent when the minute ends, so a second question, refusal or failed merge in a burst still reaches the operator (planned 2026-10-16 by plan; independent of every other entry — touches src/events/notify.ts, test/notify.test.ts and docs/config.md) (done 2026-10-16)
 

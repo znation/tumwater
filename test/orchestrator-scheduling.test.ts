@@ -278,6 +278,39 @@ test("lowering feature.instances releases a surplus instance's claim instead of 
   assert.equal(feature.state.claim?.key, "alpha", "the surviving instance keeps its own claim");
 });
 
+test("pausing one instance releases its claim so a sibling can take the entry", async () => {
+  const root = tmpdir("tumwater-scheduling-paused-instance-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const roles = () => new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  assert.equal(feature2.state.claim?.key, "beta");
+  await pollRunnerReasons({
+    ...schedulingCtx(root, [feature, feature2], roles()),
+    pausedRoles: new Set(["feature-2"]),
+  });
+  assert.equal(feature2.state.claim, undefined, "the paused instance gives its entry back");
+  assert.equal(loadLoopState(root, "feature-2").claim, undefined, "the release reached the state file");
+  assert.equal(feature.state.claim?.key, "alpha");
+});
+
+test("pausing the whole feature role keeps every instance's claim", async () => {
+  const root = tmpdir("tumwater-scheduling-paused-role-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const roles = () => new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  await pollRunnerReasons({
+    ...schedulingCtx(root, [feature, feature2], roles()),
+    pausedRoles: new Set(["feature", "feature-2"]),
+  });
+  assert.equal(feature2.state.claim?.key, "beta");
+});
+
 test("a single feature runner is not assigned a claim", async () => {
   const root = tmpdir("tumwater-scheduling-single-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);

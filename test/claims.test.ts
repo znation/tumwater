@@ -75,13 +75,14 @@ test("heldKeys counts a claim still listed and eligible and drops the rest", () 
   assert.deepEqual([...heldKeys(runners, eligible, listed)].sort(), ["held", "plan a"]);
 });
 
-test("claimReleaseReason releases left, ineligible, disabled-idle and stale-idle claims", () => {
+test("claimReleaseReason releases left, ineligible, disabled-idle, paused-idle and stale-idle claims", () => {
   const ctx = {
     listedKeys: new Set(["plan a"]),
     eligibleKeys: new Set(["plan a"]),
     now: 1000,
     hasQueuedLanding: false,
     enabled: true,
+    paused: false,
   };
   const held = runner("feature-2", state({ ...claimA }));
   assert.equal(claimReleaseReason(held, ctx), null);
@@ -102,6 +103,7 @@ test("claimReleaseReason releases left, ineligible, disabled-idle and stale-idle
     "ineligible",
   );
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...ctx, enabled: false }), "disabled");
+  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...ctx, paused: true }), "paused");
   // 25 h old and idle: stale.
   assert.equal(
     claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...ctx, now: claimA.at + CLAIM_IDLE_MAX_MS + 1 }),
@@ -116,11 +118,17 @@ test("an idle extra with a revision, a queued landing, a resume or a running tic
     now: claimA.at + CLAIM_IDLE_MAX_MS + 1,
     hasQueuedLanding: false,
     enabled: false,
+    paused: false,
   };
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { revision: { sha: "x", round: 1, at: 1 } })), ctx), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...ctx, hasQueuedLanding: true }), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { resumePending: true })), ctx), null);
   assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { running: true })), ctx), null);
+  const paused = { ...ctx, paused: true };
+  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { revision: { sha: "x", round: 1, at: 1 } })), paused), null);
+  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA })), { ...paused, hasQueuedLanding: true }), null);
+  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { resumePending: true })), paused), null);
+  assert.equal(claimReleaseReason(runner("feature-2", state({ ...claimA }, { running: true })), paused), null);
 });
 
 test("movedOutEntries names the entries a staged change dropped from its section", () => {
