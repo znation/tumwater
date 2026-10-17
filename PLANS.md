@@ -1680,7 +1680,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The question-posted page names the question's number and the command that answers it, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-questions.ts, src/events/event-format.ts, docs/config.md and their tests)
+## Done
+
+### The question-posted page names the question's number and the command that answers it, so the notify message is something the operator can act on (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-questions.ts, src/events/event-format.ts, docs/config.md and their tests)
 
 **Goal.** When a merge adds a heading under QUESTIONS.md's `## Open`, `logNewQuestions` (`src/landing/landing-questions.ts`) logs `question_posted` with only `question` (the heading). `formatEvent` (`src/events/event-format.ts`, `case "question_posted"`) renders `question posted: <heading>`. `question_posted` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`), and only a human can answer the question, so that line is the whole page. But it does not say how to answer. `tumwater questions answer <n> "<decision>"` (`src/cli/cli-query-commands.ts` → `tryAnswerQuestion` in `src/backlog/question-answer.ts`) addresses a question by its 1-based position in `## Open`, and nothing in the page gives that number. Record the position at posting time and render it with the command.
 
@@ -1697,8 +1699,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/event-format.test.ts`: the existing "formatEvent renders question_posted with the posted heading and no warning prefix" (no `position`) passes unchanged. A new test renders `{ type: "question_posted", question: "Which storage?", position: 3, open: 3 }` to a line containing `question posted: Which storage? — question 3 in \`tumwater questions\`; answer it with \`tumwater questions answer 3 "<decision>"\``, without `warning`. `position: 0`, `position: "3"` and `position: 1.5` render the same line as the position-less event.
 - `test/notify.test.ts` "a posted question spawns the notify command once …" passes unchanged, because it compares the message to `formatEvent(event)`.
 - `npm run test` passes.
-
-## Done
 
 ### The repeated-failure pause page names the role's last error, so `tumwater logs` and the notify message say why the role stopped (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
 

@@ -365,6 +365,20 @@ test("formatEvent renders question_posted with the posted heading and no warning
   assert.ok(!line.includes("warning"), `a posted question is routine, not a warning: ${line}`);
 });
 
+test("formatEvent names the question's number and answer command when position is valid", () => {
+  const base = { ts: 0, source: "feature", type: "question_posted", question: "Which storage?" };
+  const line = formatEvent({ ...base, position: 3, open: 3 } as never);
+  assert.ok(
+    line.includes('question posted: Which storage? — question 3 in `tumwater questions`; answer it with `tumwater questions answer 3 "<decision>"`'),
+    line,
+  );
+  assert.ok(!line.includes("warning"), line);
+  const plain = formatEvent(base as never);
+  for (const position of [0, "3", 1.5]) {
+    assert.equal(formatEvent({ ...base, position } as never), plain);
+  }
+});
+
 test("formatEvent renders entry_refused with the reason and files and no warning prefix", () => {
   const line = formatEvent({ ts: 0, source: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"] } as never);
   assert.match(line, /entry refused: too risky \(PLANS\.md\)/);

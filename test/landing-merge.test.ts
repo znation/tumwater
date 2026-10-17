@@ -405,6 +405,8 @@ test("a merged diff that posts new Open questions emits one question_posted per 
     ["Second question (asked by improve)"],
     "exactly one event for the new heading — the pre-existing entry is not re-posted",
   );
+  assert.equal(posted[0]?.position, 2);
+  assert.equal(posted[0]?.open, 2);
 });
 
 /** A PLANS.md with the named entries under ## Planned and ## Done — the shape two parallel

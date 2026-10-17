@@ -186,7 +186,8 @@ export function eventMessage(e: HarnessEvent): string {
       return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
-      return `question posted: ${textOr(e.question)}`;
+      // The position is the `<n>` `questions answer` takes, so the notify page is actionable.
+      return `question posted: ${textOr(e.question)}${typeof e.position === "number" && Number.isInteger(e.position) && e.position >= 1 ? ` — question ${e.position} in \`tumwater questions\`; answer it with \`tumwater questions answer ${e.position} "<decision>"\`` : ""}`;
     case "entry_refused":
       // Routine operation (a refusal note landed), not a warning — like question_posted.
       const files = Array.isArray(e.files) ? e.files.join(", ") : "";
