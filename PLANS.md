@@ -1171,6 +1171,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The GUI Usage view charts each day's `Merge check median` as a bar element, so the operator sees the suite slowing on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/ui/gui/gui-client-report.ts and its test)
+
+**Goal.** `tumwater report` prints a `Merge check median` line (`renderReportMarkdown`, `src/report/report-render.ts`), and each series day already carries the figure to the dashboard as the optional `ReportDay.checkMedianMs` (`src/report/report-data.ts`; set by `collectReport` in the team branch only, absent on days with no passing full-suite check and on every day of a role-scoped report). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) does not draw it, so the trend that tells the operator to act before a merge check times out is only visible in the CLI. Add one single-series bar chart for it, built the way `chartCommits` is (PLANS.md Done: "`tumwater report`'s day report gains a `Merge check median` line" — that plan left charting to a later plan).
+
+**Approach.** All code changes go in the browser script `GUI_CLIENT_REPORT_JS`, inside the `report-chart:start` … `report-chart:end` region, so `clientScope` in the tests can load the builders. `fmtSpan` (the `format` region of `src/ui/gui/gui-client.ts`) is already reachable there, as `plural` and `fmtTokens` are.
+- Add `chartCheckMedian(data)` right after `chartCommits`:
+  `reportSvg(data.series, (d) => [{ value: Number(d.checkMedianMs) || 0, color: "#0ea5e9", title: d.date + ": " + fmtSpan(Number(d.checkMedianMs) || 0) + " median merge check" }], (v) => fmtSpan(v), false)`.
+  A day without the field yields a zero segment, which `reportSvg` already skips while keeping the day's slot, so the x-axis lines up with the other charts. `integer` is `false` because the values are milliseconds. Give it a one-line comment in the style of its neighbours: the lower median of the day's passing full-suite merge checks, from `checkMedianMs`.
+- Add `seriesHasCheckMedian(data)` right after `seriesHasAny`: `data.series.some((d) => Number(d.checkMedianMs) > 0)`. `seriesHasAny` reads per-role maps, and `checkMedianMs` is a plain number, so it needs its own gate.
+- In the view's `render`, right after the `Merge failures by role` block, append `block("Merge check median", chartCheckMedian(d), "per day · passing full-suite checks")` only when `seriesHasCheckMedian(d)`. A window with no passing full check renders the same elements it renders today. A role-scoped report renders no such block, because `report-data.ts` never sets the field there; no extra code is needed.
+- No server, `report-data.ts`, `report-render.ts`, or CLI change: `/api/report` already serializes the optional field.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- New test in `test/gui-client-report.test.ts`, "the Merge check median chart draws one bar per checked day and seriesHasCheckMedian gates it", built with the same `mkDay`/`mk` helpers as "the Revisions chart stacks per role and seriesHasAny gates it", loading `chartCheckMedian` and `seriesHasCheckMedian` through `clientScope(["format", "report-chart"], …)`. It checks:
+  - A three-day series where only days 1 and 3 carry `checkMedianMs` (95 000 and 180 000) draws exactly two `<rect>`s, with titles `2026-09-01: 95s median merge check` and `2026-09-03: 3m median merge check`.
+  - The same chart's SVG has the same count of day-label `<text … text-anchor='middle'>` elements as `chartCommits` on that series (the empty day keeps its slot).
+  - `seriesHasCheckMedian` is false for a series with no `checkMedianMs` on any day, and true for the three-day series.
+- The existing tests in `test/gui-client-report.test.ts` pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### The GUI Usage view charts `Revisions by role` as a stacked per-role element (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and of the in-flight `Merge check median` plan, which touches only `src/report/`) — done 2026-10-16

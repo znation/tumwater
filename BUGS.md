@@ -5,6 +5,18 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 
 ## Open
 
+### Four report tests fail whenever the suite runs at the wrong time of day: the fallback and image-reroute fixtures put "today" at local noon or one hour ago (found by the plan role 2026-10-17)
+
+- **Symptom:** `npm run test` at 00:06 PDT on 2026-10-17 failed four tests, in this worktree and in another worktree's check log from the same minute:
+  - `test/report-data.test.ts`: "collectReport and collectReportSince count model_fallback_started per role, zero meaning absent" (`collectReportSince(...).fallbacksByRole` was `{ 'feature-2': 1 }`, expected `{ feature: 2, 'feature-2': 1, qa: 1 }`) and "collectReport and collectReportSince count image_reroute per role, zero meaning absent".
+  - `test/report.test.ts`: "report --json carries fallbacksByRole on the day and --since report that have fallback episodes" and "report --json carries imageReroutesByRole on the day and --since report that have image reroutes" (the `--days 1` Markdown printed `**Fallbacks by role:** -`).
+  The change under test touched only PLANS.md, so a merge check run in these hours fails no matter what it merges.
+- **Reproduce:** run the suite between 00:00 and 12:00 local time (for the `report-data` pair), or between 00:00 and 01:00 (for the `report` pair).
+- **Cause:** two fixture timestamps that depend on the clock:
+  - `report-data.test.ts` seeds today's events at `at(0)` (`atLocalTs` in `test/helpers/oracles.ts`, today at 12:00 local). Before noon that is in the future, and `collectReportSince` in `src/report/report-data.ts` drops events with `ev.ts > now`, so the `since` assertions lose them.
+  - `report.test.ts` seeds at `ago(HOUR)`. Between 00:00 and 01:00 that is yesterday, so `report --days 1`, whose window holds only today, does not include them.
+- **Expected / fix sketch:** give each of the four tests timestamps that stay inside both windows at any time of day. For example, seed "today" no later than `Date.now()` and no earlier than local midnight, and when the window would straddle midnight, assert on whichever day `dayKey(ts)` names. The four tests named above are the ones seen failing. Grep the other `at(0)` + `collectReportSince` assertions in `test/report-data.test.ts` and the `ago(...)` + `--days 1` ones in `test/report.test.ts` for the same pattern, and fix every case found in one change.
+
 ### `test/supervisor.test.ts` "startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it" flaked again on 2026-10-16, after its 10-01 and 10-09 Fixed entries and the 10-11 rewrite to a SIGUSR2-driven poll (found by operator session 2026-10-16 from improve's red merge check)
 
 - **Symptom:** at 07:29:28 PDT, improve's in-lock merge check for `d4b62873` failed one test: `✖ startParentDeathWatch takes a SIGKILLed supervisor's grandchild down with it — AssertionError [ERR_ASSERTION]: the orphaned grandchild's watch fired and ran its stop path`. The check ran 145 s. Recovery re-landed it green at 07:40, and it merged. That is the same assertion as the Fixed entry "The SIGKILL-grandchild supervisor test flaked twice in one 2026-10-09 window". Since then 4ec5d729 (10-11) replaced the real poll with one driven by SIGUSR2 from the test, and its comment says a loaded host "cannot stretch" the verdict. It still fails.
