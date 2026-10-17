@@ -1078,6 +1078,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The GUI Usage view charts each day's `Merge wait median` as a bar element beside `Merge check median`, so the operator sees merges queueing longer on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the in-flight plain-terms merge part 11/11, which leaves src/ui/gui/ alone after part 10/11, and of the in-flight `tumwater doctor --problems` — touches only src/ui/gui/gui-client-report.ts and its test)
+
+**Goal.** `tumwater report` prints a `Merge wait median` line (`renderReportMarkdown`, `src/report/report-render.ts`). Each series day already carries the figure to the dashboard as the optional `ReportDay.mergeWaitMedianMs` (`src/report/report-data.ts`). `collectReport` sets it in the team branch only. It is absent on days with no merge that carried `queuedMs` and on every day of a role-scoped report (pinned in `test/report-data.test.ts`). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) draws `Merge check median` but not the merge wait, so a merge queue that grows slower over days shows only in the CLI. Add one single-series bar chart for it, built exactly like `chartCheckMedian` (PLANS.md Done: "The GUI Usage view charts each day's `Merge check median` as a bar element"; the Done plan "`tumwater report` shows each day's median merge wait" left charting to a later plan).
+
+**Approach.** All code changes go in the browser script `GUI_CLIENT_REPORT_JS`, inside the `report-chart:start` … `report-chart:end` region, so `clientScope` in the tests can load the builders. `fmtSpan` is already reachable there, since `chartCheckMedian` uses it.
+- Add `chartMergeWaitMedian(data)` right after `chartCheckMedian`:
+  `reportSvg(data.series, (d) => [{ value: Number(d.mergeWaitMedianMs) || 0, color: "#f59e0b", title: d.date + ": " + fmtSpan(Number(d.mergeWaitMedianMs) || 0) + " median merge wait" }], (v) => fmtSpan(v), false)`.
+  A day without the field gives a zero segment. `reportSvg` already skips zero segments but keeps the day's slot, so the x-axis lines up with the other charts. Add a one-line comment in the style of `chartCheckMedian`'s: the lower median of the day's merge waits, enqueue to merged on main, from `mergeWaitMedianMs`.
+- Add `seriesHasMergeWaitMedian(data)` right after `seriesHasCheckMedian`: `data.series.some((d) => Number(d.mergeWaitMedianMs) > 0)`, with a one-line comment like its sibling's.
+- In the view's `render`, right after the `Merge check median` block, append `block("Merge wait median", chartMergeWaitMedian(d), "per day · enqueue to merged on main")` only when `seriesHasMergeWaitMedian(d)`. A window with no timed merge renders the same elements as now. A role-scoped report renders no such block, because `report-data.ts` never sets the field there, so this needs no extra code.
+- No server, `report-data.ts`, `report-render.ts`, CLI or docs change: `/api/report` already serializes the optional field, and docs/cli.md does not list the GUI's charts.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- A new test in `test/gui-client-report.test.ts`, "the Merge wait median chart draws one bar per timed day and seriesHasMergeWaitMedian gates it". It is modelled on "the Merge check median chart draws one bar per checked day and seriesHasCheckMedian gates it", with the same `mkDay`/`mk` helpers, and loads `chartCommits`, `chartMergeWaitMedian` and `seriesHasMergeWaitMedian` through `clientScope(["format", "report-chart"], …)`. It checks:
+  - A three-day series where only days 1 and 3 carry `mergeWaitMedianMs` (95 000 and 180 000) draws exactly two `<rect>`s, titled `2026-09-01: 95s median merge wait` and `2026-09-03: 3m median merge wait`.
+  - The chart's SVG has as many day-label `<text … text-anchor='middle'>` elements as `chartCommits` has on that series, so the empty day keeps its slot.
+  - `seriesHasMergeWaitMedian` is false for a series where only `checkMedianMs` is set, and true for the three-day series.
+- The existing tests in `test/gui-client-report.test.ts` pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor --problems` prints only the warn and fail rows (planned 2026-10-17 by the plan role) — done 2026-10-17
