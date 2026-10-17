@@ -5,55 +5,71 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Plain terms code merge, part 11/11: Finish the merge rename and add the merge family to the retired-names guard (planned 2026-10-16 by user; requires part 10/11 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and test/retired-names.test.ts)
+### Plain terms code merge, part 11a/11: Rewrite the merge family in the pipeline modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11b/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/merge/ src/events/ src/review/ src/verdict/ src/git/ src/tick/ src/failure/ src/change/ src/build/ src/process/ and src/loop/)
 
-**Needs review 2026-10-17 by feature: too large for one run**
-
-**Progress 2026-10-17 (identifier half done, comment half not).** Done: the merge family is appended to `RETIRED` in test/retired-names.test.ts with its self-test cases, and every identifier and file-name hit it flags is renamed or marked (`landedDecision` → `writtenDecision`, `migrateLandQueueDir` → `legacyMigrateLandQueueDir`, `pinnedUnlanded` → `pinnedUnmerged`, `buildLandedPrerequisitesNote` → `buildMergedPrerequisitesNote`, test locals; `retired-name-ok` regions on the legacy event-name and state-key tables and the GUI blob's `landing` kind keys). `git grep -n '@deprecated' -- src test` lists nothing. Not done: the guard scans identifiers only, and roughly 600 comment lines in src/ and test/ still use landed/landing/land/vet in prose (find them with the `git grep -nE` in Approach, minus `vocabulary-ok` and `retired-name-ok` lines). Each needs a judgement (the `requires … landed` grammar, quoted titles and plain-English "lands in the working tree" stay; merge-meaning prose is renamed), which is too many for one run. Remaining work: rewrite those comments directory by directory; the acceptance criterion on comments stays open until `git grep` over comments is clean or each leftover is listed here.
-
-**Goal.** No identifier, file name, comment or test name in src/ or test/ uses landing, land, lander or vet. No deprecated alias of the family remains, and test/retired-names.test.ts fails if one comes back.
+**Goal.** The merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; part 11/11's identifier half landed). What remains is comment prose. This part rewrites the merge family in the comments of the pipeline modules, so a reader sees `merge`, `merged` and `approved` where the code merges.
 
 **Approach.**
-- **Finish the rename.** Apply the series' rename rule to the remaining files:
-  - `src/config/`, `src/cli/`, `src/events/`, `src/prompt/`, `src/review/`, `src/verdict/`, `src/pi/`, `src/roles/`, `src/files/`, `src/inbox/`, `src/redeploy/`, `src/budget/`, `src/change/`, `src/text/`, `src/init/`, `src/agent/`, `src/pi-extension/`, `src/team/` and the `src/*.ts` root files;
-  - their tests, `test/helpers/`, `test/fakes/` and the remaining `test/fixtures/*`.
+- Work only in the listed paths, and only on comments (line and block). Apply plans/terminology.md "Code names": the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` (now on main) → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`. Name event types by their current names (`merge_queued`, `merge_done`, `merge_failed`).
+- Keep four kinds of match: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (an old event type, an old state key, `_land-<role>`, `refs/tumwater/landing/`, `CONFIG_KEY_RENAMES`, `LEGACY_ROLE_IDS`, the startup migrations); and the ordinary English verb `land`/`lands`/`landed` meaning "arrive", which is not the merge pipeline (e.g. "the write landed", "the signal lands").
+- Do not rename identifiers or touch string literals.
 
-  Find the leftovers with `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src test`.
-- **One rename that is not a merge.** src/cli/cli-query-commands.ts's `landedDecision` holds the decision as written to QUESTIONS.md, so it becomes `writtenDecision`, and its comment's "that landed text" becomes "that written text".
-- Comments that name event types use the current names (`merge_queued`, `merge_done`, `merge_failed`), except where they describe a legacy name on purpose.
-- **Retire the aliases.** Move the last alias users, such as the tests' `vetAndLand`, to the new names. Then delete every remaining alias of this family: `git grep -n '@deprecated Use' -- src test` lists no merge, merger or verify name.
-- **Extend test/retired-names.test.ts.** Code-team part 6/6 created it. Append one `RETIRED` entry:
-  - `family: "landing/land/lander/vet → merge"`;
-  - `words: ["land", "lands", "landed", "landing", "landings", "lander", "landers", "unlanded", "vet", "vets", "vetted", "vetting"]`;
-  - `fileWords: ["landing", "lander", "landed", "vetting"]`;
-  - `allow: ["removeLegacyLandWorktrees"]`, with a comment that it removes the legacy `_land-<role>` worktrees "State and git" keeps.
-- **Legacy names the guard flags.** Code that names old forms on purpose stays exempt through the mechanisms code-team part 6/6 built:
-  - `LEGACY_FILES`, which already lists `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts` and `src/roles/legacy-role-ids.ts`;
-  - the `legacy`-first-word rule, which covers the state series' `legacyLand*` helpers for the old `land-queue/` dir and `refs/tumwater/landing/` refs;
-  - `// retired-name-ok: legacy reader` lines and `retired-name-ok:start`/`end` regions.
-
-  Where the merge words appear for the first time in a legacy-key map, add a marker. Examples are `land_failed`/`land_queued` keys in `normalizeLegacyEvent`'s table, `lastLandedAt`/`landingCheckFailures`/`landingReviewError` in the state loaders' legacy-key maps, and test fixtures that deliberately write old event names or old state keys as object-literal keys. Any other hit is a missed rename: rename it, never exempt it.
-- **Self-test.** Extend the guard's in-memory fixtures:
-  - flagged: `landingRefName` and `vetted`;
-  - not flagged: `userland`, `landmarks` and `Helvetica`;
-  - allowed: `removeLegacyLandWorktrees`;
-  - the file check flags `src/landing/x.ts`, `test/lander.test.ts` and `src/scheduling/work-landed-cache.ts`, but not `src/merge/merge-to-main.ts`.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names;
-  - the `requires … landed` backlog grammar;
-  - the `_land-<role>` legacy worktree name;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-
-**Files touched.** The remaining src/ and test/ files listed above; `src/cli/cli-query-commands.ts`; the declaring modules of any aliases still present (`src/paths.ts`, `src/merge/*.ts`, `src/tick/*.ts`, `test/fixtures/merger-fixtures.ts`); `test/retired-names.test.ts`; marker lines in the events normalizer's module, the state loaders' legacy-key maps and the legacy-writing test fixtures, if flagged. Read but not edited: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts`, `src/roles/legacy-role-ids.ts`.
+**Files touched.** Comments in src/merge/, src/events/, src/review/, src/verdict/, src/git/, src/tick/, src/failure/, src/change/, src/build/, src/process/ and src/loop/. plans/terminology.md is read, not edited.
 
 **Acceptance criteria.**
-- In src/ and test/, no identifier, comment or test name uses a retired merge word, except the guard's `allow` entries, the backlog grammar keyword, quoted backlog titles, user-visible strings and legacy names on purpose.
-- No `@deprecated` alias of this family remains.
-- test/retired-names.test.ts passes, including its extended self-test. Planting `const enqueueLanding = 1;` in any src/ file, or creating `src/merge/landing-x.ts`, makes it fail.
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/merge src/events src/review src/verdict src/git src/tick src/failure src/change src/build src/process src/loop` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- The diff changes comment lines only.
 - `npm run test` passes.
 
-### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
+### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator-surface and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11c/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/cli/ src/config/ src/prompt/ src/roles/ src/doctor/ src/history/ src/operator/ src/backlog/ src/text/ src/budget/ src/pi/ src/redeploy/ src/files/ src/inbox/ src/team/ src/pi-extension/ src/init/ src/agent/ src/gui/ src/orchestrator/ and src/paths.ts)
+
+**Goal.** Same as part 11a for the operator-facing and support modules: the merge family's identifiers and file names are already renamed and guarded, and this part rewrites the merge family in their comments so the code reads in the glossary's words.
+
+**Approach.**
+- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`; event types by their current names.
+- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title; a legacy name kept on purpose; and the ordinary English verb `land` meaning "arrive". `src/config/config-schema.ts` and `src/config/config-views.ts` hold the most prose, including the `Land-queue speed` plan citations, which stay as quoted titles.
+- Do not rename identifiers or touch string literals.
+
+**Files touched.** Comments in the directories listed in the heading plus src/paths.ts. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/ui src/cli src/config src/prompt src/roles src/doctor src/history src/operator src/backlog src/text src/budget src/pi src/redeploy src/files src/inbox src/team src/pi-extension src/init src/agent src/gui src/orchestrator src/paths.ts` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
+### Plain terms code merge, part 11c/11: Rewrite the merge family in the first half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11d/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts a–m, plus test/helpers/ test/fakes/ and test/fixtures/)
+
+**Goal.** Same as part 11a for the tests that cover the pipeline, review, merge, backlog, prompt and role modules (basenames a–m), plus the shared helpers, fakes and fixtures.
+
+**Approach.**
+- Work only in the listed files, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names").
+- Test comments carry more intentional matches than src comments: a quoted PLANS.md/BUGS.md title (test/backlog-structure.test.ts and test/backlog-write-list.test.ts quote parts' titles); the `requires … landed` grammar in scenario prose; a fixture or setup comment that names an old event type, old state key or the `_land-<role>` worktree on purpose (test/fixtures/merge-fixtures.ts); and the ordinary English verb `land` meaning "arrive" (e.g. "the write landed"). Keep all four, and rewrite only prose that describes the merge pipeline.
+- Do not rename identifiers or touch string literals.
+
+**Files touched.** Comments in test/*.test.ts whose basename sorts a–m, test/helpers/, test/fakes/ and test/fixtures/. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[a-m]*.test.ts' test/helpers test/fakes test/fixtures` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
+### Plain terms code merge, part 11d/11: Rewrite the merge family in the second half of the test comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from part 11/11, siblings parts 11a/11, 11b/11 and 11c/11; design in plans/terminology.md "Code names"; touches comments in test/*.test.ts whose basename sorts n–z)
+
+**Goal.** Same as part 11a for the tests whose basename sorts n–z (the remaining review, status, report, TUI, worktree and team tests).
+
+**Approach.**
+- Work only in the listed files, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names").
+- Keep the same four kinds of match as part 11c: a quoted PLANS.md/BUGS.md title; the `requires … landed` grammar; a legacy name kept on purpose; and the ordinary English verb `land` meaning "arrive". Rewrite only prose that describes the merge pipeline.
+- Do not rename identifiers or touch string literals.
+
+**Files touched.** Comments in test/*.test.ts whose basename sorts n–z. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- 'test/[n-z]*.test.ts'` lists only the four kept kinds above, and the run's summary names each remaining match and its kept kind.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
+### Plain terms code runner, part 1/14: Move the loop modules to src/runner and their tests to runner names (planned 2026-10-16 by user; requires Plain terms code merge 11a/11, Plain terms code merge 11b/11, Plain terms code merge 11c/11 and Plain terms code merge 11d/11 landed; design in plans/terminology.md "Code names"; touches src/loop/ + src/roles/loop-ids.ts + src/ui/gui/gui-client-loops.ts + test/loop*.test.ts + test/fixtures/loop-*.ts + every importer + docs/invariants.md + DEVELOPMENT.md)
 
 **Goal.** Mechanical. The per-instance worker's modules and their tests move to `runner` names, with every import path and path citation updated and no identifier changed, so later parts rename symbols inside files that already carry their final names.
 
