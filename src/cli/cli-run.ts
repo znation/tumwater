@@ -31,7 +31,7 @@ import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import type { TickResult } from "../tick/tick-outcome.js";
 import { runStartupMigrations } from "../orchestrator/startup-migration-steps.js";
-import { loadLoopState, stateSkipReason } from "../loop/loop-state.js";
+import { loadLoopState, stateSkipReason, type LoopState } from "../loop/loop-state.js";
 import { plural } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { readTickRowsSince, summarizeTickRows, type HistorySummaryRow } from "../history/history-data.js";
@@ -350,6 +350,24 @@ function ticksThisRound(
   return ticksRun ? (ticksRun.get(role) ?? 0) : s.runs - (ticksBefore.get(role) ?? 0);
 }
 
+/** Every role that could have ticked in this once round — `roles` in order plus any role that
+ * appears only in `ticksRun` (enabled mid-round after `ticksBefore` was taken) — paired with
+ * its loaded loop state and the number of ticks it ran this round. The same per-role setup
+ * onceFailures and onceSummary both repeat, folded here so the two summary passes cannot
+ * drift on which roles they visit or how they count a round's work. */
+function onceRoundRoles(
+  root: string,
+  roles: string[],
+  ticksBefore: Map<string, number>,
+  ticksRun?: ReadonlyMap<string, number>,
+): { role: string; state: LoopState; ran: number }[] {
+  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
+  return [...roles, ...extra].map((role) => {
+    const state = loadLoopState(root, role);
+    return { role, state, ran: ticksThisRound(state, role, ticksBefore, ticksRun) };
+  });
+}
+
 /** The roles that ticked this round and whose last result is in ONCE_FAILURE_RESULTS. */
 export function onceFailures(
   root: string,
@@ -358,11 +376,9 @@ export function onceFailures(
   ticksRun?: ReadonlyMap<string, number>,
 ): { role: string; result: TickResult }[] {
   const out: { role: string; result: TickResult }[] = [];
-  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
-  for (const role of [...roles, ...extra]) {
-    const s = loadLoopState(root, role);
-    if (ticksThisRound(s, role, ticksBefore, ticksRun) > 0 && s.lastResult && ONCE_FAILURE_RESULTS.has(s.lastResult)) {
-      out.push({ role, result: s.lastResult });
+  for (const { role, state, ran } of onceRoundRoles(root, roles, ticksBefore, ticksRun)) {
+    if (ran > 0 && state.lastResult && ONCE_FAILURE_RESULTS.has(state.lastResult)) {
+      out.push({ role, result: state.lastResult });
     }
   }
   return out;
@@ -397,20 +413,17 @@ export function onceSummary(
   let ticks = 0;
   const outcomes = new Map<string, number>();
   const skipped: string[] = [];
-  const extra = ticksRun ? [...ticksRun.keys()].filter((r) => !roles.includes(r)) : [];
-  for (const role of [...roles, ...extra]) {
-    const s = loadLoopState(root, role);
-    const ran = ticksThisRound(s, role, ticksBefore, ticksRun);
+  for (const { role, state, ran } of onceRoundRoles(root, roles, ticksBefore, ticksRun)) {
     if (ran > 0) {
       ticks += ran;
-      const key = s.lastResult ?? "no_change";
+      const key = state.lastResult ?? "no_change";
       increment(outcomes, key);
     } else {
       const reason =
         settled?.get(role) ??
         (isTeamPaused(root) || loopPaused(new Set(pausedRoles(root)), role)
           ? "paused"
-          : stateSkipReason(s));
+          : stateSkipReason(state));
       skipped.push(reason);
     }
   }
