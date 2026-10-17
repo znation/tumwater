@@ -54,22 +54,6 @@ This is not the same series as the in-flight `Merged by role` chart: `commitsByR
   blocks also have none).
 - `npm run test` passes.
 
-### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator surfaces' comments (planned 2026-10-17 by the plan role; re-scoped 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11e/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/gui/ src/cli/ src/orchestrator/ and src/roles/)
-
-**Goal.** Same as part 11a for the operator surfaces: the merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; parts 10/11 and 11/11's identifier halves landed). What remains is comment prose. This part rewrites the merge family in the comments of the operator-surface modules so a reader sees `merge`, `merged` and `approved` where the code merges.
-
-**Approach.**
-- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`; name event types by their current names (`merge_queued`, `merge_done`, `merge_failed`).
-- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (an old event type, the GUI's internal phase keys `landing`/`vetted` and the `EventKind` value `landing`, and `_land-<role>`); and the ordinary English verb `land`/`lands`/`landed` meaning "arrive" (e.g. "the poll lands on the same clock", "the session lands"), which is not the merge pipeline.
-- Do not rename identifiers or touch string literals; non-comment matches are outside this comment-only part and stay exactly as they are.
-
-**Files touched.** Comments in src/ui/, src/gui/, src/cli/, src/orchestrator/ and src/roles/. plans/terminology.md is read, not edited.
-
-**Acceptance criteria.**
-- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/ui src/gui src/cli src/orchestrator src/roles`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
-- The diff changes comment lines only.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 11f/11: Rewrite the merge family in the backlog, prompt and support modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11e/11; design in plans/terminology.md "Code names"; touches comments in src/prompt/ src/backlog/ src/doctor/ src/operator/ src/history/ src/text/ src/budget/ src/files/ src/inbox/ src/team/ src/init/ and src/paths.ts)
 
 **Goal.** The same comment rewrite as part 11b for the remaining support modules: the prompt builders, the backlog reader/writer, the doctor, the operator commands, the history, text, budget, files, inbox, team and init modules, and `src/paths.ts`.
@@ -1210,6 +1194,22 @@ view renders.
 - `npm run test` passes.
 
 
+### Plain terms code merge, part 11b/11: Rewrite the merge family in the operator surfaces' comments (planned 2026-10-17 by the plan role; re-scoped 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11e/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/ui/ src/gui/ src/cli/ src/orchestrator/ and src/roles/) — done 2026-10-17 by the feature role
+
+**Goal.** Same as part 11a for the operator surfaces: the merge family's identifiers and file names are already renamed and guarded (`RETIRED` in test/retired-names.test.ts carries the family; parts 10/11 and 11/11's identifier halves landed). What remains is comment prose. This part rewrites the merge family in the comments of the operator-surface modules so a reader sees `merge`, `merged` and `approved` where the code merges.
+
+**Approach.**
+- Work only in the listed paths, and only on comments (line and block). Apply the part 11a rename rule (plans/terminology.md "Code names"): the pipeline `landing`/`land` → `merge`; `land queue` → `merge queue`; `landed` → `merged`; `unlanded` → `unmerged`; `lander` → `merger`; `vet`/`vetting` → `verify`; `vetted` → `approved`; name event types by their current names (`merge_queued`, `merge_done`, `merge_failed`).
+- Keep the same four kinds of match as part 11a: the `requires … landed` backlog grammar; a quoted PLANS.md/BUGS.md title, kept verbatim; a legacy name kept on purpose (an old event type, the GUI's internal phase keys `landing`/`vetted` and the `EventKind` value `landing`, and `_land-<role>`); and the ordinary English verb `land`/`lands`/`landed` meaning "arrive" (e.g. "the poll lands on the same clock", "the session lands"), which is not the merge pipeline.
+- Do not rename identifiers or touch string literals; non-comment matches are outside this comment-only part and stay exactly as they are.
+
+**Files touched.** Comments in src/ui/, src/gui/, src/cli/, src/orchestrator/ and src/roles/. plans/terminology.md is read, not edited.
+
+**Acceptance criteria.**
+- `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/ui src/gui src/cli src/orchestrator src/roles`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
+- The diff changes comment lines only.
+- `npm run test` passes.
+
 ### Plain terms code merge, part 11e/11: Rewrite the merge family in the config and backend modules' comments (planned 2026-10-17 by the plan role; split 2026-10-17 by the plan role from the merge comment rewrite the feature role found too large for one run; siblings parts 11b/11 and 11f/11; design in plans/terminology.md "Code names"; touches comments in src/config/ src/pi/ src/redeploy/ src/pi-extension/ and src/agent/) — done 2026-10-17 by the feature role
 
 **Goal.** The same comment rewrite as part 11b for the config, backend-selector, pi, redeploy and pi-extension modules. `src/config/config-schema.ts` and `src/config/config-views.ts` hold the most prose in this part.
@@ -1225,8 +1225,6 @@ view renders.
 - `git grep -nE '[Ll]and(ing|ed|er|s)?[^a-z]|LAND|[Vv]et(ted|ting|s)?[^a-z]' -- src/config src/pi src/redeploy src/pi-extension src/agent`, kept to the matches inside a comment (`//` or `/* */`), lists only the four kept kinds above, and the run's summary names each remaining comment match and its kept kind. Non-comment matches are untouched.
 - The diff changes comment lines only.
 - `npm run test` passes.
-
-
 ### The GUI Usage view charts each day's output tokens per role, the dashboard twin of the day report's `Tokens by role` line (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites the merge-family comments in src/ui but not this file, whose merge terms are already plain; it shares the `report-chart` region and Usage render chain with the in-flight backlog-items/work-maintenance/provider-spend chart plans, but adds only its own builder and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** The CLI day report prints `Tokens by role` — output tokens ranked per role (`rankedRoleTotals`/`rankedRoleLine` in `src/report/report-render.ts`) — and the dashboard Usage view draws only the unsplit `Output tokens` chart (`chartTokens`). Tokens are the resource the budget charges, so an operator who sees a token spike on the dashboard cannot point at the role that burned it without opening the CLI report or the raw event log. Add one stacked `Tokens by role` chart.

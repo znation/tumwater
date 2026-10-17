@@ -4,7 +4,7 @@ import { loadConfig } from "../config/config.js";
 import { TUMWATER_SOURCE } from "../events/events.js";
 import { notifyCommandEnv, notifyExitGloss } from "../events/notify.js";
 
-/** The one representative allowlisted event `tumwater notify --test` fires: a failed landing
+/** The one representative allowlisted event `tumwater notify --test` fires: a failed merge
  * with source `tumwater`. Fixed and opinionated — the goal is to prove the hook runs, not to
  * replay a specific page, so there are no per-type or per-message flags. */
 const NOTIFY_TEST_TYPE = "merge_failed";

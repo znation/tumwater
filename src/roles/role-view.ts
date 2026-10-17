@@ -134,7 +134,7 @@ export interface RoleViewPayload {
    * `×N` the status `next run` cell rides (status-render.ts's nextRunCell reads
    * yieldMultiplierFor) — so the role view's Schedule cannot understate a quiet
    * yield-scaled loop's effective gap. 1 for every role outside the scalable set and
-   * for a scalable role whose recent ring still holds a landing. */
+   * for a scalable role whose recent ring still holds a merge. */
   yieldMultiplier: number;
   /** When the loop's last tick ended, epoch ms — absent for a never-ticked loop, so the
    * JSON shape stays unchanged until the loop has acted. */

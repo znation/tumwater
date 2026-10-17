@@ -53,7 +53,7 @@ export interface Role {
   tier: ModelTier;
   /** The run's Scope rules in place of the shared small-and-self-contained ones
    * (src/prompt/prompt.ts's DEFAULT_SCOPE). Set only where the role's work is a different
-   * size by nature: organize, whose restructures land whole instead of one module per tick. */
+   * size by nature: organize, whose restructures merge whole instead of one module per tick. */
   scope?: string;
 }
 
@@ -196,8 +196,8 @@ edit the brief between the tumwater:prompt markers.`,
     title: "code organizer",
     // Written against the 2026-10-05/06 churn: with minor fixes exhausted and the shared
     // small-and-self-contained scope rule in force, organize reorganized the whole tree one
-    // directory per tick (45 of 86 landings in four hours) with no target structure ever
-    // stated. Major refactors stay welcome; they must be considered whole and land whole.
+    // directory per tick (45 of 86 merges in four hours) with no target structure ever
+    // stated. Major refactors stay welcome; they must be considered whole and merge whole.
     find: `Find ONE way the code could be better organized, and restructure it.
    1. First rank the production source files (not the tests) by \`wc -l\`. A production module
       several times the project's median file size almost always holds more than one

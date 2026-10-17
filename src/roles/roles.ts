@@ -25,7 +25,7 @@ export const DIRECTOR_ROLE = "director";
 export const BUGFIX_ROLE = "bugfix";
 
 /** Work-tier roles (need-based prioritization): they
- * ship work — feature and bugfix land code on main, plan feeds them — so their due ticks are
+ * ship work — feature and bugfix merge code on main, plan feeds them — so their due ticks are
  * never deferred and slot allocation always orders them ahead of maintenance. */
 const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
 
@@ -107,8 +107,8 @@ export function baselineBlocked(role: string): boolean {
   return BASELINE_BLOCKED_ROLES.has(baseRoleOf(role));
 }
 
-/** Work ratio 4/4: which commit tier a loop's base role lands into, for the work vs maintenance
- * split the report and the "Landed today" tile show and the maintenance allowance (Work ratio
+/** Work ratio 4/4: which commit tier a loop's base role merges into, for the work vs maintenance
+ * split the report and the "Merged today" tile show and the maintenance allowance (Work ratio
  * 1a/4, src/gates/maintenance-quota.ts) counts. The one home of the split. `work` is the
  * shipping tier (feature, bugfix, director); `maintenance` is code upkeep plus readme. Every
  * other role (plan, steward, observers, custom) is neither and counts only toward the total

@@ -47,7 +47,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<div class='table-wrap'><table class='table pending'><thead><tr><th class='c-loop'>Role</th><th>Branch</th>" + // vocabulary-ok: CSS class the stylesheet matches
       "<th>State</th><th>Ahead of " + esc(team.mainBranch) + "</th><th class='c-dirty num'>Uncommitted</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
   }
-  // The Land queue card's body: every queued merge in execution order (oldest first), one
+  // The Merge queue card's body: every queued merge in execution order (oldest first), one
   // line each mirroring tumwater queue's renderMergeQueue — 1-based position, loop, tick,
   // short sha, age, summary — so the page and the CLI cannot drift. Painted from the status
   // payload the page already polls; depth counts the unreadable queue files the status reader
@@ -75,7 +75,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     return "<div class='card-head'><h2>Merge queue</h2></div>" + body;
   }
   // pending-table:end
-  // Paint the Land queue card from the polled status payload, at paint-time age; no fetch of
+  // Paint the Merge queue card from the polled status payload, at paint-time age; no fetch of
   // its own (the entries ride /api/status, unlike the roster's /api/diff).
   function renderPendingQueue(status) {
     const card = $("pendingqueue");
@@ -90,7 +90,7 @@ export const GUI_CLIENT_PENDING_JS = String.raw`  let pendingTeam = null;
     $("pendingrefresh").addEventListener("click", () => fetchPending());
   }
   // Load the team-wide change roster. Called when the view opens and by the Refresh button;
-  // no timer of its own, and the roster only changes when a loop lands or edits its worktree.
+  // no timer of its own, and the roster only changes when a loop merges or edits its worktree.
   async function fetchPending() {
     buildPendingView();
     try {

@@ -35,7 +35,7 @@ type MergeCell = Pick<MergeChange, "status" | "startedAt" | "stage" | "stageSinc
  * role's change record while the pipeline holds it — verifying or merging it (`merge`), or
  * keeping it for the merge slot (`approved`) — and null otherwise, including once the merge is
  * `done` with it (a change that reached its outcome must not keep a live label while the rest of
- * its stack lands — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
+ * its stack merges — BUGS.md 2026-09-23). An older generation's one-change marker reads as one
  * `merge` record (mergeChanges). The single home of the "is this role merge" filter —
  * every phase call site derives its `merge` argument through this so the filtering cannot
  * drift between them. */
@@ -57,7 +57,7 @@ export function idleClaimText(s: { claim?: LoopState["claim"]; role: string }, _
 
 /** The loop's state label — the one precedence ladder shared by the status table and both
  * dashboards (renderStatus, statusPayload). First match wins: a stopped harness; an in-flight
- * merge (the role's tick already ended "queued" while its change lands, so the marker
+ * merge (the role's tick already ended "queued" while its change merges, so the marker
  * supplies the label); a running tick ("working", or "reviewing" while the review gate holds
  * it — in-flight work finishes through both team gates); the director's "waiting for
  * prompts" (exempt from those gates); user pause; budget pause; a red main ("main red"); an

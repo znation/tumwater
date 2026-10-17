@@ -142,7 +142,7 @@ const FORMAT_JS = String.raw`  // format:start
   // <small>.
   const agree = (n, one, many) => (n === 1 ? one : many);
   const plural = (n, one, many) => n + " " + agree(n, one, many || one + "s");
-  // The merged-commit work/maintenance split the sidebar's "Landed today" tile and the report's
+  // The merged-commit work/maintenance split the sidebar's "Merged today" tile and the report's
   // "Commits merged" tile both print. report-data.ts leaves the counts optional, so a missing
   // count reads 0 here rather than "undefined".
   const workSplit = (t) => (t.workCommits ?? 0) + " work / " + (t.maintenanceCommits ?? 0) + " maintenance";

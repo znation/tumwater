@@ -136,7 +136,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
       `an orchestrator is already running for this repo (pid ${running.pid}) — stop it with \`tumwater stop\` from another terminal, or press Ctrl+C in the terminal that started it`,
     );
   // The team-booting machinery loads only once a run actually boots: the orchestrator's
-  // module graph (with its landing pipeline, review gate, and scheduler) is the CLI's heaviest
+  // module graph (with its merge pipeline, review gate, and scheduler) is the CLI's heaviest
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
   // `run`'s fail-fast paths — off that cost (see cli.ts's matching lazy dispatch).
@@ -329,7 +329,7 @@ export function parseRunWindow(args: string[], once: boolean): number | null {
 }
 
 /** Results that mean the harness or the project's check failed and the round's work did not
- * land: a `--once` round with a role ending in one exits ONCE_FAILED_EXIT_CODE. `rejected` and
+ * merge: a `--once` round with a role ending in one exits ONCE_FAILED_EXIT_CODE. `rejected` and
  * `refused` are the review gate and the agent working as designed; `aborted`, `quiet_killed`, and
  * `user_aborted` only reach a once round on a shutdown or operator abort, which exit
  * their own way. */
