@@ -104,6 +104,16 @@ export function rankByCount<T>(
   return [...items].sort((a, b) => count(b) - count(a) || key(a).localeCompare(key(b)));
 }
 
+/** The lower median of a non-empty numeric list: the middle value, or the smaller of the
+ * middle two for an even count. Returns a fresh sorted copy; the input is never mutated.
+ * Shared by report-data.ts's per-day medians, doctor-checks.ts's and doctor-backlog.ts's
+ * 24 h phrase medians. (failure-data.ts's `median` is deliberately different: the mean of
+ * the middle two for an even count.) */
+export function lowerMedian(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)] as number;
+}
+
 /** Ascending string comparator by UTF-16 code unit — the locale-independent order a bare `.sort()`
  * uses, unlike `localeCompare` (which `rankByCount` uses for its tiebreak). Used by
  * src/cli/cli-run.ts, src/cli/log-commands.ts, src/history/history-data.ts and

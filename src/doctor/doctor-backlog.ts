@@ -19,6 +19,7 @@ import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
+import { lowerMedian } from "../collections.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
@@ -308,11 +309,10 @@ export function mergeWaitPhrase(events: readonly HarnessEvent[]): string | undef
   const waits = events
     .filter((e) => e.type === "merge_done")
     .map((e) => finiteNumber(e.queuedMs, 0))
-    .filter((ms) => ms > 0)
-    .sort((a, b) => a - b);
+    .filter((ms) => ms > 0);
   if (waits.length === 0) return undefined;
-  const median = waits[Math.floor((waits.length - 1) / 2)]!;
-  const longest = waits[waits.length - 1]!;
+  const median = lowerMedian(waits);
+  const longest = Math.max(...waits);
   return `merges in the last 24h waited ${shortSpanPhrase(median)} median, ${shortSpanPhrase(longest)} longest (${plural(waits.length, "merge")})`;
 }
 

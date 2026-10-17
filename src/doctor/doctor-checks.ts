@@ -43,6 +43,7 @@ import { classifyLock, readLockPid } from "../concurrency/lock.js";
 import { CONFIG_BASENAME, EXAMPLE_CONFIG_BASENAME, branchName, STATE_DIR, configPath, eventsLogPath, mergeLockDir, worktreesDir } from "../paths.js";
 import { BYTES_PER_GB, diskVolumePath, sampleFreeBytes } from "../gates/disk-gate.js";
 import { errorMessage, textOr } from "../text/text.js";
+import { lowerMedian } from "../collections.js";
 import { formatGB, shortSha } from "../text/format.js";
 import { briefFile } from "../brief/brief.js";
 import { eventLogState, readEventsSince, type EventLogState } from "../events/event-window.js";
@@ -684,11 +685,10 @@ export function checkDurationPhrase(events: readonly HarnessEvent[]): string | u
   const durations = events
     .filter((e) => e.type === "build_check" && e.status === "passed" && ["merge", "batch", "baseline"].includes(String(e.scope)))
     .map((e) => finiteNumber(e.durationMs, 0))
-    .filter((ms) => ms > 0)
-    .sort((a, b) => a - b);
+    .filter((ms) => ms > 0);
   if (durations.length === 0) return undefined;
-  const median = durations[Math.floor((durations.length - 1) / 2)]!;
-  const slowest = durations[durations.length - 1]!;
+  const median = lowerMedian(durations);
+  const slowest = Math.max(...durations);
   return `passing merge checks in the last 24h took ${shortSpanPhrase(median)} median, ${shortSpanPhrase(slowest)} slowest (${plural(durations.length, "run")})`;
 }
 

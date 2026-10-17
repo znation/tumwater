@@ -17,7 +17,7 @@ import type { HarnessEvent } from "../events/events.js";
 import { isPassingFullCheck } from "../build/build-check-events.js";
 import { DONE_DATE_RE, FIXED_DATE_RE, sectionCompletionDates } from "../backlog/backlog.js";
 import { dayAt, dayKey, dayWindow, formatDate } from "../text/datetime.js";
-import { addTo, memoSetLru } from "../collections.js";
+import { addTo, lowerMedian, memoSetLru } from "../collections.js";
 import { finiteNumber } from "../files/json-object.js";
 import { OUTCOME_CLASS } from "../failure/time-spend.js";
 import type { TickResult } from "../tick/tick-outcome.js";
@@ -92,12 +92,6 @@ interface UsageFold {
   /** The notional share per provider (a subscription seam's API-equivalent spend), the same
    * parallel age as costByProvider but on the notional line. */
   notionalByProvider: Record<string, number>;
-}
-
-/** The lower median of a non-empty list: the middle value, or the smaller of the middle two. */
-function lowerMedian(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor((sorted.length - 1) / 2)] as number;
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
