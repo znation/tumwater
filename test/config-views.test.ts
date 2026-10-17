@@ -1,3 +1,4 @@
+import { tierChainSteps } from "../src/config/config-fallbacks.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
@@ -359,10 +360,12 @@ test("a non-pi fallback pair is keyed by its backend, in both selector forms", (
   assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {
     provider: "claude",
     model: "claude-sonnet-5-5",
+    extraUsage: true,
   });
   assert.deepEqual(fallbackPair({ ...claude, fallback: "claude-sonnet-5-5" }), {
     provider: "claude",
     model: "claude-sonnet-5-5",
+    extraUsage: true,
   }, "a bare claude selector on a claude fleet keys claude too");
   const pi: TumwaterConfig = defaultConfig();
   pi.fallback = "omlx/qwen";
@@ -788,4 +791,22 @@ test("a fallback list runs its first usable step, then borrows, and seamsInUse l
   assert.equal(r.small.from, "default");
   const labels = seamsInUse(config).map((s) => s.label);
   assert.ok(labels.includes("fallback:default") && labels.includes("fallback:default#1"));
+});
+
+test("a Claude step is marked extraUsage when a Claude model comes earlier in its chain", () => {
+  const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
+  const chain = (cfg: TumwaterConfig) => tierChainSteps(cfg).map((s) => s.pair.extraUsage === true);
+  assert.deepEqual(
+    chain({ ...claude, fallback: ["claude/claude-sonnet-5-5", "claude/claude-haiku-5-5", "omlx/qwen"] }),
+    [true, true, false],
+    "a Claude primary makes every Claude step extra usage",
+  );
+  const pi: TumwaterConfig = { ...defaultConfig(), provider: "omlx", model: "qwen" };
+  assert.deepEqual(
+    chain({ ...pi, fallback: ["claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5", "omlx/qwen"] }),
+    [false, true, false],
+    "with a pi primary the first Claude step stays on the subscription",
+  );
+  const mapped = { ...pi, fallback: { default: ["claude/claude-sonnet-5-5"], strong: ["omlx/qwen", "claude/claude-sonnet-5-5"] } };
+  assert.deepEqual(chain(mapped), [false, false, false], "each tier's chain marks by its own order, so a second chain's first Claude step is unmarked");
 });

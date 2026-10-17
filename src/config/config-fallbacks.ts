@@ -156,17 +156,26 @@ function tierOwnChain(config: TumwaterConfig, tier: ModelTier): FallbackModelCon
     // The legacy `fallbackModel` object is the default tier's own fallback, with its
     // provider/thinking fields and the top-level borrow precedence.
     const legacy = legacyFallbackPair(config);
-    return legacy === null ? [] : [legacy];
+    if (legacy === null) return [];
+    const primaryClaude = withModelOverrides(config, tier, {}).agent === "claude";
+    return [legacy.provider === "claude" && primaryClaude ? { ...legacy, extraUsage: true } : legacy];
   }
   if (raw === undefined || raw === "pause") return [];
+  // A Claude step after an earlier Claude model — the tier's primary counts — may spend extra
+  // usage; the first Claude model stays on the subscription. Position alone decides.
+  let claudeSeen = withModelOverrides(config, tier, {}).agent === "claude";
   return (Array.isArray(raw) ? raw : [raw])
     .filter((s) => s !== "pause")
     .map((s) => {
       const step = typeof s === "string" ? { model: s } : s;
       const fields = fallbackSelectorFields(step.model, config);
-      return step.maxDailyCostUsd !== undefined
-        ? { ...fields, maxDailyCostUsd: step.maxDailyCostUsd }
-        : fields;
+      const extraUsage = fields.provider === "claude" && claudeSeen;
+      if (fields.provider === "claude") claudeSeen = true;
+      return {
+        ...fields,
+        ...(step.maxDailyCostUsd !== undefined ? { maxDailyCostUsd: step.maxDailyCostUsd } : {}),
+        ...(extraUsage ? { extraUsage } : {}),
+      };
     });
 }
 

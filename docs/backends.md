@@ -160,6 +160,22 @@ cut off by a rejected window resumes once it resets (parts 6d–6e). See
 [plans/agent-backends.md](../plans/agent-backends.md) (its Billing and usage-window sections)
 for the design.
 
+**Extra usage by position in the chain.** On a subscription account, the first Claude model in
+a tier's chain runs on the subscription only: the tier's primary counts, including the
+default from `agent: "claude"`. It is unavailable once a window is rejected or a current
+reading shows `isUsingOverage`, and the tier moves down its chain on the next poll. A Claude
+model listed after it in the same chain may spend extra usage, within its own `maxDailyCostUsd`
+and the team cap, and only while no window is rejected and the account's `overageStatus` is not
+`rejected`. A step borrowed from another tier keeps the position it has in the chain that
+declares it. For example, with a Sonnet primary,
+`"fallback": [{ "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 }, "qwenrunner/qwen3.8-27b"]`
+means Sonnet on the subscription, then up to $10 of Sonnet extra usage, then local. The run that
+crosses into overage finishes there, because tumwater cannot stop the CLI mid-run, and its whole
+cost counts toward the step. **Behavior change:** an account that allows extra usage, with no
+later Claude model in its chain, now moves down its chain at the end of the window instead of
+spending extra usage up to the team cap. On API billing every Claude step is priced and position
+does not matter. The fleet hold still reads only a rejected window; overage never holds.
+
 An exported `ANTHROPIC_API_KEY` (for pi's `anthropic` provider) makes every Claude model job
 prefer the key over a claude.ai login and bill the API, silently ending the subscription
 free ride. `tumwater doctor` warns when the key is set, a model job routes to claude, and `claude

@@ -137,6 +137,9 @@ export interface FallbackModelConfig {
   /** The step's own daily spend cap in USD (a chain step written as an object); set only on a
    * pair resolved from a chain step, never read from `fallbackModel`. */
   maxDailyCostUsd?: number;
+  /** Set on a Claude step that follows an earlier Claude model in its chain (the tier's primary
+   * counts): it may spend extra usage, within its cap. Derived from position, never configured. */
+  extraUsage?: boolean;
 }
 
 /** Idle backoff: how long a loop sleeps after a tick that changed nothing. */

@@ -140,7 +140,7 @@ export function claudeWindowObservation(
   account: ClaudeAccount | null,
   now: number,
 ): HoldObservation | null {
-  const furthest = claudeWindowUsedUp(account, now);
+  const furthest = claudeWindowUsedUp(account, now, false);
   if (furthest === null) return null;
   return {
     role: "claude",

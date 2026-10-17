@@ -27,7 +27,7 @@ export type ClaudeBilling = "subscription" | "api";
  * reports), as the account file stores it: the newest reading per `rateLimitType`, with the
  * instant it was observed. `resetsAt` is epoch ms. A window whose `resetsAt` has passed reads
  * back with `status: "reset"` (see readClaudeAccount). */
-interface ClaudeWindow {
+export interface ClaudeWindow {
   /** `ok` | `allowed_warning` | `rejected` | `reset`. */
   status: string;
   /** Epoch ms when the window resets, when the run reported one. */
@@ -66,18 +66,21 @@ export function subscriptionWindowRejected(
 }
 
 /** The subscription account's used-up usage window, or null: a window reading `rejected` with no
- * overage and a `resetsAt` still ahead of `now`; among several, the one that resets last. The one
- * rule the fleet hold (claudeWindowObservation) and the budget gate's window move
- * (pollBudgetGate) both read, so the hold and the move cannot disagree. Only subscription billing
- * produces one; a missing account reads null. */
+ * overage, or (with `includeOverage`, the default) a window whose current reading shows
+ * `isUsingOverage`, and a `resetsAt` still ahead of `now`; among several, the one that resets
+ * last. The budget gate's window move (pollBudgetGate) reads the default; the fleet hold
+ * (claudeWindowObservation) passes `includeOverage: false`, because overage never holds a seam.
+ * Only subscription billing produces one; a missing account reads null. */
 export function claudeWindowUsedUp(
   account: ClaudeAccount | null,
   now: number,
+  includeOverage = true,
 ): { type: string; resetsAt: number } | null {
   if (account?.billing !== "subscription") return null;
   let furthest: { type: string; resetsAt: number } | null = null;
   for (const [type, w] of Object.entries(account.windows)) {
-    if (w.status !== "rejected" || w.isUsingOverage === true) continue;
+    const used = w.isUsingOverage === true ? includeOverage : w.status === "rejected";
+    if (!used) continue;
     if (typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
     if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
   }

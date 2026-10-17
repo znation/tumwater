@@ -35,7 +35,7 @@ import { enabledRoleIds } from "../config/config.js";
 import { formatModelSelector, isAgentId } from "../config/model-selector.js";
 import { configForRole, isTierName, reviewConfig, roleSeamTier, withModelOverrides } from "../config/config-views.js";
 import { piPairFree, readPiProviders, seamFree } from "../pi/pi-models.js";
-import { claudeWindowUsedUp, readClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowUsedUp, readClaudeAccount, type ClaudeAccount, type ClaudeWindow } from "../agent/claude/claude-account.js";
 import type { LoopState } from "../loop/loop-state.js";
 
 /** The budget gate's cross-poll memory: the previous gate value for edge-triggered events,
@@ -155,6 +155,15 @@ function pairIsClaude(p: FallbackModelConfig): boolean {
   return p.provider === "claude";
 }
 
+/** Can the account not take extra usage: some window is rejected, or the newest non-reset
+ * window's `overageStatus` is `rejected`. */
+function claudeOverageRefused(account: ClaudeAccount): boolean {
+  const live = Object.values(account.windows).filter((w) => w.status !== "reset");
+  if (live.some((w) => w.status === "rejected")) return true;
+  const newest = live.reduce<ClaudeWindow | null>((a, w) => (a === null || w.observedAt > a.observedAt ? w : a), null);
+  return newest?.overageStatus === "rejected";
+}
+
 /** Does this model seam route to the claude backend? */
 function seamIsClaude(seam: { agent?: string; provider?: string }): boolean {
   return (seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi")) === "claude";
@@ -239,6 +248,16 @@ export function pollBudgetGate(
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
   // can be passed; at the cap only free steps remain, as before.
   const pairFreeAt = (p: FallbackModelConfig) => {
+    if (account?.billing === "subscription" && pairIsClaude(p)) {
+      // The first Claude model runs on the subscription only; a later one (extraUsage) may
+      // spend extra usage within its cap while no window is rejected or refuses overage.
+      if (!p.extraUsage) return windowOut === null && piPairFree(providers, p.provider, p.model, account);
+      return (
+        !reached &&
+        !claudeOverageRefused(account) &&
+        (p.maxDailyCostUsd === undefined || pairDailyCost(states, modelPairName(p), now) < p.maxDailyCostUsd)
+      );
+    }
     if (piPairFree(providers, p.provider, p.model, account)) return !(windowOut !== null && pairIsClaude(p));
     if (reached) return false;
     return (

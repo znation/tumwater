@@ -770,3 +770,54 @@ test("applyFallbackModel records a moved tier's step cap on the derived view onl
   const free = configWith(10);
   assert.equal(applyFallbackModel(free, resolveTierFallbacks(free, () => true)).fallbackStepCaps, undefined);
 });
+
+test("a Claude step after the subscription primary spends extra usage within its caps; the primary stops at overage", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 5 }, "free/qwen-free"];
+  cfg.fallbackModel = undefined;
+  const account = (extra: Record<string, unknown>, resetsAt = Date.now() + 3_600_000) =>
+    writeClaudeAccount(root, {
+      billing: "subscription",
+      observedAt: Date.now(),
+      windows: { five_hour: { status: "allowed", resetsAt, observedAt: Date.now(), ...extra } },
+    });
+  const spent = (pairUsd: number, totalUsd = pairUsd) => {
+    const s = spentLoopState("feature", totalUsd);
+    s.dayCostByPair = { "claude/claude-sonnet-5-5": pairUsd };
+    return [s];
+  };
+  const resolved = (states = spent(0)) =>
+    poll(root, newBudgetGateState(cfg), cfg, models, states).priceResolved.default.pair;
+
+  account({});
+  assert.equal(resolved()?.extraUsage, true, "in window the chain's first usable step is still the extra-usage step");
+  account({ isUsingOverage: true, overageStatus: "allowed" });
+  assert.equal(resolved(spent(2))?.model, "claude-sonnet-5-5", "overage: the extra-usage step runs under its cap");
+  assert.equal(resolved(spent(5))?.model, "qwen-free", "the step at its cap hands over to local");
+  assert.equal(resolved(spent(2, 10))?.model, "qwen-free", "the team cap hands over to local");
+  account({ status: "rejected", overageStatus: "rejected" });
+  assert.equal(resolved(spent(0))?.model, "qwen-free", "a rejected window with no overage skips the step");
+  account({ isUsingOverage: true }, Date.now() - 1000);
+  assert.equal(poll(root, newBudgetGateState(cfg), cfg, models).windowOut, null, "a reset window is not in overage");
+});
+
+test("an overage account with no later Claude step moves a subscription Claude tier to local", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "allowed", isUsingOverage: true, resetsAt: Date.now() + 3_600_000, observedAt: Date.now() } },
+  });
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.roles.feature = { enabled: true };
+  const p = poll(root, newBudgetGateState(cfg), cfg, models);
+  assert.equal(p.windowOut?.type, "five_hour");
+  assert.equal(configForRole(p.roleConfig, "feature").model, "qwen-free");
+});

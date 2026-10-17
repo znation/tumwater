@@ -339,7 +339,11 @@ test("claudeWindowUsedUp returns the rejected window that resets last; overage, 
     claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500), seven_day: w("rejected", 900) } }), 100),
     { type: "seven_day", resetsAt: 900 },
   );
-  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500, { isUsingOverage: true }) } }), 100), null);
+  const over = account({ windows: { five_hour: w("allowed", 500, { isUsingOverage: true }) } });
+  assert.deepEqual(claudeWindowUsedUp(over, 100), { type: "five_hour", resetsAt: 500 }, "overage counts as used up");
+  assert.equal(claudeWindowUsedUp(over, 100, false), null, "the hold's reading ignores overage");
+  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 500, { isUsingOverage: true }) } }), 100, false), null);
+  assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed", 50, { isUsingOverage: true }) } }), 100), null);
   assert.equal(claudeWindowUsedUp(account({ billing: "api", windows: { five_hour: w("rejected", 500) } }), 100), null);
   assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 50) } }), 100), null);
   assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed_warning", 500) } }), 100), null);

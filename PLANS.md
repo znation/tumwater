@@ -5,57 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 5/7: A chain's first Claude model stops at the end of the subscription window, and a Claude model listed after it spends extra usage within its caps (planned 2026-10-16 by user; requires part 4/7 landed; design in plans/fallback-chain.md "Config" and "Overage"; touches src/agent/claude/claude-account.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
-
-**Goal.** This account allows extra usage (`overageStatus: "allowed"` in every recorded `rate_limit_event`). So today a used-up window does not stop Claude: runs continue on paid extra usage, and their whole cost counts toward the team cap, until `maxDailyCostUsd` moves Claude model jobs to the over-cap model. That spend has no place in the chain and no cap of its own.
-
-You decided on 2026-10-16 (plans/fallback-chain.md D1) that position in the chain decides it:
-
-- The **first** Claude model in a tier's chain runs on the subscription only. The tier's primary counts, including a tier default from `agent: "claude"`. It is unavailable once the window is used up: rejected, or a current reading shows `isUsingOverage`.
-- Any Claude model listed **after** it in the same chain may spend extra usage, within its own step cap and the team cap.
-- So `"model"` Sonnet with `"fallback": [{ "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 }, "qwenrunner/qwen3.8-27b"]` means: Sonnet on the subscription, then up to $10 of Sonnet extra usage, then local.
-
-This is a behavior change for accounts that allow extra usage. Without a later Claude model in the chain, the team moves down its chain at the end of the window instead of spending extra usage up to the cap.
-
-**Approach.**
-- The fix in BUGS.md 2026-10-16, "After a Claude subscription window that ran into paid overage resets …", must be in, so that a reset window is not in overage. If that entry is still under `## Open`, fix it first here with its test, and move it to `## Fixed`.
-- `claudeWindowUsedUp` (src/agent/claude/claude-account.ts) also counts a window whose current reading has `isUsingOverage` as used up, and returns its `resetsAt`. The hold's observation keeps the rejected-only rule: overage never holds.
-- src/config/config-fallbacks.ts: `tierOwnChain` marks each Claude step `extraUsage: true` when a Claude model comes earlier in the same chain. The tier's primary (`withModelOverrides(config, tier, {})` routed to `claude`) counts as earlier.
-  - A step borrowed from another tier keeps the mark from the chain that declares it.
-  - No config key is added: the mark comes from position alone.
-- src/gates/budget-gates.ts, the usable predicate for Claude steps:
-  - **Unmarked (first) Claude step:** today's subscription rule, with "used up" now including overage. On API billing it is priced as before.
-  - **`extraUsage` step on a subscription account:** usable when all of these hold:
-    - the newest non-reset window's `overageStatus` is not `rejected`;
-    - no window is `rejected`;
-    - `!reached`;
-    - its pair spend (`dayCostByPair`, part 4/7) is under its step cap;
-    - its breaker is serving.
-  - **`extraUsage` step on API billing:** an ordinary priced step.
-- It runs the ordinary `claude` command. Its pair spend is that model's real spend, so the step cap caps extra usage directly.
-  - The run that crossed into overage on the first step also counts its whole cost there (`runCostIsReal`), which is conservative.
-  - The keep predicate for a subscription Claude primary uses the same "used up" rule. So an account in overage moves the primary to its chain on the next poll even below the cap.
-- The run that crosses into overage finishes in overage, because tumwater cannot stop the CLI mid-run. The next poll moves on.
-- docs/backends.md: the position rule, the example above, the crossing run, and the behavior change.
-
-**Files touched.**
-- Source: src/agent/claude/claude-account.ts, src/pi/pi-models.ts (only if the bug fix is done here), src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
-- Docs: docs/backends.md.
-- Tests: test/claude-account.test.ts, test/config-views.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
-
-**Acceptance criteria.**
-- Marking by `tierOwnChain`:
-  - With a Claude primary, every Claude step in the chain is `extraUsage`.
-  - With a pi primary and `["claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5", LOCAL]`, the first Claude step is unmarked and the second is marked.
-  - A borrowed step keeps its mark.
-- With `agent: "claude"`, `fallback: [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, LOCAL]`, a current window reporting `isUsingOverage`, and spend under the cap:
-  - The default tier resolves to the Sonnet extra-usage step.
-  - Once that pair's real spend reaches $10 it resolves to LOCAL.
-  - At the team cap it resolves to LOCAL.
-- The same account with `fallback: [LOCAL]` resolves the subscription Claude tiers to LOCAL on the next poll.
-- A `rejected` window (no overage allowed) skips the extra-usage step and resolves to LOCAL.
-- Once the window's `resetsAt` passes, the tiers return to their subscription primary, and `npm test` passes.
-
 ### Fallback chain, part 6/7: `claudeWindowReserve` leaves part of each subscription window unused by the team (planned 2026-10-16 by user; requires part 5/7 landed; design in plans/fallback-chain.md "Reserve"; touches src/config/ src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/events/ docs/backends.md and their tests)
 
 **Goal.** The team and you share one claude.ai account. A team that uses up the weekly window by Tuesday leaves your own Claude Code sessions on extra usage, or locked out, until it resets.
@@ -2175,6 +2124,57 @@ This part makes every surface say which step each tier is on, why, and when it r
 - `checkLeftoverRoleBranches(root, null)` returns the "nothing to verify" ok outcome.
 - `test/doctor.test.ts`: the expected check-name list gains `"leftover role branches"` right after `"parallel instances"`.
 - `npm run test` passes.
+
+### Fallback chain, part 5/7: A chain's first Claude model stops at the end of the subscription window, and a Claude model listed after it spends extra usage within its caps (done 2026-10-16; planned 2026-10-16 by user; requires part 4/7 landed; design in plans/fallback-chain.md "Config" and "Overage"; touches src/agent/claude/claude-account.ts src/config/config-fallbacks.ts src/gates/budget-gates.ts docs/backends.md and their tests)
+
+**Goal.** This account allows extra usage (`overageStatus: "allowed"` in every recorded `rate_limit_event`). So today a used-up window does not stop Claude: runs continue on paid extra usage, and their whole cost counts toward the team cap, until `maxDailyCostUsd` moves Claude model jobs to the over-cap model. That spend has no place in the chain and no cap of its own.
+
+You decided on 2026-10-16 (plans/fallback-chain.md D1) that position in the chain decides it:
+
+- The **first** Claude model in a tier's chain runs on the subscription only. The tier's primary counts, including a tier default from `agent: "claude"`. It is unavailable once the window is used up: rejected, or a current reading shows `isUsingOverage`.
+- Any Claude model listed **after** it in the same chain may spend extra usage, within its own step cap and the team cap.
+- So `"model"` Sonnet with `"fallback": [{ "model": "claude/claude-sonnet-5-5", "maxDailyCostUsd": 10 }, "qwenrunner/qwen3.8-27b"]` means: Sonnet on the subscription, then up to $10 of Sonnet extra usage, then local.
+
+This is a behavior change for accounts that allow extra usage. Without a later Claude model in the chain, the team moves down its chain at the end of the window instead of spending extra usage up to the cap.
+
+**Approach.**
+- The fix in BUGS.md 2026-10-16, "After a Claude subscription window that ran into paid overage resets …", must be in, so that a reset window is not in overage. If that entry is still under `## Open`, fix it first here with its test, and move it to `## Fixed`.
+- `claudeWindowUsedUp` (src/agent/claude/claude-account.ts) also counts a window whose current reading has `isUsingOverage` as used up, and returns its `resetsAt`. The hold's observation keeps the rejected-only rule: overage never holds.
+- src/config/config-fallbacks.ts: `tierOwnChain` marks each Claude step `extraUsage: true` when a Claude model comes earlier in the same chain. The tier's primary (`withModelOverrides(config, tier, {})` routed to `claude`) counts as earlier.
+  - A step borrowed from another tier keeps the mark from the chain that declares it.
+  - No config key is added: the mark comes from position alone.
+- src/gates/budget-gates.ts, the usable predicate for Claude steps:
+  - **Unmarked (first) Claude step:** today's subscription rule, with "used up" now including overage. On API billing it is priced as before.
+  - **`extraUsage` step on a subscription account:** usable when all of these hold:
+    - the newest non-reset window's `overageStatus` is not `rejected`;
+    - no window is `rejected`;
+    - `!reached`;
+    - its pair spend (`dayCostByPair`, part 4/7) is under its step cap;
+    - its breaker is serving.
+  - **`extraUsage` step on API billing:** an ordinary priced step.
+- It runs the ordinary `claude` command. Its pair spend is that model's real spend, so the step cap caps extra usage directly.
+  - The run that crossed into overage on the first step also counts its whole cost there (`runCostIsReal`), which is conservative.
+  - The keep predicate for a subscription Claude primary uses the same "used up" rule. So an account in overage moves the primary to its chain on the next poll even below the cap.
+- The run that crosses into overage finishes in overage, because tumwater cannot stop the CLI mid-run. The next poll moves on.
+- docs/backends.md: the position rule, the example above, the crossing run, and the behavior change.
+
+**Files touched.**
+- Source: src/agent/claude/claude-account.ts, src/pi/pi-models.ts (only if the bug fix is done here), src/config/config-fallbacks.ts, src/gates/budget-gates.ts.
+- Docs: docs/backends.md.
+- Tests: test/claude-account.test.ts, test/config-views.test.ts, test/budget-gates.test.ts, and test/orchestrator-fallback.test.ts.
+
+**Acceptance criteria.**
+- Marking by `tierOwnChain`:
+  - With a Claude primary, every Claude step in the chain is `extraUsage`.
+  - With a pi primary and `["claude/claude-sonnet-5-5", "claude/claude-sonnet-5-5", LOCAL]`, the first Claude step is unmarked and the second is marked.
+  - A borrowed step keeps its mark.
+- With `agent: "claude"`, `fallback: [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, LOCAL]`, a current window reporting `isUsingOverage`, and spend under the cap:
+  - The default tier resolves to the Sonnet extra-usage step.
+  - Once that pair's real spend reaches $10 it resolves to LOCAL.
+  - At the team cap it resolves to LOCAL.
+- The same account with `fallback: [LOCAL]` resolves the subscription Claude tiers to LOCAL on the next poll.
+- A `rejected` window (no overage allowed) skips the extra-usage step and resolves to LOCAL.
+- Once the window's `resetsAt` passes, the tiers return to their subscription primary, and `npm test` passes.
 
 ### The dashboard's entry drawer can move a plan or bug to the top of its section: a "Move to top" button does what `tumwater plan|bug --top <n>` does (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-write.ts, src/gui/gui-backlog-commands.ts, src/gui/gui-endpoint-commands.ts, src/gui/gui-server.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/invariants.md and their tests) (done 2026-10-16)
 
