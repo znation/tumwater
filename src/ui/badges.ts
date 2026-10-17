@@ -6,7 +6,7 @@ import { MODEL_TIERS } from "../config/config-schema.js";
 import { budgetGate, budgetReached, fallbackTierEntries, type BudgetGate } from "../budget/budget.js";
 import { fallbackDisplayPair } from "../config/config-views.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
-import { humanSeconds, pad2, secondsUntil } from "../text/datetime.js";
+import { clockHm, humanSeconds, secondsUntil } from "../text/datetime.js";
 import { pauseReasonSuffix, plural } from "../text/phrases.js";
 import { formatGB, shortSha, usd, usdCap } from "../text/format.js";
 
@@ -110,13 +110,6 @@ function claudeWindowStatusWord(status: string): string {
   if (status === "allowed_warning") return "near limit";
   if (status === "rejected") return "limited";
   return status === "reset" ? "reset" : "ok";
-}
-
-/** The local wall-clock `HH:MM` of a window instant, the same hours/minutes-only shape the
- * burn-rate forecast uses. */
-function clockHm(ms: number): string {
-  const d = new Date(ms);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
 /** How far off a window's reset is, two units wide: `4h 12m`, `5d 3h`, `37m`. A clock time

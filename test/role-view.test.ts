@@ -18,7 +18,7 @@ import { readmeTemplate } from "../src/brief/brief.js";
 import { writeConfig, tmpdir } from "./fixtures/repo-fixtures.js";
 import { writeModelsFile } from "./fixtures/models-fixtures.js";
 import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
-import { writeEvents } from "./fixtures/log-fixtures.js";
+import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 const NO_MODELS = "/nonexistent/tumwater-test-models.json"; // readPiProviders degrades to []
 
@@ -439,6 +439,25 @@ test("a claude model job's role view names its billing and subscription window",
   // A pi seam carries no billing line at all, whatever the account file says.
   writeConfig(dir, {});
   assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Billing:/m);
+});
+
+test("the role view names the fallback step a live orchestrator moved the role's tier to", () => {
+  const dir = root();
+  writeConfig(dir, { agent: "claude" });
+  writeClaudeAccount(dir, {
+    billing: "subscription",
+    observedAt: Date.now(),
+    windows: { five_hour: { status: "rejected", resetsAt: Date.now() + 3600_000, observedAt: Date.now() } },
+  });
+  assert.doesNotMatch(renderRoleMarkdown(rolePayload(dir, "feature", NO_MODELS)), /Running on fallback/);
+  const returnsAt = new Date(2026, 9, 16, 17, 40).getTime();
+  writeOrchestratorMarker(dir, [], {
+    chain: { default: { pair: "p/m", step: 2, of: 3, reason: "window", returnsAt } },
+  });
+  const p = rolePayload(dir, "feature", NO_MODELS);
+  assert.equal(p.chainStep?.step, 2);
+  assert.match(renderRoleMarkdown(p), /- Running on fallback 2 of 3 \(5h window used up, resets 17:40\)/);
+  assert.match(inspectMarkdownLines(p)[0] ?? "", /^- Running on fallback 2 of 3/);
 });
 
 // A pi author with a claude reviewer (PLANS.md "Mixed claude + pi fleets, part 3/4" gap 7):

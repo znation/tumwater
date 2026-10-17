@@ -30,7 +30,7 @@ export function writeMarker(file: string, value: unknown): void {
 export function writeOrchestratorMarker(
   root: string,
   roles: readonly string[],
-  opts: { pid?: number; build?: unknown; budget?: { spentUsd: number; capUsd: number } } = {},
+  opts: { pid?: number; build?: unknown; budget?: { spentUsd: number; capUsd: number }; chain?: unknown } = {},
 ): void {
   writeMarker(orchestratorStatePath(root), {
     pid: opts.pid ?? process.pid,
@@ -38,6 +38,7 @@ export function writeOrchestratorMarker(
     roles: [...roles],
     ...(opts.build !== undefined ? { build: opts.build } : {}),
     ...(opts.budget !== undefined ? { budget: opts.budget } : {}),
+    ...(opts.chain !== undefined ? { chain: opts.chain } : {}),
   });
 }
 

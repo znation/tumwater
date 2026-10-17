@@ -5,29 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 7d/7: The role view and doctor's `claude window` row say which fallback step the work moved to (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7c/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/roles/role-view.ts src/roles/role-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts src/text/datetime.ts src/ui/badges.ts and their tests)
-
-**Goal.** `tumwater role <id>` names only the declared budget fallback. Doctor's `claude window` check says "subscription claude model jobs wait until it resets" even when every tier moved. With part 7b/7's `chain` block, both say what is actually running.
-
-**Approach.**
-- src/roles/role-view.ts: `RoleViewPayload` gains `chainStep: ChainTierInfo | null`. `rolePayload` reads `readOrchestratorInfo(root)` and, while `orchestratorAlive`, sets it from `info.chain?.[roleSeamTier(cfg, role)] ?? null`.
-- src/roles/role-render.ts `renderRoleMarkdown`: when `chainStep` is set, add a line after the budget-fallback line: `Running on fallback <step> of <of> (<why><, resets HH:MM>)`. For the time, move badges.ts's private `clockHm` to src/text/datetime.ts as an export, and import it in both modules. `<why>` comes from a reason table:
-  - `window`: `<label> window used up`, using `claudeWindowLabel` of the account's rejected window, or `Claude window used up` when none is reported;
-  - `reserve`: `window reserve reached`;
-  - `cap`: `daily cap reached`;
-  - `step-cap`: `previous step's cap reached`;
-  - `overage`: `extra usage refused`;
-  - `demoted`: `previous step demoted`.
-  - `inspectMarkdownLines` gets the same line.
-- src/doctor/doctor-holds.ts `checkClaudeWindow(root, now, chain?)`: in the rejected branch, when `chain` holds `window`/`reserve` entries, the warn reads `<label> window rejected — <tiers> moved to fallbacks until it resets in <h>`, then `; <tiers> wait` for the claude-primary tiers with no entry. Without `chain` the text is unchanged. src/doctor/doctor.ts passes `orchestratorAlive(root, info) ? info?.chain : undefined`.
-
-**Files touched.** src/roles/role-view.ts, src/roles/role-render.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, src/text/datetime.ts, src/ui/badges.ts, test/role-view.test.ts, test/doctor-holds.test.ts.
-
-**Acceptance criteria.**
-- test/role-view.test.ts: an orchestrator.json with a live pid and `chain.default = { step: 2, of: 3, reason: "window", returnsAt }`, plus a rejected 5h window, renders `Running on fallback 2 of 3 (5h window used up, resets HH:MM)` for a default-tier role. With no orchestrator, no `Running on fallback` line is rendered.
-- test/doctor-holds.test.ts: a rejected window with a `chain` naming `default` contains `default moved to fallbacks`. Without `chain`, the existing expected text still matches.
-- `npm run test` passes.
-
 ### The steward's prompt lists how many full entries PLANS.md `## Done` and BUGS.md `## Fixed` hold past the ten the compression policy keeps, with the oldest ones' line ranges (planned 2026-10-16 by plan; independent of every other Planned entry; touches a new src/backlog/records-overflow.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts and src/roles/role-catalog.ts. The in-flight bugfix flake plan also adds one field to `buildTickPrompt` and one line to `assembleTickPrompt`, so whichever lands second rebases over adjacent lines)
 
 **Goal.** The steward charter (`id: "steward"` in src/roles/role-catalog.ts) keeps the ten most recent `## Done` / `## Fixed` entries verbatim and compresses older ones to one line each. On 2026-10-16, PLANS.md `## Done` held 272 full (`### `) entries and BUGS.md `## Fixed` held 304, so about 560 entries were past the line. The steward's recent compressions (`git log --grep='(steward)'`) each took ten entries. Every steward run also has to grep two files of several hundred KB to find out whether compression is due and where the oldest full entries sit, and nothing tells it how far behind it is when it weighs compression against its other moves. The harness can count this cheaply and synchronously from the files the `<backlog-index>` block already reads, the same way `renderBacklogStructureBlock` gives the clean role its evidence.
@@ -1858,6 +1835,29 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - a `bugfix-2` prompt carries the note.
 - The existing `checkFlakyChecks` tests in test/doctor-checks.test.ts pass unchanged.
 - `npm run test` passes, including the plain-terms vocabulary guard on prompt text.
+
+### Fallback chain, part 7d/7: The role view and doctor's `claude window` row say which fallback step the work moved to (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7c/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/roles/role-view.ts src/roles/role-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts src/text/datetime.ts src/ui/badges.ts and their tests) (done 2026-10-16)
+
+**Goal.** `tumwater role <id>` names only the declared budget fallback. Doctor's `claude window` check says "subscription claude model jobs wait until it resets" even when every tier moved. With part 7b/7's `chain` block, both say what is actually running.
+
+**Approach.**
+- src/roles/role-view.ts: `RoleViewPayload` gains `chainStep: ChainTierInfo | null`. `rolePayload` reads `readOrchestratorInfo(root)` and, while `orchestratorAlive`, sets it from `info.chain?.[roleSeamTier(cfg, role)] ?? null`.
+- src/roles/role-render.ts `renderRoleMarkdown`: when `chainStep` is set, add a line after the budget-fallback line: `Running on fallback <step> of <of> (<why><, resets HH:MM>)`. For the time, move badges.ts's private `clockHm` to src/text/datetime.ts as an export, and import it in both modules. `<why>` comes from a reason table:
+  - `window`: `<label> window used up`, using `claudeWindowLabel` of the account's rejected window, or `Claude window used up` when none is reported;
+  - `reserve`: `window reserve reached`;
+  - `cap`: `daily cap reached`;
+  - `step-cap`: `previous step's cap reached`;
+  - `overage`: `extra usage refused`;
+  - `demoted`: `previous step demoted`.
+  - `inspectMarkdownLines` gets the same line.
+- src/doctor/doctor-holds.ts `checkClaudeWindow(root, now, chain?)`: in the rejected branch, when `chain` holds `window`/`reserve` entries, the warn reads `<label> window rejected — <tiers> moved to fallbacks until it resets in <h>`, then `; <tiers> wait` for the claude-primary tiers with no entry. Without `chain` the text is unchanged. src/doctor/doctor.ts passes `orchestratorAlive(root, info) ? info?.chain : undefined`.
+
+**Files touched.** src/roles/role-view.ts, src/roles/role-render.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, src/text/datetime.ts, src/ui/badges.ts, test/role-view.test.ts, test/doctor-holds.test.ts.
+
+**Acceptance criteria.**
+- test/role-view.test.ts: an orchestrator.json with a live pid and `chain.default = { step: 2, of: 3, reason: "window", returnsAt }`, plus a rejected 5h window, renders `Running on fallback 2 of 3 (5h window used up, resets HH:MM)` for a default-tier role. With no orchestrator, no `Running on fallback` line is rendered.
+- test/doctor-holds.test.ts: a rejected window with a `chain` naming `default` contains `default moved to fallbacks`. Without `chain`, the existing expected text still matches.
+- `npm run test` passes.
 
 ### Fallback chain, part 7c/7: The status badge, the dashboard side card, the TUI header and the team alerts name each tier's fallback step (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7d/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/fleet-alerts.ts src/ui/gui/gui-client-operator.ts and their tests) (done 2026-10-16)
 

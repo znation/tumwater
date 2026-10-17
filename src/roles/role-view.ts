@@ -34,6 +34,7 @@ import { readTextOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
 import { canonicalRoleId } from "./legacy-role-ids.js";
+import { orchestratorAlive, readOrchestratorInfo, type ChainTierInfo } from "../fleet/orchestrator-info.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -98,6 +99,9 @@ export interface RoleViewPayload {
   /** The primary subscription window's type (`five_hour`), present only for a subscription
    * reading that reported a window — the renderer's "(5h window)". */
   billingWindow?: string;
+  /** Where the running orchestrator has this role's tier moved on its fallback chain (its
+   * `chain` block), or null when no orchestrator is alive or the tier is on its primary. */
+  chainStep: ChainTierInfo | null;
   /** The effective min-tick interval: the role's override or the global value. */
   minRunIntervalSeconds: number;
   /** The roles.<id>.instructions override verbatim, or null when unset. */
@@ -196,6 +200,8 @@ export function rolePayload(
   const claudeInPlay =
     effective.agent === "claude" || (cfg.review.enabled && reviewRunConfig(cfg).agent === "claude");
   const account = claudeInPlay ? readClaudeAccount(root) : null;
+  const info = readOrchestratorInfo(root);
+  const chainStep = (orchestratorAlive(root, info) && info?.chain?.[roleSeamTier(cfg, role)]) || null;
   const billingWindow = account?.billing === "subscription" ? claudeWindowEntries(account)[0]?.type : undefined;
   // pi's own saved default for a pi seam that resolves no model, read once beside the models
   // catalog this collector already takes as a seam (piSettingsPath). The config's `thinking`
@@ -324,6 +330,7 @@ export function rolePayload(
     modelFallback: modelFallbackView(episode, cfg, role),
     ...(account !== null ? { billing: account.billing } : {}),
     ...(billingWindow !== undefined ? { billingWindow } : {}),
+    chainStep,
     ...roleImageInfo(cfg, role, modelsPath, readImageProbeCache(root)),
     minRunIntervalSeconds: effective.minRunIntervalSeconds,
     instructions: cfg.roles[role]?.instructions ?? null,

@@ -18,6 +18,13 @@ export function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
+/** The local wall-clock `HH:MM` of an instant, the hours/minutes-only shape the burn-rate
+ * forecast, the window badge, and the role view's fallback line share. */
+export function clockHm(ms: number): string {
+  const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /** Whole seconds between two epoch-ms instants, rounded to the nearest second: `secondsSince`
  * clamps at zero (an age never goes negative when the clock skews), `secondsUntil` clamps at
  * zero the same way for the future direction (a countdown never reads negative once its

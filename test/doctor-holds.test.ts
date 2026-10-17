@@ -237,6 +237,22 @@ test("checkClaudeWindow: a rejected subscription window warns with the countdown
   assert.ok(out.detail.includes(humanSeconds(7200)));
 });
 
+test("checkClaudeWindow: a chain naming a moved tier says it moved to fallbacks", () => {
+  const root = tmpdir("tw-hold-");
+  writeClaudeAccount(root, {
+    billing: "subscription",
+    observedAt: CW_NOW,
+    windows: { five_hour: { status: "rejected", resetsAt: CW_NOW + 7_200_000, observedAt: CW_NOW } },
+  });
+  const chain = { default: { pair: "p/m", step: 2, of: 3, reason: "window" as const } };
+  const out = checkClaudeWindow(root, CW_NOW, chain);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /5h window rejected — default moved to fallbacks until it resets in/);
+  assert.doesNotMatch(out.detail, /wait/);
+  const cfg = { model: { default: "claude/claude-sonnet-5-5", strong: "claude/claude-opus-5-5" } } as unknown as TumwaterConfig;
+  assert.match(checkClaudeWindow(root, CW_NOW, chain, cfg).detail, /; small, strong wait$/);
+});
+
 test("checkClaudeWindow: overage, an elapsed reset, a warning, and no windows are all ok", () => {
   const root = tmpdir("tw-hold-");
   const seed = (w: Record<string, { status: string; resetsAt?: number; utilization?: number; isUsingOverage?: boolean; observedAt: number }>) =>

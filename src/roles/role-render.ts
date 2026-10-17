@@ -1,8 +1,9 @@
 // vocabulary: plain
 import { agree, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, usd } from "../text/format.js";
-import { formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
+import { clockHm, formatTimestamp, humanSeconds, nextRunPhrase, secondsSince, secondsUntil } from "../text/datetime.js";
 import { claudeWindowLabel } from "../agent/claude/claude-account.js";
+import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
 import { yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { quietWindowEnd } from "../scheduling/quiet-hours.js";
 import { isAgentId } from "../config/model-selector.js";
@@ -41,6 +42,13 @@ function fencedOrNone(label: string, text: string | null, noneNote = "none"): st
  * `renderRoleMarkdown` splices these at the same position, so the extracted function and the
  * full document cannot drift. */
 export function inspectMarkdownLines(p: RoleViewPayload): string[] {
+  const running = chainStepLine(p);
+  return [...(running ? [running, ""] : []), ...inspectBodyLines(p)];
+}
+
+/** The notebook, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
+ * its own Fleet lines, which already carry the fallback-step bullet. */
+function inspectBodyLines(p: RoleViewPayload): string[] {
   const lines: string[] = [];
   lines.push(
     ...fencedOrNone(
@@ -110,6 +118,33 @@ function fallbackPairLabel(
   }
   if (fb.provider !== undefined) return fb.provider;
   return agentDefault;
+}
+
+/** Why a tier moved down its fallback chain, as the role view words it. */
+function chainReasonPhrase(reason: ChainTierInfo["reason"], windowType: string | undefined): string {
+  switch (reason) {
+    case "window":
+      return `${windowType !== undefined ? claudeWindowLabel(windowType) : "Claude"} window used up`;
+    case "reserve":
+      return "window reserve reached";
+    case "cap":
+      return "daily cap reached";
+    case "step-cap":
+      return "previous step's cap reached";
+    case "overage":
+      return "extra usage refused";
+    case "demoted":
+      return "previous step demoted";
+  }
+}
+
+/** The `Running on fallback <step> of <of> (<why>, resets HH:MM)` bullet, or null when the
+ * role's tier is on its primary. */
+function chainStepLine(p: RoleViewPayload): string | null {
+  const c = p.chainStep;
+  if (!c) return null;
+  const resets = c.returnsAt !== undefined ? `, resets ${clockHm(c.returnsAt)}` : "";
+  return `- Running on fallback ${c.step} of ${c.of} (${chainReasonPhrase(c.reason, p.billingWindow)}${resets})`;
 }
 
 /** One recent tick outcome as a Markdown bullet line — `<time> · <result> · <span> —
@@ -207,6 +242,8 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
     const pair = fallbackPairLabel(p.fallback, agentDefault(p));
     lines.push(`- Over-cap model: ${pair} (${p.fallbackFree ? "free" : "priced"})`);
   }
+  const running = chainStepLine(p);
+  if (running) lines.push(running);
   // The claude seam's billing (plans/agent-backends.md §7/§8, PLANS.md part 6d/7): absent on
   // a pi seam, so its role view is byte-identical to before.
   if (p.billing) {
@@ -255,6 +292,6 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
       "none — the director is driven by its inbox, not by instructions",
     ),
   );
-  lines.push(...inspectMarkdownLines(p));
+  lines.push(...inspectBodyLines(p));
   return lines.join("\n").trimEnd();
 }

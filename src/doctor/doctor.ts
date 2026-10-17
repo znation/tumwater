@@ -92,7 +92,7 @@ export async function runDoctor(
     { name: "pause", ...checkPause(root) },
     { name: "quiet hours", ...checkQuietHours(config) },
     { name: "budget", ...checkBudget(root, config, (orchestratorAlive(root, info) && info?.budget) || null) },
-    { name: "claude window", ...checkClaudeWindow(root) },
+    { name: "claude window", ...checkClaudeWindow(root, undefined, (orchestratorAlive(root, info) && info?.chain) || undefined, config) },
     { name: "provider waits", ...checkProviderHolds(root) },
     { name: "maintenance allowance", ...checkMaintenanceQuota(root, config, orchestratorAlive(root, info)) },
     { name: "provider concurrency", ...checkProviderConcurrency(config, root) },

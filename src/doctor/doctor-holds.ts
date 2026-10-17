@@ -1,7 +1,9 @@
 // vocabulary: plain
 import { roleLabel } from "../roles/role-labels.js";
 import { pausedRoles, pausedRolesUntil, standingFleetPause } from "../fleet/fleet-state.js";
-import type { TumwaterConfig } from "../config/config-schema.js";
+import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/config-schema.js";
+import { withModelOverrides } from "../config/config-views.js";
+import type { ChainTierInfo } from "../fleet/orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
@@ -156,13 +158,30 @@ export function checkMaintenanceQuota(
  * claude seam until the window resets; otherwise the most constrained window's state is reported
  * as ok (a rejected window spending overage reads `rejected` here: overage spends, it does not
  * hold). API-billed claude never holds. */
-export function checkClaudeWindow(root: string, now: number = Date.now()): CheckOutcome {
+export function checkClaudeWindow(
+  root: string,
+  now: number = Date.now(),
+  chain?: Partial<Record<ModelTier, ChainTierInfo>>,
+  config?: TumwaterConfig,
+): CheckOutcome {
   const account = readClaudeAccount(root, now);
   if (account?.billing !== "subscription") return okOutcome("no subscription window reported");
   const held = claudeWindowObservation(account, now);
   if (held?.kind === "subscription-window" && held.windowType !== undefined && held.resetsAt !== undefined) {
+    const label = claudeWindowLabel(held.windowType);
+    const resets = humanSeconds(secondsUntil(held.resetsAt, now));
+    const moved = MODEL_TIERS.filter((t) => {
+      const reason = chain?.[t]?.reason;
+      return reason === "window" || reason === "reserve";
+    });
+    if (moved.length > 0) {
+      const waiting = MODEL_TIERS.filter((t) => !chain?.[t] && config !== undefined && withModelOverrides(config, t, {}).agent === "claude");
+      return warnOutcome(
+        `${label} window rejected — ${moved.join(", ")} moved to fallbacks until it resets in ${resets}${waiting.length > 0 ? `; ${waiting.join(", ")} wait` : ""}`,
+      );
+    }
     return warnOutcome(
-      `${claudeWindowLabel(held.windowType)} window rejected — subscription claude model jobs wait until it resets in ${humanSeconds(secondsUntil(held.resetsAt, now))}`,
+      `${label} window rejected — subscription claude model jobs wait until it resets in ${resets}`,
     );
   }
   const top = claudeWindowEntries(account)[0];
