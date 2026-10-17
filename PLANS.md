@@ -1135,6 +1135,46 @@ code; no server or page change.
   `ArrowUp` reaches it, the next stays).
 - `npm run test` passes.
 
+### The GUI Usage view charts each day's red full-suite merge checks beside the merge check median (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region; the GUI half of the red-check signal whose report half landed 2026-10-17 as `ReportDay.checkFailures`; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
+
+**Goal.** `tumwater report` now counts each day's red full-suite merge checks
+(`ReportDay.checkFailures`) and the CLI prints a `**Red merge checks:**` line beside its median,
+but the dashboard's Usage view draws only the passing `Merge check median` chart
+(`chartCheckMedian`). Add a paired `Red merge checks` count chart beside it, so a day whose suite
+went red before passing shows as a bar on the dashboard too — the report plan's entry left this
+GUI chart to a later plan.
+
+**Approach.** All changes are in the `report-chart` region of
+`src/ui/gui/gui-client-report.ts` and the Usage view's block list in the same file; no server
+change — `ReportDay.checkFailures` already flows through the `/api/report` JSON the view renders.
+
+1. In the `report-chart` region, right after `chartCheckMedian`, add
+   `chartCheckFailures(data)`, built through `reportSvg` like `chartCommits`: one segment per day,
+   `value: Number(d.checkFailures) || 0`, `color: "#ef4444"` (`REPORT_PALETTE`'s red), and a title
+   `d.date + ": " + plural(Number(d.checkFailures) || 0, "red merge check")`, on the `countAxis`
+   with the integer axis flag `true`. Doc it as the day's failed full-suite checks from
+   `checkFailures`; a day without one keeps its empty slot, as `chartCheckMedian` does.
+2. Right after `seriesHasCheckMedian`, add `seriesHasCheckFailures(data)` returning
+   `data.series.some((d) => Number(d.checkFailures) > 0)`, doc'd as the gate for the element — the
+   red sibling of `seriesHasCheckMedian`.
+3. In the `usage` view's render chain, immediately after the `seriesHasCheckMedian(...)` block,
+   add `(seriesHasCheckFailures(d) ? block("Red merge checks", chartCheckFailures(d), "per day · failed full-suite checks") : "") +`, so the two merge-check charts sit together in the grid.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-report.test.ts`: a new test, "the Red merge checks chart draws one bar per red
+  day and seriesHasCheckFailures gates it", modelled on "the Merge check median chart draws one
+  bar per checked day and seriesHasCheckMedian gates it". With `mkDay("2026-09-01", {
+  checkFailures: 3 })`, a plain `mkDay("2026-09-02")` and `mkDay("2026-09-03", { checkFailures: 1
+  })`, `chartCheckFailures`'s rect titles deep-equal `["2026-09-01: 3 red merge checks",
+  "2026-09-03: 1 red merge check"]`; `seriesHasCheckFailures` is false when no day carries a
+  count and true for that data.
+- The test extracts `chartCheckFailures`/`seriesHasCheckFailures` through `clientScope` with the
+  same `["format", "report-chart"]` regions the neighbouring median test uses, so a missing or
+  misnamed builder fails the test.
+- `npm run test` passes.
+
 ## Done
 
 ### Each day's red full-suite merge checks are counted in the `tumwater report` day report (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight problems-only Health view plan; the report half of a red-check signal whose GUI chart is left to a later plan, as the project did for `Merge check median`; touches src/build/build-check-events.ts, src/report/report-data.ts, src/report/report-render.ts, docs/cli.md and their tests) — done 2026-10-17 by the feature role
