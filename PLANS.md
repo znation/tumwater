@@ -1153,6 +1153,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The GUI Usage view charts `Revisions by role` as a stacked per-role element (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and of the in-flight `Merge check median` plan, which touches only `src/report/`)
+
+**Goal.** `tumwater report` prints a `Revisions by role` line in both renders (`src/report/report-render.ts`), and each series day already carries the count to the dashboard as `ReportDay.revisionsByRole` (`src/report/report-data.ts`; set in the team branch of `collectReport` when non-empty, narrowed with `narrowToRole` in the role-scoped branch). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) charts rejections, fallbacks, image reroutes, failed runs and merge failures per role, but not revisions, so the rework rounds a role spends re-applying rejected changes are invisible on the dashboard. Add one stacked per-role chart for it, the same way as `chartFailedRunsByRole` (PLANS.md Done: "The GUI Usage view charts `Failed runs by role` and `Merge failures by role`").
+
+**Approach.** All changes go in the browser script `GUI_CLIENT_REPORT_JS`, inside the `report-chart:start` … `report-chart:end` region, so `clientScope` in the tests can load the builders.
+- `reportRoleOrder`: seed zero-count rows for the roles in `d.revisionsByRole || {}`, the same line shape as the `rejectionsByRole` seed, with the `Object.hasOwn` guard.
+- Add `chartRevisionsByRole(data)` = `roleStackChart(data, "revisionsByRole", (n) => plural(n, "revision"), countAxis, true)`, with a one-line comment in the style of its siblings, placed right after `chartRejectionsByRole`.
+- In the view's `render`, right after the `Rejections by role` block, append `block("Revisions by role", chartRevisionsByRole(d))` only when `seriesHasAny(d, "revisionsByRole")`. A window with no revisions renders the same elements it renders today.
+- Role scope needs no extra code: `report-data.ts` already narrows `revisionsByRole` for a scoped report.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`. No server, report-data, or CLI change.
+
+**Acceptance criteria.**
+- New test in `test/gui-client-report.test.ts`, modeled on "the Failed runs and Merge failures charts stack per role and seriesHasAny gates them". It loads `reportRoleOrder`, `chartTicksByRole`, `chartRevisionsByRole` and `seriesHasAny` through `clientScope(["format", "report-chart"], …)` and checks:
+  - A role that appears only in `revisionsByRole` gets a `[role, 0]` row from `reportRoleOrder`.
+  - The chart draws one `<rect>` per (day, role) with a nonzero count, with titles like `2026-09-01 · feature: 2 revisions` and `… 1 revision`.
+  - The chart's legend equals `chartTicksByRole`'s legend.
+  - `seriesHasAny(d, "revisionsByRole")` is false for a series without the map (or only zero counts) and true once a day carries a nonzero count.
+- The existing tests in `test/gui-client-report.test.ts` pass unchanged.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater report`'s day report gains a `Merge check median` line giving each day's median passing merge-check time, so the operator sees the suite slowing over days (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and the in-flight GUI failed-runs chart — touches src/report/, src/build/build-check-events.ts and tests only, and leaves src/doctor/ and src/ui/ alone) — done 2026-10-16
