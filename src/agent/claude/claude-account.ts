@@ -50,7 +50,7 @@ export interface ClaudeAccount {
 }
 
 /** True when a failed run ended on a subscription usage window the account reported as
- * `rejected` without overage — the signal the fleet hold throttles on (plans/agent-backends.md
+ * `rejected` without overage — the signal the team hold throttles on (plans/agent-backends.md
  * §8). Such a run is a transient of the world, not a failure of the session: its session and
  * worktree edits are kept and resumed after `resetsAt` (part 6e) rather than committed as
  * partial work or reset. API-billed claude and overage are budget/fallback matters, not a
@@ -71,7 +71,7 @@ export function subscriptionWindowRejected(
  * last. With a `reserve` (config `claudeWindowReserve`), a window whose utilization has reached
  * its type's fraction counts too, and comes back with `reserve: true`; a rejected or overage
  * window outranks a reserve one, so the flag is set only when no window is used up for real.
- * The budget gate's window move (pollBudgetGate) reads the default; the fleet hold
+ * The budget gate's window move (pollBudgetGate) reads the default; the team hold
  * (claudeWindowObservation) passes `includeOverage: false`, because overage never holds a seam.
  * Only subscription billing produces one; a missing account reads null. */
 export function claudeWindowUsedUp(

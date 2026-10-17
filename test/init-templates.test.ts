@@ -83,7 +83,7 @@ test("initProject --template python-cli seeds preamble+plans+dirs and reports th
 test("initProject --template leaves existing starter directories alone and reports them as leftAlone", async () => {
   const repo = makeRepo();
   // A repo that already carries the template's starter directories — with real content in
-  // them, since the fleet's own ticks would have written code there. Init must not mkdir
+  // them, since the team's own ticks would have written code there. Init must not mkdir
   // over them, must not empty them, and must report them the way it reports existing files:
   // leftAlone, not created.
   fs.mkdirSync(path.join(repo, "src"));

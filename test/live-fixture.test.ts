@@ -1,7 +1,7 @@
 /** scripts/live-fixture.mjs — the shared seeder behind the hand-run bench-live and diff-check
  * dashboard scripts. It had no test of its own (grep for its exports found none), yet both
  * scripts depend on it for the same two things that drift silently: the compiled role set and
- * the on-disk fleet shape. This file drives its three exports — the dist guard's fail-fast, the
+ * the on-disk team shape. This file drives its three exports — the dist guard's fail-fast, the
  * role catalog it delegates to the compiled harness, and the seeder both scripts consume.
  *
  * requireDistBuild's failure path calls process.exit(1), so both of its outcomes are exercised
@@ -22,7 +22,7 @@ const FIXTURE = fileURLToPath(new URL("../../scripts/live-fixture.mjs", import.m
 interface LiveFixture {
   requireDistBuild(relModule: string, purpose: string): void;
   distRoleIds(): Promise<string[]>;
-  seedLiveFleet(root: string, roles: readonly string[]): void;
+  seedLiveTeam(root: string, roles: readonly string[]): void;
 }
 
 /** Imported lazily by URL (the module lives outside dist/): a computed specifier keeps the
@@ -58,10 +58,10 @@ test("distRoleIds returns the compiled catalog's role ids", async () => {
   assert.deepEqual(await distRoleIds(), allRoleIds());
 });
 
-test("seedLiveFleet writes the orchestrator marker, one running state per role, and a pi log tail", async () => {
-  const { seedLiveFleet } = await loadFixture();
+test("seedLiveTeam writes the orchestrator marker, one running state per role, and a pi log tail", async () => {
+  const { seedLiveTeam } = await loadFixture();
   const root = tmpdir("live-fixture-");
-  seedLiveFleet(root, ["alpha", "beta"]);
+  seedLiveTeam(root, ["alpha", "beta"]);
 
   const state = path.join(root, ".tumwater", "state");
   const marker = JSON.parse(fs.readFileSync(path.join(state, "orchestrator.json"), "utf8"));

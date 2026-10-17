@@ -15,7 +15,7 @@ export type { Role };
 
 /** The director loop's id — a target that is not in ROLES (allRoleIds appends it) and is
  * driven by operator prompts, not a find prompt: an un-targeted `tumwater prompt` queues
- * there. It keeps running through a fleet-wide `pause` (which stops only the role loops);
+ * there. It keeps running through a team-wide `pause` (which stops only the role loops);
  * an un-targeted `stop` signals the whole orchestrator, director included. */
 export const DIRECTOR_ROLE = "director";
 
@@ -93,7 +93,7 @@ export function roleTier(role: string): number {
  * by the gate's pre-check, so spending an authoring run on it is pure waste. Exempt: director
  * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
  * — its tick runs the suite per "leave the project working" and can fix a red main through the
- * existing pre-merge gate; blocking it would leave only humans able to unblock the fleet), and
+ * existing pre-merge gate; blocking it would leave only humans able to unblock the team), and
  * plan/readme/steward/qa/selfcheck (markdown-only charter — their diffs are exempt from the build
  * pre-check via review.exemptPaths, so a red main does not block them). */
 export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
@@ -148,7 +148,7 @@ export function unknownRoleMessage(role: string, validIds: readonly string[]): s
  * role-specific find-something-to-do text, and the title is what identifies the loop inside
  * its own prompt (`You are the "<name>" loop (user-defined loop)`) and commit context.
  * Custom loops run the `default` tier — the harness cannot judge what an arbitrary loop's
- * work needs, so it gets the fleet's ordinary model. */
+ * work needs, so it gets the team's ordinary model. */
 export function customRole(name: string, task: string): Role {
   return { id: name, title: "custom role", find: task, tier: "default" };
 }

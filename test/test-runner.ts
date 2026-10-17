@@ -259,7 +259,7 @@ const SUITE_XCRUN_TIMEOUT_MS = 10_000;
  * real binary (`xcrun --find git`, the same file the stub would exec) goes first on PATH
  * instead. Any other git — Linux, Homebrew — is left alone.
  *
- * The harness's variables: a fleet's build checks and pi tool calls run with the harness's own
+ * The harness's variables: a team's build checks and pi tool calls run with the harness's own
  * environment, so a suite they start inherits what the operator exported, the supervisor set,
  * and the tick's own run exported, while a suite run by hand does not. Each one the harness
  * resolves out of the environment is dropped here, so a suite a tick starts exercises exactly

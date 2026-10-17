@@ -253,9 +253,3 @@ export function describeToolCall(toolName: string, args: unknown): string {
 export function moreSuffix(count: number): string {
   return count > 0 ? ` (+${count} more)` : "";
 }
-
-/** @deprecated Use teamPausePhrase. */
-export const fleetPausePhrase = teamPausePhrase;
-
-/** @deprecated Use teamResumePhrase. */
-export const fleetResumePhrase = teamResumePhrase;

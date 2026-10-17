@@ -103,7 +103,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
   if (rows.length === 0) {
     // A grep that matched nothing must not borrow the empty-log prose: `no runs yet` and
     // `no runs in 2h` are statements about the LOG and the WINDOW, and both are false when
-    // rows were scanned and filtered out — the operator would read a quiet fleet where the
+    // rows were scanned and filtered out — the operator would read a quiet team where the
     // truth is `the ticks are there, none match`. The logs --grep rule (its `no events
     // matching "<pattern>"`, src/cli/log-commands.ts) names the pattern instead; --json stays
     // a bare {"rows":[]} document above, never prose in either form.
@@ -128,7 +128,7 @@ export async function cmdHistory(root: string, args: string[]): Promise<void> {
     const widths = widestWidths(rows);
     say(rows.map((r) => renderRow(r, widths)).join("\n"));
   }
-  // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows
+  // A sparse window is never mistaken for a quiet team — but the note only ever rides rows
   // (an empty window returned above), it never touches --json output, and it is the shared
   // SPARSE_WINDOW_NOTE wording: the oldest retained event being inside the window is exactly
   // the unproven case, whether the cause is rotation or idleness.

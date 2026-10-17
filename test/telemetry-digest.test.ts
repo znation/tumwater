@@ -45,7 +45,7 @@ test("a corrupted events-log path renders the unreadable alarm and never breaks 
 test("a log of malformed lines renders the unreadable alarm: the feed is named, not silently empty", () => {
   const root = makeRepo();
   // Torn or corrupt lines (a crash mid-write) fail to parse; with no parseable line left the
-  // digest must say the feed could not be read rather than report a quiet fleet.
+  // digest must say the feed could not be read rather than report a quiet team.
   writeEvents(root, ["{not json", "{ also broken"]);
   const digest = telemetryDigest(root);
   assert.ok(digest, "malformed lines never take the degrade-to-undefined path");
@@ -56,7 +56,7 @@ test("a log of malformed lines renders the unreadable alarm: the feed is named, 
 
 test("a missing log reads as idle while a present-but-corrupt feed is named unreadable", () => {
   // The bug: both shapes rendered the same "no events retained", so the telemetry role's own
-  // evidence could not tell "the fleet was idle" from "I could not read the log".
+  // evidence could not tell "the team was idle" from "I could not read the log".
   const missing = makeRepo();
   assert.match(telemetryDigest(missing) ?? "", /^no events in the last 1d$/m);
 

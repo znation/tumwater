@@ -357,7 +357,7 @@ test("workLanded: feature/bugfix/director, operator and human subjects count; ot
     ]),
     false,
   );
-  // A human commit (no tumwater( prefix) is work: the world changed in a way the fleet
+  // A human commit (no tumwater( prefix) is work: the world changed in a way the team
   // cannot generate itself.
   assert.equal(workLanded(["fix the flaky test by hand"]), true);
   assert.equal(workLanded(["tumwater(operator): Edit brief"]), true);
@@ -437,7 +437,7 @@ test("deferTick: an open backlog defers idle maintenance even when work landed; 
   assert.equal(deferTick(base, "organize", false, true, false, NOW), true);
 
   // Pending business (any non-no_change outcome) never defers, backlog open or not — a loop's
-  // own unfinished work must not stall behind the fleet's.
+  // own unfinished work must not stall behind the team's.
   for (const result of ["changed", "rejected", "error", "refused", "merge_conflict"] as const) {
     assert.equal(deferTick({ ...base, lastResult: result }, "organize", true, true, false, NOW), false);
     assert.equal(deferTick({ ...base, lastResult: result }, "organize", false, true, false, NOW), false);

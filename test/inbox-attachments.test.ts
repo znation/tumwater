@@ -172,7 +172,7 @@ test("submitRolePrompt with images queues text + reference lines and saves the f
   assert.ok(path.isAbsolute(image), "the reference is absolute");
   assert.ok(fs.existsSync(image), "the referenced file exists on disk");
   // The director path shares the mechanics, queue at the inbox root.
-  const directorQueued = submitRolePrompt(root, "director", "fleet-wide look", [png()]);
+  const directorQueued = submitRolePrompt(root, "director", "team-wide look", [png()]);
   assert.match(directorQueued, /\[image attached: .+\]/);
   assert.ok(fs.existsSync(directorQueued.split("\n")[2]!.slice("[image attached: ".length, -1)));
 });

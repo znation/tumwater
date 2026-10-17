@@ -55,7 +55,7 @@ export interface VettedLanding extends AbortableLanding, FoldsUsage {
 }
 
 /** The per-poll state the pipeline reads from the scheduler, resolved once by the poll loop.
- * The scheduler keeps WHEN to drain (after the gates, never while a restart or a fleet hold is
+ * The scheduler keeps WHEN to drain (after the gates, never while a restart or a team hold is
  * pending); landing-drain.ts owns HOW — from the queue to each vet and the merge. */
 export interface LandingPipelineContext {
   root: string;
@@ -84,7 +84,7 @@ export interface LandingPipelineContext {
    * fallback provider key for a pi seam that names no model (plans/provider-concurrency.md §2),
    * read by a landing's review and resolver runs just as a role tick reads it. */
   piDefault?: ModelSelector | null;
-  /** The scheduler's start gate for new work (a pending restart, a fleet hold), re-checked the
+  /** The scheduler's start gate for new work (a pending restart, a team hold), re-checked the
    * moment a parked vet is granted its permit — the one moment it actually starts, exactly as a
    * parked role tick re-checks it (tick-timing.ts's runTimedRoleTick): a vet queued before the
    * hold must not start a reviewer mid-drain or into the storm. A held vet hands its permit
@@ -110,7 +110,7 @@ export interface LandingPipeline {
 }
 
 /** A fresh pipeline: nothing in flight anywhere — no vet running, no approved change waiting,
- * no merge holding main. The orchestrator builds one per fleet start (orchestrator.ts). */
+ * no merge holding main. The orchestrator builds one per team start (orchestrator.ts). */
 export function newLandingPipeline(): LandingPipeline {
   return { vetting: new Map(), vetted: new Map(), merge: null };
 }
@@ -131,9 +131,9 @@ export function abortableLandings(p: LandingPipeline): AbortableLanding[] {
 
 /** Wire harness shutdown to one task's own controller — through the shared register/abort
  * race helper, so an already-fired signal aborts at once. Returns the detach function. The
- * fleet shutdown signal outlives every landing, so each task that settles while the signal is
+ * team shutdown signal outlives every landing, so each task that settles while the signal is
  * still live must detach in its own finally; without that, the one long-lived signal
- * accumulates a listener (and the retained controller behind it) for every landing the fleet
+ * accumulates a listener (and the retained controller behind it) for every landing the team
  * ever runs, growing without bound until the shutdown it was waiting for. */
 export function abortOnShutdown(signal: AbortSignal, controller: AbortController): () => void {
   return runOnAbort(signal, () => controller.abort());

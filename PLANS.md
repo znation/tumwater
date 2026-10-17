@@ -21,48 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 6/6: Finish the fleet rename and add the retired-names guard (planned 2026-10-16 by user; requires part 5/6 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and scripts/ and the new test/retired-names.test.ts)
-
-**Goal.** No identifier, file name, comment or test name in src/ or test/ says fleet. A new guard, test/retired-names.test.ts, fails the suite if a retired identifier or file-name stem comes back. Later Code-names series append their own families to it.
-
-**Approach.**
-- **Finish the rename.** Apply the fleet row of "Code names" (`fleet` → `team` in identifiers, comments, test names, temp-dir prefixes and assertion messages) to every remaining file. That covers `src/tick/`, `src/scheduling/`, `src/landing/`, `src/failure/`, `src/history/`, `src/build/`, `src/redeploy/`, `src/roles/`, `src/prompt/`, `src/review/`, `src/verdict/`, `src/agent/`, `src/git/`, `src/files/`, `src/inbox/`, `src/init/`, `src/pi-extension/` and `src/backlog/`, their tests, `test/fixtures/*`, `test/affected-tests.ts`, `test/test-runner.ts`, and the comments in `scripts/*.mjs`. Find the leftovers with `git grep -niE 'fleet' -- src test scripts`.
-- **Retire the aliases.** Move src/failure's calls to `teamPausePhrase` and `teamResumePhrase`. Then delete every remaining fleet `@deprecated` alias: `git grep -n '@deprecated Use' -- src test` must list no team name.
-- **New guard, `test/retired-names.test.ts`.** It is offline: no git and no network.
-  - Data: `interface RetiredFamily { family: string; words: readonly string[]; fileWords: readonly string[]; allow: readonly string[] }`, seeded as `const RETIRED: readonly RetiredFamily[] = [{ family: "fleet → team", words: ["fleet", "fleets"], fileWords: ["fleet"], allow: [] }]`. A one-line comment says that each later Code-names series appends its family.
-  - Walk `src/` and `test/` from the repo root, found the way test/exports.test.ts finds it (walk up to the directory holding package.json and src/), so the test works from test/ and from dist/test/.
-  - File check: split each repo-relative path on `/`, `-`, `_` and `.` into lowercase words. A word in `fileWords` fails.
-  - Identifier check: parse each `.ts`/`.tsx` with the TypeScript compiler API, the way test/vocabulary.test.ts loads it, and collect every Identifier and PrivateIdentifier. For each `String.raw`-tagged template (the dashboard's browser code), parse the template text as JavaScript with each `${…}` replaced by `0`, and collect its identifiers too.
-  - Split each identifier into lowercase words at camelCase and PascalCase boundaries, `_`, `$` and digits: `GUI_CLIENT_FLEET_JS` → gui, client, fleet, js. A word in `words` fails, unless one of the exemptions below applies.
-  - Never check string literals or comments. The vocabulary guard owns literals, and legacy readers mostly name old forms as strings.
-  - **Exemptions.** Code that names the old forms on purpose stays legal, and each exemption is visible where it applies:
-    - `LEGACY_FILES: readonly string[]`: repo-relative files whose identifiers the guard skips entirely. They still get the file-name check. Seed it with the files that exist to name old forms: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts` (`CONFIG_KEY_RENAMES`) and `src/roles/legacy-role-ids.ts`, plus each one's own test file. List only files that exist (`git ls-files`), and add a one-line reason comment per entry. A test asserts every listed file exists, so the list cannot rot.
-    - **Identifiers whose first word is `legacy`** are skipped, for example the state series' `legacyLand*` path helpers for the old `land-queue/` dir and `refs/tumwater/landing/` refs, or a `LEGACY_…` table.
-    - **A line ending in `// retired-name-ok: <reason>`** is skipped, and so is every line between `// retired-name-ok:start <reason>` and `// retired-name-ok:end`. Use these inside mixed files: the legacy-name table in `normalizeLegacyEvent`'s module (src/events/), the state loaders' legacy-key maps, and test fixtures that deliberately write old event names or old state keys as object-literal keys. Add the markers in this part wherever the scan flags such a line.
-    - `allow` on a family: exact identifiers the family keeps everywhere, each with a reason comment.
-  - Any other hit is a missed rename: rename it, never exempt it.
-  - The failure message lists `path:line identifier (family)` for every hit.
-  - Self-test on in-memory fixtures:
-    - flagged: `pauseFleet`, and a `renderFleet` defined inside a `String.raw` template;
-    - not flagged: fleet inside a string and inside a comment, `fleetingly` (a single word), `legacyFleetMarker`, a line ending in `// retired-name-ok: legacy reader`, and a line inside a `retired-name-ok:start`/`end` region;
-    - an identifier on the line right after the region's `end` is flagged again;
-    - the file check flags `src/fleet/x.ts` and `test/gui-client-fleet.test.ts`, but not `src/team/team-hold.ts`;
-    - a path in `LEGACY_FILES` skips its identifiers.
-- **Leave alone:**
-  - user-visible strings, including scripts' messages, which the text series owns;
-  - event type names;
-  - legacy names kept on purpose;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
-
-**Files touched.** The remaining src/ and test/ files listed above; `scripts/*.mjs` (comments only); the new `test/retired-names.test.ts`; src/text/phrases.ts and src/change/ (the alias deletions). Possibly a `// retired-name-ok:` marker in the events normalizer's module and the state loaders' legacy maps, if the scan flags them. Read but not edited: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts`, `src/roles/legacy-role-ids.ts` (named in `LEGACY_FILES`).
-
-**Acceptance criteria.**
-- `git grep -niE 'fleet' -- src test` finds only user-visible strings, expected-output literals, legacy names on purpose and quoted backlog titles. No identifier, comment or test name says fleet.
-- No `@deprecated` alias of a fleet name remains.
-- test/retired-names.test.ts passes on the tree and its self-test passes. Planting `const pauseFleet = 1;` in any src/ file outside `LEGACY_FILES`, or creating `src/fleet-x.ts`, makes it fail.
-- Every `LEGACY_FILES` entry exists, and every exemption marker carries a reason.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 1/11: Move src/landing/ to src/merge/ and give the landing-named files merge names (planned 2026-10-16 by user; requires Plain terms code team 6/6 landed; design in plans/terminology.md "Code names"; touches src/landing/ and src/scheduling/work-landed-cache.ts and the landing-named tests and their importers)
 
 **Goal.** A mechanical file move with no identifier changes. The landing-named directory, modules, tests and fixtures take merge names, and every import path and path mention follows them. Behavior is unchanged.
@@ -1586,6 +1544,48 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - The existing tests pass unchanged, through the default `pauseKey`.
 - An orchestrator-scheduling test, placed next to the existing paused-instance claim release test (grep `test/` for `"paused"` beside `claimReleaseReason` / `pollRunnerReasons`). With feature at 2 instances and the marker holding `feature-1`, an idle `feature` runner's claim is released with reason `paused`, and `feature-2` still gets assigned work.
 - `test/operator-commands.test.ts`, next to "cmdResume --role lifts one role and reports the was-not-paused wording when absent": `cmdPause --role feature-1` writes `feature-1` to the marker, and `cmdResume --role feature-1` removes it. Also assert that `--role feature-1` is rejected by a command that uses `namedRole` (e.g. `cmdWake` or `cmdAbort`, whichever its tests already drive).
+- `npm run test` passes.
+
+### Plain terms code team, part 6/6: Finish the fleet rename and add the retired-names guard (planned 2026-10-16 by user; requires part 5/6 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and scripts/ and the new test/retired-names.test.ts) (done 2026-10-16)
+
+**Goal.** No identifier, file name, comment or test name in src/ or test/ says fleet. A new guard, test/retired-names.test.ts, fails the suite if a retired identifier or file-name stem comes back. Later Code-names series append their own families to it.
+
+**Approach.**
+- **Finish the rename.** Apply the fleet row of "Code names" (`fleet` → `team` in identifiers, comments, test names, temp-dir prefixes and assertion messages) to every remaining file. That covers `src/tick/`, `src/scheduling/`, `src/landing/`, `src/failure/`, `src/history/`, `src/build/`, `src/redeploy/`, `src/roles/`, `src/prompt/`, `src/review/`, `src/verdict/`, `src/agent/`, `src/git/`, `src/files/`, `src/inbox/`, `src/init/`, `src/pi-extension/` and `src/backlog/`, their tests, `test/fixtures/*`, `test/affected-tests.ts`, `test/test-runner.ts`, and the comments in `scripts/*.mjs`. Find the leftovers with `git grep -niE 'fleet' -- src test scripts`.
+- **Retire the aliases.** Move src/failure's calls to `teamPausePhrase` and `teamResumePhrase`. Then delete every remaining fleet `@deprecated` alias: `git grep -n '@deprecated Use' -- src test` must list no team name.
+- **New guard, `test/retired-names.test.ts`.** It is offline: no git and no network.
+  - Data: `interface RetiredFamily { family: string; words: readonly string[]; fileWords: readonly string[]; allow: readonly string[] }`, seeded as `const RETIRED: readonly RetiredFamily[] = [{ family: "fleet → team", words: ["fleet", "fleets"], fileWords: ["fleet"], allow: [] }]`. A one-line comment says that each later Code-names series appends its family.
+  - Walk `src/` and `test/` from the repo root, found the way test/exports.test.ts finds it (walk up to the directory holding package.json and src/), so the test works from test/ and from dist/test/.
+  - File check: split each repo-relative path on `/`, `-`, `_` and `.` into lowercase words. A word in `fileWords` fails.
+  - Identifier check: parse each `.ts`/`.tsx` with the TypeScript compiler API, the way test/vocabulary.test.ts loads it, and collect every Identifier and PrivateIdentifier. For each `String.raw`-tagged template (the dashboard's browser code), parse the template text as JavaScript with each `${…}` replaced by `0`, and collect its identifiers too.
+  - Split each identifier into lowercase words at camelCase and PascalCase boundaries, `_`, `$` and digits: `GUI_CLIENT_FLEET_JS` → gui, client, fleet, js. A word in `words` fails, unless one of the exemptions below applies.
+  - Never check string literals or comments. The vocabulary guard owns literals, and legacy readers mostly name old forms as strings.
+  - **Exemptions.** Code that names the old forms on purpose stays legal, and each exemption is visible where it applies:
+    - `LEGACY_FILES: readonly string[]`: repo-relative files whose identifiers the guard skips entirely. They still get the file-name check. Seed it with the files that exist to name old forms: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts` (`CONFIG_KEY_RENAMES`) and `src/roles/legacy-role-ids.ts`, plus each one's own test file. List only files that exist (`git ls-files`), and add a one-line reason comment per entry. A test asserts every listed file exists, so the list cannot rot.
+    - **Identifiers whose first word is `legacy`** are skipped, for example the state series' `legacyLand*` path helpers for the old `land-queue/` dir and `refs/tumwater/landing/` refs, or a `LEGACY_…` table.
+    - **A line ending in `// retired-name-ok: <reason>`** is skipped, and so is every line between `// retired-name-ok:start <reason>` and `// retired-name-ok:end`. Use these inside mixed files: the legacy-name table in `normalizeLegacyEvent`'s module (src/events/), the state loaders' legacy-key maps, and test fixtures that deliberately write old event names or old state keys as object-literal keys. Add the markers in this part wherever the scan flags such a line.
+    - `allow` on a family: exact identifiers the family keeps everywhere, each with a reason comment.
+  - Any other hit is a missed rename: rename it, never exempt it.
+  - The failure message lists `path:line identifier (family)` for every hit.
+  - Self-test on in-memory fixtures:
+    - flagged: `pauseFleet`, and a `renderFleet` defined inside a `String.raw` template;
+    - not flagged: fleet inside a string and inside a comment, `fleetingly` (a single word), `legacyFleetMarker`, a line ending in `// retired-name-ok: legacy reader`, and a line inside a `retired-name-ok:start`/`end` region;
+    - an identifier on the line right after the region's `end` is flagged again;
+    - the file check flags `src/fleet/x.ts` and `test/gui-client-fleet.test.ts`, but not `src/team/team-hold.ts`;
+    - a path in `LEGACY_FILES` skips its identifiers.
+- **Leave alone:**
+  - user-visible strings, including scripts' messages, which the text series owns;
+  - event type names;
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim (test/plan-citations.test.ts).
+
+**Files touched.** The remaining src/ and test/ files listed above; `scripts/*.mjs` (comments only); the new `test/retired-names.test.ts`; src/text/phrases.ts and src/change/ (the alias deletions). Possibly a `// retired-name-ok:` marker in the events normalizer's module and the state loaders' legacy maps, if the scan flags them. Read but not edited: `src/orchestrator/startup-migrations.ts`, `src/orchestrator/startup-migration-steps.ts`, `src/config/config-aliases.ts`, `src/roles/legacy-role-ids.ts` (named in `LEGACY_FILES`).
+
+**Acceptance criteria.**
+- `git grep -niE 'fleet' -- src test` finds only user-visible strings, expected-output literals, legacy names on purpose and quoted backlog titles. No identifier, comment or test name says fleet.
+- No `@deprecated` alias of a fleet name remains.
+- test/retired-names.test.ts passes on the tree and its self-test passes. Planting `const pauseFleet = 1;` in any src/ file outside `LEGACY_FILES`, or creating `src/fleet-x.ts`, makes it fail.
+- Every `LEGACY_FILES` entry exists, and every exemption marker carries a reason.
 - `npm run test` passes.
 
 ### The assigned entry names its paths missing from the checkout (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, src/tick/tick-prompt.ts, src/prompt/gate-prompts.ts and their tests)

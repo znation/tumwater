@@ -3,7 +3,7 @@
  * (docs/feature-project-templates.md). Static string data, no file reads and no runtime
  * dependencies: a template is a brief preamble (the operator's own words stay appended after
  * it) plus a seeded PLANS.md backlog and a starter directory layout — never code scaffolds,
- * since the fleet's own first ticks write any code.
+ * since the team's own first ticks write any code.
  * `blank` is the default and reproduces today's init output byte-identically. */
 
 import { typoSuffix } from "../text/suggest.js";

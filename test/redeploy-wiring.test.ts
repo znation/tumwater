@@ -50,7 +50,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   assert.equal(await deps.mainGreen(redHead), false, "a failing suite reads red");
 
   // Each check priced exactly one baseline build_check event through the wiring's own log —
-  // the feed's record that the fleet spent this minute verifying its successor.
+  // the feed's record that the team spent this minute verifying its successor.
   const baseline = events.filter((e) => e.type === "build_check" && e.scope === "baseline");
   assert.deepEqual(
     baseline.map((e) => [e.status, e.source, e.script]),
@@ -126,7 +126,7 @@ test("the production mainGreen wiring runs the real check in a fresh mirror and 
   );
   const flakeEvents = events.filter((e) => e.type === "build_check" && e.scope === "baseline").slice(-2);
   assert.deepEqual(flakeEvents.map((e) => e.status), ["failed", "passed"], "the re-run reproduced nothing");
-  // The re-run's green promoted the SHA in the fleet-shared cache: later consults stay free.
+  // The re-run's green promoted the SHA in the team-shared cache: later consults stay free.
   assert.equal(await deps.buildRed(flakeHead), false, "the promoted green answers the second consult");
   assert.equal(
     events.filter((e) => e.type === "build_check" && e.scope === "baseline").length,

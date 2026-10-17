@@ -27,7 +27,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 const MERGE_TIER = LANDING_TIER - 1;
 
 /** One poll of the land queue (the scheduler's WHEN: after the gates, never while a restart or
- * a fleet hold is pending): start a vet for every queued change the pipeline does not already
+ * a team hold is pending): start a vet for every queued change the pipeline does not already
  * hold (drainVetting, in landing-vetting.ts), and start the merge when the slot is free and
  * something is vetted (drainMerge). A queued landing is COMMITTED work awaiting completion, not
  * a new tick, so the budget and user-pause gates deliberately do not hold it (pausing it would
@@ -46,7 +46,7 @@ export async function drainLandings(ctx: LandingPipelineContext, p: LandingPipel
  * the next generation to land.
  *
  * Unlike a vet or a merge, this settles in the poll body with nothing to guard it: a throw out
- * of the outcome write — an unwritable state file — would end the fleet's run. It must also
+ * of the outcome write — an unwritable state file — would end the team's run. It must also
  * never leave the deliberately aborted change queued (an abandoned queue file would be
  * re-vetted and landed next poll, against the operator's intent) or keep its pin. So a failed
  * write is reported and the abort honored by hand: queue file and marker dropped, pin

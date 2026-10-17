@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Affected-test selection for `npm run test:gate`, the review gate's per-change pre-check
- * (`check.gateCommand`, DEVELOPMENT.md "The gate runs the affected tests"). The fleet ran the
+ * (`check.gateCommand`, DEVELOPMENT.md "The gate runs the affected tests"). The team ran the
  * whole suite before every model review, ~200 times a day, while most changes touch a handful of
  * modules. This picks the compiled test files a change can reach. The full suite still runs
  * once per landing (the in-lock and batch checks run `npm test`), so a dependency this misses

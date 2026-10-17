@@ -119,7 +119,7 @@ test("a single queued pinned entry lands through the pipeline: main advances, re
 });
 
 test("a settled landing detaches its shutdown listener: the long-lived stop signal keeps no per-landing wiring", async () => {
-  // The fleet shutdown signal is one object for the whole run and abortOnShutdown wires every
+  // The team shutdown signal is one object for the whole run and abortOnShutdown wires every
   // vet and merge to it. A task that settles while the signal is still live must detach its
   // listener; otherwise the signal accumulates one per landing — and the controller each
   // retains — unbounded until shutdown. The runners carry no signal here, so every abort
@@ -477,7 +477,7 @@ test("a vetting rejection drops its entry at once — its role may tick next pol
 
 test("a landing whose role has no live runner vets and lands through a throwaway author", async () => {
   // resolveAuthor's fallback: a role disabled before this process started (or removed from
-  // the fleet after its change was queued) has no runner in ctx.runners, so the drain builds
+  // the team after its change was queued) has no runner in ctx.runners, so the drain builds
   // a throwaway one with the same landing wiring and a disk-loaded state — the queue must
   // still drain, or the orphaned entry wedges the interlock and the slot forever.
   const root = makeRepo();
@@ -561,7 +561,7 @@ test("an aborted vetted change settles despite an unwritable state file: no thro
     // The abort's outcome write hits an unwritable state file: the state path becomes a
     // non-empty directory, so writeJsonAtomic's rename fails (EISDIR) — the shape an ENOSPC or
     // an immutable state path takes. settleAbortedVetted runs in the poll body with nothing to
-    // guard it, so a throw here would end the fleet, and the operator's abort must still drop
+    // guard it, so a throw here would end the team, and the operator's abort must still drop
     // the change and its pin rather than leave it to be re-vetted and landed next poll.
     const stateFile = statePath(root, "alpha");
     fs.rmSync(stateFile, { recursive: true, force: true });
@@ -785,7 +785,7 @@ for (const headVerdict of ["reject", "approve"] as const) {
 
 // ── A plumbing throw in the merge slot ────────────────────────────────────────────────────
 // landVetted's first assembly attempt propagates an unexpected throw (nothing has landed), and
-// startMerge's catch is what keeps the fleet alive: every entry stays queued, un-vetted, the
+// startMerge's catch is what keeps the team alive: every entry stays queued, un-vetted, the
 // head author's state records the error, and the next poll re-vets from the surviving pins.
 
 test("a plumbing throw in the merge keeps every entry queued and un-vetted, records the error, and recovers on the next poll", async () => {

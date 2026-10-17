@@ -203,7 +203,7 @@ test("shakePlan skips a bulky result with no session entry to edit", () => {
   assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
 });
 
-test("a fleet-sized context on the 1M primary plans nothing", () => {
+test("a team-sized context on the 1M primary plans nothing", () => {
   const messages = [bash("a"), ...protectedFillers()];
   const plan = shakePlan(messages, { tokens: 140_000, contextWindow: 1_048_575, percent: (140_000 / 1_048_575) * 100 });
   assert.equal(plan.edits.length, 0);

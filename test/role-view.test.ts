@@ -1,7 +1,7 @@
 // Unit coverage for src/roles/role-view.ts (the collector behind `tumwater role <id>`) and
 // src/roles/role-render.ts (its Markdown renderer). The collector reads only persisted state —
 // tumwater.json, the loop's state file, the queue directories, the pause marker — so every
-// test runs against a bare fixture dir with no fleet, which is also the degradation claim
+// test runs against a bare fixture dir with no team, which is also the degradation claim
 // under test: a missing read yields its empty answer, never a throw.
 
 import test from "node:test";
@@ -557,7 +557,7 @@ test("role payload reports image input and the renderer's Images line", () => {
 });
 
 // Recent runs (the `tumwater role <id>` section): the loop's last few run_end
-// results, read from the event log so the command answers with the fleet stopped. Newest
+// results, read from the event log so the command answers with the team stopped. Newest
 // first, at most 8, each with its time, result, duration, and summary.
 test("role payload surfaces the newest run_end outcomes ordered newest-first", () => {
   const dir = root();

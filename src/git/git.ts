@@ -400,7 +400,7 @@ export async function currentBranch(root: string): Promise<string | null> {
   return fromFile !== undefined ? fromFile : gitTry(root, "symbolic-ref", "--short", "HEAD");
 }
 
-/** The branch a read-only surface treats as the fleet's main: a configured `baseBranch` wins (`run
+/** The branch a read-only surface treats as the team's main: a configured `baseBranch` wins (`run
  * --branch` is per-invocation and invisible to a later query), else whatever the primary checkout
  * has checked out, else the literal "main". change/change-data.ts's collectRoleChange (async, via
  * currentBranch) and status-polls's mainCheckForPoll (sync, via currentBranchFromHeadFile — a

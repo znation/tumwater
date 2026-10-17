@@ -15,7 +15,7 @@ import { headSha, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { ensureParentDir } from "../src/files/files.js";
 
 // Build provenance (src/build/build-info.ts): the stamp `npm run build` writes into dist/, and the
-// comparison against main that tells a self-hosting fleet whether it is running the code main
+// comparison against main that tells a self-hosting team whether it is running the code main
 // describes. Pinned against real git repos — the whole point is agreement with git's view.
 
 function commitFile(repo: string, rel: string, content: string, message: string): string {

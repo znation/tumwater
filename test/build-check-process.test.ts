@@ -50,7 +50,7 @@ function readPid(file: string): number {
 
 // A timed-out check must take its whole process tree with it. npm runs detached as its own
 // process group leader; the old execFileAsync `timeout` signalled npm alone, so everything
-// below it survived and reparented to PID 1 — four orphaned trees on the fleet, one alive 12
+// below it survived and reparented to PID 1 — four orphaned trees on the team, one alive 12
 // days, one running a real orchestrator for 18 hours (BUGS.md 2026-09-21). The runner here
 // backgrounds a grandchild that TRAPS SIGTERM — only the SIGKILL escalation can stop it — so
 // the test pins both the group signal and the escalation armed on timeout. Mirrors

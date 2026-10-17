@@ -42,7 +42,7 @@ import { type InstallRunner, npmInstall } from "./dep-install.js";
  * (runBuildCheck, BuildCheckOutcome) — because orchestration is its own concern: the permit,
  * the event emission, the verdict-less retry, the merge-scope unverified remapping, and the
  * skip warning. Every run is an event with its cost: the deterministic checks are where the
- * fleet's compute goes after the authoring run, and "how long does npm test take per merge"
+ * team's compute goes after the authoring run, and "how long does npm test take per merge"
  * must be answerable from the feed, not by timing it by hand. Returns null when no check is
  * declared (nothing to run — the caller passes, exactly as before this split), otherwise the
  * declared check plus its classified outcome. A "skipped" outcome also logs its standard
@@ -82,7 +82,7 @@ export async function runScopedBuildCheck(
   // caller's bound. Effective here so the reason text and the skip warning agree with what
   // runBuildCheck enforced.
   // A merge scope under a starved host gets a longer deadline (starvedDeadlineMs): the check
-  // runs as long as the fleet's load stretches it, and a kill at the unstretched bound would
+  // runs as long as the team's load stretches it, and a kill at the unstretched bound would
   // only measure the load (BUGS.md 2026-10-12). The load sampled here is also what the
   // unverified reason names.
   const load = sampleLoad();
@@ -152,7 +152,7 @@ export async function runScopedBuildCheck(
         ? sleptPhrase(SCOPE_WORDS[scope].label, raw.run!.sleptMs!, UNVERIFIED_TREE)
         : `${SCOPE_WORDS[scope].label} ${timedOutPhrase(effectiveMs, raw.run)}; ${UNVERIFIED_TREE}${
             // An on-time kill (the late-deadline wording already names its own cause) names the
-            // starved host when the load average says the fleet was the check's competition.
+            // starved host when the load average says the team was the check's competition.
             (raw.run?.deadlineLateMs ?? 0) > DEADLINE_LATE_TOLERANCE_MS ? "" : loadedHostPhrase(load)
           }`;
   const outcome: BuildCheckOutcome = unverifiedSkip

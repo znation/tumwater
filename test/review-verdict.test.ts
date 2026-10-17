@@ -194,7 +194,7 @@ test("a rejection falls back past a resolution-only post-verdict region to the w
   assert.deepEqual(v?.reasons, ["plans/portability.md:182 still cites the nonexistent dist/src/test-runner.js"]);
 });
 
-// Reply shapes the fleet's reviewers really wrote (BUGS.md 2026-09-23: 11 approvals logged a
+// Reply shapes the team's reviewers really wrote (BUGS.md 2026-09-23: 11 approvals logged a
 // preamble as their `review_verdict` reason). Reviewers number findings in bold or under
 // headings and open with a colon-terminated lead-in or a bare heading; a bare-marker list
 // match missed every such item, so the whole reply fell to the prose fallback and its first

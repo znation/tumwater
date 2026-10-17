@@ -213,7 +213,7 @@ test("an idle host leaves the merge-scope deadline alone; load stretches it by t
 
 test("an on-time merge-scope timeout names a starved host, and stays silent on an idle one", async () => {
   // BUGS.md 2026-10-12: 28 of 29 landing build-check failures in a window were the 300 s
-  // deadline firing on time under the fleet's own load; the reason must carry that evidence.
+  // deadline firing on time under the team's own load; the reason must carry that evidence.
   const { root, wt } = buildCheckFixture();
   fs.writeFileSync(path.join(wt, "package.json"), projManifest({ build: "sleep 5" }));
   const run = (load1: number) =>

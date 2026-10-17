@@ -4,13 +4,13 @@
  * This module adds only the caching layer around it plus the one git query that feeds it.
  *
  * Caching rule: verdicts are cached per base head so a
- * quiet fleet pays no git cost in steady state. A TRUE verdict is monotone under
+ * quiet team pays no git cost in steady state. A TRUE verdict is monotone under
  * fast-forward-only main movement — once work has landed in (sinceHead, main] it stays
  * there — so true heads never re-evaluate. A FALSE verdict is valid exactly while main sits at
  * the head it was checked against: the range cannot grow until main moves, so a cached false
  * skips the `git log` entirely and re-checks once when main's head changes (a false can flip to
  * true only on such movement — caching it unconditionally would defer a role forever after the
- * very commit that should wake it). Both caches are bounded, so a long-running fleet cannot
+ * very commit that should wake it). Both caches are bounded, so a long-running team cannot
  * grow them unbounded. */
 
 import { subjectsBetween } from "../git/git.js";

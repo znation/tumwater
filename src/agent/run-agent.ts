@@ -288,7 +288,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // an unknown flag, an unresumable session, or a not-logged-in exit — leaves this write
       // nothing to feed. Once the prompt exceeds the OS pipe buffer the write then fails EPIPE,
       // and an unhandled 'error' event on the stdin stream is thrown from the event loop and
-      // takes the whole process (the whole fleet) down. The child's own exit status and stderr
+      // takes the whole process (the whole team) down. The child's own exit status and stderr
       // already report why the run died, so swallowing the failed write adds no silence the
       // caller needs to break; git.ts's patchId carries the same guard for a patch-id that
       // dies before reading its input.

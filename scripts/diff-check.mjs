@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs";
+import { distRoleIds, requireDistBuild, seedLiveTeam } from "./live-fixture.mjs";
 
 // Before any dist/ import below: a tree without a build would otherwise die with a raw
 // ERR_MODULE_NOT_FOUND stack instead of the fix. This script's whole subject is comparing
@@ -26,7 +26,7 @@ const ROLES = await distRoleIds();
 
 function makeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-diff-"));
-  seedLiveFleet(root, ROLES);
+  seedLiveTeam(root, ROLES);
   // One idle loop and one review-phase loop to cover the non-working branches.
   for (const [role, patch] of [["qa", { running: false, phase: undefined }], ["steward", { phase: "review" }]]) {
     const st = JSON.parse(fs.readFileSync(path.join(root, ".tumwater", "state", `${role}.json`), "utf8"));

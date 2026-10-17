@@ -101,7 +101,7 @@ export interface MergeContext extends RunsPi {
  * success lands as an ordinary `merged` event and failure surfaces via the tick's merge_conflict
  * result — no separate log line for the hand-off itself. A merged diff that adds entries under
  * QUESTIONS.md's ## Open also emits one `question_posted` per new heading alongside the `merged`
- * event, so `tumwater logs` shows what the fleet is asking for (plans/questions-outbox.md).
+ * event, so `tumwater logs` shows what the team is asking for (plans/questions-outbox.md).
  * `verifiedHead` is the head the review gate's pre-check just ran green on
  * (GateResult.verifiedHead) — when the rebase turns out to be a no-op it names the exact tree
  * about to land, so the in-lock re-check can both skip and seed the baseline from it; pass

@@ -40,7 +40,7 @@ export function findTumwaterRoot(startDir: string = process.cwd()): string | nul
  * watchdog, an abort, the context ceiling), and a direct write would leave a truncated
  * log at the path the marker hands the model — silently incomplete output read back as
  * if it were whole. The tmp+rename leaves either nothing or the complete file. The
- * orchestrator's retention passes prune this directory with the fleet's
+ * orchestrator's retention passes prune this directory with the team's
  * sessionRetentionDays window (paths.ts's toolOutputDir, the single home of this path that
  * this module shares instead of re-joining it), so a pointer to a full output stays readable
  * while its tick is recent and never accumulates forever. */

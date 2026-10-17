@@ -10,7 +10,7 @@
  * old tool results with recoverable references and keep the recent window intact. pi 1.0.0 can
  * do the same from an extension — a `turn_end` handler appends persisted `context_edit` entries
  * (pi docs, extensions.md "Events and concurrency"; session-format.md "ContextEditEntry"). On a
- * large-window primary (1M) the 70% line sits far above the largest fleet tick, so the
+ * large-window primary (1M) the 70% line sits far above the largest team tick, so the
  * extension plans nothing and costs nothing there.
  *
  * The selection logic is a pure, exported function (`shakePlan`) so every rule is unit-testable

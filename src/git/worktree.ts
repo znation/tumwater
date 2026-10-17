@@ -142,7 +142,7 @@ export async function removeWorktree(root: string, role: string): Promise<void> 
  * dead-registration fallback), then one prune registers the vanished checkouts. */
 export async function removeLegacyLandWorktrees(root: string): Promise<void> {
   const dir = worktreesDir(root);
-  // A missing worktrees dir (a fleet that has not started) yields no names to remove.
+  // A missing worktrees dir (a team that has not started) yields no names to remove.
   const names = subdirectoryNames(dir, (name) => name.startsWith("_land-"));
   for (const name of names) await removeWorktreeDir(root, path.join(dir, name));
   if (names.length > 0) await gitTry(root, "worktree", "prune");

@@ -94,7 +94,7 @@ export interface BuildCheckOutcome {
  * every outcome that spawned anything, so the build_check event and the skip warning report
  * the bound that was actually enforced, not only the one that was configured. BUGS.md
  * 2026-09-21: every skipped check recorded 331–1158 s against a "300 s" timeout. Measured
- * cause: the fleet's host (a laptop in clamshell maintenance sleep) slept through the
+ * cause: the team's host (a laptop in clamshell maintenance sleep) slept through the
  * deadline. libuv's clock on macOS counts time asleep (process.hrtime() since boot equals wall
  * uptime on a host logging hundreds of sleeps a day), so a deadline that passes while it sleeps
  * fires at the first wake after it, when the check has often run only seconds. Nothing can
@@ -221,7 +221,7 @@ export async function runBuildCheck(
   // merge scopes, so an uninstallable tree never lands. Never answer a missing dependency by
   // skipping instead (classifying a `Cannot find module` failure as environmental): that was
   // tried and reverted twice on 2026-10-01 by the user's decision — see BUGS.md's "Do not
-  // reintroduce a missing-install skip" note for why it switches the gate off fleet-wide.
+  // reintroduce a missing-install skip" note for why it switches the gate off team-wide.
   let installed: BuildCheckOutcome["install"];
   if (check.kind === "npm") {
     const r = await syncInstall(wt, install);

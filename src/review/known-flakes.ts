@@ -17,7 +17,7 @@ import { normalizeClusterKey } from "../failure/failure-cluster.js";
 /** How far back the gate looks for its own flake warnings. One local day: the example in
  * BUGS.md 2026-10-06 recorded a flake at 10:50 and rejected an unrelated change on the same
  * headline at 15:57, and a day is short enough that a retired flake stops excusing failures
- * while still covering a fleet's working span. Exported so the doctor's `flaky checks` check
+ * while still covering a team's working span. Exported so the doctor's `flaky checks` check
  * and the gate share the one window and cannot drift. */
 export const KNOWN_FLAKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 

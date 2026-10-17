@@ -120,7 +120,7 @@ export function detectBuildCheck(
 ): BuildCheck | null {
   const c = config?.check;
   // check.timeoutSeconds bounds the npm walk-up's check too: it is how a repo whose suite
-  // outgrows 300 s under load says so (the fleet's own gate runs were timing out there).
+  // outgrows 300 s under load says so (the team's own gate runs were timing out there).
   const configuredMs = typeof c?.timeoutSeconds === "number" && c.timeoutSeconds > 0 ? c.timeoutSeconds * 1000 : undefined;
   if (c && isNonBlankString(c.command)) {
     return {
@@ -151,9 +151,9 @@ export function gateCommandOf(config?: CheckConfigSlice): string | undefined {
  * of its own (node_modules is gitignored, so it exists only where someone ran npm install), and
  * neither does a project nested under an installed root. Returns the first existing path, or
  * null when no ancestor within `maxLevels` has it. Assuming a local install instead is what
- * broke the fleet's own redeploy on 2026-09-08: compileStaged looked only at
+ * broke the team's own redeploy on 2026-09-08: compileStaged looked only at
  * `<root>/node_modules/typescript`, so its test could not pass in a bare worktree, the failing
- * suite made main read red, and the blocked restart stranded the fleet on a stale build
+ * suite made main read red, and the blocked restart stranded the team on a stale build
  * (BUGS.md). Never throws. */
 export function resolveFromNodeModules(startDir: string, rel: string, maxLevels = WALK_UP_LEVELS): string | null {
   return walkUp(startDir, maxLevels, (dir) => {

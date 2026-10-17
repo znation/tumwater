@@ -78,7 +78,7 @@ export function claudeTranscriptPath(
 }
 
 /** The CLI version every gated claude model needs (plans/agent-backends.md finding 9): on
- * 2.1.216 Opus 5.5 is refused outright and Haiku 5.5 is mispriced about 250×, and fleet runs
+ * 2.1.216 Opus 5.5 is refused outright and Haiku 5.5 is mispriced about 250×, and team runs
  * set DISABLE_AUTOUPDATER so they never update themselves. The gated models are the three
  * tier defaults, derived from AGENT_DEFAULT_MODELS through the same routing the config uses
  * rather than listed again, so this table cannot drift from the models a seam resolves. */

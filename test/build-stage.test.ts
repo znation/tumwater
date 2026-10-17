@@ -20,9 +20,9 @@ const HEAD_C = "c".repeat(40);
 
 /** This repo's typescript package, resolved the way node itself resolves it — climbing ancestor
  * node_modules from the running test file. Hard-coding `<this checkout>/node_modules/typescript`
- * instead is what broke the fleet on 2026-09-08: no tumwater worktree has an install of its own
+ * instead is what broke the team on 2026-09-08: no tumwater worktree has an install of its own
  * (node_modules is gitignored), so the symlink dangled, the compile test below failed in every
- * loop worktree, main read red fleet-wide, and the harness could not restart itself (BUGS.md). */
+ * loop worktree, main read red team-wide, and the harness could not restart itself (BUGS.md). */
 function typescriptDir(): string {
   return path.dirname(createRequire(import.meta.url).resolve("typescript/package.json"));
 }
@@ -290,7 +290,7 @@ test("swapDist reports a successful swap when its superseded-staging sweep canno
   // The swap is committed by the staged->dist rename; the sweep that follows only deletes
   // dead weight (superseded stagings). An unreadable staging root there must not be reported
   // as a failed swap — the redeployer would block the restart on it while dist/ already holds
-  // the new build, leaving the fleet on the old code under a misleading "swap failed" reason.
+  // the new build, leaving the team on the old code under a misleading "swap failed" reason.
   // The failure must still be visible in the event feed rather than swallowed.
   const { root, dist } = rootWithDist();
   fs.mkdirSync(stagingDir(root, HEAD_B), { recursive: true });
@@ -354,7 +354,7 @@ test("a successful compile prunes superseded stagings past the grace, keeping yo
   const head = tinyTsProject(root);
   borrowTypeScript(root);
   const mirror = await ensureDetachedWorktree(root, mirrorWorktreePath(root), head);
-  // Two superseded stagings from heads the fleet landed past: one older than the grace
+  // Two superseded stagings from heads the team landed past: one older than the grace
   // (dead weight a blocked restart let pile up), one younger (a live episode's drain hold
   // can still swap it). A non-SHA entry — swapDist's own dist.prev scratch — is never
   // this prune's concern, however old it is.
@@ -383,7 +383,7 @@ test("a successful compile prunes superseded stagings past the grace, keeping yo
 
 test("pruneStaleStagings swallows every staging-root fault: the prune trails a successful compile and must never fail one", () => {
   // compileStaged prunes after the new build has already succeeded, so a thrown readdir,
-  // stat, or rm error here would reject a perfectly good build and pin the fleet on the
+  // stat, or rm error here would reject a perfectly good build and pin the team on the
   // stale dist (BUGS.md 2026-09-28's verdict-vs-rejection distinction, one step downstream).
   // Each fault below is exercised for real, against the actual filesystem: an absent staging
   // root (the first compile), entries the scan lists but cannot stat, and a stale dir whose
@@ -434,7 +434,7 @@ test("pruneStaleStagings swallows every staging-root fault: the prune trails a s
 test("compileStaged borrows an ancestor's typescript: a project with no install of its own still rebuilds", async () => {
   // The shape of every tumwater worktree — no node_modules of its own, an installed root above
   // it — and the case that must not fail closed: demanding a local install here is what left
-  // the fleet unable to compile its own new build (BUGS.md).
+  // the team unable to compile its own new build (BUGS.md).
   const outer = tmpdir();
   borrowTypeScript(outer);
   const root = makeRepo(path.join(outer, "nested", "project"));
@@ -466,9 +466,9 @@ test("compileStaged reports a spawn failure as a rejection, not a verdict about 
 });
 
 test("compileStaged still rebuilds through tsc's shebang when the node binary vanished under the running build", async () => {
-  // The live fleet's catch-22 (BUGS.md 2026-09-29): a long-running build's process.execPath can
+  // The live team's catch-22 (BUGS.md 2026-09-29): a long-running build's process.execPath can
   // name a binary an upgrade removed, killing only the spawns that use it directly while every
-  // PATH-resolved spawn (git, npm, pi) keeps working — so the fleet cannot redeploy at all. The
+  // PATH-resolved spawn (git, npm, pi) keeps working — so the team cannot redeploy at all. The
   // retry through tsc's own shebang (env node, resolved at spawn time) is what lets the next
   // rebuild succeed and break the pin. The stale path is injected through the execPath seam.
   const root = makeRepo();

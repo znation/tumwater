@@ -323,7 +323,7 @@ test("a pre-check that fails twice on a red main fails without a strike and keep
     const holds = eventsOfType(root, "main_red_hold").map((e) => String(e.message));
     assert.ok(
       holds.some((m) => m.startsWith(`main ${shortSha(movedMainSha)} is red (build: error TS2345: boom)`)),
-      `the fleet-wide main_red_hold fires; got: ${JSON.stringify(holds)}`,
+      `the team-wide main_red_hold fires; got: ${JSON.stringify(holds)}`,
     );
     assert.ok(
       warnings.includes(`gate check failed on ${shortSha(head)}, but main ${shortSha(movedMainSha)} is red — not this change's failure; merge kept`),

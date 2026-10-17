@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 /** docs/invariants.md — the citation and id guard behind the register's "Keep it honest"
  * paragraph. The register promises every invariant a stable `INV-…` id, the three field labels,
  * and a resolvable `test/...` citation, but nothing enforced it: a renamed test, a moved module,
- * or a copied entry would turn the register the fleet reads into silent drift. The helpers below
+ * or a copied entry would turn the register the team reads into silent drift. The helpers below
  * parse the document and name each broken entry, and the last test pins the register as it stands.
  * Tests only; no source change. */
 

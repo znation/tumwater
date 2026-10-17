@@ -56,7 +56,7 @@ let resolvedGit: string | null | undefined;
 /** Wall-clock bound on the one-time macOS `xcrun --find git` probe. Unlike a git command, the
  * probe is a synchronous spawnSync, so a wedged xcrun (an Xcode license prompt, a corrupt
  * developer directory) blocks the whole event loop — no timer or watchdog can run until it
- * returns. A short bound keeps that from freezing the fleet: on timeout the probe reads as
+ * returns. A short bound keeps that from freezing the team: on timeout the probe reads as
  * "no answer" and the harness spawns `git` by name, exactly as a machine without the stub
  * does. */
 const GIT_RESOLVE_TIMEOUT_MS = 10_000;

@@ -9,7 +9,7 @@ import { piRunResult } from "./fakes/fake-pi.js";
 // TickUsage's accounting (src/tick/tick-usage.ts): the once-per-run choke point every pi run of a
 // tick folds through. Pure in-memory logic — no filesystem, no pi — so each clause is pinned
 // directly: lifetime totals on LoopState, per-tick windows on the TickUsage itself, the daily
-// budget fold, and the 429 stamp the orchestrator's fleet-wide hold consumes.
+// budget fold, and the 429 stamp the orchestrator's team-wide hold consumes.
 
 function run(over: Partial<PiRunResult>): PiRunResult {
   return piRunResult({ ...over });
@@ -147,7 +147,7 @@ test("reset clears the per-tick windows but keeps lastRateLimit for the orchestr
 });
 
 // The backend-failure sibling of the lastRateLimit stamp (PLANS.md 2026-09-29): the
-// connection/timeout/5xx/model-load kinds the fleet-wide hold groups storms by, stamped under
+// connection/timeout/5xx/model-load kinds the team-wide hold groups storms by, stamped under
 // the same rule — only a run that ENDED on the failure.
 test("lastBackendFailure is stamped only by a run that ENDED on a backend failure, with the kind", () => {
   const s: LoopState = freshLoopState("coverage");
@@ -238,7 +238,7 @@ test("fold carries the newest rate windows and reset clears them", () => {
 
 // The per-provider spend split (plans: per-provider spend in the day report): fold keys each
 // run's real/notional cost by the provider it ran on, so the run_end event can say which seam
-// of a mixed fleet spent what. A run whose provider was never resolved attributes nothing.
+// of a mixed team spent what. A run whose provider was never resolved attributes nothing.
 test("fold splits per-provider spend into providerCost, keyed by provider, guarded on undefined", () => {
   const s: LoopState = freshLoopState("coverage");
   const u = new TickUsage();

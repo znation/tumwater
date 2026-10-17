@@ -23,7 +23,7 @@ const COMPILE_TIMEOUT_MS = 5 * 60_000;
 /** How old a superseded staged build may get before a later compile deletes it. A completed
  * compile stays consumable for one episode's tail — the drain hold is capped at
  * RESTART_DRAIN_MAX_MS (30 min) — so anything older than this grace cannot be swapped by any
- * live episode and is pure disk: a fleet whose restarts stay blocked (red main, a failing boot
+ * live episode and is pure disk: a team whose restarts stay blocked (red main, a failing boot
  * gate) recompiles every new head it lands, and without a prune each landed commit left a full
  * staged tree behind until the NEXT successful swap cleaned them all up — ~750 MB across one
  * busy day (observed 2026-09-30: 128 staged builds, none swapped). A successful swap already
@@ -90,7 +90,7 @@ function rejectedCompile(detail: string): CompileResult {
  * ancestor node_modules, and the mirror lives under <root>/.tumwater/. The compiler itself is
  * found the same way (resolveFromNodeModules): a checkout that never ran `npm install` — every
  * tumwater worktree — still has the install of an ancestor to borrow, and demanding a local one
- * is what left the fleet unable to rebuild itself on 2026-09-08 (BUGS.md). Never throws. */
+ * is what left the team unable to rebuild itself on 2026-09-08 (BUGS.md). Never throws. */
 export async function compileStaged(
   root: string,
   mirrorWt: string,
@@ -123,7 +123,7 @@ export async function compileStaged(
     // 2026-09-29) into a diagnosis instead of a mystery.
     const missing = missingSpawnInputs(execPath, mirrorWt, tsc);
     // The one spawn failure a retry can beat: the running build's own node binary vanished
-    // under it (an upgrade while the fleet stays up leaves process.execPath naming a file that
+    // under it (an upgrade while the team stays up leaves process.execPath naming a file that
     // no longer exists, while every PATH-resolved spawn — git, npm, pi — keeps working). tsc's
     // own shebang resolves a live node through PATH at spawn time, so run it directly.
     if (fs.existsSync(execPath) || !fs.existsSync(mirrorWt))
@@ -148,7 +148,7 @@ export async function compileStaged(
  * carries no exit at all — a spawn failure the caller still has to diagnose. Shared by the
  * primary and shebang-fallback spawns so the two classification ladders cannot drift: a
  * numeric exit code is the one shape that is a verdict about the tree (tsc ran and chose it),
- * so latching anything else as a verdict pins the fleet on the stale build even after the
+ * so latching anything else as a verdict pins the team on the stale build even after the
  * environment recovers (BUGS.md 2026-09-28), and misclassifying a real exit as a rejection
  * makes the redeployer drop a genuinely failing head and re-attempt it forever instead of
  * blocking on it (review objection 2026-09-29). A timeout (killed) and a death by signal are
@@ -218,7 +218,7 @@ export function swapDist(root: string, dist: string, mainHead: string): void {
   // of heads that moved on before their own swap. It is dead weight a later swap or compile
   // collects, so a removal that fails (a directory surviving removeTree's retries, an
   // unreadable staging root) must not be reported as a failed swap: the redeployer would
-  // block the restart while dist/ already holds the new build, leaving the fleet running the
+  // block the restart while dist/ already holds the new build, leaving the team running the
   // old code under a misleading `restart BLOCKED: swapping the new build into place failed`.
   // Warn and continue, the same best-effort policy pruneStaleStagings applies so pruning
   // never fails the work it follows.

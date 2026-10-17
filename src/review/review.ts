@@ -346,7 +346,7 @@ export async function reviewAheadOfMain(
       }
     : undefined;
   // The reviewer run's wall time rides on its verdict event: a reviewer that takes an hour per
-  // merge on local hardware is a fleet-level cost an operator must be able to see.
+  // merge on local hardware is a team-level cost an operator must be able to see.
   const reviewStartedAt = Date.now();
   // The reviewer's started tool calls, collected only when the no-re-run rule stands (a verified
   // pre-check) — the one case the suite-rerun tripwire below can fire.

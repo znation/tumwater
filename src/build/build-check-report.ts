@@ -62,7 +62,7 @@ export function clipBuildTail(output: string): string[] {
  * window when it would otherwise be cut), so a check that died on an unhandled rejection ends
  * mid-stack and the tail's FIRST line is a frame: every red-main warning logged before
  * 2026-09-18 read "main <sha> is red (test: at process.processTicksAndRejections
- * (node:internal/...))" — where, never what, which is why a false red that blocked the fleet
+ * (node:internal/...))" — where, never what, which is why a false red that blocked the team
  * for hours could not be diagnosed from the event feed at all (BUGS.md). Prefer the first line
  * that is not framing — a stack frame, or node:test's summary/framing lines (below) — and fall
  * back to the tail's first line when every line is framing, so a caller always has something

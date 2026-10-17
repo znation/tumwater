@@ -96,7 +96,7 @@ export function isEligible(
   // `--once`, an operator wake, and a queued prompt all bypass the gap check entirely.
   const mult = yieldMultiplierFor(runner.state);
   // The same bootstrap rule (scheduleConfigForRole) loop-tick.ts schedules nextRunAt from: during a
-  // young project's bootstrap, plan runs on the fleet's global clock rather than its 3600 s
+  // young project's bootstrap, plan runs on the team's global clock rather than its 3600 s
   // default. Yield scaling still applies to whatever gap is chosen.
   const minGapSeconds = scheduleConfigForRole(
     runner.config,
@@ -129,7 +129,7 @@ export function isEligible(
 /** Fair scheduling order for one poll's eligible loops: the director always leads (it runs
  * the user's prompts), then the work tier (feature/bugfix/plan) before maintenance — a stale-
  * ticked feature takes a slot over a fresh-ticked steward, because shipping work is what the
- * fleet exists to do — and within a tier least-recently-ticked first, so loops alternate
+ * team exists to do — and within a tier least-recently-ticked first, so loops alternate
  * instead of the same ones re-claiming freed slots. Never-run loops tie at zero and the stable
  * sort keeps them in role-catalog (priority) order. */
 export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
@@ -150,7 +150,7 @@ export function fairOrder(runners: LoopRunner[]): LoopRunner[] {
  * commit is user-directed
  * work, and after a pure-director burst the maintenance roles must resync. Or the subject
  * carries no `tumwater(` prefix at all: a human commit, where the world changed in a way the
- * fleet cannot generate itself. An operator commit (the stamp the CLI, TUI and dashboard
+ * team cannot generate itself. An operator commit (the stamp the CLI, TUI and dashboard
  * backlog/brief edits write) is the human's own change made through tumwater, so it counts like
  * an unstamped human commit. Every other role's landing is markdown or hygiene; waking
  * maintenance roles on it is exactly the cascade deferral removes.

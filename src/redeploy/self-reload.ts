@@ -9,7 +9,7 @@ import { startParentDeathWatch } from "../process/supervisor.js";
  *
  * Unlike the orchestrator — which the supervisor respawns onto a fresh build — a dashboard is
  * started by hand and, without this, keeps serving its startup code until the operator
- * restarts it. When the fleet redeploys itself (redeploy.ts swaps `dist/`) the TUI keeps
+ * restarts it. When the team redeploys itself (redeploy.ts swaps `dist/`) the TUI keeps
  * rendering old modules and the GUI keeps serving old page JS. This module watches for a
  * newer compiled tree on disk and hands itself to a fresh copy of the same command (a supervised
  * respawn, not a nested wrapper), so both surfaces come back on the new code within a poll.

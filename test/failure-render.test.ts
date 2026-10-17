@@ -235,7 +235,7 @@ test("an empty log reads 'no events retained'", () => {
 
 test("a present-but-unreadable feed is named unreadable, not 'no events retained'", () => {
   // The bug: a corrupt feed and a never-written one rendered the same empty-window line, so
-  // the observer role could not tell "the fleet was idle" from "I could not read the log".
+  // the observer role could not tell "the team was idle" from "I could not read the log".
   const root = tmpdir();
   writeEvents(root, ["{not json"]); // bytes exist, no line parses
   const data = collectFailureReport(root, 5);
@@ -356,7 +356,7 @@ test("deltas count quiet kills and rejections per role, both windows", () => {
   // The delta table has dedicated quiet-kills and rejections columns. A rejection is recorded
   // by the landing slot AFTER its authoring tick has ended `queued` (plans/merge-queue.md 3/5),
   // so the fixture pairs a `queued` run_end with a `review_rejected` event — the shape the
-  // live fleet emits. A fixture that fabricates a `rejected` run_end would pass even while the
+  // live team emits. A fixture that fabricates a `rejected` run_end would pass even while the
   // counter reads 0 on every real rejection, the regression an operator could not notice.
   const root = tmpdir();
   const head = (c: string) => c.repeat(40);
@@ -639,7 +639,7 @@ test("each harness state transition renders its own bounded line", () => {
       "role docs paused — it starts no new runs",
     ],
     [{ type: "role_resumed", role: "docs" }, "role docs resumed — it runs again"],
-    // The fleet-wide 429 hold (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"):
+    // The team-wide 429 hold (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"):
     // who tripped it and for how long, a relapse named, and the automatic re-open.
     [
       { type: "rate_limit_hold", roles: ["bugfix", "coverage"], holdMs: 60_000, escalation: 0 },
@@ -926,10 +926,10 @@ test("collectFailureReport scopes every section to one base role", () => {
     { ts: at(0, 13), loop: "harness", type: "role_cap_paused", role: "feature", spentUsd: 1.5, capUsd: 1.5 },
   ]);
 
-  const fleet = collectFailureReport(root, 1);
-  assert.equal(fleet.role, undefined);
-  assert.deepEqual(fleet.outcomes.map((o) => o.role).sort(), ["feature", "qa"]);
-  assert.match(renderFailureMarkdown(fleet), /## Team state changes/);
+  const team = collectFailureReport(root, 1);
+  assert.equal(team.role, undefined);
+  assert.deepEqual(team.outcomes.map((o) => o.role).sort(), ["feature", "qa"]);
+  assert.match(renderFailureMarkdown(team), /## Team state changes/);
 
   const scoped = collectFailureReport(root, 1, "qa");
   assert.equal(scoped.role, "qa");
@@ -947,7 +947,7 @@ test("collectFailureReport scopes every section to one base role", () => {
   const md = renderFailureMarkdown(scoped);
   assert.match(md, /^role: qa$/m);
   assert.match(md, /^## State changes$/m);
-  assert.ok(!md.includes("## Team state changes"), "the scoped heading does not claim fleet scope");
+  assert.ok(!md.includes("## Team state changes"), "the scoped heading does not claim team scope");
   assert.match(md, /qa boom/);
   assert.match(md, /qa warn/);
   assert.match(md, /role qa paused/);

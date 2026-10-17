@@ -17,12 +17,12 @@ import { yieldScaledRole } from "../roles/roles.js";
 
 /** Clear a loop's backoff so its next orchestrator poll finds it immediately due: zero
  * backoffSeconds (so the next no_change/error tick restarts the backoff ladder from the
- * bottom instead of climbing from wherever the fleet parked) and pull nextRunAt forward to
+ * bottom instead of climbing from wherever the team parked) and pull nextRunAt forward to
  * now. Pure: returns a new state and preserves everything else — counters (an
  * observation-window reset is zeroCounters' job), wake tracking (lastMainHead), and the
  * last-result fields. Scheduling operation, not observation-window reset: it exists so an
  * operator who fixed what the loops were failing on can say "try again" (BUGS.md
- * 2026-09-15: the fleet had no wake lever). Also stamps wokenAt, which is what lets
+ * 2026-09-15: the team had no wake lever). Also stamps wokenAt, which is what lets
  * isEligible honor the demand over the role's min-tick interval (LoopState.wokenAt). */
 export function clearBackoff(s: LoopState, now: number): LoopState {
   // wokenAt marks the wake as newer than the current gap window's opening tick, which is
@@ -138,7 +138,7 @@ export function scheduleAtMinInterval(s: LoopState, cfg: { minRunIntervalSeconds
 /** Backoff ladder for failed ticks (`error` results). The idle ladder prices hour-long model
  * runs — its cap exists so a loop that keeps finding nothing stops burning model time. A tick
  * that fails (a broken toolchain, a dead pi subprocess) often never reaches the model, so it
- * climbs this short ladder, capped in minutes: one broken `git` must not park a fleet for the
+ * climbs this short ladder, capped in minutes: one broken `git` must not park a team for the
  * idle ladder's 10-hour sleep (BUGS.md, the 2026-09-15 outage). One ladder, one sensible
  * default, no knob: the cap is the point. */
 export const ERROR_BACKOFF: BackoffConfig = { initialSeconds: 30, factor: 2, maxSeconds: 600 };

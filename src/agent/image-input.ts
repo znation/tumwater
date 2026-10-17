@@ -1,4 +1,4 @@
-/** The seam's answer to "who in this fleet can read images" (plans/image-input.md
+/** The seam's answer to "who in this team can read images" (plans/image-input.md
  * "Capability"). One resolver, `seamImageInput`, is the only place that rule lives; the doctor
  * (src/doctor/doctor-model-checks.ts) and the later reroute parts both read it, so the answer
  * is never reached two ways. It lives at runtime level because it needs the backend registry:
@@ -27,7 +27,7 @@ interface SeamLike {
 
 /** One seam's image-input capability (plans/image-input.md "Capability"): `true` when the
  * seam's backend declares image support, `false` when it is text-only, `null` when it cannot
- * be answered from what the fleet knows (an unknown pair, a backend with no hook and no
+ * be answered from what the team knows (an unknown pair, a backend with no hook and no
  * catalog entry — the doctor's `tier models` check already fails such pairs).
  *
  * The backend bookends: a backend with an `imageInput` hook (claude → true) owns the answer;
@@ -147,7 +147,7 @@ export function seamImageLabel(
  * images. Shared by the status rows, the role page, and the submit gate so the three surfaces
  * can never disagree about what one loop can read or where its image prompts run. */
 interface RoleImageInfo {
-  /** Whether the loop's own model reads images (`true`), is text-only (`false`), or the fleet
+  /** Whether the loop's own model reads images (`true`), is text-only (`false`), or the team
    * cannot tell (null — an unknown pair the `tier models` check already flags). */
   imageInput: boolean | null;
   /** The reroute target as `<tier> (<model>)`, or null when no other tier reads images. */

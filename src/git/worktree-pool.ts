@@ -368,7 +368,7 @@ export async function retireLegacyRoleWorktrees(
   configured: readonly string[],
 ): Promise<void> {
   const dir = worktreesDir(root);
-  // A missing worktrees dir (a fleet that has not started) yields no names to migrate; the pin
+  // A missing worktrees dir (a team that has not started) yields no names to migrate; the pin
   // retirement pass below still runs over whatever slots.json holds.
   const names = subdirectoryNames(
     dir,

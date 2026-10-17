@@ -15,14 +15,14 @@ import {
 
 // The cooldown/prewarm behavior (src/redeploy/redeployer.ts's poll, with the probe tracking it
 // owns in src/redeploy/redeploy-probes.ts; the RESTART_COOLDOWN_MS knob it defers with lives in
-// src/redeploy/redeploy-policy.ts): after a completed restart the fleet defers a
+// src/redeploy/redeploy-policy.ts): after a completed restart the team defers a
 // second episode until the deadline lapses, and while it defers, the pending head's green check
 // and staged compile prewarm once per SHA so the lapse reaches the swap directly. These tests
 // share the scripted-effect fixtures in fixtures/redeploy-fixtures.ts.
 
 test("within the cooldown a second stale episode is deferred: no hold, status carries the deadline", async () => {
   // The 2026-09-11 churn complaint in miniature: main moves again an hour after a completed
-  // swap — inside the 12 h window the fleet keeps ticking on the stale build instead of holding
+  // swap — inside the 12 h window the team keeps ticking on the stale build instead of holding
   // for another drain (BUGS.md).
   const f = fakeDeps();
   const { r, events, types } = harness(f.deps);
@@ -57,7 +57,7 @@ test("within the cooldown a second stale episode is deferred: no hold, status ca
 });
 
 test("during the cooldown the deferred head's check and compile prewarm, so the lapse reaches the swap on its first poll", async () => {
-  // The 2026-09-30 shape: the fleet sat on a stale build for the full 12 h cooldown with the
+  // The 2026-09-30 shape: the team sat on a stale build for the full 12 h cooldown with the
   // newer head unverified, then paid green-check + compile + drain from zero when it lapsed
   // (BUGS.md). The prewarm runs both once per SHA inside the dead window, and the episode
   // adopts the finished trackers, so a single idle poll past the deadline swaps.

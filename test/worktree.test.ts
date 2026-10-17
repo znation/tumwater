@@ -72,7 +72,7 @@ test("removeLegacyLandWorktrees removes _land-<role> checkouts and leaves the po
 });
 
 test("removeLegacyLandWorktrees is a no-op when there is no worktrees dir yet", async () => {
-  await removeLegacyLandWorktrees(tmpdir()); // never throws on a fleet that has not started
+  await removeLegacyLandWorktrees(tmpdir()); // never throws on a team that has not started
 });
 
 test("ensureWorktree creates a persistent branch and reuses it", async () => {

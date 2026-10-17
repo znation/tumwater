@@ -102,7 +102,7 @@ test("the drain cap aborts in-flight ticks: restart anyway, counting them", asyn
 
 test("the drain window tracks the observed p75 tick duration, not the cold-start constant", async () => {
   const f = fakeDeps();
-  // Cold-start fallback 1000 ms; the fleet's observed p75 is 5000 ms.
+  // Cold-start fallback 1000 ms; the team's observed p75 is 5000 ms.
   const { r, events } = harness(f.deps, true, 1000);
   const inFlight = { roleInFlight: 3, directorInFlight: 0, roleTickP75Ms: 5000 };
   let now = 200_000;
@@ -150,7 +150,7 @@ test("a director tick in flight holds past the drain window without a cap; the s
 });
 
 test("a main move during the drain does not restart the clock: the same ticks get one window", async () => {
-  // A busy self-hosting fleet merges while it drains — the 2026-09-08 restart superseded its
+  // A busy self-hosting team merges while it drains — the 2026-09-08 restart superseded its
   // pending head once and then held for 38 minutes under a 30-minute cap (BUGS.md). Nothing new
   // starts during a hold, so the ticks the drain waits on are the ones it began with; a new head
   // inherits the window rather than opening its own.
@@ -183,7 +183,7 @@ test("a blocked restart ends the drain: the next one gets its clock back", async
   assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, now), "hold");
   f.green(false);
   await settle();
-  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 400)), "none", "red: the fleet schedules again");
+  assert.equal(await r.poll(HEAD_B, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 400)), "none", "red: the team schedules again");
   // Main moves long after the old cap would have expired; the new drain still gets its window.
   assert.equal(await r.poll(HEAD_C, { roleInFlight: 3, directorInFlight: 0 }, true, (now += 5000)), "hold");
   f.green(true);
@@ -236,7 +236,7 @@ test("a failed compile keeps the old build running and warns once", async () => 
 });
 
 test("a blocked restart leaves the state stream: a restart_blocked event beside the warning, once per head", async () => {
-  // The digest's Fleet state changes section replays only typed transitions, and the restart
+  // The digest's Team state changes section replays only typed transitions, and the restart
   // episode had one for its start (`restart_pending`) and its two happy/refused endings — but
   // not for `block()`, which warned only. A broken toolchain therefore left the state stream
   // reading "compiling" forever while the warning cluster said the rebuilds had died
@@ -370,10 +370,10 @@ test("a forced restart request evaporates with the pending restart it targeted: 
 });
 
 test("a red RUNNING build cuts the cooldown to the urgent window: the episode starts minutes, not 12 h, after the swap", async () => {
-  // BUGS.md 2026-09-30 (urgency carve-out): the incident left the fleet executing a build whose
+  // BUGS.md 2026-09-30 (urgency carve-out): the incident left the team executing a build whose
   // own commit was red for the full 12 h cooldown while a fixed main sat one commit ahead. The
   // carve-out defers to a short fixed window instead — long enough that consecutive reds cannot
-  // storm, short enough that the fleet stops knowingly running failing code.
+  // storm, short enough that the team stops knowingly running failing code.
   const f = fakeDeps();
   const { r, events } = harness(f.deps);
   const swappedAt = await driveToRestart(r, f, HEAD_B, 1_000_000);
@@ -493,7 +493,7 @@ test("a red RUNNING build after the urgent window already passed keeps the episo
 
 test("a red RUNNING build whose cut deadline already passed proceeds early with a warning, not in silence", async () => {
   // BUGS.md 2026-09-30: the incident's red arrived when the 15 min urgent window it cuts to had
-  // already lapsed, so the deferred-branch warning never fired and the fleet restarted hours
+  // already lapsed, so the deferred-branch warning never fired and the team restarted hours
   // before its announced 12 h deadline with no event naming why. A lapse the carve-out caused
   // must say so — once per ordinary deadline.
   const f = fakeDeps();
@@ -557,7 +557,7 @@ test("a completion write killed mid-flight leaves the previous timestamp intact"
 
   // Model a process killed between write and close (SIGKILL, ENOSPC, EIO) at the swap, right
   // before the restart exit: the writer leaves a partial prefix, then throws. The atomic write
-  // must surface that failure without replacing the good file, or the respawned fleet boots
+  // must surface that failure without replacing the good file, or the respawned team boots
   // with lastAt null and skips the 12 h cooldown entirely — restarting again on the next stale
   // head instead of holding to the rate limit.
   const restore = dieMidWrite();
@@ -579,7 +579,7 @@ test("a completion write killed mid-flight leaves the previous timestamp intact"
 test("an unpersistable completion timestamp degrades to no cooldown rather than failing the restart", async () => {
   // record() runs inside poll immediately before it returns "restart": by then the swap has
   // already succeeded and the process exits right after. If persisting threw (disk full,
-  // permissions) and the error propagated, a fleet would sit on stale code with no restart —
+  // permissions) and the error propagated, a team would sit on stale code with no restart —
   // so the catch degrades to no cooldown for the NEXT process instead of failing this one.
   const f = fakeDeps();
   let recordedAt: number | null = null;
@@ -642,7 +642,7 @@ test("a toolchain-broken suite leaves no latched block: the skip reads as green 
 test("an unwritable event feed cannot throw out of poll, and the failure stays loud on stderr", async (t) => {
   // logEvent throws when .tumwater/events.jsonl is unwritable (ENOSPC, EACCES, the path replaced
   // by a directory). `poll` runs in the orchestrator's catch-less poll loop, so pre-fix the first
-  // build_stale transition ended the fleet; the state change it describes had already applied.
+  // build_stale transition ended the team; the state change it describes had already applied.
   const f = fakeDeps();
   const errWrites: string[] = [];
   t.mock.method(process.stderr, "write", (chunk: string | Uint8Array) => {

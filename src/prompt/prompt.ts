@@ -19,7 +19,7 @@ import { PI_DIALECT, dialectFor, type PromptDialect } from "./dialect.js";
  * review) build their prompts in gate-prompts.ts; assembling a reply into the tick's commit message
  * lives in git/commit-message.ts.
  *
- * The prose is tuned for the fleet's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
+ * The prose is tuned for the team's models (2026-10-01): the primary GLM-5.3-Flash (an 18B-active
  * MoE behind a ~1M window) and the budget fallback's local Qwen3.8-27B (~127k window). Both follow
  * short grouped rules with concrete numbers and literal commands far better than long dense
  * paragraphs, over-read when told merely to "work economically", make unchecked claims the reviewer
@@ -63,11 +63,11 @@ export function contextBudgetRule(dialect: PromptDialect = PI_DIALECT): string {
 export const CONTEXT_BUDGET_RULE = contextBudgetRule(PI_DIALECT);
 
 /** The test-runner rule every run that may run tests carries: the tick and director rules, the
- * conflict resolver, and the reviewer. Project-neutral on purpose — a fleet works on any codebase
+ * conflict resolver, and the reviewer. Project-neutral on purpose — a team works on any codebase
  * (npm, cargo, pytest, a configured check.command), so the rule names no ecosystem's runner as THE
  * right one: it points at the declared check or the framework already in use, and its one example
  * is labeled as a mismatch. A run that does not know the suite's runner guesses one: in the week
- * to 2026-10-05 the fleet's agents ran `npx vitest` 19 times in tumwater, a node:test repo, and
+ * to 2026-10-05 the team's agents ran `npx vitest` 19 times in tumwater, a node:test repo, and
  * vitest killed the compiled tests mid-run, so no cleanup hook ran (BUGS.md 2026-10-05: ~725 temp
  * run roots abandoned and test children orphaned by one conflict resolver's five runs). Even where
  * a guess cannot do that damage, it wastes turns on a runner that finds no tests. tumwater's own
@@ -82,7 +82,7 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
  * YYYY-MM-DD)", a Fixed or Refused date, NEEDS_REVIEW_NOTE's and NEEDS_REPLAN_NOTE's
  * <YYYY-MM-DD>, a plan deadline)
- * inferred it from the newest dates in the repo, which were themselves drifting: the fleet
+ * inferred it from the newest dates in the repo, which were themselves drifting: the team
  * stamped entries days into the future and each wrong date seeded the next. The day is
  * todayStamp's — the same local-day computation as the daily cost budget window — and every
  * builder takes it as an optional trailing `today` that falls through to this default, so tests
@@ -95,7 +95,7 @@ export function dateLine(today: string = todayStamp()): string {
  * derived from worktreePath so the prompt cannot drift from the layout: the hand-written "two
  * levels up (`../../node_modules`)" it replaced pointed at .tumwater/ itself, and on 2026-09-29
  * a bugfix run that followed it (`cd ../..`, git output empty there) fell back to the primary
- * checkout's absolute path and ran the suite in the live fleet's own checkout (BUGS.md). */
+ * checkout's absolute path and ran the suite in the live team's own checkout (BUGS.md). */
 export const ROOT_FROM_WORKTREE = path.relative(worktreePath("/", "role"), "/");
 
 /** The Scope rules every run carries unless its role states its own (Role.scope): one small,

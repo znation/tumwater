@@ -154,7 +154,7 @@ test("the plan role and the director size plans to one implementation run via th
   assert.match(sizing, /file paths and symbol names/);
   assert.match(sizing, /never on line numbers or ranges/);
   // The self-hosting build lag (BUGS.md 2026-09-23): a landing that changes how landings behave
-  // must not also depend on that change, since the fleet lands it with the previous build.
+  // must not also depend on that change, since the team lands it with the previous build.
   assert.match(sizing, /every commit merges under the build that predates it/);
   assert.match(sizing, /a change to how merges behave and any step that depends on it are separate sub-plans/);
   assert.match(sizing, /the second merge only once the first is the running build/);

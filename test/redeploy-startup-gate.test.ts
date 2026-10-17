@@ -13,7 +13,7 @@ import { withPi } from "./fakes/fake-pi.js";
 // The startup gate (BUGS.md 2026-09-23): a green, compiled build that cannot START here — the
 // environment fails `tumwater run`'s preconditions, not the code — must never be swapped in.
 // On 2026-09-22 one was: its child exited "not initialized" and the supervisor took the whole
-// fleet down with it. The gate is asked before the hold and again right before the swap.
+// team down with it. The gate is asked before the hold and again right before the swap.
 
 test("a successor that could not boot is refused before any hold, once per reason, and a repaired environment proceeds", async () => {
   let problem: string | null = NOT_INITIALIZED_MESSAGE;
@@ -110,7 +110,7 @@ test("a startup gate that throws refuses fail-closed, naming its error", async (
 });
 
 test("the incident repro through the production gate: a ready repo whose tumwater.json vanishes refuses the restart until it returns", async () => {
-  // BUGS.md 2026-09-23's repro, minus the fleet: the same runStartupProblem cmdRun runs, asked
+  // BUGS.md 2026-09-23's repro, minus the team: the same runStartupProblem cmdRun runs, asked
   // on behalf of the successor. Pre-fix nothing asked it and the swap went ahead.
   const repo = makeRepo();
   await initProject(repo, "startup gate repro");

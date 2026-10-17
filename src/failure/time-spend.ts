@@ -284,7 +284,7 @@ export function timeAndSpend(tickEvents: HarnessEvent[], allEvents: HarnessEvent
       key = `${resolvedOutcome.result}\u0000${role}`;
       kind = resolvedOutcome.result === "merge_conflict" ? "merge-conflict" : "merge-blocked";
       example = errorTextOrPlaceholder(undefined);
-      // A merge-scope check the harness killed at its own deadline is the fleet's load, not a
+      // A merge-scope check the harness killed at its own deadline is the team's load, not a
       // verdict on the change: split it into its own cause so the ranking names it.
       const killed = newestAttemptEvent(deadlineKilledByLoop, role, resolvedOutcome);
       if (kind === "merge-blocked" && killed) {

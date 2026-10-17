@@ -607,7 +607,7 @@ test("a live sessionRetentionDays edit re-prunes without a restart", async () =>
 
 // --- Live-reload tumwater.json while running ---
 
-test("mid-run tumwater.json edits steer the fleet; a broken file keeps last-known-good", async () => {
+test("mid-run tumwater.json edits steer the team; a broken file keeps last-known-good", async () => {
   // bugfix (a work-tier role) on purpose: it is never deferred by need-based prioritization,
   // so this config-reload pin stays decoupled from scheduling timing — deferral itself is
   // pinned in its own test below. The open bug keeps that premise true: with an empty BUGS.md
@@ -672,7 +672,7 @@ test("a reset request zeroes in-memory counters, survives tick boundaries, and l
     const markerFile = resetRequestPath(repo);
     writeMarker(markerFile, { at: Date.now(), roles: ["clean"] });
 
-    // The fleet consumes the marker within a poll cycle and re-saves zeroed counters. A
+    // The team consumes the marker within a poll cycle and re-saves zeroed counters. A
     // post-reset tick may have started in the same poll (its +1 belongs to the new window),
     // so at most 1 is expected — without in-memory zeroing this would read >= 3.
     await waitFor(() => !fs.existsSync(markerFile), "the marker to be consumed");
@@ -703,7 +703,7 @@ test("a reset consumed while a tick is in flight does not wedge the loop", async
   const repo = await makeFastRepo("mid-tick reset test", ["clean"]);
   // A slow fake pi: each tick holds for ~2s — long enough that a marker dropped while the
   // first tick is in flight (observed within a poll or two of start, consumed within one)
-  // lands mid-tick. That is the documented use case (resetting a running fleet), where most
+  // lands mid-tick. That is the documented use case (resetting a running team), where most
   // loops are mid-tick at any moment.
   const restore = fakePi(`sleep 2\nprintf '%s\n' '${assistantLine("TUMWATER_NOTHING_TO_DO")}'`);
   const orch = startLiveOrchestrator(repo, FAST_POLL_MS);
@@ -752,7 +752,7 @@ test("the primary checkout moving branches mid-run logs exactly one warning (por
     await waitFor(() => loadLoopState(repo, "clean").runs >= 1, "the startup tick to run");
 
     // A human checks out something else in the primary checkout mid-run: one warning names
-    // the divergence, and the fleet keeps merging into the branch it resolved at startup.
+    // the divergence, and the team keeps merging into the branch it resolved at startup.
     sh(repo, "git", "checkout", "-b", "experiment");
     await waitFor(
       () =>

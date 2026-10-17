@@ -45,7 +45,7 @@ export function clearSupersededRejection(s: LoopState): void {
 
 /** Consecutive failed ticks after which the loop raises a harness warning and its state
  * cell reads "failing" (BUGS.md 2026-09-15: every loop failing identically looked like a
- * quiet fleet). Small on purpose — at 3 the error ladder has already doubled twice and
+ * quiet team). Small on purpose — at 3 the error ladder has already doubled twice and
  * the failure is clearly not transient. */
 export const ERROR_STREAK_WARN = 3;
 
@@ -68,7 +68,7 @@ const CUT_OFF_RESUME_LIMIT = 3;
  * and takes a fresh tick on the idle ladder. A session the backend defers past the quiet
  * watchdog every attempt would otherwise re-send the same input immediately and forever,
  * burning an hour of slot time per retry with no output (BUGS.md 2026-09-18: 41 quiet kills
- * consumed 44% of the fleet over two days). Mirrors CUT_OFF_RESUME_LIMIT; the streak itself
+ * consumed 44% of the team over two days). Mirrors CUT_OFF_RESUME_LIMIT; the streak itself
  * keeps counting (LoopState.quietKillStreak) so one warning per episode can be raised. */
 export const QUIET_KILL_RESUME_LIMIT = 3;
 
@@ -221,7 +221,7 @@ export function applyTickOutcome(
     // value, so an error streak capped at the error ceiling never sleeps LESS than the loop
     // already was sleeping, and the idle ladder picks up from there if the failures stop.
     // A subscription claude usage-window rejection is a transient hold, not a failure of the
-    // session: the fleet hold keeps ticks from starting until `resetsAt` (plans/agent-backends.md
+    // session: the team hold keeps ticks from starting until `resetsAt` (plans/agent-backends.md
     // §8, part 6c), and the kept session and worktree edits resume when it lifts (part 6e).
     // The named cause is what the bridge prompt reads, so it does not tell the session the
     // harness merely restarted.

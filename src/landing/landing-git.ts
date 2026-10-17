@@ -197,7 +197,7 @@ export function restoreConfigBytes(root: string, saved: Buffer | null): void {
  * `push . <sha>:<main>`). Uses a working-tree merge when the primary checkout is on main (so its
  * files update), otherwise a local ref push. Returns true on success. The working-tree arm
  * preserves the live config across a landing that untracks it (plans/portability.md §4b/7):
- * without the write-back, the commit that removes the tracked config would delete the fleet's
+ * without the write-back, the commit that removes the tracked config would delete the team's
  * running config out from under it and the next config poll would fall back to defaults. */
 export async function ffMainToOrWhy(
   root: string,

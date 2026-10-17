@@ -48,7 +48,7 @@ export interface StrandedPlanEntry {
 
 /** The stamp verbs a backlog heading's trailing `(planned 2026-09-29)`-style parenthetical
  * opens with — the same list the backlog writers stamp and the dashboards parse. One home
- * for the verb list: the TUI's fleet alerts strip the suffix (stripEntryStamp) and the
+ * for the verb list: the TUI's team alerts strip the suffix (stripEntryStamp) and the
  * dashboard's browser view model splits it off as metadata (splitTitle), and a new stamp
  * verb must reach both renders.
  * Kept as pattern SOURCE rather than a RegExp so the browser twin (a String.raw template
@@ -61,7 +61,7 @@ const ENTRY_STAMP_META_RE = new RegExp(ENTRY_STAMP_META_SOURCE, "i");
 
 /** A heading or title with its trailing `(planned 2026-09-29)`-style stamp suffix removed,
  * whitespace otherwise untouched — the shared span of this module's indexTitle, eligibility's
- * entryKey and seriesPart, and the TUI fleet alerts, which all read a heading stamp-free. */
+ * entryKey and seriesPart, and the TUI team alerts, which all read a heading stamp-free. */
 export function stripEntryStamp(title: string): string {
   return title.replace(ENTRY_STAMP_META_RE, "");
 }

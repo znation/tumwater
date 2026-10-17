@@ -69,7 +69,7 @@ function installedVersion(dir: string, name: string): string | undefined {
 /** The production installer: `npm install` in `dir` from its own lockfile, run as a process
  * group under the timeout. `--no-save` keeps package.json and package-lock.json byte-identical,
  * so neither a worktree nor the root checkout goes dirty. Not `npm ci`: ci deletes node_modules
- * first, and at the root that is the install every in-flight check of a live fleet resolves
+ * first, and at the root that is the install every in-flight check of a live team resolves
  * through. `--ignore-scripts` runs no package's (or the project's own) lifecycle scripts inside
  * the harness. */
 export const npmInstall: InstallRunner = async (dir, timeoutMs) => {
@@ -112,7 +112,7 @@ export async function syncInstall(
 }
 
 /** Re-sync the root checkout's install after a fast-forward moved main's lockfile (BUGS.md
- * 2026-10-01). Every fleet worktree, the redeploy compile, and the running harness resolve
+ * 2026-10-01). Every team worktree, the redeploy compile, and the running harness resolve
  * through `root/node_modules`, so a landed dependency the root never installed would leave each
  * of them resolving against the old tree. Called under the merge lock right after the ff, so
  * the next landing's in-lock check already sees it. A `dep_install` event prices a run; a

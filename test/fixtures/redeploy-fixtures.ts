@@ -7,7 +7,7 @@ import type { AutoRestartRecord, RedeployDeps } from "../../src/redeploy/redeplo
 import { Redeployer } from "../../src/redeploy/redeployer.js";
 
 /** Shared scripted-effect fixtures for the self-redeploy tests: drive the state machine with
- * controllable deps so every decision branch is pinned without git, tsc, or a fleet. The
+ * controllable deps so every decision branch is pinned without git, tsc, or a team. The
  * helpers' own behavior — compileStaged/swapDist against a temp project, mainIsGreen's
  * boolean view, the mirror worktree — is pinned beside their modules. */
 

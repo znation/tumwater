@@ -47,7 +47,7 @@ export function inspectMarkdownLines(p: RoleViewPayload): string[] {
 }
 
 /** The notebook, prompt and disclosure blocks alone — what renderRoleMarkdown splices after
- * its own Fleet lines, which already carry the fallback-step bullet. */
+ * its own Team lines, which already carry the fallback-step bullet. */
 function inspectBodyLines(p: RoleViewPayload): string[] {
   const lines: string[] = [];
   lines.push(
@@ -171,7 +171,7 @@ function quietHoursLine(w: NonNullable<RoleViewPayload["quietHours"]>[number]): 
 
 /** The loop's schedule as Markdown bullet lines — `Next tick`, `Last tick`, then one
  * `Quiet hours` line per governing window (none when the payload carries no windows) — in the
- * same words and wording family as the fleet surface's `next run` cell (status-render.ts's
+ * same words and wording family as the team surface's `next run` cell (status-render.ts's
  * nextRunCell), so the role view and the status table cannot drift on when a loop acts next:
  * a never-scheduled loop (nextRunAt 0) reads `not scheduled yet`; a due loop reads `due now`;
  * a future one reads `in <Ns>` through humanSeconds, prefixed `backoff ` while backoffSeconds
@@ -211,7 +211,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   lines.push(`- Model: ${modelLine(p)} (${p.modelTier} tier)`);
   // Per-provider concurrency cap (plans/provider-concurrency.md §8): name the key whose cap
   // bounds the role's concurrent ticks, plus the cap itself. Present only while
-  // `maxConcurrentPerProvider` maps this seam's key — a cap-less default fleet has no
+  // `maxConcurrentPerProvider` maps this seam's key — a cap-less default team has no
   // resolvable key entry, so its role view renders no new line and stays byte-identical.
   if (p.providerKey !== undefined && p.providerCap !== undefined) {
     lines.push(`- Provider: ${p.providerKey} (cap ${p.providerCap})`);
@@ -219,7 +219,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   // Image input (plans/image-input.md "Surfaces", part 5/5): whether this loop's own model
   // reads images, and — when it cannot — where a tick that reads an image reroutes. Not just
   // `yes`/`no`: a text-only loop that falls back names the target, so `tumwater role <id>`
-  // explains the fleet alert without running doctor. Unknown (null) renders `unknown` rather
+  // explains the team alert without running doctor. Unknown (null) renders `unknown` rather
   // than guessing.
   const images =
     p.imageInput === true
@@ -273,7 +273,7 @@ export function renderRoleMarkdown(p: RoleViewPayload, now = Date.now()): string
   }
   // The loop's schedule (role-view.ts's nextRunAt/backoffSeconds/lastRunEndedAt, read from
   // the same persisted state): when it may tick again, and when it last did — the one
-  // place the fleet's `next run`/`last tick` vocabulary was absent. Rendered from the
+  // place the team's `next run`/`last tick` vocabulary was absent. Rendered from the
   // injected `now`, so the lines stay a pure function of the payload.
   lines.push(...scheduleLine(p, now));
   // The loop's recent tick outcomes (role-view.ts's recentOutcomes, read from the event log):

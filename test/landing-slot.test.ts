@@ -101,7 +101,7 @@ test("a subscription landing run folds as notional, and rides the event's notion
 });
 
 // A claude reviewer's (or resolver's) five-hour window must reach claude-account.json when the
-// landing fold sees it, not wait for the pi author's next tick end — otherwise a mixed fleet's
+// landing fold sees it, not wait for the pi author's next tick end — otherwise a mixed team's
 // reviewer readings are lost every time (PLANS.md "Mixed claude + pi fleets, part 3/4"). The
 // fold is best-effort like tick-finalize.ts's: a run with no billing/window reading leaves the
 // file untouched.

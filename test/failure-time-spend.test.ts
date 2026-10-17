@@ -136,7 +136,7 @@ test("a review-rejected change's authoring hours price into error-class, not lan
   assert.match(md, /\| coverage \| — \| — \| 1\.0 h · \$1\.00 \|/);
 });
 
-test("a mixed fleet of plain and progressing tick timeouts pools into one digest cluster", () => {
+test("a mixed team of plain and progressing tick timeouts pools into one digest cluster", () => {
   const root = tmpdir();
   writeEvents(root, [
     { ts: at(0), loop: "feature", type: "run_end", result: "error", error: "timed out after 1800s", durationMs: 1_800_000, costUsd: 0.10 },
@@ -217,7 +217,7 @@ test("a rebased review_error landing prices under its review_failed message, not
   // BUGS.md 2026-10-10: every vet rebases its pin onto main before the gate (syncPinToMain),
   // so `review_failed` records the rebased head while `merge_queued`/`merge_failed` keep the
   // authored sha. Matching the event on exact sha missed every rebased vet — the common case on
-  // a busy fleet — and priced the span under the anonymous `(no error text recorded)` placeholder
+  // a busy team — and priced the span under the anonymous `(no error text recorded)` placeholder
   // even though the digest's review-failure section held the message. The arm now keys on the
   // landing attempt (the claimed pin and its outcome), not the sha.
   const root = tmpdir();

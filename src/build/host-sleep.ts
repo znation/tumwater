@@ -1,5 +1,5 @@
 /** Measured host sleep inside a time window — the evidence that lets the harness tell "the
- * build failed" from "the host was asleep while the build ran". The fleet's host is a laptop
+ * build failed" from "the host was asleep while the build ran". The team's host is a laptop
  * in clamshell maintenance sleep (BUGS.md 2026-09-21 logged 569 sleeps over three days), and
  * a sleep shorter than a check's remaining deadline but longer than a test's own wall-clock
  * wait expires that wait at the next wake: the suite exits nonzero INSIDE the deadline, so
@@ -106,7 +106,7 @@ export function sleptMsBetween(a: SleepSample, b: SleepSample): number | undefin
 }
 
 /** The host's one-minute load average beside its core count — the starvation evidence an
- * on-time deadline kill needs to be read as the fleet's own weather rather than a slow change. */
+ * on-time deadline kill needs to be read as the team's own weather rather than a slow change. */
 interface HostLoad {
   load1: number;
   cpus: number;

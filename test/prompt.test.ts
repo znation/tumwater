@@ -328,7 +328,7 @@ test("every run carries the context-budget rule", () => {
 });
 
 // Prompt contract for the local-model retune (2026-09-08, Qwen-class ~27B behind a ~258k window):
-// the fleet's transcripts showed roles with no backlog reading the codebase file by file (30+
+// the team's transcripts showed roles with no backlog reading the codebase file by file (30+
 // whole-file reads, ~300 KB of tool output per tick, 277 whole-file reads against 6 ranged ones)
 // and landing nothing. The rules now carry numeric budgets and literal commands, the search roles
 // carry a shared candidate-hunt procedure, plans are sized to one run, and the reviewer gets a
@@ -439,7 +439,7 @@ test("the readme role syncs from the git delta since its own last commit", () =>
 
 // No prompt used to say what day it is (BUGS.md "Loops are never told the date…"), so every
 // "(found by … YYYY-MM-DD)" heading, Fixed date, and Needs-review marker was inferred from the
-// newest dates in the repo — and the fleet stamped entries days into the future. Every pi prompt
+// newest dates in the repo — and the team stamped entries days into the future. Every pi prompt
 // now states the local day once; tick and director (the roles that write dated records) are also
 // told to date them from it. An explicit `today` pins the date so these checks are exact.
 

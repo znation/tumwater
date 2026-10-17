@@ -3,7 +3,7 @@
 // drives the REAL `claude` on PATH in a throwaway git repo, so a regression the fake cannot
 // see — an old CLI that refuses a default model, an isolation bug that loads the operator's
 // personal config, a resume that stopped finding its transcript — fails here by hand instead
-// of in the fleet. It costs a few cents of API-equivalent spend on a subscription and needs a
+// of in the team. It costs a few cents of API-equivalent spend on a subscription and needs a
 // logged-in CLI, so it is NOT part of `npm test` (which strips TUMWATER_CLAUDE_BIN/CLAUDECODE
 // and must stay green on a machine with no claude installed).
 //
@@ -127,7 +127,7 @@ try {
   const probeEnv = claudeEnv(process.env, { quietTimeoutSeconds: 0 });
 
   // 1. The CLI is present and new enough for the gated default models (finding 9: an old CLI
-  //    refuses Opus and misprices Haiku, and fleet runs never auto-update).
+  //    refuses Opus and misprices Haiku, and team runs never auto-update).
   const versionOut = spawnSync(resolved.bin, ["--version"], { encoding: "utf8", timeout: 30_000 });
   const version = /(\d+\.\d+\.\d+)/.exec(versionOut.stdout ?? "")?.[1];
   const floor = claudeBackend.minVersion?.(MODEL.default) ?? "0.0.0";
@@ -138,7 +138,7 @@ try {
   );
 
   // 2. One call on each default model, so a CLI too old for one fails here and not in the
-  //    fleet. Cheapest first.
+  //    team. Cheapest first.
   for (const tier of ["small", "default", "strong"]) {
     const result = await runClaude({
       model: MODEL[tier],
@@ -243,7 +243,7 @@ try {
     `before=${killedRecord?.id ?? "<none>"} after=${newestSession()?.id ?? "<none>"} ${resumedAfterKill.errorMessage ?? ""}`,
   );
 
-  // 7. An unknown model classifies as a permanent configuration error, so the fleet holds the
+  // 7. An unknown model classifies as a permanent configuration error, so the team holds the
   //    pin instead of retrying a request that can never succeed.
   const unknown = await runClaude({
     model: "claude-smoke-unknown-9-9",

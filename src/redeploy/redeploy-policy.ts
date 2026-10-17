@@ -1,15 +1,15 @@
 import type { BuildStaleness } from "../build/build-info.js";
 import type { CompileResult } from "../build/build-stage.js";
 
-/** Self-redeploy for a self-hosting fleet (see build/build-info.ts for why): when main's build
+/** Self-redeploy for a self-hosting team (see build/build-info.ts for why): when main's build
  * inputs have moved past the running build, verify that main is green, compile it into a staging
- * dir, drain the fleet (no new ticks; in-flight ones finish or are aborted resumably after
+ * dir, drain the team (no new ticks; in-flight ones finish or are aborted resumably after
  * RESTART_DRAIN_MAX_MS), swap the compiled tree into dist/, and ask the supervisor
  * (src/process/supervisor.ts) to respawn the harness onto it by exiting RESTART_EXIT_CODE. Every
  * step is non-blocking from the orchestrator's poll: the green check and the compile run in the
  * background and are consulted on later polls, so a slow `npm test` never stalls scheduling.
  * Completed restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11), so
- * sustained main churn cannot halt the fleet for a drain over and over.
+ * sustained main churn cannot halt the team for a drain over and over.
  *
  * This module is the POLICY — the injectable effects interface (RedeployDeps), the
  * cooldown/escalation knobs the state machine decides with, and the RESTART_EXIT_CODE handshake
@@ -20,16 +20,16 @@ import type { CompileResult } from "../build/build-stage.js";
  * contract both halves serve:
  *
  * Nothing here is fail-open: a red main, a failed compile, or a swap error blocks the restart for
- * that head and the fleet keeps running the old build until main moves again. A green check that
+ * that head and the team keeps running the old build until main moves again. A green check that
  * REJECTS is the one non-verdict — it could not run, so it says nothing about the tree: the
  * pending head is dropped, one warning is logged per episode, and the next poll re-runs the
  * check (BUGS.md 2026-09-16). A block says so out loud — one warning event, and the reason in
  * BuildStatus.restartBlocked, which the dashboards and doctor render — because a stale build that
  * is about to be replaced and one that never will be look identical otherwise (BUGS.md
  * 2026-09-08). A green, compiled build can still be unable to START here — the environment, not
- * the code, fails `tumwater run`'s startup gate — so that gate is asked before the fleet is held
+ * the code, fails `tumwater run`'s startup gate — so that gate is asked before the team is held
  * and again right before the swap, and a failure refuses the restart with a `restart_refused`
- * event instead of trading a running fleet for a child that exits on its first line (BUGS.md
+ * event instead of trading a running team for a child that exits on its first line (BUGS.md
  * 2026-09-23). Every tick a restart interrupts resumes on the new build through the same resume
  * machinery a Ctrl+C uses, so a restart loses no work. */
 
@@ -43,7 +43,7 @@ export const RESTART_EXIT_CODE = 75;
  * Redeployer.drainSince. Director ticks are exempt: an in-flight human prompt extends the hold
  * without any cap (see poll).
  *
- * The live window tracks the fleet's real tick duration: the orchestrator passes the p75 of recent
+ * The live window tracks the team's real tick duration: the orchestrator passes the p75 of recent
  * completed work-bearing role ticks (InFlightCounts.roleTickP75Ms) and poll uses it in place of
  * this constant once it has enough samples (BUGS.md 2026-09-18). The hand-set 30 minutes had not
  * been re-derived since an earlier backend; measured p50 was 46 min and p75 82 min, so the drain
@@ -53,16 +53,16 @@ export const RESTART_DRAIN_MAX_MS = 30 * 60_000;
 
 /** How often a COMPLETED auto-restart may land — at most once per this window (BUGS.md
  * 2026-09-11): under sustained main churn every stale head would otherwise drive a full
- * hold+drain+swap episode back to back, halting the fleet for a drain over and over. Bounds
+ * hold+drain+swap episode back to back, halting the team for a drain over and over. Bounds
  * frequency across episodes; RESTART_DRAIN_MAX_MS bounds the drain within one. */
 export const RESTART_COOLDOWN_MS = 12 * 60 * 60_000;
 
 /** The cooldown's urgency carve-out (BUGS.md 2026-09-30): when the RUNNING build's own commit
  * carries a red baseline verdict, the deferral is cut to this window instead of the full 12 h —
  * a red running build is not churn but the exact predicament the self-redeploy exists to end,
- * and the rate limit protects against storms, not against a fleet knowingly executing code its
+ * and the rate limit protects against storms, not against a team knowingly executing code its
  * own tree fails. Still a real delay, so consecutive reds cannot storm: one episode per this
- * window at most, each swap giving the fleet a chance to land on green. */
+ * window at most, each swap giving the team a chance to land on green. */
 export const RESTART_URGENT_COOLDOWN_MS = 15 * 60_000;
 
 /** The urgent carve-out in whole minutes — the one home of that ms→min division, beside the
@@ -96,13 +96,13 @@ export interface InFlightCounts {
   /** p75 of recent completed work-bearing role-tick durations (ms) — ticks that ended with
    * something to show, never a seconds-long `no_change` re-check (runTimedRoleTick filters
    * them out; BUGS.md 2026-09-30) — or null/absent when too few samples: the drain window
-   * tracks the fleet's real tick duration instead of the cold-start constant
+   * tracks the team's real tick duration instead of the cold-start constant
    * (BUGS.md 2026-09-18). */
   roleTickP75Ms?: number | null;
 }
 
 /** The effects the redeploy policy drives, injectable so the policy is testable without git,
- * tsc, or a real fleet. Production wiring is createRedeployer below. */
+ * tsc, or a real team. Production wiring is createRedeployer below. */
 export interface RedeployDeps {
   /** How far the running build is behind `mainHead` (null: not this repo's build). */
   staleness(mainHead: string): Promise<BuildStaleness | null>;
@@ -122,7 +122,7 @@ export interface RedeployDeps {
   bootProblem(): Promise<string | null>;
   /** Does `buildSha` — the RUNNING build's own commit — carry a red baseline verdict? The
    * cooldown's urgency carve-out asks this (BUGS.md 2026-09-30): a red running build cuts the
-   * 12 h deferral to RESTART_URGENT_COOLDOWN_MS. A verdict already in the fleet-shared cache
+   * 12 h deferral to RESTART_URGENT_COOLDOWN_MS. A verdict already in the team-shared cache
    * answers free; a cold cache — no worktree has baselined this SHA in this process, which is
    * the standing state for a stale build since checkMainBaseline only ever runs at main's tip
    * — is recovered by running the baseline check ONCE on the build SHA itself, in a dedicated

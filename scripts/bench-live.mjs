@@ -7,7 +7,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { distRoleIds, requireDistBuild, seedLiveFleet } from "./live-fixture.mjs";
+import { distRoleIds, requireDistBuild, seedLiveTeam } from "./live-fixture.mjs";
 
 // Before the dist/ imports below: a tree without a build would otherwise die with a raw
 // ERR_MODULE_NOT_FOUND stack instead of the fix. The benchmark's numbers mean nothing against
@@ -21,7 +21,7 @@ const ROLES = await distRoleIds();
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "tw-bench-"));
 try {
-  seedLiveFleet(root, ROLES);
+  seedLiveTeam(root, ROLES);
 
   // Warm up: first frame seeds tail state and stat caches.
   snapshot(root);

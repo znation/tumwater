@@ -75,7 +75,7 @@ function ownsBrief(text: string): boolean {
  * A candidate that exists but cannot be read (README.md created as a directory, a
  * permission-lost file) is an operator-visible break, not a silent skip: the brief is
  * every loop's reason to exist, read each tick, so falling through to the next candidate
- * could run the fleet on the wrong brief and throwing raw would crash every tick with an
+ * could run the team on the wrong brief and throwing raw would crash every tick with an
  * errno that names neither the file nor the fix — the message below names both. */
 function firstBriefText(
   root: string,

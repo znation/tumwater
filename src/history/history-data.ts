@@ -20,7 +20,7 @@ import { outcomeText, usageText } from "../events/event-format.js";
 import { compareCodeUnits, groupBy } from "../collections.js";
 
 /** `history`'s default row count and ceiling. The default shows a working hour of a quiet
- * fleet; the ceiling bounds how much log one ask re-reads — more rows only re-read more log
+ * team; the ceiling bounds how much log one ask re-reads — more rows only re-read more log
  * with no added signal, so an explicit flag above it fails fast (the report's --days pattern). */
 export const HISTORY_DEFAULT_TICKS = 20;
 export const HISTORY_MAX_TICKS = 200;
@@ -387,7 +387,7 @@ export function tickRows(
  * the scan filled it — `events.length >= window` means the log may hold older events — under
  * the same HISTORY_SCAN_MAX_EVENTS bound so one ask cannot scan without end:
  * - Rows fall short. A role filter dilutes the window (every other loop's events occupy it
- *   too), so a quiet role in a busy fleet must still get its last `limit` ticks whenever the
+ *   too), so a quiet role in a busy team must still get its last `limit` ticks whenever the
  *   retained log holds them — never a bare "no ticks yet" for a role whose ticks sit just
  *   past the first window.
  * - A row's run_start went unpaired. The window boundary can cut inside a tick's own event

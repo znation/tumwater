@@ -1,7 +1,7 @@
 // vocabulary: plain
 /** Quiet hours (plans: "Quiet hours … part 1/2, the gate"): a config-driven daily local-time
  * window — `"23:00-07:00"` — during which role loops start no new ticks, so an operator can
- * put the fleet on a nightly schedule once instead of typing `tumwater pause` every evening.
+ * put the team on a nightly schedule once instead of typing `tumwater pause` every evening.
  * Extracted from the orchestrator's concerns the same way the pause gate is
  * (src/gates/pause-gates.ts): the parsing, the membership decision, and the edge-triggered
  * quiet/awake events live here; the orchestrator owns only the wiring. The director is
@@ -40,7 +40,7 @@ function fail(error: string): { ok: false; error: string } {
 
 /** Parse one `quietHours` value: `"HH:MM-HH:MM"` in local time, 24-hour clock, a wrapping
  * window (`start > end`) is the overnight case the format exists for. `key` is the config key
- * the value came from, named verbatim in every error; it defaults to the fleet-wide
+ * the value came from, named verbatim in every error; it defaults to the team-wide
  * `quietHours`, and the per-role map passes `quietHoursPerRole.<id>` so a rejected entry names
  * the key the operator actually set rather than a different one. */
 export function parseQuietHours(value: unknown, key = "quietHours"): ParsedQuietHours {
@@ -95,7 +95,7 @@ export interface QuietHoursGateState {
   prevIn: boolean;
 }
 
-/** A fresh gate state: outside the window (the default for a fleet without quiet hours), so
+/** A fresh gate state: outside the window (the default for a team without quiet hours), so
  * the first poll of an unset window logs nothing. */
 export function newQuietHoursGateState(): QuietHoursGateState {
   return { prevIn: false };
@@ -106,7 +106,7 @@ export function newQuietHoursGateState(): QuietHoursGateState {
  * the next poll), decide membership for `now`, and log exactly one `quiet_hours_started` /
  * `quiet_hours_ended` event (`source: TUMWATER_SOURCE`, with the effective window string) per
  * crossing. An unset/off window is simply "outside", so nothing is ever logged for it.
- * Returns whether the fleet is inside the window right now. */
+ * Returns whether the team is inside the window right now. */
 export function pollQuietHoursGate(
   root: string,
   quietHours: unknown,
@@ -127,11 +127,11 @@ export function pollQuietHoursGate(
 }
 
 /** Per-role quiet hours (PLANS.md, `quietHoursPerRole`): is `role`'s own window holding at
- * `now`? The membership decision reuses the fleet window's own parser and predicate, so a
- * per-role window means exactly what the same string means fleet-wide (wrapping included).
+ * `now`? The membership decision reuses the team window's own parser and predicate, so a
+ * per-role window means exactly what the same string means team-wide (wrapping included).
  * An absent key, a non-string, or an unparseable value reads as off here — validation is
  * config-validation.ts's job, not this helper's, and a malformed value must never hold a
- * loop the operator did not schedule. Stateless: unlike the fleet-wide gate there is no
+ * loop the operator did not schedule. Stateless: unlike the team-wide gate there is no
  * edge-triggered event — a per-role hold is an anonymous verdict recomputed per poll,
  * exactly like `capPaused`'s set (role-cap-gates.ts). */
 export function roleQuietHold(

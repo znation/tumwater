@@ -69,7 +69,7 @@ export function readSamples(runDir: string): number[] {
  * 3600s, plan 3600s, readme 1800s, steward/qa/selfcheck) are zeroed too: a role entry
  * inherits them through overlayDefaults even when the test rewrites `roles.<id>`
  * wholesale, and configForRole prefers the per-role value — leaving them would put a
- * `fastConfig(["organize"])` fleet on a 1 h tick clock (2026-10-06 CI regression). Only
+ * `fastConfig(["organize"])` team on a 1 h tick clock (2026-10-06 CI regression). Only
  * the SEEDED clocks are cleared, so a role without a default clock still inherits the
  * global `minRunIntervalSeconds` a caller sets afterwards (the vet-abort test's 300 s
  * freeze relies on that). */

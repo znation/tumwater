@@ -31,7 +31,7 @@ export type RedeployEvent = HarnessEventInput;
  * `poll` runs inside the orchestrator's catch-less poll loop and `forceRestart` inside the
  * restart-marker consumer's, so a `logEvent` throw (ENOSPC, EACCES, the path replaced by a
  * directory) on the first build_stale/restart_refused/restart_blocked transition would end the
- * fleet, and for a forced restart leave its marker unacknowledged — the same "logging must not
+ * team, and for a forced restart leave its marker unacknowledged — the same "logging must not
  * throw" policy the orchestrator poll body's `emit` and the abort-request consumer apply. The
  * redeploy wiring (redeploy.ts's redeployDeps) wraps its sink with this too: the green and
  * witness checks call that sink from inside checkMainBaseline's run hook, whose throw would
@@ -61,15 +61,15 @@ export class Redeployer {
   private staleness: BuildStaleness | null = null;
   /** The head a restart is pending for. */
   private pendingHead: string | null = null;
-  /** When the fleet's current unbroken hold began — 0 when it is not being held. The drain
+  /** When the team's current unbroken hold began — 0 when it is not being held. The drain
    * deadline is measured from here and NOT from when the current head became pending: a busy
-   * self-hosting fleet merges while it drains, and giving each new head its own full window
+   * self-hosting team merges while it drains, and giving each new head its own full window
    * handed the same in-flight ticks another 30 minutes every time main moved. On 2026-09-08 that
-   * held the fleet for 38 minutes under a 30-minute cap and reported the last 30 (BUGS.md).
+   * held the team for 38 minutes under a 30-minute cap and reported the last 30 (BUGS.md).
    * Nothing new starts during a hold, so the ticks a drain waits on can only be the ones it
    * began with — one window is all they are owed. */
   private drainSince = 0;
-  /** The drain window captured when the current hold began: the fleet's observed p75 tick
+  /** The drain window captured when the current hold began: the team's observed p75 tick
    * duration when the orchestrator has enough samples, else the cold-start RESTART_DRAIN_MAX_MS.
    * Captured once per unbroken hold so a sample change mid-episode cannot move a deadline that
    * is already running (see drainSince). */
@@ -103,7 +103,7 @@ export class Redeployer {
   private forcedRestart = false;
   /** When the current unbroken stale episode began (epoch ms), or null while the build is fresh.
    * Deliberately head-independent: main moving under a stale build CONTINUES the episode rather
-   * than restarting the clock, because the fleet's predicament — running code main has left
+   * than restarting the clock, because the team's predicament — running code main has left
    * behind — is the same whatever the head, and a per-head clock is exactly what let the
    * 2026-09-29 pin produce 109 warnings without ever saying the pin was the story. In-memory,
    * per process: a completed restart (and the process exit that follows it) is a new world. */
@@ -140,7 +140,7 @@ export class Redeployer {
   private buildRedSha: string | null = null;
   /** Pre-warm during a cooldown (BUGS.md 2026-09-30): the head whose restart the cooldown defers
    * still gets its green check and staged compile — once per SHA — so the lapse reaches the
-   * swap directly instead of paying green-check + compile + drain from zero while the fleet sits on
+   * swap directly instead of paying green-check + compile + drain from zero while the team sits on
    * a build it already knows is stale. The check and compile are the same side-effect-free effects
    * the episode itself runs (mirror worktree, staging dir under .tumwater/build); what the episode
    * adopts is decided by the adopt helpers, not by the pre-warm. The probes themselves live in
@@ -192,15 +192,15 @@ export class Redeployer {
       s.checkedHead = this.lastHead;
       // Why a stale build is still the one running. Staleness alone cannot say: a restart that
       // is minutes away and one that was refused hours ago look identical, and on 2026-09-08
-      // that gap is what let a blocked restart sit unnoticed while the fleet ticked on stale
+      // that gap is what let a blocked restart sit unnoticed while the team ticked on stale
       // code (BUGS.md). Mutually exclusive by construction — block() clears the pending head,
       // and an episode cannot start inside the cooldown, so no two branches can hold at once.
       if (this.pendingHead === this.lastHead) s.restartPending = true;
       else if (this.blockedHead === this.lastHead && this.blockedReason) s.restartBlocked = this.blockedReason;
-      // Inside the post-restart cooldown the fleet deliberately keeps ticking on the stale build
+      // Inside the post-restart cooldown the team deliberately keeps ticking on the stale build
       // — say so with a deadline, through the same channel as a refused restart
       // (BUGS.md 2026-09-11).
-      // Past it, a startup gate that keeps failing holds the fleet on the stale build just as
+      // Past it, a startup gate that keeps failing holds the team on the stale build just as
       // surely, and says why the same way (BUGS.md 2026-09-23).
       else if (s.stale && this.autoRestartOn) {
         const { until, urgent } = this.effectiveCooldownUntil(now);
@@ -240,7 +240,7 @@ export class Redeployer {
 
   /** Start the RUNNING build's own baseline check in the background when the cooldown is
    * deferring a restart and this process has no verdict for the build SHA yet (BUGS.md
-   * 2026-09-30). This is the cold-cache recovery the fleet-shared cache cannot give by itself:
+   * 2026-09-30). This is the cold-cache recovery the team-shared cache cannot give by itself:
    * checkMainBaseline only ever runs at main's tip, so a stale build's SHA gains an entry no
    * other way. The witness check costs at most one suite run per process per build SHA — the
    * cache answers every later consult — and its result can only shorten the wait safely: a
@@ -318,7 +318,7 @@ export class Redeployer {
 
     // Completed auto-restarts are rate-limited to one per RESTART_COOLDOWN_MS (BUGS.md 2026-09-11):
     // under sustained churn every stale head would otherwise drive a full hold+drain+swap episode
-    // back to back. Inside the cooldown the fleet keeps ticking on the stale build exactly as when
+    // back to back. Inside the cooldown the team keeps ticking on the stale build exactly as when
     // a restart is blocked — no pendingHead, no hold, no drain, no new-tick block — but the
     // deferred head's green check and staged compile still run (prewarm, BUGS.md 2026-09-30), so
     // the lapse reaches the swap directly instead of paying green-check + compile + drain from
@@ -375,7 +375,7 @@ export class Redeployer {
       if (problem !== null) return this.refuse(mainHead, problem, now);
       this.refusedReason = null;
       this.pendingHead = mainHead;
-      // Only when the fleet was not already being held: a superseded head hands its drain over
+      // Only when the team was not already being held: a superseded head hands its drain over
       // to the new one rather than starting a fresh window (see drainSince).
       if (!this.drainSince) {
         this.drainSince = now;
@@ -397,7 +397,7 @@ export class Redeployer {
     // A REJECTED check is not a verdict: it could not run (git broke inside the mirror worktree,
     // or the check itself threw), so it says nothing about the tree. Drop the pending head — no
     // blockedHead, no latched "main is red" — warn once per episode, and let the next poll
-    // re-run the check on the same head; a fleet whose toolchain recovers redeploys itself
+    // re-run the check on the same head; a team whose toolchain recovers redeploys itself
     // without main ever moving (BUGS.md 2026-09-16). A red VERDICT below still blocks.
     if (this.green.error) {
       this.noteFailure(now);
@@ -456,7 +456,7 @@ export class Redeployer {
     // The drain rule, split by who requested the work (BUGS.md 2026-09-08): a director tick is
     // an explicit human prompt and outranks the redeploy — while one is in flight the hold has no
     // time cap: no swap and no abort until it finishes. The per-tick watchdogs already bound how
-    // long one run can take, so this cannot hang the fleet beyond what a single tick can do.
+    // long one run can take, so this cannot hang the team beyond what a single tick can do.
     if (inFlight.directorInFlight > 0) return "hold";
     if (inFlight.roleInFlight > 0 && now - this.drainSince < this.drainWindowMs) return "hold";
     // Ask the startup gate once more, right before the point of no return: the environment can
@@ -509,7 +509,7 @@ export class Redeployer {
     return "restart";
   }
 
-  /** Nothing is being waited for any more — the fleet schedules normally again, so whatever
+  /** Nothing is being waited for any more — the team schedules normally again, so whatever
    * drain was running is over and the next one starts its clock from scratch. Every path out of
    * poll that is not a `hold` goes through here. */
   private endDrain(): "none" {
@@ -568,7 +568,7 @@ export class Redeployer {
     this.blockedHead = head;
     this.blockedReason = reason;
     this.clearPending();
-    // A typed transition, not only a warning: the digest's Fleet state changes section replays
+    // A typed transition, not only a warning: the digest's Team state changes section replays
     // the decisions, and a stream that entered "compiling" must leave it when the compile dies
     // — its two other endings (restart, restart_refused) each have an event, so the third does
     // too (BUGS.md 2026-09-28). Logged before the warning, so the warning is never the state

@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** Wording half of the failure digest's Fleet state changes section: which transition event types
+/** Wording half of the failure digest's Team state changes section: which transition event types
  * the digest replays and the bounded one-liner describing each. Split out of failure-data.ts (the
  * same seam build/build-check-events.ts split from build/build-check.ts) so the per-event-type
  * wording — which changes whenever the harness grows a new self-decision — stays apart from the
@@ -10,12 +10,12 @@ import { truncateExample } from "./failure-cluster.js";
 import { cutSplitsSurrogatePair } from "../text/text.js";
 import { finiteNumber, stringList } from "../files/json-object.js";
 import type { HarnessEvent } from "../events/events.js";
-import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { deferredReasonText } from "../events/event-format.js";
 
 /** The transition events the digest replays: the decisions the harness made about itself (the
- * cap/fleet gates and the fleet hold, the error-streak breaker's pause, the role's own daily
+ * cap/team gates and the team hold, the error-streak breaker's pause, the role's own daily
  * cap, model fallbacks, live-config edits, self-hosted redeploys, need-based deferrals,
  * orchestrator lifecycle). They are the evidence the telemetry role's load-bearing
  * rule asks it to judge — whether the harness's RESPONSE to a failure was wrong
@@ -49,7 +49,7 @@ export const STATE_CHANGE_TYPES = new Set<string>([
   "supervisor_exit",
 ]);
 
-/** The Fleet state changes section's caps: newest N transitions, each line's payload capped at
+/** The Team state changes section's caps: newest N transitions, each line's payload capped at
  * STATE_CHANGE_MAX (a marked word-boundary cut per truncateExample), each free field within it
  * at STATE_CHANGE_FIELD_MAX. Together with the fixed timestamp/role cells these make the
  * section's bytes a constant-plus-marker, so the digest's ~6 KB bound holds no matter how many
@@ -77,7 +77,7 @@ function providerModel(ev: HarnessEvent): string {
   return `${field(ev.provider ?? "pi default")}/${field(ev.model ?? "pi default")}`;
 }
 
-/** A compact, bounded one-liner for one harness decision event, for the Fleet state changes
+/** A compact, bounded one-liner for one harness decision event, for the Team state changes
  * section. Every free string is sliced (field) and the whole line is capped again at
  * STATE_CHANGE_MAX so the digest's byte bound holds for any event shape — the cap cut falls on
  * a word boundary and carries truncateExample's `… (+N chars)` marker, so a cut line can never
@@ -106,10 +106,10 @@ export function describeStateChange(ev: HarnessEvent): string {
       text = `budget resumed (${budgetPhrase(ev.spentUsd, ev.capUsd)} today)`;
       break;
     case "team_paused":
-      text = fleetPausePhrase();
+      text = teamPausePhrase();
       break;
     case "team_resumed":
-      text = fleetResumePhrase();
+      text = teamResumePhrase();
       break;
     case "role_paused":
       text = rolePausePhrase(field(ev.role ?? "?"));

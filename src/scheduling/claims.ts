@@ -4,7 +4,7 @@
  * which entry a staged diff moved. The pure policies live here — assignment is the first free
  * entry in file order, release is `left` / `ineligible` / `disabled` / `stale` — so
  * orchestrator-scheduling.ts and tick-stage.ts share one definition and the rules are unit
- * tested without a fleet. The claim itself is persisted on LoopState, so it survives a crash,
+ * tested without a team. The claim itself is persisted on LoopState, so it survives a crash,
  * resume, revision and leftover recovery. */
 
 import path from "node:path";
@@ -176,7 +176,7 @@ export function workReserveCount(
     /** The loop ids with a queued or in-flight landing. */
     queuedLandingRoles: ReadonlySet<string>;
     /** Whether an idle work loop's provider still has headroom to use a reserved permit
-     * (plans/provider-concurrency.md §6). With per-provider caps, withholding a fleet permit
+     * (plans/provider-concurrency.md §6). With per-provider caps, withholding a team permit
      * for a loop whose provider is full only idles a slot another provider's maintenance tick
      * could use, so such a loop adds nothing to the reserve. The caller supplies it from the
      * pool's snapshot() — this policy stays free of the seams. Defaults to counting every idle

@@ -120,7 +120,7 @@ export function assembleTickPrompt(
   const initialPrompt = briefState?.prompt ?? "";
   // The brief's owning file (TUMWATER.md first, README.md as the compatibility path —
   // plans/portability.md §7a/7), named in both prompt builders' rules instead of a hardcoded
-  // README.md. "README.md" is the fallback for a repo with no marked file yet — the fleet
+  // README.md. "README.md" is the fallback for a repo with no marked file yet — the team
   // runs blind on prompts either way, so the name in the rules should still point somewhere.
   const brief = briefState?.file ?? "README.md";
   // The project's design principles ride along in every prompt — tick and director alike — so

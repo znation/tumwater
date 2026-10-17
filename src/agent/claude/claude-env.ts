@@ -13,7 +13,7 @@
  *
  * The set half disables auto-memory, backgrounded Bash tasks (finding 4: claude refuses a long
  * foreground command, backgrounds it, and abandons it when `-p` ends, which would report work
- * never verified), the auto-updater (a mid-fleet self-update must not swap the binary under a
+ * never verified), the auto-updater (a mid-team self-update must not swap the binary under a
  * run), telemetry, and error reporting; and raises the Bash timeouts so a slow suite runs in
  * the foreground. `BASH_MAX_TIMEOUT_MS` is derived from `quietTimeoutSeconds` so claude's own
  * Bash timeout fires before tumwater's quiet kill and the model sees a tool error rather than a

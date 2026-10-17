@@ -123,7 +123,7 @@ test("release dies naming a gh it cannot execute instead of waiting for CI that 
 
 // --- bump: the version commit that follows a release -------------------------
 // The bump path stages package.json + package-lock.json and commits them, then pushes with a
-// retry when the fleet moved origin under it. None of it ran before these tests.
+// retry when the team moved origin under it. None of it ran before these tests.
 
 /** A pushedRepo carrying the committed package-lock.json `npm version` updates, so the bump's
  * `git add package.json package-lock.json` finds both paths and the tree stays clean. */

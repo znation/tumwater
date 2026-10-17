@@ -8,7 +8,7 @@ import { nonNegativeNumber } from "../files/json-object.js";
 
 /** Usage accounting for one role loop, split out of loop.ts — which keeps the tick lifecycle —
  * because token/cost/turn bookkeeping is a self-contained concern with its own consumers: the
- * commit trailer reads turns, the run_end event reads costUsd, and the orchestrator's fleet-wide
+ * commit trailer reads turns, the run_end event reads costUsd, and the orchestrator's team-wide
  * hold reads lastRateLimit and lastBackendFailure (src/team/team-hold.ts,
  * src/team/team-polls.ts).
  *
@@ -69,14 +69,14 @@ export class TickUsage {
   /** This loop's most recent pi run that ended on a provider 429 — author run, retry,
    * reviewer or landing run alike, since every one folds through fold — with the provider's
    * Retry-After hint when it sent one. The orchestrator reads it every poll as this role's
-   * rate-limit input to the fleet-wide hold (src/team/team-hold.ts): the per-run retry has no
+   * rate-limit input to the team-wide hold (src/team/team-hold.ts): the per-run retry has no
    * cross-role view, and a field on the runner the orchestrator already holds carries the
    * fact without a new cross-module channel. In memory only — a hold is minutes long, so a
    * restart forgetting it costs nothing. Undefined until the first such run. */
   lastRateLimit?: { at: number; retryAfterSeconds?: number; provider?: string };
   /** Per-provider spend folded into THIS tick (non-persisted, reset at tick start): each
    * run's real/notional cost keyed by the provider it ran on, so the run_end event can say
-   * which seam of a mixed fleet spent what (plans: per-provider spend in the day report). A
+   * which seam of a mixed team spent what (plans: per-provider spend in the day report). A
    * run whose provider was never resolved attributes nothing — the `provider !== undefined`
    * guard below skips the bump — so an old single-provider tick keeps today's byte-identical
    * behavior. Parallel to costUsd/notionalCostUsd, never subtracted from them. */
@@ -85,7 +85,7 @@ export class TickUsage {
   /** This loop's most recent pi run that ended on a provider-wide failure that was NOT rate
    * limiting — the connection down, a 5xx, the model failing to load (PiRunResult.
    * transientBackend) — with the kind the hold's storm test groups storms by. Stamped under
-   * the same rule and for the same consumer as lastRateLimit above: the fleet-wide hold
+   * the same rule and for the same consumer as lastRateLimit above: the team-wide hold
    * (src/team/team-hold.ts) reads it every poll. In memory only, like lastRateLimit.
    * Undefined until the first such run. */
   lastBackendFailure?: { at: number; kind: BackendFailureKind; provider?: string };
@@ -120,7 +120,7 @@ export class TickUsage {
     if (runCostIsReal(run)) {
       this.costUsd += run.costUsd;
       // The daily cost budget window (plans/daily-cost-budget.md): every real-money pi run of
-      // a tick folds here exactly once, so the fleet's spend for the local day is complete at
+      // a tick folds here exactly once, so the team's spend for the local day is complete at
       // each tick end.
       recordDailyCost(s, run.costUsd, Date.now(), pair);
       this.bumpProviderCost(provider, run.costUsd, 'costUsd');
@@ -140,7 +140,7 @@ export class TickUsage {
       if (run.firstEditTurn !== undefined) this.editSeen = true;
     }
     this.turns += run.turns;
-    // The fleet-wide hold's rate-limit input (lastRateLimit above), from the same
+    // The team-wide hold's rate-limit input (lastRateLimit above), from the same
     // once-per-run choke point. Only a run that ENDED on the 429 counts: pi exits on the error,
     // so "now" is when the provider refused — a run that merely logged one inside pi's own
     // auto-retry and then

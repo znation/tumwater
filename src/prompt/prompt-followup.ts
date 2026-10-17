@@ -18,7 +18,7 @@ import { NOTHING_TO_DO, REPLY_ENDINGS, SUMMARY_BLOCK } from "../verdict/reply-co
  * harness resumes the compacted session — see LoopState.cutOffStreak), a watchdog or the tick
  * deadline killed a still-making-progress run, the budget gate reopened mid-run and the
  * tick was handed back from the fallback to the primary model (PLANS.md 2026-09-30), the
- * subscription usage window rejected the run and the fleet held claude seams until it reset
+ * subscription usage window rejected the run and the team held claude seams until it reset
  * (plans/agent-backends.md §8, part 6e), the run hit its per-run budget cap and the worktree
  * hands off to the fallback seam (plans/agent-backends.md §7, part 7a/7), or the newest author
  * session belongs to another agent (plans/agent-backends.md "Sessions") — a handoff runs a

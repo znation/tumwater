@@ -613,7 +613,7 @@ test("applyTickOutcome: a quiet-killed director never resumes and never backs of
   const cfg = testConfig();
   // The director skips both role arms of the quiet-kill branch: its prompt was re-queued
   // fresh (there is no session to resume), and — unlike a role past the limit — the abandoned
-  // session must not put the director on the idle ladder either: the fleet's steering loop
+  // session must not put the director on the idle ladder either: the team's steering loop
   // re-runs promptly at every streak, while the streak itself keeps counting for the warning.
   for (const streak of [0, QUIET_KILL_RESUME_LIMIT]) {
     const s = freshLoopState(DIRECTOR_ROLE);
@@ -723,7 +723,7 @@ test("applyTickOutcome: an observer still climbs the error ladder and idles on a
 });
 
 // --- Error ladder: a failed tick retries in minutes, never the idle ladder's cap
-// (BUGS.md 2026-09-15: one broken `git` parked the whole fleet for hours) ---
+// (BUGS.md 2026-09-15: one broken `git` parked the whole team for hours) ---
 
 test("applyTickOutcome: consecutive error ticks climb a short ladder capped in minutes", () => {
   const cfg = testConfig();

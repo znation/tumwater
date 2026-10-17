@@ -68,7 +68,7 @@ export const SUMMARY_BLOCK = `  SUMMARY: <imperative one-line description of the
  * last one. Shared by the tick and director rules (prompt.ts's commonRules) and
  * prompt-followup.ts's resume bridge, so a resumed run ends under the same contract as a fresh
  * one. Written as an either/or list because, stated as separate rules, models filled in every
- * one: 56 fleet ticks ended a SUMMARY block with the nothing sentinel too, and
+ * one: 56 team ticks ended a SUMMARY block with the nothing sentinel too, and
  * `TUMWATER_REFUSED: none` on completed work once made the harness discard it. The nothing
  * ending says "end your reply with", not "reply with the single line", so a run that must
  * report something first (the director's answer to a question, qa's FLOW line) can. */

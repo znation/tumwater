@@ -201,7 +201,7 @@ test("pruneOldFiles skips files it cannot delete instead of crashing the session
 test("pruneOldFiles skips an unreadable subdirectory instead of crashing the session cleanup", () => {
   // A subdirectory without read permission makes the walk's readdirSync throw EACCES while
   // listing it. The retention pass runs inside the orchestrator's poll loop, so an escaping
-  // throw ends the whole fleet; the walk must skip the directory and still prune what it can.
+  // throw ends the whole team; the walk must skip the directory and still prune what it can.
   // Under root the permission is bypassed — then the locked file IS pruned, which also
   // satisfies "no crash".
   lockingPruneCase(0o111, "the unreadable subdirectory is left for the next pass"); // execute only

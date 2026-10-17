@@ -218,7 +218,7 @@ test("an exhausted plan-less rejection records the purpose in the notes instead 
 });
 
 // The red-main handoff note is the only signal a red main reaches the healer through: the
-// harness warning event is fleet-level and no role prompt reads it, so this note's shape is
+// harness warning event is team-level and no role prompt reads it, so this note's shape is
 // the contract that points `bugfix` at the failing suite.
 test("buildMainRedNote names the short SHA, script, and failure headline in a <main-red> block", () => {
   const note = buildMainRedNote("abcdef1234567890", "test", "1) foo fails");
@@ -355,7 +355,7 @@ test("buildReviewPrompt carries the reviewer checklist and a reading budget", ()
   // the reviewer to the passed-check line instead of judging a stated total.
   assert.match(prompt, /Suite counts are tumwater's own attestation/);
   assert.match(prompt, /a count missing from VERIFIED is not a finding/);
-  // A miscounted author-stated total is not a rejection on its own (2026-10-01: several fleet
+  // A miscounted author-stated total is not a rejection on its own (2026-10-01: several team
   // rejections of correct changes were off-by-one test counts) — the reviewer judges the tests.
   assert.match(prompt, /neither is an author-stated count that differs from it: judge whether the tests exist and exercise the change \(check 3\), not the author's arithmetic/);
   assert.match(prompt, /3\. Do new or changed tests exercise the new behavior — would they fail without the change\?/);

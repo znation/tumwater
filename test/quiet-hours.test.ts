@@ -71,7 +71,7 @@ test("parseQuietHours: malformed values fail with an actionable message", () => 
   const zero = parseQuietHours("23:00-23:00");
   assert.ok(!zero.ok && zero.error.includes('zero-length'));
   // The optional key names the config field in every message; the per-role map passes its
-  // dotted key so a rejected entry names the key actually set, not the fleet-wide quietHours.
+  // dotted key so a rejected entry names the key actually set, not the team-wide quietHours.
   const perRole = parseQuietHours("25:00-07:00", "quietHoursPerRole.qa");
   assert.ok(!perRole.ok && perRole.error.startsWith("quietHoursPerRole.qa times"));
 });
@@ -176,9 +176,9 @@ test("pollQuietHoursGate: a live edit from a window to off logs the ended crossi
   ]);
 });
 
-// Per-role quiet hours (PLANS.md, quietHoursPerRole): roleQuietHold reuses the fleet
+// Per-role quiet hours (PLANS.md, quietHoursPerRole): roleQuietHold reuses the team
 // window's parser and predicate, so a per-role value means exactly what the same string
-// means fleet-wide — wrapping included. Absent, off, and unparseable all read as off here;
+// means team-wide — wrapping included. Absent, off, and unparseable all read as off here;
 // validation is config-validation.ts's business.
 test("roleQuietHold: the per-role window holds the loop it names and no other", () => {
   const perRole = { feature: "23:00-07:00" };

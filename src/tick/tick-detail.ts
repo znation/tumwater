@@ -143,7 +143,7 @@ export async function cmdTick(
     // Not found stays exit 0 in both renderings, but --json still owes a parseable document in
     // every exit-0 case (the report --json precedent, the invariant this command's own doc
     // comment claims): `null` is the JSON answer for a single-record lookup that missed — the
-    // prose line would end a jq pipe mid-fleet-incident.
+    // prose line would end a jq pipe mid-team-incident.
     if (json) sayJson(null);
     else say(tickNotFoundMessage(role, tick));
     return;

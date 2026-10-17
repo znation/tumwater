@@ -89,7 +89,7 @@ test("an explicit agent override selects the dialect over the config's primary",
 
 test("a repo whose brief markers are gone still assembles a prompt naming README.md", () => {
   // The degraded-but-running state: an operator edit (or a docs loop rewrite) can strip the
-  // markers, leaving no file that owns the brief. The fleet must keep ticking — readInitialPrompt
+  // markers, leaving no file that owns the brief. The team must keep ticking — readInitialPrompt
   // degrades to an empty brief and the fallback names the compatibility path, not a dead end.
   const dir = tmpdir();
   fs.writeFileSync(path.join(dir, "README.md"), "# My project\n\nNo markers here.\n");

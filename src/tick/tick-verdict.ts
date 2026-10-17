@@ -38,7 +38,7 @@ interface TickVerdictContext {
   turns: number;
   /** The raw director prompt this tick is executing (null for role loops). */
   userPrompt: string | null;
-  /** The fleet config, when the caller can provide it, used to resolve an image-reroute
+  /** The team config, when the caller can provide it, used to resolve an image-reroute
    * target (plans/image-input.md part 4/5). Absent in the unit harness, so those contexts
    * keep the part-3 behavior (a blind read errors) rather than routing to a phantom tier. */
   config?: TumwaterConfig;
@@ -128,7 +128,7 @@ export async function resolveTickVerdict(ctx: TickVerdictContext): Promise<TickO
   }
 
   // A subscription claude run the usage window rejected is a hold, not a run failure: the
-  // fleet hold keeps every subscription claude seam from starting until `resetsAt`
+  // team hold keeps every subscription claude seam from starting until `resetsAt`
   // (plans/agent-backends.md §8, part 6c), and this run's session and worktree edits must
   // survive the wait — the next eligible tick resumes them (part 6e) instead of committing
   // partial work or resetting the worktree to main. The rejected-window reading is the

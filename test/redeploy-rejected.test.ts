@@ -11,7 +11,7 @@ import { warningEvents } from "./fixtures/log-fixtures.js";
 
 test("a compile that never ran is a rejection, not a verdict: retried instead of blocked", async () => {
   // `tsc exited ENOENT` is execFile's spawn-failure code, not a compiler exit: the compile said
-  // nothing about the tree, so latching the head ("no retry until main moves") pins the fleet
+  // nothing about the tree, so latching the head ("no retry until main moves") pins the team
   // on the stale build even after the environment recovers (BUGS.md 2026-09-28). Like the
   // REJECTED green check, the episode is dropped and the next poll re-attempts.
   const f = fakeDeps();
@@ -123,7 +123,7 @@ test("a thrown green check is a 'could not run': drop, warn once, retry — no l
   assert.equal(warningEvents(events).length, 1, "one warning per episode");
 });
 
-test("a green check that fails once and then recovers still reaches the swap: the fleet self-heals", async () => {
+test("a green check that fails once and then recovers still reaches the swap: the team self-heals", async () => {
   let checks = 0;
   const f = fakeDeps({
     mainGreen: () => {
@@ -153,7 +153,7 @@ test("a thrown compile is a rejection, not a verdict: its error text rides the w
   // surfaces as
   // a REJECTED promise, not the rejected flag a spawn failure inside tsc's own run produces.
   // Same class, different shape: it says nothing about the tree, so it must be retried, not
-  // latched, or the fleet stays pinned on the stale build after the environment recovers
+  // latched, or the team stays pinned on the stale build after the environment recovers
   // (BUGS.md 2026-09-28). The warning still carries compiled.error — the "compile threw"
   // fallback would hide what actually broke.
   const f = fakeDeps({

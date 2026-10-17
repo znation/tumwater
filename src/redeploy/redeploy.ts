@@ -67,10 +67,10 @@ export function redeployDeps(
     // The urgency carve-out's verdict (BUGS.md 2026-09-30): a cached verdict answers free;
     // otherwise the baseline check runs on the running build's own SHA, in a dedicated witness
     // worktree — never the mirror, which the green check and compile serve at main's heads —
-    // and lands in the same fleet-shared cache every later consult reads. A fresh red is
+    // and lands in the same team-shared cache every later consult reads. A fresh red is
     // provisional (BUGS.md 2026-09-30): the gate's flake rule applies here too, so one
     // immediate re-run must confirm it before the carve-out may cut the cooldown on it — a
-    // green on the re-run promotes the SHA fleet-wide, and a skipped re-run leaves the verdict
+    // green on the re-run promotes the SHA team-wide, and a skipped re-run leaves the verdict
     // unsettled (null), which the policy reads as not-red.
     buildRed: async (buildSha) => {
       const cached = cachedBaselineVerdict(buildSha);

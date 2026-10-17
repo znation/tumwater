@@ -233,7 +233,7 @@ if (bumpMode) {
   sh("add", "package.json", "package-lock.json");
   sh("commit", "-m", `tumwater(release): ${newVersion}`);
   if (soft("push", "origin", "main") === null) {
-    // The fleet lands commits continuously; replay the bump on the new main and retry once.
+    // The team lands commits continuously; replay the bump on the new main and retry once.
     console.log("push rejected — origin moved; replaying the bump on the new main…");
     if (soft("pull", "--rebase", "origin", "main") === null) die("could not rebase onto origin/main — reconcile manually, then re-run.");
     if (soft("push", "origin", "main") === null) die("push still rejected after rebase — reconcile manually, then re-run.");

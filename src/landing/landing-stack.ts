@@ -30,7 +30,7 @@ import type { LandingScopeContext } from "./landing-core.js";
 /** How many times a batch whose fast-forward lost the race to a moved main re-stacks onto the
  * new tip and goes round again before handing every change to leftover recovery as
  * `merge_blocked`. The race window is the whole batch check, and main still has writers
- * outside the land queue (a human commit, or a second fleet on the same repo), so a
+ * outside the land queue (a human commit, or a second team on the same repo), so a
  * lost race is routine and one re-stack almost always wins it — the second is headroom for a
  * busy stretch. The bound keeps a main that moves faster than a check completes from holding
  * the merge slot (and every vetted landing behind it) indefinitely: each re-stack

@@ -11,7 +11,7 @@ import { pollErrorStorm } from "../src/team/team-polls.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
-// The team-wide error-storm warning (src/team/error-storm.ts; BUGS.md 2026-09-29 "A fleet-wide
+// The team-wide error-storm warning (src/team/error-storm.ts; BUGS.md 2026-09-29 "A team-wide
 // timeout storm raises no alarm"): pure policy, so every clause — the role bar, the shared
 // normalized cause, the edge trigger, the clear/re-arm, the knob naming — is pinned here
 // without a team, plus one seam test for the orchestrator wiring (the single warning event).

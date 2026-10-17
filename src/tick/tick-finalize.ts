@@ -23,7 +23,7 @@ interface FinalizeTickDeps {
   outcome: TickOutcome;
   /** The tick number run_start announced, captured at tick start — NOT re-read from
    * `state.runs` here: `resetCounters` zeroes `state.runs` in place mid-tick (the
-   * documented running-fleet reset), so a finalize-time re-read could emit a run_end
+   * documented running-team reset), so a finalize-time re-read could emit a run_end
    * numbered 0 (or a later tick's number) under a run_start that announced the real one. */
   tick: number;
   /** When this tick started (the runner stamps state.lastRunStartedAt at tick start);
@@ -101,7 +101,7 @@ export async function finalizeTick(deps: FinalizeTickDeps): Promise<TickOutcome>
   restoreMidTickWake(s);
   saveLoopState(root, s);
   // One warning per error episode (BUGS.md 2026-09-15: every loop failing identically
-  // looked like a quiet fleet). applyTickOutcome increments the streak on error-class
+  // looked like a quiet team). applyTickOutcome increments the streak on error-class
   // outcomes, preserves it across a plain `queued` tick (the tick's landing resolves it),
   // and resets it on any other completed result — so warn only when THIS outcome incremented
   // the streak up to the threshold: a preserved streak already sitting at the bar must not

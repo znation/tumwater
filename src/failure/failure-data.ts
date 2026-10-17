@@ -102,7 +102,7 @@ interface MergedCommit {
 }
 
 /** One harness decision (a transition event) in the window, pre-described for the digest's
- * Fleet state changes section. */
+ * Team state changes section. */
 interface StateChange {
   ts: number;
   role: string;
@@ -112,7 +112,7 @@ interface StateChange {
 /** The digest's collected evidence — a pure function of the event log plus a clock; the
  * render step below is a pure function of this. */
 export interface FailureReportData {
-  role?: string; // set by the role-scoped collector (the base role); absent on the fleet digest
+  role?: string; // set by the role-scoped collector (the base role); absent on the team digest
   days: number;
   from: string; // current window start, local day key
   to: string; // today
@@ -302,7 +302,7 @@ export function collectFailureReport(root: string, days: number, role?: string):
   const { from, to } = dayWindow(days, now);
   const priorFrom = formatDate(dayAt(days * 2 - 1, now));
   const base = role === undefined ? undefined : baseRoleOf(role);
-  // The base role rides the key, so a scoped and a fleet digest of the same log cannot
+  // The base role rides the key, so a scoped and a team digest of the same log cannot
   // collide in the memo.
   const key = `${root}\u0000${days}\u0000${base ?? ""}`;
   const stat = digestStat(root);

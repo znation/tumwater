@@ -220,7 +220,7 @@ export async function reviewPinnedChange(
   // and re-inject a superseded rejection even though its replacement is already on main.
   saveLoopState(root, state);
   // The reviewer's usage is folded exactly once per attempt: runGatePi folds a RETRIED first
-  // attempt at retry time (stamping the fleet-wide rate-limit hold promptly, BUGS.md
+  // attempt at retry time (stamping the team-wide rate-limit hold promptly, BUGS.md
   // 2026-10-01), and the final run is folded HERE — not also inside the wiring, which would
   // count the reviewer twice.
   if (gate.run) foldUsage(gate.run);

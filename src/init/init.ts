@@ -101,7 +101,7 @@ interface InitResult {
   /** True when the cwd was not a git repository and init created one (on a dry run: would). */
   repoInitialized: boolean;
   /** The branch a newly created repo was seeded on; undefined when the repo already
-   * existed (its checked-out branch is the fleet's business, not init's). */
+   * existed (its checked-out branch is the team's business, not init's). */
   branch?: string;
   /** True when the brief went to TUMWATER.md and README.md was left untouched
    * (plans/portability.md §7/7) — asked for with `--adopt`, or automatic for a README.md
@@ -180,7 +180,7 @@ export async function initProject(
     );
   }
   // `--branch` seeds a NEW repository only: an existing repo's checked-out branch is the
-  // fleet's business (`tumwater start --branch` or baseBranch chooses it at runtime), so a
+  // team's business (`tumwater start --branch` or baseBranch chooses it at runtime), so a
   // --branch given here would otherwise be silently ignored — the exact failure mode
   // rejectUnknownArgs exists to prevent. Fail before any side effect, dry-run included.
   // Whether `root` already is a repo is asked once here; nothing below until the `git init`
@@ -226,7 +226,7 @@ export async function initProject(
     // Branch precedence: the caller's explicit --branch, else git's own init.defaultBranch
     // preference, else main. `git init -b` does not consult init.defaultBranch, so the
     // preference is read here: an operator who configured `init.defaultBranch=trunk`
-    // expects `git init`-compatible behavior, and the fleet then targets that branch.
+    // expects `git init`-compatible behavior, and the team then targets that branch.
     const preferred =
       branch ?? ((await gitTry(root, "config", "--get", "init.defaultBranch")) || "main");
     // A branch name git rejects (a space, a leading dash, "@{…}" history syntax, …) would
@@ -288,7 +288,7 @@ export async function initProject(
     write("TUMWATER.md", briefTemplate(name, combinedPrompt));
   } else write("README.md", readmeTemplate(name, combinedPrompt));
   // A template with starter plans seeds the backlog with them, rendered as `### ` entries —
-  // the primary entry format every backlog reader parses — so the fleet's first ticks land on
+  // the primary entry format every backlog reader parses — so the team's first ticks land on
   // real work. blank keeps the `_None yet._` placeholder byte-identical to today.
   const plansContent =
     tpl.starterPlans.length > 0
@@ -314,7 +314,7 @@ export async function initProject(
   }
   if (ensureGitignore(root, dryRun)) created.push(".gitignore");
   else if (fs.existsSync(path.join(root, ".gitignore"))) leftAlone.push(".gitignore");
-  // The template's starter directories: empty ones only, before the first tick — the fleet's
+  // The template's starter directories: empty ones only, before the first tick — the team's
   // own ticks write any code. Existing directories are left alone, like existing files above.
   for (const dir of tpl.starterDirs) {
     claim(dir, path.join(root, dir), () => fs.mkdirSync(path.join(root, dir), { recursive: true }));

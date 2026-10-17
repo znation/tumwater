@@ -275,8 +275,8 @@ test("suiteGitEnv appends maintenance.auto=false after any env-injected git conf
   assert.equal(suiteGitEnv({ GIT_CONFIG_COUNT: "junk" }).GIT_CONFIG_COUNT, "1");
 });
 
-test("suiteEnv drops every variable the harness resolves, so a fleet-started suite matches a hand-run one", () => {
-  // BUGS.md 2026-09-28: resolveAgentBin prefers TUMWATER_PI_BIN to PATH, and a fleet's build
+test("suiteEnv drops every variable the harness resolves, so a team-started suite matches a hand-run one", () => {
+  // BUGS.md 2026-09-28: resolveAgentBin prefers TUMWATER_PI_BIN to PATH, and a team's build
   // checks and pi tool calls inherit the operator's export, so every fake-pi test spawned the
   // binary it named instead of the shim the test had put on PATH. The same leak applies to the
   // other harness-resolved variables, so suiteEnv clears them too.

@@ -111,7 +111,7 @@ const STARVED_DEADLINE_MAX_FACTOR = 2;
 /** The deadline a merge-scope check runs under: `baseMs` stretched by the host's load-to-cores
  * ratio (at most STARVED_DEADLINE_MAX_FACTOR) when the load average exceeds the core count,
  * else `baseMs` itself. 46 of 50 merge-scope rejections in one window were the 300 s deadline
- * firing on time under the fleet's own load, with a passing tail at 299.97 s — the check was
+ * firing on time under the team's own load, with a passing tail at 299.97 s — the check was
  * measuring the load, not the tree (BUGS.md 2026-10-12). */
 export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: number }): number {
   if (!(load.cpus > 0) || !(load.load1 > load.cpus)) return baseMs;
@@ -119,7 +119,7 @@ export function starvedDeadlineMs(baseMs: number, load: { load1: number; cpus: n
 }
 
 /** The note an on-time deadline kill carries when the host was starved: the load average
- * beyond the core count means the check shared the machine with the rest of the fleet, so the
+ * beyond the core count means the check shared the machine with the rest of the team, so the
  * 300 s kill is a statement about the deadline under load, not a measured verdict on the
  * change (BUGS.md 2026-10-12). Empty when the host had a core to spare. */
 export function loadedHostPhrase(load: { load1: number; cpus: number }): string {

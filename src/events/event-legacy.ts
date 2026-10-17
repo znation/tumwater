@@ -17,8 +17,10 @@ const LEGACY_EVENT_TYPES: Readonly<Record<string, HarnessEvent["type"]>> = {
   tick_end: "run_end", // vocabulary-ok: legacy event name read from old logs
   tick_deferred: "run_deferred", // vocabulary-ok: legacy event name read from old logs
   tick_aborted: "run_aborted", // vocabulary-ok: legacy event name read from old logs
+  // retired-name-ok:start old event names
   fleet_paused: "team_paused", // vocabulary-ok: legacy event name read from old logs
   fleet_resumed: "team_resumed", // vocabulary-ok: legacy event name read from old logs
+  // retired-name-ok:end
   land_queued: "merge_queued", // vocabulary-ok: legacy event name read from old logs
   landed: "merge_done", // vocabulary-ok: legacy event name read from old logs
   land_failed: "merge_failed", // vocabulary-ok: legacy event name read from old logs

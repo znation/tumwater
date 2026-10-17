@@ -440,7 +440,7 @@ export function landingUsage(author: LoopRunner, root: string): {
     foldUsage: (run) => {
       author.foldLandingUsage(run, reviewProvider, reviewPair);
       // A claude reviewer's or resolver's billing/window readings reach the account file the
-      // moment this run folds, not at the author's next tick end — so a pi-author fleet's
+      // moment this run folds, not at the author's next tick end — so a pi-author team's
       // claude reviewer still updates the five-hour window before the author's next tick
       // starts (PLANS.md "Mixed claude + pi fleets, part 3/4"). Best-effort like tick-finalize.ts's
       // call; the file is a cache and an unwritable state dir must not fail the landing.

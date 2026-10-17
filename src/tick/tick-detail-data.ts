@@ -53,7 +53,7 @@ export interface TickDetail {
  * not-found case the caller renders as a not-found line. */
 export function readTickDetail(root: string, role: string, tick: number): TickDetail | null {
   // The scan rides history-data.ts's shared one-ask ceiling (HISTORY_SCAN_MAX_EVENTS): one
-  // tick's block is small, but it can sit arbitrarily far back in a long-lived fleet's log,
+  // tick's block is small, but it can sit arbitrarily far back in a long-lived team's log,
   // and readTailText reads bytes proportional to the limit's line count — so the cap is also
   // the largest byte read one command can cost, and every read-only view scans under the
   // same bound.

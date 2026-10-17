@@ -8,9 +8,9 @@ import { refSha } from "../git/git.js";
 
 /** Build provenance for the compiled harness: which commit `dist/` was compiled from, written
  * by `npm run build` (scripts/stamp-build.mjs) as dist/build-info.json and read back by the
- * running process. tumwater is self-hosting — the fleet edits the harness that runs the fleet —
+ * running process. tumwater is self-hosting — the team edits the harness that runs the team —
  * and a `tumwater run` process never reloads its code, so without a stamp nothing can tell
- * whether the running fleet is executing the harness main describes. The stale-build finding of
+ * whether the running team is executing the harness main describes. The stale-build finding of
  * 2026-09-07 (ten days on an Aug 27 build while 350 commits landed, including the review gate's
  * build pre-check) is exactly the blind spot this closes: the orchestrator records the stamp in
  * orchestrator.json and its start event, the dashboards and `doctor` compare it against main, and
@@ -65,7 +65,7 @@ export async function stampBuild(root: string, dist: string, sha?: string): Prom
   const info: BuildInfo = { sha: head, builtAt: Date.now(), root: path.resolve(root) };
   // Atomic: a process killed mid-write (a redeploy swap, a timeout-killed `npm test`) would
   // otherwise leave a torn stamp, and readBuildInfo reads that as no provenance at all —
-  // createRedeployer then returns null and the fleet never self-redeploys onto newer main,
+  // createRedeployer then returns null and the team never self-redeploys onto newer main,
   // the exact blind spot the stamp exists to close.
   writeJsonAtomic(buildInfoPath(dist), info);
   return info;
@@ -99,7 +99,7 @@ export interface BuildStatus {
    * replaced. */
   restartPending?: boolean;
   /** Why the self-redeploy onto `checkedHead` was REFUSED — a red main, a failed compile, a
-   * failed swap. Set instead of `restartPending`, and the important half: the fleet then keeps
+   * failed swap. Set instead of `restartPending`, and the important half: the team then keeps
    * running the stale build with no retry until main moves, which a bare `stale: true` cannot
    * distinguish from a restart that is seconds away. Two non-latched reasons share the field: a
    * post-restart cooldown (it lapses on its own) and a new build that could not start here (the

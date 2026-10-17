@@ -13,7 +13,7 @@ import { patchFsMethod } from "./helpers/fs-faults.js";
  * ffMainTo's preserve-and-restore path and configBytesToPreserve's contract directly, with no
  * MergeContext or pi run involved. */
 // ── Config preserve across an untracking landing (plans/portability.md §4b/7): the working-tree
-// merge deletes a tracked config out from under the running fleet, so ffMainTo saves the live
+// merge deletes a tracked config out from under the running team, so ffMainTo saves the live
 // bytes and restores them when the landing removed the file ───────────────────────────
 
 /** The pre-4a shape this landing retires: a repo whose tumwater.json is TRACKED, with a

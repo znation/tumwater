@@ -204,7 +204,7 @@ test("the qa prompt guards the expensive real run: constrained, capped, once per
   // Prefer a deterministic offline mode when the project documents one.
   const find = qa!.find;
   assert.match(find, /prefer a deterministic offline mode \(a fake\/shim\)/);
-  // Otherwise ONE real bounded run — minimal scope (constrained nested fleet), wall-capped,
+  // Otherwise ONE real bounded run — minimal scope (constrained nested team), wall-capped,
   // and killed with its whole process tree so no orphaned child survives the tick.
   assert.match(find, /exactly one enabled role and maxConcurrent 1/);
   assert.match(find, /wall-cap it \(~10 min including prefill\)/);

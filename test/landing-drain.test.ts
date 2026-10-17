@@ -70,7 +70,7 @@ test("a queued entry whose sha main already holds is dropped without a vet", asy
 
 test("a full dedupe cache never wedges the drain: every already-merged entry still drops", async () => {
   // The dedupe verdict cache is bounded at 128 entries, and its eviction arms — prune the
-  // stale-head verdicts first, then clear — had no coverage in any tier: no realistic fleet
+  // stale-head verdicts first, then clear — had no coverage in any tier: no realistic team
   // queues 129 landings between two main moves. Two phases drive both arms with entries main
   // already holds, so no vet and no pi run is ever needed: if the eviction ever wedges the
   // drain (a throw mid-prune, an entry wrongly kept queued), the queue depth and the event

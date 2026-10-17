@@ -8,7 +8,7 @@
  * without the CLI and one renderer consumes exactly this shape. Every read degrades like
  * backlogPayload does — a missing tumwater.json is the defaults, a missing state file a
  * fresh state, a missing queue directory an empty inbox — so the command works with the
- * fleet stopped and never throws on a torn repo. */
+ * team stopped and never throws on a torn repo. */
 
 import type { FallbackModelConfig, ModelTier } from "../config/config-schema.js";
 import { defaultConfig, enabledRoleIds, isCustomRole, knownRoleIds, loadConfigSafe } from "../config/config.js";
@@ -67,10 +67,10 @@ export interface RoleViewPayload {
   /** The provider key this role's admission lease acquires (seamConcurrencyKey, the same
    * pure call the orchestrator's admission uses) — the key whose cap bounds the role's
    * concurrent ticks (plans/provider-concurrency.md §8). Absent for a seam whose key
-   * cannot be resolved (a cap-less default fleet). */
+   * cannot be resolved (a cap-less default team). */
   providerKey?: string;
   /** The `maxConcurrentPerProvider` cap for `providerKey`, present only while such a map is
-   * configured and the key resolves. The number the fleet line shows as `<key> inUse/cap`. */
+   * configured and the key resolves. The number the team line shows as `<key> inUse/cap`. */
   providerCap?: number;
   /** pi's own saved default model (readPiDefaultModel) as a formatted selector, present only
    * for a pi seam that resolves neither a provider nor a model — the name the loop runs when
@@ -126,7 +126,7 @@ export interface RoleViewPayload {
   nextRunAt: number;
   backoffSeconds: number;
   /** The quiet-hours windows that govern this loop, the loop's own (`quietHoursPerRole`, looked
-   * up by base role as the gate does) first and the fleet-wide `quietHours` second, each with
+   * up by base role as the gate does) first and the team-wide `quietHours` second, each with
    * whether the local clock sits inside it now. Absent when no window parses and for the
    * director, which both gates exempt. */
   quietHours?: Array<{ scope: "role" | "fleet"; window: string; inWindow: boolean }>;
@@ -142,7 +142,7 @@ export interface RoleViewPayload {
   /** The loop's recent tick outcomes — the newest up to 8 `run_end` results read from the
    * event log, ordered newest-first, each with its time, result, duration, and summary.
    * Absent when the loop has no `run_end` events, so the JSON shape is unchanged for a
-   * never-ticked loop. Read straight from the event log so the command runs with the fleet
+   * never-ticked loop. Read straight from the event log so the command runs with the team
    * stopped and never touches the live state. */
   recentOutcomes?: Array<{ ts: number; result: string; durationMs?: number; summary?: string }>;
   /** The loop's own spend over its retained event window — tokens, real cost, and notional
@@ -156,7 +156,7 @@ export interface RoleViewPayload {
    * `roleCapVerdicts` the scheduler's gate and the status `capPaused` observer fold: `over` is
    * whether the loop is held until local midnight, `spentUsd` the base role's instances' summed
    * spend today, `roleIds` the instances sharing the cap. Absent when no cap above 0 applies
-   * (and for the director), so a fleet without per-role caps keeps its JSON shape. */
+   * (and for the director), so a team without per-role caps keeps its JSON shape. */
   dailyCap?: { capUsd: number; spentUsd: number; over: boolean; roleIds: string[] };
 }
 
@@ -196,7 +196,7 @@ export function rolePayload(
   // the review gate's when the reviewer runs claude (PLANS.md "Mixed claude + pi fleets, part
   // 3/4" gap 7): a pi author on a claude reviewer still shows where its changes' spend lands.
   // Its subscription window's primary type rides along for the renderer's label. The account
-  // file is fleet-global, so either seam reads the same answer.
+  // file is team-global, so either seam reads the same answer.
   const claudeInPlay =
     effective.agent === "claude" || (cfg.review.enabled && reviewRunConfig(cfg).agent === "claude");
   const account = claudeInPlay ? readClaudeAccount(root) : null;
@@ -217,7 +217,7 @@ export function rolePayload(
   // piDefault seam the orchestrator carries, so `tumwater role <id>` names the exact key
   // whose cap bounds the role. The cap is the map's entry for that key, absent when no
   // `maxConcurrentPerProvider` map is set or the key has no entry (then the role is bounded
-  // only by the fleet total, and the cap is omitted).
+  // only by the team total, and the cap is omitted).
   const providerKey = seamConcurrencyKey(effective, piDefault);
   const providerCap =
     providerKey !== undefined ? cfg.maxConcurrentPerProvider?.[providerKey] : undefined;
@@ -232,7 +232,7 @@ export function rolePayload(
   const state = loadLoopState(root, role);
   const episode = state.modelFallback;
   // The loop's recent tick outcomes, read from the event log (readEvents) so the command
-  // answers with the fleet stopped and never touches live state. readEvents returns the log's
+  // answers with the team stopped and never touches live state. readEvents returns the log's
   // newest events in file (chronological) order, so filtering to this role's run_end events
   // and taking the last 8 yields the newest 8, reversed to newest-first. Durations and
   // summaries ride along only when the event carried them (a torn or empty line drops them),
@@ -302,8 +302,8 @@ export function rolePayload(
   if (role !== DIRECTOR_ROLE) {
     const own = quietHoursStatus(cfg.quietHoursPerRole?.[baseRoleOf(role)], now);
     if (own.window !== null) quietHours.push({ scope: "role", window: own.window, inWindow: own.inWindow });
-    const fleet = quietHoursStatus(cfg.quietHours, now);
-    if (fleet.window !== null) quietHours.push({ scope: "fleet", window: fleet.window, inWindow: fleet.inWindow }); // vocabulary-ok: persisted --json scope value
+    const team = quietHoursStatus(cfg.quietHours, now);
+    if (team.window !== null) quietHours.push({ scope: "fleet", window: team.window, inWindow: team.inWindow }); // vocabulary-ok: persisted --json scope value
   }
   return {
     id: role,

@@ -145,7 +145,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
   const author = resolveAuthor(ctx, role);
   // The vet's provider key: the review seam's key for the author's role, so its reviewer run
   // counts toward the same provider cap as the roles that share it (plans/provider-concurrency.md
-  // §4). The gate off runs no model, so then there is no key — the vet is bounded by the fleet
+  // §4). The gate off runs no model, so then there is no key — the vet is bounded by the team
   // total alone.
   const reviewKey =
     ctx.liveConfig.review.enabled
@@ -166,7 +166,7 @@ export function startVet(ctx: LandingPipelineContext, p: LandingPipeline, entry:
       vet.parked = false;
       if (lease === null) return; // a shutdown while parked
       if (vet.controller.signal.aborted || ctx.startHeld()) {
-        lease.release(); // stopping, or a restart / fleet hold closed the gate while it waited
+        lease.release(); // stopping, or a restart / team hold closed the gate while it waited
         return;
       }
       const { usage, foldUsage } = landingUsage(author, root);

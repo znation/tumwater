@@ -7,7 +7,7 @@ import {
 } from "../src/failure/failure-state-change.js";
 import type { HarnessEvent } from "../src/events/events.js";
 
-// describeStateChange is the wording half of the failure digest's Fleet state changes section:
+// describeStateChange is the wording half of the failure digest's Team state changes section:
 // one bounded line per harness self-decision event. Fixtures here carry only the payload fields
 // the real emit sites write (orchestrator.ts, redeploy.ts, team/team-hold.ts, the pause
 // commands), so the pins track what observers actually see in events.jsonl.
@@ -20,7 +20,7 @@ function ev(fields: Record<string, unknown>): HarnessEvent {
 test("STATE_CHANGE_TYPES lists the replayed transitions and STATE_CHANGE_TOP caps the section", () => {
   // The set is the contract src/failure/failure-data.ts filters the window against: every event
   // type the
-  // digest replays as a Fleet state change, and nothing else.
+  // digest replays as a Team state change, and nothing else.
   for (const t of [
     "budget_paused",
     "budget_fallback",
@@ -111,7 +111,7 @@ test("budget_fallback and budget_resumed phrase the spend around the gate move",
   );
 });
 
-test("fleet and role pauses render fixed and role-named lines", () => {
+test("team and role pauses render fixed and role-named lines", () => {
   assert.equal(describeStateChange(ev({ type: "team_paused" })), "team paused — roles start no new runs");
   assert.equal(describeStateChange(ev({ type: "team_resumed" })), "team resumed — roles run again");
   assert.equal(

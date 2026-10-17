@@ -113,7 +113,7 @@ export const TICK_TIMEOUT_PROGRESSING_REVIEW_RESUME_KEY =
 
 /** The known progressing-timeout wordings and the key each pools under. The two review
  * wordings name one cause on one knob (review.timeoutSeconds): a still-making-progress kill
- * pools into the plain tick-timeout row (a mixed fleet of plain and progressing kills is one
+ * pools into the plain tick-timeout row (a mixed team of plain and progressing kills is one
  * cause's agent-hours, not two half-size rows the top-N cut can drop — the same pooling the
  * error-storm reducer applies, src/team/error-storm.ts), and a resumed review's wording maps
  * to itself, because continuing the timed-out session is a different cause from a from-scratch
