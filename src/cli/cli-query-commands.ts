@@ -37,6 +37,8 @@ import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFro
 import { answeredQuestionAt, answeredQuestionCount, answeredQuestionList, answeredQuestionPayload, openQuestionAt, questionListPayload, renderShownQuestion } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
 import { canonicalRoleId } from "../roles/legacy-role-ids.js";
+import { baseRoleOf } from "../roles/loop-ids.js";
+import { setConfigKey, unsetConfigKey } from "../config/config-write.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
 const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
@@ -45,8 +47,13 @@ const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
 const CLEAR_NOTES_SPEC = { names: ["--clear-notes"] };
 const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<path>" };
 
+/** `role`'s instructions-override flags: clear it, or replace it from a file (`-` for stdin). */
+const CLEAR_INSTRUCTIONS_SPEC = { names: ["--clear-instructions"] };
+const INSTRUCTIONS_FILE_SPEC = { names: ["--instructions-file"], value: true, valueName: "<path>" };
+
 /** Peel `tumwater role <id>`'s positional id off the argument list: the first token that is
- * neither a flag nor the value of a --role or --notes-file flag. Returns the id (null when
+ * neither a flag nor the value of a --role, --notes-file or --instructions-file flag. Returns
+ * the id (null when
  * absent) and the remaining arguments — flags only, ready for rejectUnknownArgs and
  * sayJsonOrRender. The id may also arrive as --role <id>, the flag spelling every other
  * role-targeting command shares; the collector's caller rejects both spellings at once
@@ -54,7 +61,7 @@ const NOTES_FILE_SPEC = { names: ["--notes-file"], value: true, valueName: "<pat
  * command's mixed positional/flag vocabulary. */
 function peelRolePositional(args: string[]): { id: string | null; rest: string[] } {
   const valueIdx = new Set<number>();
-  for (const flag of ["--role", "--notes-file"]) {
+  for (const flag of ["--role", "--notes-file", "--instructions-file"]) {
     const at = args.indexOf(flag);
     if (at >= 0) valueIdx.add(at + 1);
   }
@@ -337,7 +344,7 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
   // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
-  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC]);
+  rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC, CLEAR_INSTRUCTIONS_SPEC, INSTRUCTIONS_FILE_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
@@ -349,7 +356,13 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
     fail("give the role id once — as the positional or as --role <id>, not both");
   const clear = rest.includes("--clear-notes");
   const notesFile = flagValue(rest, "--notes-file");
-  if (clear || rest.includes("--notes-file")) {
+  const clearInst = rest.includes("--clear-instructions");
+  const instFile = flagValue(rest, "--instructions-file");
+  const notesWrite = clear || rest.includes("--notes-file");
+  const instructionsWrite = clearInst || rest.includes("--instructions-file");
+  if (notesWrite && instructionsWrite)
+    fail("notes and instructions writes cannot share one invocation");
+  if (notesWrite) {
     if (clear && rest.includes("--notes-file")) fail("give --clear-notes or --notes-file, not both");
     if (rest.includes("--json")) fail("--json does not apply to a notes write");
     if (id === DIRECTOR_ROLE) fail("the director has no notes");
@@ -360,6 +373,29 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
       say(`${id}: ${saveRoleNote(roleNotesPath(root, id), text)}`);
     } catch (err) {
       fail(errorMessage(err));
+    }
+    return;
+  }
+  // The instructions-override write: the file-shaped twin of the notes flags, but the value
+  // lands in roles.<base>.instructions (tick-prompt reads config.roles[base]) through the
+  // same setConfigKey/unsetConfigKey core `config set`/`config unset` use, so validateConfig
+  // enforces the 4096-char cap and the write is atomic. The director is allowed here (its
+  // override reaches its own runs), unlike the notes branch's director refusal.
+  if (instructionsWrite) {
+    if (clearInst && rest.includes("--instructions-file")) fail("give --clear-instructions or --instructions-file, not both");
+    if (rest.includes("--json")) fail("--json does not apply to an instructions write");
+    const cfg = loadConfigSafe(root).config ?? defaultConfig();
+    if (!knownRoleIds(cfg).includes(id)) throw new Error(unknownRoleMessage(id, knownRoleIds(cfg)));
+    const base = baseRoleOf(id);
+    if (clearInst) {
+      const result = unsetConfigKey(root, `roles.${base}.instructions`);
+      if (!result.ok) fail(result.error);
+      say(`${base}: instructions cleared`);
+    } else {
+      const text = readPromptFileArg(instFile || fail("--instructions-file needs a path"));
+      const result = setConfigKey(root, `roles.${base}.instructions`, JSON.stringify(text));
+      if (!result.ok) fail(result.error);
+      say(`${base}: instructions saved (${text.length} chars)`);
     }
     return;
   }

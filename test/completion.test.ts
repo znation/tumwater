@@ -188,7 +188,7 @@ test("the fish script completes values after --role, path flags, --template, and
   const lines = fishScriptLines();
   const flagLines = (name: string) => lines.filter((l) => (l + " ").includes(` -l ${name} `));
   for (const l of flagLines("role")) assert.ok(l.includes("completion --roles"), l);
-  for (const name of ["file", "attach", "notes-file"]) {
+  for (const name of ["file", "attach", "notes-file", "instructions-file"]) {
     assert.ok(flagLines(name).length > 0, name);
     for (const l of flagLines(name)) assert.ok(l.includes("-r -F"), l);
   }

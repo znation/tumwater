@@ -14,7 +14,8 @@ import { initProject } from "../src/init/init.js";
 import { abortRequestPath, orchestratorStatePath, restartRequestPath, roleNotesPath, pausedPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 import { queuedRolePromptCount } from "../src/inbox/inbox.js";
-import { cli } from "./helpers/cli-harness.js";
+import { cli, CLI } from "./helpers/cli-harness.js";
+import { spawnSync } from "node:child_process";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
@@ -454,6 +455,79 @@ test("role --clear-notes and --notes-file write the role's notes", async () => {
     assert.equal(r.code, 1, args.join(" "));
     assert.match(r.stderr, msg);
   }
+});
+
+test("role --clear-instructions and --instructions-file write the role's instructions", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli role instructions");
+  const config = () => JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+
+  // Literal storage: a file whose whole content is `123` must stay the string "123" (the
+  // JSON.stringify wrapper beats setConfigKey's JSON-parse fallback, which would re-type it).
+  const file = path.join(repo, "inst.md");
+  fs.writeFileSync(file, "123");
+  let r = await cli(repo, "role", "feature", "--instructions-file", file);
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instructions saved \(3 chars\)/);
+  assert.equal(config().roles.feature.instructions, "123");
+
+  // The rendered view and --json carry the override.
+  r = await cli(repo, "role", "feature", "--json");
+  assert.equal(JSON.parse(r.stdout).instructions, "123");
+  r = await cli(repo, "role", "feature");
+  assert.match(r.stdout, /## Instructions override/);
+
+  // `--instructions-file -` reads the text from stdin.
+  const stdin = spawnSync(process.execPath, [CLI, "role", "feature", "--instructions-file", "-"], {
+    cwd: repo, timeout: 20_000, input: "use src/team.ts\n", encoding: "utf8",
+  });
+  assert.equal(stdin.status, 0, stdin.stderr);
+  assert.equal(config().roles.feature.instructions, "use src/team.ts\n");
+
+  // Over the 4096-char cap the config validator refuses and leaves the file unchanged.
+  const big = path.join(repo, "big.md");
+  fs.writeFileSync(big, "x".repeat(4097));
+  r = await cli(repo, "role", "feature", "--instructions-file", big);
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /at most 4096/);
+  assert.equal(config().roles.feature.instructions, "use src/team.ts\n");
+
+  // An instance id targets its base role: feature-2 writes roles.feature.instructions.
+  // (feature-2 is a known id only once the base role has instances configured.)
+  const configured = JSON.parse(fs.readFileSync(path.join(repo, "tumwater.json"), "utf8"));
+  configured.roles = { ...configured.roles, feature: { ...configured.roles.feature, instances: 2 } };
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify(configured, null, 2));
+  const base = path.join(repo, "base.md");
+  fs.writeFileSync(base, "for base");
+  r = await cli(repo, "role", "feature-2", "--instructions-file", base);
+  assert.equal(r.code, 0);
+  assert.equal(config().roles.feature.instructions, "for base");
+
+  // Clearing removes the key (undefined, not an empty string).
+  r = await cli(repo, "role", "feature", "--clear-instructions");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /feature: instructions cleared/);
+  assert.equal(config().roles.feature.instructions, undefined);
+  r = await cli(repo, "role", "feature", "--json");
+  assert.equal(JSON.parse(r.stdout).instructions, null);
+
+  // Refusals.
+  for (const [args, msg] of [
+    [["feature", "--clear-instructions", "--instructions-file", "x"], /not both/],
+    [["feature", "--clear-instructions", "--json"], /--json does not apply/],
+    [["feature", "--clear-notes", "--instructions-file", "x"], /notes and instructions writes/],
+    [["bogus", "--clear-instructions"], /unknown role: bogus/],
+  ] as const) {
+    r = await cli(repo, "role", ...args);
+    assert.equal(r.code, 1, args.join(" "));
+    assert.match(r.stderr, msg);
+  }
+
+  // The director is allowed for instructions (its override reaches its own runs), unlike
+  // the notes branch's director refusal.
+  r = await cli(repo, "role", "director", "--clear-instructions");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /director: instructions cleared/);
 });
 
 test("role validates its arguments like every other command", async () => {

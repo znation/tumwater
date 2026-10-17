@@ -324,6 +324,11 @@ Usage:
                                    Replace that role's notes from a file ("-" reads stdin;
                                    4 KB cap); a run in progress at that moment may still
                                    overwrite it through its own role_notes call
+  tumwater role <id> --clear-instructions
+                                   Clear that role's instructions override
+  tumwater role <id> --instructions-file <path>
+                                   Replace that role's instructions override from a file
+                                   ("-" reads stdin; 4 KB cap), written to roles.<id>.instructions
   tumwater prompt <text...>        Send a message to the director's inbox
   tumwater prompt --file <path>    Send a message read from a file ("-" reads stdin)
   tumwater prompt --role <id> <text...>
