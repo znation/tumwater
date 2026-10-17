@@ -313,6 +313,15 @@ function narrowToRole(record: Record<string, number>, role: string): Record<stri
   return n === 0 ? {} : { [role]: n };
 }
 
+/** A per-loop map scoped to one base role for a report: the full map as-is when no scope is
+ * set (a team report), else the same map narrowed to `base` — narrowToRole's zero-means-absent
+ * rule, so a scoped report never invents a zero entry. The one home of the "keep everything,
+ * or keep only the named base role" rule: the 13 per-role/pair fields of the `--since` report's
+ * output all shape through it, so the scoping rule cannot drift between them. */
+function scopedByRole(record: Record<string, number>, base: string | undefined): Record<string, number> {
+  return base === undefined ? record : narrowToRole(record, base);
+}
+
 function dayFoldFor(entry: ReportFoldEntry, dayKey: string): DayFold {
   let fold = entry.days.get(dayKey);
   if (!fold) {
@@ -675,30 +684,29 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // notional spend, scoped to base when a role is given — the same conditional the day
   // collector applies to ReportDay.notionalByRole (line ~573), so a role-scoped window
   // whose role spent no notional carries no notionalByRole instead of an empty map.
-  const notionalByRole = base === undefined ? acc.notionalByRole : narrowToRole(acc.notionalByRole, base);
+  const notionalByRole = scopedByRole(acc.notionalByRole, base);
   return {
     sinceMs,
     fromIso: new Date(cutoff).toISOString(),
     ...(base === undefined ? {} : { role: base }),
     totals: scopedTotals,
-    runsByRole: base === undefined ? acc.runsByRole : narrowToRole(acc.runsByRole, base),
-    costByRole: base === undefined ? acc.costByRole : narrowToRole(acc.costByRole, base),
-    rejectionsByRole: base === undefined ? acc.rejectionsByRole : narrowToRole(acc.rejectionsByRole, base),
-    revisionsByRole: base === undefined ? acc.revisionsByRole : narrowToRole(acc.revisionsByRole, base),
-    failedRunsByRole: base === undefined ? acc.failedRunsByRole : narrowToRole(acc.failedRunsByRole, base),
-    fallbacksByRole: base === undefined ? acc.fallbacksByRole : narrowToRole(acc.fallbacksByRole, base),
-    imageReroutesByRole:
-      base === undefined ? acc.imageReroutesByRole : narrowToRole(acc.imageReroutesByRole, base),
-    tokensByRole: base === undefined ? acc.tokensByRole : narrowToRole(acc.tokensByRole, base),
-    commitsByRole: base === undefined ? acc.commitsByRole : narrowToRole(acc.commitsByRole, base),
-    mergedByRole: base === undefined ? acc.mergedByRole : narrowToRole(acc.mergedByRole, base),
-    mergeFailedByRole: base === undefined ? acc.mergeFailedByRole : narrowToRole(acc.mergeFailedByRole, base),
+    runsByRole: scopedByRole(acc.runsByRole, base),
+    costByRole: scopedByRole(acc.costByRole, base),
+    rejectionsByRole: scopedByRole(acc.rejectionsByRole, base),
+    revisionsByRole: scopedByRole(acc.revisionsByRole, base),
+    failedRunsByRole: scopedByRole(acc.failedRunsByRole, base),
+    fallbacksByRole: scopedByRole(acc.fallbacksByRole, base),
+    imageReroutesByRole: scopedByRole(acc.imageReroutesByRole, base),
+    tokensByRole: scopedByRole(acc.tokensByRole, base),
+    commitsByRole: scopedByRole(acc.commitsByRole, base),
+    mergedByRole: scopedByRole(acc.mergedByRole, base),
+    mergeFailedByRole: scopedByRole(acc.mergeFailedByRole, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
     // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
     // gates the provider lines to the team report anyway. Always present, empty when none.
-    costByProvider: base === undefined ? acc.costByProvider : narrowToRole(acc.costByProvider, base),
-    notionalByProvider: base === undefined ? acc.notionalByProvider : narrowToRole(acc.notionalByProvider, base),
+    costByProvider: scopedByRole(acc.costByProvider, base),
+    notionalByProvider: scopedByRole(acc.notionalByProvider, base),
     coversFullWindow,
   };
 }
