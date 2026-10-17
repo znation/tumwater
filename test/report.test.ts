@@ -1126,3 +1126,22 @@ test("report --json carries imageReroutesByRole on the day and --since report th
   const since = JSON.parse((await runCli(root, "report", "--json", "--since", "3h")).out);
   assert.deepEqual(since.imageReroutesByRole, { feature: 2, qa: 1 });
 });
+
+test("renderReportMarkdown prints Merge check median for the days that carry one, team scope only", () => {
+  const base: ReportData = {
+    days: 2,
+    from: "2026-09-09",
+    to: "2026-09-10",
+    series: [
+      { date: "2026-09-09", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0 },
+      { date: "2026-09-10", tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, checkMedianMs: 95_000 },
+    ],
+    totals: { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 },
+    coversFullWindow: true,
+  };
+  assert.match(renderReportMarkdown(base), /^\*\*Merge check median:\*\* 09-10 95s$/m);
+
+  const none: ReportData = { ...base, series: base.series.map(({ checkMedianMs: _m, ...d }) => d) };
+  assert.ok(!renderReportMarkdown(none).includes("Merge check median"));
+  assert.ok(!renderReportMarkdown({ ...base, role: "feature" }).includes("Merge check median"));
+});

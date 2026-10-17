@@ -13,6 +13,7 @@ import { durationLabel } from "../cli/cli-args.js";
 import { monthDay, reportWindow, sinceWindowLine } from "../text/datetime.js";
 import { eventsRotationLabel } from "../events/events.js";
 import { SPARSE_WINDOW_NOTE } from "../events/event-window.js";
+import { shortSpanPhrase } from "../text/phrases.js";
 import { markdownTable } from "../text/markdown.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
 
@@ -306,6 +307,12 @@ export function renderReportMarkdown(data: ReportData): string {
     const landingFailures = rankedRoleTotals(data.series, (d) => d.mergeFailedByRole ?? {}).filter(([, n]) => n > 0);
     if (landingFailures.length > 0)
       lines.push(rankedRoleLine("Merge failures by role", landingFailures, String));
+    // Per-day median passing check time, so a suite slowing over days shows; days without a
+    // check are left out, and no line prints when no day has one (zero means absent).
+    const medians = data.series.flatMap((d) =>
+      d.checkMedianMs === undefined ? [] : [`${monthDay(d.date)} ${shortSpanPhrase(d.checkMedianMs)}`],
+    );
+    if (medians.length > 0) lines.push(`**Merge check median:** ${medians.join(" · ")}`);
   }
   lines.push(costPerCommitLine("Cost per commit", costPerCommitPairs(data.series)));
   // Subscription spend is notional: its own two lines, only when the window has any.

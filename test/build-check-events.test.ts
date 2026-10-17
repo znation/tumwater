@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import {
   buildCheckEvent,
   buildCheckSkipWarning,
+  isPassingFullCheck,
   MERGE_SCOPES,
   SCOPE_WORDS,
   timedOutPhrase,
 } from "../src/build/build-check-events.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import type { BuildCheckRun } from "../src/build/build-check.js";
 
 // Unit pins for the presentation half of the build check (src/build/build-check-events.ts): the
@@ -133,4 +135,11 @@ test("every scope has wording, and exactly the merge-gating scopes are listed", 
   }
   assert.deepEqual([...MERGE_SCOPES].sort(), ["batch", "merge"]);
   assert.ok(!MERGE_SCOPES.has("gate"), "the gate stays fail-open; model review stands behind it");
+});
+
+test("isPassingFullCheck counts passed merge/batch/baseline checks only", () => {
+  const ev = (status: string, scope: string): HarnessEvent => ({ ts: 0, source: "x", type: "build_check", status, scope });
+  for (const scope of ["merge", "batch", "baseline"]) assert.equal(isPassingFullCheck(ev("passed", scope)), true);
+  assert.equal(isPassingFullCheck(ev("passed", "gate")), false);
+  assert.equal(isPassingFullCheck(ev("failed", "merge")), false);
 });

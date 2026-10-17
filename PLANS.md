@@ -1153,7 +1153,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater report`'s day report gains a `Merge check median` line giving each day's median passing merge-check time, so the operator sees the suite slowing over days (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and the in-flight GUI failed-runs chart — touches src/report/, src/build/build-check-events.ts and tests only, and leaves src/doctor/ and src/ui/ alone)
+## Done
+
+### `tumwater report`'s day report gains a `Merge check median` line giving each day's median passing merge-check time, so the operator sees the suite slowing over days (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and the in-flight GUI failed-runs chart — touches src/report/, src/build/build-check-events.ts and tests only, and leaves src/doctor/ and src/ui/ alone) — done 2026-10-16
 
 **Goal.** `tumwater doctor`'s `check` row (`checkDurationPhrase` in `src/doctor/doctor-checks.ts`) says how long passing merge checks took over the last 24 h. That is one number, with no history. The merge lock waits on the declared check, and a test suite tends to grow slower a little every day. That trend is what tells an operator to act before a check times out, and nothing shows it. The day report (`renderReportMarkdown` in `src/report/report-render.ts`) already has a day series built from the event log, so give it one more per-day figure: the median wall clock of that day's passing full-suite checks.
 
@@ -1179,8 +1181,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A unit test for `isPassingFullCheck` covers passed merge/batch/baseline (true), passed gate (false) and failed merge (false). Put it in `test/build-check-events.test.ts`.
 - The existing tests in `test/report.test.ts` and `test/report-data.test.ts` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### The GUI Usage view charts `Failed runs by role` and `Merge failures by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series) — done 2026-10-16
 

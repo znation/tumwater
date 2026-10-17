@@ -9,7 +9,7 @@
  * runScopedBuildCheck (build-check-scoped.ts) is the only caller that both runs a check and
  * uses this wording; the baseline surfaces use the event/warning helpers alone. */
 
-import type { HarnessEventInput } from "../events/events.js";
+import type { HarnessEvent, HarnessEventInput } from "../events/events.js";
 import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-check.js";
 
 /** The scopes named in a build_check event logged from runScopedBuildCheck. The red-main
@@ -17,6 +17,12 @@ import type { BuildCheckOutcome, BuildCheckRun, BuildSkipReason } from "./build-
  * in-flight dedup live in checkMainBaseline — the event there is logged by the paying role via
  * the onRun hook. */
 export type BuildCheckScope = "gate" | "merge" | "batch";
+
+/** Is this a passing build_check over the full suite? The scopes doctor's check row counts —
+ * merge, batch and the red-main baseline; a gate check can run a subset, so it is left out. */
+export function isPassingFullCheck(ev: HarnessEvent): boolean {
+  return ev.type === "build_check" && ev.status === "passed" && ["merge", "batch", "baseline"].includes(String(ev.scope));
+}
 
 /** How late a check's deadline timer may fire before the timeout's wording stops naming the
  * configured bound alone. Normal timer lag is milliseconds; past this the warning and the

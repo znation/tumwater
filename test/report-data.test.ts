@@ -899,3 +899,20 @@ test("collectReport and collectReportSince count image_reroute per role, zero me
   assert.deepEqual(collectReportSince(root, 3 * 24 * HOUR, "feature").imageReroutesByRole, { feature: 3 }, "feature-2 folds into feature");
   assert.match(renderReportMarkdown(collectReport(tmpdir(), 2)), /\*\*Image reroutes by role:\*\* -/);
 });
+
+test("collectReport gives each day the lower median of its passing full-suite checks, team scope only", () => {
+  const root = tmpdir();
+  const check = (status: string, scope: string, durationMs: number) =>
+    JSON.stringify({ ts: at(0), loop: "lander", type: "build_check", status, scope, durationMs });
+  writeEvents(root, [
+    check("passed", "merge", 60_000),
+    check("passed", "batch", 120_000),
+    check("passed", "baseline", 90_000),
+    check("passed", "gate", 5_000), // a gate check can run a subset of the suite
+    check("failed", "merge", 1_000),
+  ]);
+  const data = collectReport(root, 2);
+  assert.equal(data.series[1]!.checkMedianMs, 90_000);
+  assert.ok(!("checkMedianMs" in data.series[0]!));
+  for (const d of collectReport(root, 2, "feature").series) assert.ok(!("checkMedianMs" in d));
+});
