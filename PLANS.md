@@ -1149,6 +1149,30 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+### `tumwater doctor` warns when a queued prompt has waited more than a day for a role that is not dequeuing it (planned 2026-10-17 by the plan role; independent of every other Planned entry — it adds one warn-only check beside `checkStaleQueuedMerges` in `src/doctor/doctor-backlog.ts`, one row in `src/doctor/doctor.ts`, and reads the inbox through the existing `queuedListRows`/`listWideScope` traversal rather than adding a reader; the only file it shares with the in-flight `Backlog items opened` plan is docs/cli.md, a one-clause edit, so either lands first and the other rebases; touches src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-backlog.test.ts and test/doctor.test.ts — done 2026-10-17 by the feature role)
+
+**Goal.** A prompt queued for a role (`tumwater prompt --role <id>`, the dashboard composer, the TUI, a `--at` delay whose time has now passed) is dequeued at that role's next run. A role that is paused, disabled, or failing never reaches that run, so the prompt waits indefinitely and only the Inbox views (`tumwater prompt --list`, the dashboard Inbox tab, the TUI Inbox pane) show its age — and only when the operator looks. `tumwater doctor` already warns when a merge sits in the queue too long (`checkStaleQueuedMerges`), when a question waits 7 days, and when a bug waits 3 days, but says nothing about a stranded prompt. Add a warn-only `checkStalePrompts` naming the oldest due-but-undelivered prompt, its role, and the deliver-or-drop commands.
+
+**Approach.**
+1. `src/doctor/doctor-backlog.ts`, placed after `checkStaleQueuedMerges`:
+   - Add `const STALE_PROMPT_MS = 24 * 60 * 60 * 1000;` with a doc comment: an opinionated default with no knob, like `MERGE_QUEUE_STALE_MS`; a day is long enough that a healthy role's next run would have dequeued it, and short enough that a paused or disabled role's stranded prompt shows up.
+   - Add `export function checkStalePrompts(root: string, now: number): CheckOutcome`, reading the one shared list traversal `tumwater prompt --list`, the TUI Queued pane and the dashboard Inbox use: `queuedListRows(root, null, listWideScope(root))` (both exported from `src/inbox/inbox.ts`). Each row carries `role`, `position`, `queuedAtMs`, and `notBeforeMs`.
+   - Keep only rows that are (a) deliverable now — `deliverableAt(p.notBeforeMs, now)` from `src/inbox/prompt-not-before.ts`, so a `--at 7d` prompt still counting down is never stale — and (b) stamped (`p.queuedAtMs !== null`) more than `STALE_PROMPT_MS` ago.
+   - Empty → `okOutcome("no queued prompt has waited more than 1 day for a role to dequeue it")`. Otherwise `warnOutcome` naming the oldest in full and the rest through the module's existing `andMore` helper: `` `inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${humanSeconds(secondsSince(first.queuedAtMs, now))} — the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with \`tumwater prompt --cancel ${first.position} --role ${first.role}\`` `` plus the `andMore` suffix. `roleLabel`, `humanSeconds`, and `secondsSince` are already imported in this module.
+   - A warn, never a fail, matching the `checkStaleQueuedMerges`/`checkStaleQuestions`/`checkStaleBugs` precedent.
+   - Extend the module header's opening sentence so it names the queued-merge and queued-prompt checks too (the header today claims only backlog-document readers, which `checkStaleQueuedMerges` already exceeds).
+2. `src/doctor/doctor.ts`: add `{ name: "stale prompts", ...checkStalePrompts(root, Date.now()) }` immediately after the `stale merge-queue entries` row, so the two "queued too long" rows sit together.
+3. `docs/cli.md`: in the `tumwater doctor` row's enumeration, add the new warn — "a prompt queued for a role that has not dequeued it within a day" — beside the other waited-too-long items.
+
+**Files touched.** `src/doctor/doctor-backlog.ts`, `src/doctor/doctor.ts`, `docs/cli.md`, `test/doctor-backlog.test.ts`, `test/doctor.test.ts`.
+
+**Acceptance criteria.**
+- New tests in `test/doctor-backlog.test.ts`, modelled on its `checkStaleQueuedMerges` suite (same `tmpdir`/config fixture style, the `andMore` "and 1 more:" assertion): seed the inbox through `enqueueRolePrompt` and rename each returned queue file to an old 13-digit stamp (`${oldStamp}-000000-1.md`, the filename `queueFileStamp` parses into `queuedAtMs`) under a root whose `tumwater.json` lists the roles.
+  - An empty inbox, one queued exactly 24 h ago (the threshold, not past it), and one whose `notBeforeMs` is in the future while its stamp is 25 h old all read `ok`.
+  - One prompt for a role queued 25 h ago reads `warn`; the detail names the role label, `#<position>`, the age from `humanSeconds`, and the `tumwater prompt --cancel <position> --role <role>` fix. A second, older stale prompt on another role adds `and 1 more: <role> #<position>`.
+- `test/doctor.test.ts`'s pinned check-name list gains `"stale prompts"` immediately after `"stale merge-queue entries"`.
+- `npm run test` passes.
+
 
 ### The GUI Usage view charts each day's `Commits by role` as a stacked per-role element, the per-role split of the `Merged commits` total (planned 2026-10-17 by the plan role; independent of the in-flight `Merged by role` chart and of the plain-terms comment parts 11b/11 and 11e/11 — a different builder, seed line and render-chain slot in the same file, so all three land in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 

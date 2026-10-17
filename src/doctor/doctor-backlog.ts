@@ -15,6 +15,8 @@ import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
+import { listWideScope, queuedListRows } from "../inbox/inbox.js";
+import { deliverableAt } from "../inbox/prompt-not-before.js";
 import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js";
 import { readEventsSince } from "../events/event-window.js";
 import type { HarnessEvent } from "../events/events.js";
@@ -23,15 +25,15 @@ import { lowerMedian } from "../collections.js";
 import { plural, shortSpanPhrase } from "../text/phrases.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
-/** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
- * read the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) rather than the
- * environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated `## `
- * headings, refused entries, stale open bugs, and uncommitted edits to the backlog files in
- * the primary checkout. They share this module's helpers (readDoc and its checked wrapper
- * readDocChecked, andMore) and the heading-trim constant, and all of them warn instead of
- * failing: damaged documentation is operator signal, not a broken environment. doctor.ts
- * composes them beside the environment checks; the shared CheckOutcome shape is imported from
- * outcome.ts. */
+/** The doctor's backlog-document checks, split out of doctor-checks.ts: the checks that read
+ * the project's tracked Markdown backlog (BUGS.md, PLANS.md, QUESTIONS.md) and queues rather
+ * than the environment doctor-checks.ts inspects — fix claims, stranded plans, duplicated
+ * `## ` headings, refused entries, stale open bugs, stale queued merges, stale queued prompts,
+ * and uncommitted edits to the backlog files in the primary checkout. They share this module's
+ * helpers (readDoc and its checked wrapper readDocChecked, andMore) and the heading-trim
+ * constant, and all of them warn instead of failing: damaged documentation is operator signal,
+ * not a broken environment. doctor.ts composes them beside the environment checks; the shared
+ * CheckOutcome shape is imported from outcome.ts. */
 
 /** How many Fixed records the fix-claims check verifies: the newest, since the section is
  * newest-first by template convention. Older records drift as the code evolves — a symbol
@@ -299,6 +301,36 @@ export function checkStaleQueuedMerges(root: string, now: number): CheckOutcome 
   const more = andMore(rest, (e) => `${e.role} — "${truncate(e.summary, FIX_CLAIM_HEADING_MAX)}"`);
   return withWait(warnOutcome(`merge-queue entry of ${roleLabel(first.role)} — "${truncate(first.summary, FIX_CLAIM_HEADING_MAX)}" — has waited ` +
       `${first.age} to start${more}; a queued change the pipeline neither approves nor flags reads as healthy, so the merge queue has stopped moving`));
+}
+
+/** How long a queued prompt may wait for its role to dequeue it before the stale-prompt check
+ * warns: a day, fixed. An opinionated default with no knob, like MERGE_QUEUE_STALE_MS: a day is
+ * long enough that a healthy role's next run would have dequeued the prompt, and short enough
+ * that a paused or disabled role's stranded prompt shows up. */
+const STALE_PROMPT_MS = 24 * 60 * 60 * 1000;
+
+/** Stale queued prompts — a prompt queued for a role (`tumwater prompt --role <id>`, the
+ * dashboard composer, the TUI, a `--at` delay whose time has now passed) that has waited more
+ * than a day for that role to dequeue it. A role that is paused, disabled, or failing never
+ * reaches the run that would dequeue the prompt, so it waits indefinitely and only the Inbox
+ * views (`tumwater prompt --list`, the dashboard Inbox tab, the TUI Inbox pane) show its age —
+ * and only when the operator looks. This names the oldest due-but-undelivered prompt, its role,
+ * and the deliver-or-drop commands. Reads the queue with the shared `queuedListRows`/
+ * `listWideScope` traversal the Inbox views use (no new reader in src/inbox/), keeping only
+ * rows that are deliverable now — a `--at 7d` prompt still counting down is never stale — and
+ * stamped more than STALE_PROMPT_MS ago. A warn, never a fail — the checkStaleQueuedMerges
+ * precedent: a stranded prompt is operator signal, not a broken environment. */
+export function checkStalePrompts(root: string, now: number): CheckOutcome {
+  const stale = queuedListRows(root, null, listWideScope(root))
+    .filter((p) => p.queuedAtMs !== null && deliverableAt(p.notBeforeMs, now) && now - p.queuedAtMs > STALE_PROMPT_MS)
+    .sort((a, b) => (a.queuedAtMs as number) - (b.queuedAtMs as number))
+    .map((p) => ({ ...p, queuedAtMs: p.queuedAtMs as number }));
+  const [first, ...rest] = stale;
+  if (!first) return okOutcome("no queued prompt has waited more than 1 day for a role to dequeue it");
+  const more = andMore(rest, (p) => `${p.role} #${p.position}`);
+  return warnOutcome(`inbox prompt for ${roleLabel(first.role)} #${first.position} has waited ${humanSeconds(secondsSince(first.queuedAtMs, now))} — ` +
+    "the role is not dequeuing it (paused, disabled, or failing); resume or enable it, or drop the prompt with " +
+    `\`tumwater prompt --cancel ${first.position} --role ${first.role}\`${more}`);
 }
 
 /** How long merges that reached main waited: the lower median and the longest `queuedMs` of the

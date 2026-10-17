@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStalePrompts, checkStaleQueuedMerges, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, mergeWaitPhrase, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
+import { enqueueRolePrompt } from "../src/inbox/inbox.js";
 import { mergeQueueDir } from "../src/paths.js";
 import { shortSpanPhrase } from "../src/text/phrases.js";
 import { makeRepo, seedCommit, sh, tmpdir } from "./fixtures/repo-fixtures.js";
@@ -438,6 +439,74 @@ test("checkStaleQueuedMerges warns once, resting via andMore, and never flags an
   assert.match(out.detail, /clean/);
   assert.ok(!out.detail.includes("improve"), "the in-flight role is not flagged");
   assert.match(out.detail, /and 1 more: organize/);
+});
+
+// checkStalePrompts — a prompt queued for a role that has not dequeued it within a day is
+// operator signal: a paused, disabled, or failing role never reaches the run that would
+// dequeue it, and only the Inbox views show its age, and only when the operator looks. This
+// warns on the oldest due-but-undelivered prompt; a deferred one (its not-before time still
+// in the future) is never stale, and a quiet inbox reads ok.
+
+/** A root whose tumwater.json lists the given roles, so listWideScope resolves them as the
+ * list-shaped views do. */
+function promptRoot(roles: string[]): string {
+  const root = tmpdir("doctor-stale-prompt-");
+  fs.mkdirSync(path.join(root, ".tumwater"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "tumwater.json"),
+    JSON.stringify({ roles: Object.fromEntries(roles.map((r) => [r, { enabled: true }])) }),
+  );
+  return root;
+}
+
+/** Enqueue a prompt for a role, then rename its queue file to an old 13-digit stamp
+ * (`${stamp}-000000-1.md`, the name queueFileStamp parses into queuedAtMs) so the wait reads
+ * as `oldStamp` instead of now. */
+function stampPrompt(root: string, role: string, stamp: number, notBefore?: number): void {
+  const file = enqueueRolePrompt(root, role, `prompt for ${role}`, notBefore);
+  const dir = path.dirname(file);
+  fs.renameSync(file, path.join(dir, `${stamp}-000000-1.md`));
+}
+
+const PROMPT_STALE_MS = 24 * 60 * 60 * 1000;
+
+test("checkStalePrompts reads ok for an empty inbox and a prompt stamped but not yet stale", () => {
+  const now = Date.now();
+  const root = promptRoot(["feature"]);
+  assert.equal(checkStalePrompts(root, now).level, "ok");
+  // One queued exactly at the threshold (24 h, not strictly past it) is not stale yet.
+  stampPrompt(root, "feature", now - PROMPT_STALE_MS);
+  assert.equal(checkStalePrompts(root, now).level, "ok");
+});
+
+test("checkStalePrompts never flags a deferred prompt whose not-before time is still in the future", () => {
+  const now = Date.now();
+  const root = promptRoot(["feature"]);
+  // A 25 h-old stamp, but still counting down: never stale.
+  stampPrompt(root, "feature", now - 25 * 60 * 60 * 1000, now + 60 * 60 * 1000);
+  assert.equal(checkStalePrompts(root, now).level, "ok");
+});
+
+test("checkStalePrompts warns naming the oldest stale role, its position, its age, and the fix", () => {
+  const now = Date.now();
+  const root = promptRoot(["feature"]);
+  stampPrompt(root, "feature", now - 25 * 60 * 60 * 1000);
+  const out = checkStalePrompts(root, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /inbox prompt for feature #1/);
+  assert.match(out.detail, /has waited 1d/);
+  assert.match(out.detail, /tumwater prompt --cancel 1 --role feature/);
+});
+
+test("checkStalePrompts rests a second older stale prompt via andMore", () => {
+  const now = Date.now();
+  const root = promptRoot(["feature", "organize"]);
+  stampPrompt(root, "feature", now - 26 * 60 * 60 * 1000);
+  stampPrompt(root, "organize", now - 25 * 60 * 60 * 1000);
+  const out = checkStalePrompts(root, now);
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /inbox prompt for feature #1/);
+  assert.match(out.detail, /and 1 more: organize #1/);
 });
 
 // checkUncommittedBacklog — operator edits left uncommitted in the primary checkout.
