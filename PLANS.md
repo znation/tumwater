@@ -1343,6 +1343,32 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
+
+**Goal.** The "Waiting for the next failure" hold (done 2026-10-16) parks an open bug until it fails again, but doctor does not know about it. `checkStaleBugs` (`src/doctor/doctor-backlog.ts`) skips only Refused bugs, so a bug held on purpose still warns "has waited N d for a fix — no role is fixing it: check that the bugfix role is enabled and not failing". That advice is wrong for a held bug. No doctor row lists which bugs are waiting or how to release one, so the only sign is the `[blocked: waiting for the next failure]` mark in the backlog listings. This plan makes `checkStaleBugs` skip waiting bugs and adds one doctor row, `waiting bugs`, that names them.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`: next to `refusalNote`, export `waitingNote(body: string): string | null`. It applies the same rule to `WAITING_FOR_FAILURE_PREFIX` (already imported for `entryHoldAgainst`): it takes the first trimmed line that starts with the prefix and strips the leading `**` and the first closing `**`. Factor the shared body into a private `noteText(body, prefix)` that both functions call, so `refusalNote`'s behavior stays the same.
+- `src/doctor/doctor-backlog.ts`:
+  - `checkStaleBugs`: skip an entry when `waitingNote(entry.body) !== null`, the same way it skips refused entries. Update its doc comment to say that a waiting bug is skipped too and that `checkWaitingBugs` names it.
+  - New `export function checkWaitingBugs(root: string): CheckOutcome`, shaped like `checkStaleBugs`. Read BUGS.md with `readDocChecked(…, "no BUGS.md — nothing to verify")`. Walk `openBugEntries(root)` in order and keep `{ position: index + 1, title, note }` for each entry whose `waitingNote` is non-null and whose `refusalNote` is null; a Refused bug belongs to `checkRefusedEntries`. When none match, return `okOutcome("no open bug is waiting for its next failure")`. Otherwise return an **ok** outcome, never a warn: the hold is deliberate, and doctor only reports it. The detail is `` BUGS.md bug #<n> "<title>" is held until it fails again (<note, truncated to REFUSAL_NOTE_MAX>)<andMore> — selfcheck lifts the note when it records a new occurrence; release it now with `tumwater bug --release <n>` ``. Truncate titles with `FIX_CLAIM_HEADING_MAX` and render the rest with `andMore` as `` #<n> "<title>" ``, as `checkStaleBugs` does. Give the function a doc comment in the style of its neighbors.
+- `src/doctor/doctor.ts`: import `checkWaitingBugs` and register `{ name: "waiting bugs", ...checkWaitingBugs(root) }` right after the `stale bugs` row.
+- `docs/cli.md`: in the `Audit` row's `tumwater doctor` list, after "open bugs unfixed 3 days or more after their filing stamp", add ", open bugs held by a Waiting for the next failure note (not counted as unfixed; released with `tumwater bug --release <n>`)".
+- Out of scope: the dashboard drawer's Release button for a waiting bug, warning when a hold gets old, and any change to how the note is written or lifted.
+
+**Files touched.** src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-backlog.test.ts (and test/backlog-eligibility.test.ts for `waitingNote`).
+
+**Acceptance criteria.**
+- `waitingNote("x\n  **Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**\n")` returns `"Waiting for the next failure 2026-10-16 by bugfix: the message names the pid"`. A body that mentions the words only mid-line returns null. The existing `refusalNote` tests pass unchanged.
+- `checkStaleBugs` reads ok for a BUGS.md whose only Open entry is stamped 9 days ago and carries a `**Waiting for the next failure 2026-10-16 by bugfix: …**` line. Its existing tests stay green.
+- `checkWaitingBugs`:
+  - Returns level `ok` with detail starting `BUGS.md bug #2 "` for an Open section that holds a plain bug and then a waiting one. The detail includes the note text and `tumwater bug --release 2`.
+  - With two waiting bugs, names the first and the second through `(and 1 more: #… "`.
+  - Returns exactly `{ level: "ok", detail: "no open bug is waiting for its next failure" }` when no Open entry carries the note, including when the note appears only under `## Fixed` or only on an entry that is also Refused.
+  - Returns `{ level: "ok", detail: "no BUGS.md — nothing to verify" }` when BUGS.md is absent.
+- `tumwater doctor`'s report has a `waiting bugs` row: grep `"waiting bugs"` in src/doctor/doctor.ts. Any test that pins doctor's row names or count, found by grepping test/ for `"stale bugs"`, is updated to include it.
+- `npm run test` passes.
+
 ## Done
 
 ### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests) (done 2026-10-16)
