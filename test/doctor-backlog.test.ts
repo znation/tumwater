@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs } from "../src/doctor/doctor-backlog.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir } from "../src/paths.js";
@@ -530,4 +530,39 @@ test("checkPlanDependencies names a cycle first and counts the other kinds", () 
   assert.equal(out.level, "warn");
   assert.match(out.detail, /plan dependency cycle: S 1\/2 → S 2\/2 → S 1\/2 — every part on it stays blocked forever/);
   assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\), 0 misworded dependency\(ies\)\)/);
+});
+
+const WAIT = "**Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**";
+
+test("checkStaleBugs skips a bug held by a Waiting for the next failure note", () => {
+  const dir = tmpdir("doctor-stale-bugs-waiting-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Held (found by bugfix ${daysAgoStamp(9)})\n\n${WAIT}\n`);
+  assert.deepEqual(checkStaleBugs(dir), { level: "ok", detail: "no open bug has waited more than 3 days for a fix" });
+});
+
+test("checkWaitingBugs names a waiting bug with its note and release command, as ok", () => {
+  const dir = tmpdir("doctor-waiting-bugs-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### Plain (found by bugfix ${daysAgoStamp(0)})\n\n### Held (found by bugfix ${daysAgoStamp(1)})\n\n${WAIT}\n`);
+  const out = checkWaitingBugs(dir);
+  assert.equal(out.level, "ok");
+  assert.ok(out.detail.startsWith('BUGS.md bug #2 "'), out.detail);
+  assert.ok(out.detail.includes("the message names the pid"), out.detail);
+  assert.ok(out.detail.includes("tumwater bug --release 2"), out.detail);
+});
+
+test("checkWaitingBugs names the first of several and counts the rest", () => {
+  const dir = tmpdir("doctor-waiting-bugs-multi-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n### One\n\n${WAIT}\n\n### Two\n\n${WAIT}\n`);
+  const out = checkWaitingBugs(dir);
+  assert.ok(out.detail.startsWith('BUGS.md bug #1 "'), out.detail);
+  assert.ok(out.detail.includes('(and 1 more: #2 "'), out.detail);
+});
+
+test("checkWaitingBugs is quiet without an Open waiting bug, and without BUGS.md", () => {
+  const none = { level: "ok", detail: "no open bug is waiting for its next failure" };
+  assert.deepEqual(checkWaitingBugs(tmpdir("doctor-waiting-bugs-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
+  const dir = tmpdir("doctor-waiting-bugs-quiet-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### Both\n\n**Refused 2026-10-10 by bugfix: no**\n${WAIT}\n\n## Fixed\n\n### Old\n\n${WAIT}\n`);
+  assert.deepEqual(checkWaitingBugs(dir), none);
 });

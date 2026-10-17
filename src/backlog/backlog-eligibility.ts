@@ -55,12 +55,22 @@ function hasNoteLine(body: string, prefix: string): boolean {
   return body.split("\n").some((line) => line.trimStart().startsWith(prefix));
 }
 
-/** The text of `body`'s Refused note: the first line (ignoring leading indentation) that begins
- * with REFUSED_PREFIX, trimmed, with the leading `**` and the first closing `**` removed. Null
- * when no line matches — the same line-prefix rule entryHold's "refused" hold uses. */
-export function refusalNote(body: string): string | null {
-  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith(REFUSED_PREFIX));
+/** The text of `body`'s note for `prefix`: the first line (ignoring leading indentation) that
+ * begins with it, trimmed, with the leading `**` and the first closing `**` removed. Null when
+ * no line matches — the same line-prefix rule entryHold uses. */
+function noteText(body: string, prefix: string): string | null {
+  const line = body.split("\n").map((l) => l.trim()).find((l) => l.startsWith(prefix));
   return line === undefined ? null : line.replace(/^\*\*/, "").replace("**", "");
+}
+
+/** The text of `body`'s Refused note, or null when it has none (entryHold's "refused" hold). */
+export function refusalNote(body: string): string | null {
+  return noteText(body, REFUSED_PREFIX);
+}
+
+/** The text of `body`'s Waiting-for-the-next-failure note, or null when it has none. */
+export function waitingNote(body: string): string | null {
+  return noteText(body, WAITING_FOR_FAILURE_PREFIX);
 }
 
 /** `lines` without any line starting with `prefix` (the same line-prefix rule hasNoteLine

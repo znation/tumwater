@@ -1343,7 +1343,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
+## Done
+
+### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
 
 **Goal.** The "Waiting for the next failure" hold (done 2026-10-16) parks an open bug until it fails again, but doctor does not know about it. `checkStaleBugs` (`src/doctor/doctor-backlog.ts`) skips only Refused bugs, so a bug held on purpose still warns "has waited N d for a fix — no role is fixing it: check that the bugfix role is enabled and not failing". That advice is wrong for a held bug. No doctor row lists which bugs are waiting or how to release one, so the only sign is the `[blocked: waiting for the next failure]` mark in the backlog listings. This plan makes `checkStaleBugs` skip waiting bugs and adds one doctor row, `waiting bugs`, that names them.
 
@@ -1368,8 +1370,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Returns `{ level: "ok", detail: "no BUGS.md — nothing to verify" }` when BUGS.md is absent.
 - `tumwater doctor`'s report has a `waiting bugs` row: grep `"waiting bugs"` in src/doctor/doctor.ts. Any test that pins doctor's row names or count, found by grepping test/ for `"stale bugs"`, is updated to include it.
 - `npm run test` passes.
-
-## Done
 
 ### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests) (done 2026-10-16)
 

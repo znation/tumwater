@@ -16,6 +16,7 @@ import {
   plannedPartKeys,
   prerequisitesLanded,
   refusalNote,
+  waitingNote,
   planDependencyProblems,
   plansWaitingOn,
   requiredParts,
@@ -507,4 +508,11 @@ test("waitingPartRanges names the planned parts that wait on an entry, with thei
   assert.deepEqual(waitingPartRanges(dir, "Unrelated plan"), []);
   assert.deepEqual(waitingPartRanges(dir, "Not there"), []);
   assert.deepEqual(waitingPartRanges(tmpdir(), "S, part 1/3: a"), []);
+});
+
+test("waitingNote returns the note line without its bold markers, and null for a mid-line mention", () => {
+  assert.equal(
+    waitingNote("x\n  **Waiting for the next failure 2026-10-16 by bugfix: the message names the pid**\n"),
+    "Waiting for the next failure 2026-10-16 by bugfix: the message names the pid");
+  assert.equal(waitingNote("see Waiting for the next failure mid-line"), null);
 });

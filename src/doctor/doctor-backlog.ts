@@ -5,7 +5,7 @@ import path from "node:path";
 import { errorMessage, truncate } from "../text/text.js";
 import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
-import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesLanded, refusalNote } from "../backlog/backlog-eligibility.js";
+import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesLanded, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import { BACKLOG_FILES } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
@@ -315,12 +315,13 @@ export function checkStaleQuestions(root: string): CheckOutcome {
 /** Stale bugs — unrefused open BUGS.md bugs whose `(found by … YYYY-MM-DD)` or `(reported …)`
  * stamp is at least 3 days old. The bugfix role fixes a bug within hours, so one that sits means
  * no loop is fixing it. Positions are the 1-based `bug --list` numbers; a refused bug is skipped
- * (checkRefusedEntries names it) and so is an undated heading. A warn, never a fail. */
+ * (checkRefusedEntries names it), a waiting bug is skipped (checkWaitingBugs names it) and so is
+ * an undated heading. A warn, never a fail. */
 export function checkStaleBugs(root: string): CheckOutcome {
   const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if ("outcome" in read) return read.outcome;
   const stale = openBugEntries(root).flatMap((entry, index) => {
-    if (refusalNote(entry.body) !== null) return [];
+    if (refusalNote(entry.body) !== null || waitingNote(entry.body) !== null) return [];
     const stamp = filingDate(entry.title);
     if (stamp === null) return [];
     const days = ageInDays(stamp);
@@ -331,6 +332,25 @@ export function checkStaleBugs(root: string): CheckOutcome {
   const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
   return warnOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" has waited ${first.days} d for a fix${more} — ` +
       `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
+}
+
+/** Waiting bugs — open BUGS.md bugs held by a **Waiting for the next failure …** note, which
+ * parks a bug until it fails again. Positions are the 1-based `bug --list` numbers; a bug that
+ * is also Refused is left to checkRefusedEntries. Always ok: the hold is deliberate, so doctor
+ * only names the bugs and how to release one. */
+export function checkWaitingBugs(root: string): CheckOutcome {
+  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
+  const held = openBugEntries(root).flatMap((entry, index) => {
+    const note = waitingNote(entry.body);
+    return note !== null && refusalNote(entry.body) === null ? [{ position: index + 1, title: entry.title, note }] : [];
+  });
+  const [first, ...rest] = held;
+  if (!first) return okOutcome("no open bug is waiting for its next failure");
+  const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
+  return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
+      `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +
+      `release it now with \`tumwater bug --release ${first.position}\``);
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears
