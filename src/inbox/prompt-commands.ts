@@ -27,6 +27,7 @@ import {
   editRolePrompt,
   readQueuedPromptBody,
 } from "./inbox-edit.js";
+import { movePromptToTop, type TopOutcome } from "./inbox-top.js";
 import { editInEditor } from "../cli/cli-editor.js";
 import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, renderQueuedList } from "./inbox.js";
 import { durationLabel } from "../cli/cli-args.js";
@@ -97,12 +98,33 @@ function runRolePromptCommand<O extends CancelOutcome | EditOutcome>(
  * command. One helper so the cancel and edit wordings cannot drift. */
 function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome | EditOutcome, labelRole: boolean): void {
   if (outcome.status === "gone") {
-    say(`prompt ${position} is no longer in the inbox — ${roleLabel(role)} already took it`);
+    sayPromptGone(position, role);
     return;
   }
   // A resolved cancel carries the removed text; a resolved edit carries what it wrote.
   const text = outcome.status === "cancelled" ? outcome.text : outcome.newText;
   say(labelRole ? `${outcome.status} (${role}): ${promptPreview(text)}` : `${outcome.status}: ${promptPreview(text)}`);
+}
+
+/** The gone-case tail shared by every resolved queue-verb reply: a concurrent dequeue is a
+ * normal race, not an error, so report it and exit clean, naming the loop that took the
+ * prompt. One helper so the cancel, edit and top verbs' gone wording cannot drift. */
+function sayPromptGone(position: number, role: string): void {
+  say(`prompt ${position} is no longer in the inbox — ${roleLabel(role)} already took it`);
+}
+
+/** The user-facing reply for one resolved top — the two branches of cmdPrompt's top mode
+ * (list-wide and `--role`-scoped): a concurrent dequeue is a normal race, not an error, so it
+ * is reported and exited clean; a resolved one previews the moved prompt. When `labelRole` the
+ * line names the loop — the no-`--role` command resolves across every loop, so its output must
+ * say where the prompt moved — while a `--role`-scoped command already names it in the user's
+ * own command. The `sayPromptOutcome` contract, so the verbs cannot drift. */
+function sayTopOutcome(position: number, role: string, outcome: TopOutcome, labelRole: boolean): void {
+  if (outcome.status === "gone") {
+    sayPromptGone(position, role);
+    return;
+  }
+  say(labelRole ? `topped (${role}): ${outcome.preview}` : `topped: ${outcome.preview}`);
 }
 
 /** Read and validate an `--attach <path>` list into the GUI's image input shape, through the
@@ -118,9 +140,10 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
   }
 }
 
-/** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the
+/** `tumwater prompt [--role <id>] <text|list|cancel <n>|top <n>>`: submit a steering prompt to the
  * director (default) or one role's queue, list what is queued with per-loop position
- * numbering, or cancel a queued prompt by position. The dispatcher in cli.ts gates on a ready
+ * numbering, cancel a queued prompt by position, or move one to the head of its
+ * queue. The dispatcher in cli.ts gates on a ready
  * repo and delegates here; list output is grouped by loop — the director first (its queue is
  * the shared one every pre-1/2 prompt landed in), then each role with queued prompts — so a
  * per-role queue's position numbering stays unambiguous. */
@@ -252,6 +275,32 @@ export async function cmdPrompt(root: string, args: string[]): Promise<void> {
       runRolePromptCommand(root, target, parsed.position, (r, role, position) => editRolePrompt(r, role, position, typed, images)),
       false,
     );
+    return;
+  }
+  if (parsed.mode === "top") {
+    // The same list-wide resolution the cancel branch uses, one verb on: no --role resolves the
+    // position across `--list`'s per-loop sections and moves it in the resolved loop's queue;
+    // with --role it is the role-scoped call. A concurrent dequeue reports gone and exits
+    // clean; position 1 of the resolved loop is "already first".
+    if (role === null) {
+      const loop = failQueueMiss(resolveListedQueue(root, listWideScope(root), parsed.position), parsed.position).role;
+      let outcome: TopOutcome;
+      try {
+        outcome = movePromptToTop(root, loop, parsed.position);
+      } catch (err) {
+        return fail(errorMessage(err));
+      }
+      sayTopOutcome(parsed.position, loop, outcome, true);
+      return;
+    }
+    const target = role ?? DIRECTOR_ROLE;
+    let outcome: TopOutcome;
+    try {
+      outcome = movePromptToTop(root, target, parsed.position);
+    } catch (err) {
+      return fail(errorMessage(err));
+    }
+    sayTopOutcome(parsed.position, target, outcome, false);
     return;
   }
   const target = role ?? DIRECTOR_ROLE;

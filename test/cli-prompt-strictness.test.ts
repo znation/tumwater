@@ -47,3 +47,37 @@ test("prompt --at without a value fails with parseDurationFlag's message", async
   assert.match(r.stderr, /--at needs a value/);
   assert.equal(inboxSize(repo), 0, "the flag pair was not baked into queued content");
 });
+
+// --top's strictness surface, mirroring --cancel's: it is a position mode, so it refuses the
+// other queue modes as mutually exclusive, the queue-only flags as meaningless, and any stray
+// positional as prompt text it has no use for.
+test("prompt --top refuses the other modes, the queue-only flags, and stray text", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt top strictness");
+
+  // --top is mutually exclusive with the list/cancel/edit modes (the check runs before any
+  // of those branches reads its own value, so `--top 2 --edit` needs no edit position).
+  const rList = await cli(repo, "prompt", "--top", "2", "--list");
+  assert.equal(rList.code, 1);
+  assert.match(rList.stderr, /--list and --top are mutually exclusive/);
+  const rCancel = await cli(repo, "prompt", "--top", "2", "--cancel", "1");
+  assert.equal(rCancel.code, 1);
+  assert.match(rCancel.stderr, /--cancel and --top are mutually exclusive/);
+  const rEdit = await cli(repo, "prompt", "--top", "2", "--edit", "1");
+  assert.equal(rEdit.code, 1);
+  assert.match(rEdit.stderr, /--edit and --top are mutually exclusive/);
+
+  // The queue-only flags have nothing to mean to a reorder, and are refused by name.
+  for (const [flag, value] of [["--file", "x.txt"], ["--at", "1h"], ["--attach", "p.png"]] as const) {
+    const r = await cli(repo, "prompt", "--top", "1", flag, value);
+    assert.equal(r.code, 1, `--top with ${flag} should fail`);
+    assert.match(r.stderr, new RegExp(`${flag} only queues a prompt`));
+  }
+
+  // A stray positional is prompt text this mode has none of.
+  const r = await cli(repo, "prompt", "--top", "1", "extra");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /with --top there is no prompt text/);
+
+  assert.equal(inboxSize(repo), 0, "nothing enqueued on failure");
+});

@@ -21,7 +21,9 @@ import { isPromptImageSibling } from "./inbox-attachments.js";
  * takeQueuedFile race policy. The cancel half — position-, list-, and file-addressed removal
  * and its event pairing — lives in inbox-cancel.ts; the in-place edit of one queued
  * prompt's text (`prompt --edit`, position-addressed like cancel and sharing its
- * resolveListedQueue) lives in inbox-edit.ts; the submission pipeline that validates and
+ * resolveListedQueue) lives in inbox-edit.ts; moving one queued prompt to its queue's
+ * head (`prompt --top`, position-addressed like cancel) lives in inbox-top.ts; the
+ * submission pipeline that validates and
  * logs a user-submitted prompt lives in inbox-submit.ts; the image side of a submission in
  * inbox-attachments.ts. The not-before marker vocabulary for deferred prompts lives in
  * prompt-not-before.ts (compose, parse, strip, and the deliverableNow predicate this module

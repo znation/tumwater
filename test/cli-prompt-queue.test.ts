@@ -364,6 +364,84 @@ test("prompt --cancel --role reports a concurrently dequeued prompt as gone and 
   assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa task one"]);
 });
 
+// --- prompt --top: move one queued prompt to the head of its role's queue (PLANS.md
+// "tumwater prompt --top <n>") — the inbox-management twin of plan|bug --top, sharing --cancel's
+// position resolution so the operator pulls an urgent prompt forward without cancel-and-retype.
+test("prompt --top moves the Nth entry to the head of its role's inbox", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt top");
+
+  submitPrompt(repo, "first task");
+  submitPrompt(repo, "urgent task");
+  submitPrompt(repo, "third task");
+
+  // No --role: the position resolves like --cancel's flagless form, and the success line
+  // names the resolved loop.
+  let r = await cli(repo, "prompt", "--top", "2");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /topped \(director\): urgent task/);
+
+  // The list now shows the moved entry as line 1 of its role's section.
+  r = await cli(repo, "prompt", "--list");
+  assert.equal(r.code, 0);
+  assert.match(r.stdout, /^1\. urgent task \(queued \d+[smh] ago\)$/m);
+  assert.match(r.stdout, /^2\. first task \(queued \d+[smh] ago\)$/m);
+  assert.match(r.stdout, /^3\. third task \(queued \d+[smh] ago\)$/m);
+
+  // A `--role`-scoped top names no loop (it is in the user's own command) and moves there.
+  submitRolePrompt(repo, "qa", "qa one");
+  submitRolePrompt(repo, "qa", "qa two");
+  r = await cli(repo, "prompt", "--top", "2", "--role", "qa");
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /^topped: qa two$/m);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa two", "qa one"]);
+
+  // A `prompt_topped` event is logged per successful move.
+  r = await cli(repo, "logs", "--type", "prompt_topped");
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal((r.stdout.match(/inbox message moved to the front:/g) ?? []).length, 2);
+});
+
+test("prompt --top resolves a bad position and a list-wide miss/ambiguity exactly like --cancel", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "cli prompt top resolution");
+
+  submitPrompt(repo, "only");
+
+  // Out of range (flagless): the same cross-loop count --cancel reports.
+  let r = await cli(repo, "prompt", "--top", "2");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no prompt at position 2 \(longest inbox holds 1\)/);
+
+  // Non-numeric or non-positive values fail at parse time — --cancel's wording.
+  for (const bad of ["0", "abc", "1.5"]) {
+    r = await cli(repo, "prompt", "--top", bad);
+    assert.equal(r.code, 1, `--top ${bad} should fail`);
+    assert.match(r.stderr, /--top needs a positive integer/);
+  }
+
+  // Position 1 fails as "already first" — the moveEntryToTop precedent.
+  r = await cli(repo, "prompt", "--top", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /prompt 1 is already first/);
+
+  // A list-wide ambiguity when several loops hold the position names them and the --role
+  // escape hatch, touching nothing.
+  submitRolePrompt(repo, "qa", "qa first");
+  r = await cli(repo, "prompt", "--top", "1");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /position 1 is in more than one role's inbox \(director, qa\)/);
+  assert.match(r.stderr, /--role/);
+  assert.deepEqual(queuedPrompts(repo), ["only"]);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa first"]);
+
+  // A role-scoped out-of-range reports the loop's own count.
+  r = await cli(repo, "prompt", "--top", "5", "--role", "qa");
+  assert.equal(r.code, 1);
+  assert.match(r.stderr, /no prompt at position 5 \(1 in the inbox\)/);
+  assert.deepEqual(queuedRolePrompts(repo, "qa"), ["qa first"]);
+});
+
 // --- prompt --list --json: the machine-readable render of the same listing (PLANS.md
 // "prompt --list --json") — prose and JSON share one payload, so the positions --cancel
 // consumes can never disagree with what a script reads.

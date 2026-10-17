@@ -342,6 +342,10 @@ Usage:
                                    machine-readable data)
   tumwater prompt --cancel <n>     Remove the Nth inbox message as --list shows them; when
                                    several roles show that N, name one with --role <id>
+  tumwater prompt --top <n>        Move the Nth inbox message as --list shows them to the
+                                   head of its role's inbox, so it dequeues next; a pending
+                                   --at deferral still holds until its time; --role <id>
+                                   disambiguates like --cancel
   tumwater prompt --edit <n> <text...> [--attach <path>]
                                    Replace the Nth inbox message's text in place (position,
                                    age in the inbox, and a pending --at deferral are kept; as
@@ -461,7 +465,7 @@ export function helpTopic(command: string, help: string = HELP): string | null {
  * --cancel 2 --help`), never prose. bug/plan's valued flags are `--cancel`, `--edit`,
  * `--file`, `--release` and `--top`. */
 const FREEFORM_VALUED_FLAGS: Record<string, readonly string[]> = {
-  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach"],
+  prompt: ["--role", "--file", "--at", "--cancel", "--edit", "--attach", "--top"],
   init: ["--branch", "--template", "--file"],
   bug: ["--cancel", "--edit", "--file", "--release", "--top"],
   plan: ["--cancel", "--edit", "--file", "--release", "--top"],

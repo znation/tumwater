@@ -213,6 +213,9 @@ export function eventMessage(e: HarnessEvent): string {
     case "prompt_edited":
       // Routine operation (the user corrected a queued prompt), not a warning.
       return `inbox message edited: ${textOr(e.preview)}`;
+    case "prompt_topped":
+      // Routine operation (the user reordered a queued prompt), not a warning.
+      return `inbox message moved to the front: ${textOr(e.preview)}`;
     case "prompt_taken":
       // Routine: a tick dequeued the operator's request to run it.
       return `inbox message taken by run #${eventTick(e)}: ${textOr(e.preview)}`;

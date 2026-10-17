@@ -25,6 +25,7 @@ export const EVENT_TYPE_LABELS: Readonly<Record<HarnessEvent["type"], string>> =
   prompt_enqueued: "message queued",
   prompt_cancelled: "message cancelled",
   prompt_edited: "message edited",
+  prompt_topped: "message moved to front",
   prompt_taken: "message picked up",
   counters_reset: "counters reset",
   run_aborted: "run stopped by you",
