@@ -1086,54 +1086,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboard composer recalls recently sent prompts with Up and Down, restoring the draft you were typing (planned 2026-10-17 by the plan role; independent of the plain-terms series, the report red-check plan and the Health-view plan — it touches only `src/ui/gui/gui-client-composer.ts` and `test/gui-client-composer.test.ts`, a file the in-flight merge-comment part 11b leaves alone because its comments carry no merge-family names; gives the dashboard the recall the TUI prompt line already has in `src/ui/tui/tui-prompt-history.ts`)
-
-**Goal.** The composer keeps one unsent draft per target (`drafts`), but a sent prompt is gone:
-re-sending a nudge means retyping it. The TUI's prompt line recalls recent prompts
-(`tui-prompt-history.ts`); give the dashboard composer the same recall — Up steps back through
-the prompts you have sent, Down steps forward and restores the draft you were typing.
-
-**Approach.** All changes are inside the `gui-client-composer` blob in
-`src/ui/gui/gui-client-composer.ts`, beside the existing `drafts`/`promptInput`/keydown/submit
-code; no server or page change.
-
-1. Beside `drafts` add the recall state: `const promptHistory = [];` (oldest first, the text of
-   each successfully sent prompt), `let recallIndex = null;` (null means the live draft, an
-   index means browsing `promptHistory`), `let recallDraft = "";` (the live draft saved when
-   browsing starts), and `const PROMPT_HISTORY_MAX = 50;`.
-2. Add one helper, `recallSentPrompt(step)` where `step` is `-1` for Up and `1` for Down, that
-   returns true when it changed the box. Up with `recallIndex === null` saves
-   `recallDraft = promptInput.value` and moves to the newest entry; otherwise it steps one older
-   while it can. Down at the newest restores `recallDraft` and resets `recallIndex` to null.
-   Down while already live is a no-op. On a change it sets `promptInput.value` to the entry (or
-   `recallDraft`), then calls `autosize()`, `updateCount()` and
-   `promptInput.setSelectionRange(value.length, value.length)` so the recalled text is ready to
-   send. Doc it as the composer's mirror of the TUI's `recallPromptHistory`.
-3. In the existing `promptInput.addEventListener("keydown", …)`, add an `ArrowUp`/`ArrowDown`
-   arm: when `!ev.isComposing` and the current value has no newline
-   (`!promptInput.value.includes("\n")`), call `recallSentPrompt(ev.key === "ArrowUp" ? -1 : 1)`
-   and `ev.preventDefault()` when it returns true. A multi-line draft keeps the textarea's own
-   Up/Down line movement, like the TUI keeps its arrows for other panes.
-4. Record a send in the existing submit handler's success path (the code after the
-   `try`/`finally` that is reached only when the server accepted the prompt, where the input is
-   cleared): push the trimmed `text` unless it equals `promptHistory`'s last entry, drop the
-   oldest entry past `PROMPT_HISTORY_MAX`, and reset `recallIndex = null; recallDraft = "";`.
-   Reset the same two on `setTarget` and on `draftForDirector`, so a target swap or a prefilled
-   answer is never left mid-recall.
-
-**Files touched.** `src/ui/gui/gui-client-composer.ts`, `test/gui-client-composer.test.ts`.
-
-**Acceptance criteria.**
-- `test/gui-client-composer.test.ts`: a new test "the composer recalls sent prompts with Up and
-  Down and restores the live draft", modelled on the existing submit test. Submit `first`, then
-  `second` (the `s.fire(s.form(), "submit", SUBMIT)` + `await s.flush()` pattern), type
-  `draft in progress`, then fire `keydown` `ArrowUp`: the box reads `second`; a second `ArrowUp`
-  reads `first`; a third stays `first` (the oldest end); `ArrowDown` reads `second`; a second
-  `ArrowDown` restores `draft in progress`; a third is a no-op. `preventDefault` was called on
-  each recall. With the value `line one\nline two`, `ArrowUp` leaves it unchanged and does not
-  call `preventDefault`. Submitting the same text twice in a row adds one history entry (one
-  `ArrowUp` reaches it, the next stays).
-- `npm run test` passes.
 
 ### The GUI Usage view charts each day's features done and bugs fixed as one stacked `Backlog items done` element (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region or its render chain; the dashboard twin of the day report's `featuresDone`/`bugsFixed` tallies, which the tiles show only as window totals — touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
 
@@ -1210,6 +1162,62 @@ change — `ReportDay.checkFailures` already flows through the `/api/report` JSO
 - The test extracts `chartCheckFailures`/`seriesHasCheckFailures` through `clientScope` with the
   same `["format", "report-chart"]` regions the neighbouring median test uses, so a missing or
   misnamed builder fails the test.
+- `npm run test` passes.
+
+### The dashboard composer recalls recently sent prompts with Up and Down, restoring the draft you were typing — done 2026-10-17 by the feature role
+
+**Goal.** The composer keeps one unsent draft per target (`drafts`), but a sent prompt is gone:
+re-sending a nudge means retyping it. The TUI's prompt line recalls recent prompts
+(`tui-prompt-history.ts`); give the dashboard composer the same recall — Up steps back through
+the prompts you have sent, Down steps forward and restores the draft you were typing.
+
+**Approach.** All changes are inside the `gui-client-composer` blob in
+`src/ui/gui/gui-client-composer.ts`, beside the existing `drafts`/`promptInput`/keydown/submit
+code; no server or page change.
+
+1. Beside `drafts` add the recall state: `const promptHistory = [];` (oldest first, the text of
+   each successfully sent prompt), `let recallIndex = null;` (null means the live draft, an
+   index means browsing `promptHistory`), `let recallDraft = "";` (the live draft saved when
+   browsing starts), and `const PROMPT_HISTORY_MAX = 50;`.
+2. Add one helper, `recallSentPrompt(step)` where `step` is `-1` for Up and `1` for Down, that
+   returns true when it changed the box. Up with `recallIndex === null` saves
+   `recallDraft = promptInput.value` and moves to the newest entry; otherwise it steps one older
+   while it can. Down at the newest restores `recallDraft` and resets `recallIndex` to null.
+   Down while already live is a no-op. On a change it sets `promptInput.value` to the entry (or
+   `recallDraft`), then calls `autosize()`, `updateCount()` and
+   `promptInput.setSelectionRange(value.length, value.length)` so the recalled text is ready to
+   send. Doc it as the composer's mirror of the TUI's `recallPromptHistory`.
+3. In the existing `promptInput.addEventListener("keydown", …)`, add an `ArrowUp`/`ArrowDown`
+   arm: when `!ev.isComposing` and (scouting already browsing, or the current value has no
+   newline — `recallIndex !== null || !promptInput.value.includes("\n")`), call
+   `recallSentPrompt(ev.key === "ArrowUp" ? -1 : 1)` and `ev.preventDefault()` when it returns
+   true. The newline guard applies to the live draft only: a recalled multi-line entry keeps
+   its Up/Down recallable (Down always walks back to the saved draft), while an untouched
+   multi-line draft keeps the textarea's own Up/Down line movement, like the TUI keeps its
+   arrows for other panes.
+4. Record a send in the existing submit handler's success path (the code after the
+   `try`/`finally` that is reached only when the server accepted the prompt, where the input is
+   cleared): push the trimmed `text` unless it equals `promptHistory`'s last entry, drop the
+   oldest entry past `PROMPT_HISTORY_MAX`, and reset `recallIndex = null; recallDraft = "";`.
+   On `setTarget`, hand the saved draft to the old target's slot when a switch happens
+   mid-recall (`drafts[promptTarget] = recallIndex !== null ? recallDraft : promptInput.value`,
+   the TUI's `settlePromptRecall` swap) and reset `recallIndex`/`recallDraft`, so a target swap
+   never saves the recalled entry over the unsent draft or discards it; `draftForDirector`
+   resets the same two after routing through `setTarget`, so a prefilled answer is never left
+   mid-recall.
+
+**Files touched.** `src/ui/gui/gui-client-composer.ts`, `test/gui-client-composer.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-composer.test.ts`: a new test "the composer recalls sent prompts with Up and
+  Down and restores the live draft", modelled on the existing submit test. Submit `first`, then
+  `second` (the `s.fire(s.form(), "submit", SUBMIT)` + `await s.flush()` pattern), type
+  `draft in progress`, then fire `keydown` `ArrowUp`: the box reads `second`; a second `ArrowUp`
+  reads `first`; a third stays `first` (the oldest end); `ArrowDown` reads `second`; a second
+  `ArrowDown` restores `draft in progress`; a third is a no-op. `preventDefault` was called on
+  each recall. With the value `line one\nline two`, `ArrowUp` leaves it unchanged and does not
+  call `preventDefault`. Submitting the same text twice in a row adds one history entry (one
+  `ArrowUp` reaches it, the next stays).
 - `npm run test` passes.
 
 ### Each day's red full-suite merge checks are counted in the `tumwater report` day report (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight problems-only Health view plan; the report half of a red-check signal whose GUI chart is left to a later plan, as the project did for `Merge check median`; touches src/build/build-check-events.ts, src/report/report-data.ts, src/report/report-render.ts, docs/cli.md and their tests) — done 2026-10-17 by the feature role

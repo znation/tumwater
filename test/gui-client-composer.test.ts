@@ -422,6 +422,87 @@ test("Enter submits, Shift+Enter adds a line, Escape blurs", () => {
   assert.equal(blurred, true);
 });
 
+test("the composer recalls sent prompts with Up and Down and restores the live draft", async () => {
+  const s = composerScope();
+  const input = s.input();
+  const prevented: string[] = [];
+  const pd = () => { prevented.push("pd"); };
+  const submit = async (text: string) => {
+    input.value = text;
+    await s.fire(s.form(), "submit", SUBMIT);
+    await s.flush();
+  };
+  const up = () => s.fire(input, "keydown", { key: "ArrowUp", isComposing: false, preventDefault: pd });
+  const down = () => s.fire(input, "keydown", { key: "ArrowDown", isComposing: false, preventDefault: pd });
+  await submit("first");
+  await submit("second");
+  input.value = "draft in progress";
+  up();
+  assert.equal(input.value, "second");
+  up();
+  assert.equal(input.value, "first");
+  up();
+  assert.equal(input.value, "first", "the oldest end holds");
+  down();
+  assert.equal(input.value, "second");
+  down();
+  assert.equal(input.value, "draft in progress", "Down past the newest restores the live draft");
+  down();
+  assert.equal(input.value, "draft in progress", "Down while already live is a no-op");
+  assert.equal(prevented.length, 4, "each recall that changed the box was prevented");
+
+  // A multi-line draft keeps the textarea's own Up/Down line movement.
+  input.value = "line one\nline two";
+  const before = prevented.length;
+  up();
+  down();
+  assert.equal(input.value, "line one\nline two", "arrows on a multi-line draft are left to the textarea");
+  assert.equal(prevented.length, before, "no preventDefault for a multi-line draft");
+
+  // Submitting the same text twice in a row records one history entry.
+  await submit("again");
+  await submit("again");
+  await submit("last");
+  input.value = "x";
+  up();
+  assert.equal(input.value, "last");
+  up();
+  assert.equal(input.value, "again", "the consecutive duplicate is recorded once");
+  up();
+  assert.equal(input.value, "second");
+
+  // A multi-line history entry is still browsable: once recall has left the live draft the
+  // guard is on that state, not on the recalled text's newlines, so Down can always walk
+  // back and hand the saved draft over (a recalled multi-line prompt never strands the user).
+  await submit("multi\nline");
+  input.value = "live draft";
+  up();
+  assert.equal(input.value, "multi\nline");
+  const beforeMulti = prevented.length;
+  down();
+  assert.equal(input.value, "live draft", "Down out of a multi-line entry restores the draft");
+  assert.equal(prevented.length, beforeMulti + 1, "recall out of a multi-line entry is prevented");
+});
+
+test("switching target mid-recall keeps the unsent draft, not the recalled entry", async () => {
+  const s = composerScope();
+  s.scope.renderComposer(STATUS);
+  const input = s.input();
+  const submit = async (text: string) => {
+    input.value = text;
+    await s.fire(s.form(), "submit", SUBMIT);
+    await s.flush();
+  };
+  await submit("recalled one");
+  input.value = "my real draft";
+  s.fire(input, "keydown", { key: "ArrowUp", isComposing: false, preventDefault: () => {} });
+  assert.equal(input.value, "recalled one", "Up browsed into the history");
+  s.scope.setTarget("qa");
+  assert.equal(input.value, "", "qa starts from its own empty draft");
+  s.scope.setTarget("director");
+  assert.equal(input.value, "my real draft", "the old target's slot kept the unsent draft, not the recalled entry");
+});
+
 // Image input, part 5/5 (plans/image-input.md "Surfaces"): the composer shows, under the image
 // chips, where an image prompt to a text-only loop will run (read from the status payload's
 // per-loop imageInput/imageReroute), and hides it for a vision loop.

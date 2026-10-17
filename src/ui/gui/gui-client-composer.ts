@@ -18,6 +18,16 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   let promptTarget = "director";
   let targetKey = "";
   const drafts = {}; // each target keeps its own unsent draft
+  // Recall of recently sent prompts, the composer's mirror of the TUI prompt line's
+  // tui-prompt-history.ts: Up steps back through the prompts you have sent, Down steps
+  // forward and restores the live draft you were typing. promptHistory holds the text of
+  // each successfully sent prompt, oldest first; recallIndex is null while the live draft
+  // is shown, an index while browsing history; recallDraft saves the live draft when the
+  // first Up leaves it, so Down past the newest entry hands it back untouched.
+  const promptHistory = [];
+  let recallIndex = null;
+  let recallDraft = "";
+  const PROMPT_HISTORY_MAX = 50;
   // The last status payload, kept so setTarget can re-render the image note between polls.
   let composerData = null;
   // The image-input notice under the image chips (plans/image-input.md "Surfaces", part 5/5):
@@ -62,8 +72,13 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   }
   function setTarget(t) {
     if (t === promptTarget) return;
-    drafts[promptTarget] = promptInput.value;
+    // Mid-recall the box holds a recalled entry, not the draft; hand the saved draft to the
+    // old target's slot (the TUI's settlePromptRecall swaps the same way) so no unsent draft
+    // is lost, then end recall.
+    drafts[promptTarget] = recallIndex !== null ? recallDraft : promptInput.value;
     promptTarget = t;
+    recallIndex = null;
+    recallDraft = "";
     targetSelect.value = t;
     promptInput.value = drafts[t] || "";
     composerHint();
@@ -85,6 +100,8 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // about a backlog entry), leaving the cursor at the end.
   function draftForDirector(text) {
     setTarget("director");
+    recallIndex = null;
+    recallDraft = "";
     promptInput.value = text;
     autosize();
     updateCount();
@@ -100,10 +117,49 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   }
   targetSelect.addEventListener("change", () => setTarget(targetSelect.value));
   promptInput.addEventListener("input", () => { autosize(); updateCount(); });
+  // Recall one recently sent prompt: step is -1 for Up (older) and 1 for Down (newer).
+  // Returns true when the box changed (so the caller can stop the browser's own Up/Down
+  // cursor move). Up from the live draft saves it and moves to the newest entry; Up steps
+  // one older while it can and holds the oldest end. Down steps newer; past the newest it
+  // restores the saved live draft and ends recall. Down while already live is a no-op. On a
+  // change the recalled text is set ready to send, sized, counted, and the cursor put at the
+  // end. The composer's mirror of the TUI's recallPromptHistory.
+  function recallSentPrompt(step) {
+    if (step === -1) {
+      if (promptHistory.length === 0) return false;
+      if (recallIndex === null) {
+        recallDraft = promptInput.value;
+        recallIndex = promptHistory.length - 1;
+      } else if (recallIndex === 0) {
+        return false; // already at the oldest end
+      } else {
+        recallIndex--;
+      }
+    } else {
+      if (recallIndex === null) return false; // already on the live draft
+      if (recallIndex >= promptHistory.length - 1) {
+        promptInput.value = recallDraft; // past the newest: the live draft returns
+        recallDraft = "";
+        recallIndex = null;
+        autosize();
+        updateCount();
+        promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
+        return true;
+      }
+      recallIndex++;
+    }
+    promptInput.value = promptHistory[recallIndex];
+    autosize();
+    updateCount();
+    promptInput.setSelectionRange(promptInput.value.length, promptInput.value.length);
+    return true;
+  }
   promptInput.addEventListener("keydown", (ev) => {
     if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
       ev.preventDefault();
       $("promptform").requestSubmit();
+    } else if ((ev.key === "ArrowUp" || ev.key === "ArrowDown") && !ev.isComposing && (recallIndex !== null || !promptInput.value.includes("\n"))) {
+      if (recallSentPrompt(ev.key === "ArrowUp" ? -1 : 1)) ev.preventDefault();
     } else if (ev.key === "Escape") promptInput.blur();
   });
   // composer-images:start
@@ -240,6 +296,13 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     renderPromptImages();
     promptInput.value = "";
     drafts[target] = "";
+    // Record the sent prompt for recall: consecutive duplicates add one entry (re-sending the
+    // same nudge does not fill the history with copies), the oldest drop past the cap, and the
+    // recall position returns to the live draft for the next browse.
+    if (text && promptHistory[promptHistory.length - 1] !== text) promptHistory.push(text);
+    if (promptHistory.length > PROMPT_HISTORY_MAX) promptHistory.shift();
+    recallIndex = null;
+    recallDraft = "";
     if (target !== "director") setTarget("director");
     autosize();
     updateCount();
