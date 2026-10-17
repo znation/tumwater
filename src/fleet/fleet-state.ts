@@ -6,6 +6,7 @@ import { withStateLock } from "../concurrency/lock.js";
 import { collapseWhitespace, truncate } from "../text/text.js";
 import { pausedPath, pausedRolesLockPath, pausedRolesPath, scheduledStopPath } from "../paths.js";
 import { pendingScheduledWakes } from "../operator/operator-requests.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The operator pause markers: the fleet-wide pause (`tumwater pause`/`resume`) and the
  * per-role pause set (`pause --role <id>`/`resume --role <id>`), their writers and read-side
@@ -223,7 +224,7 @@ function readPausedRoles(path: string): { roles: string[]; until?: number } {
   // meant to hold.
   const until = finiteNumber(state.until, undefined);
   if (until !== undefined && until <= Date.now()) return { roles: [] };
-  return { roles: stringList(state.roles), until };
+  return { roles: stringList(state.roles).map((r) => canonicalRoleId(r)), until };
 }
 
 /** The paused-roles marker is structured state several processes rewrite read-modify-write

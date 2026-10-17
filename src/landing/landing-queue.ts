@@ -5,6 +5,7 @@ import { isJsonObject, nonNegativeNumber } from "../files/json-object.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { landQueueDir, legacyLandQueueDir } from "../paths.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The durable land queue (plans/merge-queue.md 3/5): a changed tick commits, pins its sha by
  * `refs/tumwater/landing/<role>`, and enqueues one entry here — then the tick ENDS, holding no
@@ -186,7 +187,9 @@ function readEntry(file: string): LandingEntry | null {
       const { tick, ...rest } = parsed;
       parsed = { ...rest, run: tick };
     }
-    return isLandingEntry(parsed) ? parsed : null;
+    if (!isLandingEntry(parsed)) return null;
+    const role = canonicalRoleId(parsed.role);
+    return role === parsed.role ? parsed : { ...parsed, role };
   }, (e) => ({ ...e }));
 }
 

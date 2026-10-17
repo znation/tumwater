@@ -17,6 +17,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
 import { shortSpanPhrase } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
 import { gitTry } from "../git/git-run.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The tick command's synopsis, word for word what cli.ts's dispatcher gate and cmdTick's own
  * arity and unknown-role guards fail with — one string so the three sites cannot drift apart
@@ -116,7 +117,7 @@ export async function cmdTick(
   // exactly two (<role> <n>).
   const arity = last ? 1 : 2;
   if (positionals.length !== arity) fail(`usage: ${TICK_USAGE}`);
-  const role = positionals[0] as string;
+  const role = canonicalRoleId(positionals[0] as string);
   // The role is validated like every role-targeting command's --role (knownRoleIdsCached: the
   // built-ins plus user-defined loops, read through the never-throwing cached loader so a
   // transiently broken tumwater.json cannot take a read-only view down), with the shared

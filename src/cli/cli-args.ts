@@ -3,6 +3,7 @@ import { BRANCH_VALUE_ERROR, ROLE_VALUE_ERROR } from "./cli-flag-specs.js";
 import { knownRoleIdsCached } from "../config/config.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import { gotSuffix, parsePositiveInt } from "../text/text.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** CLI argument parsing and validation, shared by every command in cli.ts. The execution
  * layer calls these before running a command, so a bad flag fails fast with an actionable
@@ -255,9 +256,10 @@ export function parseSinceFlag(args: string[], label: string, maxMs: number): nu
  * catalog alone, which keeps in-process callers (and tests) that have no config working.
  */
 export function parseRoleFlag(args: string[], validIds?: string[]): string | null {
-  const role = flagValue(args, "--role");
-  if (role === null) return null;
-  if (!role) fail(ROLE_VALUE_ERROR);
+  const typed = flagValue(args, "--role");
+  if (typed === null) return null;
+  if (!typed) fail(ROLE_VALUE_ERROR);
+  const role = canonicalRoleId(typed);
   const ids = validIds ?? allRoleIds();
   if (!ids.includes(role)) fail(unknownRoleMessage(role, ids));
   return role;

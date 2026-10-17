@@ -36,6 +36,7 @@ import { wakeQuestionAsker } from "../operator/operator-intent.js";
 import { answerEditorBuffer, answerQuestion, answerQuestionFromText, decisionFromEditorBuffer, sayAnswered, sayQuestionList } from "./question-commands.js";
 import { answeredQuestionList, answeredQuestionPayload, questionListPayload } from "../backlog/question-answer.js";
 import { editInEditor } from "./cli-editor.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** `questions answer`'s `--file <path>` flag: the decision comes from the file, lines kept. */
 const FILE_SPEC = { names: ["--file"], value: true, valueName: "<path>" };
@@ -297,8 +298,9 @@ export async function cmdRole(root: string, args: string[]): Promise<void> {
   // spelling every other role-targeting command shares). Both at once is a mistake, not
   // a silent pick of one.
   const flagId = flagValue(rest, "--role") ?? null;
-  const id = positional ?? flagId;
-  if (!id) fail("tumwater role needs a role id");
+  const typedId = positional ?? flagId;
+  if (!typedId) fail("tumwater role needs a role id");
+  const id = canonicalRoleId(typedId);
   if (positional !== null && flagId !== null && flagId !== positional)
     fail("give the role id once — as the positional or as --role <id>, not both");
   const clear = rest.includes("--clear-notes");

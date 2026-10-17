@@ -13,6 +13,7 @@ import { finiteNumber, isJsonObject, nonNegativeNumber } from "../files/json-obj
 import { withStateLock } from "../concurrency/lock.js";
 import { slotsLockPath, slotsStatePath, worktreePath } from "../paths.js";
 import { isUsableWorktree } from "./worktree.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** A live claim on one slot: the loop and purpose using it, when the lease began, and the
  * orchestrator pid that owns it. A lease whose pid is not the running process is dead. */
@@ -84,9 +85,9 @@ function isSlotLease(value: unknown): boolean {
 
 /** A lease an older build wrote carries `tick`/`vet`; read them as `run`/`verify`. */
 function readSlotLease(lease: unknown): SlotLease {
-  const l = lease as { purpose: string };
+  const l = lease as { purpose: string; role: string };
   const purpose = l.purpose === "tick" ? "run" : l.purpose === "vet" ? "verify" : l.purpose; // vocabulary-ok: legacy value read from old files
-  return { ...l, purpose } as SlotLease;
+  return { ...l, role: canonicalRoleId(l.role), purpose } as SlotLease;
 }
 
 /** Coerce one persisted entry into a SlotRecord, defaulting the known fields a hand edit or an
@@ -104,10 +105,10 @@ function readSlotRecord(slot: unknown): SlotRecord | null {
     ...slot,
     dir: slot.dir,
     lease: isSlotLease(slot.lease) ? readSlotLease(slot.lease) : null,
-    pinnedFor: typeof slot.pinnedFor === "string" ? slot.pinnedFor : null,
+    pinnedFor: typeof slot.pinnedFor === "string" ? canonicalRoleId(slot.pinnedFor) : null,
     // Absent stays absent (an older writer's shape is preserved); present-but-foreign is null.
     pinnedAt: slot.pinnedAt === undefined ? undefined : finiteNumber(slot.pinnedAt, null),
-    lastRole: typeof slot.lastRole === "string" ? slot.lastRole : null,
+    lastRole: typeof slot.lastRole === "string" ? canonicalRoleId(slot.lastRole) : null,
     lastReleasedAt: finiteNumber(slot.lastReleasedAt, null),
   };
 }

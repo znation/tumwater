@@ -14,6 +14,7 @@ import { landingStatePath } from "../paths.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { PermitWaitHooks } from "../concurrency/check-permit.js";
 import { consecutiveFailuresWarning } from "../text/phrases.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** The landing pipeline's bookkeeping (merge queue 3/5 and 4/5), split out of the drain
  * (landing-drain.ts, which schedules the vets and the merge) so it lives separate from the
@@ -128,7 +129,13 @@ export function writeLandingMarker(root: string, marker: LandingInFlight & { sta
  * observers poll it every second, and a torn write (a crash mid-write) must not take them
  * down (the readOrchestratorInfo precedent). */
 export function readLandingMarker(root: string): LandingInFlight | null {
-  return readJsonFile<LandingInFlight>(landingStatePath(root));
+  const marker = readJsonFile<LandingInFlight>(landingStatePath(root));
+  if (!marker || typeof marker.role !== "string") return marker;
+  const out = { ...marker, role: canonicalRoleId(marker.role) };
+  if (Array.isArray(marker.changes)) {
+    out.changes = marker.changes.map((c) => (c && typeof c.role === "string" ? { ...c, role: canonicalRoleId(c.role) } : c));
+  }
+  return out;
 }
 
 /** Rewrite the marker after one of its records changed: re-point the top level at the first

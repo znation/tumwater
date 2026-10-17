@@ -44,6 +44,7 @@ import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { imagePromptGuidance } from "./inbox-submit.js";
 import { roleLabel } from "../roles/role-labels.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** Fail with the ambiguity or miss message of a list-wide position resolution, else return
  * the resolved value narrowed. Shared by sayListedOutcome and the editor form so the wordings
@@ -167,6 +168,7 @@ function readPromptImages(paths: readonly string[]): PromptImageInput[] {
  * per-role queue's position numbering stays unambiguous. */
 export async function cmdPrompt(root: string, args: string[]): Promise<void> {
   const parsed = parsePromptArgs(args);
+  if (parsed.role !== null) parsed.role = canonicalRoleId(parsed.role);
   // `--role <id>` scopes every mode to one loop's queue; the value is validated here, with
   // the same message every other --role consumer uses. The director is always valid: its
   // queue is the historical inbox (inbox.ts).

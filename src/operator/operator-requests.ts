@@ -8,6 +8,7 @@ import { errorMessage } from "../text/text.js";
 import { readJsonFile, writeJsonAtomic } from "../files/json-files.js";
 import { finiteNumber } from "../files/json-object.js";
 import { loadLoopState, saveLoopState, zeroCounters } from "../loop/loop-state.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 import { clearBackoff } from "../scheduling/backoff.js";
 import {
   abortRequestPath,
@@ -50,7 +51,7 @@ function roleRequestTargets(markerFile: string, runners: LoopRunner[]): LoopRunn
 function requestedRoles(markerFile: string): string[] | null {
   const marker = readJsonFile<{ roles?: unknown }>(markerFile);
   return marker && Array.isArray(marker.roles) && marker.roles.every((r) => typeof r === "string")
-    ? (marker.roles)
+    ? marker.roles.map((r) => canonicalRoleId(r))
     : null;
 }
 

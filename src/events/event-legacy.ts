@@ -1,4 +1,5 @@
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
+import { canonicalRoleId } from "../roles/legacy-role-ids.js";
 
 /** Old event lines read under today's names. `.tumwater/log/events.jsonl` (and its rotated
  * `events.jsonl.1`) outlive the build that wrote them, and a long-lived supervisor on an older
@@ -98,6 +99,16 @@ const LEGACY_EVENT_REWRITES: LegacyEventRewrite[] = [
         delete e.loop; // vocabulary-ok: legacy field name read from old logs
       }
       if (e.source === "harness") e.source = TUMWATER_SOURCE; // vocabulary-ok: legacy event source read from old logs
+    },
+  },
+  {
+    // A retired role id on an old line reads as the role's current id. The table is empty
+    // until a switch part adds a row, so this changes nothing yet.
+    name: "legacy-role-ids",
+    apply(ev) {
+      const e = ev as Record<string, unknown>;
+      if (typeof e.source === "string") e.source = canonicalRoleId(e.source);
+      if (typeof e.role === "string") e.role = canonicalRoleId(e.role);
     },
   },
 ];

@@ -1,8 +1,10 @@
 // vocabulary: plain
 /** Shared instruction fragments role prompts and prompt assembly embed verbatim. Pure
- * data: this module imports nothing, so prompt assembly can depend on it without a cycle.
+ * data: this module imports only the dependency-free legacy-role-ids, so prompt assembly
+ * can depend on it without a cycle.
  * Split from roles.ts, whose catalog (now role-catalog.ts) find texts embed these fragments
  * while prompt.ts embeds them too — the wording is one concern, the catalog another. */
+import { roleCommitGrep } from "./legacy-role-ids.js";
 
 /** Shared guidance for any loop about to record a plan or bug: split independent parts
  * into their own entries. Defined once so the director and role prompts cannot drift.
@@ -134,7 +136,7 @@ the run and rarely finds anything a targeted look would not.
       the expensive unit: \`git log --stat -15\` (recent churn is where problems accumulate),
       \`wc -l\` over the source files (size outliers), and \`grep -rn\` for the specific pattern
       you are after.
-   2. Skip what your own role handled lately: \`git log --oneline -15 --grep="tumwater(${roleId})"\`
+   2. Skip what your own role handled lately: \`git log --oneline -15 ${roleCommitGrep(roleId)}\`
       lists it — tumwater's commit subjects say what each role did.
    3. Vary the slice you look at across runs (a different directory, module, or recency window)
       so successive runs do not all converge on the same files.

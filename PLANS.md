@@ -44,50 +44,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers)
-
-**Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
-
-**Approach.**
-- New module `src/roles/legacy-role-ids.ts`. Each function takes an optional `legacy` map so tests can pass fixture ids.
-  - `LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {}`, old id → new id. Its doc comment says rows are added by the switch parts and never removed.
-  - `canonicalRoleId(id: string, legacy = LEGACY_ROLE_IDS): string` — the own-property mapping, else `id`.
-  - `legacyRoleIdsOf(id: string, legacy = LEGACY_ROLE_IDS): string[]` — the old ids that map to `id`.
-  - `roleCommitGrep(id: string, legacy = LEGACY_ROLE_IDS): string` — `--grep="tumwater(<id>)"` followed by one more `--grep="tumwater(<old>)"` per legacy id. git ORs repeated `--grep`s, so a prompt's history search sees a role's commits under both ids.
-- **Typed ids:** canonicalize before validating, so `--role <old>` behaves exactly like `--role <new>`.
-  - `parseRoleFlag` (src/cli/cli-args.ts). This covers `parseRoleScope`, the operator commands, `start --role` and `cmdDiff`.
-  - `cmdRole`'s id read in src/cli/cli-query-commands.ts, its positional or its direct `flagValue(rest, "--role")`.
-  - The prompt command's `--role` check in src/inbox/prompt-commands.ts.
-  - `tumwater role <id>` in src/roles/role-view.ts `rolePayload`.
-  - The `history <role> <n>` positional in src/tick/tick-detail.ts `cmdTick`.
-  - The dashboard needs none: it sends ids from its own status payload.
-- **Config:** extend `normalizeConfigKeys` and `canonicalConfigKey` in src/config/config-aliases.ts (Plain terms commands) with a role-id pass driven by `LEGACY_ROLE_IDS`, taking an optional `legacy` map.
-  - An old id as a key of `roles`, `maxDailyCostUsdPerRole` or `quietHoursPerRole` moves to the new id.
-  - Both present records the problem `sets both roles.<old> and roles.<new> — keep roles.<new> (<old> is its old id)`.
-  - Each move is added to `renamed`, so doctor's `config key names` check reports it with no new code.
-  - `canonicalConfigKey` maps `roles.<old>.<field>` and `<map>.<old>`, so `config get|set|unset` accept the old id.
-- **Events:** in `normalizeLegacyEvent` (Plain terms event log), pass `source`, and the `role` field of role events, through `canonicalRoleId`. History, the report, the failure digest and the feeds then fold an old id's events into the new id.
-- **Persisted state:** each reader canonicalizes the role ids it returns. Writers already write the id they are given.
-  - `readPausedRoles` and `scheduledWakes` in src/fleet/fleet-state.ts.
-  - The merge-queue entry reader's `role`: `queuedLandingFiles` in src/landing/landing-queue.ts, or its Plain terms state successor.
-  - The merging marker's role reader.
-  - `readSlotsState`'s pinned role in src/git/slots-state.ts.
-- **Prompts:** `searchGuidance(roleId)` in src/roles/role-guidance.ts uses `roleCommitGrep(roleId)` in place of its single `--grep`.
-- New `test/legacy-role-ids.test.ts`, using a fixture map `{ oldy: "newy" }`:
-  - `canonicalRoleId`, `legacyRoleIdsOf` and `roleCommitGrep`;
-  - `normalizeConfigKeys` moves `roles.oldy`, `maxDailyCostUsdPerRole.oldy` and `quietHoursPerRole.oldy`, refuses a file with both ids, and lists each move;
-  - `canonicalConfigKey("roles.oldy.model")`;
-  - with the real, empty map, every function is the identity.
-
-**Files touched.** src/roles/legacy-role-ids.ts (new), src/roles/role-guidance.ts, src/roles/role-view.ts, src/config/config-aliases.ts, src/cli/cli-args.ts, src/cli/cli-query-commands.ts, src/inbox/prompt-commands.ts, src/tick/tick-detail.ts, the `normalizeLegacyEvent` module in src/events/, src/fleet/fleet-state.ts, src/landing/landing-queue.ts or its successor, src/git/slots-state.ts, the merging-marker reader; test/legacy-role-ids.test.ts (new).
-
-**Acceptance criteria.**
-- With `LEGACY_ROLE_IDS` empty, no existing test changes and no command output changes.
-- With the fixture map, a config holding `roles.oldy` normalizes to `roles.newy` and reports `roles.oldy → roles.newy`, and one holding both is refused naming both.
-- `roleCommitGrep("newy", { oldy: "newy" })` holds both `--grep` arguments, and `searchGuidance` uses it.
-- Every site listed under typed ids, events and persisted state calls `canonicalRoleId`, which grep confirms.
-- `npm run test` passes.
-
 ### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test)
 
 **Goal.** When a role's id changes, the first startup on the new build moves that role's on-disk artifacts to the new id before anything reads them. The role keeps its branch, pending merge, notes, inbox and sessions. The step is idempotent and does nothing while `LEGACY_ROLE_IDS` is empty.
@@ -1917,6 +1873,50 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A non-local `baseUrl` never calls the probe: the injected probe counts zero calls.
 - `npm run test` passes.
 
+
+### Plain terms role ids, part 1/5: Read legacy role ids as their new ids through one alias table (planned 2026-10-16 by user; requires Plain terms state 5/5 and Plain terms commands 6/6 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config-aliases.ts and src/cli/ and the event normalizer plus the persisted role readers) — done 2026-10-16
+
+**Goal.** One table of retired role ids, and every place a role id enters tumwater reads an old id as its new one: typed ids, config keys, old events, and persisted state. This part ships the table empty, so nothing changes yet. Parts 3/5 and 4/5 each add one row and get every alias for free.
+
+**Approach.**
+- New module `src/roles/legacy-role-ids.ts`. Each function takes an optional `legacy` map so tests can pass fixture ids.
+  - `LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {}`, old id → new id. Its doc comment says rows are added by the switch parts and never removed.
+  - `canonicalRoleId(id: string, legacy = LEGACY_ROLE_IDS): string` — the own-property mapping, else `id`.
+  - `legacyRoleIdsOf(id: string, legacy = LEGACY_ROLE_IDS): string[]` — the old ids that map to `id`.
+  - `roleCommitGrep(id: string, legacy = LEGACY_ROLE_IDS): string` — `--grep="tumwater(<id>)"` followed by one more `--grep="tumwater(<old>)"` per legacy id. git ORs repeated `--grep`s, so a prompt's history search sees a role's commits under both ids.
+- **Typed ids:** canonicalize before validating, so `--role <old>` behaves exactly like `--role <new>`.
+  - `parseRoleFlag` (src/cli/cli-args.ts). This covers `parseRoleScope`, the operator commands, `start --role` and `cmdDiff`.
+  - `cmdRole`'s id read in src/cli/cli-query-commands.ts, its positional or its direct `flagValue(rest, "--role")`.
+  - The prompt command's `--role` check in src/inbox/prompt-commands.ts.
+  - `tumwater role <id>` in src/roles/role-view.ts `rolePayload`.
+  - The `history <role> <n>` positional in src/tick/tick-detail.ts `cmdTick`.
+  - The dashboard needs none: it sends ids from its own status payload.
+- **Config:** extend `normalizeConfigKeys` and `canonicalConfigKey` in src/config/config-aliases.ts (Plain terms commands) with a role-id pass driven by `LEGACY_ROLE_IDS`, taking an optional `legacy` map.
+  - An old id as a key of `roles`, `maxDailyCostUsdPerRole` or `quietHoursPerRole` moves to the new id.
+  - Both present records the problem `sets both roles.<old> and roles.<new> — keep roles.<new> (<old> is its old id)`.
+  - Each move is added to `renamed`, so doctor's `config key names` check reports it with no new code.
+  - `canonicalConfigKey` maps `roles.<old>.<field>` and `<map>.<old>`, so `config get|set|unset` accept the old id.
+- **Events:** in `normalizeLegacyEvent` (Plain terms event log), pass `source`, and the `role` field of role events, through `canonicalRoleId`. History, the report, the failure digest and the feeds then fold an old id's events into the new id.
+- **Persisted state:** each reader canonicalizes the role ids it returns. Writers already write the id they are given.
+  - `readPausedRoles` and `scheduledWakes` in src/fleet/fleet-state.ts.
+  - The merge-queue entry reader's `role`: `queuedLandingFiles` in src/landing/landing-queue.ts, or its Plain terms state successor.
+  - The merging marker's role reader.
+  - `readSlotsState`'s pinned role in src/git/slots-state.ts.
+- **Prompts:** `searchGuidance(roleId)` in src/roles/role-guidance.ts uses `roleCommitGrep(roleId)` in place of its single `--grep`.
+- New `test/legacy-role-ids.test.ts`, using a fixture map `{ oldy: "newy" }`:
+  - `canonicalRoleId`, `legacyRoleIdsOf` and `roleCommitGrep`;
+  - `normalizeConfigKeys` moves `roles.oldy`, `maxDailyCostUsdPerRole.oldy` and `quietHoursPerRole.oldy`, refuses a file with both ids, and lists each move;
+  - `canonicalConfigKey("roles.oldy.model")`;
+  - with the real, empty map, every function is the identity.
+
+**Files touched.** src/roles/legacy-role-ids.ts (new), src/roles/role-guidance.ts, src/roles/role-view.ts, src/config/config-aliases.ts, src/cli/cli-args.ts, src/cli/cli-query-commands.ts, src/inbox/prompt-commands.ts, src/tick/tick-detail.ts, the `normalizeLegacyEvent` module in src/events/, src/fleet/fleet-state.ts, src/landing/landing-queue.ts or its successor, src/git/slots-state.ts, the merging-marker reader; test/legacy-role-ids.test.ts (new).
+
+**Acceptance criteria.**
+- With `LEGACY_ROLE_IDS` empty, no existing test changes and no command output changes.
+- With the fixture map, a config holding `roles.oldy` normalizes to `roles.newy` and reports `roles.oldy → roles.newy`, and one holding both is refused naming both.
+- `roleCommitGrep("newy", { oldy: "newy" })` holds both `--grep` arguments, and `searchGuidance` uses it.
+- Every site listed under typed ids, events and persisted state calls `canonicalRoleId`, which grep confirms.
+- `npm run test` passes.
 
 ### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (done 2026-10-16; planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
 

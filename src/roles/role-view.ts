@@ -33,6 +33,7 @@ import { roleNotesPath } from "../paths.js";
 import { readTextOrNull } from "../files/files.js";
 import { eventRole, eventUsage, readEvents } from "../events/event-read.js";
 import { finiteNumber } from "../files/json-object.js";
+import { canonicalRoleId } from "./legacy-role-ids.js";
 
 /** What `tumwater role <id>` reports about one loop — the payload both the `--json`
  * document and the Markdown renderer consume (one shape, two surfaces). */
@@ -160,10 +161,11 @@ export interface RoleViewPayload {
  * configured (the freeness verdict needs the definitions; nothing else does). */
 export function rolePayload(
   root: string,
-  role: string,
+  typedRole: string,
   modelsPath = piModelsPath(),
   now: Date = new Date(),
 ): RoleViewPayload {
+  const role = canonicalRoleId(typedRole);
   // loadConfigSafe (not loadConfigCached's hold-last-good machinery — this is a one-shot
   // command, not a poller): a broken or missing file degrades to the defaults, so the
   // command still answers for built-in roles on a torn repo.
