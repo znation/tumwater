@@ -410,3 +410,12 @@ test("claude_window_limited with tiers says the work moves; budget_handback reas
   const back = formatEvent({ ts: 0, loop: "harness", type: "budget_handback", roles: ["feature"], reason: "window" } as never);
   assert.match(back, /claude subscription window reset/);
 });
+
+test("formatEvent renders the reserve crossing with utilization, reserve and reset", () => {
+  const resetsAt = Date.UTC(2026, 9, 10, 14, 30, 0);
+  const line = formatEvent({
+    ts: 0, source: "tumwater", type: "claude_window_reserved", windowType: "seven_day", utilization: 0.85, reserve: 0.8, resetsAt,
+  } as never);
+  assert.match(line, new RegExp(`seven_day at 85%, past its 80% reserve, resets ${formatTime(new Date(resetsAt))} — the team leaves it to you \\(director keeps running\\)`));
+  assert.match(formatEvent({ ts: 0, source: "tumwater", type: "claude_window_reserved" } as never), /at \?, past its \? reserve —/);
+});

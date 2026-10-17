@@ -5,37 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 6/7: `claudeWindowReserve` leaves part of each subscription window unused by the team (planned 2026-10-16 by user; requires part 5/7 landed; design in plans/fallback-chain.md "Reserve"; touches src/config/ src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/events/ docs/backends.md and their tests)
-
-**Goal.** The team and you share one claude.ai account. A team that uses up the weekly window by Tuesday leaves your own Claude Code sessions on extra usage, or locked out, until it resets.
-
-This part adds an optional reserve: `"claudeWindowReserve": { "seven_day": 0.8 }`. At or past that utilization, subscription Claude counts as used up for the team until the window resets. The team then moves down its chain (part 1/7), or waits if it has nowhere to go. It also lets the team leave the subscription before a run crosses into overage. The director is exempt: it runs your own prompts. Absent by default.
-
-**Approach.**
-- Config: an optional top-level `claudeWindowReserve: Record<string, number>`, mapping a window type to a fraction with 0 < f ≤ 1. Add it to the config schema, validation, the editable/known key lists and the example config.
-- `claudeWindowUsedUp(account, now, reserve?)` also returns a non-reset window whose `utilization >= reserve[type]`, with that window's `resetsAt`. It returns a `reason: "rejected" | "reserve"` beside it.
-- `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on a reserve crossing too, so subscription Claude jobs with no fallback wait. The observation carries `reserve: true`. Scheduling must not hold the director on it: the director hold the BUGS.md 2026-10-16 fix adds applies to a rejected window only.
-- The budget gate passes the live config's reserve. Part 2/7's director view ignores it.
-- A later Claude model in a chain (an `extraUsage` step, part 5/7) would spend the reserved quota before it reaches extra usage. Past the reserve it is usable only once a current reading shows `isUsingOverage`.
-- A new `claude_window_reserved` event `{ windowType, utilization, reserve, resetsAt }` is logged once per window, with the same once-per-`type:resetsAt` memory as `pollClaudeWindowWarning`. src/events/event-format.ts renders it.
-- docs/backends.md: the key, an example, and the note that the team learns its utilization one run late (readings come only from runs).
-
-**Files touched.**
-- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-keys.ts, src/config/config-editable-keys.ts, src/config/config-example.ts, src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/events/events.ts, src/events/event-format.ts.
-- Docs: docs/backends.md, tumwater.example.json.
-- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/config-validation*.test.ts, and test/event-format-fleet.test.ts.
-
-**Acceptance criteria.**
-- With `seven_day` utilization 0.85 and reserve 0.8:
-  - Subscription Claude role jobs move to the fallback.
-  - The director stays on Claude.
-  - `claude_window_reserved` is logged once.
-- At 0.75 nothing moves.
-- At 0.85 with `fallback: [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, LOCAL]` and no reading showing `isUsingOverage`, the default tier resolves to LOCAL, not the extra-usage step. With `isUsingOverage` reported, it resolves to the extra-usage step.
-- With no fallback, non-director Claude roles wait until `resetsAt` while the director still runs.
-- Validation rejects 0, 1.5, and a non-number.
-- Absent, every existing test passes unchanged, and `npm test` passes.
-
 ### Fallback chain, part 7/7: Show the fallback chain in doctor, the status badge, the TUI, the dashboard and the role view (planned 2026-10-16 by user; requires parts 2/7 and 6/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/doctor/ src/fleet/orchestrator-info.ts src/status/ src/ui/ src/roles/role-view.ts src/roles/role-render.ts src/events/ and their tests)
 
 **Goal.** After parts 1/7–6/7, the team can be on step 2 of a chain because the window is used up, because a step's cap is spent, or because a step was demoted. Several surfaces still describe the old world:
@@ -2197,6 +2166,37 @@ This part makes every surface say which step each tier is on, why, and when it r
 - A role whose old state carries `landingReviewError` still holds its pin until the reviewer selector changes, read through `mergeReviewError`.
 - The sleeping-roles wake rule still compares the wake against `lastRunEndedAt`.
 - `npm run test` passes.
+
+### Fallback chain, part 6/7: `claudeWindowReserve` leaves part of each subscription window unused by the team (done 2026-10-16; planned 2026-10-16 by user; requires part 5/7 landed; design in plans/fallback-chain.md "Reserve"; touches src/config/ src/agent/claude/claude-account.ts src/fleet/fleet-polls.ts src/gates/budget-gates.ts src/events/ docs/backends.md and their tests)
+
+**Goal.** The team and you share one claude.ai account. A team that uses up the weekly window by Tuesday leaves your own Claude Code sessions on extra usage, or locked out, until it resets.
+
+This part adds an optional reserve: `"claudeWindowReserve": { "seven_day": 0.8 }`. At or past that utilization, subscription Claude counts as used up for the team until the window resets. The team then moves down its chain (part 1/7), or waits if it has nowhere to go. It also lets the team leave the subscription before a run crosses into overage. The director is exempt: it runs your own prompts. Absent by default.
+
+**Approach.**
+- Config: an optional top-level `claudeWindowReserve: Record<string, number>`, mapping a window type to a fraction with 0 < f ≤ 1. Add it to the config schema, validation, the editable/known key lists and the example config.
+- `claudeWindowUsedUp(account, now, reserve?)` also returns a non-reset window whose `utilization >= reserve[type]`, with that window's `resetsAt`. It returns a `reason: "rejected" | "reserve"` beside it.
+- `claudeWindowObservation` (src/fleet/fleet-polls.ts) holds on a reserve crossing too, so subscription Claude jobs with no fallback wait. The observation carries `reserve: true`. Scheduling must not hold the director on it: the director hold the BUGS.md 2026-10-16 fix adds applies to a rejected window only.
+- The budget gate passes the live config's reserve. Part 2/7's director view ignores it.
+- A later Claude model in a chain (an `extraUsage` step, part 5/7) would spend the reserved quota before it reaches extra usage. Past the reserve it is usable only once a current reading shows `isUsingOverage`.
+- A new `claude_window_reserved` event `{ windowType, utilization, reserve, resetsAt }` is logged once per window, with the same once-per-`type:resetsAt` memory as `pollClaudeWindowWarning`. src/events/event-format.ts renders it.
+- docs/backends.md: the key, an example, and the note that the team learns its utilization one run late (readings come only from runs).
+
+**Files touched.**
+- Source: src/config/config-schema.ts, src/config/config-validation.ts, src/config/config-keys.ts, src/config/config-editable-keys.ts, src/config/config-example.ts, src/agent/claude/claude-account.ts, src/fleet/fleet-polls.ts, src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/events/events.ts, src/events/event-format.ts.
+- Docs: docs/backends.md, tumwater.example.json.
+- Tests: test/claude-account.test.ts, test/fleet-polls.test.ts, test/budget-gates.test.ts, test/config-validation*.test.ts, and test/event-format-fleet.test.ts.
+
+**Acceptance criteria.**
+- With `seven_day` utilization 0.85 and reserve 0.8:
+  - Subscription Claude role jobs move to the fallback.
+  - The director stays on Claude.
+  - `claude_window_reserved` is logged once.
+- At 0.75 nothing moves.
+- At 0.85 with `fallback: [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, LOCAL]` and no reading showing `isUsingOverage`, the default tier resolves to LOCAL, not the extra-usage step. With `isUsingOverage` reported, it resolves to the extra-usage step.
+- With no fallback, non-director Claude roles wait until `resetsAt` while the director still runs.
+- Validation rejects 0, 1.5, and a non-number.
+- Absent, every existing test passes unchanged, and `npm test` passes.
 
 ### `tumwater doctor` names disabled roles that still keep a branch, pointing at `tumwater retire --role <id>` (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, src/doctor/doctor.ts, docs/cli.md, test/doctor-checks.test.ts, test/doctor.test.ts) — done 2026-10-16
 

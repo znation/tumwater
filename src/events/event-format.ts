@@ -388,6 +388,12 @@ export function eventMessage(e: HarnessEvent): string {
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: the account is
       // telling us the window is filling, not failing. It names the window and when it resets.
       return `claude subscription window ${textOr(e.windowType)} near its limit${windowResetPhrase(e)} — subscription claude model jobs keep running`;
+    case "claude_window_reserved": {
+      const used = finiteNumber(e.utilization, null);
+      const line = finiteNumber(e.reserve, null);
+      const pct = (f: number | null) => (f === null ? "?" : `${Math.round(f * 100)}%`);
+      return `claude subscription window ${textOr(e.windowType)} at ${pct(used)}, past its ${pct(line)} reserve${windowResetPhrase(e)} — the team leaves it to you (director keeps running)`;
+    }
     case "claude_window_limited":
       // Routine-with-explanation, like rate_limit_hold — no warning prefix: waiting is the
       // harness handling the account's own throttle. Names the window, the reset, and which

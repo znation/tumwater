@@ -2,6 +2,7 @@
   "agents": { "pi": { "args": [] } },
   "minRunIntervalSeconds": 20,
   "maxConcurrentPerProvider": { "omlx": 1 },
+  "claudeWindowReserve": { "seven_day": 0.8 },
   "mergeBatchMax": 3,
   "logMaxBytes": 16777216,
   "sessionRetentionDays": 7,

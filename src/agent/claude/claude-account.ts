@@ -68,23 +68,38 @@ export function subscriptionWindowRejected(
 /** The subscription account's used-up usage window, or null: a window reading `rejected` with no
  * overage, or (with `includeOverage`, the default) a window whose current reading shows
  * `isUsingOverage`, and a `resetsAt` still ahead of `now`; among several, the one that resets
- * last. The budget gate's window move (pollBudgetGate) reads the default; the fleet hold
+ * last. With a `reserve` (config `claudeWindowReserve`), a window whose utilization has reached
+ * its type's fraction counts too, and comes back with `reserve: true`; a rejected or overage
+ * window outranks a reserve one, so the flag is set only when no window is used up for real.
+ * The budget gate's window move (pollBudgetGate) reads the default; the fleet hold
  * (claudeWindowObservation) passes `includeOverage: false`, because overage never holds a seam.
  * Only subscription billing produces one; a missing account reads null. */
 export function claudeWindowUsedUp(
   account: ClaudeAccount | null,
   now: number,
   includeOverage = true,
-): { type: string; resetsAt: number } | null {
+  reserve?: Record<string, number>,
+): { type: string; resetsAt: number; reserve?: true } | null {
   if (account?.billing !== "subscription") return null;
   let furthest: { type: string; resetsAt: number } | null = null;
+  let reserved: { type: string; resetsAt: number; reserve: true } | null = null;
   for (const [type, w] of Object.entries(account.windows)) {
-    const used = w.isUsingOverage === true ? includeOverage : w.status === "rejected";
-    if (!used) continue;
     if (typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
-    if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
+    const used = w.isUsingOverage === true ? includeOverage : w.status === "rejected";
+    if (used) {
+      if (furthest === null || w.resetsAt > furthest.resetsAt) furthest = { type, resetsAt: w.resetsAt };
+      continue;
+    }
+    if (windowReserved(w, reserve?.[type]) && (reserved === null || w.resetsAt > reserved.resetsAt))
+      reserved = { type, resetsAt: w.resetsAt, reserve: true };
   }
-  return furthest;
+  return furthest ?? reserved;
+}
+
+/** Has this window's utilization reached its reserve fraction? False without a fraction or a
+ * reading. */
+export function windowReserved(w: Pick<ClaudeWindow, "utilization">, fraction: number | undefined): boolean {
+  return fraction !== undefined && typeof w.utilization === "number" && w.utilization >= fraction;
 }
 
 /** One window entry with its `rateLimitType` attached (the record key), as every display of the

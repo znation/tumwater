@@ -89,6 +89,9 @@ export interface HoldObservation {
    * the right deadline. Absent for failure observations. */
   windowType?: string;
   resetsAt?: number;
+  /** A subscription-window observation only: the window is held by the config's
+   * `claudeWindowReserve`, not rejected by the account. */
+  reserve?: true;
   /** The provider's Retry-After hint from that run's error text, when it sent one. Only the
    * rate-limit kind carries one; backend kinds leave it undefined, and the hold math gives
    * them the base. */
@@ -122,6 +125,9 @@ export interface FleetHold {
    * observations that tripped it, and any an in-flight tick hit while it held — that tick's
    * own retry is already waiting it out). Also the reference point for a relapse. */
   reopenedAt: number | null;
+  /** True while the standing subscription-window hold is a reserve crossing
+   * (`claudeWindowReserve`) rather than a rejected window: the director is not held on it. */
+  reserve?: true;
 }
 
 /** The fleet's starting state: open, with no history. Providers are map keys elsewhere
@@ -165,7 +171,9 @@ export function fleetHold(
   now: number,
 ): FleetHold {
   if (prev.until !== null) {
-    if (now < prev.until) return prev;
+    // A reserve hold is re-evaluated every poll: the window may since have been rejected (the
+    // director keeps running) or the reserve removed from the config, and either must show now.
+    if (now < prev.until && prev.reserve !== true) return prev;
     // The deadline passed: re-open, keeping provider/kind/escalation as the next storm's
     // relapse memory, then fall through so a still-rejected subscription window (or a storm
     // whose observations survived) holds again on this very poll rather than leaving one poll
@@ -177,7 +185,7 @@ export function fleetHold(
       kind: prev.kind,
       roles: [],
       escalation: prev.escalation,
-      reopenedAt: now,
+      reopenedAt: prev.reserve === true ? prev.reopenedAt : now,
     };
   }
   // A rejected subscription usage window is the account-level throttle: it holds every seam on
@@ -195,6 +203,7 @@ export function fleetHold(
       roles: [],
       escalation: 0,
       reopenedAt: prev.reopenedAt,
+      ...(window.reserve === true ? { reserve: true as const } : {}),
     };
   }
   const recent = observations.filter(
@@ -237,15 +246,16 @@ export function fleetHold(
   return { provider, until: now + holdMs, kind, roles, escalation, reopenedAt: prev.reopenedAt };
 }
 
-/** The providers whose standing hold is the account's subscription window (kind
- * "subscription-window"): the one hold the director honors, because the per-run 429 retry
- * never answers a window rejection (src/loop/loop-pi.ts subscriptionWindowRejected), so a
- * director prompt started under it would only fail and re-queue every poll. */
+/** The providers whose standing hold is the account's rejected subscription window (kind
+ * "subscription-window", not a reserve crossing — the director is exempt from the reserve): the
+ * one hold the director honors, because the per-run 429 retry never answers a window rejection
+ * (src/loop/loop-pi.ts subscriptionWindowRejected), so a director prompt
+ * started under it would only fail and re-queue every poll. */
 export function windowHeldProviders(
   holds: ReadonlyMap<string | undefined, FleetHold>,
 ): ReadonlySet<string | undefined> {
   const held = new Set<string | undefined>();
   for (const [provider, hold] of holds)
-    if (hold.until !== null && hold.kind === "subscription-window") held.add(provider);
+    if (hold.until !== null && hold.kind === "subscription-window" && hold.reserve !== true) held.add(provider);
   return held;
 }

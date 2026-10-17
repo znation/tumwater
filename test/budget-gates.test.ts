@@ -821,3 +821,31 @@ test("an overage account with no later Claude step moves a subscription Claude t
   assert.equal(p.windowOut?.type, "five_hour");
   assert.equal(configForRole(p.roleConfig, "feature").model, "qwen-free");
 });
+
+test("a reserve crossing moves the team's Claude tiers, skips the extra-usage step until overage, and spares the director", () => {
+  const root = tmpdir("budget-gates-");
+  const models = writeModelsFile(root, MODELS_JSON);
+  const cfg = configWith(10);
+  cfg.provider = undefined;
+  cfg.model = "claude/claude-sonnet-5-5";
+  cfg.fallback = [{ model: "claude/claude-sonnet-5-5", maxDailyCostUsd: 10 }, "free/qwen-free"];
+  cfg.fallbackModel = undefined;
+  cfg.claudeWindowReserve = { seven_day: 0.8 };
+  const account = (utilization: number, extra: Record<string, unknown> = {}) =>
+    writeClaudeAccount(root, {
+      billing: "subscription",
+      observedAt: Date.now(),
+      windows: { seven_day: { status: "allowed", utilization, resetsAt: Date.now() + 3_600_000, observedAt: Date.now(), ...extra } },
+    });
+  const run = () => poll(root, newBudgetGateState(cfg), cfg, models);
+
+  account(0.75);
+  assert.equal(run().windowOut, null, "under the reserve nothing moves");
+  account(0.85);
+  const p = run();
+  assert.equal(p.windowOut?.reserve, true);
+  assert.equal(p.priceResolved.default.pair?.model, "qwen-free", "the extra-usage step waits past the reserve");
+  assert.equal(p.directorConfig, cfg, "the director stays on Claude");
+  account(0.85, { isUsingOverage: true });
+  assert.equal(run().priceResolved.default.pair?.model, "claude-sonnet-5-5", "overage reported: the extra-usage step runs");
+});

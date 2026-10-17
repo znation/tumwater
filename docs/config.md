@@ -64,6 +64,7 @@ disable a role by omission — disable one with `tumwater config set roles.<id>.
 | `piArgs` | `[]` | Extra arguments passed straight to pi; a flag the team sets itself is rejected. |
 | `maxConcurrent` | `6` | The most model runs in flight at once across all roles, merges included; the director's own runs sit outside it. |
 | `maxConcurrentPerProvider` | none | Per-provider caps on concurrent runs, beside `maxConcurrent`; an absent provider is uncapped. |
+| `claudeWindowReserve` | none | Per-window-type fraction (0–1] of the claude.ai subscription window left for you: at or past it the team counts the window as used up until it resets. The director is exempt. See [backends](backends.md). |
 | `mergeBatchMax` | `3` | The most vetted changes stacked into one merge and one shared check; 1 merges every change on its own. |
 | `maxConcurrentChecks` | `2` | The most runs of the project's check in flight at once across the whole team. |
 | `worktreeSlots` | none | How many shared workspaces role runs and merge checks lease; unset means `maxConcurrent` + 1. |

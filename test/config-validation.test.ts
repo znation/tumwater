@@ -226,6 +226,17 @@ test("maxConcurrentPerProvider is an optional map of positive integers under non
   assert.match(validationError({ maxConcurrentPerProvider: { "": 2 } }), /maxConcurrentPerProvider\.<empty> — a provider key must not be empty/);
 });
 
+test("claudeWindowReserve is an optional map of window types to fractions above 0 and at most 1", () => {
+  assert.doesNotThrow(() => validateConfig({ ...defaultConfig(), claudeWindowReserve: { seven_day: 0.8, five_hour: 1 } }));
+  for (const [bad, shown] of [[0, "0"], [1.5, "1\\.5"], ["0.8", '"0\\.8"']] as const) {
+    assert.match(
+      validationError({ claudeWindowReserve: { seven_day: bad } }),
+      new RegExp(`claudeWindowReserve\\.seven_day must be a fraction above 0 and at most 1 \\(got ${shown}\\)`),
+    );
+  }
+  assert.match(validationError({ claudeWindowReserve: [] }), /claudeWindowReserve must be an object/);
+});
+
 test("worktreeSlots is validated like maxConcurrent: a positive integer", () => {
   // 0 would leave the pool with no slots at all and every lease waiting forever, a negative
   // or fractional cap means nothing, and a string is a typo — each fails naming the key.

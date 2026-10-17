@@ -1,7 +1,7 @@
 import { errorStorm, errorStormKnob, type ErrorStorm } from "./error-storm.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { fleetHold, FLEET_OPEN, type FleetHold, type HoldObservation } from "./fleet-hold.js";
-import { claudeWindowUsedUp, type ClaudeAccount } from "../agent/claude/claude-account.js";
+import { claudeWindowUsedUp, windowReserved, type ClaudeAccount } from "../agent/claude/claude-account.js";
 import { sortedRoles } from "../failure/failure-cluster.js";
 import { FAILURE_SPREAD_WINDOW_MS, failureSpread, type FailureSpread } from "./failure-spread.js";
 import type { LoopState } from "../loop/loop-state.js";
@@ -62,8 +62,10 @@ function holdObservations(runners: readonly HoldInputs[]): HoldObservation[] {
  * keep blocking. Events carry the provider when one is configured (an undefined provider
  * — pi's default — omits it, so an unconfigured fleet's events render exactly as before).
  * `windowTiers` is the budget poll's window move (tier → the pair its work went to), stamped on
- * the subscription window's limited event. Returns the new map for the caller to keep. Exported
- * as a unit-test seam, like its sibling polls below. */
+ * the subscription window's limited event; `reserve` is the config's `claudeWindowReserve`, whose
+ * crossings hold like a rejected window (but never the director) and log
+ * pollClaudeWindowReserve's event instead of the limited one. Returns the new map for the
+ * caller to keep. Exported as a unit-test seam, like its sibling polls below. */
 export function pollFleetHold(
   root: string,
   prev: ReadonlyMap<string | undefined, FleetHold>,
@@ -71,8 +73,9 @@ export function pollFleetHold(
   now: number,
   account: ClaudeAccount | null = null,
   windowTiers: Partial<Record<ModelTier, string>> = {},
+  reserve?: Record<string, number>,
 ): Map<string | undefined, FleetHold> {
-  const window = claudeWindowObservation(account, now);
+  const window = claudeWindowObservation(account, now, reserve);
   const observations = window === null ? holdObservations(runners) : [...holdObservations(runners), window];
   const byProvider = groupBy(observations, (o) => o.provider);
   const next = new Map<string | undefined, FleetHold>();
@@ -84,20 +87,31 @@ export function pollFleetHold(
     const pNext = fleetHold(pPrev, byProvider.get(provider) ?? [], now);
     next.set(provider, pNext);
     const providerFields = provider === undefined ? {} : { provider };
-    if (pPrev.until === null && pNext.until !== null) {
-      if (pNext.kind === "subscription-window") {
-        // The subscription window's own crossing event, once per rejected window rather than
-        // once per failure storm. It names the window type and the deadline the hold lifts at.
-        logEventBestEffort(root, {
-          source: TUMWATER_SOURCE,
-          type: "claude_window_limited",
-          ...providerFields,
-          windowType: window?.windowType,
-          resetsAt: pNext.until,
-          // Where each moved tier's work went (the budget poll's window move); absent when
-          // nothing moved, so a no-fallback fleet's event is today's.
-          ...(Object.keys(windowTiers).length > 0 ? { tiers: windowTiers } : {}),
-        });
+    const limitedEvent = (): void => {
+      // The subscription window's own crossing event, once per rejected window rather than
+      // once per failure storm. It names the window type and the deadline the hold lifts at.
+      logEventBestEffort(root, {
+        source: TUMWATER_SOURCE,
+        type: "claude_window_limited",
+        ...providerFields,
+        windowType: window?.windowType,
+        resetsAt: pNext.until,
+        // Where each moved tier's work went (the budget poll's window move); absent when
+        // nothing moved, so a no-fallback fleet's event is today's.
+        ...(Object.keys(windowTiers).length > 0 ? { tiers: windowTiers } : {}),
+      });
+    };
+    if (
+      pPrev.until !== null && pPrev.kind === "subscription-window" && pPrev.reserve === true &&
+      pNext.until !== null && pNext.kind === "subscription-window" && pNext.reserve !== true
+    ) {
+      // A reserve hold hardened into a rejected window: the operator hears the limit now.
+      limitedEvent();
+    } else if (pPrev.until === null && pNext.until !== null) {
+      if (pNext.kind === "subscription-window" && pNext.reserve === true) {
+        // A reserve crossing logs claude_window_reserved (pollClaudeWindowReserve), not this.
+      } else if (pNext.kind === "subscription-window") {
+        limitedEvent();
       } else {
         logEventBestEffort(root, {
           source: TUMWATER_SOURCE,
@@ -139,8 +153,9 @@ export function pollFleetHold(
 export function claudeWindowObservation(
   account: ClaudeAccount | null,
   now: number,
+  reserve?: Record<string, number>,
 ): HoldObservation | null {
-  const furthest = claudeWindowUsedUp(account, now, false);
+  const furthest = claudeWindowUsedUp(account, now, false, reserve);
   if (furthest === null) return null;
   return {
     role: "claude",
@@ -149,7 +164,37 @@ export function claudeWindowObservation(
     at: now,
     windowType: furthest.type,
     resetsAt: furthest.resetsAt,
+    ...(furthest.reserve === true ? { reserve: true as const } : {}),
   };
+}
+
+/** One poll of the reserve crossing: the first window at or past its `claudeWindowReserve`
+ * fraction logs `claude_window_reserved` once; `prevKey` is the `type:resetsAt` it was logged
+ * for, the same once-per-window memory as pollClaudeWindowWarning. Returns the key to keep. */
+export function pollClaudeWindowReserve(
+  root: string,
+  prevKey: string | null,
+  account: ClaudeAccount | null,
+  now: number,
+  reserve: Record<string, number> | undefined,
+): string | null {
+  if (account?.billing !== "subscription" || reserve === undefined) return prevKey;
+  for (const [type, w] of Object.entries(account.windows)) {
+    const fraction = reserve[type];
+    if (!windowReserved(w, fraction) || typeof w.resetsAt !== "number" || w.resetsAt <= now) continue;
+    const key = `${type}:${w.resetsAt}`;
+    if (key === prevKey) return prevKey;
+    logEventBestEffort(root, {
+      source: TUMWATER_SOURCE,
+      type: "claude_window_reserved",
+      windowType: type,
+      utilization: w.utilization,
+      reserve: fraction,
+      resetsAt: w.resetsAt,
+    });
+    return key;
+  }
+  return prevKey;
 }
 
 /** One poll of the subscription-window warning: the first `allowed_warning` window logs

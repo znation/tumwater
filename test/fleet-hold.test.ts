@@ -204,3 +204,21 @@ test("a rejected subscription window holds its provider until resetsAt, whatever
     null,
   );
 });
+
+test("a standing reserve hold is re-evaluated: a rejected window replaces it, a vanished one drops it", () => {
+  const resetsAt = T0 + 3_600_000;
+  const win = (reserve?: true): HoldObservation => ({
+    role: "claude",
+    provider: "claude",
+    kind: "subscription-window",
+    at: T0,
+    resetsAt,
+    ...(reserve === true ? { reserve } : {}),
+  });
+  const held = fleetHold(FLEET_OPEN, [win(true)], T0);
+  assert.equal(held.reserve, true);
+  const rejected = fleetHold(held, [win()], T0 + 1_000);
+  assert.equal(rejected.until, resetsAt);
+  assert.equal(rejected.reserve, undefined, "a rejected window is no longer a reserve");
+  assert.equal(fleetHold(held, [], T0 + 1_000).until, null, "a removed reserve releases the hold");
+});

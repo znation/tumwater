@@ -39,7 +39,7 @@ import {
   sampleFreeBytes,
   type DiskGateState,
 } from "./disk-gate.js";
-import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, type HoldInputs } from "../fleet/fleet-polls.js";
+import { pollErrorStorm, pollFailureSpread, pollFleetHold, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../fleet/fleet-polls.js";
 import { readClaudeAccount } from "../agent/claude/claude-account.js";
 import type { ReclaimController } from "../fleet/reclaim.js";
 import type { FleetHold } from "../fleet/fleet-hold.js";
@@ -93,6 +93,9 @@ export interface FleetGateStates {
    * pollClaudeWindowWarning): the `type:resetsAt` key whose `claude_window_warning` was
    * logged, null before any. The hold itself rides `fleetHold`. */
   claudeWindowWarned: string | null;
+  /** The `type:resetsAt` key whose `claude_window_reserved` was logged
+   * (pollClaudeWindowReserve). */
+  claudeWindowReserved: string | null;
   errorStorm: ErrorStorm;
   failureSpread: FailureSpread;
 }
@@ -112,6 +115,7 @@ export function newFleetGateStates(config: TumwaterConfig): FleetGateStates {
     disk: newDiskGateState(),
     fleetHold: new Map(),
     claudeWindowWarned: null,
+    claudeWindowReserved: null,
     errorStorm: ERROR_STORM_QUIET,
     failureSpread: FAILURE_SPREAD_QUIET,
   };
@@ -477,6 +481,14 @@ export function pollFleetGates(
     now,
     claudeAccount,
     windowTiers,
+    liveConfig.claudeWindowReserve,
+  );
+  states.claudeWindowReserved = pollClaudeWindowReserve(
+    root,
+    states.claudeWindowReserved,
+    claudeAccount,
+    now,
+    liveConfig.claudeWindowReserve,
   );
   // The subscription usage window's warning is observational (the hold above is the gate): the
   // first allowed_warning logs once per window, and the memory lives beside the holds map.

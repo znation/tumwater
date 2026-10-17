@@ -348,3 +348,19 @@ test("claudeWindowUsedUp returns the rejected window that resets last; overage, 
   assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("rejected", 50) } }), 100), null);
   assert.equal(claudeWindowUsedUp(account({ windows: { five_hour: w("allowed_warning", 500) } }), 100), null);
 });
+
+test("claudeWindowUsedUp counts a window at its reserve fraction, flagged, and ranks a rejected one above it", () => {
+  const win = (utilization: number, resetsAt: number, status = "allowed") => ({ status, resetsAt, observedAt: 1, utilization });
+  const reserve = { seven_day: 0.8 };
+  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.75, 500) } }), 100, true, reserve), null);
+  assert.deepEqual(
+    claudeWindowUsedUp(account({ windows: { seven_day: win(0.8, 500) } }), 100, false, reserve),
+    { type: "seven_day", resetsAt: 500, reserve: true },
+  );
+  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 500) } }), 100), null, "no reserve, no crossing");
+  assert.equal(claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 50) } }), 100, true, reserve), null, "a past reset");
+  assert.deepEqual(
+    claudeWindowUsedUp(account({ windows: { seven_day: win(0.9, 900), five_hour: win(1, 300, "rejected") } }), 100, true, reserve),
+    { type: "five_hour", resetsAt: 300 },
+  );
+});

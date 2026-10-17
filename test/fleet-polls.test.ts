@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
-import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, type HoldInputs } from "../src/fleet/fleet-polls.js";
+import { HOLD_BASE_MS, HOLD_CAP_MS, heldProviders, windowHeldProviders, type FleetHold } from "../src/fleet/fleet-hold.js";
+import { pollFleetHold, claudeWindowObservation, pollClaudeWindowWarning, pollClaudeWindowReserve, type HoldInputs } from "../src/fleet/fleet-polls.js";
 import type { ClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { readEvents } from "../src/events/event-read.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
@@ -407,4 +407,38 @@ test("pollFleetHold stamps the window move's tiers on claude_window_limited", ()
   const limited = windowEvents(root).filter((e) => e.type === "claude_window_limited");
   assert.equal(limited.length, 1);
   assert.deepEqual(limited[0]!.tiers, { default: "free/qwen-free" });
+});
+
+test("a reserve crossing holds claude but not the director, and logs claude_window_reserved once per window", () => {
+  const root = tmpdir("tumwater-fleet-polls-");
+  const resetsAt = T0 + 3_600_000;
+  const reserve = { five_hour: 0.8 };
+  const acct = account({}, { status: "allowed", resetsAt, utilization: 0.85 } as never);
+  const obs = claudeWindowObservation(acct, T0, reserve)!;
+  assert.equal(obs.reserve, true);
+  assert.equal(claudeWindowObservation(acct, T0), null, "without a reserve nothing holds");
+  assert.equal(claudeWindowObservation(account({}, { status: "allowed", resetsAt, utilization: 0.75 } as never), T0, reserve), null);
+  const holds = pollFleetHold(root, new Map(), [], T0, acct, {}, reserve);
+  assert.deepEqual([...heldProviders(holds)], ["claude"], "subscription claude jobs wait");
+  assert.equal(holds.get("claude")!.until, resetsAt);
+  assert.equal(windowHeldProviders(holds).size, 0, "the director is not held on a reserve");
+  assert.equal(windowEvents(root).filter((e) => e.type === "claude_window_limited").length, 0);
+  const key = pollClaudeWindowReserve(root, null, acct, T0, reserve);
+  assert.equal(key, `five_hour:${resetsAt}`);
+  assert.equal(pollClaudeWindowReserve(root, key, acct, T0 + 1_000, reserve), key);
+  const logged = readEvents(root).filter((e) => e.type === "claude_window_reserved");
+  assert.equal(logged.length, 1);
+  assert.deepEqual(
+    { w: logged[0]!.windowType, u: logged[0]!.utilization, r: logged[0]!.reserve, at: logged[0]!.resetsAt },
+    { w: "five_hour", u: 0.85, r: 0.8, at: resetsAt },
+  );
+  // A rejected window still holds the director.
+  const rejected = pollFleetHold(root, new Map(), [], T0, account(), {}, reserve);
+  assert.deepEqual([...windowHeldProviders(rejected)], ["claude"]);
+  // A standing reserve hold that hardens into a rejected window logs the limit.
+  const root2 = tmpdir("tumwater-fleet-polls-");
+  const reserved = pollFleetHold(root2, new Map(), [], T0, acct, {}, reserve);
+  const hardened = pollFleetHold(root2, reserved, [], T0 + 1_000, account(), {}, reserve);
+  assert.deepEqual([...windowHeldProviders(hardened)], ["claude"]);
+  assert.equal(windowEvents(root2).filter((e) => e.type === "claude_window_limited").length, 1);
 });

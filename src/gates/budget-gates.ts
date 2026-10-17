@@ -137,7 +137,7 @@ interface BudgetGatePoll {
    * the per-role sets are empty when it is not. */
   budgetActive: boolean;
   /** The subscription window that is used up this poll (claudeWindowUsedUp), or null. */
-  windowOut: { type: string; resetsAt: number } | null;
+  windowOut: { type: string; resetsAt: number; reserve?: true } | null;
   /** The tiers the window move put on a fallback pair, tier → label (tierFallbackLabels over
    * the moved tiers); empty when nothing moved. */
   windowTiers: Partial<Record<ModelTier, string>>;
@@ -243,7 +243,10 @@ export function pollBudgetGate(
   // full predicate into the resolution so a demoted pair re-resolves only the tiers using it.
   // A used-up subscription window (claudeWindowUsedUp, the rule the fleet hold reads too): while
   // it stands a subscription claude pair is no fallback — it would meet the same window.
-  const windowOut = claudeWindowUsedUp(account, now);
+  // `claudeWindowReserve` makes a window past its fraction count as used up for the team; the
+  // director's own reading (directorWindowOut) ignores it, as it runs the operator's prompts.
+  const windowOut = claudeWindowUsedUp(account, now, true, liveConfig.claudeWindowReserve);
+  const directorWindowOut = claudeWindowUsedUp(account, now);
   // A priced step (one pi does not price at zero, or claude on API billing) is usable only
   // while the team is under its cap and the step is under its own `maxDailyCostUsd`, so no cap
   // can be passed; at the cap only free steps remain, as before.
@@ -252,6 +255,10 @@ export function pollBudgetGate(
       // The first Claude model runs on the subscription only; a later one (extraUsage) may
       // spend extra usage within its cap while no window is rejected or refuses overage.
       if (!p.extraUsage) return windowOut === null && piPairFree(providers, p.provider, p.model, account);
+      // Past the reserve this step would spend the reserved quota before reaching extra usage:
+      // it waits until a reading shows the account already spending overage.
+      if (windowOut?.reserve === true && !Object.values(account.windows).some((w) => w.isUsingOverage === true))
+        return false;
       return (
         !reached &&
         !claudeOverageRefused(account) &&
@@ -450,7 +457,7 @@ export function pollBudgetGate(
   // subscription claude jobs are unavailable, so a priced director primary keeps its model over
   // the cap). With no fallback (windowMove false) it stays on the live config and the scheduler
   // holds it on the claude hold.
-  const directorMoved = windowMove && seamIsClaude(configForRole(liveConfig, DIRECTOR_ROLE));
+  const directorMoved = directorWindowOut !== null && pairNames.length > 0 && seamIsClaude(configForRole(liveConfig, DIRECTOR_ROLE));
   if (!directorMoved) state.directorFrom = null;
   else if (state.directorFrom !== liveConfig || state.directorKey !== resolvedKey) {
     state.directorFrom = liveConfig;

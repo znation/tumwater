@@ -640,6 +640,20 @@ function checkSelectorValue(
     }
   }
 
+  // The subscription-window reserve: a map from window type to a fraction, 0 < f <= 1.
+  if (r.claudeWindowReserve !== undefined) {
+    const map = r.claudeWindowReserve;
+    if (!isJsonObject(map)) {
+      problems.push(`claudeWindowReserve must be an object mapping window types to fractions (got ${show(map)})`);
+    } else {
+      for (const [type, value] of Object.entries(map)) {
+        if (type.trim() === "") problems.push(`claudeWindowReserve.<empty> — a window type must not be empty`);
+        else if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 1)
+          problems.push(`claudeWindowReserve.${type} must be a fraction above 0 and at most 1 (got ${show(value)})`);
+      }
+    }
+  }
+
   // Cross-field (judged on the merged config, where both sides are always present; on a raw
   // file only when the file itself names both): scheduleBackoff clamps every idle wait — the
   // first included — to min(initialSeconds, maxSeconds), so a smaller max silently discards
