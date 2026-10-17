@@ -1298,7 +1298,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` warns when a bug held by a Waiting for the next failure note has failed again, naming the failure and the release command (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md and test/doctor-backlog.test.ts)
+## Done
+
+### `tumwater doctor` warns when a bug held by a Waiting for the next failure note has failed again, naming the failure and the release command (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-backlog.ts, docs/how-it-works.md, docs/cli.md and test/doctor-backlog.test.ts) — done 2026-10-16
 
 **Goal.** A bug that bugfix cannot reproduce is held by a `**Waiting for the next failure …**` note until it fails again (docs/how-it-works.md). Two things lift the hold: whoever records a new occurrence deletes the note, or an operator runs `tumwater bug --release <n>`. In practice only selfcheck records occurrences, and selfcheck is opt-in (`roles.selfcheck.enabled`). On a default team, a waiting test can flake again in the gate or the merge check, and the event log records the failure. But nothing connects that failure to the held bug, so the bug stays parked with exactly the evidence it was waiting for. Doctor's `waiting bugs` row (`checkWaitingBugs`) already names each held bug and its release command, and today it always reports ok. This plan makes it warn when a held bug's test has failed in a gate or merge check since the day after its note was written. The warning names the failure and the release command. Doctor stays read-only: it writes nothing to BUGS.md.
 
@@ -1336,8 +1338,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Unrelated: the same fixture with a flake warning that does not include the name stays ok.
 - The existing `checkWaitingBugs` and `checkStaleBugs` tests still pass, with no change to their expected text.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboard's entry drawer offers "Release this entry" on a bug held by a Waiting for the next failure note, as `tumwater bug --release <n>` already does (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/gui/gui-endpoints.ts, src/gui/gui-backlog-commands.ts (doc comment), src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-boot.ts, docs/cli.md and their tests; no src/backlog, src/merge, src/tick or src/ui/tui edit) (done 2026-10-16)
 

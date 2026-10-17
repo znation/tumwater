@@ -15,7 +15,10 @@ import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
 import { queuedMerges } from "../merge/merge-queue.js";
 import { mergeChanges, readMergeMarker } from "../merge/merge-slot.js";
-import { humanSeconds, secondsSince } from "../text/datetime.js";
+import { formatTimestamp, humanSeconds, secondsSince } from "../text/datetime.js";
+import { readEventsSince } from "../events/event-window.js";
+import type { HarnessEvent } from "../events/events.js";
+import { stringList } from "../files/json-object.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
 /** The doctor's backlog-document checks, split out of doctor-checks.ts: the five checks that
@@ -334,19 +337,73 @@ export function checkStaleBugs(root: string): CheckOutcome {
       `no role is fixing it: check that the bugfix role is enabled and not failing, or retract it with \`tumwater bug --cancel ${first.position}\``);
 }
 
+/** The first span between straight double quotes in a bug heading that is at least 12
+ * characters long — the test name a flake bug's heading quotes — or null. The floor stops a
+ * short quoted word from matching unrelated failures. */
+export function quotedTestName(title: string): string | null {
+  return /"([^"]{12,})"/.exec(title)?.[1] ?? null;
+}
+
+/** The first `YYYY-MM-DD` in a Waiting for the next failure note's text, or null. */
+export function waitingNoteDate(note: string): string | null {
+  return /\d{4}-\d{2}-\d{2}/.exec(note)?.[0] ?? null;
+}
+
+/** Every event at or after `sinceMs` that records a failure naming `name`: a `warning` whose
+ * message includes it (gate and merge flake warnings, a merge check kept for one retry), or a
+ * `review_rejected` with a reason that includes it (its text is the first such reason). In
+ * event order. */
+export function failureMentions(events: readonly HarnessEvent[], name: string, sinceMs: number): { ts: number; text: string }[] {
+  return events.flatMap((e) => {
+    if (typeof e.ts !== "number" || e.ts < sinceMs) return [];
+    if (e.type === "warning" && typeof e.message === "string" && e.message.includes(name)) return [{ ts: e.ts, text: e.message }];
+    if (e.type === "review_rejected") {
+      const reason = stringList(e.reasons).find((r) => r.includes(name));
+      if (reason !== undefined) return [{ ts: e.ts, text: reason }];
+    }
+    return [];
+  });
+}
+
 /** Waiting bugs — open BUGS.md bugs held by a **Waiting for the next failure …** note, which
  * parks a bug until it fails again. Positions are the 1-based `bug --list` numbers; a bug that
- * is also Refused is left to checkRefusedEntries. Always ok: the hold is deliberate, so doctor
- * only names the bugs and how to release one. */
+ * is also Refused is left to checkRefusedEntries. Ok when the hold is undisturbed — doctor
+ * then only names the bugs and how to release one — and a warn when a held bug's quoted test
+ * has failed in a gate or merge check since the day after its note (the note carries only a
+ * date, so a same-day failure cannot be told from the one it was written about). A warn is
+ * never a fail, and doctor writes nothing to BUGS.md. */
 export function checkWaitingBugs(root: string): CheckOutcome {
   const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
   if ("outcome" in read) return read.outcome;
   const held = openBugEntries(root).flatMap((entry, index) => {
     const note = waitingNote(entry.body);
-    return note !== null && refusalNote(entry.body) === null ? [{ position: index + 1, title: entry.title, note }] : [];
+    if (note === null || refusalNote(entry.body) !== null) return [];
+    const name = quotedTestName(entry.title);
+    const date = waitingNoteDate(note);
+    const since = name !== null && date !== null
+      ? new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1).getTime()
+      : null;
+    return [{ position: index + 1, title: entry.title, note, name, since }];
   });
   const [first, ...rest] = held;
   if (!first) return okOutcome("no open bug is waiting for its next failure");
+  const sinces = held.flatMap((b) => (b.since !== null && !Number.isNaN(b.since) ? [b.since] : []));
+  if (sinces.length > 0) {
+    const { events } = readEventsSince(root, Math.max(0, Date.now() - Math.min(...sinces)));
+    const recurred = held.flatMap((b) => {
+      if (b.name === null || b.since === null) return [];
+      const mentions = failureMentions(events, b.name, b.since);
+      const newest = mentions[mentions.length - 1];
+      return newest ? [{ ...b, newest }] : [];
+    });
+    const [again, ...others] = recurred;
+    if (again) {
+      const more = andMore(others, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
+      return warnOutcome(`BUGS.md bug #${again.position} "${truncate(again.title, FIX_CLAIM_HEADING_MAX)}" failed again since its Waiting for the next failure note ` +
+        `(${formatTimestamp(again.newest.ts)}: ${truncate(again.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
+        `record the occurrence under the entry and release it with \`tumwater bug --release ${again.position}\``);
+    }
+  }
   const more = andMore(rest, (b) => `#${b.position} "${truncate(b.title, FIX_CLAIM_HEADING_MAX)}"`);
   return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +

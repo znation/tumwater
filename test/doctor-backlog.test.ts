@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { logEvent } from "../src/events/events.js";
+import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
+import type { HarnessEvent } from "../src/events/events.js";
 import { enqueueMerge } from "../src/merge/merge-queue.js";
 import { writeMergeMarker } from "../src/merge/merge-slot.js";
 import { mergeQueueDir } from "../src/paths.js";
@@ -565,4 +568,55 @@ test("checkWaitingBugs is quiet without an Open waiting bug, and without BUGS.md
   fs.writeFileSync(path.join(dir, "BUGS.md"),
     `## Open\n\n### Both\n\n**Refused 2026-10-10 by bugfix: no**\n${WAIT}\n\n## Fixed\n\n### Old\n\n${WAIT}\n`);
   assert.deepEqual(checkWaitingBugs(dir), none);
+});
+
+const FLAKY_TEST = "startParentDeathWatch takes a grandchild down";
+
+function recurrenceRoot(noteDaysAgo: number, failure: string): string {
+  const dir = tmpdir("doctor-waiting-recur-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"),
+    `## Open\n\n### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix ${daysAgoStamp(5)})\n\n` +
+    `**Waiting for the next failure ${daysAgoStamp(noteDaysAgo)} by bugfix: the message names the pid**\n`);
+  logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${failure}` });
+  return dir;
+}
+
+test("quotedTestName returns the first long quoted span, else null", () => {
+  assert.equal(quotedTestName('`test/x.test.ts` "startParentDeathWatch takes a grandchild down" flaked'), "startParentDeathWatch takes a grandchild down");
+  assert.equal(quotedTestName("no quotes here"), null);
+  assert.equal(quotedTestName('only a "short" one'), null);
+});
+
+test("waitingNoteDate returns the first date in a note, else null", () => {
+  assert.equal(waitingNoteDate("Waiting for the next failure 2026-10-16 by bugfix: x"), "2026-10-16");
+  assert.equal(waitingNoteDate("Waiting for the next failure"), null);
+});
+
+test("failureMentions collects flake warnings and rejection reasons naming the test since the cutoff", () => {
+  const ev = (e: Record<string, unknown>) => ({ source: "review", ...e }) as unknown as HarnessEvent;
+  const events = [
+    ev({ ts: 50, type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}` }),
+    ev({ ts: 100, type: "warning", message: `${FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}` }),
+    ev({ ts: 110, type: "warning", message: `${MERGE_FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}` }),
+    ev({ ts: 120, type: "review_rejected", reasons: ["other", `✖ ${FLAKY_TEST}`] }),
+    ev({ ts: 130, type: "warning", message: "unrelated failure" }),
+    ev({ ts: 140, type: "review_rejected", reasons: ["nothing relevant"] }),
+  ];
+  assert.deepEqual(failureMentions(events, FLAKY_TEST, 100).map((m) => m.ts), [100, 110, 120]);
+  assert.equal(failureMentions(events, FLAKY_TEST, 100)[2]?.text, `✖ ${FLAKY_TEST}`);
+});
+
+test("checkWaitingBugs warns when the held bug's test failed again after the note's day", () => {
+  const out = checkWaitingBugs(recurrenceRoot(2, `✖ ${FLAKY_TEST}`));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /failed again/);
+  assert.match(out.detail, new RegExp(`${FLAKY_WARNING_PREFIX}✖ ${FLAKY_TEST}`));
+  assert.match(out.detail, /tumwater bug --release 1/);
+});
+
+test("checkWaitingBugs stays ok for a same-day failure and for an unrelated flake", () => {
+  assert.equal(checkWaitingBugs(recurrenceRoot(0, `✖ ${FLAKY_TEST}`)).level, "ok");
+  const unrelated = checkWaitingBugs(recurrenceRoot(2, "✖ some other test entirely"));
+  assert.equal(unrelated.level, "ok");
+  assert.match(unrelated.detail, /is held until it fails again/);
 });
