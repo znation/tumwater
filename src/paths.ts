@@ -294,6 +294,15 @@ export function sessionDir(root: string, role: string): string {
   return path.join(sessionsRootDir(root), role);
 }
 
+/** The shared OpenCode session database for a team root (plans/opencode-backend.md §4): one
+ * file per root, under the same `.tumwater` the run's session dir lives in, so the 6.5 MB
+ * models catalog is downloaded once and six concurrent runs on one file work. The opencode
+ * adapter derives `root` from a run's session dir (the `.tumwater` that contains it) and
+ * points `OPENCODE_DB` here. */
+export function opencodeDbPath(root: string): string {
+  return path.join(tumwaterDir(root), "opencode", "opencode.db");
+}
+
 /** Session dir for a role's review-gate runs. Kept OUTSIDE the role's own session dir on
  * purpose: hasResumableSession (the resume-after-shutdown guard) must only ever see the
  * AUTHOR's sessions — a leftover reviewer session would make an interrupted tick "resume"

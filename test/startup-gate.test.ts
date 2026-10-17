@@ -11,7 +11,7 @@ import {
   NOT_INITIALIZED_MESSAGE,
   NO_COMMITS_MESSAGE,
 } from "../src/gates/readiness.js";
-import { repoNotReady, runStartupCheck, runStartupProblem } from "../src/gates/startup-gate.js";
+import { repoNotReady, runStartupCheck, runStartupProblem, unregisteredBackendInUse } from "../src/gates/startup-gate.js";
 import { registerAgentBackend, type AgentBackend } from "../src/agent/agent-backend.js";
 import { gitInit, makeRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi, withPi } from "./fakes/fake-pi.js";
@@ -173,25 +173,46 @@ test("a named branch in a repo with no local branches reports an empty branch li
   });
 });
 
-// opencode backend (part 2/7): a backend an enabled seam routes to that this build has no
-// registered adapter for must refuse startup, naming the backend — a run would otherwise fall
-// through to pi with an opencode model id pi cannot serve. The registry is read through
-// src/agent/run-agent.ts (startup-gate.ts imports it), which registers the built-in pi and
-// claude adapters; a fake under `opencode` stands in for a future adapter.
+// The no-registered-adapter guard (part 2/7): a backend an enabled seam routes to that this
+// build has no registered adapter for must refuse startup, naming the backend — a run would
+// otherwise fall through to pi with a model id pi cannot serve. The registry is read through
+// src/agent/run-agent.ts (startup-gate.ts imports it), which registers the built-in pi,
+// claude and opencode adapters; a fake under `opencode` stands in for a future adapter.
+// (Part 5/7 registered opencode, so the no-adapter guard now has no reachable trigger; this
+// test verifies opencode's new registered behavior instead — a missing configured binary
+// fails naming it, deterministically regardless of whether `opencode` is on this PATH.)
 
-test("an opencode seam with no registered adapter fails startup, naming the backend", async () => {
+test("an opencode seam with a missing configured binary fails startup, naming the backend", async () => {
   const repo = makeRepo();
-  await initProject(repo, "startup gate opencode no adapter");
+  await initProject(repo, "startup gate opencode missing");
+  const missingBin = path.join(repo, "no-opencode");
   await withPi("exit 0", async () => {
     const file = path.join(repo, "tumwater.json");
     const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+    cfg.backends = { opencode: { bin: missingBin } };
     cfg.model = "opencode/deepseek-v4.1-flash-free";
     fs.writeFileSync(file, JSON.stringify(cfg));
-    assert.equal(
-      await runStartupProblem(repo, null),
-      "backend opencode is configured but this build has no adapter for it",
+    assert.match(
+      (await runStartupProblem(repo, null)) ?? "",
+      /opencode not found — resolved .*no-opencode.* backends\.opencode\.bin/,
     );
   });
+});
+
+// The no-registered-adapter guard itself (part 2/7): a backend an enabled seam routes to that
+// this build has no registered adapter for must be named. The registry now registers all three
+// reserved ids (pi, claude, opencode) and config validation restricts `backend` and every model
+// provider to those ids, so the guard has no reachable trigger through a config file — but it
+// remains the gate for any future backend id, so exercise it directly: a config whose `backend`
+// routes a seam to an unregistered id must be caught naming that id. (Loading that config from
+// tumwater.json would reject it in validation, so it is passed as the already-parsed config.)
+test("unregisteredBackendInUse names a seam routed to a backend with no registered adapter", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "startup gate unregistered backend");
+  const file = path.join(repo, "tumwater.json");
+  const cfg = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+  cfg.backend = "futuristic";
+  assert.equal(unregisteredBackendInUse(cfg as never), "futuristic");
 });
 
 test("a registered opencode adapter whose binary exists passes the gate", async () => {

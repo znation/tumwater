@@ -19,6 +19,10 @@ export interface PromptDialect {
   readRange: string;
   /** The oversized-output rule's bullet body (the text after "- "). */
   oversizedOutput: string;
+  /** Backend-specific shell/reasoning rules rendered right after the reading-budget rule's
+   * oversized-output bullet (opencode's shell-timeout and foreground rules, §5). A backend
+   * with none (pi, claude) keeps its prompts byte-identical. */
+  backendRules?: string[];
 }
 
 /** pi's dialect: the identity of the prompts before agent backends — its `role_notes` tool,
@@ -41,12 +45,31 @@ export const CLAUDE_DIALECT: PromptDialect = {
   in ranges (the Read tool's offset/limit) instead of retrying the same read.`,
 };
 
+/** opencode's dialect (plans/opencode-backend.md §5): role notes are off on OpenCode (part
+ * 5/7 ships with no notes; part 5b/7 turns the MCP server on), its read tool takes
+ * `offset`/`limit`, its oversized shell output spills to a named file (finding 17), and two
+ * backend rules tell the model how OpenCode's shell tool works: a 2-minute default timeout
+ * that `timeout` overrides, and no `background` (a backgrounded command dies when the run
+ * ends, finding 18). */
+export const OPENCODE_DIALECT: PromptDialect = {
+  notesTool: "",
+  readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)",
+  oversizedOutput: `Oversized shell output keeps only its last lines, followed by a note naming the file with
+  the full output — read that file in ranges (the read tool's offset/limit) instead of
+  re-running the command.`,
+  backendRules: [
+    "Shell commands time out after 2 minutes unless you pass `timeout` in milliseconds; give the project's check a timeout that covers it (for example 900000).",
+    "Run every shell command in the foreground: never set `background`, because a background command is killed when your run ends.",
+  ],
+};
+
 /** The dialect table keyed by backend id: every backend but claude speaks pi's dialect (and
  * an unknown id falls back to pi because run-agent.ts routes an unregistered id to the pi
  * backend). Adding a backend means one row here, not another branch. */
 const DIALECTS: Record<string, PromptDialect> = {
   pi: PI_DIALECT,
   claude: CLAUDE_DIALECT,
+  opencode: OPENCODE_DIALECT,
 };
 
 /** The dialect for an agent id, read from the per-backend table. */

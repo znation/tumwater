@@ -21,10 +21,11 @@ import type { PiRunKind } from "../pi/pi-event-line.js";
 import { PiStreamParser } from "../pi/pi-stream.js";
 import { startPiWatchdogs } from "../pi/pi-watchdogs.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
-import { DEFAULT_AGENT, agentBackend, registerAgentBackend, type AgentBackend } from "./agent-backend.js";
+import { DEFAULT_AGENT, agentBackend, registerAgentBackend, type AgentBackend, type AgentRunSpec } from "./agent-backend.js";
 import { recordSession } from "./session-ledger.js";
 import { piBackend } from "../pi/pi-backend.js";
 import { claudeBackend } from "./claude/claude-backend.js";
+import { opencodeBackend } from "./opencode/opencode-backend.js";
 import { seamImageInput } from "./image-input.js";
 import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
 
@@ -45,6 +46,7 @@ export const MAX_NATIVE_LINE_CHARS = 16 * 1024 * 1024;
 // explicit and lets a test register a fake under its own id.
 registerAgentBackend(piBackend);
 registerAgentBackend(claudeBackend);
+registerAgentBackend(opencodeBackend);
 
 /** Prefix of PiRunResult.errorMessage when the agent process never started (no session file
  * is created for such a run). The resolved binary follows it, so a configured agentBin
@@ -212,7 +214,7 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
     // carry it and the exit sweep can name it.
     const runMarker = makeRunMarker();
     const resolved = backend.resolveBin(opts.config);
-    const invocation = backend.invocation({
+    const runSpec: AgentRunSpec = {
       cwd: opts.cwd,
       prompt: opts.prompt,
       config: opts.config,
@@ -224,7 +226,8 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       runMarker,
       notesPath: opts.notesPath,
       ...(opts.maxBudgetUsd !== undefined ? { maxBudgetUsd: opts.maxBudgetUsd } : {}),
-    });
+    };
+    const invocation = backend.invocation(runSpec);
     // Record the run in the session ledger before its spawn, so a later resume can pick the
     // newest session of its own kind instead of whatever file is newest in the dir. The id is
     // the backend's own when it mints one ahead of the run (claude's UUID, or the resumed
@@ -529,6 +532,16 @@ export function runAgent(opts: PiRunOptions): Promise<PiRunResult> {
       // A blind image read on an authoring run deliberately killed it (terminateRun above),
       // so its exit is a kill like the watchdogs' — the half-done work is discarded.
       const killed = aborted || wd.timedOut || wd.quietKilled || blindRead !== undefined;
+      // The backend's post-run reconciliation (opencode's authoritative session export), only
+      // when the run is not already settled (a failed spawn settles in the 'error' handler
+      // before 'close') and was not killed — a killed run's session is half-done and no export
+      // should spend its 10 s on it. Its lines are written and parsed like streamed ones, so
+      // they reach the raw log and the parser's authoritative fold (run_cost/run_usage).
+      if (!settled && !killed) {
+        for (const canonical of backend.afterRun?.(runSpec, invocation, translator) ?? []) {
+          parser.feed(canonical + "\n", onLine);
+        }
+      }
       const failed =
         killed ||
         parser.stopReason === "error" ||

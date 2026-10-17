@@ -32,6 +32,10 @@ export interface OpencodeStreamTranslator extends StreamTranslator {
   warnings(): string[];
   /** Flush an open step at stream close — redeclared non-optional so callers can rely on it. */
   finalize(): string[];
+  /** Record that this run's authoritative export (the post-run reconciliation, part 5/7)
+   * failed or was malformed, so the seam reports `opencode_usage_partial` once and the run
+   * keeps its streamed numbers. */
+  noteOpencodeUsagePartial(): void;
 }
 
 /** opencode's tool names → the canonical pi names the readers already know. `shell`→`bash` and
@@ -279,6 +283,9 @@ export function opencodeTranslator(opts: { cwd?: string } = {}): OpencodeStreamT
       // The native stream ended with a step still open (a killed run, or a stream that just
       // went idle): flush it as a message_end without usage so the last turn is not lost.
       return flush(false);
+    },
+    noteOpencodeUsagePartial(): void {
+      warnings.add("opencode_usage_partial");
     },
     warnings(): string[] {
       // The free-tier refusal is recorded lazily so a run reports it exactly once.

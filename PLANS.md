@@ -5,70 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
-
-**Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
-
-- Its cost and usage are complete: they come from the session export, not only from the lossy stream.
-- A session resumes only when it really exists.
-- The prompts describe OpenCode's real tool surface.
-
-**Approach.**
-- **The seam hook.** `AgentBackend` (src/agent/agent-backend.ts) gains an optional `afterRun?(run: AgentRunSpec, invocation: AgentInvocation, translator: StreamTranslator): string[]` — the translator goes in so the hook can add `opencode_usage_partial` to the run's warnings, which `finish()` drains after the hook returns.
-  - It returns canonical lines. src/agent/run-agent.ts calls it in the child `close` handler, exactly once, only when `!settled` and the run was not killed (`!killed`), before the parser's final fold, and writes and parses the lines like streamed ones.
-  - The `!settled` guard is load-bearing: the spawn `error` handler calls `finish()`, which sets `settled` before `close` fires, so a run whose binary never started must not spend a 10 s export on a session that was never created.
-  - pi and claude do not implement it.
-- **`opencodeBackend`** in src/agent/opencode/opencode-backend.ts:
-  - `id: "opencode"`, `label: "OpenCode"`, `defaultBin: "opencode"`, `binEnv: "TUMWATER_OPENCODE_BIN"`.
-  - `resolveBin` goes through `resolveBackendBin`.
-  - `invocation`:
-    - the database is `opencodeDbPath(root)` = `<tumwater dir>/opencode/opencode.db` (a new helper in src/paths.ts; the tumwater dir is the `.tumwater` that contains `run.sessionDir`);
-    - `title` = `run.sessionName`;
-    - the passthrough from `resolvedAgentConfig(run.config, "opencode").args`;
-    - `operatorMcpNames(process.env, os.homedir())`;
-    - part 3/7's builders, with the env layered on `agentBaseEnv(run.runMarker)`.
-    - It returns the `sessionId`, which the runner records in the session ledger before spawning.
-    - A run's `notesPath` is ignored (design decision 8).
-  - **Sessions:**
-    - A fresh run calls `mintOpencodeSessionId()`.
-    - A continue takes the ledger's newest record of this run's kind (`resumableSession`). It resumes that id only when the record is OpenCode's, has this run's `cwd`, and `opencode session export <id> --standalone` (spawnSync with the run env, 10 s timeout) exits 0. Otherwise it mints a fresh id.
-    - `resumable` answers through the same helper.
-  - `afterRun` runs the same export, bounded at 10 s, and returns `opencodeExportLines(json)`. On failure or empty lines it returns `[]`, and the translator's warnings gain `opencode_usage_partial`.
-  - `classifyExit`: a run the harness killed is never classified. On a nonzero exit, stderr naming `FreeTierError` → `transientBackend`, and `Model unavailable` / `Variant unavailable` → `configError`.
-- **Registration:** src/agent/run-agent.ts registers `opencodeBackend` beside pi and claude.
-- **Dialect** (src/prompt/dialect.ts, the `DIALECTS` table):
-  - `PromptDialect` gains an optional `backendRules?: string[]`. src/prompt/prompt.ts renders it after the oversized-output rule. `roleNotesInstruction` returns `""` when `notesTool` is empty.
-  - `OPENCODE_DIALECT` has:
-    - `notesTool: ""`;
-    - `readRange`: "the read tool's offset/limit (or `sed -n 'A,Bp'`)";
-    - `oversizedOutput`: "Oversized shell output keeps only its last lines, followed by a note naming the file with the full output — read that file in ranges (the read tool's offset/limit) instead of re-running the command.";
-    - `backendRules`: the two rules in plans/opencode-backend.md §5 (pass `timeout` for long commands such as the check; never set `background`).
-  - The pi and claude prompts stay byte-identical.
-- **`test/fakes/fake-opencode.ts`**, the twin of fake-claude.ts: a PATH shim named `opencode`.
-  - For `run`, it replays a capture from part 4/7's fixtures, records argv, stdin and the `OPENCODE_*` env, and stores the session id in a per-test ledger file.
-  - For `session export <id>`, it prints a canned export when it knows the id, and exits 1 otherwise. It also handles `session delete <id>`.
-  - It supports a scripted exit code and a scripted hang.
-- **test/test-runner.ts** strips `TUMWATER_OPENCODE_BIN`, `OPENCODE` and every `OPENCODE_*` from the suite environment.
-
-**Files touched.**
-- Source: src/agent/agent-backend.ts, src/agent/run-agent.ts, src/agent/opencode/opencode-backend.ts (new), src/prompt/dialect.ts, src/prompt/prompt.ts, src/paths.ts.
-- Tests: test/fakes/fake-opencode.ts (new), test/opencode-run.test.ts (new), test/agent-backend.test.ts, test/prompt-dialect.test.ts, test/test-runner.ts.
-
-**Acceptance criteria.**
-- **An authoring run with `model: "opencode/deepseek-v4.1-flash-free"`, through `runAgent` on the fake:**
-  - It spawns `opencode` with part 3/7's argv (a minted `--session`, `--title` = the session name) and the prompt on stdin.
-  - It appends an opencode ledger record before the spawn.
-  - It writes canonical lines to the raw log and native lines to `.tumwater/log/<role>.opencode.native.jsonl`.
-  - Its result's tokens equal the canned export's `info.tokens`, and `costUsd` is 0.
-- **With the fake's export failing:** the result keeps the streamed tokens, and the run logs `opencode_usage_partial`.
-- **Continue:**
-  - With the id known to the fake's export, the same `--session` id is passed.
-  - With an unknown id, or a record from another cwd, a new id is minted and `resumable` answers false.
-- **A run on the hanging fake that the quiet watchdog kills:** its group is killed, the fake's export is never invoked (assert `fake.exportsFile` is absent or empty), and no classifier overrides the result.
-- **A failed spawn never calls `afterRun`.** Register a stub `AgentBackend` (the shape test/agent-backend.test.ts already uses: id, label, defaultBin, binEnv, resolveBin, invocation, translator, classifyExit) whose `resolveBin` returns a nonexistent binary and whose `afterRun` increments a counter and returns `[]`; await `runAgent` and assert the result is not ok and the counter is 0. The counter is the assertion: `finish()` drains translator warnings in the spawn `error` handler before `close` runs, so a `!warnings.includes("opencode_usage_partial")` check would pass even with the `!settled` guard removed and must not be used.
-- **Prompts:** the opencode prompt has no notes instruction and carries both backend rules. The pi and claude prompts are byte-identical to before.
-- `npm test` passes.
-
 ### OpenCode backend, part 5b/7: OpenCode runs carry the role-notes MCP server, so roles keep their notes on OpenCode (planned 2026-10-17 by user; requires part 5/7 landed; design in plans/opencode-backend.md "The invocation", "The prompt dialect and role notes" and "Findings, verified live" 21; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts src/prompt/dialect.ts and their tests)
 
 **Goal.** Part 5/7 ships OpenCode with role notes off. It was planned when OpenCode's MCP tools looked unreliable.
@@ -1312,6 +1248,71 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 
 ## Done
 
+### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts src/agent/opencode/opencode-stream.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts test/doctor-checks.test.ts test/startup-gate.test.ts and their tests) — done 2026-10-17 by the feature role
+
+**Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
+
+- Its cost and usage are complete: they come from the session export, not only from the lossy stream.
+- A session resumes only when it really exists.
+- The prompts describe OpenCode's real tool surface.
+
+**Approach.**
+- **The seam hook.** `AgentBackend` (src/agent/agent-backend.ts) gains an optional `afterRun?(run: AgentRunSpec, invocation: AgentInvocation, translator: StreamTranslator): string[]` — the translator goes in so the hook can add `opencode_usage_partial` to the run's warnings, which `finish()` drains after the hook returns.
+  - It returns canonical lines. src/agent/run-agent.ts calls it in the child `close` handler, exactly once, only when `!settled` and the run was not killed (`!killed`), before the parser's final fold, and writes and parses the lines like streamed ones.
+  - The `!settled` guard is load-bearing: the spawn `error` handler calls `finish()`, which sets `settled` before `close` fires, so a run whose binary never started must not spend a 10 s export on a session that was never created.
+  - pi and claude do not implement it.
+- **`opencodeBackend`** in src/agent/opencode/opencode-backend.ts:
+  - `id: "opencode"`, `label: "OpenCode"`, `defaultBin: "opencode"`, `binEnv: "TUMWATER_OPENCODE_BIN"`.
+  - `resolveBin` goes through `resolveBackendBin`.
+  - `invocation`:
+    - the database is `opencodeDbPath(root)` = `<tumwater dir>/opencode/opencode.db` (a new helper in src/paths.ts; the tumwater dir is the `.tumwater` that contains `run.sessionDir`);
+    - `title` = `run.sessionName`;
+    - the passthrough from `resolvedAgentConfig(run.config, "opencode").args`;
+    - `operatorMcpNames(process.env, os.homedir())`;
+    - part 3/7's builders, with the env layered on `agentBaseEnv(run.runMarker)`.
+    - It returns the `sessionId`, which the runner records in the session ledger before spawning.
+    - A run's `notesPath` is ignored (design decision 8).
+  - **Sessions:**
+    - A fresh run calls `mintOpencodeSessionId()`.
+    - A continue takes the ledger's newest record of this run's kind (`resumableSession`). It resumes that id only when the record is OpenCode's, has this run's `cwd`, and `opencode session export <id> --standalone` (spawnSync with the run env, 10 s timeout) exits 0. Otherwise it mints a fresh id.
+    - `resumable` answers through the same helper.
+  - `afterRun` runs the same export, bounded at 10 s, and returns `opencodeExportLines(json)`. On failure or empty lines it returns `[]`, and the translator's warnings gain `opencode_usage_partial`.
+  - `classifyExit`: a run the harness killed is never classified. On a nonzero exit, stderr naming `FreeTierError` → `transientBackend`, and `Model unavailable` / `Variant unavailable` → `configError`.
+- **Registration:** src/agent/run-agent.ts registers `opencodeBackend` beside pi and claude.
+- **Dialect** (src/prompt/dialect.ts, the `DIALECTS` table):
+  - `PromptDialect` gains an optional `backendRules?: string[]`. src/prompt/prompt.ts renders it after the oversized-output rule. `roleNotesInstruction` returns `""` when `notesTool` is empty.
+  - `OPENCODE_DIALECT` has:
+    - `notesTool: ""`;
+    - `readRange`: "the read tool's offset/limit (or `sed -n 'A,Bp'`)";
+    - `oversizedOutput`: "Oversized shell output keeps only its last lines, followed by a note naming the file with the full output — read that file in ranges (the read tool's offset/limit) instead of re-running the command.";
+    - `backendRules`: the two rules in plans/opencode-backend.md §5 (pass `timeout` for long commands such as the check; never set `background`).
+  - The pi and claude prompts stay byte-identical.
+- **`test/fakes/fake-opencode.ts`**, the twin of fake-claude.ts: a PATH shim named `opencode`.
+  - For `run`, it replays a capture from part 4/7's fixtures, records argv, stdin and the `OPENCODE_*` env, and stores the session id in a per-test ledger file.
+  - For `session export <id>`, it prints a canned export when it knows the id, and exits 1 otherwise. It also handles `session delete <id>`.
+  - It supports a scripted exit code and a scripted hang.
+- **test/test-runner.ts** strips `TUMWATER_OPENCODE_BIN`, `OPENCODE` and every `OPENCODE_*` from the suite environment.
+
+**Files touched.**
+- Source: src/agent/agent-backend.ts, src/agent/run-agent.ts, src/agent/opencode/opencode-backend.ts (new), src/agent/opencode/opencode-stream.ts, src/prompt/dialect.ts, src/prompt/prompt.ts, src/paths.ts.
+- Tests: test/fakes/fake-opencode.ts (new), test/opencode-run.test.ts (new), test/agent-backend.test.ts, test/prompt-dialect.test.ts, test/test-runner.ts, test/doctor-checks.test.ts, test/startup-gate.test.ts.
+
+**Acceptance criteria.**
+- **An authoring run with `model: "opencode/deepseek-v4.1-flash-free"`, through `runAgent` on the fake:**
+  - It spawns `opencode` with part 3/7's argv (a minted `--session`, `--title` = the session name) and the prompt on stdin.
+  - It appends an opencode ledger record before the spawn.
+  - It writes canonical lines to the raw log and native lines to `.tumwater/log/<role>.opencode.native.jsonl`.
+  - Its result's tokens equal the canned export's `info.tokens`, and `costUsd` is 0.
+- **With the fake's export failing:** the result keeps the streamed tokens, and the run logs `opencode_usage_partial`.
+- **Continue:**
+  - With the id known to the fake's export, the same `--session` id is passed.
+  - With an unknown id, or a record from another cwd, a new id is minted and `resumable` answers false.
+- **A run on the hanging fake that the quiet watchdog kills:** its group is killed, the fake's export is never invoked (assert `fake.exportsFile` is absent or empty), and no classifier overrides the result.
+- **A failed spawn never calls `afterRun`.** Register a stub `AgentBackend` (the shape test/agent-backend.test.ts already uses: id, label, defaultBin, binEnv, resolveBin, invocation, translator, classifyExit) whose `resolveBin` returns a nonexistent binary and whose `afterRun` increments a counter and returns `[]`; await `runAgent` and assert the result is not ok and the counter is 0. The counter is the assertion: `finish()` drains translator warnings in the spawn `error` handler before `close` runs, so a `!warnings.includes("opencode_usage_partial")` check would pass even with the `!settled` guard removed and must not be used.
+- **Prompts:** the opencode prompt has no notes instruction and carries both backend rules. The pi and claude prompts are byte-identical to before.
+- `npm test` passes.
+
+
 ### `tumwater role <id>` and the dashboard role drawer name the resolved model's context window and the compact prompt it selects (planned 2026-10-17 by the plan role; the compact-prompt change (commit b1eb00a9) makes a run's prompt and its read/cap scaling depend on the model's declared window through `compactPromptWindow` (src/pi-extension/context-window.ts) and `seamContextWindow` (src/pi/pi-models.ts), but no surface shows the window: `rolePayload` (src/roles/role-view.ts) computes `compactPromptWindow(seamContextWindow(configForRole(cfg, role), root, modelsPath))` inline only to build the `nextPrompt` preview, and `grep -rn "seamContextWindow\|contextWindow" src/roles/role-render.ts src/ui/gui/gui-client-drawer.ts` finds no rendering — so an operator reading `tumwater role <id>` or the drawer sees `Model: …` and peak-context tokens but cannot see that a 64k local model gets the shortened prompt and smaller read caps while a 200k model does not. Both surfaces already consume the one `rolePayload`, so one field pair renders in both. Independent of every eligible Planned entry: OpenCode part 5/7 touches src/agent, src/prompt and src/paths only; the TUI Health retire plan touches src/ui/tui only; the blocked plain-terms series is far behind. Touches src/roles/role-view.ts, src/roles/role-render.ts, src/ui/gui/gui-client-drawer.ts, src/cli/help.ts, test/role-view.test.ts, test/gui-client-drawer.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** `tumwater role <id>` (its Markdown page and its `--json` document) and the dashboard role drawer name the resolved primary seam's declared context window and whether a run on it gets the compact prompt — `64k tokens (compact prompt)` for the local Qwen at 64k, `256k tokens (full prompt)` for a large model. When the window cannot be known (a non-pi seam, an unresolvable provider/model pair, or a model pi's definitions declare no window), both say `unknown (full prompt)` rather than guessing, which is exactly the compact-prompt decision `seamContextWindow`/`compactPromptWindow` already make. The line names the same seam the page's `- Next run:` preview is assembled from, so the window, the compact flag and the preview cannot disagree; a run currently on the model fallback may use a different window, which is the fallback's own documented state.
@@ -1436,6 +1437,7 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `test/tui-frame.test.ts`: the `health` hint matches `/Ctrl\+N test notify/` alongside the existing `Ctrl+R re-run checks`, `Ctrl+E reclaim disk` and `Ctrl+O` assertions.
 - `test/tui-keys-doc.test.ts` passes (`Ctrl+N` is already a documented letter; the new row names it for Health, so the handled and documented key sets stay equal).
 - `npm run test` passes.
+
 
 
 ### The TUI's backlog entry editor replaces a plan or bug's title and body from a file with a second Ctrl+E, the terminal twin of `tumwater plan|bug --edit <n> --file <path>` (planned 2026-10-17 by the plan role; the Ctrl+E title editor (`createEntryEditor`, src/ui/tui/tui-editor-entry.ts) re-reads the selected entry's body (`entry.body`) and passes it to `tryEditEntry` unchanged on Enter, so the prompt line can change only the one-line title — `grep -rn "editPlanFromText\|editBugFromText\|splitEntryFile\|bodyStructureProblem" src/ui/tui` finds no caller, while the dashboard's entry drawer posts `newTitle`/`newBody` to `handleBacklogEdit` (src/gui/gui-backlog-commands.ts) and the CLI's `plan|bug --edit <n> --file <path>` rewrites title and body line for line through `editPlanFromText`/`editBugFromText` (src/backlog/backlog-write.ts), both already on main; so a multiline plan or bug body is editable from the browser and the CLI but never from the terminal, where the body only grows by filing a new entry. The prompt line is single-line (`applyKey` in src/ui/tui/tui-input.ts inserts only characters `>= " "`), so the body comes from a typed file path, read with `readTextIfExists` (src/files/files.ts) and split by the exported `splitEntryFile`, then written through the same title-checked `tryEditEntry` core the title edit uses. A second Ctrl+E toggles the editor into the file mode and a third back, the way Ctrl+N flips plan↔bug inside the new-entry editor, so no new key or held slot is needed. Independent of the eligible Planned entries: OpenCode part 5/7 touches no src/ui/tui file, the TUI Health reclaim Ctrl+E plan edits tui-pane-health.ts and tui-panes.ts, and the TUI notes Ctrl+E plan edits its own editor modules plus tui-panes.ts/tui-frame.ts; this plan does not touch tui-editor-session.ts, tui-editors.ts, tui-keys.ts, tui.tsx or tui-panes.ts at all, sharing only tui-frame.ts's one entry-edit hint line and docs/cli.md with the notes plan, which rebase. Touches src/ui/tui/tui-editor-entry.ts, src/ui/tui/tui-frame.ts, docs/cli.md, test/tui-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)

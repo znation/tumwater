@@ -209,17 +209,19 @@ test("checkAgentBinary joins each agent's verdict for a mixed pi and claude team
   assert.match(onlyClaude.detail, /pi not found/);
 });
 
-// A backend an enabled seam routes to that this build has no registered adapter for cannot be
-// served: checkAgentBinary fails on it (the startup gate refuses with the same message) rather
-// than passing an installed binary only to fall through to pi with an opencode model id.
-test("checkAgentBinary fails when a seam names a backend with no registered adapter", () => {
+// A registered backend an enabled seam routes to that has no installed binary must fail: an
+// opencode model with no `opencode` on PATH reads "opencode not found on PATH" rather than
+// falling through to pi. The no-registered-adapter guard this test originally stood in for
+// (a build with no adapter for a configured backend) now has no reachable trigger — pi,
+// claude and opencode are all registered and no provider maps to any other id.
+test("checkAgentBinary fails on a registered opencode seam with no installed binary, naming it", () => {
   const root = readyRepo();
   writeConfig(root, { model: "opencode/deepseek-v4.1-flash-free" });
   const out = checkAgentBinary(root, fakeBins("pi"));
   assert.equal(out.level, "fail");
   assert.match(
     out.detail,
-    /backend opencode is configured but this build has no adapter for it/,
+    /opencode not found on PATH/,
   );
 });
 

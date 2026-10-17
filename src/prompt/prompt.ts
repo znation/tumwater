@@ -105,6 +105,15 @@ export const TEST_RUNNER_RULE = `- Run tests only through the project's declared
   never a runner you guessed (say, \`npx vitest\` in a suite written for node:test): a mismatched
   runner finds no tests at best, and can kill them mid-run, leaking processes and temp files.`;
 
+/** Render a dialect's `backendRules` as one bullet each, or nothing when the dialect has none
+ * (pi and claude) — so a backend's extra shell/reasoning guidance rides the reading-budget
+ * section right after the oversized-output rule and is present in both the full and compact
+ * prompts. */
+function backendRuleLines(rules: readonly string[] | undefined): string {
+  if (!rules || rules.length === 0) return "";
+  return "\n" + rules.map((rule) => `- ${rule}`).join("\n");
+}
+
 /** The date line every pi prompt carries — tick and director (via sharedPreamble) and the gate's
  * conflict and review runs — naming the local calendar day as YYYY-MM-DD. No prompt
  * used to say what day it is, so a run that had to write one (a BUGS.md heading's "(found by …
@@ -183,7 +192,7 @@ Scope:
 ${scope}
 
 Reading budget:
-${contextBudgetRule(dialect)}
+${contextBudgetRule(dialect)}${backendRuleLines(dialect.backendRules)}
 
 Where you work:
 - Stay inside your worktree: run commands from it — the directory you start in, where
@@ -283,7 +292,7 @@ Scope:
 ${scope}
 
 Reading budget:
-${compactContextBudgetRule(dialect)}
+${compactContextBudgetRule(dialect)}${backendRuleLines(dialect.backendRules)}
 
 Where you work:
 - Run commands from your worktree (where you start; \`git log\` and \`git show\` work there) or a
@@ -378,6 +387,9 @@ relying on them):\n<role-notes>\n${notes.trim()}\n</role-notes>`;
  * write one, so the first tick (when no note exists yet) can create it. The note content block
  * (roleNotesBlock) is what is omitted when there is nothing to show. */
 export function roleNotesInstruction(dialect: PromptDialect = PI_DIALECT): string {
+  // A backend with role notes off (opencode in part 5/7: `notesTool: ""`) has no tool to call,
+  // so no instruction is rendered at all rather than one naming a tool the model lacks.
+  if (dialect.notesTool === "") return "";
   return `Before you end, if you learned something the next run of your role should know (where
 things live, what you ruled out and why, what you would look at next), call ${dialect.notesTool} with
 the full replacement note (at most 4 KB). Do not copy backlog entries into it — PLANS.md and
@@ -497,7 +509,8 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (planTargetNote) parts.push(planTargetNote.trim());
   if (flakyChecks) parts.push(flakyChecks.trim());
   if (extraInstructions) parts.push(`Additional standing instructions from the user:\n${extraInstructions.trim()}`);
-  parts.push(roleNotesInstruction(dialect));
+  const notesInstruction = roleNotesInstruction(dialect);
+  if (notesInstruction !== "") parts.push(notesInstruction);
   parts.push(commonRules(check, briefFile, role.scope, dialect, compact).trim());
   return parts.join("\n\n");
 }

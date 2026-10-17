@@ -100,3 +100,41 @@ test("an over-long native line with no newline is dropped, not buffered without 
   );
   assert.equal(warnings.length, 1, "the discarded line is warned about exactly once");
 });
+
+test("a failed spawn never calls a backend's afterRun", async () => {
+  // The afterRun seam hook (part 5/7) must not spend a reconciling export on a session that
+  // was never created. The spawn `error` handler calls finish(), which sets settled, before
+  // `close` fires; the close handler's `!settled` guard skips afterRun. The counter — not the
+  // translator's warnings — is the assertion: finish() drains the translator's warnings in the
+  // error handler, so a partial-usage check would pass even with the guard removed.
+  const dir = tmpdir();
+  const rawLogFile = path.join(dir, "raw.jsonl");
+  let afterCalls = 0;
+  const fake: AgentBackend = {
+    id: "fake-spawn-fail",
+    label: "fake",
+    defaultBin: "fake",
+    binEnv: "TUMWATER_FAKE_BIN",
+    resolveBin: () => ({ bin: "/nonexistent/bin/qwerty", source: "config" }),
+    invocation: () => ({ args: [], env: process.env }),
+    translator: () => ({ translate: (line) => [line] }),
+    classifyExit: () => ({}),
+    afterRun: () => {
+      afterCalls += 1;
+      return [];
+    },
+  };
+  registerAgentBackend(fake);
+  const result = await runAgent({
+    cwd: dir,
+    prompt: "p",
+    config: { ...defaultConfig(), agent: "fake-spawn-fail" },
+    sessionDir: path.join(dir, "sessions"),
+    sessionName: "t",
+    rawLogFile,
+    nativeLogFile: path.join(dir, "native.jsonl"),
+    kind: "author",
+  });
+  assert.equal(result.ok, false, "a failed spawn is a failure");
+  assert.equal(afterCalls, 0, "a binary that never started spends no afterRun");
+});

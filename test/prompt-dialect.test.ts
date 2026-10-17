@@ -12,7 +12,7 @@ import {
   roleNotesInstruction,
 } from "../src/prompt/prompt.js";
 import { buildResumePrompt } from "../src/prompt/prompt-followup.js";
-import { CLAUDE_DIALECT, PI_DIALECT, dialectFor } from "../src/prompt/dialect.js";
+import { CLAUDE_DIALECT, OPENCODE_DIALECT, PI_DIALECT, dialectFor } from "../src/prompt/dialect.js";
 import { roleById } from "../src/roles/roles.js";
 
 test("pi's reading-budget rule is the historical text, byte for byte", () => {
@@ -69,6 +69,44 @@ test("a claude run prompt names the MCP notes tool; pi's names the pi tool", () 
 test("the notes instruction switches tool name with the dialect", () => {
   assert.match(roleNotesInstruction(PI_DIALECT), /call role_notes with/);
   assert.match(roleNotesInstruction(CLAUDE_DIALECT), /call mcp__tumwater__role_notes with/);
+});
+
+test("opencode's dialect omits the notes instruction and carries both backend rules", () => {
+  assert.equal(dialectFor("opencode"), OPENCODE_DIALECT);
+  // Part 5/7 ships role notes off on OpenCode (part 5b/7 turns the MCP server on), so no
+  // notes tool is named and no instruction is rendered at all.
+  assert.equal(OPENCODE_DIALECT.notesTool, "");
+  assert.equal(roleNotesInstruction(OPENCODE_DIALECT), "");
+
+  const role = roleById("feature")!;
+  const opencode = buildTickPrompt({ role, initialPrompt: "", agent: "opencode" });
+  assert.ok(!/call \w*_notes with/.test(opencode), "the opencode prompt carries no notes instruction");
+  // The two backend rules (plans/opencode-backend.md §5) ride the reading-budget section.
+  assert.match(opencode, /pass `timeout` in milliseconds/);
+  assert.match(opencode, /never set `background`/);
+  assert.ok(opencode.includes("keeps only its last lines"), "opencode's oversized-output rule");
+});
+
+test("pi and claude prompts stay byte-identical: no backend blank line in the reading budget", () => {
+  // backendRuleLines returns "" for a dialect with no backendRules (pi, claude), so each
+  // prompt's Reading budget block is exactly its pre-dialect rule text from the dialect's own
+  // contextBudgetRule, followed by one blank line before "Where you work" — rendered through
+  // the full buildTickPrompt so the block is compared byte-for-byte, the regression for the
+  // earlier blank-line bug (a backend rule rendered as an empty line doubled that separator).
+  for (const [agent, dialect] of [
+    ["pi", PI_DIALECT],
+    ["claude", CLAUDE_DIALECT],
+  ] as const) {
+    const prompt = buildTickPrompt({ role: roleById("feature")!, initialPrompt: "", agent });
+    const marker = "Reading budget:";
+    const block = prompt.slice(
+      prompt.indexOf(marker) + marker.length,
+      prompt.indexOf("Where you work:"),
+    );
+    assert.equal(block, "\n" + contextBudgetRule(dialect) + "\n\n", `${agent} reading budget`);
+  }
+  assert.equal(PI_DIALECT.backendRules, undefined);
+  assert.equal(CLAUDE_DIALECT.backendRules, undefined);
 });
 
 test("a claude director prompt carries claude's oversized-output wording", () => {

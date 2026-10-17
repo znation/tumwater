@@ -132,6 +132,15 @@ export interface AgentBackend {
   /** Observe one stderr chunk (with the runner's carried tail for a match that straddles two
    * chunks) for a backend-specific warning worth surfacing; the matched text, or undefined. */
   matchStderrWarning?(chunk: string, carriedTail: string): string | undefined;
+  /** Reconciliation the backend runs after the process exits and before the run folds its
+   * result — e.g. opencode's authoritative session export (plans/opencode-backend.md §6).
+   * Called exactly once in the child close handler, only when the run was not already settled
+   * (a spawn `error` settles before `close` fires, so a binary that never started spends no
+   * export on a session never created) and was not killed by the harness. It returns canonical
+   * lines that the runner writes and parses like streamed ones (the translator is passed so a
+   * hook whose export is incomplete can add a warning like `opencode_usage_partial`, which the
+   * runner's finish() drains afterwards). Optional — most backends omit it. */
+  afterRun?(run: AgentRunSpec, invocation: AgentInvocation, translator: StreamTranslator): string[];
   /** Whether this backend can resume a session in `dir` for a run of `opts.kind`: the
    * backend-aware resume guard (plans/agent-backends.md "Sessions"). pi continues the newest
    * session file in the dir, claude resumes a ledger id from its recorded cwd. Optional — a
