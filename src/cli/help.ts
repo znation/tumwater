@@ -206,12 +206,15 @@ Usage:
                                    hold, inProgress — as data; \`[working on it: …]\` marks an
                                    entry a role is working on
   tumwater bug --list --done [-n <count>] [--json]
-                                   List the newest entries in BUGS.md ## Fixed, newest first
+                                   List the newest entries, numbered, in BUGS.md ## Fixed, newest first
                                    (default 10); --json prints {entries, older}, each entry
                                    with title, body, completedOn
   tumwater bug --show <n> [--json] Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
+  tumwater bug --show <n> --done [--json]
+                                   Print the Nth entry of \`bug --list --done\` (newest first) in
+                                   full; --json prints {position, title, body, completedOn}
   tumwater plan "<title>" [body...] [--json]
                                    File a plan request into PLANS.md ## Planned as you
                                    (stamped with today's date; the feature role fleshes the stub
@@ -252,13 +255,16 @@ Usage:
                                    marks an entry a role is working on; a series' blocked
                                    parts show as one line naming their positions
   tumwater plan --list --done [-n <count>] [--json]
-                                   List the newest entries in PLANS.md ## Done, newest first
+                                   List the newest entries, numbered, in PLANS.md ## Done, newest first
                                    (default 10); --json prints {entries, older}, each entry
                                    with title, body, completedOn
   tumwater plan --show <n> [--json]
                                    Print the Nth entry as the markdown file --edit <n> --file
                                    reads (title, blank line, body with indentation kept);
                                    --json prints {position, title, body, hold}
+  tumwater plan --show <n> --done [--json]
+                                   Print the Nth entry of \`plan --list --done\` (newest first) in
+                                   full; --json prints {position, title, body, completedOn}
   tumwater questions [--json]      List open questions numbered (the read half of the
                                    question outbox); --json prints the {questions}
                                    array — position, title, body — as data

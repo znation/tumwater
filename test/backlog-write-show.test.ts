@@ -80,3 +80,41 @@ test("--show refuses out-of-range, missing, stray, unknown, and repeated argumen
   const oor = await cli(repo, "plan", "--show", "5");
   assert.match(oor.stderr, /at position 5 \(1 in PLANS\.md\)/);
 });
+
+test("--show <n> --done prints the Nth newest done plan or fixed bug", async () => {
+  const repo = await initializedRepo();
+  const t1 = "Newest plan (done 2026-10-02)";
+  const t2 = "Older plan (done 2026-10-01)";
+  fs.writeFileSync(
+    path.join(repo, "PLANS.md"),
+    `# Plans\n\n## Planned\n\n### Open plan\n\nOpen body\n\n## Done\n\n### ${t1}\n\nline one\n\n- line two\n\n### ${t2}\n\nolder body\n`,
+  );
+  const bugTitle = "Fixed bug — fixed 2026-10-03 by the bug role";
+  fs.writeFileSync(
+    path.join(repo, "BUGS.md"),
+    `# Bugs\n\n## Open\n\n## Fixed\n\n### ${bugTitle}\n\nfix text\n`,
+  );
+  const first = await cli(repo, "plan", "--show", "1", "--done");
+  assert.equal(first.code, 0, first.stderr);
+  assert.equal(first.stdout, `${t1}\n\nline one\n\n- line two\n`);
+  const second = await cli(repo, "plan", "--show", "2", "--done");
+  assert.equal(second.stdout, `${t2}\n\nolder body\n`);
+  const json = await cli(repo, "plan", "--show", "1", "--done", "--json");
+  assert.deepEqual(JSON.parse(json.stdout), {
+    position: 1,
+    title: t1,
+    body: "line one\n\n- line two",
+    completedOn: "2026-10-02",
+  });
+  const bug = await cli(repo, "bug", "--show", "1", "--done");
+  assert.equal(bug.code, 0, bug.stderr);
+  assert.equal(bug.stdout, `${bugTitle}\n\nfix text\n`);
+  const missing = await cli(repo, "bug", "--show", "2", "--done");
+  assert.equal(missing.code, 1);
+  assert.match(missing.stderr, /no fixed bug at position 2 \(1 in BUGS\.md\)/);
+  const twice = await cli(repo, "plan", "--show", "1", "--done", "--done");
+  assert.equal(twice.code, 1);
+  assert.match(twice.stderr, /--done may only be given once/);
+  const open = await cli(repo, "plan", "--show", "1");
+  assert.match(open.stdout, /^Open plan/);
+});

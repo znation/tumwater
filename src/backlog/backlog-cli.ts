@@ -317,7 +317,7 @@ function positionRuns(positions: readonly number[]): string {
  * positional or other flag is refused through rejectUnknownArgs.
  *
  * `--done [-n <count>]` (each once; `-n` needs `--done`) lists the newest finished entries
- * instead (BUGS.md ## Fixed or PLANS.md ## Done, bullets, default 10) with `older` counting
+ * instead (BUGS.md ## Fixed or PLANS.md ## Done, numbered, default 10) with `older` counting
  * those left out; --json carries each entry's `completedOn` heading date. `plan --list` prose
  * groups a series' blocked parts into one line (groupBlockedSeries). */
 export function listAndAnnounce(
@@ -382,7 +382,7 @@ export function listAndAnnounce(
       say(`no ${what}`);
       return;
     }
-    const lines = shown.map((e) => `- ${e.title}`);
+    const lines = shown.map((e, i) => `${i + 1}. ${e.title}`);
     if (older > 0) lines.push(`(${older} older; -n ${all.length} shows more)`);
     say(`${what} in ${fileName}, newest first:\n${lines.join("\n")}`);
     return;
@@ -441,15 +441,23 @@ export function listAndAnnounce(
 }
 
 /** The shell of `bug --show` and `plan --show`: `--show <n>` (once), an optional `--json`
- * (once), `--help`/`-h` tolerated, anything else refused through rejectUnknownArgs. Read-only
- * like `--list`: no repo gate, commit, or wake. Prose is the title, a blank line, then the body,
- * so stdout is the file `--edit <n> --file` takes back. */
+ * and `--done` (each once; `--done` shows the Nth newest finished entry, as `--list --done`
+ * numbers them, with its heading stamp kept and `completedOn` in --json),
+ * `--help`/`-h` tolerated, anything else refused through rejectUnknownArgs. Read-only like
+ * `--list`: no repo gate, commit, or wake. Prose is the title, a blank line, then the body, so
+ * stdout is the file `--edit <n> --file` takes back. */
 export function showAndAnnounce(root: string, args: string[], command: "bug" | "plan"): void {
   let position: number | null = null;
   let json = false;
+  let done = false;
   const rest: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === "--done") {
+      rejectRepeatFlag(done, "--done");
+      done = true;
+      continue;
+    }
     if (arg === "--json") {
       rejectRepeatFlag(json, "--json");
       json = true;
@@ -466,6 +474,19 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
   }
   rejectUnknownArgs(command, rest, []);
   if (position === null) fail(`--show needs a position (usage: tumwater ${command} --show <n>)`);
+  if (done) {
+    const bug = command === "bug";
+    const all = bug ? fixedBugEntries(root) : donePlanEntries(root);
+    const entry = all[position - 1];
+    if (entry === undefined) {
+      fail(`no ${bug ? "fixed bug" : "done plan"} at position ${position} (${all.length} in ${bug ? "BUGS.md" : "PLANS.md"})`);
+    }
+    if (json) {
+      const dateRe = bug ? FIXED_DATE_RE : DONE_DATE_RE;
+      sayJson({ position, title: entry.title, body: entry.body, completedOn: completionDate(entry.title, dateRe) });
+    } else say(renderShownEntry({ title: entry.title, body: entry.body }));
+    return;
+  }
   const shown = showEntry(root, command, position);
   if (json) sayJson(shown);
   else say(renderShownEntry(shown));

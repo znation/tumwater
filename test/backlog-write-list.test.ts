@@ -207,8 +207,8 @@ test("plan --list --done lists the newest done plans, and bug --list --done an e
   assert.equal(r.code, 0);
   const lines = r.stdout.trimEnd().split("\n");
   assert.equal(lines[0], "done plans in PLANS.md, newest first:");
-  assert.equal(lines[1], "- Done 1 (done 2026-10-01)");
-  assert.equal(lines[10], "- Done 10 (done 2026-10-10)");
+  assert.equal(lines[1], "1. Done 1 (done 2026-10-01)");
+  assert.equal(lines[10], "10. Done 10 (done 2026-10-10)");
   assert.equal(lines[11], "(2 older; -n 12 shows more)");
   assert.doesNotMatch(r.stdout, /Still planned/);
   r = await cli(repo, "plan", "--list", "--done", "-n", "12");
