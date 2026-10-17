@@ -13,17 +13,18 @@ import { renderDoctor, renderDoctorProblems } from "../src/doctor/doctor-render.
 import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
+import { promptLineFree, type TuiPaneEditorState } from "../src/ui/tui/tui-pane-ctx.js";
 import { renderRoleChange } from "../src/change/change-render.js";
 import { enqueueMerge, readMergeQueue } from "../src/merge/merge-queue.js";
 import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, branchName, reclaimRequestPath, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
-import { initializedRepo, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { initializedRepo, initializedWorktree, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { PROMPT_START, readBrief, renderBrief } from "../src/brief/brief.js";
 import { readJson } from "./helpers/json-read.js";
 import { errnoError, patchFsMethod } from "./helpers/fs-faults.js";
@@ -34,6 +35,26 @@ import { setConfigKey } from "../src/config/config-write.js";
 const makeRoot = (): string => tmpdir("tui-keys-");
 
 /** A handler wired to a controllable clock, a quit recorder, and a render-request recorder. */
+/** Disable a role in the fixture's tumwater.json the way the retire tests do, so retire's
+ * enabled-role rail does not object. */
+function disableRole(root: string, role: string): void {
+  const file = path.join(root, "tumwater.json");
+  const cfg = readJson(file) as { roles: Record<string, { enabled?: boolean }> };
+  cfg.roles ??= {};
+  cfg.roles[role] = { ...cfg.roles[role], enabled: false };
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n");
+}
+
+/** Poll `flash` until it matches `re`, with a hard deadline — retire runs git spawns, so the
+ * flash lands after the async core its Enter arm awaits. */
+async function untilFlash(flash: () => string, re: RegExp, timeoutMs = 10000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!re.test(flash())) {
+    if (Date.now() > deadline) throw new Error(`timed out waiting for ${re}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
 function makeKeys(root: string, now: () => number, tickStat?: () => Promise<string>) {
   const quit = (): number => (quit.count += 1);
   quit.count = 0;
@@ -1281,6 +1302,16 @@ test("Ctrl+E is inert in the prompt-line modes and off the report views only mov
   assert.equal(keys.state().rolePromptFor, "clean");
   keys.handleKey(undefined, { ctrl: true, name: "e" });
   assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in role-prompt mode");
+  keys.handleKey(undefined, { name: "escape" });
+
+  // Retire-edit mode holds it too (the report window-cycle arm previously ran over the
+  // retire modal): open it on the Health view and try Ctrl+E.
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health (roleIds.length + 7 = 8)
+  assert.equal(keys.state().view, 8, "Health is roleIds.length + 7");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().retireMode, true, "the retire editor holds the line");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(keys.state().reportSince, "1h", "Ctrl+E does nothing in retire-edit mode");
   keys.handleKey(undefined, { name: "escape" });
 });
 
@@ -2937,4 +2968,69 @@ test("Ctrl+N off the Health view never runs the notify hook", async () => {
   // write the recorder file before we assert it stayed absent.
   for (let i = 0; i < 40 && !fs.existsSync(out); i++) await sleep(25);
   assert.equal(fs.existsSync(out), false, "off Health, Ctrl+N never runs the hook");
+});
+
+// Ctrl+X on the Health view retires a disabled role's leftovers — the terminal twin of
+// `tumwater retire --role <id>` and the dashboard Settings card's Retire button, all through
+// the same retireRole core (src/operator/retire.ts). An empty id flashes and stays; a
+// safety-rail refusal flashes --force's naming and stays; success exits edit mode and flashes
+// the dashboard's own outcome wording. Every other view keeps Ctrl+X for its own arm.
+test("Ctrl+X on the Health view retires a disabled role's leftovers", async () => {
+  const { root } = await initializedWorktree();
+  disableRole(root, "improve");
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7, "Health is roleIds.length + 7");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.match(keys.state().flash!, /type the role id/);
+  assert.equal(keys.state().input, "", "the retire editor blanks the prompt line");
+  for (const ch of "improve") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  await untilFlash(() => keys.state().flash ?? "", /removed the branch/);
+  assert.equal(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch is removed");
+  assert.equal(keys.state().retireMode, false, "success leaves the retire editor");
+});
+
+test("Ctrl+X retire on the Health view: an empty id stays and Esc restores the draft", () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  for (const ch of "draft") keys.handleKey(ch, { name: ch }); // a prompt draft
+  assert.equal(keys.state().input, "draft", "a prompt draft sits on the line");
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  assert.equal(keys.state().input, "", "opening retire blanks the prompt line");
+  keys.handleKey(undefined, { name: "return" }); // empty id
+  assert.match(keys.state().flash!, /a role id is required/);
+  assert.equal(keys.state().retireMode, true, "the retire editor stays open");
+  keys.handleKey(undefined, { name: "escape" });
+  assert.equal(keys.state().retireMode, false, "Esc leaves the retire editor");
+  assert.equal(keys.state().input, "draft", "Esc restores the saved prompt draft");
+});
+
+test("promptLineFree is false while retire-edit mode holds the line, so the Health pane's own arms stay off it", () => {
+  const es: TuiPaneEditorState = { budgetMode: false, rolePromptFor: null, searchMode: false, deferMode: false, pauseEditMode: false, queuedEditFor: null, answerFor: null, entryEditFor: null, notesEditFor: null, briefEditMode: false, retireMode: true };
+  // Ctrl+E (reclaim), Ctrl+R (doctor re-run) and Ctrl+O (problems toggle) are the Health
+  // pane's own arms; while the retire editor holds the line they must see it busy, the same
+  // exclusion every other mode enforces, or they would run over the retire modal.
+  assert.equal(promptLineFree(es), false, "the retire editor blocks the Health pane's own arms");
+  es.retireMode = false;
+  assert.equal(promptLineFree(es), true, "the line frees once retire-edit mode leaves");
+});
+
+test("Ctrl+X retire refuses a role the safety rails object to and removes nothing", async () => {
+  const { root } = await initializedWorktree();
+  // improve is still enabled (not disabled), so retire's enabled-role rail objects.
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "x" });
+  for (const ch of "improve") keys.handleKey(ch, { name: ch });
+  keys.handleKey(undefined, { name: "return" });
+  await untilFlash(() => keys.state().flash ?? "", /refusing to retire/);
+  assert.match(keys.state().flash!, /--force/);
+  assert.equal(keys.state().retireMode, true, "a refusal stays in the editor");
+  assert.notEqual(sh(root, "git", "branch", "--list", branchName("improve")).trim(), "", "the branch survives");
+  keys.handleKey(undefined, { name: "escape" });
 });

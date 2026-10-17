@@ -62,7 +62,8 @@ export function createReportPane(session: TuiPaneSession) {
     if (
       key.ctrl && key.name === "e" &&
       !ctx.es.budgetMode && !ctx.es.rolePromptFor && !ctx.es.deferMode && !ctx.es.pauseEditMode &&
-      !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor
+      !ctx.es.queuedEditFor && !ctx.es.answerFor && !ctx.es.entryEditFor &&
+      !ctx.es.retireMode && promptLineFree(ctx.es)
     ) {
       // Ctrl+E advances the Usage and Failures panes' trailing report window (mnemonic:
       // **E**lapsed). Guarded out of the budget and role-prompt editors like the other

@@ -9,6 +9,7 @@ import { createDeferEditor } from "./tui-editor-defer.js";
 import { createAttachEditor } from "./tui-editor-attach.js";
 import { createNotesEditor } from "./tui-editor-notes.js";
 import { createBriefEditor } from "./tui-editor-brief.js";
+import { createRetireEditor } from "./tui-editor-retire.js";
 import { createPromptEditor } from "./tui-editor-prompt.js";
 import { createPauseEditor } from "./tui-editor-pause.js";
 import { createQueuedEditor } from "./tui-editor-queued.js";
@@ -96,6 +97,8 @@ interface TuiEditorState {
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
    * file path that becomes the whole brief through editInitialPrompt. */
   briefEditMode: boolean;
+  /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
+  retireMode: boolean;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -144,6 +147,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     createEntryEditor(session),
     createSearchEditor(session),
     createBriefEditor(session),
+    createRetireEditor(session),
   ];
 
   const handleKey = (
@@ -202,7 +206,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, defer, pause and search modes keep them out —
     // recalling a prompt into the cap/delay/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief) {
+    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search && !session.held.notes && !session.held.brief && !session.held.retire) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -262,6 +266,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         images: session.images.length,
         notesEditFor: session.held.notes,
         briefEditMode: session.held.brief,
+        retireMode: session.held.retire,
       };
     },
   };

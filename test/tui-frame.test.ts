@@ -153,6 +153,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health" }), /Ctrl\+R re-run checks/);
   assert.match(hint({ kind: "health" }), /Ctrl\+E reclaim disk/);
   assert.match(hint({ kind: "health" }), /Ctrl\+N test notify/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+X retire/);
   assert.match(hint({ kind: "health", problems: false }), /Ctrl\+O all checks/);
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);
   assert.match(hint({ kind: "brief" }), /PgUp\/PgDn scroll/);
@@ -203,6 +204,13 @@ test("the hint line says what the keys do in each view and mode", () => {
   // Keys stand out from what they do.
   const spans = hintLine({ kind: "activity", role: null, grep: null, type: null }, { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null }, 300);
   assert.deepEqual(spans.filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "↑↓", "PgUp/PgDn", "Ctrl+B", "Ctrl+O", "Ctrl+G", "/", "Ctrl+T", "Ctrl+F", "Ctrl+Q", "Ctrl+C", "Ctrl+V", "Ctrl+R", "Ctrl+D", "Ctrl+L"]);
+});
+
+test("retire-edit mode shows its own hint keys and prompt prefix", () => {
+  const base = { budget: false, rolePromptFor: null, deferMode: false, defer: null, queuedEditFor: null, answerFor: null, retireMode: true };
+  assert.deepEqual(hintLine({ kind: "health" }, base, 300).filter((s) => s.tone === "bold").map((s) => s.text), ["Enter", "Esc", "Ctrl+D"]);
+  assert.equal(plain(promptPrefix(base)), "retire › ");
+  assert.match(plain(hintLine({ kind: "health" }, base, 300)), /Enter retire role/);
 });
 
 test("pause-edit mode shows its own hint keys and prompt prefix", () => {

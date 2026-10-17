@@ -62,6 +62,8 @@ interface TuiKeysState {
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
    * file path that becomes the whole brief through editInitialPrompt. */
   briefEditMode: boolean;
+  /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
+  retireMode: boolean;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */

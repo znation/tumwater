@@ -18,6 +18,8 @@ export interface TuiPaneEditorState {
   /** The Brief view's Ctrl+E replace-the-brief mode holds the prompt line, editing one typed
    * file path that becomes the whole brief through editInitialPrompt. */
   briefEditMode: boolean;
+  /** The Health view's Ctrl+X retire mode holds the prompt line, editing a role id. */
+  retireMode: boolean;
 }
 
 /** The per-keypress read `createTuiKeys` passes to every pane arm — the editor flags the
@@ -37,7 +39,7 @@ export function promptLineFree(es: TuiPaneEditorState): boolean {
   return (
     !es.budgetMode && !es.rolePromptFor && !es.searchMode && !es.deferMode &&
     !es.pauseEditMode && !es.queuedEditFor && !es.answerFor && !es.entryEditFor &&
-    !es.notesEditFor && !es.briefEditMode
+    !es.notesEditFor && !es.briefEditMode && !es.retireMode
   );
 }
 

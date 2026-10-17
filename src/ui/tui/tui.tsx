@@ -201,7 +201,7 @@ export async function runTui(root: string, seams: TuiSeams = {}): Promise<void> 
     // The frame as the ink tree draws it (tui-app.tsx): the same composed lines the
     // hand-painted string frame joined, as clipped StatusLines — one column row per line,
     // one styled Text per span, colors through tui-app.tsx's toneColor.
-    const mode = { budget: s.budgetMode, rolePromptFor: s.rolePromptFor, deferMode: s.deferMode, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, defer: s.defer, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, images: s.images };
+    const mode = { budget: s.budgetMode, rolePromptFor: s.rolePromptFor, deferMode: s.deferMode, attachMode: s.attachMode, pauseEditMode: s.pauseEditMode, pauseEditRole: s.pauseEditRole, pauseEditWake: s.pauseEditWake, pauseEditStop: s.pauseEditStop, defer: s.defer, queuedEditFor: s.queuedEditFor, answerFor: s.answerFor, entryEditFor: s.entryEditFor, notesEditFor: s.notesEditFor, briefEditMode: s.briefEditMode, retireMode: s.retireMode, images: s.images };
     const lines: StatusLine[] = [...statusLines, []]; // a blank row below the header
     for (const [i, preview] of queued.entries()) lines.push(toneLine(`${i + 1}. ${preview}`, width));
     lines.push(tabStrip(pane, width));

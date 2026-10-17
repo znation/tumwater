@@ -57,7 +57,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
         ctx.view === ctx.roleIds.length + 1 &&
         !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
         !session.held.defer && !session.held.pause && !session.held.queued &&
-        !session.held.answer && !entryEditFor
+        !session.held.answer && !entryEditFor && !session.held.retire
       ) {
         session.settleDraft((t) => (entryEditSavedInput = t), (n) => (entryEditSavedCursor = n));
         entryEditFor = { kind: "plan", position: null, title: "" };
@@ -92,7 +92,7 @@ export function createEntryEditor(session: TuiEditorSession): TuiEditorModule {
       key.ctrl && key.name === "e" &&
       !session.held.budget && !session.held.rolePromptFor && !session.held.search &&
       !session.held.defer && !session.held.pause && !session.held.queued &&
-      !session.held.answer && !entryEditFor &&
+      !session.held.answer && !entryEditFor && !session.held.retire &&
       ctx.view === ctx.roleIds.length + 1 && ctx.selectedEntry !== null
     ) {
       // Ctrl+E opens the title editor on the selected plan or bug (mnemonic: **E**dit); Enter
