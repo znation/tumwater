@@ -1,5 +1,5 @@
 import type { Stats } from "node:fs";
-import { dayKey, humanSeconds } from "../text/datetime.js";
+import { dayAt, dayKey, humanSeconds } from "../text/datetime.js";
 import { eventDayKey, parseEventLine } from "./event-read.js";
 import type { HarnessEvent } from "./events.js";
 import { eventsArchivePath, eventsLogPath } from "../paths.js";
@@ -318,7 +318,7 @@ export function readEventsSinceJoined(
   // exactly ts < that midnight — so the checks below are numeric and the event list's
   // oldest-first order makes them one bounded pass instead of a day-key formatting per event.
   const cut = new Date(cutoff);
-  const narrowDayStartMs = new Date(cut.getFullYear(), cut.getMonth(), cut.getDate()).getTime();
+  const narrowDayStartMs = dayAt(0, cut).getTime();
   // One pass up the oldest-first list: the oldest numerically-timestamped event (any line
   // older than the narrow day proves the narrow scan would have early-stopped on it) and
   // the first event inside the narrow day (the narrow window's oldest retained event, for
