@@ -1680,7 +1680,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The `merge_failed` event carries the change's summary, so `tumwater logs` and the notify page say which change failed to land (planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-slot.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests)
+## Done
+
+### The `merge_failed` event carries the change's summary, so `tumwater logs` and the notify page say which change failed to land (planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-slot.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests) — done 2026-10-16
 
 **Goal.** `writeLandingOutcome` (`src/landing/landing-slot.ts`) logs `{ type: "merge_done" | "merge_failed", commit, result, durationMs, …usage }`, and `formatEvent` (`src/events/event-format.ts`) renders a failure as `merge of <sha8> failed (<outcome>) (in Ns)`. `merge_failed` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`), so that line is the whole page: the operator learns a short SHA and nothing about which change it was. The `LandingEntry` passed to `writeLandingOutcome` already holds the change's one-line `summary` (the same text `merge_queued` and `merged` render), so put it on the event and name it in the line.
 
@@ -1697,8 +1699,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/landing-slot.test.ts`: "a landing's nonzero usage rides its landed event and the entry is dropped" also asserts `landed.summary === entry.summary`; "a failed landing logs merge_failed with its usage and counts no commit" asserts `failed.summary === entry.summary` (the `queued` fixture's `"add a thing"`).
 - `test/event-format.test.ts`: the existing assertions in "formatEvent renders merge_queued, landed, and merge_failed" pass unchanged (the summary-less `merge_failed` keeps its exact line). A new assertion renders `{ type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500, summary: "tidy up" }` as a line ending `merge of abcdef12 failed (merge conflict) (in 1s) — tidy up`, and a 200-character summary is clipped by `truncate` to 80.
 - `npm run test` passes.
-
-## Done
 
 ### Plain terms role ids, part 4/5: Rename the telemetry role to selfcheck (done 2026-10-16; planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config.ts and src/tick/tick-prompt.ts and tumwater.example.json and README.md plus tests)
 

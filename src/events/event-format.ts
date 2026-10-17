@@ -183,7 +183,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "merge_failed":
       // Routine failure detail: the review events themselves (review_rejected/review_failed)
       // or the merged/build_check lines carry the reason in the feed.
-      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}`;
+      return `merge of ${shortSha(e.commit)} failed (${eventTypeLabel(outcomeText(e))})${elapsed(e.durationMs)}${typeof e.summary === "string" && e.summary.trim() ? ` — ${truncate(e.summary, 80)}` : ""}`;
     case "question_posted":
       // Routine operation (a loop asked the user something), not a warning.
       return `question posted: ${textOr(e.question)}`;

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { eventResult, formatEvent, outcomeText, usageText } from "../src/events/event-format.js";
 import type { HarnessEvent } from "../src/events/events.js";
 import { formatTimestamp } from "../src/text/datetime.js";
+import { truncate } from "../src/text/text.js";
 import { displayWidth } from "../src/text/text-width.js";
 
 test("formatEvent renders provider_concurrency_changed like its maxConcurrent sibling", () => {
@@ -649,6 +650,10 @@ test("formatEvent renders merge_queued, landed, and merge_failed", () => {
   // A failed landing names the outcome — the detail lives in the review/merge events themselves.
   const failed = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500 } as never);
   assert.match(failed, /merge of abcdef12 failed \(merge conflict\) \(in 1s\)$/, `merge_failed must name the outcome: ${failed}`);
+  const named = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500, summary: "tidy up" } as never);
+  assert.match(named, /merge of abcdef12 failed \(merge conflict\) \(in 1s\) — tidy up$/);
+  const long = formatEvent({ ts: 0, source: "clean", type: "merge_failed", commit: "abcdef1234567890", result: "merge_conflict", durationMs: 500, summary: "x".repeat(200) } as never);
+  assert.ok(long.endsWith(` — ${truncate("x".repeat(200), 80)}`), `long summary clipped: ${long}`);
 });
 
 // Every payload on HarnessEvent arrives loosely typed off the NDJSON log, so a torn or

@@ -376,6 +376,7 @@ export function writeLandingOutcome(
     type: result === "changed" ? "merge_done" : "merge_failed",
     commit: entry.sha,
     result,
+    summary: entry.summary,
     durationMs,
     ...usageFragment(usage.tokens, usage.cost, usage.notionalCost),
     // The landing's per-provider spend, keyed to its reviewer seam (the same reviewProvider

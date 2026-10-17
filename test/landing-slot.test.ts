@@ -141,6 +141,7 @@ test("a landing's nonzero usage rides its landed event and the entry is dropped"
   assert.equal(landed.source, "improve");
   assert.equal(landed.commit, entry.sha);
   assert.equal(landed.result, "changed");
+  assert.equal(landed.summary, entry.summary);
   assert.equal(landed.durationMs, 1234);
   assert.equal(landed.tokens, 320, "the landing's own tokens are on the event");
   assert.equal(landed.costUsd, 0.42, "…and its own cost");
@@ -281,6 +282,7 @@ test("a failed landing logs merge_failed with its usage and counts no commit", (
   const failed = readEvents(root, 10).find((e) => e.type === "merge_failed");
   assert.ok(failed, "a non-changed outcome logs merge_failed, not landed");
   assert.equal(failed.result, "merge_conflict");
+  assert.equal(failed.summary, entry.summary);
   assert.equal(failed.tokens, 12, "spend on a failed landing is still recorded");
   assert.equal(state.lastResult, "merge_conflict");
   assert.equal(state.commits, 0, "a non-changed outcome is not a commit");
