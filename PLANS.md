@@ -1266,7 +1266,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
+## Done
+
+### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
 
 **Goal.** BUGS.md's ## Fixed section holds flake bugs whose headings quote the test name. Two of today's are `"runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"` (fixed 2026-10-16) and `"a later wake request leaves a pending scheduled wake standing"` (fixed 2026-10-14). When such a test fails again, nothing links the failure to the Fixed record. The open `startParentDeathWatch` bug was filed by hand, after its 10-01 and 10-09 Fixed entries, when an operator session happened to read improve's red merge check. `checkWaitingBugs` (src/doctor/doctor-backlog.ts) already does this matching for Open bugs that carry a Waiting note: `quotedTestName` on the heading, then `failureMentions` over the event log since the day after the note. This plan applies the same matching to the newest Fixed records. It adds one doctor row, `regressed fixes`, which warns when a Fixed record's quoted test has failed since the day after its fix and no Open bug quotes the same test. Like every backlog check, it is a warn, never a fail, and doctor writes nothing to BUGS.md.
 
@@ -1298,8 +1300,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The existing `checkWaitingBugs` tests pass unchanged after the `dayAfterMs` extraction.
 - test/doctor.test.ts's row-name list gains `"regressed fixes"` right after `"waiting bugs"`.
 - `npm run test` passes.
-
-## Done
 
 ### Staging asks a bugfix run that adds a Progress note to an open bug, but leaves no Waiting for the next failure note under it, to write that note (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/tick/stage-check.ts, docs/how-it-works.md and test/stage-check.test.ts; no src/merge, src/backlog, src/ui or src/doctor edit)
 

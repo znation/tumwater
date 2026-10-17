@@ -6,7 +6,7 @@ import { errorMessage, truncate } from "../text/text.js";
 import { ageInDays, donePlans, filingDate, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { questionFilingDate } from "../backlog/question-answer.js";
 import { entryHold, planDependencyProblems, plannedPartKeys, plansWaitingOn, prerequisitesLanded, refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
-import { BACKLOG_FILES } from "../backlog/backlog-md.js";
+import { BACKLOG_FILES, lastDate } from "../backlog/backlog-md.js";
 import { duplicateHeadings, strandedPlanEntries } from "../backlog/backlog-structure.js";
 import { fixSymbols, fixedEntries, missingSymbolNames, sourceHaystack, unbackedSymbols } from "../verdict/fix-claim.js";
 import { briefFile } from "../brief/brief.js";
@@ -344,6 +344,13 @@ export function quotedTestName(title: string): string | null {
   return /"([^"]{12,})"/.exec(title)?.[1] ?? null;
 }
 
+/** Local midnight at the end of a `YYYY-MM-DD` day, in ms: the earliest instant a failure can
+ * be told apart from the one a same-day note or fix record was written about. NaN for a
+ * malformed date. */
+function dayAfterMs(date: string): number {
+  return new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1).getTime();
+}
+
 /** The first `YYYY-MM-DD` in a Waiting for the next failure note's text, or null. */
 export function waitingNoteDate(note: string): string | null {
   return /\d{4}-\d{2}-\d{2}/.exec(note)?.[0] ?? null;
@@ -380,9 +387,7 @@ export function checkWaitingBugs(root: string): CheckOutcome {
     if (note === null || refusalNote(entry.body) !== null) return [];
     const name = quotedTestName(entry.title);
     const date = waitingNoteDate(note);
-    const since = name !== null && date !== null
-      ? new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1).getTime()
-      : null;
+    const since = name !== null && date !== null ? dayAfterMs(date) : null;
     return [{ position: index + 1, title: entry.title, note, name, since }];
   });
   const [first, ...rest] = held;
@@ -408,6 +413,41 @@ export function checkWaitingBugs(root: string): CheckOutcome {
   return okOutcome(`BUGS.md bug #${first.position} "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" is held until it fails again ` +
       `(${truncate(first.note, REFUSAL_NOTE_MAX)})${more} — selfcheck lifts the note when it records a new occurrence; ` +
       `release it now with \`tumwater bug --release ${first.position}\``);
+}
+
+/** Regressed fixes — a newest-10 BUGS.md Fixed record whose heading quotes a test name that a
+ * gate or merge check has failed on since the day after its fix (the heading carries only a
+ * date, so a same-day failure cannot be told from the one the fix answered), unless an Open bug
+ * already quotes the same test, which means the regression is filed. A warn, never a fail, and
+ * doctor writes nothing to BUGS.md. */
+export function checkRegressedFixes(root: string): CheckOutcome {
+  const read = readDocChecked(path.join(root, "BUGS.md"), "BUGS.md", "no BUGS.md — nothing to verify");
+  if ("outcome" in read) return read.outcome;
+  const candidates = fixedEntries(read.doc).slice(0, FIX_CLAIMS_CHECKED).flatMap((entry) => {
+    const name = quotedTestName(entry.title);
+    const date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/);
+    if (name === null || date === null) return [];
+    const since = dayAfterMs(date);
+    return Number.isNaN(since) ? [] : [{ title: entry.title, name, date, since }];
+  });
+  const open = candidates.length > 0 ? openBugEntries(root).map((e) => quotedTestName(e.title)) : [];
+  const unfiled = candidates.filter((c) => !open.includes(c.name));
+  if (unfiled.length > 0) {
+    const { events } = readEventsSince(root, Math.max(0, Date.now() - Math.min(...unfiled.map((c) => c.since))));
+    const regressed = unfiled.flatMap((c) => {
+      const mentions = failureMentions(events, c.name, c.since);
+      const newest = mentions[mentions.length - 1];
+      return newest ? [{ ...c, newest }] : [];
+    });
+    const [first, ...rest] = regressed;
+    if (first) {
+      const more = andMore(rest, (c) => `"${truncate(c.title, FIX_CLAIM_HEADING_MAX)}"`);
+      return warnOutcome(`BUGS.md Fixed record "${truncate(first.title, FIX_CLAIM_HEADING_MAX)}" quotes a test that failed again after its ${first.date} fix ` +
+        `(${formatTimestamp(first.newest.ts)}: ${truncate(first.newest.text, REFUSAL_NOTE_MAX)})${more} — ` +
+        "file it as a new bug with `tumwater bug`, quoting the test name and citing the Fixed record");
+    }
+  }
+  return okOutcome("no recently Fixed bug's quoted test has failed since its fix");
 }
 
 /** Refused entries — planned plans and open bugs held by a **Refused …** note. No loop clears

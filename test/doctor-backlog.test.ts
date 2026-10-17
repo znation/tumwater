@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
+import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkRegressedFixes, checkStaleBugs, checkStaleQueuedLandings, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog, checkWaitingBugs, failureMentions, quotedTestName, waitingNoteDate } from "../src/doctor/doctor-backlog.js";
 import { logEvent } from "../src/events/events.js";
 import { FLAKY_WARNING_PREFIX, MERGE_FLAKY_WARNING_PREFIX } from "../src/review/known-flakes.js";
 import type { HarnessEvent } from "../src/events/events.js";
@@ -619,4 +619,40 @@ test("checkWaitingBugs stays ok for a same-day failure and for an unrelated flak
   const unrelated = checkWaitingBugs(recurrenceRoot(2, "✖ some other test entirely"));
   assert.equal(unrelated.level, "ok");
   assert.match(unrelated.detail, /is held until it fails again/);
+});
+
+function fixedRoot(fixedHeadings: string[], failures: string[], open = ""): string {
+  const dir = tmpdir("doctor-regressed-fixes-");
+  fs.writeFileSync(path.join(dir, "BUGS.md"), `## Open\n\n${open}## Fixed\n\n${fixedHeadings.map((h) => `### ${h}\n\nFix.\n\n`).join("")}`);
+  for (const f of failures) logEvent(dir, { source: "review", type: "warning", message: `${FLAKY_WARNING_PREFIX}${f}` });
+  return dir;
+}
+
+const fixedHeading = (test: string, daysAgo: number) =>
+  `\`test/x.test.ts\` "${test}" flaked (found by bugfix ${daysAgoStamp(5)}) — fixed ${daysAgoStamp(daysAgo)}`;
+
+test("checkRegressedFixes warns when a Fixed record's test failed after its fix day", () => {
+  const out = checkRegressedFixes(fixedRoot([fixedHeading(FLAKY_TEST, 2)], [`✖ ${FLAKY_TEST}`]));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /failed again after its/);
+  assert.match(out.detail, new RegExp(`✖ ${FLAKY_TEST}`));
+  assert.match(out.detail, /tumwater bug/);
+});
+
+test("checkRegressedFixes stays ok for same-day, unrelated, filed, unquoted and undated records", () => {
+  const ok = (dir: string) => assert.equal(checkRegressedFixes(dir).level, "ok");
+  ok(fixedRoot([fixedHeading(FLAKY_TEST, 0)], [`✖ ${FLAKY_TEST}`]));
+  ok(fixedRoot([fixedHeading(FLAKY_TEST, 2)], ["✖ some other test entirely"]));
+  ok(fixedRoot([fixedHeading(FLAKY_TEST, 2)], [`✖ ${FLAKY_TEST}`], `### \`test/x.test.ts\` "${FLAKY_TEST}" flaked again (found by bugfix ${daysAgoStamp(0)})\n\n`));
+  ok(fixedRoot([`no quote here — fixed ${daysAgoStamp(2)}`, '"short" — fixed ' + daysAgoStamp(2)], [`✖ ${FLAKY_TEST}`, "✖ short"]));
+  ok(fixedRoot([`"${FLAKY_TEST}" flaked, date unknown`], [`✖ ${FLAKY_TEST}`]));
+  assert.deepEqual(checkRegressedFixes(tmpdir("doctor-regressed-none-")), { level: "ok", detail: "no BUGS.md — nothing to verify" });
+});
+
+test("checkRegressedFixes names the first of several regressed records and counts the rest", () => {
+  const other = "a later wake request leaves a pending wake";
+  const out = checkRegressedFixes(fixedRoot([fixedHeading(FLAKY_TEST, 2), fixedHeading(other, 3)], [`✖ ${FLAKY_TEST}`, `✖ ${other}`]));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /startParentDeathWatch/);
+  assert.match(out.detail, /and 1 more/);
 });
