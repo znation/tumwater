@@ -1153,6 +1153,27 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### The GUI Usage view charts `Fallbacks by role` and `Image reroutes by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the merge-rename series and the install alert)
+
+**Goal.** `tumwater report` now ranks model-fallback episodes and image reroutes per role (PLANS.md Done: "`tumwater report` gains a `Fallbacks by role` line" and "… an `Image reroutes by role` line"). Both counts already reach the dashboard as `ReportDay.fallbacksByRole` and `ReportDay.imageReroutesByRole` (`src/report/report-data.ts`), but the GUI Usage view (`src/ui/gui/gui-client-report.ts`) never draws them. An operator watching the dashboard cannot see which role's primary model keeps failing or which role keeps needing a vision model. Add one stacked per-role chart for each, following `chartRejectionsByRole`.
+
+**Approach.** All changes are in the browser script `GUI_CLIENT_REPORT_JS`. Keep them inside the `report-chart:start` … `report-chart:end` region so `clientScope` in the tests can load the builders.
+- `reportRoleOrder`: seed zero-count rows for the roles in `d.fallbacksByRole || {}` and `d.imageReroutesByRole || {}`, the same way it does for `rejectionsByRole` (use the `Object.hasOwn` guard). A role that only fell back or rerouted then keeps its stack row and color, after the roles that ran.
+- Add `chartFallbacksByRole(data)` = `roleStackChart(data, "fallbacksByRole", (n) => plural(n, "fallback"), countAxis, true)` and `chartImageReroutesByRole(data)` = `roleStackChart(data, "imageReroutesByRole", (n) => plural(n, "image reroute"), countAxis, true)`. Each gets a one-line comment in the style of its siblings.
+- Add `seriesHasAny(data, field)`. It returns true when some day in `data.series` has a map under `field` with at least one own value greater than 0. Both counts are rare, so in the view's render, after the `Rejections by role` block and before the conditional `Estimated spend by role` block, append `block("Fallbacks by role", chartFallbacksByRole(d))` only when `seriesHasAny(d, "fallbacksByRole")`, and `block("Image reroutes by role", chartImageReroutesByRole(d))` only when `seriesHasAny(d, "imageReroutesByRole")`. A window with neither renders exactly the elements it renders today. This follows the precedent of the notional-spend element, which is also conditional.
+- A role-scoped view needs no extra work: `report-data.ts` already narrows both maps with `narrowToRole`.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`. No server, report-data, or CLI change.
+
+**Acceptance criteria.**
+- New test in `test/gui-client-report.test.ts`, modeled on "the Rejections by loop chart stacks per role in the ticks order and stays empty without a map". It loads `reportRoleOrder`, `chartTicksByRole`, `chartFallbacksByRole`, `chartImageReroutesByRole` and `seriesHasAny` through `clientScope(["format", "report-chart"], …)` and checks four things:
+  - A role that appears only in `fallbacksByRole` or `imageReroutesByRole` gets a `[role, 0]` row from `reportRoleOrder`.
+  - Each chart draws one `<rect>` per (day, role) with a nonzero count. The rect titles read like `2026-09-01 · feature: 2 fallbacks` or `… 1 image reroute`.
+  - Each chart's legend equals `chartTicksByRole`'s legend.
+  - `seriesHasAny` is false for a series without either map (and for maps holding only zeros) and true once any day carries a nonzero count.
+- The existing tests in `test/gui-client-report.test.ts` pass unchanged. That includes the rejections test's `reportRoleOrder` assertion, because its data carries neither new map.
+- `npm run test` passes.
+
 ## Done
 
 ### The dashboards raise an amber `install` alert while the root checkout's `node_modules` is behind `package-lock.json` (planned 2026-10-16 by the plan role; independent of the waiting plain-terms series and of the in-flight "Image reroutes by role" report plan — it adds one module under `src/status/`, one optional `StatusSnapshot` field, and one branch in `src/ui/team-alerts.ts`) — done 2026-10-16
