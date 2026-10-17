@@ -1,4 +1,4 @@
-import { migrateLandQueueDir } from "../landing/landing-queue.js";
+import { migrateLandQueueDir } from "../merge/merge-queue.js";
 import fs from "node:fs";
 import { deleteRefIfAt, refSha, refsUnder, setRef } from "../git/git.js";
 import { landingRefName, legacyLandingStatePath } from "../paths.js";

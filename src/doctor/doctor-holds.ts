@@ -7,7 +7,7 @@ import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
 import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
-import { readLandingQueue } from "../landing/landing-queue.js";
+import { readLandingQueue } from "../merge/merge-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState, type LoopState } from "../loop/loop-state.js";

@@ -1,0 +1,233 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { spawnReadyChild, stopChild } from "./helpers/child-process.js";
+import { fileURLToPath } from "node:url";
+import {
+  conflictedFiles,
+  continueRebase,
+  ffMainTo,
+  ffMainToOrWhy,
+  hasConflictMarkers,
+  mainCommitsTouching,
+  rebaseOntoMain,
+  rebaseOntoMainLeaveConflicts,
+} from "../src/merge/merge-git.js";
+import { primaryWorktreeLockPath } from "../src/paths.js";
+import { assertWorktreeSettled, commitIn, headSha, initializedWorktree, sh } from "./fixtures/repo-fixtures.js";
+
+// Behavioral coverage for the landing flow's git plumbing (merge-git.ts). The export pin in
+// merge-to-main.test.ts only checks that these helpers exist; these tests drive real rebases,
+// conflicts, and continuations — the mechanics a half-broken helper would silently break.
+
+/** A repo whose main and worktree branch both edited the same file — the next rebase onto
+ * main must stop mid-conflict. */
+async function conflictingSetup(): Promise<{ root: string; wt: string }> {
+  const { root, wt } = await initializedWorktree();
+  // Both sides edit seed.txt, which exists in the fork-point commit — a content conflict
+  // (UU), not an add/add conflict (AA), so the assertions name the classic spelling.
+  fs.writeFileSync(path.join(root, "seed.txt"), "main line\n");
+  commitIn(root, "main edit");
+  fs.writeFileSync(path.join(wt, "seed.txt"), "branch line\n");
+  commitIn(wt, "branch edit");
+  return { root, wt };
+}
+
+test("conflictedFiles is empty on a clean worktree", async () => {
+  const { wt } = await initializedWorktree();
+  assert.deepEqual(await conflictedFiles(wt), []);
+});
+
+test("conflictedFiles lists the unmerged path during a conflicted rebase", async () => {
+  const { wt } = await conflictingSetup();
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  assert.deepEqual(await conflictedFiles(wt), ["seed.txt"]);
+  // The worktree really is mid-rebase: the conflicted file shows as unmerged (UU).
+  assert.match(sh(wt, "git", "status", "--porcelain"), /UU seed\.txt/);
+});
+
+test("conflictedFiles decodes the C-quoted name of a non-ASCII conflicted file", async () => {
+  // core.quotePath is on by default: `git diff --name-only --diff-filter=U` renders the
+  // conflicted name as `"h\303\251llo.md"`. Undecoded, hasConflictMarkers could never read
+  // the file and continueRebase would commit the markers to main (the bug the decode exists
+  // for) — so the decoded, on-disk form is the contract.
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "héllo.md"), "main line\n");
+  commitIn(root, "main edit");
+  fs.writeFileSync(path.join(wt, "héllo.md"), "branch line\n");
+  commitIn(wt, "branch edit");
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  assert.deepEqual(await conflictedFiles(wt), ["héllo.md"]);
+  assert.equal(hasConflictMarkers(wt, await conflictedFiles(wt)), true);
+});
+
+test("rebaseOntoMainLeaveConflicts returns clean when main has not moved", async () => {
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "hello.txt"), "hi\n");
+  commitIn(wt, "branch work");
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "clean");
+  assertWorktreeSettled(wt);
+});
+
+test("rebaseOntoMainLeaveConflicts returns failed and cleans up when the rebase cannot start", async () => {
+  // An unstaged edit to a tracked file makes `git rebase` refuse before any conflict exists:
+  // conflictedFiles is empty, so the state is "other" → abort and report "failed".
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "seed.txt"), "dirty\n");
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "failed");
+  // The abort cleaned up the rebase state, not the working tree: the edit that blocked it
+  // is still there, but no rebase is in progress and no path is unmerged.
+  assert.equal(sh(wt, "git", "status").includes("rebase in progress"), false);
+  assert.deepEqual(await conflictedFiles(wt), []);
+});
+
+test("rebaseOntoMain returns false on a conflict and aborts, leaving the worktree settled", async () => {
+  const { wt } = await conflictingSetup();
+  const before = headSha(wt);
+  assert.equal(await rebaseOntoMain(wt, "main"), false);
+  assertWorktreeSettled(wt);
+  assert.equal(headSha(wt), before, "the branch is back at its original tip");
+});
+
+test("continueRebase finishes the rebase with the resolution and returns the new HEAD", async () => {
+  const { wt } = await conflictingSetup();
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  fs.writeFileSync(path.join(wt, "seed.txt"), "merged line\n");
+  const head = await continueRebase(wt);
+  assert.equal(head, headSha(wt));
+  assert.equal(fs.readFileSync(path.join(wt, "seed.txt"), "utf8"), "merged line\n");
+  assertWorktreeSettled(wt);
+  // The rebase kept history linear: the resolved commit now sits on top of main's tip.
+  assert.equal(sh(wt, "git", "rev-parse", "HEAD~1"), sh(wt, "git", "rev-parse", "main"));
+});
+
+test("continueRebase finishes cleanly when the resolution leaves no unique content", async () => {
+  // Taking main's side makes the branch's patch empty: git skips the commit and finishes the
+  // rebase — continueRebase must return the HEAD without error, not throw.
+  const { wt } = await conflictingSetup();
+  assert.equal(await rebaseOntoMainLeaveConflicts(wt, "main"), "conflict");
+  fs.writeFileSync(path.join(wt, "seed.txt"), "main line\n");
+  const head = await continueRebase(wt);
+  assert.equal(head, headSha(wt));
+  assertWorktreeSettled(wt);
+});
+
+test("mainCommitsTouching lists only main commits touching the given files, newest first", async () => {
+  const { root, wt } = await initializedWorktree();
+  const fork = headSha(wt);
+  fs.writeFileSync(path.join(root, "touched.txt"), "one\n");
+  commitIn(root, "main touch one");
+  fs.writeFileSync(path.join(root, "other.txt"), "other\n");
+  commitIn(root, "main other");
+  fs.writeFileSync(path.join(root, "touched.txt"), "two\n");
+  commitIn(root, "main touch two");
+  const { commits, omitted } = await mainCommitsTouching(wt, fork, "main", ["touched.txt"]);
+  assert.deepEqual(
+    commits.map((c) => c.subject),
+    ["main touch two", "main touch one"],
+    "only the commits that touched the conflicted file, newest first",
+  );
+  assert.ok(commits.every((c) => c.sha.length > 0), "each entry carries its short sha");
+  assert.equal(omitted, 0);
+});
+
+test("mainCommitsTouching caps the list and the body, reporting what it dropped", async () => {
+  const { root, wt } = await initializedWorktree();
+  const fork = headSha(wt);
+  for (let i = 0; i < 16; i++) {
+    fs.writeFileSync(path.join(root, "touched.txt"), `line ${i}\n`);
+    commitIn(root, `touch ${i}`);
+  }
+  // Newest commit: a 25-line body, to check the per-commit body cap too.
+  const body = Array.from({ length: 25 }, (_, i) => `body line ${i}`).join("\n");
+  fs.writeFileSync(path.join(root, "touched.txt"), "x\n");
+  commitIn(root, `first subject\n\n${body}`);
+  const { commits, omitted } = await mainCommitsTouching(wt, fork, "main", ["touched.txt"]);
+  assert.equal(commits.length, 15, "the list is capped at 15");
+  assert.equal(omitted, 2, "the two oldest commits are reported as omitted");
+  assert.equal(commits[0]!.subject, "first subject", "newest first");
+  const bodyLines = commits[0]!.body.split("\n");
+  assert.equal(bodyLines.length, 21, "20 body lines kept plus the truncation note");
+  assert.match(bodyLines[20]!, /5 more lines/);
+});
+
+test("mainCommitsTouching returns nothing for an empty file list", async () => {
+  const { wt } = await initializedWorktree();
+  assert.deepEqual(await mainCommitsTouching(wt, "HEAD", "main", []), { commits: [], omitted: 0 });
+});
+
+// The lander's half of the primary-worktree race: `tumwater bug` holds the shared lock while it
+// reads and rewrites a backlog file, so the working-tree fast-forward must wait for that lock
+// rather than merging under it. The child holds the lock and watches for the merge's landed.txt
+// (an unlocked ff writes it immediately; a locked one waits for release), then records what it
+// saw. The ref-push arm is not exercised here: it touches no working tree and takes no lock.
+test("ffMainTo's working-tree arm waits for the primary-worktree lock a backlog writer holds", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "landed.txt"), "landed\n");
+  commitIn(wt, "landing candidate");
+  const ref = headSha(wt);
+  const lock = primaryWorktreeLockPath(root);
+  const landed = path.join(root, "landed.txt");
+  const ready = path.join(root, "child-ready");
+  const marker = path.join(root, "child-marker");
+  const lockModule = fileURLToPath(new URL("../src/concurrency/lock.js", import.meta.url));
+  const holder = spawnReadyChild(
+    `const fs = require("node:fs");
+     import(${JSON.stringify(lockModule)}).then(({ withStateLock }) => withStateLock(${JSON.stringify(lock)}, () => {
+       fs.writeFileSync(${JSON.stringify(ready)}, "1");
+       const merged = () => fs.existsSync(${JSON.stringify(landed)});
+       const deadline = Date.now() + 1500;
+       while (Date.now() < deadline && !merged()) {
+         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+       }
+       fs.writeFileSync(${JSON.stringify(marker)}, merged() ? "seen" : "not-seen");
+     }));`,
+    () => fs.existsSync(ready),
+    "the holder child never took the primary-worktree lock",
+  );
+  try {
+    await holder.ready;
+    assert.equal(await ffMainTo(root, ref, "main"), true);
+    await holder.exited;
+    assert.equal(
+      fs.readFileSync(marker, "utf8"),
+      "not-seen",
+      "the merge did not land while a backlog writer held the primary-worktree lock",
+    );
+    assert.equal(fs.readFileSync(landed, "utf8"), "landed\n", "the merge landed after the lock was released");
+  } finally {
+    await stopChild(holder);
+  }
+});
+
+test("hasConflictMarkers sees start/end markers but not a bare ======= separator", async () => {
+  // Only `<<<<<<<`/`>>>>>>>` at a line start count: a bare `=======` is legitimate content
+  // (a markdown setext underline), and flagging it would reject clean resolutions forever.
+  const { wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "marked.txt"), "a\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\nb\n");
+  assert.equal(hasConflictMarkers(wt, ["marked.txt"]), true);
+  fs.writeFileSync(path.join(wt, "marked.txt"), "title\n=======\nbody\n");
+  assert.equal(hasConflictMarkers(wt, ["marked.txt"]), false);
+  // A path not on disk counts as resolved (the resolver chose the deletion).
+  assert.equal(hasConflictMarkers(wt, ["gone.txt"]), false);
+  assert.equal(hasConflictMarkers(wt, []), false);
+});
+
+test("ffMainToOrWhy names main having moved off the ref's base, with its new head", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "branch.txt"), "b\n");
+  commitIn(wt, "branch change");
+  const ref = headSha(wt);
+  fs.writeFileSync(path.join(root, "hand.txt"), "h\n");
+  commitIn(root, "hand commit on main");
+  const why = await ffMainToOrWhy(root, ref, "main");
+  assert.match(why ?? "", /^main moved outside the merge lock \(now [0-9a-f]+ hand commit on main\)$/);
+});
+
+test("ffMainToOrWhy returns null when the fast-forward succeeds", async () => {
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(wt, "ok.txt"), "ok\n");
+  commitIn(wt, "ok change");
+  assert.equal(await ffMainToOrWhy(root, headSha(wt), "main"), null);
+});

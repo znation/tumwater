@@ -210,7 +210,7 @@ export function execGitBounded(
 }
 
 /** Like git(), with extra environment variables (e.g. GIT_EDITOR for rebase --continue, which the
- * landing flow in landing-merge.ts needs so `rebase --continue` can never block on a commit-message
+ * landing flow in merge-to-main.ts needs so `rebase --continue` can never block on a commit-message
  * prompt; and the harness ident for rewritten committer identity). The subprocess is bounded by
  * GIT_TIMEOUT_MS plus the KILL_GRACE_MS escalation (an optional `timeoutMs`/`killGraceMs` override
  * both for tests), so a hung or signal-ignoring git fails loudly as a GitError instead of stalling

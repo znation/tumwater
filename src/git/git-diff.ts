@@ -30,7 +30,7 @@ const C_QUOTE_ESCAPES: Record<string, string> = {
  * Non-ASCII arrives one octal escape per UTF-8 byte, so the escapes are first collected into
  * a latin1 byte string and only then reassembled as UTF-8 (decoding each escape to a character
  * on its own yields mojibake — `héllo.md` would come back as `hÃ©llo.md`). Used by
- * conflictedFiles in landing-git.ts; changedFiles reads git's NUL-terminated `-z` format, which
+ * conflictedFiles in merge-git.ts; changedFiles reads git's NUL-terminated `-z` format, which
  * emits paths verbatim (no quoting), so it has no encoded path to decode. */
 export function unquotePorcelainPath(p: string): string {
   if (!p.startsWith('"')) return p;

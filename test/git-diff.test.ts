@@ -1,4 +1,4 @@
-// --- changedFiles (refusal.ts) + unquotePorcelainPath (landing-git.ts): worktree git helpers ---
+// --- changedFiles (refusal.ts) + unquotePorcelainPath (merge-git.ts): worktree git helpers ---
 // A refusing run may leave files with special characters in their names; changedFiles must
 // hand back decoded paths that refusal.ts can classify (.md filter) and feed straight back to
 // `git add`, so these tests round-trip through real `git status --porcelain` output.

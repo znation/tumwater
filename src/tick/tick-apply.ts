@@ -1,6 +1,6 @@
 // vocabulary: plain
 import type { TumwaterConfig } from "../config/config-schema.js";
-import type { LandingEntry } from "../landing/landing-queue.js";
+import type { LandingEntry } from "../merge/merge-queue.js";
 import { hasOutstandingWork, type LoopState } from "../loop/loop-state.js";
 import { DIRECTOR_ROLE, OBSERVER_ROLES } from "../roles/roles.js";
 import { baseRoleOf } from "../roles/loop-ids.js";
@@ -315,7 +315,7 @@ export function applyLandingOutcome(
   }
   if (result === "rejected") {
     // A review rejection is a failure the streak must count ONLY when it is final (BUGS.md
-    // 2026-10-14): recordRejectedChange (src/landing/landing-core.ts) already decided finality
+    // 2026-10-14): recordRejectedChange (src/merge/merge-core.ts) already decided finality
     // by the time this runs — it sets `state.revision` when the change goes back for another
     // round and clears it when the chain is exhausted (or never sets it for a role that cannot
     // revise, the director). A rejection that leaves a revision to work on is not a verdict

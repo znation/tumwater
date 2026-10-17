@@ -6,7 +6,7 @@ import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { git } from "../git/git-run.js";
 import { changeBaseRev, headOf, patchId } from "../git/git.js";
 import { aheadOfMainDiff, aheadOfMainFiles, revisionInterdiff } from "../git/git-diff.js";
-import type { PriorReview } from "../landing/landing-queue.js";
+import type { PriorReview } from "../merge/merge-queue.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
 import { nativeLogPath, piLogPath } from "../paths.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
@@ -22,19 +22,19 @@ import { firstReason } from "../text/phrases.js";
 import type { SleepSampler } from "../build/host-sleep.js";
 import { isExemptDiff } from "./exemptions.js";
 import { falseFixReason } from "../verdict/fix-claim.js";
-import { conflictMarkerReason } from "../landing/landing-git.js";
+import { conflictMarkerReason } from "../merge/merge-git.js";
 import { protectedEditReason } from "./protected-edits.js";
 import { secretLeakReason } from "./secret-leaks.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { suiteRerunWarning, type ToolCallStart } from "./suite-rerun.js";
-import { setLandingStage } from "../landing/landing-slot.js";
+import { setLandingStage } from "../merge/merge-slot.js";
 import { gateBuildPrecheck } from "./review-precheck.js";
 
 /** Attach the review gate's pi runs onto a partial GateResult — `run` plus the optional
  * verdict-recovery follow-up (`followUpRun`) and no-re-run nudge (`nudgeRun`) fields, each
  * present only when its turn actually ran. Spelled once so every return site of
  * reviewAheadOfMain that carries runs shares one shape for the usage-folding caller
- * (landing-core.ts folds run, then followUpRun, then nudgeRun), instead of one conditional
+ * (merge-core.ts folds run, then followUpRun, then nudgeRun), instead of one conditional
  * spread per site that a new run kind would have to update everywhere. */
 function withRuns(r: GateResult, run: PiRunResult, followUp: PiRunResult | null, nudge: PiRunResult | null): GateResult {
   return {
@@ -102,7 +102,7 @@ export interface ReviewContext {
 export interface GateResult {
   decision: "approved" | "exempt" | "rejected" | "failed";
   /** The branch HEAD this gate invocation's pre-check just ran green on — the one tree the
-   * landing path may trust without re-running the check (src/landing/landing-merge.ts seeds the
+   * landing path may trust without re-running the check (src/merge/merge-to-main.ts seeds the
    * red-main baseline with it when the rebase is a no-op, and re-verifies anything else). Absent
    * when no fresh green observation was made: gate disabled, exempt diff, already-approved early
    * return, or a pre-check that failed or skipped. */

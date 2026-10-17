@@ -259,7 +259,7 @@ export function subdirectoryNames(dir: string, keep?: (name: string) => boolean)
  * name carries the pid because several processes can write at once (CLI, TUI, GUI, a loop's
  * re-queue); on failure the tmp is removed and the error rethrown, leaving the target untouched.
  * The harness's JSON writer (writeJsonAtomic in src/files/json-files.ts) and the config write-back
- * (writeBytesAtomic's caller, landing-git.ts's restoreConfigBytes) write through this, so the
+ * (writeBytesAtomic's caller, merge-git.ts's restoreConfigBytes) write through this, so the
  * pid-tmp and no-torn-file contract lives in exactly one place. */
 function writeAtomic(file: string, data: string | Uint8Array): void {
   ensureParentDir(file);
@@ -279,7 +279,7 @@ export function writeTextAtomic(file: string, text: string): void {
 }
 
 /** Write raw `data` bytes to `file` — the byte entry point to writeAtomic's tmp+rename, for
- * writers that must preserve the source bytes exactly (landing-git.ts's restoreConfigBytes
+ * writers that must preserve the source bytes exactly (merge-git.ts's restoreConfigBytes
  * writes back the live tumwater.json bytes a landing's merge deleted). */
 export function writeBytesAtomic(file: string, data: Uint8Array): void {
   writeAtomic(file, data);

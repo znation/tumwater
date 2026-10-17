@@ -5,10 +5,10 @@ import { defaultConfig, loadConfig, saveConfig } from "../../src/config/config.j
 import { initProject } from "../../src/init/init.js";
 import { makeRepo, sh, tmpdir } from "./repo-fixtures.js";
 import { runOrchestrator } from "../../src/orchestrator/orchestrator.js";
-import { drainMerge } from "../../src/landing/landing-drain.js";
-import { newLandingPipeline, type LandingPipelineContext } from "../../src/landing/landing-pipeline.js";
-import { startVet } from "../../src/landing/landing-vetting.js";
-import { headLanding } from "../../src/landing/landing-queue.js";
+import { drainMerge } from "../../src/merge/merge-drain.js";
+import { newLandingPipeline, type LandingPipelineContext } from "../../src/merge/merge-pipeline.js";
+import { startVet } from "../../src/merge/merge-verify.js";
+import { headLanding } from "../../src/merge/merge-queue.js";
 import { landingRefName } from "../../src/paths.js";
 import { Semaphore } from "../../src/concurrency/semaphore.js";
 import { loadLoopState } from "../../src/loop/loop-state.js";
@@ -27,7 +27,7 @@ import type { TickResult } from "../../src/tick/tick-outcome.js";
  * orchestrator or its landing pipeline: fast configs and repos, a start/stop wrapper around
  * runOrchestrator, and a one-entry driver for the landing pipeline. Split from the
  * loop-level fixtures (loop-fixtures.ts) so the e2e tier's machinery lives beside its tier,
- * mirroring repo-fixtures.ts / lander-fixtures.ts / status-fixtures.ts. */
+ * mirroring repo-fixtures.ts / merger-fixtures.ts / status-fixtures.ts. */
 
 /** Fast poll interval for live-orchestrator tests whose assertions don't depend on the real
  * 2s cadence: multi-cycle behavior (config reloads, marker consumption, wake events) resolves
@@ -254,7 +254,7 @@ export async function awaitSettledTick(
 }
 
 /** Land the head of the durable land queue through the orchestrator's own landing pipeline
- * (landing-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
+ * (merge-drain.ts). Loop-level tests call `runner.tick()` directly — no poll loop — so the
  * entry a changed tick enqueues needs a driver: this vets the head alone (startVet, on a
  * one-permit semaphore) and, once vetted, merges it (drainMerge), leaving every other queued
  * entry untouched — a test that ticks a second role meanwhile lands that one with its own call.

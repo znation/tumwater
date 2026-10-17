@@ -20,7 +20,7 @@ import { typoSuffix } from "../src/text/suggest.js";
  * reject whatever commit is being gated instead of the code under test (BUGS.md 2026-09-21);
  * they run via `npm run test:e2e` (and in CI) instead. With one or more name filters it runs
  * only the test files whose source-style name contains a filter as a plain substring (`npm test
- * merge` → landing-merge.test.ts), so iterating on one module gets a few-second feedback loop
+ * merge` → merge-to-main.test.ts), so iterating on one module gets a few-second feedback loop
  * instead
  * of the full suite — filters match e2e files too, so `npm test orchestrator` or
  * `npm run test:e2e` deliberately brings the tier back. A filter may carry a `#name` part

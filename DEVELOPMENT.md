@@ -175,8 +175,8 @@ Give any new spawn site that starts npm, pi or other title-setting Node programs
   truncation, integer parsing) beside the single-format homes split from it: `format.ts`
   (number, money, and hash formats), `datetime.ts` (local date/time and day math), and
   `text-width.ts` (terminal-column geometry). Presentation only; imported by every layer.
-- `src/landing/landing-merge.ts`: the rebase, fast-forward, and conflict-resolution merge flow,
-  on top of the git plumbing in `src/landing/landing-git.ts` (rebase, conflict inspection,
+- `src/merge/merge-to-main.ts`: the rebase, fast-forward, and conflict-resolution merge flow,
+  on top of the git plumbing in `src/merge/merge-git.ts` (rebase, conflict inspection,
   fast-forward).
 - `src/tick/`: the per-run pipeline (`tick-stage.ts`, `tick-prompt.ts`, `tick-timing.ts`,
   `tick-usage.ts`, `tick-verdict.ts`, `tick-finalize.ts`, `tick-apply.ts`, `tick-resume.ts`,

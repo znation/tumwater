@@ -42,7 +42,7 @@ export function configLockPath(root: string): string {
 /** The cross-process lock serializing writes to the primary checkout's tracked backlog files:
  * `tumwater bug`/`plan` (backlog-write.ts's appendEntry) and `tumwater questions answer`
  * (backlog/question-answer.ts's tryAnswerQuestion) each read a whole backlog file and rewrite
- * it, while a landing's working-tree fast-forward (landing-git.ts's ffMainTo) updates those
+ * it, while a landing's working-tree fast-forward (merge-git.ts's ffMainTo) updates those
  * same files in
  * the same checkout by `git merge --ff-only`. Without a shared lock the CLI's stale read can
  * overwrite the landed change, and vice versa. Same mkdir-and-pid mutex as configLockPath, under
@@ -138,7 +138,7 @@ export function roleNotesPath(root: string, role: string): string {
 }
 
 /** The in-flight landing marker (merge queue 4/5): the orchestrator's drain task
- * writes it (landing-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
+ * writes it (merge-slot.ts, merge queue 4/5) and removes it after every outcome — the observers
  * (`status`, TUI, GUI) are separate processes that cannot see the drain's in-memory promise,
  * but they can read this file (plans/merge-queue.md). */
 export function landingStatePath(root: string): string {
@@ -323,7 +323,7 @@ export function roleInboxDir(root: string, role: string): string {
   return role === DIRECTOR_ROLE ? inboxDir(root) : path.join(inboxDir(root), role);
 }
 
-/** The durable land queue (src/landing/landing-queue.ts): a changed tick's pinned commit waits here
+/** The durable land queue (src/merge/merge-queue.ts): a changed tick's pinned commit waits here
  * as one JSON file for the orchestrator's landing pipeline (plans/merge-queue.md 3/5, land-queue
  * speed 2c). Like the inbox it is a directory of timestamped files —
  * a crash between enqueue and drop loses nothing, and `tumwater status` can read it without the
@@ -338,7 +338,7 @@ export function legacyLandQueueDir(root: string): string {
   return path.join(tumwaterDir(root), "land-queue"); // vocabulary-ok: legacy path read from old layouts
 }
 
-/** The lock dir serializing merges to main (landing-merge.ts; doctor checks it). */
+/** The lock dir serializing merges to main (merge-to-main.ts; doctor checks it). */
 export function mergeLockDir(root: string): string {
   return path.join(tumwaterDir(root), "merge.lock");
 }

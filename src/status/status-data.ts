@@ -17,9 +17,9 @@ import {
   readOrchestratorInfo,
   type DiskStatus,
 } from "../team/orchestrator-info.js";
-import type { LandingInFlight } from "../landing/landing-slot.js";
+import type { LandingInFlight } from "../merge/merge-slot.js";
 import { bootstrapHoldsRole, bootstrapStatus } from "../gates/bootstrap-gates.js";
-import { readLandingQueue } from "../landing/landing-queue.js";
+import { readLandingQueue } from "../merge/merge-queue.js";
 import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
@@ -394,7 +394,7 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
   // One read of the pending scheduled wakes feeds both the earliest and the full list, so they
   // cannot disagree.
   const wakes = scheduledWakes(root, now);
-  // One land-queue pass per poll (landing-queue.ts's stat cache keeps an unchanged queue at one
+  // One land-queue pass per poll (merge-queue.ts's stat cache keeps an unchanged queue at one
   // stat per file) serves the depth; inFlight is the 4/5 marker only when a live orchestrator
   // still has a queue entry for what the marker names (per change, for a batch) — the
   // cross-check makes every crash ordering self-healing (a stale marker alone never displays,

@@ -44,9 +44,9 @@ import { appendPromptNote } from "../text/format.js";
 import type { TickUsage } from "../tick/tick-usage.js";
 import { recoverLeftover, type LeftoverRecovery } from "./leftover.js";
 import { applyRevision, applyWithConflicts } from "./revision.js";
-import { hasConflictMarkers, mainCommitsTouching } from "../landing/landing-git.js";
+import { hasConflictMarkers, mainCommitsTouching } from "../merge/merge-git.js";
 import { changedFiles } from "../git/git-diff.js";
-import { mergeToMain } from "../landing/landing-merge.js";
+import { mergeToMain } from "../merge/merge-to-main.js";
 import { bugfixMainRedNote, mainRedGate } from "../baseline/main-red.js";
 import { resolveTickVerdict } from "../tick/tick-verdict.js";
 import { extractFlow, type FlowResult } from "../verdict/reply-contract.js";
@@ -108,7 +108,7 @@ export interface LoopTickContext {
 
 /** The intent the author needs to resolve a handed-back change: the change's own commit message
  * and the main commits that touched its conflicted files since its merge-base. Mirrors what
- * resolveConflict gathers for the landing resolver (src/landing/landing-merge.ts) and feeds the
+ * resolveConflict gathers for the landing resolver (src/merge/merge-to-main.ts) and feeds the
  * same prompt block through buildConflictHandbackNote. */
 async function handbackIntent(
   wt: string,
@@ -645,7 +645,7 @@ async function tickWithWorktreePhase(
   return handlePiResultPhase(ctx, pi, userPrompt, revisionRound, wt, flow, piStartedAt, cfg);
 }
 
-/** Land the worktree branch on main (see src/landing/landing-merge.ts for the
+/** Land the worktree branch on main (see src/merge/merge-to-main.ts for the
  * rebase → verify → ff-merge → conflict-retry flow): delegates with the loop identity, tick
  * number, and shared pi wiring so a conflict-resolution run folds into this tick's counters
  * like any other pi run. Only the refusal-note landing (src/verdict/refusal.ts) still uses it —

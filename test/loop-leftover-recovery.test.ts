@@ -19,7 +19,7 @@ import { setRef } from "../src/git/git.js";
 import { ERROR_STREAK_WARN } from "../src/tick/tick-apply.js";
 import { landingRefName } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { headLanding, queueDepth } from "../src/landing/landing-queue.js";
+import { headLanding, queueDepth } from "../src/merge/merge-queue.js";
 import { loopPhase } from "../src/ui/status-model.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
@@ -275,7 +275,7 @@ test("a recovered high-friction commit reaches the reviewer with its flag and bo
 // A director tick dequeues its user prompt before recovery runs; a tick that ends on the
 // recovery never ran that prompt, so it must go back to the inbox — the same policy as every
 // other unfulfilled director outcome. (A user abort of the queued recovery landing is the
-// landing slot's to handle now: landing-drain.test.ts pins that it discards the pin.)
+// landing slot's to handle now: merge-drain.test.ts pins that it discards the pin.)
 test("a director tick that ends on leftover recovery puts its user prompt back", async () => {
   const repo = await initializedRepo();
   const sha = await pinLeftover(repo, "crash.txt", "interrupted work\n", "interrupted director commit", "director");

@@ -14,7 +14,7 @@ import { dequeuePrompt, enqueuePrompt, inboxSize } from "../src/inbox/inbox.js";
 import { piLogPath, rejectedRefName, sessionDir } from "../src/paths.js";
 import { recordSession } from "../src/agent/session-ledger.js";
 import { setRef } from "../src/git/git.js";
-import { queuedLandings } from "../src/landing/landing-queue.js";
+import { queuedLandings } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt } from "./fixtures/loop-fixtures.js";
 import { landHead } from "./fixtures/orchestrator-fixtures.js";

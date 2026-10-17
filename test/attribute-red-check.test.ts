@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { attributeRedCheck } from "../src/landing/landing-check-failures.js";
+import { attributeRedCheck } from "../src/merge/merge-check-failures.js";
 import { defaultConfig } from "../src/config/config.js";
 import { freshLoopState, loadLoopState, saveLoopState, type LoopState } from "../src/loop/loop-state.js";
 import { refSha, setRef } from "../src/git/git.js";
@@ -15,7 +15,7 @@ import type { BuildCheckOutcome, BuildCheckRun } from "../src/build/build-check.
 import { mainSha, makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { baselineFixture, fakeNpm } from "./fixtures/loop-fixtures.js";
 
-// Unit coverage for attributeRedCheck (src/landing/landing-check-failures.ts): the gate's final
+// Unit coverage for attributeRedCheck (src/merge/merge-check-failures.ts): the gate's final
 // attribution
 // step, shared by a batch bisect's last move and a single landing's in-lock check at the
 // failure limit. The red change's verdict is not the test's subject — main's OWN verdict at
@@ -191,7 +191,7 @@ test("attributeRedCheck keeps the ref and records no strike for an unverified re
 });
 
 test("attributeRedCheck still rejects when the events feed is unwritable", async () => {
-  // rejectChange (src/landing/landing-check-failures.ts) writes review_rejected LAST, after
+  // rejectChange (src/merge/merge-check-failures.ts) writes review_rejected LAST, after
   // the durable state (recordReview, saveLoopState) and the pin's deletion. An EISDIR on the
   // feed must not turn the terminal "rejected" into a thrown landing error that leaves the pin
   // deleted while the caller believes the attribution failed. Seed main's baseline green so

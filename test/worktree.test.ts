@@ -10,7 +10,7 @@ import {
   removeLegacyLandWorktrees,
   resetWorktreeToMain,
 } from "../src/git/worktree.js";
-import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/landing/landing-git.js";
+import { rebaseOntoMain, rebaseOntoMainLeaveConflicts } from "../src/merge/merge-git.js";
 import { branchName, mirrorWorktreePath } from "../src/paths.js";
 import { assertClean, headSha, loggingGit, mainSha, makeRepo, seedConflict, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 
@@ -19,7 +19,7 @@ import { assertClean, headSha, loggingGit, mainSha, makeRepo, seedConflict, sh, 
 // from test/redeployer.test.ts, where it was filed with the redeployer instead of beside the
 // module it tests; the ensureWorktree/resetWorktreeToMain/abortSync cluster moved here from
 // test/git.test.ts, which had filed worktree.ts's tests under git.ts's name. The rebase calls
-// some tests make come from landing-git.ts — they are fixtures that leave conflicting state,
+// some tests make come from merge-git.ts — they are fixtures that leave conflicting state,
 // not the subjects under test.
 
 test("ensureDetachedWorktree pins the mirror at a ref and re-points an existing one", async () => {

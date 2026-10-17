@@ -250,8 +250,8 @@ export function bucketLandingEvents(events: HarnessEvent[]): {
  * (RETRIABLE_LANDING_RESULTS: review_error, merge_conflict, merge_blocked) keeps the pin and
  * leftover recovery re-enqueues it for another attempt, so a later recovery pin — and its
  * merge_done/merge_failed — owns the real verdict. When main moved before the retry the vet's
- * syncPinToMain rebased the ref (landing-core.ts), so the recovery pin carries the rebased sha
- * while each attempt's own merge_done/merge_failed logs its entry's authored sha (landing-slot.ts's
+ * syncPinToMain rebased the ref (merge-core.ts), so the recovery pin carries the rebased sha
+ * while each attempt's own merge_done/merge_failed logs its entry's authored sha (merge-slot.ts's
  * entry.sha): the attempts' shas differ, so the walk follows the pin sequence (isRecoveryPin),
  * not sha equality alone. It stops at a pin that is not a recovery re-enqueue — a fresh change
  * after a conflict-cap discard — so the row never credits a different change's verdict

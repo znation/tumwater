@@ -17,7 +17,7 @@ import {
   tickProgress,
   workingDetail,
 } from "./tick-progress-model.js";
-import { landingChanges, LANDING_STAGE_LABELS, type LandingChange } from "../landing/landing-slot.js";
+import { landingChanges, LANDING_STAGE_LABELS, type LandingChange } from "../merge/merge-slot.js";
 
 /** The status DISPLAY MODEL: the loop's cycle position (the phase ladder), its landing cell,
  * and its per-loop row derivation (the header badges live next door in badges.ts, the

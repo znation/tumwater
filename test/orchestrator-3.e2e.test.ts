@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
+import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
 import { defaultConfig, saveConfig } from "../src/config/config.js";
 import { initProject } from "../src/init/init.js";
 import { readEvents } from "../src/events/event-read.js";
@@ -21,7 +21,7 @@ import {
   landingRefName,
   landingStatePath,
 } from "../src/paths.js";
-import { enqueueLanding, queueDepth } from "../src/landing/landing-queue.js";
+import { enqueueLanding, queueDepth } from "../src/merge/merge-queue.js";
 import { setRef } from "../src/git/git.js";
 import {
   fastConfig,

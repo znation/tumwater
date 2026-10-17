@@ -19,8 +19,8 @@ import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.
 import { readyBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
 import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
 import { renderTeamChange, renderRoleChange } from "../change/change-render.js";
-import { readLandingQueue } from "../landing/landing-queue.js";
-import { renderLandingQueue } from "../landing/landing-queue-render.js";
+import { readLandingQueue } from "../merge/merge-queue.js";
+import { renderLandingQueue } from "../merge/merge-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
 import { queueInFlight } from "../status/status-polls.js";
 import { rolePayload } from "../roles/role-view.js";

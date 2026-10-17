@@ -16,7 +16,7 @@ import { pathPrepend, projManifest, writeScript } from "../fakes/fake-commands.j
 import { ensureParentDir } from "../../src/files/files.js";
 import { readSlotsState, updateSlotsState } from "../../src/git/slots-state.js";
 import { landingRefName, worktreePath } from "../../src/paths.js";
-import { headLanding, queueDepth } from "../../src/landing/landing-queue.js";
+import { headLanding, queueDepth } from "../../src/merge/merge-queue.js";
 import { enqueuePrompt, inboxSize } from "../../src/inbox/inbox.js";
 import { landHead } from "./orchestrator-fixtures.js";
 import { withPi } from "../fakes/fake-pi.js";

@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   resolveBacklogInsertConflicts,
   resolveInsertOnlyText,
-} from "../src/landing/backlog-conflicts.js";
+} from "../src/merge/backlog-conflicts.js";
 import { makeRepo, sh } from "./fixtures/repo-fixtures.js";
 import { patchFsMethod } from "./helpers/fs-faults.js";
 

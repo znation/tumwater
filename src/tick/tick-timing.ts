@@ -2,7 +2,7 @@
 import { BUILD_CHECK_TIMEOUT_MS } from "../build/build-check-detect.js";
 import { warnEvent, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
-import type { InFlightLanding } from "../landing/landing-pipeline.js";
+import type { InFlightLanding } from "../merge/merge-pipeline.js";
 import { landingStatePath } from "../paths.js";
 import { runOnAbort } from "../process/process.js";
 import type { TickOutcome } from "./tick-outcome.js";
@@ -151,7 +151,7 @@ type HandoffLandingOutcome = "finished" | "aborted" | "abandoned";
  * landing's roles), so the feed says why `restarting onto build …` is not yet followed by
  * `orchestrator stopped`. Past `windowMs` the landing is stopped the way the drain gives up on role
  * ticks: `abort` fires the harness's internal stop, which kills its pi runs at once and makes it
- * stop at its next step boundary (landing-core.ts, landing-batch.ts, and landing-stack.ts check the
+ * stop at its next step boundary (merge-core.ts, merge-batch.ts, and merge-stack.ts check the
  * signal before every gate, every approved landing, and each of a stack's check attempts), and a
  * warning names what was still awaited. An aborted landing records `aborted` like any shutdown
  * abort — pins kept, entries dropped, marker removed — for its roles' leftover recovery on the

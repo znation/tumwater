@@ -9,7 +9,7 @@ import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { assistantLine, errorLine } from "./fixtures/pi-events.js";
 import { makeHost, recordingFakePi, runArgs } from "./fixtures/loop-pi-fixtures.js";
 import { LoopRunner } from "../src/loop/loop.js";
-import { landingUsage } from "../src/landing/landing-slot.js";
+import { landingUsage } from "../src/merge/merge-slot.js";
 
 // The shared transient-failure retry (src/loop/loop-pi.ts's runWithTransientRetry): the one
 // bounded retry every pi run takes — the 429 branch with its Retry-After wait and cap, the
@@ -110,8 +110,8 @@ test("a 429 on a non-default reviewer seam folds that seam's hold key through fo
 });
 
 test("a 429 on a claude reviewer's final run folds the review seam through foldLandingUsage", () => {
-  // The reviewer's FINAL (retried) run is folded by landing-core.ts's reviewPinnedChange
-  // through the landingUsage fold (src/landing/landing-slot.ts); loop-pi.ts folds only the
+  // The reviewer's FINAL (retried) run is folded by merge-core.ts's reviewPinnedChange
+  // through the landingUsage fold (src/merge/merge-slot.ts); loop-pi.ts folds only the
   // RETRIED first attempt. That final fold must stamp the REVIEW seam's hold key too — a
   // storm on a claude reviewer holds `claude`, never the pi author's default provider
   // (PLANS.md "Mixed claude + pi fleets, part 2/4", gap 3). The author's own provider is

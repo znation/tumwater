@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { initProject } from "../src/init/init.js";
-import { enqueueLanding, type LandingEntry } from "../src/landing/landing-queue.js";
+import { enqueueLanding, type LandingEntry } from "../src/merge/merge-queue.js";
 import path from "node:path";
 import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/paths.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";

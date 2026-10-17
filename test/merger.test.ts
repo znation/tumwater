@@ -1,0 +1,850 @@
+import test from "node:test";
+import { readJson } from "./helpers/json-read.js";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { LANDING_CHECK_FAILURE_LIMIT } from "../src/merge/merge-check-failures.js";
+import { landApprovedChange, reviewPinnedChange } from "../src/merge/merge-core.js";
+import type { BatchRoleWiring } from "../src/merge/merge-batch.js";
+import { aheadOfMain, refSha, setRef } from "../src/git/git.js";
+import { readSlotsState } from "../src/git/slots-state.js";
+import { landingRefName, mergeWorktreePath, rejectedRefName, statePath } from "../src/paths.js";
+import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { readEvents } from "../src/events/event-read.js";
+import { noteGreenBaseline } from "../src/baseline/main-baseline.js";
+import type { LoopState } from "../src/loop/loop-state.js";
+import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";
+import { assertClean, headSha, mainSha, sh, tmpdir } from "./fixtures/repo-fixtures.js";
+import { piRanMarker, withApprovePi, withPi } from "./fakes/fake-pi.js";
+import {
+  ROLE,
+  REF,
+  makeCtx,
+  pinnedFixture,
+  reviewerPi,
+  request,
+  vetAndLand,
+  declareCheck,
+  batchFixture,
+  runBatch,
+  replyLine,
+  reviewerByRole,
+  awaitEvent,
+  advanceMain,
+  perRoleReviewerPi,
+  runBatchRecorded,
+} from "./fixtures/merger-fixtures.js";
+import { assistantLine } from "./fixtures/pi-events.js";
+
+// Unit coverage for the two halves of a landing — merge-batch.ts's vetRequest (checkout in
+// _land-<role>, rebase onto main, merge-core.ts's review gate) and landVetted (the merge: one
+// change through landApprovedChange, or a stack with one check, one fast-forward, the re-stack,
+// 3d's prefix bisect and the one-at-a-time fallback) — driven here in queue order exactly as the
+// landing pipeline runs them (merge-drain.ts). The reviewer run is a real pi subprocess behind
+// the fake shim; merge-to-main.ts's conflict resolver goes through the wiring's runPi, which is
+// stubbed.
+//
+// Split in three so node --test runs them in parallel processes: this file holds the vet and
+// single-change landings, the batch basics, aborts and the per-change status hook;
+// merger-restack.test.ts the re-stack on a moved main; merger-bisect.test.ts the red-stack bisect
+// and the one-at-a-time fallback. Shared fixtures live in test/fixtures/merger-fixtures.ts. Keep
+// the three roughly equal in measured duration when moving tests between them.
+
+test("an approved landing lands on main and deletes the ref", async () => {
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha, wt } = await pinnedFixture();
+      const state = freshLoopState(ROLE);
+      const { ctx, folded } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "changed");
+
+      assert.equal(mainSha(root), sha, "the pinned commit is main's head");
+      assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
+      assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree stayed clean at main");
+      assert.equal(folded.length, 1, "the reviewer run's usage folds into the tick counters");
+      assert.equal(state.lastReview?.verdict, "approve");
+    },
+  );
+});
+
+test("the gate's verdict is durable on disk before the tick's end save", async () => {
+  // Regression (2026-09-14): state was written to disk only at tick boundaries, so a
+  // sudden death after the gate's verdict (power loss, kill -9) left the last
+  // tick-boundary snapshot on disk — a stale "reject" for work already superseded —
+  // and every later tick got a "your previous change was rejected" note about work
+  // that was already on main. The verdict must be durable before the tick's tail
+  // (the landing plus the still-to-come authoring run) can die unsaved.
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      const state = freshLoopState(ROLE);
+      // What disk holds at tick start: the superseded rejection's verdict.
+      state.lastReview = {
+        verdict: "reject",
+        reasons: ["check failed (test): stale"],
+        head: "0".repeat(40),
+        at: Date.now() - 3_600_000,
+      };
+      saveLoopState(root, state);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "changed");
+
+      // Read back from disk, not the in-memory object: without an immediate persist the
+      // file still holds the seeded reject and the stale note would survive the crash.
+      const onDisk = readJson(statePath(root, ROLE)) as LoopState;
+      assert.equal(onDisk.lastReview?.verdict, "approve", "the approve is durable on disk, not just in memory");
+      assert.equal(onDisk.lastApprovedHead, sha, "the approved head is durable");
+    },
+  );
+});
+
+test("a rejected landing lands nothing: role worktree clean at main, ref deleted, reasons recorded", async () => {
+  await withPi(
+    reviewerPi("VERDICT: reject\n1. breaks the zero-dep rule"),
+    async () => {
+      const { root, sha, wt } = await pinnedFixture();
+      const state = freshLoopState(ROLE);
+      const mainBefore = mainSha(root);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
+
+      assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+      assert.equal(await aheadOfMain(wt, "main"), 0, "the role worktree is clean at main");
+      assertClean(wt, "no stray edits in the role worktree");
+      assert.equal(await refSha(root, REF), null, "a rejection is terminal: the pin goes too");
+      assert.deepEqual(state.lastReview?.reasons, ["breaks the zero-dep rule"]);
+    },
+  );
+});
+
+test("a verdict-less failure under the strike cap returns review_error and keeps the ref", async () => {
+  await withPi(
+    reviewerPi("I think this is fine overall."),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      const state = freshLoopState(ROLE);
+      const mainBefore = mainSha(root);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "review_error");
+
+      assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+      assert.ok(state.lastError?.startsWith("review failed:"), `lastError names the failure: ${state.lastError}`);
+      assert.equal(await refSha(root, REF), sha, "under the cap the pin stays for next-tick recovery");
+    },
+  );
+});
+
+test("three verdict-less failures discard the landing and delete the ref", async () => {
+  await withPi(
+    reviewerPi("I think this is fine overall."),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      const state = freshLoopState(ROLE); // one state object across all three attempts
+      const mainBefore = mainSha(root);
+
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const { ctx } = makeCtx(root, state);
+        assert.equal(await vetAndLand(ctx, request(sha)), "review_error");
+        assert.equal(await refSha(root, REF), sha, `attempt ${attempt} is under the cap: pin kept`);
+      }
+
+      const { ctx } = makeCtx(root, state);
+      assert.equal(await vetAndLand(ctx, request(sha)), "review_error", "the discard reports like a failure");
+      assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+      assert.equal(await refSha(root, REF), null, "past the strike cap the pin is deleted with it");
+    },
+  );
+});
+
+test("an abort mid-review returns aborted and keeps the ref", async () => {
+  await withPi(`exec sleep 30`, async () => { // never reached: the signal is already aborted
+    const { root, sha } = await pinnedFixture();
+    const state = freshLoopState(ROLE);
+    const mainBefore = mainSha(root);
+    const { ctx, controller } = makeCtx(root, state);
+    controller.abort(); // a shutdown that lands before the reviewer starts
+
+    assert.equal(await vetAndLand(ctx, request(sha)), "aborted");
+
+    assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+    assert.equal(await refSha(root, REF), sha, "an aborted landing keeps its pin for recovery");
+  });
+});
+
+test("a conflicting landing gets one resolution run and then lands", async () => {
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      // Advance main with a conflicting edit after the pin — the common concurrent case.
+      advanceMain(root, "seed.txt", "main\n");
+
+      const state = freshLoopState(ROLE);
+      const { ctx, calls } = makeCtx(root, state, (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // resolve the markers
+      });
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "changed");
+
+      assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "combined\n");
+      assert.equal(calls.length, 1, "exactly one resolution attempt per landing");
+      assert.match(calls[0]!.session, /tumwater-improve-7-conflict/, "named after the role and tick");
+      assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
+      // The rebase rewrote the pinned commit onto main's advance: linear history, no merge commits.
+      assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
+    },
+  );
+});
+
+// The re-review gate over a diverging resolution (merge-core.ts's recheckResolved) has two
+// non-approval outcomes the approved test above cannot reach: a model REJECT (the verdict is
+// final — the pin is deleted, nothing lands) and a FAILED review (no parseable verdict — no
+// verdict about the tree, the pin stays for recovery's retry). The shim numbers the review
+// runs it sees: run 1 is the vet's approval, run 2 is the re-review.
+
+test("a resolution the re-review rejects deletes the pin and lands nothing", async () => {
+  const rec = path.join(tmpdir("lander-rereview-rej-"), "n");
+  await withPi(
+    `n=1
+     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
+     printf '%s\n' "$n" > '${rec}'
+     for a in "$@"; do case "$a" in *"VERDICT:"*)
+       if [ "$n" -eq 1 ]; then
+         printf '%s\n' '${assistantLine("VERDICT: approve")}'
+       else
+         printf '%s\n' '${assistantLine("VERDICT: reject\n1. the resolution restored code main reverted")}'
+       fi
+       exit 0;; esac; done`,
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      advanceMain(root, "seed.txt", "main\n");
+
+      const state = freshLoopState(ROLE);
+      const { ctx, calls } = makeCtx(root, state, (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n"); // diverges from the reviewed diff
+      });
+      const mainBefore = mainSha(root);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
+
+      assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+      assert.equal(await refSha(root, REF), null, "a rejected re-review is final: the pin is deleted");
+      assert.equal(
+        state.lastError,
+        "merge failed: conflict resolution rejected on re-review",
+      );
+      assert.equal(state.lastReview?.verdict, "reject", "the re-review's verdict is recorded");
+      assert.equal(eventsOfType(root, "review_rejected").length, 1, "the rejection is logged");
+      // A re-review rejection sends the resolved change back for revision too (plans/revise-
+      // rejected.md): round 1 is recorded and the rejected ref keeps the head the re-review judged
+      // alive, even though the landing pin itself is deleted.
+      assert.equal(state.revision?.round, 1, "a re-review rejection owes one revision");
+      assert.equal(await refSha(root, rejectedRefName(ROLE)), state.lastReview?.head);
+      // The resolution run went through the wiring stub; the re-review was a real gate run.
+      assert.equal(calls.length, 1);
+      // Terminal rejection deletes the pin; the shared `_merge` checkout persists (plans/
+      // worktree-pool.md, part 2c) — the resolution is discarded by dropping the pin, not the
+      // checkout, so the next merge reuses it.
+      assert.equal(fs.existsSync(mergeWorktreePath(root)), true, "the shared _merge checkout persists on rejection");
+    },
+  );
+});
+
+test("a re-review with no parseable verdict keeps the pin for a retry", async () => {
+  const rec = path.join(tmpdir("lander-rereview-fail-"), "n");
+  await withPi(
+    `n=1
+     if [ -f '${rec}' ]; then n=$(( $(cat '${rec}') + 1 )); fi
+     printf '%s\n' "$n" > '${rec}'
+     for a in "$@"; do case "$a" in *"VERDICT:"*)
+       if [ "$n" -eq 1 ]; then
+         printf '%s\n' '${assistantLine("VERDICT: approve")}'
+       else
+         printf '%s\n' '${assistantLine("looks fine to me")}'
+       fi
+       exit 0;; esac; done`,
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      advanceMain(root, "seed.txt", "main\n");
+
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state, (wt) => {
+        fs.writeFileSync(path.join(wt, "seed.txt"), "combined\n");
+      });
+      const mainBefore = mainSha(root);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "merge_conflict");
+
+      assert.equal(mainSha(root), mainBefore, "nothing landed on main");
+      assert.equal(await refSha(root, REF), sha, "a failed re-review is no verdict: the pin stays");
+      // The retry's lastError names the retryable outcome (the failed review's detail rides
+      // state.lastReview and the unreviewFailures counter instead — merge-core.ts keeps a
+      // rejected recheck's own lastError, and a retry gets the plain one).
+      assert.equal(state.lastError, "merge failed: merge_conflict");
+      assert.equal(state.unreviewFailures, 1, "the failed review counts toward the discard cap");
+      assert.equal(state.lastReview?.verdict, "failed");
+    },
+  );
+});
+
+test("a landing pinned behind main's advance is rebased onto main BEFORE the gate and lands both", async () => {
+  // PLANS.md 2026-09-21: the gate must review main's CURRENT tree. Advance main after the
+  // pin with a non-conflicting commit, then check the reviewer saw the rebased tree — if the
+  // gate ran on the stale pin, main's fix would not be under review and a red main would
+  // cascade through every queued landing.
+  const rec = path.join(tmpdir("lander-rec-"), "seen");
+  await withPi(
+    `git rev-parse HEAD >> ${rec}\n` +
+      reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+      sh(root, "git", "add", "-A");
+      sh(root, "git", "commit", "-m", "fix main");
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "changed");
+
+      // main holds both: main's fix underneath, the rebased change on top (linear, no merge).
+      const mainHead = mainSha(root);
+      assert.notEqual(mainHead, sha, "main moved past the pin: the change was rebased onto the fix");
+      assert.equal(fs.readFileSync(path.join(root, "seed.txt"), "utf8"), "seed\nthe work\n");
+      assert.equal(fs.readFileSync(path.join(root, "fix.txt"), "utf8"), "main fix\n");
+      assert.equal(sh(root, "git", "log", "--merges", "--oneline"), "");
+      // The reviewer ran in the lander worktree at the SYNCED head — the pre-check/review tree
+      // is exactly what became main, and the landing ref tracked it (deleted on landing here).
+      const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
+      assert.equal(seen[0], mainHead, "the gate reviewed the rebased tree, not the stale pin");
+      assert.equal(await refSha(root, REF), null, "the pin was deleted on landing");
+    },
+  );
+});
+
+test("a synced rebase moves the landing ref so a failed gate keeps the tree that can land", async () => {
+  // The strike-cap tell compares the lander worktree's HEAD against req.sha: when the
+  // pre-gate rebase rewrote the pin, the request (and the ref) must name the synced head, or
+  // an under-cap failure would look like a strike-cap discard and delete the pinned work.
+  await withPi(
+    reviewerPi("I think this is fine overall."),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      fs.writeFileSync(path.join(root, "fix.txt"), "main fix\n");
+      sh(root, "git", "add", "-A");
+      sh(root, "git", "commit", "-m", "fix main");
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state);
+
+      assert.equal(await vetAndLand(ctx, request(sha)), "review_error");
+
+      // Nothing landed (main still holds the fix commit), so the synced head is not main's
+      // head — it is the rebased commit the vet's pooled slot sits at.
+      const slot = readSlotsState(root).slots.find((s) => s.lastRole === ROLE)?.dir;
+      assert.ok(slot, "the vet released the pooled slot it leased");
+      const syncedHead = headSha(slot);
+      assert.notEqual(syncedHead, sha, "the rebase rewrote the pin onto main's fix");
+      assert.equal(
+        await refSha(root, REF),
+        syncedHead,
+        "the ref tracks the rebased commit, not the stale pin",
+      );
+    },
+  );
+});
+
+test("the merge checkout is shared, kept detached, and persists at a terminal outcome", async () => {
+  await withPi(
+    reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha } = await pinnedFixture();
+      // Main moves after the pin so the in-lock rebase rewrites the tree and the landing check
+      // runs; the first red is non-terminal (kept), the second hits the failure limit and is
+      // attributed against main's own (green) verdict, so it rejects terminally.
+      const tip = advanceMain(root, `main-per-role-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+      noteGreenBaseline(tip);
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state);
+      ctx.config = { ...ctx.config, check: { command: "echo 'error: planted landing failure'; exit 1" } };
+      const landWt = mergeWorktreePath(root);
+
+      // Non-terminal: the first red keeps the pin for a re-land; the merge checkout persists.
+      assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
+      assert.equal(await refSha(root, REF), sha, "the pin names the original pinned sha");
+      assert.ok(fs.existsSync(landWt), "_merge exists after a non-terminal outcome");
+      assert.equal(
+        fs.existsSync(path.join(root, ".tumwater", "worktrees", `_land-${ROLE}`)),
+        false,
+        "no legacy _land-<role> checkout is created for a merge",
+      );
+      // Detached: no branch ref is checked out there — rebasing it never moves a role branch.
+      let detached = false;
+      try {
+        sh(landWt, "git", "symbolic-ref", "--short", "HEAD");
+      } catch {
+        detached = true; // a detached HEAD makes symbolic-ref exit nonzero
+      }
+      assert.ok(detached, "_merge is detached (rebasing never moves a role branch)");
+
+      // Terminal: at the failure limit a green main rejects the change — the pin goes, the
+      // shared checkout stays for the next merge.
+      assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "at the failure limit a green main rejects");
+      assert.equal(await refSha(root, REF), null, "the pin is gone on rejection");
+      assert.ok(fs.existsSync(landWt), "_merge persists at the terminal rejection");
+      assert.equal(mainSha(root), tip, "nothing landed");
+    },
+  );
+});
+// A gate pre-check failure that survives its one re-run is attributed through main's own baseline
+// verdict (src/review/review.ts), and the landing's ref lifecycle follows the two outcomes: a green
+// main's reject deletes the pin, a red main's no-strike failure keeps it for the next re-land.
+// Neither spends a pi run. makeRepo's seed commit is byte-identical across tests run in the same
+// second and the baseline cache is keyed by SHA, so the red case moves main to a commit of its own
+// before asking.
+
+test("a failing pre-check on a green main rejects the landing and spends no pi run", async () => {
+  const { root, sha } = await pinnedFixture();
+  // The gate scope fails while the declared check — what main's fresh re-check runs — passes:
+  // main is green, so the change's failure is its own.
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
+    const state = freshLoopState(ROLE);
+    const { ctx, folded } = makeCtx(root, state);
+    ctx.config = { ...ctx.config, check: { command: "echo ok", gateCommand: "echo 'error TS2345: boom' >&2; exit 1" } };
+    assert.equal(await vetAndLand(ctx, request(sha)), "rejected");
+    assert.equal(await refSha(root, REF), null, "rejected: the pin is gone");
+    assert.ok(!fs.existsSync(marker), "no pi run: the check and main's verdict decided alone");
+    assert.equal(folded.length, 0, "nothing to fold");
+    assert.equal(state.lastReview?.verdict, "reject");
+  });
+});
+
+// A change whose gate passes but whose in-lock landing check goes red (a cheaper
+// check.gateCommand, say) used to come back merge_blocked on every re-land, its role never
+// authoring again. The first red keeps the pin for one retry; at LANDING_CHECK_FAILURE_LIMIT the
+// red is judged by main's own verdict, like a red gate check.
+for (const main of ["green", "red"] as const) {
+  test(`a single landing's red in-lock check retries once, then ${main === "green" ? "rejects on a green main" : "keeps its pin as main_red"}`, async () => {
+    assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+    const { root, sha } = await pinnedFixture();
+    // Main moves after the pin, so the in-lock rebase rewrites it and the landing check runs.
+    const tip = advanceMain(root, `main-${main}-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+    if (main === "green") noteGreenBaseline(tip); // what main's own last landing left behind
+    const state = freshLoopState(ROLE);
+    const { ctx, calls } = makeCtx(root, state);
+    ctx.config = { ...ctx.config, check: { command: "echo 'error: planted landing failure'; exit 1" } };
+
+    assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one retry");
+    assert.equal(await refSha(root, REF), sha);
+    assert.equal(state.mergeCheckFailures?.count, 1);
+    assert.match(state.lastError ?? "", /^merge failed: merge_blocked — check failed .*planted landing failure/);
+
+    const second = await landApprovedChange(ctx, request(sha));
+    if (main === "green") {
+      assert.equal(second, "rejected", "the change broke the check: rejected with its output");
+      assert.equal(await refSha(root, REF), null, "the pin is gone");
+      assert.equal(state.lastReview?.verdict, "reject");
+      assert.match(state.lastReview!.reasons[0]!, /planted landing failure/);
+      assert.equal(eventsOfType(root, "review_rejected").length, 1);
+    } else {
+      assert.equal(second, "main_red", "main fails too: not this change's failure");
+      assert.equal(await refSha(root, REF), sha, "the pin is kept for a re-land once main is green");
+      assert.match(state.lastError ?? "", /^merge check failed: main \S+ is red — not this change's failure$/);
+      assert.equal(eventsOfType(root, "review_rejected").length, 0);
+    }
+    assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
+    assert.equal(calls.length, 0, "no model run");
+    assert.equal(mainSha(root), tip, "nothing landed");
+  });
+}
+
+// The first red of a patch's in-lock landing check is the retry that exists for load flakes — the
+// whole point is to re-land a flaky test green. It is also the one signal that could name the flaky
+// test, and until now the reason was written only into lastError, which the leftover-recovery tick
+// overwrites a second later, so the flaky test could never be identified (BUGS.md 2026-10-14). The
+// kept-for-re-land path now logs a warning naming the failing test, so the digest and a later audit
+// can still name it.
+test("a kept-for-re-land red landing check logs a warning naming the failing test", async () => {
+  const { root, sha } = await pinnedFixture();
+  // Main moves after the pin so the in-lock rebase rewrites the tree and the landing check runs.
+  const tip = advanceMain(root, `main-red-warn-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  noteGreenBaseline(tip);
+  const state = freshLoopState(ROLE);
+  const { ctx } = makeCtx(root, state);
+  ctx.config = { ...ctx.config, check: { command: "echo '✖ the flaky test (1.2ms)'; exit 1" } };
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first red keeps the pin for one re-land");
+  assert.equal(await refSha(root, REF), sha, "the pin is kept");
+
+  const warning = warningMessages(root).find((m) => m.includes("merge check failed (kept for one retry)"));
+  assert.ok(warning, "the kept-for-re-land red is recorded durably as a warning");
+  assert.match(warning!, /the flaky test/, "the warning names the failing test");
+  assert.equal(mainSha(root), tip, "nothing landed");
+});
+
+// A fix-claim-blocked landing used to be kept like a lost fast-forward race and re-landed on
+// every recovery, each retry paying a fresh conflict-resolver run against the same block —
+// five resolver sessions for one pin on 2026-10-01. The block is a deterministic property of
+// the tree ahead of main, so it is counted like a red landing check: the first block keeps
+// the pin for one differently-rebased retry, and the second rejects the change with the
+// block's reason (no model run, no main-tip verdict needed).
+test("a fix-claim-blocked landing retries once, then rejects with the block reason", async () => {
+  assert.equal(LANDING_CHECK_FAILURE_LIMIT, 2);
+  const { root } = await pinnedFixture();
+  // Seed BUGS.md on main with the bug Open; the pin's md-only commit moves it to Fixed
+  // naming a symbol that exists nowhere on the tree — falseFixReason's block.
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### A bug (found 2026-10-02)\n\n**Symptom:** x.\n",
+  );
+  sh(root, "git", "add", "BUGS.md");
+  sh(root, "git", "commit", "-m", "seed bugs");
+  sh(root, "git", "checkout", "--detach");
+  fs.writeFileSync(
+    path.join(root, "BUGS.md"),
+    "## Open\n\n### Another bug (found 2026-10-02)\n\n**Symptom:** y.\n\n" +
+      "## Fixed\n\n### A bug (found 2026-10-02, fixed 2026-10-02)\n\n" +
+      "**Fix:** `phantomSymbolName` in src/nowhere.ts now holds.\n",
+  );
+  // BUGS.md only: a `git add -A` here would sweep the role worktree's
+  // .tumwater/worktrees/improve entry into the pin and the diff would not be md-only.
+  sh(root, "git", "add", "BUGS.md");
+  sh(root, "git", "commit", "-m", "fix claim");
+  const sha = headSha(root);
+  sh(root, "git", "checkout", "main");
+  await setRef(root, REF, sha);
+  // Main moves after the pin, so the in-lock rebase rewrites the head and verifyLanding's
+  // exempt arm runs its cross-checks (a no-op rebase would skip them).
+  advanceMain(root, `main-unrelated-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  const state = freshLoopState(ROLE);
+  const { ctx, calls } = makeCtx(root, state);
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "the first block keeps the pin for one retry");
+  assert.equal(await refSha(root, REF), sha);
+  assert.equal(state.mergeCheckFailures?.count, 1);
+  assert.match(state.lastError ?? "", /merge failed: merge_blocked — .*phantomSymbolName/);
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "rejected", "the second identical block is attributed to the change");
+  assert.equal(await refSha(root, REF), null, "the pin is gone");
+  assert.equal(state.mergeCheckFailures, undefined, "the streak ends at the attribution");
+  assert.equal(state.lastReview?.verdict, "reject");
+  assert.match(state.lastReview!.reasons[0]!, /phantomSymbolName/);
+  assert.equal(eventsOfType(root, "review_rejected").length, 1);
+  assert.equal(calls.length, 0, "no model run — no resolver, no reviewer");
+});
+
+test("an unverified red in-lock check — the run timed out — keeps the pin without a strike", async () => {
+  // The landing half of BUGS.md 2026-09-30: at the merge scopes a timed-out check made no
+  // verdict about the tree, so it is not a strike against the patch (the red-attribution
+  // helper's own unverified arm is pinned in attribute-red-check.test.ts — this drives the
+  // same weather through a real landing, where the in-lock check's timeout is remapped to
+  // unverified before landingCheckRed ever sees it).
+  const { root, sha } = await pinnedFixture();
+  const tip = advanceMain(root, `main-unverified-${process.pid}-${Date.now()}.txt`, "main moves on\n");
+  const state = freshLoopState(ROLE);
+  const { ctx, calls } = makeCtx(root, state);
+  ctx.config = { ...ctx.config, check: { command: "sleep 5", timeoutSeconds: 1 } };
+
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked", "an unverified red is retriable, like any merge_blocked");
+  assert.equal(await refSha(root, REF), sha, "the pin stays for the next attempt");
+  assert.equal(state.mergeCheckFailures, undefined, "no strike: the check never judged the tree");
+  assert.match(state.lastError ?? "", /the tree is unverified/, "the state names the verdict-less run, not a test failure");
+  assert.equal(mainSha(root), tip, "nothing landed");
+
+  // A second attempt is the same weather: still no strike, still recoverable — an unverified
+  // check can never accumulate into the strike-cap attribution that deletes the pin.
+  assert.equal(await landApprovedChange(ctx, request(sha)), "merge_blocked");
+  assert.equal(state.mergeCheckFailures, undefined, "the streak never opens on an unverified red");
+  assert.equal(await refSha(root, REF), sha);
+  assert.equal(calls.length, 0, "no model run");
+});
+
+test("a failing pre-check on a red main keeps the pin, records no rejection, and spends no pi run", async () => {
+  const { root, sha } = await pinnedFixture();
+  declareCheck(root, "#!/bin/sh\necho 'error TS2345: boom' >&2\nexit 1\n");
+  const unique = `main-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`;
+  fs.writeFileSync(path.join(root, unique), "main moved\n");
+  sh(root, "git", "add", unique);
+  sh(root, "git", "commit", "-m", "main moves on its own");
+  const newMainSha = mainSha(root);
+  const marker = piRanMarker();
+  await withPi(`touch '${marker}'\n${reviewerPi("VERDICT: approve")}`, async () => {
+    const state = freshLoopState(ROLE);
+    const { ctx, folded } = makeCtx(root, state);
+    assert.equal(await vetAndLand(ctx, request(sha)), "main_red", "not a reviewer failure");
+    const pinned = await refSha(root, REF);
+    assert.ok(pinned, "the pin survives a red main");
+    // The pre-gate sync rebased the pin onto the moved main; the gate left it exactly there.
+    assert.equal(sh(root, "git", "rev-parse", `${pinned}~1`), newMainSha);
+    assert.ok(sh(root, "git", "show", `${pinned}:seed.txt`).includes("the work"), "the pin still names the work");
+    assert.ok(!fs.existsSync(marker), "no pi run");
+    assert.equal(folded.length, 0);
+    assert.equal(state.unreviewFailures ?? 0, 0, "no strike");
+    assert.equal(state.lastReview?.verdict, "failed", "no rejection recorded against the author");
+    assert.match(state.lastError ?? "", /^gate check failed: main [0-9a-f]+ is red — not this change's failure$/);
+    assert.ok(!readEvents(root).some((e) => e.type === "review_rejected"));
+  });
+});
+
+// ── The merge: landVetted (merge queue 5/5, land-queue speed 2c) ─────────────────────────
+// The merge over N roles' vetted landings: stacked into one worktree, one shared build check,
+// one fast-forward. The reviewer runs (each change's vet) are real pi subprocesses behind the
+// fake shim; the fallback landings' conflict resolver goes through the wiring's runPi stub.
+
+test("an all-rejected batch returns a defined result for every request without throwing", async () => {
+  // The review re-audit found this exact shape crashing: |S| == 0 made the lander index the
+  // empty stack and throw, and the drain's catch kept every entry — a queue leak. Now the
+  // batch simply returns: every request terminal, nothing to land, refs gone.
+  await withPi(
+    reviewerPi("VERDICT: reject\n1. no"),
+    async () => {
+      const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+      const mainBefore = mainSha(root);
+
+      const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+      assert.deepEqual(results.map((r) => r.result), ["rejected", "rejected"], "every request has a terminal result");
+      assert.equal(mainSha(root), mainBefore, "nothing landed");
+      assert.equal(await refSha(root, landingRefName("alpha")), null, "a rejection deletes its ref");
+      assert.equal(await refSha(root, landingRefName("beta")), null, "and the next request's too — the batch lands nothing");
+    },
+  );
+});
+
+test("a green batch stacks every approved change, fast-forwards main once, and logs per-change events", async () => {
+  await withApprovePi(async () => {
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    const mainBefore = mainSha(root);
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "2", "both changes landed on main");
+    const merged = eventsOfType(root, "merged");
+    assert.equal(merged.length, 2, "one merged event per change, in queue order");
+    assert.equal(merged[0]!.commit, sh(root, "git", "rev-parse", "main~1"), "the head is the first new commit on main");
+    assert.notEqual(merged[0]!.commit, shas.alpha!, "the head re-committed onto the fresh main base");
+    assert.equal(merged[1]!.commit, mainSha(root), "the stacked tip is main's head");
+    assert.notEqual(merged[1]!.commit, shas.beta!, "the second change re-committed on top of the first");
+    assert.equal(await refSha(root, landingRefName("alpha")), null, "the ff deleted the head's ref");
+    assert.equal(await refSha(root, landingRefName("beta")), null, "and the stacked one's");
+    assert.equal(folded.get("alpha")!.length, 1, "the gate's reviewer run folded into its own role");
+    assert.equal(folded.get("beta")!.length, 1);
+    assert.equal(states.alpha.lastApprovedHead, shas.alpha!, "the verdict persisted per role");
+    assert.equal(states.beta.lastApprovedHead, shas.beta!);
+  });
+});
+
+test("a batch stacks every commit of a multi-commit pin, not its head alone", async () => {
+  // The regression this pins: picking a pin's single head would land only its last diff and
+  // orphan the work beneath it — the stack must pick the whole range from main to that head.
+  const { root, shas, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+  sh(root, "git", "checkout", "--detach", shas.alpha!);
+  fs.writeFileSync(path.join(root, "more.txt"), "more by alpha\n");
+  sh(root, "git", "add", "more.txt");
+  sh(root, "git", "commit", "-m", "more alpha work");
+  shas.alpha = headSha(root);
+  await setRef(root, landingRefName("alpha"), shas.alpha);
+  sh(root, "git", "checkout", "main");
+  const mainBefore = mainSha(root);
+  await withApprovePi(async () => {
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor);
+    assert.deepEqual(results.map((r) => r.result), ["changed", "changed"]);
+    // THREE commits on main: both of alpha's, then beta's — none orphaned.
+    assert.equal(sh(root, "git", "rev-list", "--count", `${mainBefore}..main`), "3");
+    assert.ok(sh(root, "git", "show", "main:alpha.txt").includes("work by alpha"), "the work beneath the head landed");
+    assert.ok(sh(root, "git", "show", "main:more.txt").includes("more by alpha"));
+    assert.ok(sh(root, "git", "show", "main:beta.txt").includes("work by beta"));
+    assert.equal(await refSha(root, landingRefName("alpha")), null);
+    assert.equal(await refSha(root, landingRefName("beta")), null);
+    assert.equal(folded.get("alpha")!.length, 1);
+    assert.equal(folded.get("beta")!.length, 1);
+  });
+});
+
+test("an abort mid-batch routes every request without a terminal outcome to aborted, refs kept", async () => {
+  await withPi(`exec sleep 30`, async () => { // never reached: the signal is already aborted
+    const roles = ["alpha", "beta", "gamma"];
+    const { root, shas, wiringFor, folded } = await batchFixture(roles);
+    const mainBefore = mainSha(root);
+    const controller = new AbortController();
+    controller.abort(); // a shutdown (or a user stop for any batched role) before the batch starts
+
+    const results = await runBatch(root, shas, roles, wiringFor, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted", "aborted"]);
+    for (const role of roles) {
+      assert.equal(await refSha(root, landingRefName(role)), shas[role]!, `an abort keeps ${role}'s ref for recovery`);
+    }
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
+    // Every vet sees the stop before its gate starts: no reviewer spend on any of them.
+    assert.equal(folded.size, 0, "no reviewer ran");
+  });
+});
+
+// BUGS.md 2026-09-23 — a stopping batch ends at its next step boundary, not only where a pi
+// run notices the abort: the restart hand-off aborts a landing that outlived its deadline, and
+// steps that spawn no pi (an approved-head short-circuit, the stack's assembly and shared
+// check) must not carry on regardless.
+
+test("an aborted batch lands nothing even when every gate would short-circuit on an approved head", async () => {
+  await withPi(`exec sleep 30`, async () => { // never reached: no gate starts
+    const { root, shas, states, wiringFor, folded } = await batchFixture(["alpha", "beta"]);
+    // Both heads already approved (a re-drained batch): every gate would short-circuit with
+    // no pi run, so only the between-steps check can see the abort.
+    states.alpha.lastApprovedHead = shas.alpha!;
+    states.beta.lastApprovedHead = shas.beta!;
+    const mainBefore = mainSha(root);
+    const controller = new AbortController();
+    controller.abort();
+
+    const results = await runBatch(root, shas, ["alpha", "beta"], wiringFor, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"]);
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+    assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+    assert.equal(folded.size, 0, "no gate ran a pi");
+  });
+});
+
+test("an abort after the last gate approved stops the batch before its shared check", async () => {
+  const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"]);
+  // beta's approval is the last gate to finish: its review holds until alpha's verdict is on
+  // record, as it must when the two vets run at once.
+  await withPi(
+    reviewerByRole({ beta: `${awaitEvent(root, "alpha", "review_verdict")}${replyLine("VERDICT: approve")}` }),
+    async () => {
+      declareCheck(root, "#!/bin/sh\necho ok\n");
+      const mainBefore = mainSha(root);
+      const controller = new AbortController();
+      // The stop lands the moment beta's gate hands back its approval — after every gate, before
+      // the stack is assembled and checked.
+      const stopAfterBeta = (role: string): BatchRoleWiring => {
+        const w = wiringFor(role);
+        return role === "beta"
+          ? {
+              ...w,
+              foldUsage: (run) => {
+                w.foldUsage(run);
+                controller.abort();
+              },
+            }
+          : w;
+      };
+
+      const results = await runBatch(root, shas, ["alpha", "beta"], stopAfterBeta, controller);
+
+      assert.deepEqual(results.map((r) => r.result), ["aborted", "aborted"], "both approved changes read aborted");
+      assert.equal(mainSha(root), mainBefore, "nothing landed");
+      assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the refs survive for recovery");
+      assert.equal(await refSha(root, landingRefName("beta")), shas.beta!);
+      const checks = eventsOfType(root, "build_check");
+      assert.equal(checks.filter((e) => e.scope === "gate").length, 2, "both gates ran their pre-check");
+      assert.equal(checks.filter((e) => e.scope === "batch").length, 0, "the shared check never started");
+    },
+  );
+});
+
+test("an abort after the gate stops a one-change merge before it lands", async () => {
+  // The one-change (and fallback) landings go through landApprovedChange, which runs no gate
+  // of its own — only its own abort check sees a stop that arrived after the vet.
+  await withApprovePi(async () => {
+    const { root, shas, wiringFor } = await batchFixture(["alpha"]);
+    const mainBefore = mainSha(root);
+    const controller = new AbortController();
+    const stopAfterGate = (role: string): BatchRoleWiring => {
+      const w = wiringFor(role);
+      return {
+        ...w,
+        foldUsage: (run) => {
+          w.foldUsage(run);
+          controller.abort();
+        },
+      };
+    };
+
+    const results = await runBatch(root, shas, ["alpha"], stopAfterGate, controller);
+
+    assert.deepEqual(results.map((r) => r.result), ["aborted"]);
+    assert.equal(mainSha(root), mainBefore, "nothing landed");
+    assert.equal(await refSha(root, landingRefName("alpha")), shas.alpha!, "the ref survives for recovery");
+  });
+});
+
+// The per-change status hook (BUGS.md 2026-09-23): the drain mirrors these reports into the
+// 4/5 marker so each batched role's row reads its own change's state — the batch must report
+// every step, or a finished change keeps a live `landing` row (or an in-flight one shows none).
+
+test("a merge reports each change as it reaches it: the stack lands together, and a rejected change never reaches it", async () => {
+  await withPi(perRoleReviewerPi({ beta: "VERDICT: reject\n1. no" }), async () => {
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta", "gamma"]);
+    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta", "gamma"], wiringFor);
+    assert.deepEqual(results, ["changed", "rejected", "changed"]);
+    assert.deepEqual(seen, [
+      "alpha:merging", // the stack's shared check + ff: every stacked change lands together
+      "gamma:merging",
+      "alpha:done", // landed: the merge is done with them
+      "gamma:done",
+    ]);
+  });
+});
+
+test("an abandoned stack reports one change landing at a time, the rest back to awaiting their turn", async () => {
+  await withApprovePi(async () => {
+    // Both roles rewrite the same line: the stack's cherry-pick conflicts and the merge
+    // abandons to one-at-a-time.
+    const { root, shas, wiringFor } = await batchFixture(["alpha", "beta"], {
+      edit: (root, role) => fs.writeFileSync(path.join(root, "seed.txt"), `${role}\n`),
+      resolve: (wt) => fs.writeFileSync(path.join(wt, "seed.txt"), "both\n"),
+    });
+    const { results, seen } = await runBatchRecorded(root, shas, ["alpha", "beta"], wiringFor);
+    assert.deepEqual(results, ["changed", "changed"]);
+    assert.deepEqual(seen, [
+      "alpha:merging", // the stack attempt
+      "beta:merging",
+      "alpha:approved", // abandoned: back to awaiting their turn…
+      "beta:approved",
+      "alpha:merging", // …and each lands alone, then is done
+      "alpha:done",
+      "beta:merging",
+      "beta:done",
+    ]);
+  });
+});
+
+test("the gate re-pins the landing ref to the head its verdict judged", async () => {
+  // reviewPinnedChange's last act: track the pin to the head the verdict judged, so a merge
+  // that cannot finish leaves recovery re-landing that tree, not a stale pin. When the
+  // lander worktree sits past the queued sha (work moved after queueing) and no green
+  // pre-check names a head, the worktree's HEAD is the judged tree — the ref must follow it,
+  // or a later blocked merge re-lands the wrong tree.
+  const rec = path.join(tmpdir("lander-rec-"), "seen");
+  await withPi(
+    `git rev-parse HEAD >> ${rec}\n` +
+      reviewerPi("VERDICT: approve"),
+    async () => {
+      const { root, sha, wt } = await pinnedFixture();
+      fs.appendFileSync(path.join(wt, "extra.txt"), "work after queueing\n");
+      sh(wt, "git", "add", "-A");
+      sh(wt, "git", "commit", "-m", "later work");
+      const judged = headSha(wt);
+      const state = freshLoopState(ROLE);
+      const { ctx } = makeCtx(root, state);
+
+      const outcome = await reviewPinnedChange(ctx, request(sha), wt, state, ctx.foldUsage);
+
+      assert.equal(outcome.kind, "gate");
+      if (outcome.kind !== "gate") return;
+      assert.equal(outcome.sha, judged, "the outcome names the judged head, not the queued sha");
+      assert.equal(await refSha(root, REF), judged, "the pin moved to the judged head");
+      const seen = fs.readFileSync(rec, "utf8").trim().split("\n");
+      assert.equal(seen[0], judged, "the reviewer ran on the head the pin moved to");
+    },
+  );
+});

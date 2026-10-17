@@ -35,7 +35,7 @@ export function getOrCreate<K, V>(map: Map<K, V>, key: K, make: () => V): V {
 
 /** Increment a Map counter, seeding a missing key at 1 — the single home of the
  * `map.set(k, (map.get(k) ?? 0) + 1)` step, shared by the failure-spread kind tally
- * (src/team/failure-spread.ts), the diff multiset's line tally (landing/landing-diff.ts), the
+ * (src/team/failure-spread.ts), the diff multiset's line tally (merge/merge-diff.ts), the
  * section-title tally (backlog/backlog-structure.ts), the once-summary outcome tally
  * (cli/cli-run.ts), the logs' per-type tally (cli/log-commands.ts), the flaky-check tally
  * (doctor/doctor-checks.ts), and the multi-runner base tally

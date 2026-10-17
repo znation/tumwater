@@ -84,7 +84,7 @@ interface UsageFold {
 }
 
 /** Fold one event's `providerCost` map (`Record<provider, {costUsd, notionalCostUsd}>` — the
- * shape tick-finalize.ts's run_end and landing-slot.ts's merge_done/merge_failed emit) into the
+ * shape tick-finalize.ts's run_end and merge-slot.ts's merge_done/merge_failed emit) into the
  * per-provider tallies, one addTo per provider per nonzero figure so zero stays absent. A
  * missing, foreign, or empty map folds nothing, so old logs render byte-identically. */
 function foldProviderCost(target: UsageFold, providerCost: unknown): void {
@@ -160,7 +160,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     // A subscription landing's API-equivalent spend joins the notional line, never the
     // budgeted cost totals (plans/agent-backends.md part 6a).
     target.notionalCostUsd += notionalCostUsd;
-    // The landing's per-provider spend (landing-slot.ts keys it to its reviewer seam), so a
+    // The landing's per-provider spend (merge-slot.ts keys it to its reviewer seam), so a
     // landing's costs appear under the provider that ran the reviewer, matching the author
     // side's foldLandingUsage charge.
     foldProviderCost(target, ev.providerCost);

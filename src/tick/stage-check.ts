@@ -21,7 +21,7 @@
  * than failing the tick. */
 
 import { changedFiles } from "../git/git-diff.js";
-import { conflictMarkerReason } from "../landing/landing-git.js";
+import { conflictMarkerReason } from "../merge/merge-git.js";
 import { isExemptDiff } from "../review/exemptions.js";
 import { backlogStructureReason } from "../backlog/backlog-structure.js";
 import { protectedEditReason } from "../review/protected-edits.js";

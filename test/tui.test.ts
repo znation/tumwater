@@ -7,7 +7,7 @@ import { logEvent } from "../src/events/events.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
 import { enqueueRolePrompt, listWideScope, queuedListRows } from "../src/inbox/inbox.js";
 import { initProject } from "../src/init/init.js";
-import { enqueueLanding } from "../src/landing/landing-queue.js";
+import { enqueueLanding } from "../src/merge/merge-queue.js";
 import { runTui } from "../src/ui/tui/tui.js";
 import { formatDate } from "../src/text/datetime.js";
 import { atLocalTs as atNoon } from "./helpers/oracles.js";

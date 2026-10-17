@@ -12,7 +12,7 @@ import path from "node:path";
 import { defaultConfig } from "../src/config/config.js";
 import { readEvents } from "../src/events/event-read.js";
 import { refSha } from "../src/git/git.js";
-import { queueDepth } from "../src/landing/landing-queue.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
 import { enqueuePrompt } from "../src/inbox/inbox.js";
 import { landingRefName, sessionDir } from "../src/paths.js";
 import { eventsOfType, warningMessages } from "./fixtures/log-fixtures.js";

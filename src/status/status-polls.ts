@@ -1,8 +1,8 @@
 // vocabulary: plain
 import { asTestCounts, type TestCounts } from "../build/build-check-counts.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
-import { isLandingChange, readLandingMarker, type LandingInFlight } from "../landing/landing-slot.js";
-import type { LandingEntry } from "../landing/landing-queue.js";
+import { isLandingChange, readLandingMarker, type LandingInFlight } from "../merge/merge-slot.js";
+import type { LandingEntry } from "../merge/merge-queue.js";
 import { defaultConfig, loadConfigCached } from "../config/config.js";
 import { DEFAULT_EVENT_TAIL, readEvents } from "../events/event-read.js";
 import type { HarnessEvent } from "../events/events.js";

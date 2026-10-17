@@ -563,8 +563,8 @@ test("gate pre-check timeout warns and still proceeds to the model review", asyn
 });
 
 // The gate hands its green pre-check verdict to the landing path via GateResult.verifiedHead:
-// src/landing/landing-merge.ts seeds the red-main baseline with the SHA that actually becomes main
-// (the rebased head, which may differ from this one — landing-merge-recheck.test.ts covers the
+// src/merge/merge-to-main.ts seeds the red-main baseline with the SHA that actually becomes main
+// (the rebased head, which may differ from this one — merge-to-main-recheck.test.ts covers the
 // seeding and the post-rebase re-verify). A skipped pre-check makes no fresh observation:
 // verifiedHead stays
 // absent even when the model approves (asserted in the timeout test above).

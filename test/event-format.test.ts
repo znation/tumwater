@@ -346,7 +346,7 @@ test("formatEvent renders the review-gate events with truncated heads and safe f
 });
 
 // The questions-outbox feature emits question_posted alongside merged (emission is pinned in
-// test/landing-merge.test.ts and test/loop.test.ts); this pins what operators actually read in
+// test/merge-to-main.test.ts and test/loop.test.ts); this pins what operators actually read in
 // logs,
 // the TUI activity pane, and the GUI feed: the new Open heading verbatim on a plain line —
 // routine operation, not a warning.

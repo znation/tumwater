@@ -17,7 +17,7 @@ import {
   stampedSubject,
 } from "../git/commit-message.js";
 import { logEventBestEffort } from "../events/events.js";
-import { enqueueLanding } from "../landing/landing-queue.js";
+import { enqueueLanding } from "../merge/merge-queue.js";
 import { plural } from "../text/phrases.js";
 import { recordFlow } from "./qa-coverage.js";
 import { INSTANCE_ROLES, baseRoleOf, configuredInstances } from "../roles/loop-ids.js";
@@ -36,7 +36,7 @@ interface TickFlow {
  * authoring-run counters as a snapshot, plus the callbacks that touch the loop — warnings,
  * the summary follow-up run, the pre-queue self-check with its fix-up run, the landing-ref pin,
  * and the abort finalizer. Mirrors the context-object shapes of leftover.ts, refusal.ts, and
- * landing-core.ts. */
+ * merge-core.ts. */
 interface TickStageContext {
   root: string;
   role: string;
@@ -303,7 +303,7 @@ export async function stageTickLanding(ctx: TickStageContext): Promise<TickOutco
     enqueuedAt: Date.now(),
   });
   // The revision is now in flight: the rejected ref's lifecycle continues in the lander
-  // (landing-core.ts), which deletes it when this landing lands and repoints it on a rejection.
+  // (merge-core.ts), which deletes it when this landing lands and repoints it on a rejection.
   // The round is also stamped on the commit's Revision trailer above, so leftover recovery can
   // rebuild a retriable revision's landing entry with its round when the queue marker is lost.
   if (revisionRound !== undefined) s.revision = undefined;

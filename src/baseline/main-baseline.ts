@@ -23,7 +23,7 @@ import { memoSetLru } from "../collections.js";
  * classifying the project's declared check — because a verdict ABOUT a specific SHA is a
  * different concern from the mechanics of running one: this module owns the cache, the
  * in-flight dedup, the re-verification policy that keeps one worktree's environmental red
- * from blocking the team. main-red.ts's gate consumes it; landing-merge.ts seeds a green
+ * from blocking the team. main-red.ts's gate consumes it; merge-to-main.ts seeds a green
  * here after a post-rebase re-check; redeploy.ts re-verifies a red here before it strands the
  * team on a stale build. */
 
@@ -88,7 +88,7 @@ interface MainBaselineCheck {
  * and one re-check per red SHA happens — cheap and deterministic, mirroring the budget gate's
  * stateless resume. Entries come from two sources: checkMainBaseline's own runs, and
  * noteGreenBaseline seeding a green verdict for a SHA that just became main
- * (src/landing/landing-merge.ts: either its in-lock post-rebase re-check passed on exactly that
+ * (src/merge/merge-to-main.ts: either its in-lock post-rebase re-check passed on exactly that
  * tree, or the rebase was a no-op so the review gate's pre-check had already run green on it).
  * A third kind of entry is an inherited green (MainBaseline.inheritedFrom), which no check
  * observed. It is carried over across doc-only differences (inheritedGreen, noteInheritedGreen)
@@ -191,8 +191,8 @@ function shouldRerunRed(cached: MainBaseline, wt: string, reverifyRed: boolean):
 }
 
 /** Record a green baseline verdict for `sha` WITHOUT running anything. The callers are the landing
- * path (src/landing/landing-merge.ts's verifyLanding) and the stack lander
- * (src/landing/landing-stack.ts' landStack) — both call it only after their fast-forward
+ * path (src/merge/merge-to-main.ts's verifyLanding) and the stack lander
+ * (src/merge/merge-stack.ts' landStack) — both call it only after their fast-forward
  * SUCCEEDED, with the exact SHA that just became main: verifyLanding with the POST-rebase head
  * in two cases — its own in-lock re-check just ran this project's declared check green on that
  * tree, or the rebase was a no-op so the review gate's pre-check (which runs outside the merge
@@ -214,7 +214,7 @@ export function noteGreenBaseline(sha: string): void {
 
 /** Record an INHERITED green for `sha` (MainBaseline.inheritedFrom): a tree no check ran on, whose
  * only difference from the green-verified `from` is in review-exempt paths. The caller is
- * landing-merge.ts's verifyLanding, after it skipped the in-lock check because main moved
+ * merge-to-main.ts's verifyLanding, after it skipped the in-lock check because main moved
  * under the gate-verified head only by doc commits. It seeds the head about to become main, as
  * verifyLanding's own noteGreenBaseline calls do. If the fast-forward then fails, the entry is
  * still true of that tree and simply never consulted. It never displaces an observed verdict: a

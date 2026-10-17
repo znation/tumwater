@@ -10,7 +10,7 @@ import { pollTeamHold } from "../src/team/team-polls.js";
 import { TEAM_OPEN, heldProviders, windowHeldProviders, type TeamHold } from "../src/team/team-hold.js";
 import type { LoopRunner } from "../src/loop/loop.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
-import type { WorkLandedCache } from "../src/scheduling/work-landed-cache.js";
+import type { WorkLandedCache } from "../src/scheduling/work-merged-cache.js";
 import { loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { statePath } from "../src/paths.js";
 import { CLAIM_IDLE_MAX_MS } from "../src/scheduling/claims.js";

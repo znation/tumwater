@@ -10,7 +10,7 @@ import { SUMMARY_BLOCK, VERDICT_ENDING, NOTHING_TO_DO } from "../verdict/reply-c
 
 /** Prompts for the landing gate's pi runs — the runs the merge/review pipeline starts, not the
  * role loops' authoring ticks (those live in prompt.ts): conflict resolution after a rebase
- * (landing-merge.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
+ * (merge-to-main.ts), the adversarial pre-merge review (review.ts), and the notes that carry the
  * gate's verdicts back to the loop that authored the change (loop-tick.ts, tick-prompt.ts,
  * main-red.ts). The machine-detectable half of the gate's reply contract — verdict constants
  * and detection for parsing a reviewer's VERDICT line — lives in reply-contract.ts. */
@@ -55,7 +55,7 @@ function conflictIntentBlocks(intent: ConflictIntent): string {
  * resolved check, as the tick prompt threads it — is named so the resolver knows which command
  * the harness will run (told only to keep the tests passing, the 2026-10-04 resolver guessed
  * `npx vitest run` in a node:test repo, BUGS.md 2026-10-05), and the rules tell it not to run
- * that check itself: landing-merge.ts's verifyLanding runs it on the resolved tree before
+ * that check itself: merge-to-main.ts's verifyLanding runs it on the resolved tree before
  * anything lands, and the resolver runs inside the merge slot, so its own copy of the run held
  * every queued landing. On 2026-10-12 the resolvers' own suite runs were 86% of their wall time
  * (951 of 1,104 s over seven runs; one spent 6 min re-testing a tree identical to main).

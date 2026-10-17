@@ -17,7 +17,7 @@ import { sampleSleepClock } from "../build/host-sleep.js";
 import { recordReview } from "../tick/tick-apply.js";
 import { mainRedNotMine } from "../text/phrases.js";
 import { shortSha } from "../text/format.js";
-import { checkWaitStage, setLandingStage } from "../landing/landing-slot.js";
+import { checkWaitStage, setLandingStage } from "../merge/merge-slot.js";
 import { mainTipVerdict } from "../baseline/main-red.js";
 import { FLAKY_WARNING_PREFIX, isKnownFlake } from "./known-flakes.js";
 

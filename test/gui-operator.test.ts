@@ -13,7 +13,7 @@ import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-s
 import { todayStamp } from "../src/budget/budget.js";
 import { enqueueRolePrompt, queuedRolePromptEntries, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
-import { enqueueLanding } from "../src/landing/landing-queue.js";
+import { enqueueLanding } from "../src/merge/merge-queue.js";
 import { requestResetCounters } from "../src/operator/operator-intent.js";
 import { postJson, withGui } from "./fixtures/gui-fixtures.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";

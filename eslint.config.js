@@ -30,7 +30,7 @@
 // narrowing the type actually does not provide; no-invalid-void-type flags `void` as a union
 // constituent (`boolean | void`), where the author meant a callback's return is ignored rather
 // than a value the union carries — write the caller's decision as a plain boolean instead
-// (landing-slot.ts's `apply` became true = write, the fix that landed with the rule);
+// (merge-slot.ts's `apply` became true = write, the fix that landed with the rule);
 // no-inferrable-types flags an annotation the initializer already implies (`x: string = "a"`),
 // which adds a second place to edit when the default changes;
 // consistent-indexed-object-style flags `{ [k: string]: V }` where `Record<string, V>` says

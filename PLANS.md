@@ -21,60 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code merge, part 1/11: Move src/landing/ to src/merge/ and give the landing-named files merge names (planned 2026-10-16 by user; requires Plain terms code team 6/6 landed; design in plans/terminology.md "Code names"; touches src/landing/ and src/scheduling/work-landed-cache.ts and the landing-named tests and their importers)
-
-**Goal.** A mechanical file move with no identifier changes. The landing-named directory, modules, tests and fixtures take merge names, and every import path and path mention follows them. Behavior is unchanged.
-
-**Approach.**
-- `git mv` `src/landing/` → `src/merge/`, renaming each module:
-
-  | Old | New |
-  | --- | --- |
-  | `landing-batch.ts` | `merge-batch.ts` |
-  | `landing-check-failures.ts` | `merge-check-failures.ts` |
-  | `landing-core.ts` | `merge-core.ts` |
-  | `landing-diff.ts` | `merge-diff.ts` |
-  | `landing-drain.ts` | `merge-drain.ts` |
-  | `landing-git.ts` | `merge-git.ts` |
-  | `landing-merge.ts` | `merge-to-main.ts` |
-  | `landing-pipeline.ts` | `merge-pipeline.ts` |
-  | `landing-questions.ts` | `merge-questions.ts` |
-  | `landing-queue-render.ts` | `merge-queue-render.ts` |
-  | `landing-queue.ts` | `merge-queue.ts` |
-  | `landing-slot.ts` | `merge-slot.ts` |
-  | `landing-stack.ts` | `merge-stack.ts` |
-  | `landing-vetting.ts` | `merge-verify.ts` |
-
-  `backlog-conflicts.ts` keeps its name.
-- `src/scheduling/work-landed-cache.ts` → `src/scheduling/work-merged-cache.ts`.
-- Tests follow the same map:
-  - `test/landing-<x>.test.ts` → `test/merge-<x>.test.ts` for config, diff, drain, git, pipeline, pipeline-seams, queue, slot and stack;
-  - `test/landing-merge.test.ts` → `test/merge-to-main.test.ts`, `test/landing-merge-recheck.test.ts` → `test/merge-to-main-recheck.test.ts`, `test/landing-drain-vetting.test.ts` → `test/merge-drain-verify.test.ts`;
-  - `test/lander.test.ts`, `lander-bisect`, `lander-errors` and `lander-restack` → `test/merger*.test.ts`;
-  - `test/work-landed-cache.test.ts` → `test/work-merged-cache.test.ts`.
-- Fixtures: `test/fixtures/landing-fixtures.ts` → `merge-fixtures.ts`, `lander-fixtures.ts` → `merger-fixtures.ts`, `landing-merge-fixtures.ts` → `merge-to-main-fixtures.ts`.
-- Confirm no target exists first. None did when this was planned: there was no `src/merge/` and no `test/merge-*`.
-- Update import specifiers, including the merge-to-main test's dynamic `import("../src/landing/landing-git.js")`. Update path mentions in comments and strings too:
-  - `landing-slot.ts's …`;
-  - test/test-runner.ts's doc example (`npm test merge` → `landing-merge.test.ts`, now `merge-to-main.test.ts`);
-  - the `landing-git.js exports` assertion message.
-
-  Find them with `git grep -nE 'src/landing|\.\./landing/|\./landing-|landing-[a-z-]+\.(test\.)?(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache'`. Change only paths.
-- In the same part, update every doc and test that pins a moved path:
-  - docs/invariants.md. test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. No moved path was cited when this was planned, but re-grep, because earlier series may have added citations.
-  - DEVELOPMENT.md's two `src/landing/` bullets;
-  - the comment in eslint.config.js that names `landing-slot.ts`;
-  - any docs/*.md that cites a moved file as current.
-- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md and plans/*.md. The state series already renamed `refs/tumwater/merge/` and `.tumwater/merge-queue/`. The legacy `_land-<role>` worktree name stays.
-
-**Files touched.** The 14 renamed modules (`backlog-conflicts.ts` moves too) and `work-merged-cache.ts`; 17 tests and 3 fixtures (`git mv`); every src/ and test/ file importing them; docs/invariants.md; DEVELOPMENT.md; eslint.config.js.
-
-**Acceptance criteria.**
-- `git ls-files src test | grep -E 'landing|lander|landed|vetting'` prints nothing.
-- `git grep -nE 'src/landing|/landing/|landing-[a-z-]+\.(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache' -- src test DEVELOPMENT.md docs eslint.config.js` prints nothing (history docs are excluded by path).
-- test/invariants-doc.test.ts passes. Every edited line differs only in a path or file name, and `git diff -M --stat` shows renames.
-- `npm run test` passes.
-
 ### Plain terms code merge, part 2/11: Rename the merge queue and merge-to-main and paths identifiers to merge (planned 2026-10-16 by user; requires part 1/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-queue*.ts src/merge/merge-to-main.ts and its helpers src/paths.ts and their tests)
 
 **Goal.** The merge queue, merge-to-main and check-failure modules, src/paths.ts' merge helpers and three test-fixture helpers take merge names in identifiers, comments and test names. Later parts' callers keep compiling through deprecated aliases. A mechanical rename of about 410 lines with no behavior change.
@@ -1541,6 +1487,60 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
 - A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
 - Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
+- `npm run test` passes.
+
+### Plain terms code merge, part 1/11: Move src/landing/ to src/merge/ and give the landing-named files merge names (planned 2026-10-16 by user; requires Plain terms code team 6/6 landed; design in plans/terminology.md "Code names"; touches src/landing/ and src/scheduling/work-landed-cache.ts and the landing-named tests and their importers) — done 2026-10-16
+
+**Goal.** A mechanical file move with no identifier changes. The landing-named directory, modules, tests and fixtures take merge names, and every import path and path mention follows them. Behavior is unchanged.
+
+**Approach.**
+- `git mv` `src/landing/` → `src/merge/`, renaming each module:
+
+  | Old | New |
+  | --- | --- |
+  | `landing-batch.ts` | `merge-batch.ts` |
+  | `landing-check-failures.ts` | `merge-check-failures.ts` |
+  | `landing-core.ts` | `merge-core.ts` |
+  | `landing-diff.ts` | `merge-diff.ts` |
+  | `landing-drain.ts` | `merge-drain.ts` |
+  | `landing-git.ts` | `merge-git.ts` |
+  | `landing-merge.ts` | `merge-to-main.ts` |
+  | `landing-pipeline.ts` | `merge-pipeline.ts` |
+  | `landing-questions.ts` | `merge-questions.ts` |
+  | `landing-queue-render.ts` | `merge-queue-render.ts` |
+  | `landing-queue.ts` | `merge-queue.ts` |
+  | `landing-slot.ts` | `merge-slot.ts` |
+  | `landing-stack.ts` | `merge-stack.ts` |
+  | `landing-vetting.ts` | `merge-verify.ts` |
+
+  `backlog-conflicts.ts` keeps its name.
+- `src/scheduling/work-landed-cache.ts` → `src/scheduling/work-merged-cache.ts`.
+- Tests follow the same map:
+  - `test/landing-<x>.test.ts` → `test/merge-<x>.test.ts` for config, diff, drain, git, pipeline, pipeline-seams, queue, slot and stack;
+  - `test/landing-merge.test.ts` → `test/merge-to-main.test.ts`, `test/landing-merge-recheck.test.ts` → `test/merge-to-main-recheck.test.ts`, `test/landing-drain-vetting.test.ts` → `test/merge-drain-verify.test.ts`;
+  - `test/lander.test.ts`, `lander-bisect`, `lander-errors` and `lander-restack` → `test/merger*.test.ts`;
+  - `test/work-landed-cache.test.ts` → `test/work-merged-cache.test.ts`.
+- Fixtures: `test/fixtures/landing-fixtures.ts` → `merge-fixtures.ts`, `lander-fixtures.ts` → `merger-fixtures.ts`, `landing-merge-fixtures.ts` → `merge-to-main-fixtures.ts`.
+- Confirm no target exists first. None did when this was planned: there was no `src/merge/` and no `test/merge-*`.
+- Update import specifiers, including the merge-to-main test's dynamic `import("../src/landing/landing-git.js")`. Update path mentions in comments and strings too:
+  - `landing-slot.ts's …`;
+  - test/test-runner.ts's doc example (`npm test merge` → `landing-merge.test.ts`, now `merge-to-main.test.ts`);
+  - the `landing-git.js exports` assertion message.
+
+  Find them with `git grep -nE 'src/landing|\.\./landing/|\./landing-|landing-[a-z-]+\.(test\.)?(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache'`. Change only paths.
+- In the same part, update every doc and test that pins a moved path:
+  - docs/invariants.md. test/invariants-doc.test.ts fails on any cited `src/…` or `test/…` path that no longer exists. No moved path was cited when this was planned, but re-grep, because earlier series may have added citations.
+  - DEVELOPMENT.md's two `src/landing/` bullets;
+  - the comment in eslint.config.js that names `landing-slot.ts`;
+  - any docs/*.md that cites a moved file as current.
+- Leave history as written: PLANS.md, BUGS.md, QUESTIONS.md and plans/*.md. The state series already renamed `refs/tumwater/merge/` and `.tumwater/merge-queue/`. The legacy `_land-<role>` worktree name stays.
+
+**Files touched.** The 14 renamed modules (`backlog-conflicts.ts` moves too) and `work-merged-cache.ts`; 17 tests and 3 fixtures (`git mv`); every src/ and test/ file importing them; docs/invariants.md; DEVELOPMENT.md; eslint.config.js.
+
+**Acceptance criteria.**
+- `git ls-files src test | grep -E 'landing|lander|landed|vetting'` prints nothing.
+- `git grep -nE 'src/landing|/landing/|landing-[a-z-]+\.(ts|js)|lander(-[a-z]+)?\.test|lander-fixtures|work-landed-cache' -- src test DEVELOPMENT.md docs eslint.config.js` prints nothing (history docs are excluded by path).
+- test/invariants-doc.test.ts passes. Every edited line differs only in a path or file name, and `git diff -M --stat` shows renames.
 - `npm run test` passes.
 
 ### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (closed 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)

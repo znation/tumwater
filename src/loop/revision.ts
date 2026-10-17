@@ -1,6 +1,6 @@
 import { gitTry } from "../git/git-run.js";
 import { resetWorktreeToMain } from "../git/worktree.js";
-import { conflictedFiles } from "../landing/landing-git.js";
+import { conflictedFiles } from "../merge/merge-git.js";
 
 /** What applying a hand-back diff with markers left in place did: whether the diff is now in
  * the worktree, and which paths still carry conflict markers. `applied` is true for a clean

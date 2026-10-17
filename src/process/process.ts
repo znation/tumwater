@@ -34,7 +34,7 @@ export function execFileAsync(
  * waiting on a shutdown that has come and gone. A missing signal (no shutdown wiring)
  * registers nothing. Shared by spawnSupervised (supervisor.ts), runPi's child spawn
  * (src/agent/run-agent.ts), sleepInterruptible (tick-timing.ts), and abortOnShutdown
- * (landing-pipeline.ts).
+ * (merge-pipeline.ts).
  *
  * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the
  * signal fires, so a caller whose work outlives the abort need not dispose; a caller that

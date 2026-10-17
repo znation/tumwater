@@ -11,7 +11,7 @@ import { ensureWorktree } from "../src/git/worktree.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { defaultConfig } from "../src/config/config.js";
 import { readQaCoverage } from "../src/tick/qa-coverage.js";
-import { queueDepth, queuedLandings } from "../src/landing/landing-queue.js";
+import { queueDepth, queuedLandings } from "../src/merge/merge-queue.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
 import type { LoopState } from "../src/loop/loop-state.js";

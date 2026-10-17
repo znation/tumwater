@@ -200,7 +200,7 @@ export function tickOnPair(
  * (pollBudgetGate's view: the tier's fallback pair; omitted means the live config). Every other
  * role takes the gate's derived view (pollBudgetGate's returned `roleConfig`). Single home for the
  * rule, so the scheduler's per-poll assignment (src/gates/gate-polls.ts) and a throwaway landing
- * author's construction (src/landing/landing-vetting.ts's resolveAuthor) cannot drift apart —
+ * author's construction (src/merge/merge-verify.ts's resolveAuthor) cannot drift apart —
  * say, an exemption granted to one more role in one copy and not the other. */
 export function gateRoleConfig(
   role: string,

@@ -17,7 +17,7 @@ import { landQueueDir, landingStatePath, orchestratorStatePath } from "../src/pa
 import { writeJsonFile } from "../src/files/json-files.js";
 import { dequeuePrompt, enqueueRolePrompt, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { submitPrompt } from "../src/inbox/inbox-submit.js";
-import { enqueueLanding, queuedLandingFiles } from "../src/landing/landing-queue.js";
+import { enqueueLanding, queuedLandingFiles } from "../src/merge/merge-queue.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 test("snapshot carries queued director prompts as truncated previews, fresh per poll", async () => {

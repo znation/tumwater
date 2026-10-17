@@ -15,7 +15,7 @@ import { refSha } from "../src/git/git.js";
 import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { landingRefName, worktreePath } from "../src/paths.js";
 import { ensureWorktree } from "../src/git/worktree.js";
-import { queueDepth } from "../src/landing/landing-queue.js";
+import { queueDepth } from "../src/merge/merge-queue.js";
 import { eventsOfType } from "./fixtures/log-fixtures.js";
 import { makeLoopRunner, roleWt, runAbortedDirectorLanding } from "./fixtures/loop-fixtures.js";
 import { assertClean, headSha, initializedRepo, mainSha, sh, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";

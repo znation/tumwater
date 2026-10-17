@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drainInFlightWork, type AfterDelay } from "../src/tick/tick-timing.js";
-import { writeLandingMarker, readLandingMarker } from "../src/landing/landing-slot.js";
-import type { InFlightLanding } from "../src/landing/landing-pipeline.js";
+import { writeLandingMarker, readLandingMarker } from "../src/merge/merge-slot.js";
+import type { InFlightLanding } from "../src/merge/merge-pipeline.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";
 import { flushImmediate } from "./helpers/wait.js";

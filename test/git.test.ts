@@ -29,7 +29,7 @@ import {
 } from "../src/git/git.js";
 import { runGit } from "../src/git/git-run.js";
 import { ensureWorktree, resetWorktreeToMain } from "../src/git/worktree.js";
-// The landing-flow git helpers live in landing-git.ts — moved there from landing-merge.ts (which
+// The landing-flow git helpers live in merge-git.ts — moved there from merge-to-main.ts (which
 // got them from git.ts in the bugfix that completed the half-finished organize tick 78 move)
 // once the lander and the batch lander started calling them directly.
 import {
@@ -39,7 +39,7 @@ import {
   hasConflictMarkers,
   rebaseOntoMain,
   rebaseOntoMainLeaveConflicts,
-} from "../src/landing/landing-git.js";
+} from "../src/merge/merge-git.js";
 import { branchName } from "../src/paths.js";
 import { pidAlive } from "../src/process/process.js";
 import { pathPrepend, pathReplace, writeScript } from "./fakes/fake-commands.js";

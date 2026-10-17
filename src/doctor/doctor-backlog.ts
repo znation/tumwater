@@ -13,8 +13,8 @@ import { briefFile } from "../brief/brief.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import { currentBranch, targetBranch } from "../git/git.js";
 import { gitTry } from "../git/git-run.js";
-import { queuedLandings } from "../landing/landing-queue.js";
-import { landingChanges, readLandingMarker } from "../landing/landing-slot.js";
+import { queuedLandings } from "../merge/merge-queue.js";
+import { landingChanges, readLandingMarker } from "../merge/merge-slot.js";
 import { humanSeconds, secondsSince } from "../text/datetime.js";
 import { type CheckOutcome, okOutcome, warnOutcome } from "./outcome.js";
 
@@ -260,7 +260,7 @@ const LAND_QUEUE_STALE_MS = 6 * 60 * 60 * 1000;
  * growing depth. The in-flight marker (readLandingMarker via landingChanges) contributes the set
  * of roles holding a change being vetted or merged right now — a slow review is not a stalled
  * drain, and an absent or never-throwing unreadable marker contributes the empty set. Reads the
- * tree at `root` with the already-exported readers, changing nothing in src/landing/. A warn,
+ * tree at `root` with the already-exported readers, changing nothing in src/merge/. A warn,
  * never a fail — the checkStaleQuestions/checkStalledPlans precedent: a queued wait is legitimate
  * while the team is genuinely held, and those holds already warn separately. */
 export function checkStaleQueuedLandings(root: string, now: number): CheckOutcome {

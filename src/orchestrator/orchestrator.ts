@@ -19,9 +19,9 @@ import { LoopRunner } from "../loop/loop.js";
 import { branchHead, currentBranch } from "../git/git.js";
 import { removeLegacyLandWorktrees } from "../git/worktree.js";
 import { retireLegacyRoleWorktrees } from "../git/worktree-pool.js";
-import { queuedLandingFiles, queuedLandingRoles } from "../landing/landing-queue.js";
-import { drainLandings, settleAbortedVetted } from "../landing/landing-drain.js";
-import { abortableLandings, landingTasks, newLandingPipeline } from "../landing/landing-pipeline.js";
+import { queuedLandingFiles, queuedLandingRoles } from "../merge/merge-queue.js";
+import { drainLandings, settleAbortedVetted } from "../merge/merge-drain.js";
+import { abortableLandings, landingTasks, newLandingPipeline } from "../merge/merge-pipeline.js";
 import { bestEffortEventLogger, logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 import { removeQuiet } from "../files/files.js";
 import { OnceRound } from "../scheduling/once-round.js";
@@ -40,7 +40,7 @@ import { orchestratorStatePath } from "../paths.js";
 import type { Redeployer } from "../redeploy/redeployer.js";
 import type { LaunchServicesWatch } from "../process/launch-services.js";
 import { RetentionPruner } from "./retention.js";
-import { WorkLandedCache } from "../scheduling/work-landed-cache.js";
+import { WorkLandedCache } from "../scheduling/work-merged-cache.js";
 import {
   drainInFlightWork,
   HANDOFF_LANDING_WINDOW_MS,
@@ -170,7 +170,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let restart = false;
 
   // The shared concurrency cap: role ticks and the landings (each vet, and the merge's conflict
-  // resolver — landing-drain.ts) all hold a permit; see its LandingPipelineContext for why a
+  // resolver — merge-drain.ts) all hold a permit; see its LandingPipelineContext for why a
   // landing is not exempt.
   const semaphore = new Semaphore(Math.max(1, config.maxConcurrent));
   // Seed the pool's per-provider caps from the startup config (plans/provider-concurrency.md
@@ -242,7 +242,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   // long-running team's memory stays flat; aborted ticks are
   // excluded — their short cut-off durations would drag the window down and cause more aborts.
   const roleTickDurationsMs: number[] = [];
-  // Every landing task (landing-drain.ts's LandingPipeline): the vetting stage's tasks, the
+  // Every landing task (merge-drain.ts's LandingPipeline): the vetting stage's tasks, the
   // changes they vetted, and the merge slot.
   const landings = newLandingPipeline();
 
@@ -273,7 +273,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
   let warnedBranchDivergence = false;
 
   // Need-based deferral: whether qualifying work has landed
-  // since a role's last-seen main head, cached per head (see scheduling/work-landed-cache.ts).
+  // since a role's last-seen main head, cached per head (see scheduling/work-merged-cache.ts).
   const workLandedSince = new WorkLandedCache(root, mainBranch);
   // Per-role deferred-due state for one-shot tick_deferred events: the previous poll's
   // deferral per role (like prevBudgetPaused/prevUserPaused, but per role), so each episode
@@ -467,7 +467,7 @@ export async function runOrchestrator(opts: RunOptions): Promise<OrchestratorExi
       }
 
       // Merge queue 3/5 — drain the durable land queue while neither a restart nor a failure
-      // hold is pending (the scheduler's WHEN; landing-drain.ts owns the HOW — the vetting
+      // hold is pending (the scheduler's WHEN; merge-drain.ts owns the HOW — the vetting
       // stage, its merge slot, and the dedupe against main). A held poll starts no vet and no
       // merge, exactly as it starts no tick; what is already in flight runs on, and a vet
       // parked for its permit meets the same start gate as a parked tick when the permit comes.

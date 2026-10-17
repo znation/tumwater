@@ -314,7 +314,7 @@ test("a landed change clears a stale review rejection unless a revision is still
   assert.equal(s.lastReview, undefined, "the landed change supersedes the rejection");
 
   // A per-role user-request tick can land an unrelated change while the rejected change still
-  // owes a revision (landing-core.ts sets `state.revision` for it): the objections must survive.
+  // owes a revision (merge-core.ts sets `state.revision` for it): the objections must survive.
   const pending = freshLoopState("feature");
   pending.lastReview = { verdict: "reject", reasons: ["md-only edit"], head: PINNED, at: 1 };
   pending.revision = { sha: PINNED, round: 1, at: 2 };

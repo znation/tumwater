@@ -12,7 +12,7 @@
  * admission/review seam did — a run whose key were computed without it would re-key a default
  * team's tick off pi's own provider. It also carries the semaphore and, optionally, wait
  * hooks, so a re-key that has to park on a full target key reports its wait the way a parked
- * resolver does (landing-vetting.ts's providerWaitStage). */
+ * resolver does (merge-verify.ts's providerWaitStage). */
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { ModelSelector } from "../config/model-selector.js";

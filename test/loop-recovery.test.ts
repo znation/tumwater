@@ -12,7 +12,7 @@ import path from "node:path";
 import { refSha } from "../src/git/git.js";
 import { inboxSize } from "../src/inbox/inbox.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
-import type { LandingEntry } from "../src/landing/landing-queue.js";
+import type { LandingEntry } from "../src/merge/merge-queue.js";
 import {
   finishAbortedTickPhase,
   finishRecoveryTickPhase,

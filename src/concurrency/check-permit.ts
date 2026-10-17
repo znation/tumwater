@@ -42,7 +42,7 @@ function checkCap(config: CheckConfigSlice | undefined): number {
 
 /** Called around a wait for a check permit — only when the permit is not free on arrival:
  * `waiting` before parking, `granted` once the permit arrives. The landing path uses it to show
- * "waiting for a check slot" instead of a check that has not started (landing-slot.ts's
+ * "waiting for a check slot" instead of a check that has not started (merge-slot.ts's
  * checkWaitStage). */
 export interface PermitWaitHooks {
   waiting(): void;

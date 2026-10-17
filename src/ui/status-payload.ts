@@ -7,7 +7,7 @@ import { readEvents } from "../events/event-read.js";
 import { eventFeedItem, formatEvent } from "../events/event-format.js";
 import { projectName } from "../project-name.js";
 import { dailyCost } from "../budget/budget.js";
-import { queueEntryLandingLabel } from "../landing/landing-queue-render.js";
+import { queueEntryLandingLabel } from "../merge/merge-queue-render.js";
 import { snapshot } from "../status/status-data.js";
 import { bootstrapBadge, buildBadge, budgetBadge, diskBadge, landingBadge, mainCheckBadge, mainCountsFragment, permitsBadge, quietBadge, runWindowBadge } from "./badges.js";
 import { isActivePhase, loopRowCells, onErrorStreak } from "./status-model.js";

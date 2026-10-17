@@ -14,7 +14,7 @@ import { childEnv } from "../process/process.js";
  * only sees events THIS process logs. Every allowlisted type but `supervisor_exit` is logged by
  * the orchestrator's own process (budget-gates.ts, gate-polls.ts → streak-gate.ts,
  * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/team/team-polls.ts,
- * landing-slot.ts, landing-questions.ts,
+ * merge-slot.ts, merge-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
  * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyTeamDown; events
  * appended by

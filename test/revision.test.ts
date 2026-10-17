@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { applyRevision, applyWithConflicts, REVISION_BACKSTOP } from "../src/loop/revision.js";
 import { buildRevisionNote, buildRejectedReviewNote } from "../src/prompt/gate-prompts.js";
-import { vetRequest } from "../src/landing/landing-batch.js";
+import { vetRequest } from "../src/merge/merge-batch.js";
 import { refSha, isDirty, setRef } from "../src/git/git.js";
 import { rejectedRefName, landingRefName } from "../src/paths.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
@@ -13,8 +13,8 @@ import { assembleTickPrompt } from "../src/tick/tick-prompt.js";
 import { defaultConfig } from "../src/config/config.js";
 import { resolveTickVerdict } from "../src/tick/tick-verdict.js";
 import { stageTickLanding } from "../src/tick/tick-stage.js";
-import { queuedLandings } from "../src/landing/landing-queue.js";
-import { settleLandingOutcome } from "../src/landing/landing-pipeline.js";
+import { queuedLandings } from "../src/merge/merge-queue.js";
+import { settleLandingOutcome } from "../src/merge/merge-pipeline.js";
 import { recoverLeftover } from "../src/loop/leftover.js";
 import { buildCommitMessage, commitTrailer, stampedSubject } from "../src/git/commit-message.js";
 import { PendingPrompt } from "../src/inbox/pending-prompt.js";
@@ -23,7 +23,7 @@ import { readmeTemplate } from "../src/brief/brief.js";
 import { eventsOfType, unwritableEvents } from "./fixtures/log-fixtures.js";
 import { piRunResult, withPi } from "./fakes/fake-pi.js";
 import { commitIn, headSha, initializedWorktree, makeRepo, pinOffMain, sh, tmpdir } from "./fixtures/repo-fixtures.js";
-import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/lander-fixtures.js";
+import { batchWiring, makeCtx, pinnedFixture, request, reviewerPi, ROLE } from "./fixtures/merger-fixtures.js";
 import { makeLoopRunner } from "./fixtures/loop-fixtures.js";
 import { initializedRepo } from "./fixtures/repo-fixtures.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -124,7 +124,7 @@ test("applyWithConflicts decodes the C-quoted name of a non-ASCII conflicted fil
   // core.quotePath is on by default: a raw `diff --diff-filter=U` renders the conflicted
   // name as `"h\303\251llo.md"`, which does not exist on disk. Undecoded, the hand-back
   // prompt listed a bogus path and its "what main changed" block found nothing; the fix is
-  // the same conflictedFiles decode landing-git.ts uses (review objection).
+  // the same conflictedFiles decode merge-git.ts uses (review objection).
   const { root, sha } = commitOffMain("héllo.md", "theirs\n", "the handed-back work");
   fs.writeFileSync(path.join(root, "héllo.md"), "main version\n");
   commitIn(root, "main moved the same line");
@@ -245,7 +245,7 @@ test("a chain whose objections never repeat ends at the backstop", async () => {
 });
 
 test("exhausting a revision still records the outcome when the events feed is unwritable", async () => {
-  // recordRejectedChange (landing-core.ts) deletes the rejected ref and clears the round, then
+  // recordRejectedChange (merge-core.ts) deletes the rejected ref and clears the round, then
   // logs the exhaustion LAST. An EISDIR on that append must not turn the terminal exhaustion
   // into a thrown vet error after the ref is already gone.
   await withPi(reviewerPi("VERDICT: reject\n1. (prior 1) still wrong"), async () => {

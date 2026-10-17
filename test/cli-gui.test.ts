@@ -8,7 +8,7 @@ import path from "node:path";
 import { distDir, buildInfoPath } from "../src/build/build-info.js";
 import { initProject } from "../src/init/init.js";
 import { pidAlive } from "../src/process/process.js";
-import { enqueueLanding } from "../src/landing/landing-queue.js";
+import { enqueueLanding } from "../src/merge/merge-queue.js";
 import { cmdGui, lanAddresses, type GuiSeams } from "../src/gui/gui-command.js";
 import { headSha, makeRepo, runningAsRoot, sh, tmpdir } from "./fixtures/repo-fixtures.js";
 import { sleep, waitFor } from "./helpers/wait.js";

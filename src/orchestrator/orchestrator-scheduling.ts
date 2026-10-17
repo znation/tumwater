@@ -11,14 +11,14 @@ import type { TumwaterConfig } from "../config/config-schema.js";
 import { reviewRunConfig, seamHoldKey } from "../config/config-views.js";
 import type { LoopRunner } from "../loop/loop.js";
 import type { OnceRound } from "../scheduling/once-round.js";
-import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
+import type { WorkLandedCache } from "../scheduling/work-merged-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
 import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/loop-ids.js";
 import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
-import { queuedLandingRoles } from "../landing/landing-queue.js";
+import { queuedLandingRoles } from "../merge/merge-queue.js";
 import { logEventBestEffort, warnEventBestEffort } from "../events/events.js";
 import { type EligibleEntry, eligibleEntries } from "../backlog/backlog-eligibility.js";
 import {

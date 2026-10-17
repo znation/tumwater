@@ -23,7 +23,7 @@ function stepHolds(
   const prevMap = prev instanceof Map ? prev : new Map([[(prev as TeamHold).provider ?? undefined, prev]]);
   return pollTeamHold(root, prevMap, runners, now).get(undefined)!;
 }
-import { readLandingMarker, writeLandingMarker } from "../src/landing/landing-slot.js";
+import { readLandingMarker, writeLandingMarker } from "../src/merge/merge-slot.js";
 import type { TickOutcome } from "../src/tick/tick-outcome.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { warningMessages } from "./fixtures/log-fixtures.js";

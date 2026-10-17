@@ -178,7 +178,7 @@ export class Semaphore {
    * team total and the key (when set) have headroom right now, and the tier's reserve is
    * satisfied. Mirrors the exact fast-path condition acquireLease's first branch uses, so a
    * caller can decide whether to show a "waiting for a slot" state before awaiting a lease
-   * that would actually park (landing-drain.ts's resolver wrapper). */
+   * that would actually park (merge-drain.ts's resolver wrapper). */
   canLeaseAtOnce(tier: number, key?: string): boolean {
     return this.inUse < this.capacity - this.reserveFor(tier) && (key === undefined || !this.keyAtCap(key));
   }

@@ -284,7 +284,7 @@ export class LoopRunner {
   /** Fold one pi run's usage into the tick's counters and the lifetime totals — the
    * accounting itself lives in TickUsage.fold (src/tick/tick-usage.ts); this keeps the once-per-run
    * choke point and the foldLandingUsage face on the runner, where LoopPi and the landing
-   * wiring (src/landing/landing-slot.ts) reach them. */
+   * wiring (src/merge/merge-slot.ts) reach them. */
   private foldUsage(run: PiRunResult, provider?: string, pair?: string): void {
     this.usage.fold(this.state, run, true, provider, pair);
   }

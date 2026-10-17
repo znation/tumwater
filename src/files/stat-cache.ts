@@ -6,7 +6,7 @@ import { readTextOrNull, sameStatIdentity, statOrNull } from "./files.js";
  * shared by every observer and loader that polls a slowly-changing file — backlog/backlog.ts and
  * backlog/backlog-structure.ts's markdown sections, inbox.ts's prompt contents,
  * events/event-read.ts's event log, status/status-polls.ts's loop states, config.ts's
- * live-reloaded tumwater.json, pi-models.ts's models.json, and landing-queue.ts's entry
+ * live-reloaded tumwater.json, pi-models.ts's models.json, and merge-queue.ts's entry
  * contents. (The poll-cost and freshness contract is documented on cachedByStat below.) */
 
 /** One entry of a stat-keyed cache: the file's identity and freshness at read time plus the
