@@ -327,7 +327,10 @@ validation, and atomic write, so you never have to hand-edit the file.
   config set` uses, and Clear retracts through the same path `tumwater config unset` uses, so the
   field reverts to the key's default (unsetting the daily spend cap restores the default 50). The
   view also runs `tumwater doctor`'s checks on each open in a `Health check` card, with a Re-run
-  button.
+  button. The view also lists disabled roles that still keep a worktree, branch, merge ref, or
+  paused marker, each with what `tumwater retire` would remove and a two-click Retire button; a
+  role the safety rails object to shows the objections and the `--force` command instead,
+  because the dashboard never forces.
 - The TUI shows the same alerts under its header, and names its views the same way; `Ctrl+T`
   cycles Activity, each role's Transcript, Backlog, Usage, Failures, History, Pending,
   Inbox, Health (the same checks `tumwater doctor` prints, re-run on each entry), and Brief (the

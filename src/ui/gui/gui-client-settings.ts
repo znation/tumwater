@@ -11,7 +11,9 @@
  * success/error toast pattern the composer's send uses (showFlash). Spliced into
  * gui-client.ts's script, reaching its helpers (esc, $, getJson, postJson, showFlash) through
  * that concatenation. A second card, "Health check", runs the same checks as `tumwater doctor`
- * through GET /api/doctor on each open (and on its Re-run button) and paints the report. */
+ * through GET /api/doctor on each open (and on its Re-run button) and paints the report; a
+ * third, "Disabled roles", lists retirable leftovers (GET /api/retire) with a two-click Retire
+ * button (POST /api/retire). */
 export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   // One home for turning a thrown value into the message a flash shows: the fetch/parse/post
   // helpers throw the server's JSON-decoded value, which for the server's own errors is an
@@ -61,6 +63,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
+      "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='briefcard'><div class='empty'>Loading…</div></div>");
   }
   // The Health check card's body: header, one row per check (level badge, name, detail), the
@@ -82,6 +85,53 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
     } catch (err) {
       body.innerHTML = errorPanel("Health checks could not run", err, "empty");
     }
+  }
+  // The Disabled roles card: roles set to enabled: false that still keep a worktree, branch,
+  // merge ref, or paused marker (GET /api/retire), each with a two-click Retire button — the
+  // same removal as tumwater retire --role <id>. A role the safety rails object to shows the
+  // objections and the CLI's --force command instead: the dashboard never forces.
+  let lastRetirable = null;
+  const retireSlot = confirmSlot(paintRetirable);
+  function renderRetirable(d, armed) {
+    const rows = (d.roles || []).map((r) => {
+      const head = "<strong>" + esc(r.role) + "</strong><span>would remove " + r.phrases.map(esc).join(", ") + "</span>";
+      if (r.objections.length > 0) {
+        return "<div class='settings-row'>" + head + r.objections.map((o) => "<span>" + esc(o) + "</span>").join("") +
+          "<code>tumwater retire --role " + esc(r.role) + " --force</code></div>";
+      }
+      return "<div class='settings-row'>" + head + "<button type='button' class='btn btn-sm' data-action='retire' data-role='" + esc(r.role) + "'>" +
+        (armed(r.role) ? "Confirm retire" : "Retire") + "</button></div>";
+    }).join("");
+    return "<div class='settings-row'><strong>Disabled roles</strong><span>Leftovers of roles set to enabled: false — the same removal as " +
+      "<code>tumwater retire --role &lt;id&gt;</code>.</span></div>" +
+      (rows || "<div class='empty'>No disabled role has anything left to remove.</div>");
+  }
+  function paintRetirable() {
+    if (lastRetirable) $("retirecard").innerHTML = renderRetirable(lastRetirable, retireSlot.armed);
+  }
+  async function fetchRetirable() {
+    buildSettingsView();
+    try {
+      lastRetirable = await getJson("/api/retire");
+      paintRetirable();
+    } catch (err) {
+      $("retirecard").innerHTML = errorPanel("Disabled roles could not load", err, "empty");
+    }
+  }
+  // First click arms the role's button; a second within the confirm window posts the retire.
+  async function confirmRetire(role) {
+    if (!retireSlot.armed(role)) {
+      retireSlot.arm(role);
+      return;
+    }
+    retireSlot.disarm();
+    try {
+      const d = await postJson("/api/retire", { role: role });
+      showFlash(d.message);
+    } catch (err) {
+      showFlash("error: " + clientErrorMessage(err));
+    }
+    await fetchRetirable();
   }
   async function fetchSettings() {
     buildSettingsView();

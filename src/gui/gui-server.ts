@@ -31,6 +31,7 @@ import {
   handleRole,
   handleTranscript,
   handleDoctor,
+  handleRetireList,
 } from "./gui-endpoints.js";
 import {
   handleAbort,
@@ -56,6 +57,7 @@ import {
   handleStopSchedule,
   handleResetCounters,
   handleRoleNotes,
+  handleRetire,
   handleWake,
   handleWakeCancel,
 } from "./gui-endpoint-commands.js";
@@ -217,6 +219,7 @@ export function startGui(
     "GET /api/config": (_req, res) => handleConfig(res, root),
     "GET /api/brief": (_req, res) => handleBrief(res, root),
     "GET /api/doctor": (_req, res) => handleDoctor(res, root),
+    "GET /api/retire": (_req, res) => handleRetireList(res, root),
     "POST /api/brief": (req, res) => handleBriefEdit(req, res, root),
     "POST /api/config-set": (req, res) => handleConfigSet(req, res, root),
     "POST /api/config-unset": (req, res) => handleConfigUnset(req, res, root),
@@ -237,6 +240,7 @@ export function startGui(
     "POST /api/wake-cancel": (req, res) => handleWakeCancel(req, res, root),
     "POST /api/reset-counters": (req, res) => handleResetCounters(req, res, root),
     "POST /api/role-notes": (req, res) => handleRoleNotes(req, res, root),
+    "POST /api/retire": (req, res) => handleRetire(req, res, root),
     "POST /api/restart": (req, res) => handleRestart(req, res, root),
     "POST /api/stop-schedule": (req, res) => handleStopSchedule(req, res, root),
     "POST /api/reclaim": (req, res) => handleReclaim(req, res, root),

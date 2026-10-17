@@ -15,7 +15,9 @@ import type { BacklogEntry } from "../backlog/backlog-md.js";
 import { openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
-import { loadConfigSafe } from "../config/config.js";
+import { knownRoleIds, loadConfigSafe } from "../config/config.js";
+import { loopEnabled } from "../roles/loop-ids.js";
+import { artifactPhrase, previewRetire } from "../operator/retire.js";
 import { EDITABLE_CONFIG_KEYS } from "../config/config-editable-keys.js";
 import { collectReport, collectReportSince } from "../report/report-data.js";
 import { collectFailureReport, collectFailureReportSince } from "../failure/failure-data.js";
@@ -344,6 +346,26 @@ export function handleConfig(res: http.ServerResponse, root: string): void {
   const out: Record<string, unknown> = {};
   for (const key of EDITABLE_CONFIG_KEYS) out[key] = record[key] ?? null;
   sendJson(res, 200, out);
+}
+/** Handle GET /api/retire: the Settings view's "Disabled roles" card — each configured,
+ * disabled, non-director role that still has a worktree, branch, merge ref, or paused marker,
+ * with what `tumwater retire` would remove (previewRetire, so the rails and wording are the
+ * CLI's) and the rails' objections. Read-only (previewRetire's contract) and works whether or
+ * not the team runs; a throw reaches the server's outer 500, an unreadable tumwater.json
+ * answers 500 like /api/config. */
+export async function handleRetireList(res: http.ServerResponse, root: string): Promise<void> {
+  const { config, error } = loadConfigSafe(root);
+  if (config === undefined) {
+    sendJson(res, 500, { error });
+    return;
+  }
+  const roles = [];
+  for (const role of knownRoleIds(config).filter((id) => id !== DIRECTOR_ROLE && !loopEnabled(config, id))) {
+    const { wouldRemove, objections } = await previewRetire(root, role);
+    if (wouldRemove.length === 0) continue;
+    roles.push({ role, wouldRemove, phrases: wouldRemove.map((a) => artifactPhrase(a, role)), objections });
+  }
+  sendJson(res, 200, { roles });
 }
 /** Handle GET /api/brief: the brief file's name and the current initial prompt (what
  * `tumwater brief --json` prints), or 404 when no brief carries a prompt block. */

@@ -23,13 +23,16 @@ interface SettingsFns {
   testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
+  renderRetirable(d: unknown, armed: (role: string) => boolean): string;
+  fetchRetirable(): Promise<void>;
+  confirmRetire(role: string): Promise<void>;
 }
 
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "testNotify", "fetchBrief", "saveBrief"],
-    inject,
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "confirmRetire"],
+    { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
 
@@ -207,7 +210,8 @@ test("the settings region is spliced into the served script, and the boot routes
   assert.equal(GUI_CLIENT_JS.includes(clientRegion("settings-view")), true);
   // …and the boot's view table and switchView must fetch it.
   assert.match(GUI_CLIENT_BOOT_JS, /settings: "settings-view"/);
-  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchBrief\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /if \(v === "settings"\) \{ fetchSettings\(\); fetchDoctor\(\); fetchRetirable\(\); fetchBrief\(\); \}/);
+  assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='retire'\]/);
   assert.match(GUI_CLIENT_BOOT_JS, /data-action='doctor-rerun'/);
   // …and the boot carries the Clear click selector beside the Save submit wiring.
   assert.match(GUI_CLIENT_BOOT_JS, /button\[data-action='unset'\]/);
@@ -303,4 +307,54 @@ test("a submit on form.brief-form routes to saveBrief, and the settings listener
   assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.brief-form"\)[\s\S]*?saveBrief\(form\)/);
   assert.match(GUI_CLIENT_BOOT_JS, /closest\("form\.settings-row"\)[\s\S]*?saveSetting\(form\)/);
   assert.doesNotMatch(clientRegion("settings-view").slice(clientRegion("settings-view").indexOf("async function fetchBrief")), /settings-row/);
+});
+
+test("renderRetirable esc's ids, phrases, and objections; a row with objections has no Retire button", () => {
+  const { renderRetirable } = settingsScope();
+  assert.match(renderRetirable({ roles: [] }, () => false), /No disabled role has anything left to remove\./);
+  const clean = { role: "a&b", wouldRemove: ["branch"], phrases: ["the branch (<x>)"], objections: [] };
+  const html = renderRetirable({ roles: [clean] }, () => false);
+  assert.match(html, /data-action='retire' data-role='a&amp;b'>Retire<\/button>/);
+  assert.match(html, /would remove the branch \(&lt;x&gt;\)/);
+  assert.match(renderRetirable({ roles: [clean] }, (r) => r === "a&b"), />Confirm retire<\/button>/);
+  const blocked = { role: "improve", wouldRemove: ["worktree"], phrases: ["the worktree"], objections: ["the worktree has <b>changes</b>"] };
+  const bad = renderRetirable({ roles: [blocked] }, () => false);
+  assert.match(bad, /&lt;b&gt;changes&lt;\/b&gt;/);
+  assert.doesNotMatch(bad, /<b>/);
+  assert.match(bad, /tumwater retire --role improve --force/);
+  assert.doesNotMatch(bad, /data-action='retire'/);
+});
+
+test("confirmRetire arms on the first click and posts /api/retire on the second", async () => {
+  const flashes: string[] = [];
+  const posts: Array<{ path: string; body: unknown }> = [];
+  let armedRole: string | null = null;
+  let fail = false;
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {};
+  for (const id of ["settings-view", "retirecard", "settingscard", "doctorbody", "briefcard"]) els[id] = { innerHTML: "", dataset: {} };
+  const { confirmRetire } = settingsScope({
+    confirmSlot: () => ({
+      armed: (r: string) => armedRole === r,
+      arm: (r: string) => { armedRole = r; },
+      disarm: () => { armedRole = null; },
+    }),
+    $: (id: string) => els[id],
+    getJson: async () => ({ roles: [] }),
+    errorPanel: () => "",
+    postJson: async (path: string, body: unknown) => {
+      posts.push({ path, body });
+      if (fail) throw { message: "refusing to retire role improve" };
+      return { ok: true, message: "removed the branch (tumwater/improve)" };
+    },
+    showFlash: (msg: string) => void flashes.push(msg),
+  });
+  await confirmRetire("improve");
+  assert.deepEqual(posts, []);
+  await confirmRetire("improve");
+  assert.deepEqual(posts, [{ path: "/api/retire", body: { role: "improve" } }]);
+  assert.deepEqual(flashes, ["removed the branch (tumwater/improve)"]);
+  fail = true;
+  await confirmRetire("improve");
+  await confirmRetire("improve");
+  assert.equal(flashes[1], "error: refusing to retire role improve");
 });

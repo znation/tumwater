@@ -34,7 +34,7 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     if (v === "usage") fetchReport();
     if (v === "failures") fetchFailures();
     if (v === "pending") fetchPending();
-    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchBrief(); }
+    if (v === "settings") { fetchSettings(); fetchDoctor(); fetchRetirable(); fetchBrief(); }
   }
   // Tabs are plain #fragment links, so Back/Forward and bookmarks work; re-clicking the open
   // tab refetches its data. #role/<role> opens that loop's drawer (over Fleet on a fresh load),
@@ -85,6 +85,8 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
   document.addEventListener("click", (ev) => {
     if (clickClosest(ev, "button[data-action='doctor-rerun']")) { ev.preventDefault(); fetchDoctor(); }
     if (clickClosest(ev, "button[data-action='notify-test']")) { ev.preventDefault(); testNotify(); }
+    const retire = clickClosest(ev, "button[data-action='retire']");
+    if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }
   });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   // run-act:start

@@ -2,15 +2,16 @@
 /**
  * The dashboard's POST operator-lifecycle command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): reset-counters,
- * restart, reclaim, abort, stop-schedule, role-notes, and brief-edit — every POST handler that
- * is not prompt/backlog/config/fleet. Each handler adapts HTTP onto the domain work one layer
- * down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond its own
- * `res`.
+ * restart, reclaim, abort, stop-schedule, role-notes, retire, and brief-edit — every POST
+ * handler that is not prompt/backlog/config/fleet. Each handler adapts HTTP onto the domain work
+ * one layer down (operator-intent, role-notes-write, brief-edit) and touches no socket beyond
+ * its own `res`.
  */
 import { cancelScheduledStopMessage, requestAbort, requestResetCounters, requestRestart, requestScheduledStop, runManualReclaim } from "../operator/operator-intent.js";
 import { saveRoleNote } from "../agent/role-notes-write.js";
 import { roleNotesPath } from "../paths.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
+import { artifactPhrase, retireRole } from "../operator/retire.js";
 import { editInitialPrompt } from "../brief/brief-edit.js";
 import { validRoleIds } from "./gui-args.js";
 import { badRequest, sendJson } from "./http-body.js";
@@ -103,6 +104,23 @@ export async function handleRoleNotes(req: http.IncomingMessage, res: http.Serve
     sendJson(res, 200, { ok: true, message: saveRoleNote(roleNotesPath(root, role), body.text) });
   } catch (err) {
     badRequest(res, errorMessage(err));
+  }
+}
+/** Handle POST /api/retire: the Settings view's Retire button — the same retireRole core
+ * `tumwater retire --role <id>` calls, never forced (a `force` key is a 400 naming the CLI
+ * override). A rail's refusal or an unreadable tumwater.json is a 409 carrying the core's
+ * message and removes nothing; success answers what was removed in the CLI's wording. */
+export async function handleRetire(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readRoleBody(req, res, '{"role": "improve"}', root);
+  if (!body) return;
+  const role = body.role as string;
+  if (body.force !== undefined) return badRequest(res, "the dashboard never forces a retire — run `tumwater retire --role <id> --force` from the CLI");
+  try {
+    const { removed, skipped } = await retireRole(root, role, {});
+    const message = removed.length === 0 ? `nothing to remove for role ${role}` : removed.map((a) => `removed ${artifactPhrase(a, role)}`).join("; ");
+    sendJson(res, 200, { ok: true, removed, skipped, message });
+  } catch (err) {
+    sendJson(res, 409, { error: errorMessage(err) });
   }
 }
 /** Handle POST /api/brief: replace the initial prompt through editInitialPrompt — the same
