@@ -49,10 +49,13 @@ function handleMcpLine(line: string, notesPath: string | undefined): unknown {
 
   switch (method) {
     case "initialize": {
-      const params = (msg.params ?? {}) as Record<string, unknown>;
-      const requested = typeof params.protocolVersion === "string" ? params.protocolVersion : DEFAULT_PROTOCOL_VERSION;
+      // Per MCP, the response's protocolVersion is the highest version THIS server supports,
+      // not an echo of whatever the client requested: claiming a dialect we do not implement
+      // would let a future client use version-gated features this server lacks. We implement
+      // exactly DEFAULT_PROTOCOL_VERSION, so that is the one honest answer, whatever the
+      // request names (an absent version already defaults to it here).
       return respond({
-        protocolVersion: requested,
+        protocolVersion: DEFAULT_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
       });

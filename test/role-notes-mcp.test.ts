@@ -166,6 +166,19 @@ test("initialize falls back to the default protocol version and a call without a
   assert.match((result.content as Array<{ text: string }>)[0]!.text, /requires a string "text"/);
 });
 
+test("initialize answers with the server's own protocol version, not an echo of the request", async () => {
+  const notes = path.join(tmpdir(), "notes.md");
+  const { responses } = await runServer(
+    [{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2030-01-01" } }],
+    notes,
+  );
+  assert.equal(
+    responses[0]!.result?.protocolVersion,
+    "2024-11-05",
+    "the server must not claim a protocol dialect it does not implement",
+  );
+});
+
 test("the server reports an unknown tool and a missing notes path as tool errors", async () => {
   const notes = path.join(tmpdir(), "notes.md");
   const { responses } = await runServer(
