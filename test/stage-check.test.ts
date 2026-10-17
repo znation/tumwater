@@ -437,6 +437,9 @@ test("planDependencyFinding reports only the requires-clause problems an edit ad
   const unparsed = DEP_BASE.replace("## Done", "### Other plan (requires nothing landed)\n\nbody\n\n## Done");
   assert.match(planDependencyFinding(unparsed, DEP_BASE)!, /"Other plan[^"]*".*names no part/);
 
+  const misworded = DEP_BASE.replace("requires part 1/2 landed", "blocked by part 1/2");
+  assert.match(planDependencyFinding(misworded, DEP_BASE)!, /names S 1\/2 as a prerequisite.*fix it before this change commits/);
+
   const edited = dangling.replace("body", "changed body");
   assert.equal(planDependencyFinding(edited, dangling), undefined);
 });

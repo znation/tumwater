@@ -385,11 +385,21 @@ test("withoutRefusalNotes drops Refused note lines and the blank line after one 
   assert.deepEqual(withoutRefusalNotes(kept), kept);
 });
 
+test("planDependencyProblems flags a still-planned prerequisite named without a requires clause", () => {
+  const e = (title: string): BacklogEntry => ({ title, body: "" }) as BacklogEntry;
+  const b = "S, part 2/2: b (planned 2026-10-14 by plan; blocked by part 1/2 above)";
+  assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(b)], []).misworded, [{ title: b, ref: "S 1/2" }]);
+  assert.deepEqual(planDependencyProblems([e(b)], ["S, part 1/2: a (done 2026-10-01)"]).misworded, []);
+  const held = "S, part 2/2: b (requires part 1/2 landed; after part 1/2)"; // vocabulary-ok: PLANS.md heading syntax
+  assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e(held)], []).misworded, []);
+  assert.deepEqual(planDependencyProblems([e("S, part 1/2: a"), e("Plain plan (after part 1/2)")], []).misworded, []);
+});
+
 test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", () => {
   const e = (title: string): BacklogEntry => ({ title, body: "" }) as BacklogEntry;
   const done = ["S, part 1/3: a (done 2026-10-01)"];
   const ok = planDependencyProblems([e("S, part 2/3: b (requires part 1/3 landed)")], done);
-  assert.deepEqual(ok, { cycle: null, dangling: [], unparsed: [] });
+  assert.deepEqual(ok, { cycle: null, dangling: [], unparsed: [], misworded: [] });
   const dangling = planDependencyProblems([e("S, part 2/3: b (requires T 1/3 landed)")], done);
   assert.deepEqual(dangling.dangling, [{ title: "S, part 2/3: b (requires T 1/3 landed)", ref: "T 1/3" }]);
   const unparsed = planDependencyProblems([e("Plain plan (requires part 1/2 landed)")], []);
@@ -401,7 +411,7 @@ test("planDependencyProblems finds dangling refs, unparsed clauses and cycles", 
   assert.deepEqual(cyc.cycle, ["S 1/2", "S 2/2", "S 1/2"]);
   const self = planDependencyProblems([e("S, part 1/2: a (requires part 1/2 landed)")], []);
   assert.deepEqual(self.cycle, ["S 1/2", "S 1/2"]);
-  assert.deepEqual(planDependencyProblems([e("Free plan")], []), { cycle: null, dangling: [], unparsed: [] });
+  assert.deepEqual(planDependencyProblems([e("Free plan")], []), { cycle: null, dangling: [], unparsed: [], misworded: [] });
 });
 
 test("backlogInProgress names the runner holding each entry's claim; inProgressMark labels it", () => {

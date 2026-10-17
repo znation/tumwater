@@ -68,7 +68,7 @@ function cappedList(items: readonly string[], max: number): string {
  * adds over `base` (its text at the merge-base), or undefined when it adds none. Only new
  * problems count: one already on main is not this run's fault and stays doctor's to report, so
  * the author is never asked to fix another run's heading. The most serious new problem is named
- * — cycle, then dangling, then unparsed — with a count of the rest. */
+ * — cycle, then dangling, unparsed, then misworded — with a count of the rest. */
 export function planDependencyFinding(head: string, base: string): string | undefined {
   const problems = (text: string) =>
     planDependencyProblems(
@@ -80,7 +80,8 @@ export function planDependencyFinding(head: string, base: string): string | unde
   const newCycle = now.cycle !== null && was.cycle === null ? now.cycle : null;
   const newDangling = now.dangling.filter((d) => !was.dangling.some((b) => b.title === d.title && b.ref === d.ref));
   const newUnparsed = now.unparsed.filter((t) => !was.unparsed.includes(t));
-  const total = (newCycle !== null ? 1 : 0) + newDangling.length + newUnparsed.length;
+  const newMisworded = now.misworded.filter((m) => !was.misworded.some((b) => b.title === m.title && b.ref === m.ref));
+  const total = (newCycle !== null ? 1 : 0) + newDangling.length + newUnparsed.length + newMisworded.length;
   if (total === 0) return undefined;
   let first: string;
   if (newCycle !== null) {
@@ -90,9 +91,13 @@ export function planDependencyFinding(head: string, base: string): string | unde
     const d = newDangling[0]!;
     first = `PLANS.md plan "${d.title}" requires ${d.ref}, which no PLANS.md heading carries — the claim allocator ` +
       "ignores the clause and hands the plan out now; fix the series name or part number to match the prerequisite's heading";
-  } else {
+  } else if (newUnparsed.length > 0) {
     first = `PLANS.md plan "${newUnparsed[0]!}" has a \`requires … landed\` clause that names no part the claim allocator can read — ` + // vocabulary-ok: PLANS.md heading syntax
       "it holds nothing; write each ref as `<Series> i/n` or `part i/n` after a `<Series>, part i/n:` heading prefix";
+  } else {
+    const w = newMisworded[0]!;
+    first = `PLANS.md plan "${w.title}" names ${w.ref} as a prerequisite without a \`requires … landed\` clause — ` + // vocabulary-ok: PLANS.md heading syntax
+      "the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed` — fix it before this change commits"; // vocabulary-ok: PLANS.md heading syntax
   }
   return `${first}${moreSuffix(total - 1)}`;
 }

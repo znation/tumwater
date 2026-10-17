@@ -237,16 +237,29 @@ function requiresClause(title: string): string | null {
   return m === null ? null : m[1]!;
 }
 
+/** A dependency verb followed by a series part ref in a heading's parenthetical — the wording the
+ * claim allocator ignores (BUGS.md 2026-10-14: a part headed "blocked by part 1/2 above" was handed
+ * out six times while part 1/2 was in flight). planDependencyProblems reports each such ref. */
+const MISWORDED_DEPENDENCY_RE = /\b(?:blocked by|blocked on|after|follows|depends on|waits on|waits for|once)\s+(?:the\s+)?(parts?\s+[0-9]+[a-z]?\/[0-9]+)/gi;
+
 /** The mistakes in the planned entries' `requires … landed` clauses that the claim allocator
  * cannot see: `dangling` — a ref naming a part no planned or done heading carries (its hold is
  * void), `unparsed` — titles whose clause yields no refs, and `cycle` — the first dependency cycle
  * among planned `Series, part i/n:` entries as `Series i/n` names in walk order, first name
- * repeated last (a self-reference is a one-hop cycle), or null. Refused and needs-review entries
- * count like the rest, since their clauses still decide when they unblock. */
+ * repeated last (a self-reference is a one-hop cycle), or null — and `misworded`: a series part
+ * whose heading parenthetical names a still-planned part through a dependency verb ("blocked by
+ * part 1/2") with no requires clause holding that part, so the allocator hands it out now.
+ * Refused and needs-review entries count like the rest, since their clauses still decide when
+ * they unblock. */
 export function planDependencyProblems(
   planned: readonly BacklogEntry[],
   doneTitles: readonly string[],
-): { cycle: string[] | null; dangling: Array<{ title: string; ref: string }>; unparsed: string[] } {
+): {
+  cycle: string[] | null;
+  dangling: Array<{ title: string; ref: string }>;
+  unparsed: string[];
+  misworded: Array<{ title: string; ref: string }>;
+} {
   const known = plannedPartKeys(planned);
   for (const t of doneTitles) {
     const part = seriesPart(t);
@@ -254,6 +267,8 @@ export function planDependencyProblems(
   }
   const dangling: Array<{ title: string; ref: string }> = [];
   const unparsed: string[] = [];
+  const misworded: Array<{ title: string; ref: string }> = [];
+  const plannedKeys = plannedPartKeys(planned);
   const nodes = new Map<string, { name: string; deps: string[] }>();
   for (const entry of planned) {
     const refs = requiredParts(entry.title);
@@ -264,6 +279,17 @@ export function planDependencyProblems(
     }
     const own = seriesPart(entry.title);
     if (own === null) continue;
+    let meta = trailingParenthetical(entry.title);
+    if (meta === "") meta = openParenthetical(entry.title);
+    const held = new Set(refs.map((ref) => partKey(ref.series, ref.part)));
+    for (const m of meta.matchAll(MISWORDED_DEPENDENCY_RE)) {
+      for (const ref of parseRef(m[1]!, own.series)) {
+        const key = partKey(ref.series, ref.part);
+        if (!plannedKeys.has(key) || held.has(key)) continue;
+        const name = `${ref.series} ${ref.part}/${ref.of}`;
+        if (!misworded.some((w) => w.title === entry.title && w.ref === name)) misworded.push({ title: entry.title, ref: name });
+      }
+    }
     nodes.set(partKey(own.series, own.part), {
       name: `${own.series} ${own.part}/${own.of}`,
       deps: refs.map((ref) => partKey(ref.series, ref.part)),
@@ -295,7 +321,7 @@ export function planDependencyProblems(
     cycle = visit(key);
     if (cycle !== null) break;
   }
-  return { cycle, dangling, unparsed };
+  return { cycle, dangling, unparsed, misworded };
 }
 
 /** The prerequisite refs of `title`'s `requires … landed` clause when none of them is still in

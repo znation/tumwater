@@ -511,6 +511,12 @@ test("checkPlanDependencies warns on a dangling ref", () => {
   assert.match(out.detail, /requires T 1\/2, which no PLANS\.md heading carries — the hold is void, so the plan is claimable now/);
 });
 
+test("checkPlanDependencies warns on a misworded dependency", () => {
+  const out = checkPlanDependencies(plansWith("### S, part 1/2: a\n\nbody\n\n### S, part 2/2: b (blocked by part 1/2 above)\n\nbody\n"));
+  assert.equal(out.level, "warn");
+  assert.match(out.detail, /names S 1\/2 as a prerequisite/);
+});
+
 test("checkPlanDependencies warns on an unparsed clause", () => {
   const out = checkPlanDependencies(plansWith("### Plain plan (requires part 1/2 landed)\n\nbody\n"));
   assert.equal(out.level, "warn");
@@ -523,5 +529,5 @@ test("checkPlanDependencies names a cycle first and counts the other kinds", () 
   ));
   assert.equal(out.level, "warn");
   assert.match(out.detail, /plan dependency cycle: S 1\/2 → S 2\/2 → S 1\/2 — every part on it stays blocked forever/);
-  assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\)\)/);
+  assert.match(out.detail, /\(also 1 dangling ref\(s\), 0 unparsed clause\(s\), 0 misworded dependency\(ies\)\)/);
 });

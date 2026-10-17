@@ -1336,34 +1336,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### A series part whose heading words its prerequisite as "blocked by part i/n" (or "after", "follows", "depends on") instead of a requires clause gets a doctor warning (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, test/backlog-eligibility.test.ts, test/doctor-backlog.test.ts, and src/tick/stage-check.ts only when its `planDependencyFinding` already exists)
-
-**Goal.** The claim allocator reads one dependency form only: `requires <ref> landed` in a heading's parenthetical. BUGS.md "The plan loop is never told the one prerequisite form the claim allocator reads" (2026-10-14) shows the cost of any other wording. A part headed `(planned …; blocked by part 1/2 above, …)` was handed out six times while part 1/2 was still in flight. The fix there was prompt guidance (`src/roles/role-guidance.ts`). No deterministic check exists. `planDependencyProblems` (`src/backlog/backlog-eligibility.ts`) only inspects headings that already have a `requires` clause, so a misworded heading passes `checkPlanDependencies` (`src/doctor/doctor-backlog.ts`) as clean. This plan adds a `misworded` problem kind: a heading names a still-Planned part through a dependency verb, and no requires clause holds that part.
-
-**Approach.**
-- `src/backlog/backlog-eligibility.ts`, `planDependencyProblems`: widen the return type with `misworded: Array<{ title: string; ref: string }>`.
-  - Scope: for each planned entry that has its own `seriesPart`, read the same meta text `requiresClause` reads (`trailingParenthetical`, falling back to `openParenthetical`). Run a module-level constant `MISWORDED_DEPENDENCY_RE = /\b(?:blocked by|blocked on|after|follows|depends on|waits on|waits for|once)\s+(?:the\s+)?(parts?\s+[0-9]+[a-z]?\/[0-9]+)/gi` over it.
-  - Parsing: feed each capture to `parseRef(capture, own.series)`.
-  - What counts: a ref is misworded when its `partKey` is in `plannedPartKeys(planned)` (the prerequisite is still Planned, so the hold matters now) and is not among the keys of `requiredParts(entry.title)` (no requires clause already holds it). Push `{ title, ref: "<series> <part>/<of>" }`.
-  - Out of scope on purpose: a ref to a Done part, such as "follows the landed part 1/2", already in Done headings. It holds nothing and needs nothing. Headings with no series part are also skipped.
-  - Docs: extend the function's doc comment with the new kind, and give the regex constant a one-line doc saying why it exists (the 2026-10-14 bug). Any source line in this `// vocabulary: plain` module that contains the word `landed` ends with `// vocabulary-ok: PLANS.md heading syntax`.
-- `src/doctor/doctor-backlog.ts`, `checkPlanDependencies`: destructure `misworded`. Report it after `unparsed` in the same first-then-`andMore` shape, and add `[misworded.length, "misworded dependency(ies)"]` to the `others(...)` lists of the cycle, dangling and unparsed branches. Wording: `` PLANS.md plan "<title>" names <ref> as a prerequisite without a `requires … landed` clause — the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed` ``. Update the ok message to `every planned plan's requires clause names a known part, with no cycle or misworded dependency`.
-- `src/tick/stage-check.ts`, staging. This step applies only if `planDependencyFinding` exists when this plan is picked up. That function comes from PLANS.md "A staged PLANS.md edit that breaks a requires clause gets a staging finding", which is now Done, so expect it to exist.
-  - When it exists, add `misworded` as its fourth kind, after unparsed. It counts as new when the base has no item with the same `title` and `ref`. Use the doctor wording above, with ` — fix it before this change commits` appended. Add one test case in `test/stage-check.test.ts`.
-  - When it does not exist, leave stage-check.ts alone and say so in the commit's RISK line. The in-flight plan will then destructure only the fields it knows, which the widened return type does not break.
-
-**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `test/backlog-eligibility.test.ts`, `test/doctor-backlog.test.ts`; conditionally `src/tick/stage-check.ts` and `test/stage-check.test.ts`.
-
-**Acceptance criteria.**
-- In `test/backlog-eligibility.test.ts`, the existing "planDependencyProblems finds dangling refs, unparsed clauses and cycles" assertion `ok` is updated to include `misworded: []`. A new test, "planDependencyProblems flags a still-planned prerequisite named without a requires clause", checks:
-  - `[S, part 1/2: a, S, part 2/2: b (planned 2026-10-14 by plan; blocked by part 1/2 above)]` yields `misworded` `[{ title: <part 2/2's title>, ref: "S 1/2" }]`;
-  - the same part 2/2 with `S, part 1/2` only in the done titles yields `[]`;
-  - `S, part 2/2: b (requires part 1/2 landed; after part 1/2)` yields `[]`;
-  - a non-series `Plain plan (after part 1/2)` yields `[]`.
-- In `test/doctor-backlog.test.ts`, a new test, "checkPlanDependencies warns on a misworded dependency", uses `plansWith` with the two-part misworded pair. It asserts a `warn` whose detail contains `names S 1/2 as a prerequisite`. The existing checkPlanDependencies tests still pass.
-- No heading under PLANS.md `## Planned` on main at implementation time trips the new kind. Verify with `node dist/cli.js doctor` in the worktree or a one-off check, and report what was run.
-- `npm run test` passes, including `test/vocabulary.test.ts`.
-
 ### A merge check that fails and then passes on its kept-pin retry is recorded as a flake, so the gate's known-flake memory, doctor's `flaky checks` and the tick prompt's flake note count it (planned 2026-10-16 by plan; independent of every other entry — touches src/review/known-flakes.ts, src/merge/merge-check-failures.ts, src/merge/merge-core.ts, src/loop/loop-state.ts and their tests)
 
 **Goal.** Two retries exist for load flakes. One is the gate pre-check's immediate re-run (`src/review/review-precheck.ts`). It logs `gate check failed then passed on retry — flaky: <headline>` (`FLAKY_WARNING_PREFIX`), and every flake consumer reads that line through `flakeWarningKeys` in `src/review/known-flakes.ts`:
@@ -1392,6 +1364,34 @@ The other is the in-lock merge check's kept pin (`mergeCheckRed` in `src/merge/m
 - `npm run test` passes, including `test/vocabulary.test.ts`. The new source lines say "merge", not "landing", because `merge-check-failures.ts` is `// vocabulary: plain`.
 
 ## Done
+
+### A series part whose heading words its prerequisite as "blocked by part i/n" (or "after", "follows", "depends on") instead of a requires clause gets a doctor warning (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, test/backlog-eligibility.test.ts, test/doctor-backlog.test.ts, and src/tick/stage-check.ts only when its `planDependencyFinding` already exists) — done 2026-10-16
+
+**Goal.** The claim allocator reads one dependency form only: `requires <ref> landed` in a heading's parenthetical. BUGS.md "The plan loop is never told the one prerequisite form the claim allocator reads" (2026-10-14) shows the cost of any other wording. A part headed `(planned …; blocked by part 1/2 above, …)` was handed out six times while part 1/2 was still in flight. The fix there was prompt guidance (`src/roles/role-guidance.ts`). No deterministic check exists. `planDependencyProblems` (`src/backlog/backlog-eligibility.ts`) only inspects headings that already have a `requires` clause, so a misworded heading passes `checkPlanDependencies` (`src/doctor/doctor-backlog.ts`) as clean. This plan adds a `misworded` problem kind: a heading names a still-Planned part through a dependency verb, and no requires clause holds that part.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`, `planDependencyProblems`: widen the return type with `misworded: Array<{ title: string; ref: string }>`.
+  - Scope: for each planned entry that has its own `seriesPart`, read the same meta text `requiresClause` reads (`trailingParenthetical`, falling back to `openParenthetical`). Run a module-level constant `MISWORDED_DEPENDENCY_RE = /\b(?:blocked by|blocked on|after|follows|depends on|waits on|waits for|once)\s+(?:the\s+)?(parts?\s+[0-9]+[a-z]?\/[0-9]+)/gi` over it.
+  - Parsing: feed each capture to `parseRef(capture, own.series)`.
+  - What counts: a ref is misworded when its `partKey` is in `plannedPartKeys(planned)` (the prerequisite is still Planned, so the hold matters now) and is not among the keys of `requiredParts(entry.title)` (no requires clause already holds it). Push `{ title, ref: "<series> <part>/<of>" }`.
+  - Out of scope on purpose: a ref to a Done part, such as "follows the landed part 1/2", already in Done headings. It holds nothing and needs nothing. Headings with no series part are also skipped.
+  - Docs: extend the function's doc comment with the new kind, and give the regex constant a one-line doc saying why it exists (the 2026-10-14 bug). Any source line in this `// vocabulary: plain` module that contains the word `landed` ends with `// vocabulary-ok: PLANS.md heading syntax`.
+- `src/doctor/doctor-backlog.ts`, `checkPlanDependencies`: destructure `misworded`. Report it after `unparsed` in the same first-then-`andMore` shape, and add `[misworded.length, "misworded dependency(ies)"]` to the `others(...)` lists of the cycle, dangling and unparsed branches. Wording: `` PLANS.md plan "<title>" names <ref> as a prerequisite without a `requires … landed` clause — the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed` ``. Update the ok message to `every planned plan's requires clause names a known part, with no cycle or misworded dependency`.
+- `src/tick/stage-check.ts`, staging. This step applies only if `planDependencyFinding` exists when this plan is picked up. That function comes from PLANS.md "A staged PLANS.md edit that breaks a requires clause gets a staging finding", which is now Done, so expect it to exist.
+  - When it exists, add `misworded` as its fourth kind, after unparsed. It counts as new when the base has no item with the same `title` and `ref`. Use the doctor wording above, with ` — fix it before this change commits` appended. Add one test case in `test/stage-check.test.ts`.
+  - When it does not exist, leave stage-check.ts alone and say so in the commit's RISK line. The in-flight plan will then destructure only the fields it knows, which the widened return type does not break.
+
+**Files touched.** `src/backlog/backlog-eligibility.ts`, `src/doctor/doctor-backlog.ts`, `test/backlog-eligibility.test.ts`, `test/doctor-backlog.test.ts`; conditionally `src/tick/stage-check.ts` and `test/stage-check.test.ts`.
+
+**Acceptance criteria.**
+- In `test/backlog-eligibility.test.ts`, the existing "planDependencyProblems finds dangling refs, unparsed clauses and cycles" assertion `ok` is updated to include `misworded: []`. A new test, "planDependencyProblems flags a still-planned prerequisite named without a requires clause", checks:
+  - `[S, part 1/2: a, S, part 2/2: b (planned 2026-10-14 by plan; blocked by part 1/2 above)]` yields `misworded` `[{ title: <part 2/2's title>, ref: "S 1/2" }]`;
+  - the same part 2/2 with `S, part 1/2` only in the done titles yields `[]`;
+  - `S, part 2/2: b (requires part 1/2 landed; after part 1/2)` yields `[]`;
+  - a non-series `Plain plan (after part 1/2)` yields `[]`.
+- In `test/doctor-backlog.test.ts`, a new test, "checkPlanDependencies warns on a misworded dependency", uses `plansWith` with the two-part misworded pair. It asserts a `warn` whose detail contains `names S 1/2 as a prerequisite`. The existing checkPlanDependencies tests still pass.
+- No heading under PLANS.md `## Planned` on main at implementation time trips the new kind. Verify with `node dist/cli.js doctor` in the worktree or a one-off check, and report what was run.
+- `npm run test` passes, including `test/vocabulary.test.ts`.
 
 ### Plain terms code merge, part 3/11: Rename the merge slot identifiers to merge (done 2026-10-16; planned 2026-10-16 by user; requires part 2/11 landed; design in plans/terminology.md "Code names"; touches src/merge/merge-slot.ts and test/merge-slot.test.ts)
 

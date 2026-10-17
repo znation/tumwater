@@ -214,9 +214,10 @@ export function checkStalledPlans(root: string): CheckOutcome {
  * clauses by hand and fixes them itself. The most serious kind is named — cycle, then dangling,
  * then unparsed — with a count of the other kinds. */
 export function checkPlanDependencies(root: string): CheckOutcome {
-  const { cycle, dangling, unparsed } = planDependencyProblems(plannedPlanEntries(root), donePlans(root));
+  const { cycle, dangling, unparsed, misworded } = planDependencyProblems(plannedPlanEntries(root), donePlans(root));
   const [firstDangling, ...restDangling] = dangling;
   const [firstUnparsed, ...restUnparsed] = unparsed;
+  const [firstMisworded, ...restMisworded] = misworded;
   const quote = (t: string) => `"${truncate(t, FIX_CLAIM_HEADING_MAX)}"`;
   const others = (parts: Array<[number, string]>): string =>
     parts.some(([n]) => n > 0) ? ` (also ${parts.map(([n, noun]) => `${n} ${noun}`).join(", ")})` : "";
@@ -226,20 +227,28 @@ export function checkPlanDependencies(root: string): CheckOutcome {
   const unparsedMsg = (t: string) =>
     `PLANS.md plan ${quote(t)} has a \`requires … landed\` clause that names no part the allocator can read — ` + // vocabulary-ok: PLANS.md heading syntax
     "it holds nothing; write each ref as `<Series> i/n` or give the heading a `<Series>, part i/n:` prefix";
+  const miswordedMsg = (w: { title: string; ref: string }) =>
+    `PLANS.md plan ${quote(w.title)} names ${w.ref} as a prerequisite without a \`requires … landed\` clause — ` + // vocabulary-ok: PLANS.md heading syntax
+    "the claim allocator ignores that wording and hands the part out now; write it as `requires part i/n landed`"; // vocabulary-ok: PLANS.md heading syntax
   if (cycle !== null) {
     return warnOutcome(`plan dependency cycle: ${cycle.join(" → ")} — every part on it stays blocked forever; ` +
       "edit one heading's `requires … landed` clause to break it" + // vocabulary-ok: PLANS.md heading syntax
-      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"]]));
+      others([[dangling.length, "dangling ref(s)"], [unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
   }
   if (firstDangling) {
     return warnOutcome(danglingMsg(firstDangling) +
       andMore(restDangling, (d) => `${quote(d.title)} → ${d.ref}`, "ref(s)") +
-      others([[unparsed.length, "unparsed clause(s)"]]));
+      others([[unparsed.length, "unparsed clause(s)"], [misworded.length, "misworded dependency(ies)"]]));
   }
   if (firstUnparsed) {
-    return warnOutcome(unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)"));
+    return warnOutcome(unparsedMsg(firstUnparsed) + andMore(restUnparsed, quote, "clause(s)") +
+      others([[misworded.length, "misworded dependency(ies)"]]));
   }
-  return okOutcome("every planned plan's requires clause names a known part, with no cycle");
+  if (firstMisworded) {
+    return warnOutcome(miswordedMsg(firstMisworded) +
+      andMore(restMisworded, (w) => `${quote(w.title)} → ${w.ref}`, "dependency(ies)"));
+  }
+  return okOutcome("every planned plan's requires clause names a known part, with no cycle or misworded dependency");
 }
 
 /** How long a queued landing may wait without its change starting before the stale-queued-landing
