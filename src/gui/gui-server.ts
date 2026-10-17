@@ -110,7 +110,10 @@ function parseRequestTarget(req: http.IncomingMessage): URL | null {
 function crossOriginRequest(req: http.IncomingMessage): boolean {
   const raw = req.headers.origin;
   if (raw === undefined) return false; // no Origin: not a browser — allow
-  const origin = Array.isArray(raw) ? raw[0] : raw;
+  // A `typeof` guard narrows to a concrete `string[]` (so `raw[0]` is `string | undefined`
+  // under noUncheckedIndexedAccess) instead of `Array.isArray`'s `any[]`, whose `[0]` is `any`;
+  // an empty array would be undefined either way, so `?? ""` only spells the first value out.
+  const origin = typeof raw === "string" ? raw : (raw[0] ?? "");
   if (origin === "null") return true;
   try {
     return new URL(origin).host.toLowerCase() !== (req.headers.host ?? "").toLowerCase();

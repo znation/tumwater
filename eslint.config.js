@@ -131,6 +131,14 @@ export default tseslint.config(
       // or `@ts-nocheck` (grep over src finds none), so a directive that silences tsc in shipped
       // code now fails the lint instead of landing unnoticed.
       "@typescript-eslint/ban-ts-comment": ["error", { "ts-expect-error": true }],
+      // The no-any companion guards for implicit `any`, which no-explicit-any can see and these
+      // cannot be written by hand: a value that is `any` because a library (or `Array.isArray`,
+      // which narrows to `any[]` so `[0]` is `any`) handed one out, not because the author wrote
+      // `: any`. no-unsafe-assignment flags that `any` flowing into a typed variable or property;
+      // no-unsafe-argument flags it crossing into a typed call. src is spotless today (0 sites),
+      // so these are regression guards like no-explicit-any, not migrations.
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-argument": "error",
     },
   },
 );
