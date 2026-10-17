@@ -5,7 +5,7 @@ import {
   type ClaudeAccount,
   type ClaudeWindowEntry,
 } from "../agent/claude/claude-account.js";
-import { budgetReached, fleetDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
+import { budgetReached, teamDailyCost, modelPairName, projectCapHit } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import {
   configForRole,
@@ -15,7 +15,7 @@ import {
 } from "../config/config-views.js";
 import { resolveTierFallbacks, tierFallbackLabels, tiersResolveDistinctPairs } from "../config/config-fallbacks.js";
 import { enabledRoleIds } from "../config/config.js";
-import { fallbackModelFree, fleetModelsFree, piPairFree, readPiProviders } from "../pi/pi-models.js";
+import { fallbackModelFree, teamModelsFree, piPairFree, readPiProviders } from "../pi/pi-models.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
 import type { TumwaterConfig } from "../config/config-schema.js";
 import type { OrchestratorInfo } from "../team/orchestrator-info.js";
@@ -52,7 +52,7 @@ interface BudgetSlice {
  * routes to claude. `only` is the free-ness classification the display needs: every paying seam
  * is a subscription claude seam exactly when no other seam is priced — a pi seam judged by
  * piPairFree, any other backend's billing unseen so it counts as paying too. The reviewer and
- * the strong-tier resolver are included, like fleetModelsFree, since they can spend. The
+ * the strong-tier resolver are included, like teamModelsFree, since they can spend. The
  * account is the poll's single readClaudeAccount result, so the window and every piPairFree
  * verdict judge the same reading. */
 function claudeWindowBlock(
@@ -83,7 +83,7 @@ function claudeWindowBlock(
  * that the budget object, the burn-rate projection and `free`/`fallback`/`tiers` all read;
  * the per-tier pause set (part 5c/8) and the per-role daily-cap set, each the gate's own
  * verdict over the same last-known-good config and one `now`. Owns the price-aware pair logic
- * (piPairFree, fallbackModelFree, fleetModelsFree, resolveTierFallbacks) so it has one home:
+ * (piPairFree, fallbackModelFree, teamModelsFree, resolveTierFallbacks) so it has one home:
  * models.json is read once (readPiProviders) and the claude account once (readClaudeAccount,
  * on the snapshot's own pinned `now`), and every free-ness verdict and the window judge that
  * single reading. The director is exempt from both pause sets, exactly as the gates exempt it. */
@@ -104,7 +104,7 @@ export function collectBudget(
   const publishedSpend = running && info?.budget ? info.budget.spentUsd : null;
   // The one materialized spend the budget block renders and the burn-rate projection both
   // read — the scheduler's published figure while running, the persisted states' sum otherwise.
-  const spentUsd = publishedSpend ?? fleetDailyCost(loops, now);
+  const spentUsd = publishedSpend ?? teamDailyCost(loops, now);
   // The persisted billing answer (6a/7), read once for every free-ness verdict below: a
   // subscription claude seam is free, so the badge and the pause set judge it as such.
   const account = readClaudeAccount(root, now);
@@ -141,7 +141,7 @@ export function collectBudget(
       // One projection per poll, from the same spend the field above renders: null exactly
       // when no forecast may be stated (no cap, no spend, cap reached, burn misses midnight).
       capHitAt: projectCapHit({ spentUsd, capUsd: cfg.maxDailyCostUsd }, now),
-      free: fleetModelsFree(cfg, modelsPath, account),
+      free: teamModelsFree(cfg, modelsPath, account),
       backend: cfg.backend ?? "pi",
       // Null unless the gate could actually engage it (configured AND priced at zero AND not
       // demoted by the running orchestrator's breaker): a fallback the scheduler would refuse

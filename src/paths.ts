@@ -23,14 +23,14 @@ function tumwaterDir(root: string): string {
   return path.join(root, STATE_DIR);
 }
 
-/** The repo's tumwater.json — the fleet config (config.ts). */
+/** The repo's tumwater.json — the team config (config.ts). */
 export function configPath(root: string): string {
   return path.join(root, CONFIG_BASENAME);
 }
 
 /** The cross-process lock serializing read-modify-write updates of tumwater.json
  * (writeConfigMutation and applyConfigRequest in config/config-write.ts): the CLI's
- * `tumwater config set`, a standalone `tumwater gui` server, and the running fleet are separate
+ * `tumwater config set`, a standalone `tumwater gui` server, and the running team are separate
  * processes that can rewrite one config in the same instant, and without serialization each
  * one's whole-file write silently drops the others' change. A lock directory owned by the
  * shared mkdir-and-pid mutex (withSyncLock, src/concurrency/lock.ts), which creates and removes
@@ -124,7 +124,7 @@ export function imageProbesPath(root: string): string {
 
 /** The `qa` flow-coverage ledger (tick/qa-coverage.ts): which flow each observer tick exercised
  * and how it went. Runtime state under .tumwater/state/, never committed — a passing check
- * must leave the repo untouched, or every cheap pass would move main and wake the fleet. */
+ * must leave the repo untouched, or every cheap pass would move main and wake the team. */
 export function qaCoveragePath(root: string): string {
   return path.join(tumwaterDir(root), "state", "qa-coverage.json");
 }
@@ -158,20 +158,20 @@ export function autoRestartStampPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "auto-restart.json");
 }
 
-/** The green main-baseline verdicts the fleet keeps across restarts (baseline/main-baseline.ts's
+/** The green main-baseline verdicts the team keeps across restarts (baseline/main-baseline.ts's
  * persistBaselineVerdicts): SHAs whose suite passed, so a new generation does not re-verify
  * them. */
 export function baselineVerdictsPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "baseline-verdicts.json");
 }
 
-/** Marker file `tumwater reset-counters` drops for a running fleet to consume (it must also
+/** Marker file `tumwater reset-counters` drops for a running team to consume (it must also
  * zero the runners' in-memory counters, or their next save resurrects the old values). */
 export function resetRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "reset-counters.json");
 }
 
-/** Marker file `tumwater wake [--role <id>]` drops for a running fleet to consume: like the
+/** Marker file `tumwater wake [--role <id>]` drops for a running team to consume: like the
  * reset-counters marker it must name its targets because it can affect many loops, and like it
  * it must reach the runners' IN-MEMORY schedule — the poll loop reads eligibility from the
  * in-memory state, so clearing only the on-disk file would not wake anything. */
@@ -187,21 +187,21 @@ export function scheduledWakeDir(root: string): string {
 }
 
 /** Marker file the dashboard's restart button (the build-stale alert's refresh icon) drops for
- * a running fleet to consume: force the pending self-redeploy past its cooldown now. Presence
+ * a running team to consume: force the pending self-redeploy past its cooldown now. Presence
  * is the request; the content is just `{ at }` — like the abort markers, one untyped flag. */
 export function restartRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "restart.json");
 }
 
-/** Marker file `tumwater reclaim` drops for a running fleet to consume: presence means "run
+/** Marker file `tumwater reclaim` drops for a running team to consume: presence means "run
  * one manual reclaim pass over every candidate." Like the restart marker, presence is the
- * request and the content is just `{ at }` — one untyped flag. A fleet that is not running
+ * request and the content is just `{ at }` — one untyped flag. A team that is not running
  * cannot consume it, so `cmdReclaim` runs the pass in-process instead. */
 export function reclaimRequestPath(root: string): string {
   return path.join(tumwaterDir(root), "reclaim.json");
 }
 
-/** Per-role marker file `tumwater abort --role <id>` drops for a running fleet to consume:
+/** Per-role marker file `tumwater abort --role <id>` drops for a running team to consume:
  * kill that loop's in-flight tick. One file per role (presence = pending request; content is
  * just `{ at }`) keeps consumption race-free and needs no parsing — unlike the single shared
  * reset-counters marker, which must name its targets because it affects many loops. */
@@ -209,7 +209,7 @@ export function abortRequestPath(root: string, role: string): string {
   return path.join(tumwaterDir(root), `abort-${role}.json`);
 }
 
-/** Persistent operator-intent marker for `tumwater pause`: its presence means "the fleet is
+/** Persistent operator-intent marker for `tumwater pause`: its presence means "the team is
  * paused" until `resume` removes it — unlike the abort/reset markers above, which are one-shot
  * requests consumed on pickup. Content is `{ at }` (the pause timestamp), read for display
  * only, never required. */
@@ -218,7 +218,7 @@ export function pausedPath(root: string): string {
 }
 
 /** Operator-intent marker for `tumwater stop --in <duration>`: `{ at, until }` in epoch ms. The
- * running fleet's watch consumes it when `until` passes; a fresh `tumwater run` clears a
+ * running team's watch consumes it when `until` passes; a fresh `tumwater run` clears a
  * stale one. */
 export function scheduledStopPath(root: string): string {
   return path.join(tumwaterDir(root), "stop-at.json");
@@ -226,9 +226,9 @@ export function scheduledStopPath(root: string): string {
 
 /** Persistent operator-intent marker for `tumwater pause --role <id>` / `resume --role <id>`:
  * the set of individually paused roles, `{ roles: string[], at: number }` — the same
- * presence-means-paused persistence as the fleet marker above, so pausing a role before
+ * presence-means-paused persistence as the team marker above, so pausing a role before
  * startup starts it paused. Under state/ beside the orchestrator info file: unlike the
- * fleet marker it is structured state several writers rewrite (the orchestrator never does,
+ * team marker it is structured state several writers rewrite (the orchestrator never does,
  * but the shape is atomic-json state, not a presence flag). */
 export function pausedRolesPath(root: string): string {
   return path.join(tumwaterDir(root), "state", "paused-roles.json");
@@ -361,7 +361,7 @@ export function gateMainWorktreePath(root: string): string {
 
 /** Detached worktree pinned at the RUNNING build's own SHA for the redeployer's urgency
  * carve-out (redeploy.ts's buildRed): the baseline check that decides whether the build the
- * fleet is executing is red runs here — its own checkout, not the redeploy mirror above, so a
+ * team is executing is red runs here — its own checkout, not the redeploy mirror above, so a
  * witness check at an old SHA can never repoint the mirror a green check or compile is using.
  * The leading underscore follows the _main convention, so it can never collide with a role. */
 export function witnessWorktreePath(root: string): string {
@@ -406,7 +406,7 @@ export function landingRefName(role: string): string {
 }
 
 /** The pre-rename pin name (`refs/tumwater/landing/<role>`): the startup step moves these to
- * landingRefName, and retire still reads and deletes it for a fleet stopped before its first
+ * landingRefName, and retire still reads and deletes it for a team stopped before its first
  * start on this build. */
 export function legacyLandingRefName(role: string): string {
   return `refs/tumwater/landing/${role}`; // vocabulary-ok: legacy name read from old refs or commits

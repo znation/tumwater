@@ -1,4 +1,4 @@
-/** The daily-cost budget: a loop's and the fleet's local-day spend and the gate those figures
+/** The daily-cost budget: a loop's and the team's local-day spend and the gate those figures
  * drive (plans/daily-cost-budget.md, plans/fallback-model.md). The circuit breaker that judges
  * whether the gate's fallback can actually serve lives beside it in fallback-breaker.ts. Split
  * out of loop-state.ts, which owns
@@ -21,7 +21,7 @@ export function todayStamp(now = Date.now()): string {
 
 /** A spend figure is finite and non-negative (json-object.ts's nonNegativeNumber); a string,
  * NaN, ±Infinity, or a negative hand-edited value reads as $0. Negative spend is as poisonous
- * to the cap as NaN: it makes every `>= cap` comparison false — and drags the fleet sum down —
+ * to the cap as NaN: it makes every `>= cap` comparison false — and drags the team sum down —
  * silently defeating the budget's safety valve. */
 function spendNumber(value: unknown): number {
   return nonNegativeNumber(value, 0);
@@ -33,7 +33,7 @@ function spendNumber(value: unknown): number {
  * non-finite, or negative value reads as $0 too: `loadLoopState` heals the field on read, but
  * this is the budget gate's own guard, and a hand-edited or torn `dayCostUsd` (or an in-memory
  * state) would otherwise concatenate into
- * fleetDailyCost's sum (or make every `>= cap` comparison false) and silently defeat the cap,
+ * teamDailyCost's sum (or make every `>= cap` comparison false) and silently defeat the cap,
  * the budget's safety valve. Reads never mutate. See plans/daily-cost-budget.md. */
 export function dailyCost(
   s: Pick<LoopState, "dayStamp" | "dayCostUsd">,
@@ -80,8 +80,8 @@ export function pairDailyCost(
   }, 0);
 }
 
-/** The fleet's spend for the local day: every loop's daily window summed. */
-export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
+/** The team's spend for the local day: every loop's daily window summed. */
+export function teamDailyCost(states: LoopState[], now = Date.now()): number {
   return states.reduce((sum, s) => sum + dailyCost(s, now), 0);
 }
 
@@ -90,19 +90,19 @@ export function fleetDailyCost(states: LoopState[], now = Date.now()): number {
  * above it. The single definition of "the budget gate is on": the orchestrator evaluates it from
  * live loop states via budgetPaused, and both dashboards evaluate it from the snapshot's
  * materialized budget field (status/status-data.ts) — which carries the object even while
- * disabled, so the capUsd > 0 term is what keeps a disabled fleet out of "budget paused". The
+ * disabled, so the capUsd > 0 term is what keeps a disabled team out of "budget paused". The
  * comparison cannot drift between what the scheduler enforces and what users see. */
 export function budgetReached(budget: { spentUsd: number; capUsd: number } | null): boolean {
   return budget !== null && budget.capUsd > 0 && budget.spentUsd >= budget.capUsd;
 }
 
-/** The fixed fraction of the daily cap at which the fleet pages the operator that spend is
+/** The fixed fraction of the daily cap at which the team pages the operator that spend is
  * closing in on it (PLANS.md 2026-09-30): opinionated default, no config knob. */
 export const BUDGET_WARNING_FRACTION = 0.8;
 
 /** True when today's spend has crossed `BUDGET_WARNING_FRACTION` of the daily cap while the
  * budget gate is still open — the early heads-up beside budgetReached, which fires only once
- * the cap itself is reached and the fleet has already stopped (or demoted) its ticks. Same
+ * the cap itself is reached and the team has already stopped (or demoted) its ticks. Same
  * guard terms as budgetReached (non-null view, a cap of 0 disables the budget), scaled by the
  * warning fraction, so the two views can never disagree about whether the budget is on. */
 export function budgetWarning(budget: { spentUsd: number; capUsd: number } | null): boolean {
@@ -111,7 +111,7 @@ export function budgetWarning(budget: { spentUsd: number; capUsd: number } | nul
   );
 }
 
-/** True while the fleet's spend for the local day has reached `maxDailyCostUsd` (a cap of 0
+/** True while the team's spend for the local day has reached `maxDailyCostUsd` (a cap of 0
  * disables the budget). The orchestrator re-evaluates this every poll from its runners' live
  * states and the freshly reloaded config — resume is stateless, so raising/disabling the cap
  * or crossing midnight flips it on the next cycle and nothing can get stuck. Lives here (not
@@ -120,7 +120,7 @@ export function budgetPaused(states: LoopState[], config: TumwaterConfig, now = 
   return budgetReached(budgetSpend(states, config, now));
 }
 
-/** The fleet's daily-budget figures from live loop states — the exact pair the gate evaluates:
+/** The team's daily-budget figures from live loop states — the exact pair the gate evaluates:
  * today's summed spend and the configured cap (0 when disabled). budgetReached's own capUsd > 0
  * term makes a disabled cap read unreached, so the pair needs no null ceremony. Returning the
  * figures (not just the verdict) lets the scheduler publish WHAT it tripped on, not only THAT it
@@ -130,7 +130,7 @@ export function budgetSpend(
   config: TumwaterConfig,
   now = Date.now(),
 ): { spentUsd: number; capUsd: number } {
-  return { spentUsd: fleetDailyCost(states, now), capUsd: config.maxDailyCostUsd };
+  return { spentUsd: teamDailyCost(states, now), capUsd: config.maxDailyCostUsd };
 }
 
 /** When today's burn will reach the cap, as a local-day epoch-ms instant — the budget badge's
@@ -177,7 +177,7 @@ export function modelPairName(p: { provider?: string; model?: string } | null): 
  * (budgetReached for observers, budgetPaused for the scheduler), and whether the `default` and
  * `strong` tiers resolved to a usable free pair (resolveTierFallbacks over the full usable
  * predicate — price AND breaker serving) — plus whether the review gate is on. The gate is
- * `paused` when `default` resolves to pause (nothing for the fleet's bulk to run on), or when
+ * `paused` when `default` resolves to pause (nothing for the team's bulk to run on), or when
  * review is on and `strong` does (nothing could land, so every authoring tick is wasted work);
  * `fallback` otherwise, with the tiers that did resolve running their pairs and the rest held
  * per role. The single definition of the gate: the orchestrator enforces it and both dashboards

@@ -89,7 +89,7 @@ test("commands behave identically from a subdirectory of the repo (portability 2
   const fromSub = await cli(sub, "status");
   assert.equal(fromSub.code, 0);
   assert.equal(fromSub.code, fromRoot.code);
-  assert.equal(fromSub.stdout, fromRoot.stdout, "the same fleet state, wherever it runs from");
+  assert.equal(fromSub.stdout, fromRoot.stdout, "the same team state, wherever it runs from");
 
   // init from a subdirectory of an existing repo seeds THAT repo's root, never a nested
   // document set — and a second run reports already initialized.
@@ -268,7 +268,7 @@ test("init rejects unknown flags and stray positionals instead of baking them in
   assert.equal(readInitialPrompt(bare2), "- Build A - Build B");
 });
 
-// --- `status --json` through the real CLI entry point: the machine-readable fleet state --
+// --- `status --json` through the real CLI entry point: the machine-readable team state --
 // the same document GET /api/status serves, printed with no server. The CLI runs as a child
 // process, so the deep-equal below compares its parsed stdout against statusPayload(root)
 // computed in this process for the same root; both read only from disk and nothing mutates
@@ -306,7 +306,7 @@ test("status --json prints the /api/status payload; bare status keeps the table"
   assert.equal(feature!.generated, 424242);
   assert.equal(feature!.costUsd, 1.5);
 
-  // Deep-equal against the same root's payload in this process — one definition of fleet
+  // Deep-equal against the same root's payload in this process — one definition of team
   // state as JSON (status-payload.statusPayload) feeds both surfaces, so they cannot drift.
   // Both sides go through a JSON round-trip: that is exactly what the endpoint and the flag
   // emit.

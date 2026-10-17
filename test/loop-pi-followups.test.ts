@@ -148,7 +148,7 @@ test("a follow-up that runs on a claude seam writes its native log under that se
 test("requestSummary's 429 takes the shared transient retry: warns, waits the hint out, resumes, folds both", async () => {
   // BUGS.md 2026-10-01: the SUMMARY follow-up called bare runPi while the shared retry's own
   // doc claimed it wires EVERY pi run the loop makes — so a 429 on the follow-up turn failed
-  // it on first contact with no retry, no per-run warning, and no fleet-wide rate-limit hold
+  // it on first contact with no retry, no per-run warning, and no team-wide rate-limit hold
   // stamp, exactly the gate bypass the reviewer side fixed the same day. The follow-up now
   // takes the same runWithTransientRetry wiring (its capped budget applies to both attempts).
   const root = tmpdir();

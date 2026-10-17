@@ -81,7 +81,7 @@ test("validateConfig accepts a valid quietHours window and rejects a malformed o
 test("selector strings that parse to an empty provider or model half are rejected", () => {
   // piArgs skips an empty value when it builds its flags, and fallbackPair drops an empty
   // half, so a selector like "/id" or "p/" passes the non-empty-string rule yet never
-  // reaches pi — the fleet silently runs pi's default model. Reject the shape instead. Under
+  // reaches pi — the team silently runs pi's default model. Reject the shape instead. Under
   // a legacy provider in scope a "/" is ordinary id text, so the parse there cannot produce
   // an empty half and those selectors stay valid.
   assert.match(validationError({ model: "/id" }), /model "\/id" parses to an empty provider half/);
@@ -124,7 +124,7 @@ test("selector strings that parse to an empty provider or model half are rejecte
 
 test("model-triple fields reject empty strings but instructions may be empty", () => {
   // pi-args.ts skips an empty provider/model/thinking when it builds its flags, so a blank value
-  // is silently ignored and the fleet quietly uses pi's default — reject it instead. This
+  // is silently ignored and the team quietly uses pi's default — reject it instead. This
   // covers the top level and the per-role overrides; review and fallbackModel have their own
   // tests above.
   for (const key of ["provider", "model"]) {
@@ -485,7 +485,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
     );
   }
 
-  // A typo'd key inside the section would otherwise be silently ignored: a fleet that meant
+  // A typo'd key inside the section would otherwise be silently ignored: a team that meant
   // to point its reviewers at a strong model would review with the default and never know.
   assert.match(
     validationError({ review: { modle: "strong" } }),
@@ -530,7 +530,7 @@ test("validateConfig guards the review section like its sibling sections", () =>
   );
 
   // The live-reload path (the orchestrator's config poll) surfaces the same message without
-  // stopping the fleet.
+  // stopping the team.
   const dir = tmpdir();
   writeConfig(dir, { review: "on" });
   assert.match(loadConfigSafe(dir).error ?? "", /review must be an object/);

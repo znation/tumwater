@@ -76,7 +76,7 @@ tumwater writes the model id forms above.
 
 Only a provider/model pair pi's `models.json` prices at zero is accepted as a fallback, so the
 switch cannot spend past the cap: an unknown id, a priced model, or a missing definitions file is
-refused and the team pauses instead. `fleetModelsFree()` reads that same catalog to decide the
+refused and the team pauses instead. `teamModelsFree()` reads that same catalog to decide the
 budget badge, which reads `· budget: $10.02/$10 today · fallback: <model> (cost n/a)` while the
 fallback is carrying the team.
 
@@ -174,7 +174,7 @@ crosses into overage finishes there, because tumwater cannot stop the CLI mid-ru
 cost counts toward the step. **Behavior change:** an account that allows extra usage, with no
 later Claude model in its chain, now moves down its chain at the end of the window instead of
 spending extra usage up to the team cap. On API billing every Claude step is priced and position
-does not matter. The fleet hold still reads only a rejected window; overage never holds.
+does not matter. The team hold still reads only a rejected window; overage never holds.
 
 **Reserve.** The team and you share one claude.ai account, so a team that uses up the weekly
 window leaves your own sessions on extra usage or locked out. `"claudeWindowReserve": { "seven_day": 0.8 }`
@@ -239,7 +239,7 @@ oMLX config lives outside this repo in `~/.omlx/`: `model_settings.json` sets
 (`~/.omp/agent/models.yml` — YAML, not models.json) both use provider `omlx`,
 `api: openai-completions`, `contextWindow` **126928** (a 4144-token margin under the server's
 limit for pi's output reserve), and must send the API key. `tumwater.json`
-names `provider`/`model` explicitly so `fleetModelsFree()` sees a free team, with
+names `provider`/`model` explicitly so `teamModelsFree()` sees a free team, with
 `maxConcurrent` **3** — the three role instances alone saturate all three slots (at 2, one slot
 sat idle whenever the director was not running, which is most of the time), and the
 director's bypass makes a fourth client only while it is active (~10–15% of runs); the

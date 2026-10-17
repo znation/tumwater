@@ -174,7 +174,7 @@ const CONTEXT_ERROR = /context (size|length|window)?\s*(has been |was )?exceeded
 const TRANSIENT_SERVER_TIMEOUT = /predict stream timed out/i;
 
 /** The provider rejecting the request with HTTP 429 — rate limiting. This is the world saying
- * "later", not the session failing: the fleet's single largest error source (BUGS.md 2026-09-21)
+ * "later", not the session failing: the team's single largest error source (BUGS.md 2026-09-21)
  * and by definition retryable. Matched against every error text feedLine sees, since pi renders
  * the provider's status and message variously ("429 \"Rate limit exceeded\"", OpenAI's
  * "Too Many Requests"). Retry-After, when the provider echoes it into the error text, is
@@ -204,7 +204,7 @@ export function isPermanentConfigError(text: string): boolean {
 }
 
 /** The kinds of provider-wide failure that are NOT rate limiting: the backend itself is down,
- * refusing connections, or cannot serve the model at all. The fleet-wide hold (src/
+ * refusing connections, or cannot serve the model at all. The team-wide hold (src/
  * team/team-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
  * two hitting different kinds is not — so the observation carries the kind instead of
  * re-matching the text later. Defined beside the classifier that produces it. */
@@ -234,7 +234,7 @@ const CONNECTION_ERROR = /connection error|connection refused|connection reset|e
 const TIMEOUT_ERROR = /request timed out/i;
 
 /** The server-class backend-failure phrases: 5xx status texts, oMLX's model-server pause, and
- * a provider pausing itself fleet-wide with a 503 whose body carries prose rather than any
+ * a provider pausing itself team-wide with a 503 whose body carries prose rather than any
  * status phrase ("Provider '<name>' is currently failing for model '<id>' and has been paused
  * by the provider"). Shared by the TRANSIENT_BACKEND gate and the backendKind classifier. */
 const SERVER_ERROR = /internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider/i;
@@ -348,7 +348,7 @@ export class PiStreamParser {
   transientRateLimit = false;
   /** True when any event reports a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND above). Transient in
-   * the same sense: the session is healthy and a later attempt succeeds. The fleet-wide hold
+   * the same sense: the session is healthy and a later attempt succeeds. The team-wide hold
    * (src/team/team-hold.ts) consumes it beside the 429 flag, grouped by backendFailureKind. */
   transientBackend = false;
   /** Which kind of backend failure the run saw (backendKind's classification of the same

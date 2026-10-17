@@ -2,7 +2,7 @@
  * launchservicesd checks (systemProcessProbe, fakeable in tests via ProcessProbe). Split out
  * of process.ts — which keeps the spawn plumbing (execFileAsync), the pid-liveness probe, and
  * the LaunchServices preload — because this half only reads processes the table already found;
- * it never spawns or signals one, and its consumers (doctor's checks, the fleet's port watch)
+ * it never spawns or signals one, and its consumers (doctor's checks, the team's port watch)
  * share none of process.ts's child-management concerns. Acting on the table — the
  * TUMWATER_RUN environment markers every run stamps on its process tree and the cross-group
  * sweep that reaps them at exit — lives beside it in run-marker.ts, whose parsers this
@@ -28,7 +28,7 @@ export interface ProcessRow {
 }
 
 /** Reads the process table, processes' working directories and launchservicesd's port count —
- * an interface so doctor's orphan and port checks (and the fleet's port watch) run against a
+ * an interface so doctor's orphan and port checks (and the team's port watch) run against a
  * fake host in tests, never against real spawned orphans or the real Mac's daemon. */
 export interface ProcessProbe {
   /** Every process on the host. Rejects when the table cannot be read at all. */

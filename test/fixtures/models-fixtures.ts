@@ -1,6 +1,6 @@
 /** The pi models.json content the pricing-sensitive gate tests fake: one all-zero-cost
  * provider (free) and a priced one (paid) — the shape the budget gate's free/paid decision
- * (pollBudgetGate reading pi's models.json through fleetModelsFree) resolves against.
+ * (pollBudgetGate reading pi's models.json through teamModelsFree) resolves against.
  * budget-gates.test.ts and gate-polls.test.ts each staged this file inline before; owning
  * it here keeps the two tests' pricing fixtures from drifting. */
 import fs from "node:fs";

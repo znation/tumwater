@@ -58,7 +58,7 @@ function requestedRoles(markerFile: string): string[] | null {
 /** The requested roles that hold NO live runner and already have a persisted state file. A
  * runner carries the operation to the role's in-memory copy and saves it; a role without one
  * (disabled in tumwater.json, or outside a scoped round) is reached only through its state
- * file, and while a fleet is live this process is that file's single writer — the CLI wrote
+ * file, and while a team is live this process is that file's single writer — the CLI wrote
  * only the marker. A role with no state file has no counters or schedule to change, and a
  * corrupt marker (no role list) yields none: the runner superset must not conjure new files
  * for roles the marker never named. */
@@ -74,7 +74,7 @@ function runnerlessTargets(root: string, markerFile: string, runners: LoopRunner
 
 /** Best-effort write of one operator-request event. The request's side effects have already
  * applied by the time this runs, so an unwritable events log must neither un-acknowledge the
- * marker nor escape the orchestrator's poll body (whose loop has no catch) and end the fleet.
+ * marker nor escape the orchestrator's poll body (whose loop has no catch) and end the team.
  * One wake consumer logs per role, so a throw that escaped would also starve the roles after
  * the first. A failure is still reported on the same feed when that feed is writable. */
 function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): void {
@@ -91,8 +91,8 @@ function logRequestEvent(root: string, event: Parameters<typeof logEvent>[1]): v
 
 /** Report one role's failed state save for a consumed request, best-effort. These consumers run
  * inside the orchestrator's catch-less poll loop, so an unwritable state file (ENOSPC, EACCES,
- * the path replaced by a directory) must not throw out of the poll and end the fleet — the very
- * disk pressure the fleet guards against would otherwise crash it. The caller has already applied
+ * the path replaced by a directory) must not throw out of the poll and end the team — the very
+ * disk pressure the team guards against would otherwise crash it. The caller has already applied
  * the in-memory side effect where it can (a live runner), and a runnerless role's file keeps its
  * previous content, so the warning is what names the un-persisted change. */
 function warnStatePersistFailed(root: string, role: string, err: unknown): void {
@@ -104,7 +104,7 @@ function warnStatePersistFailed(root: string, role: string, err: unknown): void 
 }
 
 /** Consume a pending reset request from `tumwater reset-counters`, if any: the CLI zeroed the
- * state files only when no fleet was running; this zeroes the affected runners' in-memory
+ * state files only when no team was running; this zeroes the affected runners' in-memory
  * copies (which then re-save), or their next tick's save would resurrect the pre-reset values,
  * and writes the zeroed state file directly for requested roles with no runner, which the CLI
  * left to its marker. */
@@ -143,7 +143,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
 }
 
 /** Consume a pending wake request from `tumwater wake [--role <id>] [--in <duration>]`, if
- * any. Immediate wakes find the state files already cleared by the CLI when no fleet was
+ * any. Immediate wakes find the state files already cleared by the CLI when no team was
  * running; this clears the affected runners' in-memory schedules (backoffSeconds, nextRunAt),
  * or their next save would resurrect the pre-wake sleep window and the loops would keep
  * sleeping until the original backoff expired, and writes the cleared schedule directly for
@@ -155,7 +155,7 @@ export function consumeResetRequest(root: string, runners: LoopRunner[]): void {
  * deliberately skipped it. A non-numeric or non-finite value (a hand edit's `1e999`) reads as
  * immediate (defensive; validation happens at the CLI) — leaving Infinity as a deadline would
  * hold `notBefore > Date.now()` true forever and strand the marker, which nothing else deletes.
- * Each woken role logs the existing `wake` event with the operator reason, so the fleet's early
+ * Each woken role logs the existing `wake` event with the operator reason, so the team's early
  * ticks read in the feed as deliberate. */
 export function consumeWakeRequest(root: string, runners: LoopRunner[]): void {
   // A legacy wake.json (the pre-upgrade build wrote scheduled wakes here) keeps its deadline.
@@ -276,7 +276,7 @@ function consumeMarkerRequest(markerFile: string, act: () => void): void {
 /** Consume a pending restart request from the dashboard's build-stale alert (POST /api/restart),
  * if any: tell the redeployer to force its next poll past the restart cooldown, then remove the
  * marker. The redeployer logs the `restart_forced` event itself; with no redeployer (a
- * non-self-hosting fleet never has a stale build, so nothing could have written the marker) it
+ * non-self-hosting team never has a stale build, so nothing could have written the marker) it
  * is still cleaned up. */
 export function consumeRestartRequest(root: string, redeployer: { forceRestart(): void } | null | undefined): void {
   consumeMarkerRequest(restartRequestPath(root), () => redeployer?.forceRestart());
@@ -285,7 +285,7 @@ export function consumeRestartRequest(root: string, redeployer: { forceRestart()
 /** Consume a pending manual reclaim request from `tumwater reclaim` (plans/disk-floor.md, part
  * 3/4), if any: arm one background pass over every candidate on the controller — the same
  * single-flight runner as pressure and idle reclaim — then remove the marker. With no
- * controller (a fleet that predates the feature) the marker is still cleaned up. */
+ * controller (a team that predates the feature) the marker is still cleaned up. */
 export function consumeReclaimRequest(root: string, reclaim: { requestManual(): void } | null | undefined): void {
   consumeMarkerRequest(reclaimRequestPath(root), () => reclaim?.requestManual());
 }

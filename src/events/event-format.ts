@@ -3,7 +3,7 @@ import { eventRole, eventTick, eventUsage } from "./event-read.js";
 import { eventTypeLabel } from "./event-labels.js";
 import { roleLabel } from "../roles/role-labels.js";
 import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
-import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
+import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, teamPausePhrase, teamResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
 import { squash, textOr, truncate } from "../text/text.js";
@@ -70,7 +70,7 @@ function windowResetPhrase(e: HarnessEvent): string {
 }
 
 /** The backend a hold event names, rendered as " at <provider>" when one is configured
- * (pollFleetHold omits it for pi's default) and "" otherwise, so a multi-provider fleet can
+ * (pollTeamHold omits it for pi's default) and "" otherwise, so a multi-provider team can
  * tell WHICH backend the storm was at. Shared by the hold and resumed lines. */
 function providerAt(e: HarnessEvent): string {
   return typeof e.provider === "string" ? ` at ${e.provider}` : "";
@@ -282,10 +282,10 @@ export function eventMessage(e: HarnessEvent): string {
       return `budget warning — ${budgetPhrase(e.spentUsd, e.capUsd)} of the daily cap spent; runs still start`;
     case "budget_paused": {
       // Routine state change, like counters_reset — no warning prefix. A configured fallback
-      // the gate refused is named here: it is the whole reason the fleet stopped instead of
+      // the gate refused is named here: it is the whole reason the team stopped instead of
       // switching over, and an operator reading the feed must be able to act on it. So is a
       // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
-      // the backend, not the price, is what to fix, and the fleet retries it on its own.
+      // the backend, not the price, is what to fix, and the team retries it on its own.
       // Like role_cap_paused, the line names the lift paths: a raised or removed cap, or the
       // local day rolling over (the demoted branch's cool-down retry is the automatic third).
       const refused = e.fallbackRejected
@@ -296,7 +296,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`;
     }
     case "budget_fallback": {
-      // The cap is spent but the fleet keeps working: name the free model it switched to, the
+      // The cap is spent but the team keeps working: name the free model it switched to, the
       // one fact that distinguishes this from a pause. When the event carries the per-tier
       // map (tiers, part 7b/8 — only emitted when the tiers resolve to two or more distinct
       // pairs), list each tier's pair and let the borrowed ones' `(from …)` suffixes show a
@@ -327,11 +327,11 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "team_paused":
       // Routine state change, like counters_reset — no warning prefix.
-      return `${fleetPausePhrase()} (director keeps running)`;
+      return `${teamPausePhrase()} (director keeps running)`;
     case "state_migrated":
       return `state migrated — ${textOr(e.detail)}`;
     case "team_resumed":
-      return fleetResumePhrase();
+      return teamResumePhrase();
     case "role_paused":
       // Routine state change, like team_paused — no warning prefix.
       return `${rolePausePhrase(textOr(e.role))} (the rest of the team keeps running)`;
@@ -366,7 +366,7 @@ export function eventMessage(e: HarnessEvent): string {
     case "maintenance_quota_resumed":
       return `maintenance allowance reopened — ${textOr(e.maint)} maintenance merges against an allowance of ${textOr(e.allowance)} in the last 24h; the maintenance roles run again`;
     case "bootstrap_complete":
-      // Routine state change, like counters_reset — no warning prefix: the fleet just finished
+      // Routine state change, like counters_reset — no warning prefix: the team just finished
       // its bootstrap and the maintenance loops are admitted.
       return `bootstrap complete — ${textOr(e.plansDone)}/${textOr(e.untilPlansDone)} plans done; the maintenance roles now run`;
     case "disk_low":
@@ -385,7 +385,7 @@ export function eventMessage(e: HarnessEvent): string {
     }
     case "rate_limit_hold": {
       // Routine state change, like team_paused — no warning prefix: the hold IS the harness
-      // handling the storm. Names who saw the failure and when the fleet re-opens on its own.
+      // handling the storm. Names who saw the failure and when the team re-opens on its own.
       // The rate-limit kind keeps the wording every historical event has; a backend-failure
       // kind names itself instead, since "429" would be a lie about a connection error.
       const roles = rolesPhrase(e.roles, "several roles");
@@ -394,7 +394,7 @@ export function eventMessage(e: HarnessEvent): string {
       return `waiting: provider limit${providerAt(e)} — ${roles} rate-limited by the provider; roles on ${providerScope(e)} start no new runs ${holdPhrase(e.holdMs, e.escalation)} (director keeps running)`;
     }
     case "rate_limit_resumed": {
-      // The ended hold's kind rides the resumed event (pollFleetHold logs it), so the lift
+      // The ended hold's kind rides the resumed event (pollTeamHold logs it), so the lift
       // names what actually ended — the same split as the hold line above: "429 hold lifted"
       // after a connection-error hold would be a lie about a connection error.
       if (e.kind && e.kind !== "rate-limit")
@@ -475,7 +475,7 @@ export function eventMessage(e: HarnessEvent): string {
         ? `image attachment routed to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) to read its image — no failed run`
         : `image rerouted to ${textOr(e.to, "the target")} (${textOr(e.tier, "a peer tier")}) — next run goes there after a blind read on ${textOr(e.from, "the prior model")}`;
     case "build_stale":
-      // Self-hosting fleets only (src/redeploy/redeploy.ts): the code main describes is not the
+      // Self-hosting teams only (src/redeploy/redeploy.ts): the code main describes is not the
       // code running. Not a warning prefix — a stale build is a state, and auto-restart resolves
       // it.
       return `update available (${plural(finiteNumber(e.aheadCommits, 0), "commit")} behind) — restarts when idle`;
@@ -496,7 +496,7 @@ export function eventMessage(e: HarnessEvent): string {
       // what failed and that only main moving can end it.
       return `restart blocked for main ${shortSha(e.to)} — ${textOr(e.reason)}; staying on version ${shortSha(e.from)} until main moves`;
     case "supervisor_exit": {
-      // The fleet is DOWN and nothing will bring it back: the one line that must say so, since
+      // The team is DOWN and nothing will bring it back: the one line that must say so, since
       // the dead generation's own stderr reached only the supervisor's terminal.
       const how = e.signal ? `was killed by ${textOr(e.signal)}` : `exited ${textOr(e.code)}`;
       return `tumwater is down — restart ${textOr(e.generation)} ${how}${e.reason ? `: ${textOr(e.reason)}` : ""}; start it again with \`tumwater start\``;

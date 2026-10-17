@@ -74,7 +74,7 @@ function totalsLine(t: ReportTotals, tail = ""): string {
 }
 
 /** The "of which landing runs …" line under a totals line — one home for the landing share's
- * wording. The caller decides when it prints: zero-means-absent, so a fleet with no landing
+ * wording. The caller decides when it prints: zero-means-absent, so a team with no landing
  * spend renders exactly as before (the budget charges the landing slot's runs too, so the
  * totals include them — this line says how much of the spend was reviewer + conflict
  * resolution work). */
@@ -87,7 +87,7 @@ function landingShareLine(t: ReportTotals): string {
  * claude.ai subscription runs folded into the window. Never part of the totals' costUsd,
  * because a subscription run is exempt from the daily dollar cap; the caller prints it only
  * when a subscription run actually folded in (zero means absent, like the landing line), so
- * an API-only fleet's report is unchanged. */
+ * an API-only team's report is unchanged. */
 function notionalLine(t: ReportTotals): string {
   return `claude subscription, API-equivalent: ${usd(t.notionalCostUsd ?? 0)} estimated`;
 }
@@ -137,7 +137,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // Same breakdown for spend: ranked by spend desc then name asc, zero-spend roles omitted —
   // an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleMap(data.costByRole).filter(([, c]) => c > 0), usd));
-  // The same breakdown per PROVIDER (plans: per-provider spend), gated to the fleet report
+  // The same breakdown per PROVIDER (plans: per-provider spend), gated to the team report
   // like its day sibling. SinceReport.costByProvider is always present (empty when none), so
   // the zero-means-absent gate prints no line for a window with no provider spend.
   if (data.role === undefined) {
@@ -156,7 +156,7 @@ export function renderSinceReportMarkdown(data: SinceReport): string {
   // window's totals.commits carries the count; this line says which role's commits it was.
   lines.push(rankedRoleLine("Commits by role", rankedRoleMap(data.commitsByRole), String));
   // The landed-outcomes split by base role, mirroring the day render's line: which roles'
-  // changes reach main and which bounce off the gate (merge_failed). Gated to the fleet
+  // changes reach main and which bounce off the gate (merge_failed). Gated to the team
   // report — a role-scoped window omits landing (ROLE_SCOPE_NOTE), so the per-role
   // attribution would contradict it. Zero-means-absent: the failures line prints only when
   // some role has one; a landing-free window renders `-` like the other lines.
@@ -234,7 +234,7 @@ export function renderReportMarkdown(data: ReportData): string {
   if (data.role !== undefined) lines.push(`role: ${data.role}`);
   lines.push("");
   const t = data.totals;
-  // A role-scoped report drops the fleet-only features/bugs cells from the totals line — their
+  // A role-scoped report drops the team-only features/bugs cells from the totals line — their
   // dates carry no role — and states the omission through ROLE_SCOPE_NOTE below instead.
   const tail =
     data.role === undefined ? ` · ${t.featuresDone} features done · ${t.bugsFixed} bugs fixed` : "";
@@ -264,9 +264,9 @@ export function renderReportMarkdown(data: ReportData): string {
   // intervals wants the burning loop first, not the busiest one). Zero-spend roles are
   // omitted; an all-zero window renders "-" like the ticks line.
   lines.push(rankedRoleLine("Cost by role", rankedRoleTotals(data.series, (d) => d.costByRole).filter(([, c]) => c > 0), usd));
-  // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed fleet
+  // The same breakdown per PROVIDER (plans: per-provider spend): which seam of a mixed team
   // spent what, straight from the events' providerCost maps (run_end's own runs and the
-  // landing's reviewer seam). Gated to the fleet report — a provider is not a role, so a
+  // landing's reviewer seam). Gated to the team report — a provider is not a role, so a
   // role-scoped report omits it (ROLE_SCOPE_NOTE covers the omission). Zero-means-absent: a
   // window with no provider spend prints no line. Ranked and formatted exactly like Cost by
   // role.
@@ -292,7 +292,7 @@ export function renderReportMarkdown(data: ReportData): string {
   // The landed-outcomes split by base role: which authoring roles' changes reach main through
   // the landing slot, and — the new signal — which roles' changes bounce off the gate (a
   // merge_failed: review rejection, under-cap review, a conflict, a blocked fast-forward, a
-  // shutdown abort). Gated to the fleet report — a role-scoped report omits landing runs
+  // shutdown abort). Gated to the team report — a role-scoped report omits landing runs
   // (they are the landing slot's, per ROLE_SCOPE_NOTE), so the per-role attribution would
   // contradict that stance. Zero-means-absent: a window with landings renders Merged by role;
   // the failures line prints only when some role actually has one.

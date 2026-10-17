@@ -11,7 +11,7 @@ import type { TickResult } from "../tick/tick-outcome.js";
 /** How the fallback breaker trips and retries. A test seam (the orchestrator's RunOptions
  * accepts an override, like pollMs); production uses FALLBACK_BREAKER_POLICY. */
 export interface FallbackBreakerPolicy {
-  /** Consecutive failed fallback ticks, fleet-wide, that demote the fallback to `paused`. */
+  /** Consecutive failed fallback ticks, team-wide, that demote the fallback to `paused`. */
   failureLimit: number;
   /** The first cool-down before a demoted fallback gets its probe tick. */
   cooldownMs: number;
@@ -20,13 +20,13 @@ export interface FallbackBreakerPolicy {
 }
 
 /** failureLimit 3 is a single loop's failing-streak threshold (tick-apply.ts ERROR_STREAK_WARN)
- * applied fleet-wide: consecutive across every role, so any tick that served in between resets
+ * applied team-wide: consecutive across every role, so any tick that served in between resets
  * it — a healthy backend with one flaky tick never trips it, while a dead one trips on its
  * first three ticks (on 2026-09-19 the third failure landed 24 minutes into the hour; the 30
  * ticks after it were the waste). A 5-minute first cool-down because a failed probe costs one
  * tick — about half of that hour's failures came back in under 10 s, the rest ran minutes
  * before the 400 — which is cheap next to idling until midnight; doubling to at most 30 minutes
- * bounds how long an operator who fixed the backend waits for the fleet to notice (editing the
+ * bounds how long an operator who fixed the backend waits for the team to notice (editing the
  * cap or the pair re-trusts it at once — see rekeyFallbackBreaker). */
 export const FALLBACK_BREAKER_POLICY: FallbackBreakerPolicy = {
   failureLimit: 3,
@@ -116,7 +116,7 @@ export function abandonFallbackProbe(b: FallbackBreaker): FallbackBreaker {
  * alone: every way a backend cannot serve — an HTTP 4xx/5xx like oMLX's prefill guard, a
  * refused connection, a request that never returns (the tick timeout) — ends a tick as `error`,
  * and 33 of 33 did on 2026-09-19. (An `error` can also be local, e.g. a worktree that will not
- * reset; failureLimit of those in a row fleet-wide is still a fleet that cannot work, and the
+ * reset; failureLimit of those in a row team-wide is still a team that cannot work, and the
  * probe wins the pause back.) `served` is a result only a model reply produces: a change bound
  * for landing (`queued`, `changed`), an explicit decision (`no_change`, `refused`), or a
  * reviewer's rejection. Everything else is no evidence: harness and operator kills (`aborted`,

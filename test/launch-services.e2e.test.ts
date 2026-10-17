@@ -1,6 +1,6 @@
 /** The orchestrator's launchservicesd watch wiring (src/process/launch-services.ts, BUGS.md
  * 2026-09-28): a
- * daemon fleet steps the watch from its poll — sampling at once, then at most once per interval
+ * daemon team steps the watch from its poll — sampling at once, then at most once per interval
  * however many polls run — and warns through the event feed; a once round never samples. A fake
  * probe stands in for the Mac's daemon. Like the rest of the orchestrator e2e tier this runs via
  * `npm run test:e2e`, not in the gating `npm test`. */
@@ -28,7 +28,7 @@ function countingProbe(ports: number): ProcessProbe & { reads: number } {
   return probe;
 }
 
-test("a daemon fleet samples launchservicesd on its first poll and warns once through the event feed", async () => {
+test("a daemon team samples launchservicesd on its first poll and warns once through the event feed", async () => {
   const repo = await makeFastRepo("launchservices watch", ["clean"]);
   const restore = fakePiIdle();
   const probe = countingProbe(150_000);
@@ -42,7 +42,7 @@ test("a daemon fleet samples launchservicesd on its first poll and warns once th
     const warned = () => harnessWarnings(repo).filter((e) => e.message === launchServicesWarning(150_000));
     await waitFor(() => warned().length > 0, "the port warning");
     // The first poll sampled before any tick started; by the time the role's tick has ended the
-    // fleet has polled again and again, and none of those samples inside the interval.
+    // team has polled again and again, and none of those samples inside the interval.
     await waitFor(() => eventsOfType(repo, "run_end").length > 0, "the clean role's first tick to end");
     assert.equal(probe.reads, 1);
     assert.equal(warned().length, 1);

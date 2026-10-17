@@ -81,7 +81,7 @@ export function defaultConfig(): ResolvedModelConfig {
     // agentBin/piArgs are read as pi's entry through resolvedAgentConfig (config-views.ts).
     backends: {},
     maxConcurrent: 6,
-    // Three is the fleet's realistic concurrent-role count: a busy queue coalesces the
+    // Three is the team's realistic concurrent-role count: a busy queue coalesces the
     // common case (a few roles land in the same poll) while the worst case stays bounded.
     mergeBatchMax: 3,
     // Two suites at once: one landing can verify while the next author's gate check runs,
@@ -101,9 +101,9 @@ export function defaultConfig(): ResolvedModelConfig {
     toolCallStallSeconds: 300,
     logMaxBytes: 16 * 1024 * 1024,
     sessionRetentionDays: 7,
-    // An unattended fleet must not spend unbounded (plans/daily-cost-budget.md): $50/day is
+    // An unattended team must not spend unbounded (plans/daily-cost-budget.md): $50/day is
     // generous for a normal day of autonomous work on mid-tier API models and low enough to
-    // catch a runaway. Local-model fleets report $0 cost, so the cap never fires for them.
+    // catch a runaway. Local-model teams report $0 cost, so the cap never fires for them.
     maxDailyCostUsd: 50,
     // Work ratio 1a/4 and 1b/4 (plans/work-ratio.md): the maintenance allowance is
     // maintenancePerWorkMerge × work landings + 12 per rolling 24 h, and the scheduler holds
@@ -111,12 +111,12 @@ export function defaultConfig(): ResolvedModelConfig {
     // shipped change while the fixed floor lets hygiene run on an empty backlog.
     maintenancePerWorkMerge: 2,
     // Disk floor (plans/disk-floor.md, part 1/4): when the volume the worktrees live on drops
-    // below this many GB free, the fleet holds new work until it climbs 5 GB back above it.
+    // below this many GB free, the team holds new work until it climbs 5 GB back above it.
     // 10 GB leaves room for an in-flight tick to finish and a state write to land. 0 disables.
     diskHoldGB: 10,
     // Pressure reclaim (plans/disk-floor.md, part 2/4): below this many GB free, a background
     // pass deletes gitignored build outputs from idle worktrees before the 10 GB hold engages.
-    // 40 GB leaves room for a build-heavy fleet to keep working; 0 disables reclaim.
+    // 40 GB leaves room for a build-heavy team to keep working; 0 disables reclaim.
     diskReclaimGB: 40,
     // Idle reclaim (plans/disk-floor.md, part 3/4): an hourly background pass deletes a
     // worktree's gitignored build outputs once it has been unused for this many hours,
@@ -131,7 +131,7 @@ export function defaultConfig(): ResolvedModelConfig {
     thrashTurns: 40,
     thrashMinutes: 30,
     idleBackoff: { initialSeconds: 120, factor: 2, maxSeconds: 3600 },
-    // A self-hosting fleet redeploys itself onto a green main (src/redeploy/redeploy.ts): the
+    // A self-hosting team redeploys itself onto a green main (src/redeploy/redeploy.ts): the
     // alternative — a process that never reloads its own code — ran ten days stale in dogfood.
     autoRestart: true,
     // Config changes no longer ride the commit path (plans/portability.md §3/7): the director
@@ -280,8 +280,8 @@ function cloneConfig(c: TumwaterConfig): TumwaterConfig {
  * one stat instead of a read + parse + validate. A successful load is cached; a broken file is
  * never cached — each poll retries it fresh so a torn live edit or a repair is picked up on the
  * next cycle. A missing file is `missing` — neither a config nor an error — and never the
- * defaults: once a fleet has loaded its config, the file vanishing is an incident, not a
- * reconfiguration (BUGS.md 2026-09-23: a landing's fast-forward deleted it and the fleet ran
+ * defaults: once a team has loaded its config, the file vanishing is an incident, not a
+ * reconfiguration (BUGS.md 2026-09-23: a landing's fast-forward deleted it and the team ran
  * 8.6 h on defaults), so callers keep their last-known-good exactly as for a broken file, or
  * fall back to defaults only when they never saw one. Startup's "missing ⇒ not initialized"
  * gate (startup-gate.ts) and loadConfig's first-run defaults are unaffected. */
@@ -403,7 +403,7 @@ export function knownRoleIds(config: TumwaterConfig): string[] {
  * The one home of that fallback rule — every read-only role-id consumer resolves through it:
  * parseRoleScope (cmdLogs/cmdHistory), validRoleIds (the GUI endpoints), cmdDiff's role flag,
  * cmdTick's positional, cmdPrompt's --list and list-wide --cancel/--edit scope, and
- * collectFleetChanges' roster — so they cannot drift. (Read-only deliberately: state-changing
+ * collectTeamChanges' roster — so they cannot drift. (Read-only deliberately: state-changing
  * commands resolve ids through loadConfig and fail loudly, because the operator is owed the
  * config error before a write.) */
 export function knownRoleIdsCached(root: string): string[] {

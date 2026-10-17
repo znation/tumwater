@@ -14,7 +14,7 @@ import { makeRepo, writeConfig } from "./fixtures/repo-fixtures.js";
 import { cli } from "./helpers/cli-harness.js";
 import { spawnLiveChild, stopChild } from "./helpers/child-process.js";
 
-// The fleet-facing operator-command CLI tests (reset-counters, wake, stop, config), split
+// The team-facing operator-command CLI tests (reset-counters, wake, stop, config), split
 // from cli-operators.test.ts so node --test runs them in parallel processes — each test
 // spawns the CLI, so the file is CPU-bound on its own. cli-operators.test.ts keeps the
 // abort and pause/resume families.
@@ -48,7 +48,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
   assert.match(r.stdout, /counters reset for docs-sync/);
   assert.equal(loadLoopState(repo, "docs-sync").runs, 0);
 
-  // abort --role <custom> passes validation (no live fleet: it fails on the alive check,
+  // abort --role <custom> passes validation (no live team: it fails on the alive check,
   // which proves the id was accepted rather than rejected).
   r = await cli(repo, "abort", "--role", "docs-sync");
   assert.equal(r.code, 1);
@@ -56,7 +56,7 @@ test("logs, reset-counters, and abort accept user-defined loop names from tumwat
 });
 // --- reset-counters ---
 
-test("reset-counters zeroes counters in every role's state file and writes the fleet marker", async () => {
+test("reset-counters zeroes counters in every role's state file and writes the team marker", async () => {
   const repo = makeRepo();
   await initProject(repo, "reset counters test");
   seedCounters(repo, "feature");
@@ -86,7 +86,7 @@ test("reset-counters zeroes counters in every role's state file and writes the f
     assert.equal(s.peakContextTokens, 0, `${role} per-tick peak ctx cleared`);
   }
 
-  // The marker a running fleet consumes lists every role in the config.
+  // The marker a running team consumes lists every role in the config.
   const marker = readJson(resetRequestPath(repo)) as {
     at: number;
     roles: string[];
@@ -148,7 +148,7 @@ test("reset-counters and wake name the live effect when a harness is running", a
 
 // --- wake ---
 
-test("wake clears backoff in every role's state file and writes the fleet marker", async () => {
+test("wake clears backoff in every role's state file and writes the team marker", async () => {
   const repo = makeRepo();
   await initProject(repo, "wake test");
   seedCounters(repo, "feature");
@@ -172,7 +172,7 @@ test("wake clears backoff in every role's state file and writes the fleet marker
     assert.equal(s.lastMainHead, "deadbeef", `${role} wake tracking preserved`);
   }
 
-  // The marker a running fleet consumes lists every role in the config.
+  // The marker a running team consumes lists every role in the config.
   const marker = readJson(wakeRequestPath(repo)) as {
     at: number;
     roles: string[];

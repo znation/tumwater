@@ -58,7 +58,7 @@ interface UsageFold {
   /** Subscription spend (plans/agent-backends.md part 6a): API-equivalent, never in costUsd. */
   notionalCostUsd: number;
   /** The notional share per role, so a role-scoped report can carry a role's own
-   * subscription spend (the landing slot's notional is fleet-wide like its cost). */
+   * subscription spend (the landing slot's notional is team-wide like its cost). */
   notionalByRole: Record<string, number>;
   mergeRuns?: number;
   mergeTokens?: number;
@@ -67,7 +67,7 @@ interface UsageFold {
   /** The landed outcomes keyed by base authoring role, so a report can name which roles'
    * changes reach main through the landing slot (the same base-role keying as commitsByRole,
    * so `feature-2` aggregates into `feature`). A parallel tally, never subtracted from the
-   * fleet totals. */
+   * team totals. */
   mergedByRole: Record<string, number>;
   /** The merge_failed outcomes keyed by base authoring role — the changes that bounced off
    * the landing gate (review rejection, under-cap review, a conflict, a blocked fast-forward,
@@ -124,7 +124,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (costUsd !== 0) addTo(target.costByRole, role, costUsd);
     if (notionalCostUsd !== 0) addTo(target.notionalByRole, role, notionalCostUsd);
     // The tick's own runs' per-provider spend (tick-finalize.ts emits providerCost on run_end)
-    // — folded per provider beside the per-role maps, so a mixed fleet's `Cost by provider`
+    // — folded per provider beside the per-role maps, so a mixed team's `Cost by provider`
     // line names the expensive seam.
     foldProviderCost(target, ev.providerCost);
   } else if (ev.type === "review_rejected") {
@@ -149,7 +149,7 @@ function foldUsageEvent(target: UsageFold, ev: HarnessEvent): void {
     if (ev.type === "merge_failed") target.mergeFailed = (target.mergeFailed ?? 0) + 1;
     // Attribute the outcome to the authoring role (writeLandingOutcome logs loop: entry.role)
     // folded to base role, the same normalization the merged branch uses, so `feature-2`
-    // aggregates into `feature`. A parallel tally beside the fleet run counts, never
+    // aggregates into `feature`. A parallel tally beside the team run counts, never
     // subtracted from mergeRuns/mergeFailed.
     const role = baseRoleOf(eventRole(ev));
     if (ev.type === "merge_done") addTo(target.mergedByRole, role, 1); 
@@ -267,7 +267,7 @@ function roleSum(record: Record<string, number>, role: string): number {
 
 /** Narrow a per-loop-id count/cost map to one base role, keyed by the base role; a role absent
  * from the map (no ticks, or no nonzero cost) yields an empty map, never a zero entry — the
- * same zero-means-absent rule the fleet render applies. Used by the role-scoped collectors so a
+ * same zero-means-absent rule the team render applies. Used by the role-scoped collectors so a
  * scoped series derives from the fold's per-role maps without inventing entries. */
 function narrowToRole(record: Record<string, number>, role: string): Record<string, number> {
   const n = roleSum(record, role);
@@ -381,7 +381,7 @@ function foldWindowEvents(root: string, fromKey: string): ReportFoldEntry {
   return entry;
 }
 
-/** One day of a usage report: the local calendar day key plus what the fleet did on it.
+/** One day of a usage report: the local calendar day key plus what the team did on it.
  * `runsByRole` counts run_end events per loop id (role ids — works for custom loops too);
  * tokensOut sums their `tokens`; commits counts `merged` events; costUsd sums `costUsd`.
  * `costByRole` splits that same costUsd per loop id — sourced from the same run_end events
@@ -454,12 +454,12 @@ export interface ReportTotals {
   mergeFailed?: number; // of those runs, the merge_failed events (absent when none)
 }
 
-/** Fleet usage over a window of exactly `days` local calendar days ending today. */
+/** Team usage over a window of exactly `days` local calendar days ending today. */
 export interface ReportData {
   days: number;
   from: string; // day key of the oldest day in the series
   to: string; // day key of today
-  role?: string; // set by the role-scoped collector; absent on the fleet report
+  role?: string; // set by the role-scoped collector; absent on the team report
   series: ReportDay[]; // oldest → newest, zero-filled
   totals: ReportTotals & {
     featuresDone: number;
@@ -478,7 +478,7 @@ export interface ReportData {
   coversFullWindow: boolean;
 }
 
-/** Fleet usage over a trailing window of `sinceMs` ending now: the same run_end/merged
+/** Team usage over a trailing window of `sinceMs` ending now: the same run_end/merged
  * aggregation as `collectReport` but keyed to a cutoff instant rather than whole local days.
  * Backlog tallies (features done / bugs fixed) are deliberately absent: they are counted from
  * PLANS.md/BUGS.md `done`/`fixed` dates, which are day-granular file metadata that cannot
@@ -486,7 +486,7 @@ export interface ReportData {
 export interface SinceReport {
   sinceMs: number; // the requested window length
   fromIso: string; // ISO string of the cutoff instant (window start)
-  role?: string; // set by the role-scoped collector; absent on the fleet report
+  role?: string; // set by the role-scoped collector; absent on the team report
   totals: ReportTotals;
   runsByRole: Record<string, number>;
   costByRole: Record<string, number>; // zero-cost roles leave no key, as in collectReport
@@ -526,11 +526,11 @@ export interface SinceReport {
    * away, so an empty or missing log must not read as a truncated history. False means events
    * were aggregated from a log whose oldest event lies inside the window with no proof that
    * older data was not rotated away — the render adds a note so a sparse window is never
-   * mistaken for an idle fleet. */
+   * mistaken for an idle team. */
   coversFullWindow: boolean;
 }
 
-/** Aggregate fleet usage over the trailing `sinceMs` window ending now, from the event log
+/** Aggregate team usage over the trailing `sinceMs` window ending now, from the event log
  * only (run_end/merged — see SinceReport for why the backlog files are not read). Kept a
  * separate function rather than a `collectReport` variant flag: the day collector's
  * zero-filled series and backlog-file reads have no place in a window totals view. */
@@ -574,7 +574,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
   // the window and the render notes the possible truncation.
   const coversFullWindow = eventWindowCovers(raw, cutoff);
   // Role scope: every total derives from the fold's per-role maps for the named base role alone
-  // — landing usage (the landing slot's, not the role's) and the fleet-only fields stay out, so
+  // — landing usage (the landing slot's, not the role's) and the team-only fields stay out, so
   // a scoped --since report sums exactly the same events the scoped day report would. The scope
   // is the base role, so instances (`feature-2`) aggregate into their group as the cap does.
   const base = role === undefined ? undefined : baseRoleOf(role);
@@ -593,7 +593,7 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
         }
       : (() => {
           // The role's own notional spend, from its run_end events; the landing slot's
-          // notional is fleet-wide and stays out like its cost.
+          // notional is team-wide and stays out like its cost.
           const notional = roleSum(acc.notionalByRole, base);
           return {
             tokensOut: roleSum(acc.tokensByRole, base),
@@ -624,16 +624,16 @@ export function collectReportSince(root: string, sinceMs: number, role?: string)
     mergedByRole: base === undefined ? acc.mergedByRole : narrowToRole(acc.mergedByRole, base),
     mergeFailedByRole: base === undefined ? acc.mergeFailedByRole : narrowToRole(acc.mergeFailedByRole, base),
     ...(Object.keys(notionalByRole).length > 0 ? { notionalByRole } : {}),
-    // Provider spend is a fleet attribution (a provider is not a role), so a role-scoped
+    // Provider spend is a team attribution (a provider is not a role), so a role-scoped
     // window carries empty maps — providers never baseRoleOf to the role — and the render
-    // gates the provider lines to the fleet report anyway. Always present, empty when none.
+    // gates the provider lines to the team report anyway. Always present, empty when none.
     costByProvider: base === undefined ? acc.costByProvider : narrowToRole(acc.costByProvider, base),
     notionalByProvider: base === undefined ? acc.notionalByProvider : narrowToRole(acc.notionalByProvider, base),
     coversFullWindow,
   };
 }
 
-/** Aggregate fleet usage over exactly `days` local calendar days ending today, from the event
+/** Aggregate team usage over exactly `days` local calendar days ending today, from the event
  * log (run_end/merged) and the backlog history files (PLANS.md ## Done, BUGS.md ## Fixed). */
 export function collectReport(root: string, days: number, role?: string): ReportData {
   const now = new Date();
@@ -796,7 +796,7 @@ export function collectReport(root: string, days: number, role?: string): Report
   // earliest the window could contain, so the same-day arm degenerates harmlessly. Without
   // this field the day report was the one windowed consumer that could undercount in
   // silence — the --since report and the failure digest both carry the note, and a silent
-  // number invites an operator to trust a truncated window as an idle fleet.
+  // number invites an operator to trust a truncated window as an idle team.
   const cutoffMs = dayAt(days - 1, now).getTime();
   const coversFullWindow =
     foldEntry.fileCovers ||

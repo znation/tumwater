@@ -51,7 +51,7 @@ interface SpawnedCli {
   out: () => string;
   /** Resolves once `pred` matches the captured stdout; fails the test with the output on timeout.
    * `ms` is a deadline, not a sleep (wait.ts's waitFor): 60 s by default, because a cold CLI
-   * start under fleet load ran past the old 10 s default (cli-gui's banner wait at 10.1 s,
+   * start under team load ran past the old 10 s default (cli-gui's banner wait at 10.1 s,
    * BUGS.md 2026-09-30). The deadline is measured on the injected `WaitClock` (wait.ts), whose
    * default is performance.now(): a wall-clock jump (a host sleep) must not spend a readiness
    * budget a printed-nothing child has not used (BUGS.md 2026-10-07), and a test may pass a
@@ -63,7 +63,7 @@ interface SpawnedCli {
 }
 
 /** How long kill() lets the graceful stop run before the group SIGKILL: long enough for the
- * supervisor to forward SIGTERM and the fleet's stop path to finish against the fake shims —
+ * supervisor to forward SIGTERM and the team's stop path to finish against the fake shims —
  * under full-suite load too, where the same stop that takes ~1 s alone ran past a 3 s grace
  * and the early SIGKILL killed the supervisor mid-shutdown, turning its clean exit 0 into a
  * signal death the teardown test reads as exit code null (BUGS.md 2026-09-30) — and short
@@ -122,7 +122,7 @@ export function spawnCli(cwd: string, args: string[]): { child: ChildProcess } &
         groupKill(); // already exited; sweep the group in case something outlived it
         return;
       }
-      // SIGTERM first: the supervisor forwards it and the fleet takes the graceful stop path,
+      // SIGTERM first: the supervisor forwards it and the team takes the graceful stop path,
       // and a command with no grandchild (gui, logs -f) dies on the default disposition. Only
       // SIGKILLing the supervisor alone left that generation running on the test's own pipes,
       // so the file never exited (BUGS.md 2026-09-30).

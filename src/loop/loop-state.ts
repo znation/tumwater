@@ -72,7 +72,7 @@ export interface LoopState {
    * alongside `parkedSince` by the orchestrator and cleared the moment the permit is
    * granted — the key the admission lease will acquire. It lets the dashboards render
    * `awaiting omlx slot` instead of the bare `awaiting slot` when that key is at its cap.
-   * Transient like `parkedSince` — never persisted — and absent for a fleet-total waiter
+   * Transient like `parkedSince` — never persisted — and absent for a team-total waiter
    * (no key) or the director (which never queues), so both render exactly as before. */
   parkedOn?: string;
   /** True when the last tick was interrupted mid-task — aborted by a harness shutdown, or
@@ -132,7 +132,7 @@ export interface LoopState {
    * landing pin behind (TickOutcome.recoveryFailure). While at or past the warning threshold
    * (tick-apply.ts's ERROR_STREAK_WARN) the state cell reads "failing" instead of "sleeping",
    * and the crossing fires one warning event per episode (BUGS.md 2026-09-15: 44
-   * identical tick failures looked like a quiet fleet; BUGS.md 2026-09-21: a dead reviewer
+   * identical tick failures looked like a quiet team; BUGS.md 2026-09-21: a dead reviewer
    * backend left every recovery landing failing silently and reset this streak each tick).
    * A review-rejected landing counts in too (BUGS.md 2026-09-30): the authoring tick ends
    * `queued`, which preserves the streak, and applyLandingOutcome's rejected branch is the
@@ -545,7 +545,7 @@ export function zeroCounters(s: LoopState): LoopState {
 /** The skip reason a loop's persisted state yields when it does not run this round: a pending
  * resume wait outranks backoff, anything else is idle. The shared tail of the two skip
  * classifiers — once-round.ts's settleSkipped (which adds the disabled arm) and cli/cli-run.ts's
- * once-summary (which adds the fleet-pause arm) — so the two surfaces cannot drift on which
+ * once-summary (which adds the team-pause arm) — so the two surfaces cannot drift on which
  * reason wins when several conditions hold at once. */
 export function stateSkipReason(
   s: Pick<LoopState, "resumePending" | "backoffSeconds">,
@@ -566,7 +566,7 @@ export function hasOutstandingWork(s: Pick<LoopState, "revision" | "resumePendin
 
 /** Per-role cache of the persisted live claim, keyed by the state file's stat — one stat per
  * role per call in steady state, a read only when the file changed (cachedByStat's contract),
- * so a fleet poll's allLiveClaims does no read I/O once every claim is known. */
+ * so a team poll's allLiveClaims does no read I/O once every claim is known. */
 const liveClaimCache = new Map<string, StatKeyedValue<{ role: string; key: string }>>();
 
 /** Every loop id whose persisted claim must be considered — the built-in catalog roles

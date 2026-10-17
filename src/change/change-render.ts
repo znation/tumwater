@@ -54,6 +54,3 @@ export function renderRoleChange(view: RoleChangeView): string {
   }
   return lines.join("\n");
 }
-
-/** @deprecated Use renderTeamChange. */
-export const renderFleetChange = renderTeamChange;

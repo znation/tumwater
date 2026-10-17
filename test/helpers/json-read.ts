@@ -20,7 +20,7 @@ export function readJson<T = unknown>(file: string | URL): T {
   try {
     raw = fs.readFileSync(file, "utf8");
   } catch (err) {
-    throw new Error(`cannot read ${file} (expected JSON a fleet process wrote): ${errorMessage(err)}`);
+    throw new Error(`cannot read ${file} (expected JSON a team process wrote): ${errorMessage(err)}`);
   }
   try {
     return JSON.parse(raw) as T;

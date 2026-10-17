@@ -49,7 +49,7 @@ test("the best-effort stderr fallbacks strip terminal controls from the text the
 // in UTF-8 bytes, so it must be counted with Buffer.byteLength — line.length (code units)
 // leaves the memo short for any event line with multi-byte text, and every later append
 // silently re-opens the file (the "one stat, not an fd cycle" win the memo exists for dies
-// on the fleet's real traffic, which is full of em dashes).
+// on the team's real traffic, which is full of em dashes).
 test("logEvent's post-append shape memo counts UTF-8 bytes, so a multi-byte event's next append skips the torn-tail fd cycle", (t) => {
   const dir = tmpdir();
   // First append: no file yet, nothing to terminate, no shape recorded. Second: appends from

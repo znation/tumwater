@@ -43,14 +43,14 @@ export class LoopRunner {
    * tick intervals, backoff, and role enablement for subsequent ticks. */
   config: TumwaterConfig;
   /** The 429 observation from this loop's usage accounting (TickUsage.lastRateLimit,
-   * src/tick/tick-usage.ts): the orchestrator's fleet-wide hold wiring reads it through the
+   * src/tick/tick-usage.ts): the orchestrator's team-wide hold wiring reads it through the
    * runner (src/team/team-polls.ts), so the field keeps its place on the runner's surface. */
   get lastRateLimit(): { at: number; retryAfterSeconds?: number; provider?: string } | undefined {
     return this.usage.lastRateLimit;
   }
   /** The backend-failure observation (TickUsage.lastBackendFailure, src/tick/tick-usage.ts): the
    * non-429 sibling of lastRateLimit above — the connection, timeout, server, and model-load
-   * kinds the fleet-wide hold groups storms by (src/team/team-hold.ts). Same runner surface,
+   * kinds the team-wide hold groups storms by (src/team/team-hold.ts). Same runner surface,
    * same consumer. */
   get lastBackendFailure(): { at: number; kind: BackendFailureKind; provider?: string } | undefined {
     return this.usage.lastBackendFailure;
@@ -66,7 +66,7 @@ export class LoopRunner {
   private readonly pending: PendingPrompt;
   /** Per-tick abort controller, recreated at every tick start: `abortTick()` kills the
    * in-flight pi run without touching the harness shutdown signal (`this.signal`), which
-   * would stop the whole fleet. */
+   * would stop the whole team. */
   private tickAbort = new AbortController();
   /** Set by abortTick() when a user-initiated abort lands mid-tick: runTick's two abort
    * branches (author run, review gate) then diverge from shutdown semantics — worktree reset
@@ -87,7 +87,7 @@ export class LoopRunner {
    * resolve to, since different roles may run on different pairs.
    * Transient — never persisted — and captured fresh at every tick start. */
   private tickPair?: { provider?: string; model?: string };
-  /** Whether the budget gate currently has the fleet on its free fallback pairs (src/gates/
+  /** Whether the budget gate currently has the team on its free fallback pairs (src/gates/
    * budget-gates.ts onFallback, set alongside `config` by the orchestrator's poll): an
    * image reroute may then look only among the free fallback pairs, never a priced primary
    * (plans/image-input.md "Reroute target" "Regime"). Pure scheduler input, never whether
@@ -174,7 +174,7 @@ export class LoopRunner {
    * when no tick is running — the orchestrator checks `state.running` before calling, and a
    * direct call must not arm a stale flag. Otherwise set the userAborted flag and abort the
    * per-tick controller: runPi terminates the in-flight pi child (SIGTERM → SIGKILL
-   * escalation) exactly like a harness shutdown, but only this loop's run dies — the fleet
+   * escalation) exactly like a harness shutdown, but only this loop's run dies — the team
    * keeps running. */
   abortTick(): void {
     if (!this.state.running) return;
@@ -302,7 +302,7 @@ export class LoopRunner {
    * through the loop's shared transient-retry wiring — the same retry an authoring run gets,
    * so a 429 in the gate is waited out and retried once instead of failing the review on
    * first contact (BUGS.md 2026-10-01). A retried first attempt is folded here at retry time
-   * (the fleet-wide rate-limit hold's input); the FINAL run's usage is folded by the gate's
+   * (the team-wide rate-limit hold's input); the FINAL run's usage is folded by the gate's
    * caller, exactly as before — the plumbing lives in src/loop/loop-pi.ts; this is the
    * landing wiring's public face. */
   async runGatePi(opts: PiRunOptions): Promise<PiRunResult> {
@@ -310,7 +310,7 @@ export class LoopRunner {
   }
 
   /** Public face of foldUsage for the orchestrator's landing wiring: folds a landing pi run
-   * (reviewer, conflict resolution) into the AUTHORING role's counters, so the fleet's daily
+   * (reviewer, conflict resolution) into the AUTHORING role's counters, so the team's daily
    * cost and the per-role usage windows attribute that spend to the role that authored the
    * work — no new counter semantics, just the same fold loop.ts applies to its tick runs. */
   foldLandingUsage(run: PiRunResult, provider?: string, pair?: string): void {

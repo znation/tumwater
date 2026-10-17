@@ -148,12 +148,12 @@ test("setConfigKey merges one dotted map entry, preserving the other roles' entr
   const untouched = fs.readFileSync(file, "utf8");
   r = setConfigKey(dir, "quietHoursPerRole.clean", "25:00-07:00");
   assert.equal(r.ok, false);
-  // The error names the key the operator set, not the fleet-wide `quietHours`.
+  // The error names the key the operator set, not the team-wide `quietHours`.
   if (!r.ok) assert.match(r.error, /quietHoursPerRole\.clean times must be 24-hour/);
   assert.equal(fs.readFileSync(file, "utf8"), untouched, "a rejected dotted value changes nothing");
 
   // A non-numeric dollar cap fails with checkDailyBudgetUsd's message, before the write —
-  // named for the dotted key set, not the fleet-wide `maxDailyCostUsd`.
+  // named for the dotted key set, not the team-wide `maxDailyCostUsd`.
   r = setConfigKey(dir, "maxDailyCostUsdPerRole.feature", '"lots"');
   assert.equal(r.ok, false);
   if (!r.ok) assert.match(r.error, /maxDailyCostUsdPerRole\.feature must be a number of 0 or more/);
@@ -578,7 +578,7 @@ test("parseConfigKey names model.<tier> and rejects a bogus tier", () => {
 });
 
 // The cross-process read-modify-write race (BUGS.md 2026-10-07): `tumwater config set` (CLI),
-// a standalone dashboard server, and the running fleet are separate processes. Without a lock,
+// a standalone dashboard server, and the running team are separate processes. Without a lock,
 // two writers each load the same snapshot and the later whole-file write drops the earlier one.
 // The child holds the config lock while it snapshots, waits to see whether the parent's write
 // lands (an unlocked writer's does; a locked one's waits), then writes its own key from the

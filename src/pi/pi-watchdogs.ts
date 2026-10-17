@@ -136,7 +136,7 @@ export function startPiWatchdogs(deps: PiWatchdogDeps): PiWatchdogs {
   // only a periodic look at which open tool calls have gone silent.
   // A run that has not yet produced progress is starting, not hung: process creation and
   // model connect are legitimately slow on a loaded machine (a full test suite, a busy
-  // fleet), and charging that startup latency as pi silence quiet-kills runs that never
+  // team), and charging that startup latency as pi silence quiet-kills runs that never
   // had the chance to speak (BUGS.md 2026-09-23). The one extra quiet window that fix
   // granted a zero-progress run still false-killed under merge-check load: the kill runs
   // on an interval against the wall clock, so the firing check can predate the child's

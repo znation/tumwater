@@ -1,6 +1,6 @@
 // vocabulary: plain
 /** The budget/tier FALLBACK side of the config views, split out of config-views.ts: how the
- * fleet falls back at the daily spend cap — which free pair each tier runs on
+ * team falls back at the daily spend cap — which free pair each tier runs on
  * (resolveTierFallbacks and its BORROW_ORDER), the per-role fallback config a model-failure
  * or cap episode hands a loop (fallbackRoleConfig, applyFallbackModel), and the surfaces
  * that name those pairs (seamsInUse, modelFallbackView, tierFallbackLabels). The per-seam
@@ -55,7 +55,7 @@ function fallbackSelectorFields(
 /** A fallback pair's provider keyed by the seam it routes to (PLANS.md "Mixed claude + pi
  * fleets, part 2/4"): a pair that routes to a non-pi backend carries that backend's name as
  * its provider — `claude/claude-sonnet-5-5` and a bare `claude-sonnet-5-5` on a claude
- * fleet both read `claude` — so the budget gate's handback (gate-polls.ts's tickOnPair
+ * team both read `claude` — so the budget gate's handback (gate-polls.ts's tickOnPair
  * against the tick's seamHoldKey capture, loop-tick.ts's setTickPair) matches a tick on
  * either selector form. The same routing rule as routeModel: a provider naming an agent is
  * that agent, no provider runs on the config's `agent`, anything else is pi, which keeps
@@ -71,12 +71,12 @@ function seamKeyedFallbackProvider(
 /** The `model` selector a run actually starts on, as an event/payload field: the resolved
  * provider/model/thinking triple formatted as one selector string, or an empty object when
 
-/** The fleet-level fallback pair: the `default` tier's resolved pair under
+/** The team-level fallback pair: the `default` tier's resolved pair under
  * resolveTierFallbacks' borrow order, or null when the tier resolves to pause. The
  * selector-string `fallback` (plans/model-tiers.md), the legacy `fallbackModel` object, and
  * the map form all feed one resolution — a map with no `default` entry (or a `"pause"` one)
  * borrows another tier's pair exactly as the budget gate does, so this view and the gate
- * cannot disagree about which model the fleet would engage. `usable` filters the pairs that
+ * cannot disagree about which model the team would engage. `usable` filters the pairs that
  * may supply the answer: the default predicate admits every declared pair (the config-only
  * view), while a pricing predicate (src/pi/pi-models.ts's fallbackModelPair) yields the pair
  * the gate would actually engage when a declared `default` pair is priced and a free pair
@@ -242,7 +242,7 @@ export function fallbackRoleConfig(config: TumwaterConfig, role: string): Resolv
   };
 }
 
-/** One seam the fleet can spawn, with the human label that names it and the resolved routing
+/** One seam the team can spawn, with the human label that names it and the resolved routing
  * a run gets — the single enumeration the startup gate, doctor, and the claude-account seed
  * and live-edit reload sweep, so a seam that exists only as a fallback is checked exactly like
  * a primary one. `agent` names the routed backend, `provider`/`model`/`thinking` the resolved
@@ -257,7 +257,7 @@ interface SeamInUse {
   thinking?: string;
 }
 
-/** Every seam the fleet can spawn, each with its label: every enabled role's resolved config
+/** Every seam the team can spawn, each with its label: every enabled role's resolved config
  * (configForRole), the review gate when it is on (reviewRunConfig), the conflict resolver
  * (resolverConfig), the director (a catalog role, named explicitly so it is never missed), and
  * each tier's budget fallback (resolveTierFallbacks) — the model-failure fallback

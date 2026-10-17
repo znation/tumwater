@@ -34,9 +34,6 @@ export function isTeamPaused(root: string): boolean {
   return standingTeamPause(root) !== null;
 }
 
-/** @deprecated Use isTeamPaused. */
-export const isFleetPaused = isTeamPaused;
-
 /** The body shape of both pause markers: the write instant plus, for a timed pause
  * (`tumwater pause [--role <id>] --for <duration>`), the ms-epoch deadline. One shared
  * deadline per marker — a set is paused or it is not, and each new pause write carries its
@@ -150,9 +147,6 @@ export function pauseTeam(root: string, untilMs?: number, reason?: string): bool
   return true;
 }
 
-/** @deprecated Use pauseTeam. */
-export const pauseFleet = pauseTeam;
-
 /** Resume the team by removing its marker (a no-op if absent); returns whether a marker was
  * there to lift, mirroring pauseTeam's changed-state contract. Uses removeQuiet's
  * never-throws delete: a marker vanishing between the check and the unlink is success, not a
@@ -163,9 +157,6 @@ export function resumeTeam(root: string): boolean {
   removeQuiet(marker);
   return true;
 }
-
-/** @deprecated Use resumeTeam. */
-export const resumeFleet = resumeTeam;
 
 /** Schedule a graceful team stop at `untilMs` (epoch ms): `tumwater stop --in`. Overwrites the
  * marker, so the last write wins. */

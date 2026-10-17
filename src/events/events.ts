@@ -61,9 +61,9 @@ export interface HarnessEvent {
     | "conflict_handback" // a change whose landings kept conflicting was handed back to its author with the markers in place (PLANS.md "Robust conflict landing, part 2/2"); action queued|applied, with sha, reason landing|revision, and the conflicted paths on a successful re-apply
     | "build_check" // the project's declared check ran: scope gate|baseline|landing|batch (landing is the merge lock's post-rebase re-check; batch is the batch lander's one check over the stacked tree), status, script, durationMs; spawnedAt/settledAt when a process ran, plus timeoutMs/deadlineLateMs when its deadline fired, and sleptMs when the host slept mid-run (build/build-check-events.ts buildCheckRunFields); installed/installMs (plus installError) when the check first installed the tree's drifted lockfile (build/dep-install.ts)
     | "dep_install" // the root checkout's install was re-synced after a landing moved main's lockfile (build/dep-install.ts syncRootInstall): packages (the drifted direct dependencies), status passed|failed, durationMs, error on a failure
-    | "budget_warning" // fleet daily spend crossed 80% of maxDailyCostUsd; the gate is still open
-    | "budget_paused" // fleet daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
-    | "budget_fallback" // fleet daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
+    | "budget_warning" // team daily spend crossed 80% of maxDailyCostUsd; the gate is still open
+    | "budget_paused" // team daily spend reached maxDailyCostUsd with no usable free fallback; role loops stop starting ticks
+    | "budget_fallback" // team daily spend reached maxDailyCostUsd and a cost-free fallback model is configured; role loops keep ticking on it
     | "budget_resumed" // the cap was raised/disabled or a new local day started; role loops tick again
     | "budget_handback" // at budget_resumed: the in-flight ticks still on the fallback were handed back to the primary (roles, provider, model); reason "window" when a used-up claude window reset rather than the budget
     | "fallback_switched" // a tier moved to a different step of its fallback chain, or back to its primary; carries `tiers` (tier → from, to, reason: window|reserve|cap|step-cap|overage|demoted|available; a null from/to is the primary)
@@ -97,19 +97,19 @@ export interface HarnessEvent {
     | "provider_concurrency_changed" // a live tumwater.json edit changed one provider's concurrency cap (provider, from → to)
     | "retention_changed" // a live tumwater.json edit changed sessionRetentionDays (from → to)
     | "config_changed" // a live tumwater.json edit changed other settings (keys)
-    | "model_changed" // a live tumwater.json edit changed the fleet's model wiring; carries from/to (fleetModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
+    | "model_changed" // a live tumwater.json edit changed the team's model wiring; carries from/to (teamModelLabel of the previous/next config) and roles (the per-role selector diffs) when a roles.<id> model override changed
     | "backend_binary" // a live tumwater.json edit newly routed a seam to a backend the previous config did not use; carries agent and found (the resolved binary was present) — the binary check's verdict, logged so a newly added backend is verified like startup would
     | "model_fallback_started" // a role tripped its model-fallback episode after consecutive provider-class failures on the primary; carries provider/model of the fallback pair and the tripping reason
     | "model_fallback_ended" // a probe tick on the primary answered without a provider failure; carries durationMs of the episode and the primary's provider/model
     | "image_blind" // a run's agent read an image its model cannot see (plans/image-input.md "Detecting a blind read"): pi strips such images, so an authoring run was killed and the tick fails — carried as loop, run, path, model, and action "fail" when the authoring run was killed, "logged" when only a gate run recorded the read
     | "image_reroute" // a tick stopped for a blind image read moves its work to a tier that CAN read images (plans/image-input.md part 4/5): the next tick starts directly on the target — carried as loop, run, from, to, tier, and preflight true when the hop happened at model choice (an attachment preflight) before any run, false when it followed a blind-read failure
-    | "build_stale" // main's build inputs moved past the running build (self-hosting fleets; src/redeploy/redeploy.ts)
+    | "build_stale" // main's build inputs moved past the running build (self-hosting teams; src/redeploy/redeploy.ts)
     | "restart_pending" // main is green; no new ticks start until the restart lands
     | "restart" // dist/ now holds the new build; the orchestrator exits for the supervisor to respawn it
     | "restart_refused" // a new generation would fail `tumwater run`'s startup gate here (reason); the running build stays and the gate is re-asked every poll
     | "restart_blocked" // the restart for main was blocked and latched (reason: red main, a failed compile, a swap error); the running build stays until main moves
     | "restart_forced" // the operator pressed the dashboard's restart button: the pending restart's cooldown deferral is waived for the next poll (carries build)
-    | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the fleet is down
+    | "supervisor_exit" // the supervisor gave up without the operator asking: a generation exited with a failure (code/signal, reason when the startup gate names one) or the crash-loop guard tripped — the team is down
     | "state_migrated" // a startup migration moved persisted state to its current name (src/orchestrator/startup-migrations.ts): step, moved (count), detail
     | "warning";
   [key: string]: unknown;
@@ -143,7 +143,7 @@ export function usageFragment(
     ...(tokens > 0 ? { tokens } : {}),
     ...(costUsd > 0 ? { costUsd } : {}),
     // Subscription spend rides on the same fragment (plans/agent-backends.md part 6a): it is
-    // omitted when zero like the other fields, so an API-only fleet's lines are unchanged.
+    // omitted when zero like the other fields, so an API-only team's lines are unchanged.
     ...(notionalCostUsd > 0 ? { notionalCostUsd } : {}),
   };
 }
@@ -208,7 +208,7 @@ export function warnEventBestEffort(root: string, source: string, message: strin
 
 /** The `{ emit, warn }` pair for a caller on a catch-less path (the orchestrator's poll loop
  * and the live config reload it drives): both route through logEventBestEffort and
- * warnEventBestEffort, so the "an unwritable feed must not end the fleet" policy has one home
+ * warnEventBestEffort, so the "an unwritable feed must not end the team" policy has one home
  * and the harness-loop warning shorthand cannot drift from warnEvent's event shape. */
 export function bestEffortEventLogger(root: string): {
   emit: (event: HarnessEventInput) => void;
@@ -245,7 +245,7 @@ function appendEventLine(file: string, line: string): void {
       // The append writes UTF-8 BYTES, so the growth is Buffer.byteLength, not the string's
       // code-unit length: a multi-byte event line (an em dash in an agent's message is enough)
       // would otherwise leave the memo short of the file's real size, every later stat would
-      // miss it, and the memo would silently never hit on the fleet's actual traffic.
+      // miss it, and the memo would silently never hit on the team's actual traffic.
       size: st.size + (terminated ? 1 : 0) + Buffer.byteLength(line, "utf8"),
     });
   } else {

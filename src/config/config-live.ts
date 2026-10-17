@@ -2,7 +2,7 @@
 import type { TumwaterConfig } from "./config-schema.js";
 import { changedConfigKeys, loadConfigCached } from "./config.js";
 import { loopIds } from "../roles/loop-ids.js";
-import { configForRole, fleetModelLabel, modelSelectorField } from "./config-views.js";
+import { configForRole, teamModelLabel, modelSelectorField } from "./config-views.js";
 import { seamsInUse } from "./config-fallbacks.js";
 import { bestEffortEventLogger, TUMWATER_SOURCE } from "../events/events.js";
 import { LoopRunner } from "../loop/loop.js";
@@ -74,7 +74,7 @@ export function newLiveConfigReload(deps: {
 
   // Best-effort event logging: poll() runs inside the orchestrator's poll loop
   // (src/orchestrator/orchestrator.ts), which has no catch, so an unwritable feed (ENOSPC,
-  // EACCES, the path replaced by a directory) would otherwise end the fleet — and, worse, skip
+  // EACCES, the path replaced by a directory) would otherwise end the team — and, worse, skip
   // the config application that follows the emission. bestEffortEventLogger (events.ts) holds
   // the shared "logging must not throw" policy.
   const { emit, warn } = bestEffortEventLogger(deps.root);
@@ -83,8 +83,8 @@ export function newLiveConfigReload(deps: {
     poll() {
       const reloaded = loadConfigCached(deps.root);
       // A missing file keeps the last-known-good config too, and never reloads as defaults: the
-      // fleet was started on a real file (startup refuses to run without one), so its vanishing
-      // mid-run is an incident — a landing's fast-forward deleted it on 2026-09-22 and the fleet
+      // team was started on a real file (startup refuses to run without one), so its vanishing
+      // mid-run is an incident — a landing's fast-forward deleted it on 2026-09-22 and the team
       // silently ran 8.6 h on defaults (BUGS.md 2026-09-23). One warning per vanish, not per
       // poll; its return logs one line, then the normal reload below diffs it against the
       // retained config — so config_changed names only what the returned file really changed.
@@ -108,8 +108,8 @@ export function newLiveConfigReload(deps: {
           emit({ source: TUMWATER_SOURCE, type: "config_changed", keys: changedKeys });
           // A real model-wiring change gets its own event naming the new selector(s), which the
           // key list cannot show; a non-model edit (instructions, an interval) emits nothing.
-          const fromModel = fleetModelLabel(prevLive);
-          const toModel = fleetModelLabel(reloaded.config);
+          const fromModel = teamModelLabel(prevLive);
+          const toModel = teamModelLabel(reloaded.config);
           const roleDiffs = changedKeys
             .filter((key) => key.startsWith("roles."))
             .map((key) => {
@@ -129,8 +129,8 @@ export function newLiveConfigReload(deps: {
             });
         }
         // A live edit that routes a seam to a backend the previous config did not use: the
-        // fleet keeps running, but that backend must be verified and (for claude) its account
-        // seeded, exactly as startup would — so a claude reviewer added to a pi fleet does not
+        // team keeps running, but that backend must be verified and (for claude) its account
+        // seeded, exactly as startup would — so a claude reviewer added to a pi team does not
         // start uncheckable. A missing binary is a warning event, never a crash; a present one
         // logs its verdict as a backend_binary event. The seed is attempted once per root.
         const prevAgents = new Set(seamsInUse(prevLive).map((s) => s.agent ?? "pi"));

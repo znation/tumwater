@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, isNotifyFailure, notifyExitWarning, notifyFleetDown } from "../src/events/notify.js";
+import { NOTIFY_EVENT_TYPES, NOTIFY_MIN_GAP_MS, newNotifier, notifyCommandEnv, isNotifyFailure, notifyExitWarning, notifyTeamDown } from "../src/events/notify.js";
 import { TUMWATER_SOURCE, logEvent, subscribeEvents } from "../src/events/events.js";
 import { formatEvent } from "../src/events/event-format.js";
 import { defaultConfig, loadConfig } from "../src/config/config.js";
@@ -428,7 +428,7 @@ test("a spawn-failure warning whose event write throws falls back to stderr, not
   // The async child `error` handler reports through warnEvent. That write can fail later in
   // the process's life (the disk fills, .tumwater/log is replaced); a throw out of a Node
   // `'error'` listener is an uncaught exception, so the reporting failure would kill the
-  // fleet. Sabotage the feed after the triggering event is written but before the warning —
+  // team. Sabotage the feed after the triggering event is written but before the warning —
   // see the poison subscriber below — and watch where the failure goes.
   const root = tmpdir();
   const stderr = captureStderr();
@@ -479,12 +479,12 @@ test("setting notify live takes effect on the next update(liveConfig) poll, no r
   }
 });
 
-test("notifyFleetDown runs the configured hook once with the supervisor_exit line", async () => {
-  const root = tmpdir("notify-fleet-down-");
+test("notifyTeamDown runs the configured hook once with the supervisor_exit line", async () => {
+  const root = tmpdir("notify-team-down-");
   const out = path.join(root, "out.txt");
   writeConfig(root, { ...defaultConfig(), notify: recorderCommand(out) });
   const event = { source: "tumwater", type: "supervisor_exit" as const, generation: 2, code: 1, ts: Date.now() };
-  notifyFleetDown(root, event);
+  notifyTeamDown(root, event);
   await waitFor(() => recordedLines(out).length === 1, "one recorded line");
   const rec = parseLine(recordedLines(out)[0]!);
   assert.equal(rec.type, "supervisor_exit");
@@ -492,16 +492,16 @@ test("notifyFleetDown runs the configured hook once with the supervisor_exit lin
   assert.equal(rec.message, formatEvent(event));
 });
 
-test("notifyFleetDown returns silently without a usable notify command", async () => {
+test("notifyTeamDown returns silently without a usable notify command", async () => {
   const event = { source: "tumwater", type: "supervisor_exit" as const, generation: 1, code: 1, ts: Date.now() };
-  const missing = tmpdir("notify-fleet-down-missing-");
-  const invalid = tmpdir("notify-fleet-down-invalid-");
+  const missing = tmpdir("notify-team-down-missing-");
+  const invalid = tmpdir("notify-team-down-invalid-");
   fs.writeFileSync(path.join(invalid, "tumwater.json"), "{ not json");
-  const absent = tmpdir("notify-fleet-down-absent-");
+  const absent = tmpdir("notify-team-down-absent-");
   writeConfig(absent, defaultConfig());
   for (const root of [missing, invalid, absent]) {
     const out = path.join(root, "out.txt");
-    assert.doesNotThrow(() => notifyFleetDown(root, event));
+    assert.doesNotThrow(() => notifyTeamDown(root, event));
     await sleep(150);
     assert.deepEqual(recordedLines(out), []);
   }

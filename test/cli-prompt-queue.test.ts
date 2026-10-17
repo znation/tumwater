@@ -269,7 +269,7 @@ test("prompt --role queues for one loop only, wakes it, and validates the role",
   await initProject(repo, "cli per-role prompt");
 
   // Queued for qa only: qa's queue holds it verbatim, the director's inbox is untouched, and
-  // the targeted loop is woken so a sleeping fleet sees the prompt within one poll.
+  // the targeted loop is woken so a sleeping team sees the prompt within one poll.
   let r = await cli(repo, "prompt", "--role", "qa", "check", "the", "flow");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /added to qa's inbox/);

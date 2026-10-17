@@ -46,7 +46,7 @@ test("defaultConfig enables every role including director, except the opt-in sel
   // its findings land in the wrong backlog; tumwater's own tumwater.example.json opts in.
   assert.equal(config.roles.selfcheck?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
-  // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
+  // Merge queue 5/5: the batch cap defaults to 3 — the team's realistic concurrent-role count.
   assert.equal(config.mergeBatchMax, 3);
   // Land-queue speed 2b: two check suites at once, process-wide.
   assert.equal(config.maxConcurrentChecks, 2);
@@ -104,7 +104,7 @@ test("defaultConfig carries the thrash thresholds and validation guards them", (
 });
 
 test("defaultConfig carries the daily cost budget cap and validation guards it", () => {
-  // AC1 (plans/daily-cost-budget.md): an unattended fleet must not spend unbounded, so the
+  // AC1 (plans/daily-cost-budget.md): an unattended team must not spend unbounded, so the
   // cap defaults to $50/day; 0 disables. Invalid values are rejected with actionable errors
   // like every other knob.
   const config = defaultConfig();
@@ -122,7 +122,7 @@ test("defaultConfig carries the daily cost budget cap and validation guards it",
     );
   }
 
-  // A typo'd key name would otherwise be silently ignored and the default used — a fleet
+  // A typo'd key name would otherwise be silently ignored and the default used — a team
   // that meant to cap its spend would then spend unbounded. TOP_LEVEL_KEYS must fail it.
   assert.match(
     validationError({ maxDailyCostUss: 50 }),
@@ -298,7 +298,7 @@ test("a broken tumwater.json is not cached: every poll retries and a repair reco
 
 test("a vanished tumwater.json is reported missing, never as defaults, and its return reloads fresh", () => {
   // BUGS.md 2026-09-23: a landing's fast-forward deleted the live file and the hot-reload served
-  // defaultConfig(), silently resetting the fleet. Missing is its own answer — no config, no
+  // defaultConfig(), silently resetting the team. Missing is its own answer — no config, no
   // error — so the orchestrator can keep its last-known-good exactly as for a broken file.
   const dir = tmpdir();
   assert.deepEqual(loadConfigCached(dir), { missing: true }, "never present: missing too");
@@ -317,7 +317,7 @@ test("a vanished tumwater.json is reported missing, never as defaults, and its r
 test("a tumwater.json deleted between the cache's stat and its read is an error, not defaults", () => {
   // The stat is loadConfigCached's one presence check: a deletion landing just after it (a git
   // checkout unlinking the file mid-poll) must not be re-checked into loadConfig's
-  // missing-means-defaults answer — that would reset the fleet for one poll, the very bug.
+  // missing-means-defaults answer — that would reset the team for one poll, the very bug.
   const dir = tmpdir();
   const file = path.join(dir, "tumwater.json");
   fs.writeFileSync(file, JSON.stringify({ model: "sonnet" }));
@@ -337,7 +337,7 @@ test("a tumwater.json deleted between the cache's stat and its read is an error,
 });
 
 test("autoRestart defaults on and is validated as a boolean", () => {
-  // Self-redeploy (src/redeploy/redeploy.ts) is the opinionated default for a self-hosting fleet:
+  // Self-redeploy (src/redeploy/redeploy.ts) is the opinionated default for a self-hosting team:
   // the
   // alternative — a process that never reloads its own code — ran ten days stale in dogfood.
   assert.equal(defaultConfig().autoRestart, true);
@@ -535,7 +535,7 @@ test("loadConfigCached hands out independent customRoles arrays", () => {
   assert.equal(second.roles["docs-auditor"]?.enabled, true);
 });
 
-test("an invalid customRoles file keeps the fleet-visible contract: loadConfigSafe returns the error", () => {
+test("an invalid customRoles file keeps the team-visible contract: loadConfigSafe returns the error", () => {
   const dir = tmpdir();
   fs.writeFileSync(
     path.join(dir, "tumwater.json"),
@@ -586,12 +586,12 @@ test("knownRoleIdsCached is the one home of the read-only fallback rule", () => 
 
 test("fallbackModel is an optional validated key, absent by default", () => {
   // Absent by default: the harness cannot know which model on a given machine is free, so a
-  // fleet that names none keeps the pause behavior it had before this feature.
+  // team that names none keeps the pause behavior it had before this feature.
   assert.equal(defaultConfig().fallbackModel, undefined);
   assert.doesNotThrow(() => validateConfig({ fallbackModel: { provider: "omlx", model: "q" } }));
   assert.doesNotThrow(() => validateConfig({ fallbackModel: { model: "q" } }));
 
-  // A typo'd key would be silently ignored — the fleet would pause where the operator meant
+  // A typo'd key would be silently ignored — the team would pause where the operator meant
   // it to keep working — so the key list must fail it, like every other section.
   assert.match(
     validationError({ fallbackModell: { model: "q" } }),

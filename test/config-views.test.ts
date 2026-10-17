@@ -9,7 +9,7 @@ import {
   agentQualifiedSelector,
   configForRole,
   fallbackDisplayPair,
-  fleetModelLabel,
+  teamModelLabel,
   modelSelectorField,
   resolvedAgentConfig,
   resolverConfig,
@@ -230,18 +230,18 @@ test("tierModel resolves each tier of a map-form model, a string form being the 
   assert.equal(tierModel(defaultConfig(), "strong"), undefined);
 });
 
-test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => {
+test("teamModelLabel collapses agreeing tiers and lists differing ones", () => {
   // Every tier unset: pi's own default, so the live-edit event names no model.
-  assert.equal(fleetModelLabel(defaultConfig()), null);
+  assert.equal(teamModelLabel(defaultConfig()), null);
   // A string form applies at every tier, so all set tiers agree on one selector.
   const str: TumwaterConfig = defaultConfig();
   str.model = "prov-a/model-a";
-  assert.equal(fleetModelLabel(str), "prov-a/model-a");
+  assert.equal(teamModelLabel(str), "prov-a/model-a");
   // A map whose tiers differ lists each tier's effective selector — small inherits default.
   const map: TumwaterConfig = defaultConfig();
   map.model = { default: "prov-a/model-a", strong: "prov-s/model-s:high" };
   assert.equal(
-    fleetModelLabel(map),
+    teamModelLabel(map),
     "small=prov-a/model-a, default=prov-a/model-a, strong=prov-s/model-s:high",
   );
   // A bare-id model is agent-qualified by routing (PLANS.md "Mixed claude + pi fleets, part
@@ -252,11 +252,11 @@ test("fleetModelLabel collapses agreeing tiers and lists differing ones", () => 
   const bare: TumwaterConfig = defaultConfig();
   bare.backend = "pi";
   bare.model = "local-model";
-  assert.equal(fleetModelLabel(bare), "local-model");
+  assert.equal(teamModelLabel(bare), "local-model");
   const onClaude: TumwaterConfig = defaultConfig();
   onClaude.backend = "claude";
   onClaude.model = "local-model";
-  assert.equal(fleetModelLabel(onClaude), "claude/local-model");
+  assert.equal(teamModelLabel(onClaude), "claude/local-model");
 });
 
 test("fallbackDisplayPair agent-qualifies a backend pair and keeps a pi pair bare", () => {
@@ -354,7 +354,7 @@ test("a non-pi fallback pair is keyed by its backend, in both selector forms", (
   // PLANS.md "Mixed claude + pi fleets, part 2/4": the budget gate's handback matches the
   // tick's seamHoldKey capture against the fallback pair, so a fallback that routes to a
   // non-pi backend must carry that backend as its provider — a namespaced `claude/<id>` and
-  // a bare `<id>` on a claude fleet both read `claude`, so a tick on either form is handed
+  // a bare `<id>` on a claude team both read `claude`, so a tick on either form is handed
   // back. A pi pair keeps its own provider (and a bare pi selector keeps undefined).
   const claude: TumwaterConfig = { ...defaultConfig(), backend: "claude" };
   assert.deepEqual(fallbackPair({ ...claude, fallback: "claude/claude-sonnet-5-5" }), {
@@ -366,7 +366,7 @@ test("a non-pi fallback pair is keyed by its backend, in both selector forms", (
     provider: "claude",
     model: "claude-sonnet-5-5",
     extraUsage: true,
-  }, "a bare claude selector on a claude fleet keys claude too");
+  }, "a bare claude selector on a claude team keys claude too");
   const pi: TumwaterConfig = defaultConfig();
   pi.fallback = "omlx/qwen";
   assert.deepEqual(fallbackPair(pi), { provider: "omlx", model: "qwen" });
@@ -654,7 +654,7 @@ test("a provider/id selector routes its seam alone to that agent", () => {
   assert.equal(review.model, "claude-opus-5-5");
   assert.equal(review.thinking, "high");
   assert.equal(review.provider, undefined, "the routed provider namespace is dropped");
-  // The rest of the fleet stays on pi with pi's own default.
+  // The rest of the team stays on pi with pi's own default.
   assert.equal(configForRole(config, "feature").agent, "pi");
   assert.equal(configForRole(config, "feature").model, undefined);
 });
@@ -672,7 +672,7 @@ test("a mixed fallback under agent: claude runs on pi while the primary stays cl
 
 test("seamHoldKey keys a claude seam by its agent and a pi seam by its provider", () => {
   // A claude seam carries no pi provider, so its hold key is the backend id — the one key the
-  // scheduler and pollFleetHold both read. A pi seam keeps its provider, and pi's own default
+  // scheduler and pollTeamHold both read. A pi seam keeps its provider, and pi's own default
   // (no provider at all) keys undefined.
   assert.equal(seamHoldKey({ agent: "claude", provider: undefined }), "claude");
   assert.equal(seamHoldKey({ agent: "pi", provider: "omlx" }), "omlx");

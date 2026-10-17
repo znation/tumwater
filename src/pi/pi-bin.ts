@@ -135,7 +135,7 @@ function absBin(value: string): string {
 /** The precedence every backend shares, parameterized by its own env override and default
  * binary name: `<binEnv>` env → the configured entry's bin → `defaultBin`. An empty or
  * whitespace value falls through to the next source, so `TUMWATER_PI_BIN= tumwater run` cannot
- * wedge the fleet on a typo'd export. This is precedence only — resolvability is checked at the
+ * wedge the team on a typo'd export. This is precedence only — resolvability is checked at the
  * preflight sites (cmdRun and doctor), never here. Private: the backends and the gate resolve
  * through resolveAgentBin, its one caller. */
 function resolveBinFrom(

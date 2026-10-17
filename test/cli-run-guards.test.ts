@@ -13,7 +13,7 @@ import { cli } from "./helpers/cli-harness.js";
 // `tumwater run`'s pre-boot guards, every one failing inside the CLI before any generation
 // spawns: the detached-primary-checkout and already-running refusals, the --gui/--once and
 // --role flag guards, the role-id validation, and the startup gate that is asked first. Each
-// is a fast, deterministic child exit with nothing to reap. The running-fleet lifecycle and
+// is a fast, deterministic child exit with nothing to reap. The running-team lifecycle and
 // shutdown tests live in cli-run-shutdown.test.ts, the terminal-Ctrl+C handling in
 // cli-run-sigint.test.ts, the forced second-Ctrl+C exit in cli-run-force-exit.test.ts, the
 // --for/--gui live modes in cli-run-window.test.ts, and the scoped --once round in
@@ -37,7 +37,7 @@ test("run refuses to start while another orchestrator is alive", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run guard");
 
-  // Record a live pid (this test process) as the running orchestrator; two fleets in one
+  // Record a live pid (this test process) as the running orchestrator; two teams in one
   // repo would double-tick every loop and race on the merge lock.
   writeOrchestratorMarker(repo, []);
 
@@ -47,7 +47,7 @@ test("run refuses to start while another orchestrator is alive", async () => {
     assert.equal(r.code, 1);
     assert.match(r.stderr, /an orchestrator is already running/);
     // The message names the running pid and the fix (`tumwater stop` / Ctrl+C), so the
-    // operator who just tried to start a second fleet does not have to go looking.
+    // operator who just tried to start a second team does not have to go looking.
     assert.match(r.stderr, new RegExp(`pid ${process.pid}`));
     assert.match(r.stderr, /tumwater stop/);
   } finally {
@@ -78,7 +78,7 @@ test("run --tui --once fails before boot with the rival-shapes message", async (
 
 // A TUI owns the terminal, so `run --tui` refuses before boot when this supervisor's stdin or
 // stdout is not a TTY (piped, as under a script or this harness) — failing fast with the
-// actionable tuiTerminalError instead of pointlessly booting a fleet and only then crashing on
+// actionable tuiTerminalError instead of pointlessly booting a team and only then crashing on
 // runTui's own guard. This guards suite runs the CLI with piped stdio, so the bare `--tui`
 // shape lands on the guard, not on a real terminal.
 test("run --tui fails before boot when the terminal is not interactive", async () => {
@@ -98,7 +98,7 @@ test("run --tui fails before boot when the terminal is not interactive", async (
 // All four fail inside the supervisor parent before any generation spawns, so each run is a
 // fast, deterministic child exit with nothing to reap.
 
-test("run --role without --once fails with its own message before any fleet boots", async () => {
+test("run --role without --once fails with its own message before any team boots", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run role guard");
 
@@ -109,7 +109,7 @@ test("run --role without --once fails with its own message before any fleet boot
       "daemon `run --role` stays an error: scoping is a once-round concept");
     // The guard fires before the supervisor spawns a generation: nothing started, nothing died.
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "no orchestrator marker was written");
-    assert.equal(readEvents(repo).length, 0, "no events — the fleet never booted");
+    assert.equal(readEvents(repo).length, 0, "no events — the team never booted");
   });
 });
 

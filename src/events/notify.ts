@@ -16,7 +16,7 @@ import { childEnv } from "../process/process.js";
  * role-cap-gates.ts and disk-gate.ts, src/baseline/main-red.ts, src/team/team-polls.ts,
  * landing-slot.ts, landing-questions.ts,
  * src/redeploy/redeployer.ts). `supervisor_exit` is logged by the supervisor after the
- * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyFleetDown; events
+ * orchestrator is gone, so src/cli/cli-run.ts pages it directly with notifyTeamDown; events
  * appended by
  * operator CLI commands go straight to the file and are out of scope by design.
  *
@@ -29,16 +29,16 @@ export const NOTIFY_EVENT_TYPES = [
   "role_cap_warning", // one role's own daily spend crossed 80% of its cap, still ticking — time to raise it before the page below
   "budget_paused", // spend cap hit with no usable free fallback — role loops are stopped
   "claude_window_warning", // the claude.ai subscription window first reported allowed_warning — subscription claude seams still tick; the heads-up before the hold below
-  "claude_window_limited", // a rejected subscription window holds every subscription claude seam until it resets — the subscription fleet's binding stop
+  "claude_window_limited", // a rejected subscription window holds every subscription claude seam until it resets — the subscription team's binding stop
   "role_streak_paused", // the error-streak circuit breaker auto-paused a role
   "role_cap_paused", // the role's own daily cost cap is reached — it stops starting ticks
   "disk_low", // free space on the worktrees volume dropped below diskHoldGB — new work is held
   "main_red_hold", // main's own check is red — every code loop is held until a fix lands
   "merge_failed", // the landing slot finished without landing a change
-  "restart_blocked", // the self-redeploy for main is blocked and latched — the fleet is stuck behind it
+  "restart_blocked", // the self-redeploy for main is blocked and latched — the team is stuck behind it
   "question_posted", // a landing posted a new QUESTIONS.md ## Open entry — only a human can answer it
   "entry_refused", // a refusal note landed — the entry is held until a human or the director releases it
-  "supervisor_exit", // the supervisor gave up — the fleet is down; paged from the supervisor process by notifyFleetDown, since no orchestrator is left to hear it
+  "supervisor_exit", // the supervisor gave up — the team is down; paged from the supervisor process by notifyTeamDown, since no orchestrator is left to hear it
 ] as const;
 
 type NotifyEventType = (typeof NOTIFY_EVENT_TYPES)[number];
@@ -130,12 +130,12 @@ function spawnNotifyCommand(root: string, command: string, event: HarnessEvent, 
   }
 }
 
-/** Page the configured notify command for the fleet going down. The supervisor process calls
+/** Page the configured notify command for the team going down. The supervisor process calls
  * this directly, because the orchestrator generation that runs newNotifier is already gone.
  * Reads the command fresh from tumwater.json; a missing or invalid file or an absent `notify`
- * returns silently (the fleet-down cause may be that very file), and there is no throttle —
+ * returns silently (the team-down cause may be that very file), and there is no throttle —
  * the supervisor exits right after this one event. */
-export function notifyFleetDown(root: string, event: HarnessEvent): void {
+export function notifyTeamDown(root: string, event: HarnessEvent): void {
   const { config } = loadConfigSafe(root);
   const command = config?.notify;
   if (typeof command !== "string" || command === "") return;

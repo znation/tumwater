@@ -9,9 +9,9 @@ import { childEnv, runOnAbort } from "./process.js";
  * one the operator started, holding the terminal) and a child that actually runs the orchestrator.
  * When the child rebuilt dist/ onto a newer main (src/redeploy/redeployer.ts) it exits
  * RESTART_EXIT_CODE and the supervisor respawns it — the same script path, now holding the new
- * code — so a self-hosting fleet picks up its own changes without anyone at the keyboard. Any
- * other exit ends the supervisor with the child's code — and when nobody asked for it, the fleet
- * is down with nobody at the keyboard either, so that exit is recorded first (onFleetDown). Ctrl+C
+ * code — so a self-hosting team picks up its own changes without anyone at the keyboard. Any
+ * other exit ends the supervisor with the child's code — and when nobody asked for it, the team
+ * is down with nobody at the keyboard either, so that exit is recorded first (onTeamDown). Ctrl+C
  * reaches both processes from the terminal (same foreground group), so the supervisor forwards only
  * SIGTERM, which a plain `kill` delivers to it alone. */
 
@@ -31,7 +31,7 @@ export const RUN_WINDOW_START_ENV = "TUMWATER_RUN_WINDOW_START";
 
 /** The exit code of a `run --once` round that finished and found failed ticks (cli-run.ts's
  * onceFailures): an asked-for ending, so the supervisor passes it through without paging the
- * fleet-down hook. */
+ * team-down hook. */
 export const ONCE_FAILED_EXIT_CODE = 3;
 
 /** How often the supervised generation checks that its supervisor still lives (ms). */
@@ -71,10 +71,10 @@ interface ParentDeathWatchOptions {
 /** Parent-death watch for the supervised generation. The supervisor forwards only SIGTERM —
  * SIGKILL (the OOM killer, `kill -9`) cannot be trapped or forwarded, and an uncaught supervisor
  * crash forwards nothing either — so a supervisor that dies outright leaves the generation
- * reparented (on macOS to launchd) and ticking the fleet unattended, with nothing left to sweep
+ * reparented (on macOS to launchd) and ticking the team unattended, with nothing left to sweep
  * it. The watch polls the parent pid on an interval: once it changes, the supervisor is gone
- * without having stopped the fleet, and `onGone` runs the same graceful stop a forwarded SIGTERM
- * would have run — a killed supervisor takes its fleet down with it. The timer is unref'd so it
+ * without having stopped the team, and `onGone` runs the same graceful stop a forwarded SIGTERM
+ * would have run — a killed supervisor takes its team down with it. The timer is unref'd so it
  * never holds the generation's event loop open past its real work. Returns the stop that
  * disarms the watch (a no-op once it fired or was already stopped). */
 export function startParentDeathWatch(onGone: () => void, opts: ParentDeathWatchOptions = {}): () => void {
@@ -127,8 +127,8 @@ export interface ChildExit {
   signal: NodeJS.Signals | null;
 }
 
-/** Why supervision ended without the operator asking — what onFleetDown records. */
-export interface FleetDown {
+/** Why supervision ended without the operator asking — what onTeamDown records. */
+export interface TeamDown {
   /** The generation whose exit ended it: 1 is the operator's own start, 2+ a respawn. */
   generation: number;
   exit: ChildExit;
@@ -154,14 +154,14 @@ interface SuperviseOptions {
    * (build-stage.recoverInterruptedSwap). A hook that throws is ignored: the exit code must
    * stay the child's, and the hook's own reporting is its responsibility. */
   onDone?(): Promise<void> | void;
-  /** Called — and awaited — right before the supervisor gives up on a fleet the operator did
+  /** Called — and awaited — right before the supervisor gives up on a team the operator did
    * not stop: a generation exited with a failure (not a restart request, not a clean exit, and not
    * while stopping) or the crash-loop guard tripped. Production logs a `supervisor_exit` event: on
    * 2026-09-22 a respawned generation exited "not initialized" and events.jsonl simply ended at the
-   * previous generation's orchestrator_stop, 4 h 44 m of dead fleet with no trace (BUGS.md
+   * previous generation's orchestrator_stop, 4 h 44 m of dead team with no trace (BUGS.md
    * 2026-09-23). A hook that throws is ignored — the trace is best-effort, and the exit code must
    * stay the child's. */
-  onFleetDown?(down: FleetDown): Promise<void> | void;
+  onTeamDown?(down: TeamDown): Promise<void> | void;
   now?(): number;
 }
 
@@ -177,11 +177,11 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
   const now = opts.now ?? Date.now;
   let generation = 1;
   const recentRespawns: number[] = [];
-  const fleetDown = async (down: FleetDown): Promise<void> => {
+  const teamDown = async (down: TeamDown): Promise<void> => {
     try {
-      await opts.onFleetDown?.(down);
+      await opts.onTeamDown?.(down);
     } catch {
-      // Best-effort (see onFleetDown): a trace that cannot be written must not change the exit.
+      // Best-effort (see onTeamDown): a trace that cannot be written must not change the exit.
     }
   };
   try {
@@ -190,9 +190,9 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
       if (exit.code !== RESTART_EXIT_CODE || opts.stopping()) {
         // A clean exit (a child stopped by its own SIGTERM logs orchestrator_stop) and anything
         // while the operator is stopping are asked-for endings, and so is a once round that
-        // finished with failed ticks; everything else is the fleet dying.
+        // finished with failed ticks; everything else is the team dying.
         const code = exitCodeOf(exit);
-        if (code !== 0 && code !== ONCE_FAILED_EXIT_CODE && !opts.stopping()) await fleetDown({ generation, exit, crashLoop: false });
+        if (code !== 0 && code !== ONCE_FAILED_EXIT_CODE && !opts.stopping()) await teamDown({ generation, exit, crashLoop: false });
         return exitCodeOf(exit);
       }
       const t = now();
@@ -200,7 +200,7 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
       recentRespawns.push(t);
       if (recentRespawns.length > MAX_RAPID_RESPAWNS) {
         opts.onCrashLoop?.();
-        await fleetDown({ generation, exit, crashLoop: true });
+        await teamDown({ generation, exit, crashLoop: true });
         return 1;
       }
       generation += 1;
@@ -216,12 +216,12 @@ export async function superviseRun(opts: SuperviseOptions, signal: AbortSignal):
   }
 }
 
-/** The `supervisor_exit` event for a fleet that went down (see onFleetDown). `diagnosis` is the
+/** The `supervisor_exit` event for a team that went down (see onTeamDown). `diagnosis` is the
  * startup gate re-asked after the death (startup-gate.ts's runStartupProblem): the likeliest
  * reason a generation dies right after a respawn is an environment that no longer boots, and the
  * child's own message reached only the terminal. Null when every precondition passes — the event
  * then carries no reason rather than a guess. A crash loop's reason is the guard itself. */
-export function fleetDownEvent(down: FleetDown, diagnosis: string | null): HarnessEventInput {
+export function teamDownEvent(down: TeamDown, diagnosis: string | null): HarnessEventInput {
   const reason = down.crashLoop
     ? `restarted itself more than ${MAX_RAPID_RESPAWNS} times within ${RESPAWN_WINDOW_MS / 1000}s — giving up`
     : diagnosis;
@@ -276,7 +276,7 @@ export function spawnRunChild(
  * pid — so the child's own reload watch (src/redeploy/self-reload.ts) both exits
  * RESTART_EXIT_CODE for a fresh generation on a redeploy and exits on its own if this supervisor
  * dies outright (SIGKILL, a crash), freeing the dashboard port. Deliberately not SUPERVISED_ENV:
- * the child must run `gui`, not supervise a fleet. Resolves like spawnRunChild — a failed spawn
+ * the child must run `gui`, not supervise a team. Resolves like spawnRunChild — a failed spawn
  * is `{ code: 1, signal: null }` — so an EMFILE/ENOMEM here cannot throw an unhandled 'error'. */
 export function spawnGuiChild(signal: AbortSignal, env: NodeJS.ProcessEnv = {}, stdio: StdioOptions = "inherit"): Promise<ChildExit> {
   return spawnSupervised(["gui"], signal, env, stdio);

@@ -175,7 +175,7 @@ const AUTH_CHECK_TIMEOUT_MS = 15_000;
 const AUTH_CHECK_MAX_OUTPUT_BYTES = 1024 * 1024;
 
 /** One resolved seam pair: the backend it routes to and the provider/model it names, with the
- * thinking level its selector carried. Collected the same way fleetModelsFree sweeps — each
+ * thinking level its selector carried. Collected the same way teamModelsFree sweeps — each
  * tier, every enabled role, and the reviewer — so doctor and the budget see the same seams. */
 interface SeamPair {
   agent: string | undefined;
@@ -380,7 +380,7 @@ export async function checkClaudeVersion(
  * config can put on a seam must resolve in pi's definitions, and its provider must report
  * `ready` from the agent binary's own auth check. A strong tier pi cannot resolve would fail
  * every review, and so every landing — the check exists so the operator finds out before the
- * team does, mid-review. Pairs collected in the same sweep fleetModelsFree prices: each
+ * team does, mid-review. Pairs collected in the same sweep teamModelsFree prices: each
  * tier's top-level selector (a string is default's), every enabled role's resolved pair
  * (per-role overrides included; tier-name overrides resolve through configForRole), and the
  * reviewer's while review is on. A pair with no model is pi's own default and out of scope;

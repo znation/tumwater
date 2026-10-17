@@ -173,6 +173,3 @@ async function cappedWorkingDiff(wt: string): Promise<string> {
     `[uncommitted diff truncated: the full diff is ${full.length} bytes; showing --stat]\n\n` + stat
   );
 }
-
-/** @deprecated Use collectTeamChanges. */
-export const collectFleetChanges = collectTeamChanges;

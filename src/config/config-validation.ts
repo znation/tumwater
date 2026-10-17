@@ -402,7 +402,7 @@ export function validateConfig(raw: unknown, label = "tumwater.json", rawFile = 
   /** A selector string that parses to an empty provider or model half (`"/id"`, `"p/"`) passes
  * the non-empty-string rule but never reaches pi: piArgs skips an empty value when it builds
  * its flags (config-field-checks' model-triple note), and fallbackPair drops an empty half, so
- * the fleet silently runs pi's default model — the same silent-ignore class the empty-string
+ * the team silently runs pi's default model — the same silent-ignore class the empty-string
  * rules exist to prevent. Checked only when no legacy provider is in scope: under one, the
  * whole string is the id (config-views' parse), so a `/` in it is ordinary text and the parse
  * cannot produce an empty half. */
@@ -601,7 +601,7 @@ function checkSelectorValue(
   // Per-role quiet hours (src/scheduling/quiet-hours.ts): the same known-role gate as the
   // caps — a typo'd role id would silently no-op the window. Each value must parse as a
   // quiet-hours window (an empty string means off for that role, the same disablement the
-  // fleet-wide key takes), and the message names the key and the offending id/value verbatim.
+  // team-wide key takes), and the message names the key and the offending id/value verbatim.
   checkPerRoleMap(r, "quietHoursPerRole", '"HH:MM-HH:MM" windows', customNames, problems, (id, value) => {
     if (typeof value !== "string") {
       problems.push(

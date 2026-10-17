@@ -9,7 +9,7 @@ import { configForRole, seamHoldKey, seamPairName, type ResolvedModelConfig } fr
 import { ensureProviderLease } from "../concurrency/provider-lease.js";
 import { buildSummaryRequestPrompt } from "../prompt/prompt-followup.js";
 import { readClaudeAccount, subscriptionWindowRejected } from "../agent/claude/claude-account.js";
-import { dailyCost, fleetDailyCost, pairDailyCost } from "../budget/budget.js";
+import { dailyCost, teamDailyCost, pairDailyCost } from "../budget/budget.js";
 import { loadLoopState } from "./loop-state.js";
 import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
 import { buildStageFixPrompt } from "../prompt/gate-prompts.js";
@@ -27,7 +27,7 @@ import { cappedRequestTimeouts } from "../request-timeouts.js";
 const RATE_LIMIT_RETRY_AFTER_CAP_S = 120;
 
 /** What a hint-less 429 waits before its one retry. With no Retry-After from the provider, the
- * fleet's own constants state the refill physics: team/team-hold.ts's base hold is one minute,
+ * team's own constants state the refill physics: team/team-hold.ts's base hold is one minute,
  * "the shortest pause that lets the bucket refill". Retrying sooner re-enters the same exhausted
  * per-minute bucket the first request just emptied and burns the tick's only retry on a
  * near-certain second 429. A present hint always wins instead; the cap above still bounds
@@ -40,12 +40,12 @@ function sleepFor(ms: number): Promise<void> {
 }
 
 /** The `--max-budget-usd` cap for one API-billed claude authoring run (plans/agent-backends.md
- * §7): the remaining fleet budget (`maxDailyCostUsd` − today's fleet spend), lowered to the
+ * §7): the remaining team budget (`maxDailyCostUsd` − today's team spend), lowered to the
  * base role's own remaining cap when `maxDailyCostUsdPerRole` names it. The cap map and its
  * spend are keyed by BASE role, exactly as the scheduler's role-cap gate reads them
  * (src/gates/role-cap-gates.ts: `baseRoleOf` groups `feature`/`feature-2` and sums the
  * group's spend), so instance loop ids share their base's cap instead of silently falling
- * through to the fleet budget. Returns undefined — no cap — for the director, a non-claude
+ * through to the team budget. Returns undefined — no cap — for the director, a non-claude
  * seam, an account that is not API-billed, a disabled cap (0), or no remaining budget at all
  * (a non-positive cap is dropped by the argv builder). Spend is read from the persisted loop
  * states: each role's daily window is what the budget gate and the dashboards sum, and this
@@ -62,7 +62,7 @@ function authoringBudgetCap(
   if (readClaudeAccount(root)?.billing !== "api") return undefined;
   const now = Date.now();
   const states = loopIds(cfg).map((r) => loadLoopState(root, r));
-  let cap = cfg.maxDailyCostUsd - fleetDailyCost(states, now);
+  let cap = cfg.maxDailyCostUsd - teamDailyCost(states, now);
   const base = baseRoleOf(role);
   const perRole = cfg.maxDailyCostUsdPerRole?.[base];
   if (perRole !== undefined && perRole > 0) {
@@ -217,7 +217,7 @@ export class LoopPi {
    * once, exactly like an authoring run (BUGS.md 2026-10-01) — with one folding difference:
    * the FINAL run's usage is folded by the gate's caller (landing-core's foldUsage of
    * gate.run / gate.followUpRun), so only a RETRIED first attempt is folded here. That fold
-   * is not optional: it stamps the fleet-wide rate-limit hold's input before the wait, and
+   * is not optional: it stamps the team-wide rate-limit hold's input before the wait, and
    * it is the only record the failed attempt's spend would ever get.
    * Takes full PiRunOptions because the gate's two runs differ in everything but the loop
    * they charge (config, session dir and name, label, tool-call callbacks, signal).
@@ -256,7 +256,7 @@ export class LoopPi {
     // The fold every attempt takes: an authoring run charges the loop's tick counters
     // (foldUsage); a landing, reviewer, or conflict-resolution run charges the same cost and
     // prompt-token totals but never the tick's pre-edit prefix (foldLandingUsage).
-    // The seam this run actually ran on, as the fleet hold keys it (seamHoldKey): the fold
+    // The seam this run actually ran on, as the team hold keys it (seamHoldKey): the fold
     // stamps the rate-limit and backend-failure observations with it, so a storm on a claude
     // reviewer holds `claude` and a pi author on a different provider stays open. opts.config
     // is always the run's own resolved seam (reviewRunConfig for the reviewer, the role's
@@ -286,7 +286,7 @@ export class LoopPi {
       // A subscription claude usage-window rejection is not the 429 the retry's minute-scale
       // wait beats: the window resets hours out, so a within-run retry is guaranteed to fail
       // after burning up to RATE_LIMIT_RETRY_AFTER_CAP_S. The tick ends and the kept session
-      // resumes once the fleet hold lifts (plans/agent-backends.md §8, part 6e).
+      // resumes once the team hold lifts (plans/agent-backends.md §8, part 6e).
       !subscriptionWindowRejected(pi)
     ) {
       this.host.warn(
@@ -301,7 +301,7 @@ export class LoopPi {
                 : "model server timed out an idle predict stream (e.g. machine sleep) — retrying the agent run once",
       );
       // The failed attempt folds NOW, before the wait and the retry: a 429 it ended on is the
-      // fleet-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
+      // team-wide rate-limit hold's input (LoopRunner.lastRateLimit, stamped at fold time), and
       // folding after a retry that ran on for an hour would report the storm an hour late.
       fold(pi);
       // The pause is the rate-limit branch's, plus the timeout kind's: a server timeout or
@@ -340,7 +340,7 @@ export class LoopPi {
   /** The backend-kind floor (BUGS.md 2026-09-29): a failed run that ended on a
    * provider-backend failure (connection down, 5xx, model load) still warns — parity with
    * the 429 branch above, so any episode is visible from the feed alone instead of living
-   * only in per-tick error events an operator must aggregate by hand. The fleet-wide hold
+   * only in per-tick error events an operator must aggregate by hand. The team-wide hold
    * (src/team/team-hold.ts) and the storm alarms judge the spread; this line is the per-run
    * floor under them, not a retry: a dead backend is not something an immediate re-run beats.
    * Applied to whichever run is returned (BUGS.md 2026-10-09): the retry's returned run is a

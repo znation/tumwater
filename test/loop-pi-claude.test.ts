@@ -62,9 +62,9 @@ test("a subscription claude rejected window earns no within-run retry", async ()
 });
 
 // PLANS.md "Agent backends, part 7a/7": the caller computes `--max-budget-usd` from the
-// remaining fleet budget and the role's own remaining cap, and only for an API-billed
+// remaining team budget and the role's own remaining cap, and only for an API-billed
 // non-director claude authoring run. These tests pin the argv the real adapter builds.
-test("an API-billed claude authoring run carries the remaining fleet budget as --max-budget-usd", async () => {
+test("an API-billed claude authoring run carries the remaining team budget as --max-budget-usd", async () => {
   const root = tmpdir();
   await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
@@ -80,7 +80,7 @@ test("an API-billed claude authoring run carries the remaining fleet budget as -
   });
 });
 
-test("a per-role cap lowers the claude run's --max-budget-usd below the fleet's remaining", async () => {
+test("a per-role cap lowers the claude run's --max-budget-usd below the team's remaining", async () => {
   const root = tmpdir();
   await withClaudeReplay([claudeInit({ sessionId: "c1" }), claudeResult({ totalCostUsd: 0.01 })], async (fake) => {
     writeClaudeAccount(root, { billing: "api", observedAt: Date.now(), windows: {} });
@@ -137,7 +137,7 @@ test("a per-role cap sums a multi-instance role's spend and keys on the base rol
     const { loopPi } = makeHost(root, config, "feature-2");
     const result = await loopPi.runAuthoringPi(root, "work", "tumwater-feature-2-author");
     assert.equal(result.ok, true, `${result.errorMessage}`);
-    // 2 − (0.6 + 0.6): the group's summed spend, below the fleet's remaining 13.8.
+    // 2 − (0.6 + 0.6): the group's summed spend, below the team's remaining 13.8.
     assert.equal(flagValue(readRunBlocks(fake.argvFile)[0]!, "--max-budget-usd"), "0.8");
   });
 });

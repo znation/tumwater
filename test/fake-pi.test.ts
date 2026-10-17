@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 test("loading the fake-pi helpers drops an inherited TUMWATER_PI_BIN, so a file run directly with node --test keeps its fakes", () => {
   // BUGS.md 2026-09-28: the variable outranks PATH in resolveAgentBin. The test runner strips it
-  // (suiteEnv), but `node --test dist/test/<file>`, which the fleet's agents run too, never goes
+  // (suiteEnv), but `node --test dist/test/<file>`, which the team's agents run too, never goes
   // through the runner. So the helpers drop it themselves as soon as a test file imports them.
   const fakePiPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fakes", "fake-pi.js");
   const script = `

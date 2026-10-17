@@ -130,8 +130,8 @@ test("consumeResetRequest zeroes a named role that has no live runner through it
   const root = tmpdir();
   const a = fakeRunner("coverage");
   // A disabled role keeps its persisted state but has no runner, so the CLI (which writes only
-  // the marker while a fleet is live) can reach it only here: the consumer is the state file's
-  // single writer while the fleet runs.
+  // the marker while a team is live) can reach it only here: the consumer is the state file's
+  // single writer while the team runs.
   saveLoopState(root, { ...loadLoopState(root, "docs"), role: "docs", runs: 7, commits: 3 });
   writeMarker(resetRequestPath(root), { roles: ["docs"] });
   consumeResetRequest(root, asRunners(a));

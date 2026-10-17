@@ -163,7 +163,7 @@ test("a change whose build fails is rejected by the pre-check and its compiler t
 
 // Questions outbox (plans/questions-outbox.md): a merged diff that adds an entry under
 // QUESTIONS.md's ## Open emits one question_posted per new heading alongside the merged event,
-// so `tumwater logs` shows what the fleet is asking for. The emission lives in tryMerge
+// so `tumwater logs` shows what the team is asking for. The emission lives in tryMerge
 // (src/landing/landing-merge.ts), which captures the Open list before the rebase and diffs it after
 // the ff.
 

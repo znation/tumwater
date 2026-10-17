@@ -343,7 +343,7 @@ test("parser flags a provider 429 rate-limit rejection as transient, with its Re
   const parser = new PiStreamParser();
   parser.feed(errorLine('429 "Rate limit exceeded"') + "\n");
   assert.equal(parser.transientRateLimit, true);
-  assert.equal(parser.retryAfterSeconds, undefined, "no hint in the observed fleet error text");
+  assert.equal(parser.retryAfterSeconds, undefined, "no hint in the observed team error text");
   assert.equal(parser.transientServerTimeout, false, "a rate limit is its own class, not a stream timeout");
 });
 
@@ -561,7 +561,7 @@ test("onToolCallStart observes each tool call once, at its start, with pi's name
 
 // The backend-failure classification (PLANS.md 2026-09-29): the non-429 provider-wide
 // failures — connection errors, request timeouts, 5xx status texts, model-load failures —
-// set transientBackend with the kind the fleet-wide hold groups storms by, while 429 texts
+// set transientBackend with the kind the team-wide hold groups storms by, while 429 texts
 // stay rate-limit-only (rate-limit is matched first, so a 429 is never also a backend
 // failure).
 test("parser classifies backend-failure error texts into the five kinds", () => {
@@ -575,7 +575,7 @@ test("parser classifies backend-failure error texts into the five kinds", () => 
     ["502 Bad Gateway", "server"],
     ["503 Service Unavailable", "server"],
     ["504 Gateway Timeout", "server"],
-    // The provider pausing itself fleet-wide: a 503 whose body carries prose rather than
+    // The provider pausing itself team-wide: a 503 whose body carries prose rather than
     // a status phrase — the 2026-10-08 digest's #2 loss cause, unclassified before this
     // (BUGS.md 2026-10-08).
     ["503 \"Provider 'deepinfra' is currently failing for model 'deepseek-ai/DeepSeek-V4.1-Flash' and has been paused by the provider\"", "server"],

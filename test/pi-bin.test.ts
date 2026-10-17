@@ -64,7 +64,7 @@ test("resolveAgentBin: TUMWATER_PI_BIN beats agentBin beats the PATH default", (
       bin: "/x/pi-override",
       source: "env",
     });
-    // A whitespace value falls through to config, so an empty export cannot wedge the fleet.
+    // A whitespace value falls through to config, so an empty export cannot wedge the team.
     process.env.TUMWATER_PI_BIN = "  ";
     assert.deepEqual(resolveAgentBin({ agentBin: "/opt/pi/bin/pi" }), {
       bin: "/opt/pi/bin/pi",

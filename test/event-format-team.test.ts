@@ -1,8 +1,8 @@
-/** The fleet-control family of formatEvent tests (src/events/event-format.ts): the events the
+/** The team-control family of formatEvent tests (src/events/event-format.ts): the events the
  * harness
- * emits as it manages the fleet — the daily-cost budget's transitions (and its per-role cap
+ * emits as it manages the team — the daily-cost budget's transitions (and its per-role cap
  * siblings), the live config changes (maxConcurrent, sessionRetentionDays, edited keys), the
- * operator and breaker pause/resume events, and the fleet-wide 429/backend holds with their
+ * operator and breaker pause/resume events, and the team-wide 429/backend holds with their
  * kinds. These tests live only here — event-format.test.ts holds no copies of them. They share
  * one rendering
  * contract — a routine state change renders plainly, never with the warning prefix — so they
@@ -60,7 +60,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   assert.match(resumed, /tumwater\s+budget resumed \(\$12\.35 of \$50\.00 today\)/);
 
   // The per-role cap transitions (src/gates/role-cap-gates.ts) name the role, its spend vs its
-  // cap, and the two lift paths; the resume states the loop ticks again. Fleet-rendering
+  // cap, and the two lift paths; the resume states the loop ticks again. Team-rendering
   // siblings of the budget pause/resume above, so they live here too.
   const rolePaused = formatEvent({
     ts: 0,
@@ -123,7 +123,7 @@ test("formatEvent renders the budget transition events plainly with spend and ca
   } as never);
   assert.match(refused, /budget paused — \$10\.50 of \$10\.00 daily cost reached \(over-cap model omlx\/typo is not a cost n\/a model in pi's models\.json\)/);
   // A free fallback the breaker demoted (BUGS.md 2026-09-20): the backend is what to fix, and
-  // the fleet retries it on its own — both belong on the line.
+  // the team retries it on its own — both belong on the line.
   const demoted = formatEvent({
     ts: 0,
     source: "tumwater",
@@ -205,7 +205,7 @@ test("formatEvent renders the config change event plainly with the edited keys",
 // per
 // transition. Both are routine state changes an operator reads at a glance; the paused line
 // states the scope and the director exemption, the resumed line says role ticks are back.
-test("formatEvent renders the fleet pause and resume events plainly", () => {
+test("formatEvent renders the team pause and resume events plainly", () => {
   const paused = formatEvent({ ts: 0, source: "tumwater", type: "team_paused" } as never);
   assert.match(
     paused,
@@ -219,7 +219,7 @@ test("formatEvent renders the fleet pause and resume events plainly", () => {
   assert.ok(!resumed.includes("warning"), `a resume is routine, not a warning: ${resumed}`);
 });
 
-// Per-role pause (`tumwater pause --role <id>`): the fleet pause's narrower sibling. Both lines
+// Per-role pause (`tumwater pause --role <id>`): the team pause's narrower sibling. Both lines
 // name the role, and the paused line states what stays running — every other role, the
 // director included.
 test("formatEvent renders the per-role pause and resume events with the role named", () => {
@@ -267,8 +267,8 @@ test("formatEvent renders the per-role pause and resume events with the role nam
   assert.equal(withError("   "), streakPaused, "a blank lastError renders the summary-less line");
 });
 
-// Fleet-wide 429 hold (src/team/team-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
-// fleet-wide hold"): the hold is the harness handling a storm, so both lines are routine. The
+// Team-wide 429 hold (src/team/team-hold.ts; BUGS.md 2026-09-21 "A 429 storm still has no
+// team-wide hold"): the hold is the harness handling a storm, so both lines are routine. The
 // hold line names who saw the 429s, how long nothing new starts, a relapse when the storm came
 // straight back, and the director exemption.
 test("formatEvent renders the 429 hold and its re-open plainly", () => {

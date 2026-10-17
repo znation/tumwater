@@ -143,7 +143,7 @@ export function checkKnownRoleId(
 
 /** Validate one string field when present. `allowEmpty` defaults true; the model-triple fields
  * pass false — pi-args.ts skips an empty value when it builds its flags, so `"provider": ""`
- * would be silently ignored and the fleet would quietly fall back to pi's default — and an
+ * would be silently ignored and the team would quietly fall back to pi's default — and an
  * empty `fallbackModel` field makes fallbackPair drop it, so the fallback never engages. */
 export function checkStringField(
   problems: string[],

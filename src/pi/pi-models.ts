@@ -12,7 +12,7 @@ import { readJsonFile } from "../files/json-files.js";
 import { expandHomeTilde } from "../files/files.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
- * declared cost. This is where a local (free) fleet differs from an API one: unpriced or
+ * declared cost. This is where a local (free) team differs from an API one: unpriced or
  * zero-cost models never accumulate spend against the daily budget cap, so the badge can
  * read n/a instead of a dollar figure that can never move. */
 export function piModelsPath(env: NodeJS.ProcessEnv = process.env, homeDir: string = os.homedir()): string {
@@ -59,7 +59,7 @@ function costIsFree(cost: unknown): boolean {
 }
 
 /** Per-poll cache of the parsed definitions, keyed by models path: both dashboards poll
- * fleetModelsFree every second while models.json changes only when a user edits it — and it grows
+ * teamModelsFree every second while models.json changes only when a user edits it — and it grows
  * with the model catalog (every added provider/model entry), so an unchanged file costs one stat
  * per poll instead of a re-read plus JSON.parse of the whole catalog. Any write invalidates via
  * dev/ino/mtime/size (stat-cache.cachedByStat, same freshness check as the other polled files in
@@ -233,7 +233,7 @@ export function piPairFree(
   return seamFree(providers, { provider, model }, account);
 }
 
-/** The free fallback pair the budget gate would engage for the fleet, or null when none is
+/** The free fallback pair the budget gate would engage for the team, or null when none is
  * usable: the price-aware resolution of the default tier (fallbackPair over
  * resolveTierFallbacks' borrow order), so a map whose `default` entry is absent or priced
  * still names the free pair the tier borrows. Null for a missing, unresolvable, or priced
@@ -260,7 +260,7 @@ export function fallbackModelFree(
   return fallbackModelPair(config, modelsPath, account) !== null;
 }
 
-/** True when every model the fleet could use is free: each enabled role's effective
+/** True when every model the team could use is free: each enabled role's effective
  * provider/model (configForRole — the director included, it is a catalog role, resolved at
  * its tier per plans/model-tiers.md) plus the reviewer's while review is on, plus the
  * `strong` tier's own model whenever any role is enabled — the conflict resolver (part 4/8)
@@ -268,10 +268,10 @@ export function fallbackModelFree(
  * Every pair is judged by `seamFree` above: a subscription claude seam is free, a pi seam is
  * free when models.json prices it at zero, and everything else counts as NOT free — the badge
  * must never read n/a while spend it is tracking could still reach the cap. With no enabled
- * roles and review off there are no pairs at all, so the fleet cannot spend and the answer is
+ * roles and review off there are no pairs at all, so the team cannot spend and the answer is
  * true. `account` is the persisted claude billing answer (6a/7's reader), absent meaning "no
  * subscription". */
-export function fleetModelsFree(
+export function teamModelsFree(
   config: TumwaterConfig,
   modelsPath = piModelsPath(),
   account: ClaudeAccount | null = null,

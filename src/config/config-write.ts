@@ -28,7 +28,7 @@ import {
   unknownRoleFieldError,
 } from "./config-keys.js";
 /** Serialize a config write through the cross-process lock (paths.ts's configLockPath): the
- * CLI, a standalone dashboard's server, and the running fleet are separate processes, so an
+ * CLI, a standalone dashboard's server, and the running team are separate processes, so an
  * unguarded read-modify-write lets one writer's whole-file write silently drop another's change
  * (the same lost update paused-roles.json already guards against). A lock that cannot be
  * acquired within the budget throws rather than writing unlocked — a silently lost config edit
@@ -159,7 +159,7 @@ export function setConfigKey(
     if (fieldError) return fail(fieldError);
     if (parsed.kind === "map") {
       // Name the key the operator actually typed (`maxDailyCostUsdPerRole.qa`), not the
-      // fleet-wide field the shared validator's message would otherwise default to.
+      // team-wide field the shared validator's message would otherwise default to.
       const label = `${parsed.map}.${parsed.role}`;
       const validator =
         parsed.map === "maxDailyCostUsdPerRole"

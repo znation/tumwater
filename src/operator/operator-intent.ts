@@ -2,7 +2,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { cancelScheduledStop, isFleetPaused, scheduleStop } from "../team/team-state.js";
+import { cancelScheduledStop, isTeamPaused, scheduleStop } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { durationLabel } from "../cli/cli-args.js";
 import { formatDate, formatTime, humanSeconds, secondsUntil } from "../text/datetime.js";
@@ -30,7 +30,7 @@ import {
  * one (the `cmd*` CLI commands in src/operator/operator-commands.ts, the dashboard's POST routes
  * in src/gui/gui-endpoint-commands.ts, and the TUI's key bindings in src/ui/tui/tui-keys.ts): each
  * core returns the confirmation its caller prints verbatim, so the surfaces cannot drift on marker
- * format, idempotence, or wording. The fleet-side consumer half is
+ * format, idempotence, or wording. The team-side consumer half is
  * src/operator/operator-requests.ts; this module holds the producer half's shared core, split out
  * of operator/operator-commands.ts so the UI layer never depends on the CLI's arg parsing. */
 
@@ -39,8 +39,8 @@ import {
 export const NO_HARNESS_ERROR = "tumwater is not running — start it with `tumwater start` first";
 
 /** How a marker command reports when its marker takes effect, derived from one liveness
- * check: `live` says whether a fleet will consume it now, `when` is the " within ~2s" such a
- * fleet picks it up in, and `tail` names the fallback ("takes effect on the next `tumwater
+ * check: `live` says whether a team will consume it now, `when` is the " within ~2s" such a
+ * team picks it up in, and `tail` names the fallback ("takes effect on the next `tumwater
  * run`") while tumwater is not running. Every marker command shares this so none can promise a
  * timing the others deny — the one place that user-facing contract lives. */
 export function markerApplyNote(root: string): { live: boolean; when: string; tail: string } {
@@ -53,7 +53,7 @@ export function markerApplyNote(root: string): { live: boolean; when: string; ta
 }
 
 /** The trailing liveness clause of a one-shot marker command's confirmation (reset-counters, wake,
- * and restart): with a live fleet, "a running fleet <verb><when>"; without one, where the marker
+ * and restart): with a live team, "a running team <verb><when>"; without one, where the marker
  * lands instead. The request* cores share this so their wording cannot drift — pause and resume
  * phrase their own confirmations around markerApplyNote's when/tail because their sentences
  * differ. */
@@ -64,16 +64,16 @@ function applyClause(live: boolean, when: string, verb: string): string {
 }
 
 /** The marker-writing core of `reset-counters`: zero each target's state file directly when no
- * fleet is running, and drop the fleet marker a running fleet consumes within one poll cycle.
+ * team is running, and drop the team marker a running team consumes within one poll cycle.
  * Returns the confirmation the CLI prints verbatim. The CLI and the GUI's
  * POST /api/reset-counters share this core. */
 export function requestResetCounters(root: string, roles: string[]): string {
-  // A live fleet's orchestrator is the state files' single writer: consumeResetRequest zeroes
+  // A live team's orchestrator is the state files' single writer: consumeResetRequest zeroes
   // the affected runners' in-memory copies and the runners save them, and writes the file for a
   // requested role that has no runner (a disabled role). Rewriting the files here too would be
   // a second writer racing those whole-file saves — an overwrite from a snapshot the
   // orchestrator has since moved past (a just-ended tick's result, a claim, a schedule), which
-  // the lost update discards. So with a live fleet only the marker is written; with none there
+  // the lost update discards. So with a live team only the marker is written; with none there
   // is no concurrent writer and the direct write is what carries the reset to the next run.
   const { live, when } = markerApplyNote(root);
   if (!live) for (const r of roles) saveLoopState(root, zeroCounters(loadLoopState(root, r)));
@@ -81,7 +81,7 @@ export function requestResetCounters(root: string, roles: string[]): string {
   // readJsonFile folds to null — the corrupt-marker superset that wakes/resets EVERY runner.
   // For a scheduled wake (`--in`) that superset drops notBeforeMs, firing the wake hours early.
   writeJsonAtomic(resetRequestPath(root), { at: Date.now(), roles });
-  // Only a live fleet consumes the marker; without one the state files are already zeroed and
+  // Only a live team consumes the marker; without one the state files are already zeroed and
   // the next `tumwater start` is when the in-memory copies catch up. Name which case this is
   // rather than promising a ~2s pickup that no process will make.
   return `counters reset for ${roles.join(", ")} — ${applyClause(live, when, "picks this up")}`;
@@ -123,10 +123,10 @@ export function renderWakeList(wakes: { roles: string[]; atMs: number }[], now: 
 /** The marker-writing core of `wake [--in <duration>]`, shared with the GUI's POST /api/wake:
  * clear the named roles' backoff and pull nextRunAt to now (touching ONLY the schedule —
  * counters, wake tracking, and session continuity are untouched), and drop the marker a
- * running fleet consumes within one poll. With a positive `inMs` (`wake --in`'s parsed
+ * running team consumes within one poll. With a positive `inMs` (`wake --in`'s parsed
  * duration) the wake is SCHEDULED: only the marker is written, its deadline this call's one
  * clock read plus inMs — the state change belongs to the deadline, not to the submit, so a
- * fleet stopped at submit (or restarted before the deadline) does not wake early;
+ * team stopped at submit (or restarted before the deadline) does not wake early;
  * consumeWakeRequest clears the schedules when it consumes the marker at or after the
  * deadline. The "wakes in" phrase is inMs itself, not the deadline minus a second clock read
  * (the rule timedPauseBits follows): a caller-computed deadline let a millisecond tick between
@@ -137,10 +137,10 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   // Deferred only for a genuinely positive delay: zero or less reads as immediate, so the
   // immediate and scheduled paths share one consumer contract.
   const deferred = inMs !== undefined && inMs > 0;
-  // Same single-writer rule as requestResetCounters: with a live fleet consumeWakeRequest
+  // Same single-writer rule as requestResetCounters: with a live team consumeWakeRequest
   // clears the affected runners' in-memory schedules and the runners save them, and writes the
   // file for a requested role that has no runner (a disabled role), so a direct state rewrite
-  // here would race those whole-file saves and lose one side's update. Without a fleet there is
+  // here would race those whole-file saves and lose one side's update. Without a team there is
   // no concurrent writer, and the file write is what carries the wake to the next run. A
   // scheduled wake already skips the direct write — see the docstring.
   const { live, when } = markerApplyNote(root);
@@ -156,7 +156,7 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
       { at: now, roles, notBeforeMs: now + inMs },
     );
   } else writeJsonAtomic(wakeRequestPath(root), { at: now, roles });
-  // Same liveness contract as reset-counters and pause/resume: only a live fleet consumes the
+  // Same liveness contract as reset-counters and pause/resume: only a live team consumes the
   // marker, so say so instead of promising a poll that will not happen.
   if (deferred)
     return (
@@ -168,8 +168,8 @@ export function requestWake(root: string, roles: string[], inMs?: number): strin
   return `wake requested for ${roles.join(", ")} — ${applyClause(live, when, "applies it")}`;
 }
 
-/** Schedule a graceful fleet stop `inMs` from now (`tumwater stop --in`, the dashboard's "Stop the
- * fleet later"): the marker means nothing without a live fleet to consume it, so a stopped one
+/** Schedule a graceful team stop `inMs` from now (`tumwater stop --in`, the dashboard's "Stop the
+ * team later"): the marker means nothing without a live team to consume it, so a stopped one
  * refuses with NO_HARNESS_ERROR. The caller has already validated `inMs` (positive, within
  * PAUSE_FOR_MAX_MS). */
 export function requestScheduledStop(root: string, inMs: number): RequestResult {
@@ -181,7 +181,7 @@ export function requestScheduledStop(root: string, inMs: number): RequestResult 
   };
 }
 
-/** Drop a scheduled stop; needs no live fleet. The confirmation `stop --cancel` prints. */
+/** Drop a scheduled stop; needs no live team. The confirmation `stop --cancel` prints. */
 export function cancelScheduledStopMessage(root: string): string {
   return cancelScheduledStop(root) ? "scheduled stop cancelled" : "no stop scheduled";
 }
@@ -191,11 +191,11 @@ export function cancelScheduledStopMessage(root: string): string {
 export type RequestResult = { ok: true; message: string } | { ok: false; error: string };
 
 /** The marker-writing core of the forced restart, shared with the GUI's POST /api/restart:
- * drop the marker a running fleet consumes within one poll, telling the redeployer to waive
+ * drop the marker a running team consumes within one poll, telling the redeployer to waive
  * its post-restart cooldown. Forcing never bypasses a refusal — a red main, a failed compile,
  * a swap error, or a boot refusal still blocks — so a press is only meaningful while a restart
- * is actually pending: with a live fleet whose published build is not stale, nothing is written
- * and the reply says so. With no fleet running the marker is written harmlessly (the next `run`
+ * is actually pending: with a live team whose published build is not stale, nothing is written
+ * and the reply says so. With no team running the marker is written harmlessly (the next `run`
  * consumes it on its first poll) and the reply carries the same liveness contract as `wake`.
  * Returns the structured confirmation the CLI prints verbatim and the GUI flashes. */
 export function requestRestart(root: string): RequestResult {
@@ -214,7 +214,7 @@ export function requestRestart(root: string): RequestResult {
 /** The marker-writing core of `tumwater reclaim` (plans/disk-floor.md, part 3/4): drop the
  * marker a running orchestrator consumes within one poll and run one manual pass over every
  * candidate, in-use worktrees respected. Returns the confirmation the CLI prints. A caller
- * with no live fleet must run the pass in-process instead (cmdReclaim), because nothing would
+ * with no live team must run the pass in-process instead (cmdReclaim), because nothing would
  * consume the marker. */
 function requestReclaim(root: string): string {
   writeJsonAtomic(reclaimRequestPath(root), { at: Date.now() });
@@ -225,9 +225,9 @@ function requestReclaim(root: string): string {
 /** Queue a prompt for one loop and wake that loop — the one workflow `tumwater prompt
  * --role`, the dashboard's POST /api/prompt-role, and the TUI's Ctrl+R submit all share:
  * submitRolePrompt enqueues into the loop's own queue (length-capped by the shared rule)
- * and logs under the loop, then requestWake's single-role marker brings a live fleet's
+ * and logs under the loop, then requestWake's single-role marker brings a live team's
  * loop in within one poll instead of whenever its backoff next expires (and is safe with
- * no fleet running — the same contract as `tumwater wake`). Returns requestWake's
+ * no team running — the same contract as `tumwater wake`). Returns requestWake's
  * confirmation so a surface can show what the wake did. Keeping enqueue and wake in one
  * call keeps a surface from ever queueing a prompt without the wake that delivers it
  * promptly — the pairing is the invariant, not each surface's private discipline. An optional
@@ -240,7 +240,7 @@ export function submitRolePromptAndWake(root: string, role: string, text: string
 }
 
 /** The marker-writing core of `abort`, shared with the GUI's POST /api/abort: drop the
- * per-role marker a running fleet consumes within one poll cycle. Reports the liveness gate
+ * per-role marker a running team consumes within one poll cycle. Reports the liveness gate
  * and the director's discarded-prompt note structurally ({ok, message|error}) so the CLI can
  * fail() and the GUI can shape its 409/200 — neither re-derives the wording. */
 export function requestAbort(root: string, role: string): RequestResult {
@@ -311,22 +311,22 @@ export function rolePauseMessage(
 }
 
 /** The per-role resume confirmation, shared between `tumwater resume --role` and the TUI's
- * Ctrl+P for the same no-drift reason. Carries the fleet-pause interplay note cmdResume
- * phrases: the fleet pause is the stronger gate, so with its marker present a freshly
+ * Ctrl+P for the same no-drift reason. Carries the team-pause interplay note cmdResume
+ * phrases: the team pause is the stronger gate, so with its marker present a freshly
  * resumed role still starts no ticks (the director is exempt from that gate, so its
  * resumption is real) — saying nothing would promise ticking the scheduler then deny, the
  * same honest-confirmation contract markerApplyNote's tail serves. */
 export function roleResumeMessage(root: string, role: string, changed: boolean): string {
   if (!changed) return `role ${role} was not paused`;
   const { when, tail } = markerApplyNote(root);
-  const fleetNote = isFleetPaused(root) && role !== DIRECTOR_ROLE
+  const teamNote = isTeamPaused(root) && role !== DIRECTOR_ROLE
     ? " (the team pause is still active — `tumwater resume` lifts it)"
     : "";
-  return `role ${role} resumed — it starts new runs again${when}${fleetNote}${tail}`;
+  return `role ${role} resumed — it starts new runs again${when}${teamNote}${tail}`;
 }
 
 /** The `tumwater pause --for <duration>` cap: 90 days. A timed pause is meant to answer "step
- * away for a while and come back to a resumed fleet" — the same bound the report's day windows
+ * away for a while and come back to a resumed team" — the same bound the report's day windows
  * enforce (REPORT_MAX_DAYS in event-window.ts), and comfortably past any absence a deadline
  * should encode. Beyond it the deadline stops being a timed pause and becomes a standing one:
  * bare `pause` (lifted with `resume`) is that, and it says so instead of silently accepting a
@@ -336,7 +336,7 @@ export function roleResumeMessage(root: string, role: string, changed: boolean):
 export const PAUSE_FOR_MAX_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** One manual reclaim, shared by `tumwater reclaim` and the dashboard's POST /api/reclaim: with
- * a live fleet the pass is requested through the marker the orchestrator consumes (so in-use
+ * a live team the pass is requested through the marker the orchestrator consumes (so in-use
  * worktrees are respected); with none running it runs in-process, since nothing is in use.
  * Returns the confirmation its caller prints verbatim and never fails, so a server can call it. */
 export async function runManualReclaim(root: string): Promise<string> {

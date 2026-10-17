@@ -186,7 +186,7 @@ test("a free-form text command carrying a --help token files the text, not the h
   // stand down and let the command read the text; with only flags present (`tumwater bug
   // --help`, `prompt --role qa --help`) the topic still answers.
   const dir = tmpdir();
-  await initProject(dir, "test fleet");
+  await initProject(dir, "test team");
   const filed = await cli(dir, "bug", "the", "TUI", "mishandles", "--help", "output");
   assert.equal(filed.code, 0, `bug --help text: ${filed.stderr}`);
   assert.doesNotMatch(filed.stdout, /Usage:/);

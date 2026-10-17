@@ -34,7 +34,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
       `expected a retry warning, got: ${JSON.stringify(warnings)}`,
     );
     // A predict-stream timeout is a transient failure of the local backend, not the provider
-    // rate-limiting the fleet: it must never feed the fleet-wide 429 hold.
+    // rate-limiting the team: it must never feed the team-wide 429 hold.
     assert.equal(runner.lastRateLimit, undefined);
   });
 });
@@ -42,7 +42,7 @@ test("a transient model-server timeout is retried once and the tick succeeds (re
 test("a provider 429 rate-limit rejection is retried once and the tick succeeds (regression, BUGS.md 2026-09-21)", async () => {
   const repo = await initializedRepo();
   const marker = path.join(tmpdir(), "phase-429");
-  // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the fleet's
+  // Attempt 1 (the tick's pi run): the provider rejects the request with 429 — the team's
   // single largest error source, and by definition retryable. Attempt 2 (the harness retry):
   // the limit has passed and the request succeeds. The failure class lives in the shared
   // test-fake catalog (test/fakes/transient.ts) so the next retry test pays no cost again.
@@ -63,12 +63,12 @@ test("a provider 429 rate-limit rejection is retried once and the tick succeeds 
       warnings.some((w) => w.includes('rate-limited the request (429')),
       `expected a rate-limit retry warning, got: ${JSON.stringify(warnings)}`,
     );
-    // The run that ended on the 429 is this role's input to the orchestrator's fleet-wide hold
-    // (BUGS.md 2026-09-21 "A 429 storm still has no fleet-wide hold"), even though the tick's
-    // retry went on to succeed: it is evidence the provider was limiting the fleet at that time.
+    // The run that ended on the 429 is this role's input to the orchestrator's team-wide hold
+    // (BUGS.md 2026-09-21 "A 429 storm still has no team-wide hold"), even though the tick's
+    // retry went on to succeed: it is evidence the provider was limiting the team at that time.
     assert.ok(runner.lastRateLimit, "the 429 is recorded on the runner");
     assert.ok(runner.lastRateLimit.at >= before && runner.lastRateLimit.at <= Date.now());
-    assert.equal(runner.lastRateLimit.retryAfterSeconds, undefined, "no hint in the fleet's error text");
+    assert.equal(runner.lastRateLimit.retryAfterSeconds, undefined, "no hint in the team's error text");
     assert.deepEqual(sleeps, [60_000], "a hint-less 429 waits the minute-scale refill pause before its retry");
   });
 });

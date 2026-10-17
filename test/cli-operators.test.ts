@@ -1,7 +1,7 @@
 // --- operator request commands: abort / pause / resume / wake / reset-counters ---
-// These commands reach a running fleet only through marker files and state-file edits on
+// These commands reach a running team only through marker files and state-file edits on
 // disk (.tumwater/abort-<role>.json, the pause marker, the reset/wake request markers), so
-// they are all testable with no harness running; the fleet-side consumption of each marker
+// they are all testable with no harness running; the team-side consumption of each marker
 // is pinned in test/orchestrator.e2e.test.ts. Split out of test/cli.test.ts, which keeps
 // the remaining CLI surface (prompt, status, tui, doctor, report, run, gui).
 
@@ -19,8 +19,8 @@ import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 
 // --- abort --role <id>: request to kill one loop's in-flight tick via a marker file ---
 // The CLI cannot reach into the orchestrator process, so the request rides on disk: a
-// per-role marker (.tumwater/abort-<role>.json) a running fleet consumes within one poll
-// cycle. The fleet-side consumption is covered by test/orchestrator.e2e.test.ts; here we pin
+// per-role marker (.tumwater/abort-<role>.json) a running team consumes within one poll
+// cycle. The team-side consumption is covered by test/orchestrator.e2e.test.ts; here we pin
 // what the CLI itself does — validation, the live-harness gate, and the marker it drops.
 
 test("abort validates its arguments before touching anything", async () => {
@@ -70,7 +70,7 @@ test("abort refuses when tumwater is not running — missing or stale info file 
   assert.ok(!fs.existsSync(abortRequestPath(repo, "feature")), "no marker written");
 
   // A stale info file (dead pid) must read the same way: a crash leaves the file behind,
-  // and a marker dropped now would sit in .tumwater until the NEXT fleet start — where its
+  // and a marker dropped now would sit in .tumwater until the NEXT team start — where its
   // first poll would abort a tick that was never running when the user asked. Refuse.
   writeOrchestratorMarker(repo, [], { pid: 2_000_000_000 }); // beyond any pid space
   r = await cli(repo, "abort", "--role", "feature");
@@ -93,7 +93,7 @@ test("abort drops a per-role marker for a live tumwater and reports it", async (
   assert.match(r.stdout, /abort requested for feature/);
   assert.match(r.stdout, /within ~2s/);
 
-  // The marker IS the request: one file per role, content just { at } — the fleet matches
+  // The marker IS the request: one file per role, content just { at } — the team matches
   // on the name and removes it to acknowledge.
   const marker = readJson(abortRequestPath(repo, "feature")) as {
     at: number;
@@ -106,7 +106,7 @@ test("abort drops a per-role marker for a live tumwater and reports it", async (
   assert.equal(r.code, 0);
   assert.ok(fs.existsSync(abortRequestPath(repo, "clean")), "other role's marker untouched");
 
-  // The CLI itself logs no event — the fleet logs run_aborted when it applies the request.
+  // The CLI itself logs no event — the team logs run_aborted when it applies the request.
   const logs = await cli(repo, "logs", "-n", "10");
   assert.equal(logs.code, 0);
   assert.ok(!logs.stdout.includes("run_aborted"), `no abort event from the CLI:\n${logs.stdout}`);
@@ -140,10 +140,10 @@ test("abort's confirmation names the discarded prompt only for the director", as
   fs.rmSync(orchestratorStatePath(repo), { force: true });
 });
 
-// --- pause / resume: the operator-intent fleet gate via a persistent marker file ---
+// --- pause / resume: the operator-intent team gate via a persistent marker file ---
 // Unlike abort, these commands are meaningful with NO harness running (pausing before
-// startup starts an already-paused fleet), so there is no live-harness refusal — only the
-// wording changes. The marker's effect on a live fleet is pinned in
+// startup starts an already-paused team), so there is no live-harness refusal — only the
+// wording changes. The marker's effect on a live team is pinned in
 // test/orchestrator.e2e.test.ts; here we pin what the CLI itself does: idempotency, messaging,
 // and the marker it writes/removes.
 
@@ -153,7 +153,7 @@ test("pause and resume are idempotent with no tumwater running", async () => {
   const marker = pausedPath(repo);
 
   // No orchestrator info at all: the commands still succeed — pausing before startup is
-  // meaningful (the fleet then starts already paused), so they say where it takes effect.
+  // meaningful (the team then starts already paused), so they say where it takes effect.
   let r = await cli(repo, "pause");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /team paused/);
@@ -279,7 +279,7 @@ test("pause and resume accept --role to gate one role, with per-role wording and
   await initProject(repo, "cli pause role");
   const marker = path.join(repo, ".tumwater", "state", "paused-roles.json");
 
-  // Pausing a role is meaningful with no harness running, like the fleet-wide form.
+  // Pausing a role is meaningful with no harness running, like the team-wide form.
   let r = await cli(repo, "pause", "--role", "clean");
   assert.equal(r.code, 0);
   assert.match(r.stdout, /role clean paused/);
@@ -287,7 +287,7 @@ test("pause and resume accept --role to gate one role, with per-role wording and
   assert.ok(fs.existsSync(marker), "the per-role marker is written");
   assert.ok(!fs.existsSync(pausedPath(repo)), "the team marker is untouched");
 
-  // Idempotent with distinct wording, like the fleet-wide form.
+  // Idempotent with distinct wording, like the team-wide form.
   r = await cli(repo, "pause", "--role", "clean");
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "role clean is already paused");
@@ -310,7 +310,7 @@ test("pause and resume accept --role to gate one role, with per-role wording and
 
 // --- role <id>: one loop's standing prompt and resolved settings (read-only) ---
 // Like backlog, the command gates on nothing: its collector degrades to empty answers on a
-// missing read, so it works with the fleet stopped. The queue-survival assertion here is the
+// missing read, so it works with the team stopped. The queue-survival assertion here is the
 // end-to-end half of the preview seam's contract (test/role-view.test.ts and
 // test/tick-prompt.test.ts pin the unit halves): an inspection must never consume a queued
 // prompt.
@@ -425,7 +425,7 @@ test("role validates its arguments like every other command", async () => {
 
 // --- wake [--in <duration>]: the immediate and scheduled wake request ---
 // Like pause --for, the scheduled wake rides the wake marker: the CLI writes it now and the
-// fleet's poll consumes it no earlier than the deadline (the consume gate is pinned in
+// team's poll consumes it no earlier than the deadline (the consume gate is pinned in
 // test/operator-requests.test.ts). Here we pin the CLI half: the flag gate, the cap, and the
 // marker the three wake forms drop.
 

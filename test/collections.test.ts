@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { addTo, getOrCreate, groupBy, memoSetLru, rankCountEntries } from "../src/collections.js";
 
 // Unit seam for collections.ts's get-or-create step, the shape factored out of the failure
-// digest, the fleet hold, and the error-storm reducer. Those paths already cover it end to
+// digest, the team hold, and the error-storm reducer. Those paths already cover it end to
 // end; this pins the two facts the helper's doc comment claims: make() runs only on a miss,
 // and an existing value is returned as-is.
 
@@ -37,7 +37,7 @@ test("groupBy orders keys first-seen and values by input order", () => {
 });
 
 // rankCountEntries is the shared home of the "count descending, then key ascending" ranking
-// rule the usage report's per-role lines and the fleet warnings' strongest-cause picks share.
+// rule the usage report's per-role lines and the team warnings' strongest-cause picks share.
 // These pin the documented contract directly.
 
 test("rankCountEntries orders by count descending, then key ascending", () => {

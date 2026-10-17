@@ -84,7 +84,7 @@ test("markerApplyNote reports the no-harness tail without an orchestrator info f
   assert.match(n.tail, /next `tumwater start`/);
 });
 
-test("markerApplyNote reports a live fleet and the ~2s window when the orchestrator is alive", () => {
+test("markerApplyNote reports a live team and the ~2s window when the orchestrator is alive", () => {
   const n = markerApplyNote(liveRoot());
   assert.equal(n.live, true);
   assert.equal(n.when, " within ~2s");
@@ -115,7 +115,7 @@ test("requestResetCounters zeroes the named roles' counters and preserves schedu
     assert.equal(s.nextRunAt, 555, "scheduling must survive the reset");
     assert.equal(s.lastMainHead, "abc", "wake tracking must survive the reset");
   }
-  // The marker names its targets: only a live fleet consumes it, and it must know which.
+  // The marker names its targets: only a live team consumes it, and it must know which.
   assert.deepEqual(readJsonFile<{ roles: string[] }>(path.join(root, STATE_DIR, "reset-counters.json"))?.roles, ["fix", "docs"]);
   assert.match(msg, /^counters reset for fix, docs — /);
   assert.match(msg, /tumwater is not running/);
@@ -156,7 +156,7 @@ test("requestWake with a positive delay schedules the marker and skips the state
   });
   const before = stateOf(root, "fix");
   const msg = requestWake(root, ["fix"], 45 * 60_000);
-  // The submit writes only the marker: the state change belongs to the deadline, so a fleet
+  // The submit writes only the marker: the state change belongs to the deadline, so a team
   // stopped at submit (or restarted before the deadline) must not wake early.
   const s = stateOf(root, "fix");
   assert.equal(s.backoffSeconds, before.backoffSeconds, "the submit must not clear backoff");
@@ -185,7 +185,7 @@ test("requestWake with a zero delay behaves immediately", () => {
   assert.equal(m?.notBeforeMs, undefined, "the immediate marker keeps the bare { at, roles } shape");
 });
 
-test("requestResetCounters leaves a live fleet's state file to the orchestrator (no racing rewrite)", () => {
+test("requestResetCounters leaves a live team's state file to the orchestrator (no racing rewrite)", () => {
   const root = liveRoot();
   saveLoopState(root, {
     ...loadLoopState(root, "fix"),
@@ -198,7 +198,7 @@ test("requestResetCounters leaves a live fleet's state file to the orchestrator 
   const stateFile = path.join(root, STATE_DIR, "state", "fix.json");
   const before = fs.readFileSync(stateFile, "utf8");
   const msg = requestResetCounters(root, ["fix"]);
-  // A live fleet's orchestrator is the state file's single writer: consumeResetRequest zeroes
+  // A live team's orchestrator is the state file's single writer: consumeResetRequest zeroes
   // the runner in memory and it saves. A direct CLI rewrite here is a second writer racing
   // those saves with a snapshot it may have moved past — the lost update this pins away.
   assert.equal(fs.readFileSync(stateFile, "utf8"), before, "the CLI must not rewrite a live role's state");
@@ -207,7 +207,7 @@ test("requestResetCounters leaves a live fleet's state file to the orchestrator 
   assert.match(msg, /the running team picks this up/);
 });
 
-test("requestWake leaves a live fleet's state file to the orchestrator (no racing rewrite)", () => {
+test("requestWake leaves a live team's state file to the orchestrator (no racing rewrite)", () => {
   const root = liveRoot();
   saveLoopState(root, {
     ...loadLoopState(root, "fix"),
@@ -246,7 +246,7 @@ test("requestAbort refuses with NO_HARNESS_ERROR when nothing is running", () =>
   assert.deepEqual(r, { ok: false, error: NO_HARNESS_ERROR });
 });
 
-test("requestAbort drops a per-role marker for a live fleet and notes the director's discard", () => {
+test("requestAbort drops a per-role marker for a live team and notes the director's discard", () => {
   const root = liveRoot();
   const r = requestAbort(root, "fix");
   assert.equal(r.ok, true);
@@ -294,13 +294,13 @@ test("rolePauseMessage reports the idempotent no-op and the full pause confirmat
   assert.match(timed, /— resumes automatically at 14:05:00/);
 });
 
-test("roleResumeMessage reports the no-op and the fleet-pause interplay note", () => {
+test("roleResumeMessage reports the no-op and the team-pause interplay note", () => {
   const dead = deadRoot();
   assert.equal(roleResumeMessage(dead, "fix", false), "role fix was not paused");
   assert.match(roleResumeMessage(dead, "fix", true), /^role fix resumed — it starts new runs again/);
   assert.doesNotMatch(roleResumeMessage(dead, "fix", true), /team pause is still active/);
 
-  // With the fleet pause marker present, a non-director resume must say the stronger gate
+  // With the team pause marker present, a non-director resume must say the stronger gate
   // still holds — silence would promise ticks the scheduler then denies.
   writeMarker(pausedPath(dead), { at: Date.now() });
   assert.match(roleResumeMessage(dead, "fix", true), /the team pause is still active — `tumwater resume` lifts it/);
@@ -351,7 +351,7 @@ test("submitRolePromptAndWake leaves a pending scheduled wake standing", () => {
   assert.deepEqual(readScheduledWakes(root).map((m) => m.roles), [["clean"]]);
 });
 
-test("cancelWakes reports what it dropped, fleet-wide or for one role", () => {
+test("cancelWakes reports what it dropped, team-wide or for one role", () => {
   const root = tmpdir();
   assert.equal(cancelWakes(root), "no scheduled wake pending");
   requestWake(root, ["feature"], 60_000);

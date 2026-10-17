@@ -14,11 +14,11 @@ export function onlyCleanRole(repo: string, mutate?: (cfg: TumwaterConfig) => vo
   writeConfig(repo, cfg);
 }
 
-/** The shape every spawned `run` lifecycle test shares: start the fleet against `restore`'s
+/** The shape every spawned `run` lifecycle test shares: start the team against `restore`'s
  * environment (fakePi, pathReplace), wait for the banner + orchestrator-started event, run
  * the body, then always kill() the whole tree and undo the environment — in that order, so a
  * thrown assertion still reaps the generation its pipes are holding (BUGS.md 2026-09-30). */
-export async function withRunningFleet(
+export async function withRunningTeam(
   repo: string,
   restore: () => void,
   body: (s: ReturnType<typeof spawnCli>) => Promise<void>,

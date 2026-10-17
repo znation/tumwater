@@ -5,7 +5,7 @@ import { MODEL_TIERS, type ModelTier, type TumwaterConfig } from "../config/conf
 import { withModelOverrides } from "../config/config-views.js";
 import type { ChainTierInfo } from "../team/orchestrator-info.js";
 import { commitTier, DIRECTOR_ROLE } from "../roles/roles.js";
-import { budgetReached, budgetWarning, fleetDailyCost } from "../budget/budget.js";
+import { budgetReached, budgetWarning, teamDailyCost } from "../budget/budget.js";
 import { roleCapVerdicts } from "../gates/role-cap-gates.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
@@ -93,7 +93,7 @@ export function checkQuietHours(config: TumwaterConfig | undefined, now: Date = 
 
 /** The `budget` check: today's team spend against `maxDailyCostUsd`, plus base roles over their
  * own `maxDailyCostUsdPerRole` cap. Read-only and built on the scheduler's own definitions
- * (fleetDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
+ * (teamDailyCost, budgetReached, roleCapVerdicts), so the verdict cannot disagree with the gate.
  * `published` is the running scheduler's figure (it includes runs charged since the last save)
  * and wins over the persisted sum, as in status. A reached team cap is a warn because role loops
  * run on their tier fallback or hold until local midnight (the `fallback` row says which);
@@ -106,7 +106,7 @@ export function checkBudget(
 ): CheckOutcome {
   if (config === undefined) return okOutcome("not checked — tumwater.json unreadable");
   const states = loadLoopStates(root, config);
-  const spent = published?.spentUsd ?? fleetDailyCost(states, now);
+  const spent = published?.spentUsd ?? teamDailyCost(states, now);
   const caps = config.maxDailyCostUsdPerRole;
   const capped = [...roleCapVerdicts(states.map((s) => ({ role: s.role, state: s })), caps, now)]
     .filter(([, v]) => v.over)

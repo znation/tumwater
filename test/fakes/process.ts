@@ -1,7 +1,7 @@
 /** A fake process table for the host-facing checks, under the shared test-fake catalog
  * (test/fakes/, PLANS.md 2026-10-04): `list` answers the scripted rows, `cwds`/`runMarkers`
  * answer from given maps, `launchServicesPorts` answers the scripted count — so doctor's
- * orphan and port checks (and the fleet's port watch) run against a fake host in tests,
+ * orphan and port checks (and the team's port watch) run against a fake host in tests,
  * never against real spawned orphans, the real Mac's daemon, or the host's REAL process
  * table (BUGS.md "The doctor CLI tests in test/doctor.test.ts assert exit 0 against the
  * host's REAL process table"). No real process is spawned. Node built-ins only.

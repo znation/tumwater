@@ -22,7 +22,7 @@ test("commands reject unknown arguments instead of silently ignoring them", asyn
   seedCounters(repo, "clean");
 
   // A misspelled --role used to be ignored: reset-counters would zero EVERY loop instead of
-  // the one named. Now it fails and leaves every counter (and no fleet marker) untouched.
+  // the one named. Now it fails and leaves every counter (and no team marker) untouched.
   let r = await cli(repo, "reset-counters", "--rol", "feature");
   assert.equal(r.code, 1);
   assert.match(r.stderr, /unknown argument: --rol/);

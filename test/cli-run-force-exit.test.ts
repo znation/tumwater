@@ -11,7 +11,7 @@ import { makeRepo, tmpdir } from "./fixtures/repo-fixtures.js";
 import { fakePi } from "./fakes/fake-pi.js";
 import { exitCode } from "./helpers/cli-harness.js";
 import { sleep, waitForFile } from "./helpers/wait.js";
-import { onlyCleanRole, withRunningFleet } from "./helpers/run-live-harness.js";
+import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
 
 // The forced second Ctrl+C, the one Ctrl+C test that must outwait a grace: the graceful
 // terminal-Ctrl+C handling (supervisor-only and generation SIGINT) is pinned in
@@ -53,7 +53,7 @@ test("a second Ctrl+C forces the orchestrator generation out at once", async () 
     }
   };
   try {
-    await withRunningFleet(
+    await withRunningTeam(
       repo,
       fakePi(`trap '' TERM; echo $$ > '${started}'; ${JSON.stringify(process.execPath)} -e '${hold}'; sleep 300`),
       async (s) => {

@@ -13,7 +13,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
 /** The `tumwater config` command's CLI layer (split out of operator/operator-commands.ts, which
  * keeps the other operator-command bodies): with no arguments, print the effective merged
  * config — exactly what `loadConfig(root)` returns — as pretty JSON, so an operator
- * debugging scheduling or custom-loop wiring sees what the fleet would actually load instead
+ * debugging scheduling or custom-loop wiring sees what the team would actually load instead
  * of overlaying defaults onto tumwater.json by hand. A query, not a writer: no redaction (the
  * config holds no secrets — provider keys belong to pi's own env) and no transformation,
  * including the per-role entries custom loops merge into. `get <key>` prints that one key's
@@ -24,7 +24,7 @@ import { unknownRoleMessage } from "../roles/roles.js";
  * not parseable JSON for a script and indistinguishable from a crash for a human. `set <key>
  * <value>` writes one top-level key through setConfigKey and prints one confirmation line
  * naming the key and its new value; `unset <key>` removes one value through unsetConfigKey
- * (the inverse of set) and confirms what, if anything, was removed. A running fleet picks the
+ * (the inverse of set) and confirms what, if anything, was removed. A running team picks the
  * change up on its next ~2 s config poll (newLiveConfigReload). A malformed or invalid
  * tumwater.json fails with validateConfig's actionable message and prints no JSON — the same
  * surfacing doctor's config check produces. The reading/writing halves live beside it in

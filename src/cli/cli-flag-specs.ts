@@ -197,7 +197,7 @@ export const WAKE_LIST_FLAG: FlagSpec = { names: ["--list"] };
  * one definition of the flag's spelling and value shape, beside ROLE_FLAG and durationFlagSpec,
  * so the gate's accepted vocabulary cannot drift from cmdPause's parse. The missing-value
  * wording names its only command (the GREP_VALUE_ERROR idiom — each command's parser names
- * itself); the 200-char cap stays in pauseFleet beside the marker it bounds, and per-role
+ * itself); the 200-char cap stays in pauseTeam beside the marker it bounds, and per-role
  * pauses carry no reason, so cmdPause rejects the `--role` + `--reason` combination. Exported
  * so the gate and the command body share one definition of what `pause` accepts. Its
  * missing-value wording is REASON_VALUE_ERROR, exported so cmdPause's own guard reads it too. */
@@ -326,13 +326,13 @@ export function resultFlagSpec(missingValue: string): FlagSpec {
 export const RUN_FLAG_SPECS: FlagSpec[] = [
   { names: ["--branch"], value: true, valueName: "<name>", missingValue: BRANCH_VALUE_ERROR },
   { names: ["--once"] },
-  // `run --gui` is the one-command form of the dashboard: it boots the fleet and serves the
+  // `run --gui` is the one-command form of the dashboard: it boots the team and serves the
   // browser dashboard at its defaults, loopback on port 7180. The dashboard's own --port,
   // --all-interfaces, and --token stay on `tumwater gui`; widening them here would mean two
   // flag vocabularies to keep in step. `run --gui --once` is refused in cmdRun beside the
   // timer it arms.
   { names: ["--gui"] },
-  // `run --tui` is the one-command form of the observer TUI: it boots the fleet and hosts the
+  // `run --tui` is the one-command form of the observer TUI: it boots the team and hosts the
   // same in-terminal TUI `tumwater tui` attaches from another terminal. Its flag vocabulary
   // stays at run's (`tumwater tui` takes no flags); `run --tui --once` is refused in cmdRun
   // beside the `--gui` rival.

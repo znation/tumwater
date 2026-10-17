@@ -486,7 +486,7 @@ async function tickWithWorktreePhase(
     // now — verify main's own suite before spending an authoring run on top of it. Only roles
     // whose diff can carry code changes are blocked; resume ticks skip this by construction
     // (their worktree is not pristine main). The `bugfix` healer is exempt because its fix is
-    // the fleet's only way back to green, so instead of blocking it we hand it the failure
+    // the team's only way back to green, so instead of blocking it we hand it the failure
     //the same check runs, but a red main appends a <main-red>
     // note to this tick's prompt so it reproduces and fixes that failure rather than hunting
     // blind.

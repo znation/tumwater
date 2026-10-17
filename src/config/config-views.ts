@@ -2,7 +2,7 @@
 /** The config AS SEEN BY A RUN — the per-seam resolution half of the config views, split out
  * of config.ts: which provider/model/thinking a role, the reviewer, or the conflict resolver
  * resolves to, and which timeout a reviewer run gets. The budget/tier fallback side — which
- * free pair the fleet runs on at the daily cap, and the per-role fallback config (fallbackPair,
+ * free pair the team runs on at the daily cap, and the per-role fallback config (fallbackPair,
  * resolveTierFallbacks, applyFallbackModel, …) — lives in config-fallbacks.ts, which builds on
  * this module one-way. No I/O and no caching — the persistence side (defaults, loading,
  * saving, the role-selection helpers) lives in config.ts, the write side in config-write.ts. */
@@ -71,7 +71,7 @@ export function topTierSelector(config: TumwaterConfig, tier: ModelTier): ModelS
 }
 
 /** The selector one seam's tier resolves to at the top level — the tier's own map entry,
- * else `default`'s, else none (pi's own default). The pricing view (fleetModelsFree) and
+ * else `default`'s, else none (pi's own default). The pricing view (teamModelsFree) and
  * the later tiered-fallback parts read this instead of re-deriving the resolution, so the
  * argv builder and the budget cannot disagree about which model a tier names. */
 export function tierModel(config: TumwaterConfig, tier: ModelTier): ModelSelector | undefined {
@@ -216,7 +216,7 @@ export function resolverConfig(config: TumwaterConfig): ResolvedModelConfig {
  * kills a wedged one in minutes instead of the tick's hours. */
 export const REVIEW_TIMEOUT_S = 900;
 
-/** The reviewer's wall-clock floor while the budget fallback carries the fleet. The free model
+/** The reviewer's wall-clock floor while the budget fallback carries the team. The free model
  * is typically local and far slower per turn than the budgeted one it replaces, but a review
  * still needs the same number of turns: measured 2026-09-30, 1,081 reviews on the budgeted
  * model took 7 turns at p50 and 15 at p90, while the local fallback managed one turn every
@@ -290,7 +290,7 @@ export function agentQualifiedSelector(cfg: {
   return cfg.agent && cfg.agent !== "pi" ? `${cfg.agent}/${base}` : base;
 }
 
-/** The key a resolved seam's fleet hold is filed under and the scheduler checks a role
+/** The key a resolved seam's team hold is filed under and the scheduler checks a role
  * against: a non-pi backend's own id (claude seams carry no pi provider), else the pi
  * provider (undefined for pi's own default). The failure hold and the subscription-window
  * hold both key on this, so a hold and the roles it gates cannot drift two ways. */
@@ -315,7 +315,7 @@ export function seamPairName(
  * at all and so runs pi's saved default — the default provider from pi's settings
  * (`piDefault`, the caller's cached readPiDefaultModel result, so this view stays free of
  * I/O). A bare id with no provider, or a seam whose pi settings cannot name a default, yields
- * undefined: only the fleet total bounds it. HF sub-provider pins (`huggingface/…:deepinfra`)
+ * undefined: only the team total bounds it. HF sub-provider pins (`huggingface/…:deepinfra`)
  * share the base provider, and billing does not split claude, because this reuses the hold key
  * — "omlx is held" and "omlx is full" name the same thing on every surface. */
 export function seamConcurrencyKey(
@@ -328,16 +328,16 @@ export function seamConcurrencyKey(
   return undefined;
 }
 
-/** The fleet's model wiring as one human-readable label, for the live-reload `model_changed`
+/** The team's model wiring as one human-readable label, for the live-reload `model_changed`
  * event: null when no tier resolves to a model (pi's own default), the single selector when
  * every set tier agrees (the string-form `model`), and the `small=…, default=…, strong=…`
  * list when the tiers differ. Reading EVERY tier makes an edit to any tier's entry change the
  * label. Each tier's label is agent-qualified (agentQualifiedSelector), so flipping the
  * top-level `agent` over a bare-id model relabels every tier and the reload now emits
- * `model_changed` — a fleet's backend is part of what it runs (PLANS.md "Mixed claude + pi
+ * `model_changed` — a team's backend is part of what it runs (PLANS.md "Mixed claude + pi
  * fleets, part 3/4"), and an edit that moves a bare id to another backend must not read as
  * "nothing changed". */
-export function fleetModelLabel(config: TumwaterConfig): string | null {
+export function teamModelLabel(config: TumwaterConfig): string | null {
   const entries = MODEL_TIERS.map((tier) => {
     const sel = tierModel(config, tier);
     if (!sel) return null;
@@ -353,7 +353,7 @@ export function fleetModelLabel(config: TumwaterConfig): string | null {
  * fleets, part 3/4" gap 7): a pair routed to a non-pi backend — its `provider` is that
  * backend's id, per seamKeyedFallbackProvider, so `claude` — renders as `claude/claude-sonnet-5-5`,
  * the same agent-qualified form every other surface carries; a pi pair keeps the bare model
- * byte-identical to before (the badge, the fleet alert and `tumwater role` all name the
+ * byte-identical to before (the badge, the team alert and `tumwater role` all name the
  * model a pi fallback runs, never its provider). Falls back through the provider to the
  * caller's `<agent> default` label when both halves are absent. One home so the three display
  * surfaces cannot render one fallback two ways. */

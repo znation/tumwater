@@ -181,7 +181,7 @@ export async function retireRole(root: string, role: string, { force }: { force?
   } else mark("branch", false);
   if (status.mergeRefPresent) {
     await deleteRef(root, landingRefName(status.role));
-    await deleteRef(root, legacyLandingRefName(status.role)); // a fleet stopped before its first start here
+    await deleteRef(root, legacyLandingRefName(status.role)); // a team stopped before its first start here
     mark("mergeRef", true);
   } else mark("mergeRef", false);
   mark("pausedMarker", resumeRole(root, status.role));

@@ -158,9 +158,9 @@ test("a configured baseBranch is the diff's baseline, not the checked-out branch
   assert.equal(ghost.stdout.trim(), "main branch ghost does not exist");
 });
 
-// The fleet-wide form (`diff` with no --role): one line per loop holding pending work.
+// The team-wide form (`diff` with no --role): one line per loop holding pending work.
 
-test("fleet diff prints exactly the holding role's line with both counts", async () => {
+test("team diff prints exactly the holding role's line with both counts", async () => {
   const { repo, wt } = await seededFeatureRepo();
   fs.appendFileSync(path.join(wt, "widget.md"), "more\n");
   const r = await cli(repo, "diff");
@@ -168,15 +168,15 @@ test("fleet diff prints exactly the holding role's line with both counts", async
   assert.equal(r.stdout.trim(), "feature: 1 commit ahead of main, 1 uncommitted file");
 });
 
-test("fleet diff with nothing pending anywhere prints no pending changes, exit 0", async () => {
+test("team diff with nothing pending anywhere prints no pending changes, exit 0", async () => {
   const repo = makeRepo();
-  await initProject(repo, "diff fleet empty test");
+  await initProject(repo, "diff team empty test");
   const r = await cli(repo, "diff");
   assert.equal(r.code, 0);
   assert.equal(r.stdout.trim(), "no pending changes");
 });
 
-test("fleet diff on a missing baseline degrades to the per-role line, exit 0", async () => {
+test("team diff on a missing baseline degrades to the per-role line, exit 0", async () => {
   const { repo } = await seededFeatureRepo();
   const cfg = loadConfig(repo);
   cfg.baseBranch = "ghost";
@@ -186,7 +186,7 @@ test("fleet diff on a missing baseline degrades to the per-role line, exit 0", a
   assert.equal(r.stdout.trim(), "main branch ghost does not exist");
 });
 
-test("fleet diff --json prints the roster: one entry per known role, no patch fields", async () => {
+test("team diff --json prints the roster: one entry per known role, no patch fields", async () => {
   const { repo } = await seededFeatureRepo();
   const r = await cli(repo, "diff", "--json");
   assert.equal(r.code, 0);

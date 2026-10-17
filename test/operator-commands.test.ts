@@ -131,7 +131,7 @@ test("cmdWake --in echoes the operator's duration even when the clock ticks betw
 });
 
 // A malformed tumwater.json must not block an operator marker aimed at a built-in role:
-// the fleet itself keeps running on its last-known-good config (the live reload), so wake,
+// the team itself keeps running on its last-known-good config (the live reload), so wake,
 // reset-counters, and abort --role <builtin> resolve the id from the static catalog instead
 // of requiring the file to parse — the same resilience `logs --role` has.
 test("marker commands with --role <builtin> work while tumwater.json is malformed", async () => {
@@ -252,13 +252,13 @@ test("cmdResume with a live harness promises pickup within ~2s", async () => {
 
 // --- per-role pause (`pause --role <id>` / `resume --role <id>`) ---
 
-test("cmdPause --role pauses one role, is idempotent, and leaves the fleet marker alone", async () => {
+test("cmdPause --role pauses one role, is idempotent, and leaves the team marker alone", async () => {
   const root = tmpdir();
   const first = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.match(first.stdout, /role clean paused/);
   assert.match(first.stdout, /current runs finish; the rest of the team is unaffected/);
   assert.ok(fs.existsSync(pausedRolesPath(root)));
-  assert.ok(!fs.existsSync(pausedPath(root)), "a per-role pause never writes the fleet marker");
+  assert.ok(!fs.existsSync(pausedPath(root)), "a per-role pause never writes the team marker");
   const second = await expectOk(() => cmdPause(root, ["--role", "clean"]));
   assert.match(second.stdout, /role clean is already paused/);
   // Both roles land in the one marker set.
@@ -285,29 +285,29 @@ test("cmdResume --role lifts one role and reports the was-not-paused wording whe
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
 });
 
-test("cmdResume --role while the fleet pause holds names the stronger gate instead of promising ticks", async () => {
+test("cmdResume --role while the team pause holds names the stronger gate instead of promising ticks", async () => {
   const root = tmpdir();
-  await expectOk(() => cmdPause(root)); // fleet pause: the stronger gate
+  await expectOk(() => cmdPause(root)); // team pause: the stronger gate
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
   await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   const { stdout } = await expectOk(() => cmdResume(root, ["--role", "clean"]));
   assert.match(stdout, /role clean resumed/);
   assert.match(stdout, /team pause is still active/);
-  // The marker really was lifted; only the wording acknowledges the fleet gate.
+  // The marker really was lifted; only the wording acknowledges the team gate.
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["dedupe"]);
 });
 
-test("cmdResume (fleet) while roles are individually paused names the still-paused roles", async () => {
+test("cmdResume (team) while roles are individually paused names the still-paused roles", async () => {
   const root = tmpdir();
-  await expectOk(() => cmdPause(root)); // the fleet pause the resume lifts
+  await expectOk(() => cmdPause(root)); // the team pause the resume lifts
   await expectOk(() => cmdPause(root, ["--role", "clean"]));
   await expectOk(() => cmdPause(root, ["--role", "dedupe"]));
   const { stdout } = await expectOk(() => cmdResume(root));
   assert.match(stdout, /team resumed/);
   assert.match(stdout, /clean, dedupe are still individually paused/);
-  // The per-role marker outlives the fleet resume.
+  // The per-role marker outlives the team resume.
   assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["clean", "dedupe"]);
-  // A fleet resume with no per-role marker does not carry the note.
+  // A team resume with no per-role marker does not carry the note.
   await expectOk(() => cmdResume(root, ["--role", "clean"]));
   await expectOk(() => cmdResume(root, ["--role", "dedupe"]));
   const bare = await expectOk(() => cmdPause(root));
@@ -335,7 +335,7 @@ test("per-role pause and resume reject unknown role ids like abort does", async 
 // clock — a past deadline reads as expired and a plain re-pause would report a fresh pause.
 const NOON = new Date(2100, 0, 15, 12, 0, 0).getTime();
 
-test("cmdPause --for writes a timed fleet marker and names the auto-resume", async () => {
+test("cmdPause --for writes a timed team marker and names the auto-resume", async () => {
   const root = tmpdir();
   const { stdout } = await expectOk(() => cmdPause(root, ["--for", "30m"], NOON));
   assert.match(stdout, /team paused for 30m — roles start no new runs/);
@@ -445,7 +445,7 @@ test("cmdPause --role --reason fails fast and writes no role marker", async () =
   assert.match(stderr, /pause --reason states why the whole team is paused/);
   assert.match(stderr, /a per-role pause carries no reason/);
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "no role pause was recorded");
-  assert.ok(!fs.existsSync(pausedPath(root)), "no fleet pause was recorded either");
+  assert.ok(!fs.existsSync(pausedPath(root)), "no team pause was recorded either");
 });
 
 test("cmdPause --reason without a value fails with the gate's own wording", async () => {
@@ -559,7 +559,7 @@ function seedReclaimWorktree(root: string): string {
   return wt;
 }
 
-test("cmdReclaim with no fleet cleans ignored files in-process", async () => {
+test("cmdReclaim with no team cleans ignored files in-process", async () => {
   const root = makeRepo();
   const wt = seedReclaimWorktree(root);
   const { stdout } = await expectOk(() => cmdReclaim(root, []));
@@ -575,14 +575,14 @@ test("cmdReclaim --dry-run lists candidates and deletes nothing", async () => {
   assert.equal(fs.existsSync(path.join(wt, "build")), true);
 });
 
-test("cmdReclaim with a live fleet drops the reclaim marker instead of cleaning", async () => {
+test("cmdReclaim with a live team drops the reclaim marker instead of cleaning", async () => {
   const root = makeRepo();
   const wt = seedReclaimWorktree(root);
   markLive(root);
   const { stdout } = await expectOk(() => cmdReclaim(root, []));
   assert.match(stdout, /reclaim requested/);
   assert.equal(fs.existsSync(reclaimRequestPath(root)), true);
-  assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running fleet does the cleaning");
+  assert.equal(fs.existsSync(path.join(wt, "build")), true, "the running team does the cleaning");
 });
 
 test("cmdReclaim on a repo with no worktrees reports nothing to reclaim in both modes", async () => {

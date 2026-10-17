@@ -6,7 +6,7 @@ import { summarizeTickRows, type TickRow } from "../src/history/history-data.js"
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { expectFail, expectOk } from "./helpers/exit-capture.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { pauseFleet } from "../src/team/team-state.js";
+import { pauseTeam } from "../src/team/team-state.js";
 import type { LoopState } from "../src/loop/loop-state.js";
 import { makeRepo } from "./fixtures/repo-fixtures.js";
 
@@ -207,7 +207,7 @@ test("skip reasons are reported verbatim and in role order", () => {
 
 test("a role the settle map lacks falls back to state, via the pause marker", () => {
   const root = makeRepo();
-  pauseFleet(root);
+  pauseTeam(root);
   saveLoopState(root, state("clean", { runs: 1 }));
 
   const line = onceSummary(root, ["clean"], new Map([["clean", 1]]), new Map());

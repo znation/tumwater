@@ -13,7 +13,7 @@ import path from "node:path";
 // fake-commands.ts; loop-fixtures.ts builds on it too (buildCheckFixture).
 
 // A shim on PATH runs only when nothing outranks PATH in resolveAgentBin, and TUMWATER_PI_BIN
-// does: an inherited one (an operator's wrapper around the real pi, which a fleet's pi tool
+// does: an inherited one (an operator's wrapper around the real pi, which a team's pi tool
 // calls and build checks all inherit) would replace every fake here with the real agent
 // (BUGS.md 2026-09-28). The test runner already drops it (suiteEnv in test/test-runner.ts); this
 // covers a test file run directly with `node --test`. Tests of the variable set it themselves.
@@ -181,7 +181,7 @@ export function recordingFakePi(argsFile: string, opts: { cost?: number } = {}):
 /** The `run: …` lines a fake pi has recorded so far — recordingFakePi appends one per pi
  * invocation (hand-rolled recorder scripts write the same prefix), so this is what the pi
  * process actually saw. Returns [] before pi's first run creates the file, so a caller can
- * poll it from before the fleet starts. One home for the read/split/filter idiom five test
+ * poll it from before the team starts. One home for the read/split/filter idiom five test
  * modules hand-rolled. */
 export function readRunLines(argsFile: string): string[] {
   try {

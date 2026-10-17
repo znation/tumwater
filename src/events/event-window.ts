@@ -63,10 +63,10 @@ export const SPARSE_WINDOW_NOTE =
 
 /** How a read found the event feed — the read OUTCOME, distinct from what the window holds.
  * "ok": at least one parseable event line was read from the live log or its archive.
- * "empty": neither file exists or both are zero bytes (a fleet that has not written yet).
+ * "empty": neither file exists or both are zero bytes (a team that has not written yet).
  * "unreadable": a file exists with bytes but none of them parse as an event — a directory at
  * the path, a permission failure, or a run whose every complete line is corrupt. The failure
- * digest branches on this so an observer role can tell "the fleet was idle" from "I could not
+ * digest branches on this so an observer role can tell "the team was idle" from "I could not
  * read the log"; the never-fail-the-tick policy still holds — a read reports the state, it
  * never throws to do so. */
 export type EventLogState = "ok" | "empty" | "unreadable";
@@ -191,7 +191,7 @@ export function eventWindowCovers(w: EventWindow, cutoff: number): boolean {
  * as the oldest complete line in hand predates the window — cost scales with the window's size,
  * not the file's. `coversFullWindow` records whether this file reaches back before the window
  * (see EventWindow's field doc), so the caller can tell "retention cut the window" from "the
- * fleet was idle": both leave the oldest returned event later than the window start, but only
+ * team was idle": both leave the oldest returned event later than the window start, but only
  * the former means data was lost. */
 function scanEventsFile(file: string, fromKey: string): ScannedFile {
   const st = statOrNull(file);

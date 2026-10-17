@@ -40,9 +40,9 @@ test("a rate-limited run earns exactly one retry that waits out the Retry-After 
 
     assert.deepEqual(sleeps, [3000], "the 3s hint is waited out before the retry");
     // The failed attempt folds BEFORE the wait and the retry, so the 429 it ended on reaches
-    // the orchestrator's fleet-wide hold (LoopRunner.lastRateLimit) while the retry waits — not
+    // the orchestrator's team-wide hold (LoopRunner.lastRateLimit) while the retry waits — not
     // after a retry that may run for an hour (BUGS.md 2026-09-21 "A 429 storm still has no
-    // fleet-wide hold").
+    // team-wide hold").
     assert.ok(foldTimes[0]! <= sleepAts[0]!, "the rate-limited attempt is folded before the wait starts");
   } finally {
     restore();
@@ -143,7 +143,7 @@ test("a rate-limited run with no Retry-After hint waits the minute-scale refill 
     const result = await loopPi.runRolePi(root, "work", "tumwater-feature-4-author");
     assert.equal(result.ok, true);
     assert.equal(usage.length, 2);
-    // The provider sent no hint, so the wait defaults to the fleet's own refill physics — the
+    // The provider sent no hint, so the wait defaults to the team's own refill physics — the
     // minute-scale base hold (BUGS.md 2026-09-25: an immediate retry lands in the same
     // exhausted per-minute bucket and burns the tick's only retry) — and the warning says so.
     assert.deepEqual(sleeps, [60_000], "no hint means the minute-scale refill pause, not 0");
@@ -191,7 +191,7 @@ test("runGatePi gives the reviewer the same 429 retry, folding only the failed a
   // BUGS.md 2026-10-01: review.ts called bare runPi, so a 429 in the landing gate failed the
   // review on first contact — the gate's runs now take this wiring. The fold split: a RETRIED
   // first attempt is folded here (its spend is otherwise lost, and the fold stamps the
-  // fleet-wide rate-limit hold before the wait), while the FINAL run is folded by the gate's
+  // team-wide rate-limit hold before the wait), while the FINAL run is folded by the gate's
   // caller (landing-core's foldUsage of gate.run) — folding it twice would count the reviewer
   // twice.
   const root = tmpdir();

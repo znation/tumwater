@@ -11,8 +11,8 @@ import { RESTART_EXIT_CODE } from "../src/redeploy/redeploy-policy.js";
 import {
   RUN_WINDOW_START_ENV,
   type ChildExit,
-  type FleetDown,
-  fleetDownEvent,
+  type TeamDown,
+  teamDownEvent,
   MAX_RAPID_RESPAWNS,
   RESPAWN_WINDOW_MS,
   startParentDeathWatch,
@@ -61,7 +61,7 @@ test("a once round's failed exit code passes through without paging", async () =
   const child = scripted([ONCE_FAILED_EXIT_CODE]);
   let paged = 0;
   const code = await superviseRun(
-    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: () => { paged += 1; } },
+    { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: () => { paged += 1; } },
     new AbortController().signal,
   );
   assert.equal(code, ONCE_FAILED_EXIT_CODE);
@@ -146,15 +146,15 @@ test("respawns spaced wider than the window never trip the guard", async () => {
   assert.equal(child.spawns, MAX_RAPID_RESPAWNS + 4);
 });
 
-// A fleet that goes down without the operator asking must leave a trace (BUGS.md 2026-09-23): on
+// A team that goes down without the operator asking must leave a trace (BUGS.md 2026-09-23): on
 // 2026-09-22 a respawned generation exited "not initialized", the supervisor exited with it, and
 // events.jsonl simply ended at the previous generation's orchestrator_stop.
 
-test("a generation that dies unasked is reported through onFleetDown before the supervisor exits", async () => {
+test("a generation that dies unasked is reported through onTeamDown before the supervisor exits", async () => {
   const child = scripted([RESTART_EXIT_CODE, 1]);
-  const downs: FleetDown[] = [];
+  const downs: TeamDown[] = [];
   const code = await superviseRun(
-    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: (d) => void downs.push(d) },
+    { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: (d) => void downs.push(d) },
     new AbortController().signal,
   );
   assert.equal(code, 1, "the exit code is still the child's");
@@ -162,15 +162,15 @@ test("a generation that dies unasked is reported through onFleetDown before the 
 
   // A signal death is a failure too — including the operator's own first generation.
   const killed = scripted([null]);
-  const killedDowns: FleetDown[] = [];
+  const killedDowns: TeamDown[] = [];
   await superviseRun(
-    { spawnChild: killed.spawnChild, stopping: () => false, onFleetDown: (d) => void killedDowns.push(d) },
+    { spawnChild: killed.spawnChild, stopping: () => false, onTeamDown: (d) => void killedDowns.push(d) },
     new AbortController().signal,
   );
   assert.deepEqual(killedDowns, [{ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }]);
 });
 
-test("asked-for endings leave no fleet-down trace: a clean exit, or anything while stopping", async () => {
+test("asked-for endings leave no team-down trace: a clean exit, or anything while stopping", async () => {
   for (const [codes, stopping] of [
     [[RESTART_EXIT_CODE, 0], false],
     [[1], true],
@@ -180,19 +180,19 @@ test("asked-for endings leave no fleet-down trace: a clean exit, or anything whi
     const child = scripted(codes);
     let downs = 0;
     await superviseRun(
-      { spawnChild: child.spawnChild, stopping: () => stopping, onFleetDown: () => void (downs += 1) },
+      { spawnChild: child.spawnChild, stopping: () => stopping, onTeamDown: () => void (downs += 1) },
       new AbortController().signal,
     );
     assert.equal(downs, 0, `codes ${JSON.stringify(codes)}, stopping ${stopping}`);
   }
 });
 
-test("a tripped crash-loop guard is reported as a fleet down too", async () => {
+test("a tripped crash-loop guard is reported as a team down too", async () => {
   const child = scripted(Array(MAX_RAPID_RESPAWNS + 5).fill(RESTART_EXIT_CODE));
-  const downs: FleetDown[] = [];
+  const downs: TeamDown[] = [];
   let now = 1_000_000;
   const code = await superviseRun(
-    { spawnChild: child.spawnChild, stopping: () => false, onFleetDown: (d) => void downs.push(d), now: () => (now += 1000) },
+    { spawnChild: child.spawnChild, stopping: () => false, onTeamDown: (d) => void downs.push(d), now: () => (now += 1000) },
     new AbortController().signal,
   );
   assert.equal(code, 1);
@@ -201,13 +201,13 @@ test("a tripped crash-loop guard is reported as a fleet down too", async () => {
   ]);
 });
 
-test("an onFleetDown that throws leaves the exit code the child's", async () => {
+test("an onTeamDown that throws leaves the exit code the child's", async () => {
   const child = scripted([3]);
   const code = await superviseRun(
     {
       spawnChild: child.spawnChild,
       stopping: () => false,
-      onFleetDown: async () => {
+      onTeamDown: async () => {
         throw new Error("ENOSPC");
       },
     },
@@ -216,12 +216,12 @@ test("an onFleetDown that throws leaves the exit code the child's", async () => 
   assert.equal(code, 3);
 });
 
-test("fleetDownEvent carries generation, code or signal, and a reason only when one is known", () => {
-  const diagnosed = fleetDownEvent({ generation: 2, exit: { code: 1, signal: null }, crashLoop: false }, "not initialized");
+test("teamDownEvent carries generation, code or signal, and a reason only when one is known", () => {
+  const diagnosed = teamDownEvent({ generation: 2, exit: { code: 1, signal: null }, crashLoop: false }, "not initialized");
   assert.deepEqual(diagnosed, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 2, code: 1, reason: "not initialized" });
-  const bare = fleetDownEvent({ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }, null);
+  const bare = teamDownEvent({ generation: 1, exit: { code: null, signal: "SIGKILL" }, crashLoop: false }, null);
   assert.deepEqual(bare, { source: TUMWATER_SOURCE, type: "supervisor_exit", generation: 1, code: null, signal: "SIGKILL" }, "no guess");
-  const loop = fleetDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
+  const loop = teamDownEvent({ generation: 6, exit: { code: RESTART_EXIT_CODE, signal: null }, crashLoop: true }, null);
   assert.match(String(loop.reason), new RegExp(`restarted itself more than ${MAX_RAPID_RESPAWNS} times within 60s`));
 });
 

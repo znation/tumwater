@@ -16,7 +16,7 @@ import { onlyCleanRole } from "./helpers/run-live-harness.js";
 
 // `tumwater run`'s two live run modes: the `--for` bounded window that stops itself at its
 // deadline, and `--gui`, which serves the browser dashboard from the supervisor so it outlives
-// orchestrator generations. Both boot a real fleet; the pre-boot guards live in
+// orchestrator generations. Both boot a real team; the pre-boot guards live in
 // cli-run-guards.test.ts, the lifecycle and shutdown tests in cli-run-shutdown.test.ts, the
 // terminal-Ctrl+C handling in cli-run-sigint.test.ts, the forced second-Ctrl+C exit in
 // cli-run-force-exit.test.ts, and the scoped --once round in cli-run-once.test.ts.
@@ -75,7 +75,7 @@ async function waitForPortFree(port: number, ms = 15_000): Promise<boolean> {
   return false;
 }
 
-// `run --for <duration>`: the windowed run boots the daemon-shaped fleet, stops itself at the
+// `run --for <duration>`: the windowed run boots the daemon-shaped team, stops itself at the
 // deadline through the same graceful stop a Ctrl+C runs, prints the deadline line and the
 // summary, and exits 0 — no operator signal needed.
 test("run --for boots, stops itself at the deadline, and prints the summary", async () => {
@@ -108,18 +108,18 @@ test("run --for boots, stops itself at the deadline, and prints the summary", as
     assert.ok(!s.out().includes("ghost"), `a pre-window tick leaked into the summary:\n${s.out()}`);
     assert.ok(!s.out().split("\n").some((l) => l.startsWith("once:")), "no once: line under --for");
     assert.ok(!fs.existsSync(orchestratorStatePath(repo)), "orchestrator info file removed");
-    // A deadline stop the run asked for is not the fleet dying: no supervisor_exit trace.
+    // A deadline stop the run asked for is not the team dying: no supervisor_exit trace.
     assert.equal(eventsOfType(repo, "supervisor_exit").length, 0,
-      `a deadline stop must not be recorded as a fleet death:\n${JSON.stringify(readEvents(repo))}`);
+      `a deadline stop must not be recorded as a team death:\n${JSON.stringify(readEvents(repo))}`);
   } finally {
     s.kill();
     restore();
   }
 });
 
-// `run --gui`: one command boots the fleet and serves the browser dashboard (the `tumwater gui`
+// `run --gui`: one command boots the team and serves the browser dashboard (the `tumwater gui`
 // server on its defaults) from the supervisor, so the dashboard outlives orchestrator
-// generations and dies with the fleet. This is the only test that exercises the wiring end to
+// generations and dies with the team. This is the only test that exercises the wiring end to
 // end, so it skips cleanly (t.skip, not an early return that would read as a pass) when port 7180
 // is already taken by another dashboard.
 test("run --gui serves the dashboard from the supervisor and frees the port on SIGTERM", async (t) => {

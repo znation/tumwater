@@ -21,7 +21,7 @@ import { parseQuietHours } from "../scheduling/quiet-hours.js";
  * finite ("9"×25 → 1e24), so only this screen stands between a one-zero typo in the
  * browser's budget editor and an effectively uncapped budget (BUGS.md 2026-10-02, the
  * same rule the TUI's parseBudgetInput applies). `key` names the config key in the error,
- * defaulting to the fleet-wide `maxDailyCostUsd`; the per-role map passes
+ * defaulting to the team-wide `maxDailyCostUsd`; the per-role map passes
  * `maxDailyCostUsdPerRole.<id>` so a rejected entry names the key actually set. */
 export function checkDailyBudgetUsd(value: unknown, key = "maxDailyCostUsd"): string | null {
   if (
@@ -51,7 +51,7 @@ export function checkProviderConcurrencyCap(value: unknown, key = "maxConcurrent
  * "HH:MM-HH:MM" in local time, wrapping permitted, empty means off. parseQuietHours's
  * message is the one wording every surface (validateConfig, `config set`, the TUI/GUI
  * editors) shows, so they cannot drift apart on what a valid window is. `key` names the
- * config key in the error, defaulting to the fleet-wide `quietHours`; the per-role map passes
+ * config key in the error, defaulting to the team-wide `quietHours`; the per-role map passes
  * `quietHoursPerRole.<id>` so a rejected entry names the key actually set. */
 export function checkQuietHours(value: unknown, key = "quietHours"): string | null {
   const parsed = parseQuietHours(value, key);

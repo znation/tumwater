@@ -1,5 +1,5 @@
 // vocabulary: plain
-/** The fleet-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
+/** The team-booting commands' implementations: `tumwater init` and `tumwater run` — the latter
  * with its supervisor half (src/process/supervisor.ts). cli.ts stays the pure dispatcher; every
  * other command it dispatches already delegates to a module (operator/operator-commands.ts,
  * prompt-commands.ts, config-commands.ts, log-commands.ts, doctor.ts, …), and these three were
@@ -19,14 +19,14 @@ import {
 } from "./cli-args.js";
 import { PAUSE_FOR_MAX_MS } from "../operator/operator-intent.js";
 import { parseInitArgs } from "./cli-command-args.js";
-import { cancelScheduledStop, isFleetPaused, pausedRoles, scheduledStopAt } from "../team/team-state.js";
+import { cancelScheduledStop, isTeamPaused, pausedRoles, scheduledStopAt } from "../team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../team/orchestrator-info.js";
 import { runStartupCheck, runStartupProblem } from "../gates/startup-gate.js";
 import { initProject } from "../init/init.js";
 import { templateCatalog } from "../init/init-templates.js";
 import { repairInterruptedSwap } from "../build/build-stage.js";
 import { logEvent, subscribeEvents } from "../events/events.js";
-import { notifyFleetDown } from "../events/notify.js";
+import { notifyTeamDown } from "../events/notify.js";
 import { formatEvent } from "../events/event-format.js";
 import { RESTART_EXIT_CODE } from "../redeploy/redeploy-policy.js";
 import type { TickResult } from "../tick/tick-outcome.js";
@@ -84,7 +84,7 @@ export async function cmdInit(root: string, args: string[]): Promise<void> {
   say("next: `tumwater start` in one terminal, `tumwater tui` in another");
 }
 
-/** `tumwater run`: boot the fleet and stream its event feed to this terminal until it stops.
+/** `tumwater run`: boot the team and stream its event feed to this terminal until it stops.
  * Three layers cooperate here: without SUPERVISED_ENV this process becomes the supervisor
  * (superviseRunCommand below), spawning the real orchestrator as a child generation; the child
  * runs runOrchestrator to completion, handing the terminal back via RESTART_EXIT_CODE after a
@@ -126,7 +126,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   // `run --role` stays an error: scoping is a once-round concept.
   const roleFilter = parseRoleFlag(args, loopIds(config));
   if (roleFilter !== null && !once) fail("--role is only valid with --once");
-  // The refusal an operator hits by trying to start a second fleet in one repo: name the
+  // The refusal an operator hits by trying to start a second team in one repo: name the
   // running pid and the two ways to stop it, so the fix is in the message instead of a
   // separate `tumwater status`/help lookup. The info file is read once and reused for the
   // liveness check, like snapshot's own poll.
@@ -135,7 +135,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     fail(
       `an orchestrator is already running for this repo (pid ${running.pid}) — stop it with \`tumwater stop\` from another terminal, or press Ctrl+C in the terminal that started it`,
     );
-  // The fleet-booting machinery loads only once a run actually boots: the orchestrator's
+  // The team-booting machinery loads only once a run actually boots: the orchestrator's
   // module graph (with its landing pipeline, review gate, and scheduler) is the CLI's heaviest
   // compile, and the supervisor/redeploy/launch-services pieces ride beside it. Loading them
   // dynamically, after the fail-fast gates above, keeps every other command's spawn — and
@@ -144,7 +144,7 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   if (!process.env[SUPERVISED_ENV]) {
     // `args` are the flags after the command token — forward them so the child generation
     // targets the same branch (or whatever else the invocation named).
-    // A stop marker left by a fleet that died before its deadline must not stop this run.
+    // A stop marker left by a team that died before its deadline must not stop this run.
     cancelScheduledStop(root);
     await superviseRunCommand(root, args, branchArg, forMs);
     return;
@@ -172,9 +172,9 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
   });
   // A supervisor that dies without forwarding — SIGKILL (the OOM killer, `kill -9`) cannot be
   // trapped or forwarded, and an uncaught supervisor crash forwards nothing either — leaves this
-  // generation reparented and ticking the fleet unattended. The parent-death watch polls for the
+  // generation reparented and ticking the team unattended. The parent-death watch polls for the
   // reparent and runs the same graceful stop a forwarded SIGTERM would have run, so a killed
-  // supervisor takes its fleet down with it (BUGS.md 2026-09-30). The spawner hands its pid
+  // supervisor takes its team down with it (BUGS.md 2026-09-30). The spawner hands its pid
   // down (SUPERVISOR_PID_ENV), so a supervisor killed during this child's startup — before the
   // watch's first ppid read — still counts as gone. Everything below runs only in
   // the supervised generation: an unsupervised `run` became the supervisor above and returned.
@@ -192,10 +192,10 @@ export async function cmdRun(root: string, args: string[]): Promise<void> {
     ? null
     : await (await import("../redeploy/redeploy.js")).createRedeployer(root, (e) => logEvent(root, e), () => runStartupProblem(root, branchArg));
   const build = redeploy ? ` · build ${shortSha(redeploy.build.sha)}` : "";
-  // A long-running fleet watches launchservicesd's port count (a no-op off macOS); a once round
+  // A long-running team watches launchservicesd's port count (a no-op off macOS); a once round
   // is over long before a leak could matter.
   const launchServicesWatch = once ? null : new (await import("../process/launch-services.js")).LaunchServicesWatch(root);
-  // Name the resolved root when it differs from the cwd: an operator who started the fleet
+  // Name the resolved root when it differs from the cwd: an operator who started the team
   // from a subdirectory must see where .tumwater/ actually lives.
   const rootNote = root !== process.cwd() ? ` · root ${root}` : "";
   const forNote = forMs !== null ? ` · for ${durationLabel(forMs)}` : "";
@@ -408,7 +408,7 @@ export function onceSummary(
     } else {
       const reason =
         settled?.get(role) ??
-        (isFleetPaused(root) || pausedRoles(root).includes(role)
+        (isTeamPaused(root) || pausedRoles(root).includes(role)
           ? "paused"
           : stateSkipReason(s));
       skipped.push(reason);
@@ -457,7 +457,7 @@ export function guiChildPlan(runArgs: string[]): {
  * reload watch (src/redeploy/self-reload.ts) exits RESTART_EXIT_CODE for a fresh sibling on a
  * redeploy and exits on its own if this supervisor dies outright (SIGKILL, a crash) — a killed
  * supervisor never leaves a dashboard holding its port. Any other dashboard exit (a failed bind
- * prints its own message and exits) ends this loop and leaves the fleet running. */
+ * prints its own message and exits) ends this loop and leaves the team running. */
 async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "inherit"): Promise<void> {
   const { DASHBOARD_CHILD_ENV } = await import("../redeploy/self-reload.js");
   const { spawnGuiChild } = await import("../process/supervisor.js");
@@ -470,19 +470,19 @@ async function superviseDashboard(signal: AbortSignal, stdio: StdioOptions = "in
 /** The supervisor half of `tumwater run` (src/process/supervisor.ts): spawn the orchestrator as a
  * child generation and respawn it whenever it exits RESTART_EXIT_CODE after redeploying itself.
  * Ctrl+C reaches the child directly from the terminal, so only SIGTERM is forwarded; the
- * supervisor's own exit code is whatever the last generation's was. A fleet that goes down without
+ * supervisor's own exit code is whatever the last generation's was. A team that goes down without
  * the operator asking leaves a `supervisor_exit` event behind (BUGS.md 2026-09-23): the dead
  * generation's stderr reached only this terminal, which nobody may be watching. */
 async function superviseRunCommand(root: string, runArgs: string[], branchArg: string | null, forMs: number | null): Promise<void> {
   // The supervisor machinery loads lazily, like cmdRun's orchestrator import above: a command
-  // that never boots the fleet never compiles it.
-  const { RUN_WINDOW_START_ENV, fleetDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
+  // that never boots the team never compiles it.
+  const { RUN_WINDOW_START_ENV, teamDownEvent, spawnRunChild, superviseRun } = await import("../process/supervisor.js");
   const plan = guiChildPlan(runArgs);
   // A TUI owns the terminal, so it can only be hosted when this supervisor's own stdin and
-  // stdout are a TTY — the same guard runTui enforces. Check before booting a fleet a TUI
+  // stdout are a TTY — the same guard runTui enforces. Check before booting a team a TUI
   // could never drive, surfacing the actionable tuiTerminalError instead of letting runTui's
   // rejection sit unhandled until superviseRun settles and then crash the supervisor after
-  // the fleet has (pointlessly) started.
+  // the team has (pointlessly) started.
   if (plan.spawnTui && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     const { tuiTerminalError } = await import("../ui/tui/tui-input.js");
     fail(tuiTerminalError(Boolean(process.stdin.isTTY), Boolean(process.stdout.isTTY)));
@@ -505,15 +505,15 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
   // The TUI is hosted in the supervisor process, beside the orchestrator generations it must
   // outlive. Quitting it (q or Ctrl+C handled by ink's key handler) is the run's Ctrl+C:
   // runTui resolves and the .then sets `stopping` and aborts the controller, so superviseRun
-  // drains in-flight ticks and the fleet shuts down exactly as Ctrl+C on a plain `run` does;
-  // the fleet-down teardown (dashboard abort, onDone, terminal restore) is unchanged.
-  // reloadDisabled keeps the hosted TUI off its self-reload watch: the fleet's own first
+  // drains in-flight ticks and the team shuts down exactly as Ctrl+C on a plain `run` does;
+  // the team-down teardown (dashboard abort, onDone, terminal restore) is unchanged.
+  // reloadDisabled keeps the hosted TUI off its self-reload watch: the team's own first
   // self-redeploy dist swap must not resolve runTui (which would read as a quit and abort
   // this run's controller) or spawn a re-exec replacement; the host supervisor survives a
-  // redeploy by respawning its fleet children, and the hosted TUI — like the supervisor
+  // redeploy by respawning its team children, and the hosted TUI — like the supervisor
   // itself — stays on the build it started, getting fresh code on the next run. The abort
   // signal is how this process ends the TUI when the run ends on its own (a `--for` window
-  // closes, or the fleet stops): runTui resolves on abort and takes its quit teardown, so the
+  // closes, or the team stops): runTui resolves on abort and takes its quit teardown, so the
   // `await tui` below cannot hang on a TUI nothing else would ever close.
   const tuiController = new AbortController();
   const tui = plan.spawnTui
@@ -533,7 +533,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
         // With a hosted TUI the supervisor owns no free stdout: its own say() would paint the
         // restart line over the ink full-screen render and corrupt it — the same interleaving
         // childStdio silences for the children. The TUI renders status from on-disk state, so
-        // the redeploy is visible there as the fleet coming back.
+        // the redeploy is visible there as the team coming back.
         if (!plan.spawnTui) say(`\nrestarting onto the update (restart ${generation})\n`);
       },
       onCrashLoop: () =>
@@ -542,9 +542,9 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
       // most likely met an environment that no longer boots (the 2026-09-22 child found
       // tumwater.json gone). A crash loop's generations all asked for restarts, so the gate
       // has nothing to say about it.
-      onFleetDown: async (down) => {
-        const event = logEvent(root, fleetDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
-        notifyFleetDown(root, event);
+      onTeamDown: async (down) => {
+        const event = logEvent(root, teamDownEvent(down, down.crashLoop ? null : await runStartupProblem(root, branchArg)));
+        notifyTeamDown(root, event);
       },
       // The end-of-supervision build repair (see build-stage.repairInterruptedSwap): a swap
       // killed between its two renames leaves dist/ missing, and this process is the only one
@@ -557,7 +557,7 @@ async function superviseRunCommand(root: string, runArgs: string[], branchArg: s
     },
     controller.signal,
   );
-  // The orchestrator is gone; take the dashboard and the TUI with it so a stopped fleet never
+  // The orchestrator is gone; take the dashboard and the TUI with it so a stopped team never
   // leaves a dashboard holding its port or a TUI holding the terminal. abort() SIGTERMs the
   // current gui child; await lets the spawn loop observe the abort before this process exits.
   // On a plain run the user's own Ctrl+C already resolved the TUI; on a windowed (--for) run

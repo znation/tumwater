@@ -21,38 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms code team, part 5/6: Rename the fleet identifiers in the budget and pi and config and events and process and CLI layers (planned 2026-10-16 by user; requires part 4/6 landed; design in plans/terminology.md "Code names"; touches src/budget/ src/pi/ src/config/ src/events/ src/process/ src/cli/ src/operator/ src/loop/ src/report/ the src/ root files and test/helpers/)
-
-**Goal.** These directories' identifiers, comments and test names say team, and the remaining fleet exports take their team names. A mechanical rename of about 490 lines with no behavior change.
-
-**Approach.**
-- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes (`tmpdir("notify-fleet-down-")`) and assertion messages.
-- **Exports, renamed at their declarations together with every caller.** No later part uses them, so no aliases are needed. Earlier parts' callers move now too.
-  - budget/budget.ts: `fleetDailyCost` → `teamDailyCost`. Callers remain in src/doctor, src/status and src/ui.
-  - pi/pi-models.ts: `fleetModelsFree` → `teamModelsFree`. Callers remain in src/status and src/doctor, plus a comment in test/fixtures/models-fixtures.ts.
-  - config/config-views.ts: `fleetModelLabel` → `teamModelLabel`.
-  - events/notify.ts: `notifyFleetDown` → `notifyTeamDown`.
-  - process/supervisor.ts: `FleetDown` → `TeamDown` and `fleetDownEvent` → `teamDownEvent`.
-  - cli/cli-run.ts: the `onFleetDown` member → `onTeamDown`.
-  - test/helpers/run-live-harness.ts: `withRunningFleet` → `withRunningTeam`.
-- **Move off the aliases.** These directories still call `pauseFleet`, `resumeFleet`, `isFleetPaused`, `pollFleetHold` (from part 2/6) and `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase`, `fleetResumePhrase` (from part 4/6). Move those calls to the new names. Delete each alias that test/exports.test.ts then reports as unused.
-- **Docs that name these identifiers:**
-  - docs/backends.md: `fleetModelsFree()`, twice;
-  - docs/invariants.md: `notifyFleetDown` and `onFleetDown`, plus the quoted test name "a fleet that goes down unasked runs the notify hook once" when this part renames that test in test/cli-run-shutdown.test.ts.
-- **Leave alone:**
-  - user-visible strings and expected-output literals;
-  - event type names (notify's allowlist already uses `team_paused`);
-  - legacy names kept on purpose;
-  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim, such as "Mixed claude + pi fleets, part 3/4" in config-fallbacks.ts (test/plan-citations.test.ts).
-
-**Files touched.** `src/budget/`, `src/pi/`, `src/config/`, `src/events/`, `src/process/`, `src/cli/`, `src/operator/`, `src/loop/`, `src/report/`, `src/cli.ts`, `src/collections.ts`, `src/paths.ts`, `test/helpers/`, `test/fakes/`, `test/fixtures/models-fixtures.ts`. Calls in `src/doctor/`, `src/status/` and `src/ui/`. The matching tests: `test/budget.test.ts`, `test/pi-*.test.ts`, `test/config*.test.ts`, `test/event*.test.ts` (with `event-format-team.test.ts`), `test/notify.test.ts`, `test/supervisor.test.ts`, `test/process.test.ts`, `test/launch-services*.test.ts`, `test/cli*.test.ts` (with `cli-operators-team.test.ts`), `test/collections.test.ts`, `test/operator*.test.ts`, `test/loop*.test.ts`, `test/report*.test.ts`, `test/fake*.test.ts`. Docs: docs/backends.md, docs/invariants.md.
-
-**Acceptance criteria.**
-- `git grep -nE 'fleetDailyCost|fleetModelsFree|fleetModelLabel|notifyFleetDown|FleetDown|fleetDownEvent|onFleetDown|withRunningFleet' -- src test docs` prints nothing.
-- In the listed directories, no identifier, comment or test name says fleet, apart from quoted backlog titles and legacy names.
-- Only aliases whose callers sit in part 6/6's directories remain (`fleetPausePhrase` and `fleetResumePhrase`, used by src/failure).
-- `npm run test` passes.
-
 ### Plain terms code team, part 6/6: Finish the fleet rename and add the retired-names guard (planned 2026-10-16 by user; requires part 5/6 landed; design in plans/terminology.md "Code names" and "Guards"; touches the remaining src/ and test/ files and scripts/ and the new test/retired-names.test.ts)
 
 **Goal.** No identifier, file name, comment or test name in src/ or test/ says fleet. A new guard, test/retired-names.test.ts, fails the suite if a retired identifier or file-name stem comes back. Later Code-names series append their own families to it.
@@ -1631,6 +1599,38 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - "checkWorkInstances does not warn about a disabled instance role's pool" expects `no claimed plans or bugs`.
 - A new test, "checkWorkInstances names each claim by its file and counts plans and bugs apart". Set up `roles: { feature: { instances: 2 }, bugfix: { instances: 2 } }`, PLANS.md from `twoPlansDoc()`, and an open bug from `seedOpenBug(root)` (both in `test/fixtures/repo-fixtures.ts`; the bug's key is `"an open bug"`). If `readyRepo()`'s BUGS.md lacks the `_None yet._` placeholder `seedOpenBug` replaces, write the `## Open` section with `### An open bug` directly instead. Save a fresh `feature-2` claim on `alpha` (`file: "PLANS.md"`) and a fresh `bugfix-2` claim on `an open bug` (`file: "BUGS.md"`). The outcome is `{ level: "ok", detail: "1 claimed plan, 1 claimed bug" }`. Then backdate the bug claim 25 h; the warning detail matches `/claimed bug ".*" \(bugfix-2\) has been idle 25h/`.
 - `grep -n "work instances" docs/how-it-works.md` finds nothing.
+- `npm run test` passes.
+
+### Plain terms code team, part 5/6: Rename the fleet identifiers in the budget and pi and config and events and process and CLI layers (planned 2026-10-16 by user; done 2026-10-16; requires part 4/6 landed; design in plans/terminology.md "Code names"; touches src/budget/ src/pi/ src/config/ src/events/ src/process/ src/cli/ src/operator/ src/loop/ src/report/ the src/ root files and test/helpers/)
+
+**Goal.** These directories' identifiers, comments and test names say team, and the remaining fleet exports take their team names. A mechanical rename of about 490 lines with no behavior change.
+
+**Approach.**
+- **Rename rule** (the fleet row of "Code names"): `fleet` → `team`, `Fleet` → `Team`, `FLEET` → `TEAM` in identifiers, comments, test names, temp-dir prefixes (`tmpdir("notify-fleet-down-")`) and assertion messages.
+- **Exports, renamed at their declarations together with every caller.** No later part uses them, so no aliases are needed. Earlier parts' callers move now too.
+  - budget/budget.ts: `fleetDailyCost` → `teamDailyCost`. Callers remain in src/doctor, src/status and src/ui.
+  - pi/pi-models.ts: `fleetModelsFree` → `teamModelsFree`. Callers remain in src/status and src/doctor, plus a comment in test/fixtures/models-fixtures.ts.
+  - config/config-views.ts: `fleetModelLabel` → `teamModelLabel`.
+  - events/notify.ts: `notifyFleetDown` → `notifyTeamDown`.
+  - process/supervisor.ts: `FleetDown` → `TeamDown` and `fleetDownEvent` → `teamDownEvent`.
+  - cli/cli-run.ts: the `onFleetDown` member → `onTeamDown`.
+  - test/helpers/run-live-harness.ts: `withRunningFleet` → `withRunningTeam`.
+- **Move off the aliases.** These directories still call `pauseFleet`, `resumeFleet`, `isFleetPaused`, `pollFleetHold` (from part 2/6) and `collectFleetChanges`, `renderFleetChange`, `fleetPausePhrase`, `fleetResumePhrase` (from part 4/6). Move those calls to the new names. Delete each alias that test/exports.test.ts then reports as unused.
+- **Docs that name these identifiers:**
+  - docs/backends.md: `fleetModelsFree()`, twice;
+  - docs/invariants.md: `notifyFleetDown` and `onFleetDown`, plus the quoted test name "a fleet that goes down unasked runs the notify hook once" when this part renames that test in test/cli-run-shutdown.test.ts.
+- **Leave alone:**
+  - user-visible strings and expected-output literals;
+  - event type names (notify's allowlist already uses `team_paused`);
+  - legacy names kept on purpose;
+  - PLANS.md and BUGS.md titles quoted in comments, kept verbatim, such as "Mixed claude + pi fleets, part 3/4" in config-fallbacks.ts (test/plan-citations.test.ts).
+
+**Files touched.** `src/budget/`, `src/pi/`, `src/config/`, `src/events/`, `src/process/`, `src/cli/`, `src/operator/`, `src/loop/`, `src/report/`, `src/cli.ts`, `src/collections.ts`, `src/paths.ts`, `test/helpers/`, `test/fakes/`, `test/fixtures/models-fixtures.ts`. Calls in `src/doctor/`, `src/status/` and `src/ui/`. The matching tests: `test/budget.test.ts`, `test/pi-*.test.ts`, `test/config*.test.ts`, `test/event*.test.ts` (with `event-format-team.test.ts`), `test/notify.test.ts`, `test/supervisor.test.ts`, `test/process.test.ts`, `test/launch-services*.test.ts`, `test/cli*.test.ts` (with `cli-operators-team.test.ts`), `test/collections.test.ts`, `test/operator*.test.ts`, `test/loop*.test.ts`, `test/report*.test.ts`, `test/fake*.test.ts`. Docs: docs/backends.md, docs/invariants.md.
+
+**Acceptance criteria.**
+- `git grep -nE 'fleetDailyCost|fleetModelsFree|fleetModelLabel|notifyFleetDown|FleetDown|fleetDownEvent|onFleetDown|withRunningFleet' -- src test docs` prints nothing.
+- In the listed directories, no identifier, comment or test name says fleet, apart from quoted backlog titles and legacy names.
+- Only aliases whose callers sit in part 6/6's directories remain (`fleetPausePhrase` and `fleetResumePhrase`, used by src/failure).
 - `npm run test` passes.
 
 ### Plain terms code team, part 4/6: Rename the fleet identifiers in the dashboard and TUI and change and text modules (planned 2026-10-16 by user; done 2026-10-16; requires part 3/6 landed; design in plans/terminology.md "Code names"; touches src/ui/ src/gui/ src/change/ src/text/ and their tests)

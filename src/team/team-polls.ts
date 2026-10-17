@@ -143,9 +143,6 @@ export function pollTeamHold(
   return next;
 }
 
-/** @deprecated Use pollTeamHold. */
-export const pollFleetHold = pollTeamHold;
-
 /** The hold observation one subscription account's usage windows imply, or null: a window
  * reading `rejected` with no overage and a future `resetsAt` holds every seam on provider
  * `claude` until the last such deadline — the account-level throttle of plans/agent-backends.md

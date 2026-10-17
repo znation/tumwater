@@ -1,9 +1,9 @@
 // vocabulary: plain
-/** launchservicesd's Mach-port budget on macOS: the running fleet's warning, driven by a watch
+/** launchservicesd's Mach-port budget on macOS: the running team's warning, driven by a watch
  * stepped from the orchestrator's poll. The daemon keeps a port for every process that ever
  * checked in with LaunchServices and never releases it, and the kernel kills it near
  * LAUNCH_SERVICES_KILL_PORTS — after which the GUI session wedges (apps cannot quit, Finder
- * disappears) until a forced power-off. On 2026-09-25 that took down the Mac running the fleet
+ * disappears) until a forced power-off. On 2026-09-25 that took down the Mac running the team
  * after twelve days of growth that only the unified log mentioned (BUGS.md 2026-09-28). The
  * harness's own process trees no longer check in (process.ts's NO_LAUNCH_SERVICES_CHECK_IN), but
  * anything else on the Mac can: an npm run by hand, an older build, another tool.
@@ -24,11 +24,11 @@ export const LAUNCH_SERVICES_KILL_PORTS = 268_000;
  * to act on; 100K still leaves days at the fastest growth seen (~7.5K ports an hour). */
 export const LAUNCH_SERVICES_WARN_PORTS = 100_000;
 
-/** A running fleet warns again each time the count climbs this far past its last warning: one
- * line at 100K is easy to scroll past on a fleet that runs for weeks. */
+/** A running team warns again each time the count climbs this far past its last warning: one
+ * line at 100K is easy to scroll past on a team that runs for weeks. */
 export const LAUNCH_SERVICES_REWARN_PORTS = 50_000;
 
-/** How often a running fleet samples the count: `top` costs ~0.3 s of CPU, and 15 minutes at the
+/** How often a running team samples the count: `top` costs ~0.3 s of CPU, and 15 minutes at the
  * fastest growth seen moves the count by ~2K — noise against the margin. */
 export const LAUNCH_SERVICES_SAMPLE_MS = 15 * 60_000;
 
@@ -51,11 +51,11 @@ export function nextLaunchServicesWarning(
   return { warn: true, lastWarned: ports };
 }
 
-/** A running fleet's watch, stepped from the orchestrator's poll: it samples at most every
- * LAUNCH_SERVICES_SAMPLE_MS — the first poll samples at once, so a fleet started on a Mac that
+/** A running team's watch, stepped from the orchestrator's poll: it samples at most every
+ * LAUNCH_SERVICES_SAMPLE_MS — the first poll samples at once, so a team started on a Mac that
  * is already leaking says so right away — and logs a harness warning per
  * nextLaunchServicesWarning. The sample runs in the background: a poll never waits on `top`.
- * In memory only: a restarted fleet warns again on its first sample if the count is still high,
+ * In memory only: a restarted team warns again on its first sample if the count is still high,
  * the right default for a condition only a reboot clears. cli/cli-run.ts builds one for a daemon
  * `tumwater run` only — a `--once` round and in-process tests run without it. */
 export class LaunchServicesWatch {

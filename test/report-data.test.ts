@@ -645,7 +645,7 @@ test("collectReportSince treats an empty or missing event log as fully covered, 
   assert.match(out, /backlog tallies \(features done \/ bugs fixed\) need the day report/);
 });
 
-test("collectReport scopes the day series and totals to one role, leaving fleet cells off", () => {
+test("collectReport scopes the day series and totals to one role, leaving team cells off", () => {
   const root = tmpdir();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "run_end", run: 1, result: "changed", tokens: 500, costUsd: 0.5 }),
@@ -680,15 +680,15 @@ test("collectReport scopes the day series and totals to one role, leaving fleet 
   assert.equal(scoped.totals.mergeRuns, 0);
 
   // The same fixture without a role totals every role and reads the day-granular backlog tallies.
-  const fleet = collectReport(root, 5);
-  assert.equal(fleet.role, undefined);
-  assert.equal(fleet.totals.tokensOut, 640); // 500 + 100 + the 40 landing tokens
-  assert.equal(fleet.totals.runs, 2);
-  assert.equal(fleet.totals.commits, 2);
-  assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
-  assert.equal(fleet.totals.featuresDone, 1);
-  assert.equal(fleet.totals.bugsFixed, 1);
-  assert.equal(fleet.totals.mergeRuns, 1);
+  const team = collectReport(root, 5);
+  assert.equal(team.role, undefined);
+  assert.equal(team.totals.tokensOut, 640); // 500 + 100 + the 40 landing tokens
+  assert.equal(team.totals.runs, 2);
+  assert.equal(team.totals.commits, 2);
+  assert.ok(Math.abs(team.totals.costUsd - 1.1) < 1e-9);
+  assert.equal(team.totals.featuresDone, 1);
+  assert.equal(team.totals.bugsFixed, 1);
+  assert.equal(team.totals.mergeRuns, 1);
 });
 
 test("collectReport scopes an instance id to its base role, aggregating its siblings' usage", () => {
@@ -754,12 +754,12 @@ test("collectReportSince scopes a trailing window to one role, excluding the lan
   assert.deepEqual(scoped.runsByRole, { feature: 1 });
   assert.deepEqual(scoped.costByRole, { feature: 0.5 });
 
-  const fleet = collectReportSince(root, HOUR);
-  assert.equal(fleet.role, undefined);
-  assert.equal(fleet.totals.tokensOut, 640);
-  assert.equal(fleet.totals.runs, 2);
-  assert.equal(fleet.totals.commits, 2);
-  assert.ok(Math.abs(fleet.totals.costUsd - 1.1) < 1e-9);
+  const team = collectReportSince(root, HOUR);
+  assert.equal(team.role, undefined);
+  assert.equal(team.totals.tokensOut, 640);
+  assert.equal(team.totals.runs, 2);
+  assert.equal(team.totals.commits, 2);
+  assert.ok(Math.abs(team.totals.costUsd - 1.1) < 1e-9);
 });
 
 // The claude billing split (plans/agent-backends.md part 6a): a subscription run's cost is
@@ -820,7 +820,7 @@ test("a subscription landing's spend is notional, never in the cost totals", () 
 });
 
 // Role scoping carries a role's OWN notional spend (its run_end events), so `report --role`
-// does not misreport a subscription loop as $0; the landing slot's notional stays fleet-wide
+// does not misreport a subscription loop as $0; the landing slot's notional stays team-wide
 // and omitted, exactly like its real cost (plans/agent-backends.md part 6a).
 test("collectReport scopes notional spend to the role, like cost", () => {
   const root = tmpdir();
@@ -834,8 +834,8 @@ test("collectReport scopes notional spend to the role, like cost", () => {
   assert.equal(scoped.totals.costUsd, 0);
   assert.equal(scoped.series[scoped.series.length - 1]?.notionalCostUsd, 3);
 
-  const fleet = collectReport(root, 1);
-  assert.equal(fleet.totals.notionalCostUsd, 8, "the fleet report sums both roles");
+  const team = collectReport(root, 1);
+  assert.equal(team.totals.notionalCostUsd, 8, "the team report sums both roles");
 });
 
 test("collectReportSince scopes notional spend to the role, like cost", () => {

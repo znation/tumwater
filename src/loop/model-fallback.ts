@@ -66,7 +66,7 @@ export function modelFallbackProbe(state: ModelFallbackState | undefined, now: n
 }
 
 /** Classify one authoring run's verdict about the primary (src/tick/tick-usage.ts records the
- * same flags for the fleet-wide hold). A run that was aborted, quiet-killed, or timed out — or
+ * same flags for the team-wide hold). A run that was aborted, quiet-killed, or timed out — or
  * that read an image its model cannot see (the runner killed it, plans/image-input.md) — is
  * inconclusive even when it also reports provider evidence: the harness killed it, so it is
  * no verdict about the primary's health. */

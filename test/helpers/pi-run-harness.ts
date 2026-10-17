@@ -34,7 +34,7 @@ export async function runFakePi(script: string) {
   });
 }
 
-// The suite runs under fleet load — review gates and main-baseline checks spawn full suites
+// The suite runs under team load — review gates and main-baseline checks spawn full suites
 // alongside — where spawning the fake pi or opening its log can transiently fail. Without a
 // retry that environmental failure lands as a misleading raw-log content assertion in the
 // tests that use this (a 2026-09-09 gate rejection of an unrelated GUI change was exactly
@@ -48,6 +48,6 @@ export async function runPiVerified(opts: Parameters<typeof runPi>[0]): Promise<
   const second = await runPi(opts);
   if (second.ok || second.turns > 0) return second;
   throw new Error(
-    `fake pi produced no output twice in a row — environmental (fleet load), not a log regression: ${first.errorMessage ?? "no error"}`,
+    `fake pi produced no output twice in a row — environmental (team load), not a log regression: ${first.errorMessage ?? "no error"}`,
   );
 }

@@ -11,7 +11,7 @@ import { loopPhase } from "../src/ui/status-model.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import { applyLandingOutcome, applyTickOutcome } from "../src/tick/tick-apply.js";
 import { defaultConfig } from "../src/config/config.js";
-import { fleetDailyCost, todayStamp } from "../src/budget/budget.js";
+import { teamDailyCost, todayStamp } from "../src/budget/budget.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { dayKey } from "./helpers/oracles.js";
 import { assistantLine } from "./fixtures/pi-events.js";
@@ -178,7 +178,7 @@ test("the totals row's today cell sums the loops' daily windows like the header 
   c.dayStamp = todayStamp(Date.now() - 86_400_000);
   c.dayCostUsd = 9.99;
   // …and the badge carries the same sum (status/status-data.ts derives both from the loops).
-  const snap = snapshotWith([a, b, c], { spentUsd: fleetDailyCost([a, b, c]), capUsd: 50, capHitAt: null, free: false, fallback: null });
+  const snap = snapshotWith([a, b, c], { spentUsd: teamDailyCost([a, b, c]), capUsd: 50, capHitAt: null, free: false, fallback: null });
   const { lines, cellAt, headers: cols } = tableCells(renderStatus(tmpdir(), snap));
   const totalsRow = lines[lines.length - 1] ?? "";
   assert.equal(cellAt(totalsRow, cols.indexOf("today")), "$13.00", "totals sum the fresh windows only (12.34 + 0.66)");

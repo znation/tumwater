@@ -306,7 +306,7 @@ test("the gui reloads onto a newer build: closes, re-execs, re-binds the same po
   // self-reload story with no injected seam: self-reload.test.ts pins the watch and the
   // re-exec against fakes, but nothing proves the dashboard actually survives a redeploy —
   // a glue that skipped server.close() or re-exec'd with the wrong argv would leave every
-  // operator's dashboard dead (or EADDRINUSE-crashing) after the fleet's first self-redeploy.
+  // operator's dashboard dead (or EADDRINUSE-crashing) after the team's first self-redeploy.
   // The watch arms only for a build compiled from the checkout it serves, so this stands up a
   // scratch self-hosted install — a fixture repo whose dist/ is a copy of this build's
   // compiled tree, stamped with the fixture's own commit — runs the real CLI from that copy,

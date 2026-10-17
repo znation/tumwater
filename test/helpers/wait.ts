@@ -46,7 +46,7 @@ export const liveWaitClock: WaitClock = { now: () => performance.now(), sleep };
 /** Poll until `fn` holds. `ms` is a DEADLINE, not a sleep — this returns the moment the
  * condition is true, so a generous budget costs nothing on the success path and buys only
  * slower reporting of a genuine hang. The default was 20s until 2026-09-18, when it became the
- * proximate cause of landing rejections: the fleet runs this suite concurrently with its own
+ * proximate cause of landing rejections: the team runs this suite concurrently with its own
  * ticks, and waits that complete in ~2s idle took past 20s loaded (BUGS.md). */
 export async function waitFor(
   fn: () => boolean,

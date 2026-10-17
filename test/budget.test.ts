@@ -6,7 +6,7 @@ import {
   budgetPaused,
   budgetReached,
   dailyCost,
-  fleetDailyCost,
+  teamDailyCost,
   pairDailyCost,
   projectCapHit,
   recordDailyCost,
@@ -75,17 +75,17 @@ test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap",
   const { dayA } = midnightPair();
   // A hand-edited or torn state file can hold a non-number where LoopState declares a
   // number: readJsonFile casts without validating. The budget is a safety valve, so a
-  // foreign value must read as no spend, not concatenate into the fleet sum ("0abc")
+  // foreign value must read as no spend, not concatenate into the team sum ("0abc")
   // or make every `>= cap` comparison false forever.
   const corrupt = freshLoopState("feature");
   corrupt.dayStamp = todayStamp(dayA);
   corrupt.dayCostUsd = "5" as unknown as number;
   assert.equal(dailyCost(corrupt, dayA), 0);
   assert.equal(dailyCost({ ...corrupt, dayCostUsd: Number.NaN }, dayA), 0);
-  assert.equal(fleetDailyCost([corrupt], dayA), 0);
+  assert.equal(teamDailyCost([corrupt], dayA), 0);
   // A negative is as poisonous as NaN: it makes every `>= cap` comparison false.
   assert.equal(dailyCost({ ...corrupt, dayCostUsd: -5 }, dayA), 0);
-  assert.equal(fleetDailyCost([{ ...corrupt, dayCostUsd: -5 }], dayA), 0);
+  assert.equal(teamDailyCost([{ ...corrupt, dayCostUsd: -5 }], dayA), 0);
 
   // Recording spend over a corrupt window heals it into a finite, non-negative number.
   const s = freshLoopState("feature");
@@ -100,7 +100,7 @@ test("dailyCost reads $0 for a corrupt dayCostUsd instead of poisoning the cap",
   assert.equal(s.dayCostUsd, 1.25);
 });
 
-test("fleetDailyCost sums every loop's daily window with stale ones reading $0", () => {
+test("teamDailyCost sums every loop's daily window with stale ones reading $0", () => {
   const { dayA, dayB } = midnightPair();
   const a = freshLoopState("feature");
   recordDailyCost(a, 1.25, dayA); // spent on day A
@@ -108,9 +108,9 @@ test("fleetDailyCost sums every loop's daily window with stale ones reading $0",
   const c = freshLoopState("dedupe");
   recordDailyCost(c, 0.75, dayB); // spent on day B only
 
-  assert.equal(fleetDailyCost([a, b, c], dayA), 1.25);
-  assert.equal(fleetDailyCost([a, b, c], dayB), 0.75);
-  assert.equal(fleetDailyCost([], dayA), 0);
+  assert.equal(teamDailyCost([a, b, c], dayA), 1.25);
+  assert.equal(teamDailyCost([a, b, c], dayB), 0.75);
+  assert.equal(teamDailyCost([], dayA), 0);
 });
 
 test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above it", () => {
@@ -130,7 +130,7 @@ test("budgetPaused is false at cap 0 (disabled) and below the cap, true at/above
   cfg.maxDailyCostUsd = 0;
   assert.equal(budgetPaused([s], cfg, dayA), false); // 0 disables the budget entirely
 
-  // A stale window reads $0: a fleet that hasn't ticked since yesterday is never paused.
+  // A stale window reads $0: a team that hasn't ticked since yesterday is never paused.
   const other = freshLoopState("clean");
   recordDailyCost(other, 100, dayB);
   cfg.maxDailyCostUsd = 1;
@@ -144,14 +144,14 @@ test("budgetGate: reached with a free, serving fallback keeps loops running; oth
   assert.equal(budgetGate(false, { default: false, strong: false }, true), "open");
   assert.equal(budgetGate(false, { default: true, strong: true }, true), "open");
   assert.equal(budgetGate(false, { default: true, strong: false }, true), "open");
-  // At the cap the tiers' resolutions decide whether the fleet degrades or stops. Only
+  // At the cap the tiers' resolutions decide whether the team degrades or stops. Only
   // "paused" blocks a tick, which is why this had to stop being a boolean.
   assert.equal(budgetGate(true, { default: true, strong: true }, true), "fallback");
   assert.equal(budgetGate(true, { default: false, strong: false }, true), "paused");
   // Free is not usable on its own: this pin used to read a demoted default tier as
   // "fallback" with no way to say "free, but its backend cannot serve" — the 2026-09-19
   // hour of 33/33 failed ticks. A tier whose resolution pauses holds its own roles; with
-  // review on, an unresolvable strong tier pauses the whole fleet (nothing could land).
+  // review on, an unresolvable strong tier pauses the whole team (nothing could land).
   assert.equal(budgetGate(true, { default: true, strong: false }, true), "paused");
   assert.equal(budgetGate(true, { default: true, strong: false }, false), "fallback");
   assert.equal(budgetGate(true, { default: false, strong: true }, true), "paused");
@@ -216,7 +216,7 @@ test("the fallback breaker replays the 2026-09-19 hour: three failures demote th
 });
 
 test("the fallback breaker counts consecutive failures: any served tick resets the streak", () => {
-  // Fleet-wide and consecutive: a healthy backend with a flaky tick never trips it.
+  // Team-wide and consecutive: a healthy backend with a flaky tick never trips it.
   let b = fold(engaged(), ["error", "error", "no_change", "error", "error", "queued", "error"]);
   assert.equal(b.failures, 1);
   assert.equal(fallbackServing(b), true);

@@ -15,7 +15,7 @@ import { eventsLogPath } from "../src/paths.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { harnessWarnings } from "./fixtures/log-fixtures.js";
 
-// launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-fleet
+// launchservicesd's Mach-port check (src/doctor/doctor-launch-services.ts) and running-team
 // warning
 // (src/process/launch-services.ts, BUGS.md 2026-09-28): both driven by a fake probe — no test
 // reads the real Mac's daemon (process.test.ts pins the real probe).
@@ -40,7 +40,7 @@ test("the warning names the count, the kill ceiling, the consequence and the onl
   assert.match(w, /restart the Mac/);
 });
 
-test("a fleet warns at the threshold, again every step past its last warning, and re-arms once the daemon restarts", () => {
+test("a team warns at the threshold, again every step past its last warning, and re-arms once the daemon restarts", () => {
   let state: number | null = null;
   const step = (ports: number): boolean => {
     const next = nextLaunchServicesWarning(state, ports);
@@ -73,7 +73,7 @@ test("doctor's port check: ok with the count, a warning past the threshold or wh
   assert.equal(probe.reads, 0, "off macOS the probe is never asked");
 });
 
-test("the fleet's watch samples on its first poll, then at most once per interval, warning through the event feed", async () => {
+test("the team's watch samples on its first poll, then at most once per interval, warning through the event feed", async () => {
   const root = tmpdir();
   const probe = portsProbe(120_000, 125_000, 175_000);
   const watch = new LaunchServicesWatch(root, probe);

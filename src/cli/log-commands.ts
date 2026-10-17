@@ -172,7 +172,7 @@ export async function cmdLogs(root: string, args: string[]): Promise<void> {
       return;
     }
     for (const e of filtered) sayEventLine(e, json);
-    // A sparse window is never mistaken for a quiet fleet — but the note only ever rides rows:
+    // A sparse window is never mistaken for a quiet team — but the note only ever rides rows:
     // with no rows at all (a fresh install's missing log among them) there is nothing sparse to
     // explain, and a flat "rotated out" claim would be false for a log that never had events.
     // The hedged phrasing stays true whenever it prints: the oldest retained event being inside

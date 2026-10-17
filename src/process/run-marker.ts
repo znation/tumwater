@@ -30,7 +30,7 @@ const RUN_MARKER_VAR = "TUMWATER_RUN";
  * sweep will reap it at exit) from a dead run's orphan (nothing will): a future doctor check
  * can report the latter wherever the leak's cwd is. The random half makes the marker unique
  * per run, so one run's sweep can never signal a concurrent sibling run's processes — a
- * machine running the fleet has several pi runs alive at once. */
+ * machine running the team has several pi runs alive at once. */
 export function makeRunMarker(pid = process.pid): string {
   return `${pid}-${crypto.randomBytes(6).toString("hex")}`;
 }
@@ -83,7 +83,7 @@ function psMarkerAssignments(command: string): string[] {
  * to the command column (the marker readers parse it from there), `-ww` keeps argv
  * untruncated, `-U` lists this user's processes. Those are the only ones whose environment
  * `-E` can read, and the only ones a sweep may signal. `-A` scanned every system daemon too
- * (a third of the table on the fleet's host) for environments it could never read. That cost
+ * (a third of the table on the team's host) for environments it could never read. That cost
  * a quarter of each scan, and the end-of-run sweep runs one per pi run (~600 a test-suite
  * run). Without a uid (not a POSIX host) it falls back to `-A`. */
 export async function psEnvironTable(): Promise<string> {

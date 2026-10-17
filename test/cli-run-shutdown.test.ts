@@ -11,22 +11,22 @@ import { pathReplace, writeScript } from "./fakes/fake-commands.js";
 import { gitOnlyBinDir, makeRepo, tmpdir, writeConfig } from "./fixtures/repo-fixtures.js";
 import { fakePi, fakePiIdle, withPi } from "./fakes/fake-pi.js";
 import { cli, exitCode } from "./helpers/cli-harness.js";
-import { onlyCleanRole, withRunningFleet } from "./helpers/run-live-harness.js";
+import { onlyCleanRole, withRunningTeam } from "./helpers/run-live-harness.js";
 
-// A running fleet's boot output and SIGTERM shutdown: the banner and roster, the
+// A running team's boot output and SIGTERM shutdown: the banner and roster, the
 // supervisor_exit trace when a generation dies unasked, SIGTERM forwarded to the child, kill()'s
 // whole-tree teardown, and the agentBin startup path. The pre-boot guards live in
 // cli-run-guards.test.ts, the terminal-Ctrl+C handling in cli-run-sigint.test.ts, the forced
 // second Ctrl+C in cli-run-force-exit.test.ts, the --for/--gui live modes in
 // cli-run-window.test.ts, and the scoped --once round in cli-run-once.test.ts.
 
-test("a generation that dies unasked leaves a supervisor_exit event: the fleet is never down without a trace", async () => {
+test("a generation that dies unasked leaves a supervisor_exit event: the team is never down without a trace", async () => {
   // BUGS.md 2026-09-23: a respawned child exited "not initialized" and events.jsonl simply ended.
   // Here the child dies at startup on something outside the startup gate (every role disabled —
   // the orchestrator's own refusal), so the supervisor passes the gate, spawns, and must record
   // the death itself; the gate re-asked afterwards passes, so the event carries no guessed reason.
   const repo = makeRepo();
-  await initProject(repo, "cli run fleet down");
+  await initProject(repo, "cli run team down");
   const cfg = defaultConfig();
   for (const role of Object.values(cfg.roles)) role.enabled = false;
   writeConfig(repo, cfg);
@@ -42,10 +42,10 @@ test("a generation that dies unasked leaves a supervisor_exit event: the fleet i
   });
 });
 
-test("a fleet that goes down unasked runs the notify hook once", async () => {
+test("a team that goes down unasked runs the notify hook once", async () => {
   const repo = makeRepo();
-  await initProject(repo, "cli run fleet down notify");
-  const out = path.join(tmpdir("notify-fleet-down-"), "out.txt");
+  await initProject(repo, "cli run team down notify");
+  const out = path.join(tmpdir("notify-team-down-"), "out.txt");
   const cfg = defaultConfig();
   for (const role of Object.values(cfg.roles)) role.enabled = false;
   cfg.notify = `echo "$TUMWATER_EVENT_TYPE|$TUMWATER_EVENT_SOURCE" >> ${out}`;
@@ -61,12 +61,12 @@ test("a fleet that goes down unasked runs the notify hook once", async () => {
   });
 });
 
-test("run starts the fleet, prints its banner, and stops cleanly on SIGTERM", async () => {
+test("run starts the team, prints its banner, and stops cleanly on SIGTERM", async () => {
   const repo = makeRepo();
   await initProject(repo, "cli run lifecycle");
 
   onlyCleanRole(repo);
-  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
+  await withRunningTeam(repo, fakePi("exit 0"), async (s) => {
     assert.match(s.out(), /roles: clean/);
 
     // The top-level process is the supervisor (src/process/supervisor.ts), not the orchestrator:
@@ -95,7 +95,7 @@ test("run's banner lists one loop per instance, so the CLI roster matches the ru
   onlyCleanRole(repo, (cfg) => {
     cfg.roles.feature = { ...(cfg.roles.feature ?? { enabled: true }), enabled: true, instances: 2 };
   });
-  await withRunningFleet(repo, fakePiIdle(), async (s) => {
+  await withRunningTeam(repo, fakePiIdle(), async (s) => {
     // Startup's `enabled` must be `loopIds`, not `enabledRoleIds`: the roster the banner names
     // is the roster the orchestrator starts runners for.
     assert.match(s.out(), /roles: [^\n]*feature, feature-2/);
@@ -113,7 +113,7 @@ test("kill() alone tears down the whole run tree: the pipes close, nothing is or
   await initProject(repo, "cli run kill teardown");
   onlyCleanRole(repo);
 
-  await withRunningFleet(repo, fakePi("exit 0"), async (s) => {
+  await withRunningTeam(repo, fakePi("exit 0"), async (s) => {
     // No SIGTERM here — kill() is the only stop, the exact shape of a finally after a failed
     // assertion. The supervisor gets SIGTERM and forwards it (graceful stop); anything still
     // alive after the grace gets the process-group SIGKILL. Either way the generation dies
@@ -136,7 +136,7 @@ test("kill() alone tears down the whole run tree: the pipes close, nothing is or
 });
 
 // Criterion 1 of plans/portability.md §5/7: with pi absent from PATH but agentBin set to an
-// absolute path, the fleet starts and ticks normally. The lifecycle mirrors the SIGTERM test
+// absolute path, the team starts and ticks normally. The lifecycle mirrors the SIGTERM test
 // above, but PATH holds only git — the agent binary comes from tumwater.json alone.
 test("run starts and ticks with agentBin when pi is absent from PATH", async () => {
   const repo = makeRepo();
@@ -150,7 +150,7 @@ test("run starts and ticks with agentBin when pi is absent from PATH", async () 
   onlyCleanRole(repo, (cfg) => (cfg.agentBin = stub));
 
   // spawnCli copies process.env, so the child sees this PATH.
-  await withRunningFleet(repo, pathReplace(binDir), async (s) => {
+  await withRunningTeam(repo, pathReplace(binDir), async (s) => {
     s.child.kill("SIGTERM");
     const code = await exitCode(s.child);
     assert.equal(code, 0, `expected clean exit after SIGTERM; output so far:\n${s.out()}`);

@@ -393,7 +393,7 @@ test("consecutive quiet kills raise one warning per episode, then drop the starv
 // any unexpected exception (a bug in a new code path, a failed git call, …) must be caught
 // by tick()'s defensive branch and degrade the same way. Without it the rejection would
 // escape into the orchestrator's task wrapper as an unhandled rejection — crashing the whole
-// fleet over one loop's surprise.
+// team over one loop's surprise.
 test("an unexpected throw inside runTick degrades to an error result instead of escaping", async () => {
   const repo = await initializedRepo();
   const runner = makeLoopRunner(repo, "clean");

@@ -6,7 +6,7 @@
 /** Group items by a key, preserving first-seen key order and input order within each group.
  * The single home of the "append to a Map of arrays" step, shared by the event bucketers
  * (history-data.ts's bucketLandingEvents, failure/time-spend.ts's rejected-by-loop pass) and
- * the fleet-hold poll's observations-by-provider grouping (team-polls.ts's pollFleetHold), so
+ * the team-hold poll's observations-by-provider grouping (team-polls.ts's pollTeamHold), so
  * those sites cannot drift on how a missing key is seeded. Returns a fresh Map; the input is
  * never mutated. */
 export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T[]> {
@@ -20,7 +20,7 @@ export function groupBy<T, K>(items: Iterable<T>, key: (item: T) => K): Map<K, T
 /** Return `map`'s value for `key`, creating and storing `make()`'s result first when the key is
  * absent — the single home of the `map.get(key) ?? fresh; …; map.set(key, value)` step, shared
  * by the failure digest's per-role stats, outcome, and prompt-token accumulators (failure-data.ts),
- * its time-and-spend per-role row (time-spend.ts), the fleet hold's provider+kind grouping
+ * its time-and-spend per-role row (time-spend.ts), the team hold's provider+kind grouping
  * (team-hold.ts), the error-storm reducer's roles-by-key set (src/team/error-storm.ts), and
  * `groupBy` above, so those sites cannot drift on how a missing key is seeded. `make` runs only
  * when the key is absent. A stored value of `undefined` reads as absent, matching the `??` idiom

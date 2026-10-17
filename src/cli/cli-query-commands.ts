@@ -17,8 +17,8 @@ import { renderStatus } from "../ui/status-render.js";
 import { backlogPayload } from "../backlog/backlog.js";
 import { backlogHolds, backlogInProgress } from "../backlog/backlog-eligibility.js";
 import { readyBacklog, renderBacklogMarkdown } from "../backlog/backlog-render.js";
-import { collectFleetChanges, collectRoleChange } from "../change/change-data.js";
-import { renderFleetChange, renderRoleChange } from "../change/change-render.js";
+import { collectTeamChanges, collectRoleChange } from "../change/change-data.js";
+import { renderTeamChange, renderRoleChange } from "../change/change-render.js";
 import { readLandingQueue } from "../landing/landing-queue.js";
 import { renderLandingQueue } from "../landing/landing-queue-render.js";
 import { orchestratorAlive } from "../team/orchestrator-info.js";
@@ -74,13 +74,13 @@ function peelRolePositional(args: string[]): { id: string | null; rest: string[]
   return { id, rest };
 }
 
-/** `tumwater status`: the fleet snapshot as rendered text or as the JSON document GET
+/** `tumwater status`: the team snapshot as rendered text or as the JSON document GET
  * /api/status serves. */
 export async function cmdStatus(root: string, args: string[]): Promise<void> {
   rejectUnknownArgs("status", args, [JSON_FLAG]);
   await requireReadyRepo(root);
   if (args.includes("--json")) {
-    // Machine-readable fleet state — the document GET /api/status serves minus the
+    // Machine-readable team state — the document GET /api/status serves minus the
     // serving process's own `serverBuildSha`, printed with no server. A query, not a
     // health verdict: exit 0 on any successful read and let scripts interpret fields
     // themselves ("running": false is data, not failure).
@@ -94,7 +94,7 @@ export async function cmdStatus(root: string, args: string[]): Promise<void> {
  * `--role <id>`. */
 export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // The repo half of requireReadyRepo still gates: a directory tumwater cannot read yet
-  // (no git, not a repository, no tumwater.json, no commits) has no fleet to ask about,
+  // (no git, not a repository, no tumwater.json, no commits) has no team to ask about,
   // and the change view's own degradation would misreport that as "main branch <name>
   // does not exist" — so the shared readiness wording answers here, like every sibling
   // command. Past the gate an absent worktree still degrades to a `no worktree for
@@ -102,13 +102,13 @@ export async function cmdDiff(root: string, args: string[]): Promise<void> {
   // report's rationale.
   rejectUnknownArgs("diff", args, [ROLE_FLAG, JSON_FLAG, STAT_FLAG]);
   await requireReadyRepo(root);
-  // Absent --role is the fleet-wide form: one line per loop holding pending work
+  // Absent --role is the team-wide form: one line per loop holding pending work
   // (parseRoleFlag returns null only for an absent flag — an empty or unknown value
   // already failed above). A named role keeps the full per-role view.
   const role = parseRoleFlag(args, knownRoleIdsCached(root));
   if (role === null) {
     if (args.includes("--stat")) fail("diff --stat needs --role <id> (the team roster prints no patch)");
-    sayJsonOrRender(args, await collectFleetChanges(root), renderFleetChange);
+    sayJsonOrRender(args, await collectTeamChanges(root), renderTeamChange);
   } else {
     const change = await collectRoleChange(root, role, { stat: args.includes("--stat") });
     sayJsonOrRender(args, change, renderRoleChange);
@@ -291,7 +291,7 @@ function sayAskerWake(root: string, title: string): void {
 export async function cmdRole(root: string, args: string[]): Promise<void> {
   // No requireReadyRepo gate, like backlog: role-view degrades (missing state files →
   // fresh defaults, a missing queue directory an empty inbox), so the command inspects
-  // a repo the fleet never started in — and a torn one — instead of refusing.
+  // a repo the team never started in — and a torn one — instead of refusing.
   const { id: positional, rest } = peelRolePositional(args);
   rejectUnknownArgs("role", rest, [ROLE_FLAG, JSON_FLAG, CLEAR_NOTES_SPEC, NOTES_FILE_SPEC]);
   // The id is required: positional (`tumwater role <id>`) or --role <id> (the flag

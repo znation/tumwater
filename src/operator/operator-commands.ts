@@ -5,15 +5,15 @@ import { failOverDurationCap, flagValue, parseDurationFlag, parseRoleFlag } from
 import { errorMessage } from "../text/text.js";
 import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from "../cli/cli-flag-specs.js";
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
-import { agree, fleetResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
+import { agree, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
   normalizePauseReason,
-  pauseFleet,
+  pauseTeam,
   pauseRole,
   pausedRoles,
-  resumeFleet,
+  resumeTeam,
   resumeRole,
 } from "../team/team-state.js";
 import { readOrchestratorInfo } from "../team/orchestrator-info.js";
@@ -41,15 +41,15 @@ import {
  * `pause`, `resume`, `stop`, and `retire` commands, split out of cli.ts so the command bodies
  * live beside their shared `--role` resolution. The marker-writing cores and shared
  * confirmations they print live in src/operator/operator-intent.ts (shared with the
- * dashboard and TUI); the fleet-side consumer half is src/operator/operator-requests.ts;
+ * dashboard and TUI); the team-side consumer half is src/operator/operator-requests.ts;
  * the `prompt` command, which drives the durable per-loop queues rather than the marker
  * protocol, lives beside them in src/inbox/prompt-commands.ts, and the `config` command,
- * which reads and writes tumwater.json directly rather than touching fleet state, in
+ * which reads and writes tumwater.json directly rather than touching team state, in
  * src/cli/config-commands.ts. Every command here is deliberately usable without a live
- * harness except `abort` and `stop`, which have nothing to reach when no fleet is up. */
+ * harness except `abort` and `stop`, which have nothing to reach when no team is up. */
 
 /** The `--role <id>` value when given, resolved WITHOUT tumwater.json when it names a
- * built-in catalog role: the fleet itself tolerates a broken config (the live reload keeps
+ * built-in catalog role: the team itself tolerates a broken config (the live reload keeps
  * the last-known-good one), so an operator marker aimed at a built-in loop must not depend
  * on the file parsing — the same resilience `logs --role` already has. A custom-loop id or
  * an unknown id falls through to the config-backed check, which fails with the honest error
@@ -92,7 +92,7 @@ export async function cmdResetCounters(root: string, args: string[]): Promise<vo
 }
 
 /** `tumwater wake [--role <id>] [--in <duration> | --cancel | --list [--json]]`: tell the
- * fleet "whatever the loops were failing on is fixed — try again", so the named roles tick
+ * team "whatever the loops were failing on is fixed — try again", so the named roles tick
  * within one poll instead of
  * sleeping until their backoff expires. With `--in`, the wake is scheduled: the marker is
  * written now but consumed no earlier than now + duration, the same shape `pause --for`'s
@@ -134,7 +134,7 @@ export async function cmdWake(root: string, args: string[]): Promise<void> {
 /** `tumwater reclaim [--dry-run]`: run one manual reclaim pass over every harness worktree
  * (plans/disk-floor.md, part 3/4). `--dry-run` lists each candidate with its idle age and how
  * many ignored paths `git clean -ndX` would remove, and changes nothing — it neither cleans a
- * worktree nor writes the worktree-use registry. With a live fleet the
+ * worktree nor writes the worktree-use registry. With a live team the
  * pass is requested through the marker the orchestrator consumes, so in-use worktrees are
  * respected; with none running it runs in-process, since nothing is in use. */
 export async function cmdReclaim(root: string, args: string[]): Promise<void> {
@@ -162,9 +162,9 @@ export async function cmdReclaim(root: string, args: string[]): Promise<void> {
 
 /** `tumwater abort --role <id>`: kill one loop's in-flight tick right now. The CLI cannot
  * reach into the orchestrator process, so the request rides on disk like reset-counters':
- * a per-role marker file a running fleet consumes within one poll cycle (the runner's
+ * a per-role marker file a running team consumes within one poll cycle (the runner's
  * abortTick kills the pi child and resets the worktree to main). Requires a live harness —
- * with no fleet there is nothing to consume the marker. The loop stays enabled: it backs
+ * with no team there is nothing to consume the marker. The loop stays enabled: it backs
  * off normally and later ticks proceed as usual. */
 export async function cmdAbort(root: string, args: string[]): Promise<void> {
   // As in cmdLogs: the config exists only to validate the id against built-ins plus
@@ -181,11 +181,11 @@ export async function cmdAbort(root: string, args: string[]): Promise<void> {
  * ones finish and the director keeps running (its prompts outrank operator gates, like
  * under the budget cap). The markers
  * are persistent state, not one-shot requests: presence means paused until `resume` removes
- * it — so pausing before startup starts an already-paused fleet. Unlike abort, no live
+ * it — so pausing before startup starts an already-paused team. Unlike abort, no live
  * harness is required; when none runs, say where the pause takes effect instead of failing.
  * Idempotent: a second pause reports the existing marker as-is. */
 export async function cmdPause(root: string, args: string[] = [], now: number = Date.now()): Promise<void> {
-  // `--for <duration>` (the timed pause): the ms-epoch deadline pauseFleet/pauseRole write
+  // `--for <duration>` (the timed pause): the ms-epoch deadline pauseTeam/pauseRole write
   // into the marker and every consumer honors — the command's own gate (runMarkerCommand's
   // rejectUnknownArgs) has already restricted the flag to this command and validated its
   // value — shape and the 90-day cap both, via durationFlagSpec("pause --for")'s validate —
@@ -195,7 +195,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // `--reason <text>` (the operator pause's why): the gate in cli.ts has already restricted
   // the flag to this command, and its trailing-no-value slip to the spec's wording, so here
   // a valueless or empty reason fails with that same line beside the writer it feeds. The
-  // reason folds to one line (normalizePauseReason, the same home pauseFleet writes through)
+  // reason folds to one line (normalizePauseReason, the same home pauseTeam writes through)
   // so the confirmation line, the marker, and every single-line surface carry the same text
   // — a raw newline in the flag's value would otherwise break the header's one-line badge.
   const reasonRaw = flagValue(args, "--reason");
@@ -230,13 +230,13 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
     say(rolePauseMessage(root, role, pauseRole(root, role, untilMs), timed, now));
     return;
   }
-  // pauseFleet in src/team/team-state.ts is the single writer of the pause marker — the GUI's
+  // pauseTeam in src/team/team-state.ts is the single writer of the pause marker — the GUI's
   // /api/pause toggle calls it too, so the CLI and the dashboard cannot drift on format
   // or idempotence; a false return means the marker was already there (a `--for` never
   // no-ops: it overwrites the standing deadline instead).
   // The reason rides the fresh pause write (or a `--for` overwrite): the same last-write-wins
   // rule as the deadline, so an "already paused" no-op keeps the standing note as-is.
-  if (!pauseFleet(root, untilMs, reason)) {
+  if (!pauseTeam(root, untilMs, reason)) {
     say("already paused");
     return;
   }
@@ -299,7 +299,7 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
   if (!info || !pidAlive(info.pid)) {
     fail(NO_HARNESS_ERROR);
   }
-  // A pid that dies between the liveness check and the signal (ESRCH) means the fleet is
+  // A pid that dies between the liveness check and the signal (ESRCH) means the team is
   // already stopped — say so and exit clean rather than surfacing Node's raw kill error;
   // anything else (EPERM on a recycled pid, …) comes back as signalOrchestrator's message.
   if (signalOrchestrator(info.pid) === "signalled")
@@ -309,7 +309,7 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
 }
 
 /** `tumwater resume [--role <id>]`: with a role, lift that one role's pause (removed from the
- * per-role marker set); without one, lift a fleet pause by removing its marker. Idempotent
+ * per-role marker set); without one, lift a team pause by removing its marker. Idempotent
  * like pause: with no marker there is nothing to do. No live harness required — resuming
  * before startup just means the next `tumwater run` starts unpaused. */
 export async function cmdResume(root: string, args: string[] = []): Promise<void> {
@@ -321,21 +321,21 @@ export async function cmdResume(root: string, args: string[] = []): Promise<void
     say(roleResumeMessage(root, role, resumeRole(root, role)));
     return;
   }
-  // resumeFleet (src/team/team-state.ts) is the single remover, shared with the GUI toggle;
+  // resumeTeam (src/team/team-state.ts) is the single remover, shared with the GUI toggle;
   // a false return means there was no marker to lift.
-  if (!resumeFleet(root)) {
+  if (!resumeTeam(root)) {
     say("not paused");
     return;
   }
   const { when, tail } = markerApplyNote(root);
-  // The per-role pause outlives a fleet resume (the markers are independent), so the resumed
-  // fleet's confirmation must name the roles still individually paused instead of claiming
+  // The per-role pause outlives a team resume (the markers are independent), so the resumed
+  // team's confirmation must name the roles still individually paused instead of claiming
   // "role loops tick again" for loops the scheduler keeps gated.
   const still = pausedRoles(root);
   const roleNote = still.length > 0
     ? ` (${still.join(", ")} ${agree(still.length, "is", "are")} still individually paused — \`tumwater resume --role <id>\` lifts each)`
     : "";
-  say(`${fleetResumePhrase()}${when}${roleNote}${tail}`);
+  say(`${teamResumePhrase()}${when}${roleNote}${tail}`);
 }
 
 /** The role id retire targets: a built-in or configured id as for the other marker commands, or

@@ -268,7 +268,7 @@ test("a broken tumwater.json still reloads when the event log is unwritable", ()
   const { root, live } = liveReload(config);
   live.poll();
   // events.jsonl as a directory makes every logEvent/warnEvent append throw (EISDIR). The
-  // invalid-config warning must not take the fleet down with it: poll() is called from the
+  // invalid-config warning must not take the team down with it: poll() is called from the
   // orchestrator's poll loop, which has no catch.
   fs.mkdirSync(eventsLogPath(root), { recursive: true });
   fs.writeFileSync(`${root}/tumwater.json`, "{not json");
@@ -281,7 +281,7 @@ test("enabling a role mid-run appends a runner; disabling one warns that its tic
   const qaRole = config.roles.qa ?? { enabled: true };
   config.roles.qa = { ...qaRole, enabled: false };
   const { root, runners, live } = liveReload(config);
-  // The first poll syncs the fleet: every enabled role missing from the list gets a runner,
+  // The first poll syncs the team: every enabled role missing from the list gets a runner,
   // so qa (disabled) is the only catalog role without one.
   live.poll();
   assert.ok(!runners.some((r) => r.role === "qa"));
@@ -311,7 +311,7 @@ test("a scoped round's filter skips runners for other roles, and still logs thei
   const qaRole = config.roles.qa ?? { enabled: true };
   config.roles.qa = { ...qaRole, enabled: true };
   const { root, runners, live } = liveReload(config, "improve");
-  // The first poll's fleet sync honors the filter too: qa is enabled on disk but gets no
+  // The first poll's team sync honors the filter too: qa is enabled on disk but gets no
   // runner, because the round was scoped before it booted.
   live.poll();
   assert.ok(!runners.some((r) => r.role === "qa"), "no runner for the filtered-out role");
@@ -354,8 +354,8 @@ test("raising an instance count appends the new loop's runner; lowering keeps it
 
 test("a live edit adding a claude reviewer verifies the binary and seeds the account once", () => {
   // plans/provider-concurrency.md §9 gap 1: before seeking, a live edit that added a claude
-  // seam to a pi fleet re-ran neither the backend's binary check nor the account seed — the
-  // fleet then ran the reviewer unverifiably and, with no account file, the budget priced it
+  // seam to a pi team re-ran neither the backend's binary check nor the account seed — the
+  // team then ran the reviewer unverifiably and, with no account file, the budget priced it
   // at the cap. Now the reload checks the newly-routed backend and seeds once per root, with a
   // missing binary a warning event rather than a crash.
   const start = cloneConfig(defaultConfig());
@@ -381,7 +381,7 @@ test("a live edit adding a claude reviewer verifies the binary and seeds the acc
   assert.equal(readEvents(root).filter((e) => e.type === "backend_binary").length, 1);
 });
 
-test("a live edit adding a missing claude binary warns but keeps the fleet running", () => {
+test("a live edit adding a missing claude binary warns but keeps the team running", () => {
   const start = cloneConfig(defaultConfig());
   start.review = { ...(start.review ?? {}), enabled: true };
   const { root, live } = liveReload(start);
@@ -394,6 +394,6 @@ test("a live edit adding a missing claude binary warns but keeps the fleet runni
   const warnings = warnMessages(root).filter((m) => m.includes("newly routed claude backend"));
   assert.equal(warnings.length, 1, "a missing newly-routed binary warns, once");
   assert.match(warnings[0] ?? "", /\/no\/such\/claude/);
-  // The fleet kept running: the poll returned the live config, no throw.
+  // The team kept running: the poll returned the live config, no throw.
   assert.equal(readEvents(root).some((e) => e.type === "backend_binary"), false);
 });

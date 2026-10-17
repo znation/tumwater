@@ -110,9 +110,9 @@ test("report --since narrows Revisions by role to the scoped base role", async (
     JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "revision", action: "conflict", round: 1, sha: "def" }),
   ]);
 
-  const fleet = await runCli(root, "report", "--since", "6h");
-  assert.equal(fleet.code, 0);
-  assert.match(fleet.out, /\*\*Revisions by role:\*\* clean — 1 · feature — 1/, "the fleet window sums both roles' revisions, ranked name asc on a tie");
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Revisions by role:\*\* clean — 1 · feature — 1/, "the team window sums both roles' revisions, ranked name asc on a tie");
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
   assert.equal(scoped.code, 0);
@@ -158,9 +158,9 @@ test("report --since folds failed ticks by role and narrows to the scoped base r
     JSON.stringify({ ts: ago(30 * 60_000), loop: "clean", type: "run_end", run: 2, result: "no_change", tokens: 5 }),
   ]);
 
-  const fleet = await runCli(root, "report", "--since", "6h");
-  assert.equal(fleet.code, 0);
-  assert.match(fleet.out, /\*\*Failed runs by role:\*\* feature — 1/, "the fleet window counts only the error-class role (no_change is not a failure)");
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Failed runs by role:\*\* feature — 1/, "the team window counts only the error-class role (no_change is not a failure)");
 
   const scoped = await runCli(root, "report", "--role", "feature", "--since", "6h");
   assert.equal(scoped.code, 0);
@@ -191,7 +191,7 @@ test("renderReportMarkdown prints commits by role and the work/maintenance split
 
 test("renderReportMarkdown shows the landing line under Totals only when landing ran", () => {
   const base = collectReport(tmpdir(), 2);
-  // Zero landing runs: the line is omitted entirely, so a fleet with no landing spend
+  // Zero landing runs: the line is omitted entirely, so a team with no landing spend
   // renders byte-identically to the pre-landing-line shape.
   assert.ok(!renderReportMarkdown(base).includes("landing runs"));
   const data: ReportData = {
@@ -317,7 +317,7 @@ test("renderReportMarkdown prints a Cost by role line ranked by spend desc then 
   assert.match(md, /\*\*Totals:\*\* 0 output tokens · 5 runs · 0 commits · \$2\.10 ·/);
 });
 
-test("renderReportMarkdown folds providerCost into Cost by provider and Estimated by provider, fleet-only", () => {
+test("renderReportMarkdown folds providerCost into Cost by provider and Estimated by provider, team-only", () => {
   const root = makeRepo();
   // A multi-provider day: the default provider's real spend and a claude subscription seam's
   // notional spend ride two run_ends' providerCost, and a landing's reviewer spend keys to
@@ -339,7 +339,7 @@ test("renderReportMarkdown folds providerCost into Cost by provider and Estimate
   assert.match(md, /\*\*Cost by role:\*\* feature — \$1\.50/);
   assert.match(md, /\*\*Totals:\*\* 35 output tokens · 2 runs · 0 commits · \$1\.90 ·/);
   // A role-scoped report prints no provider line — a provider is not a role, so the attribution
-  // is fleet-only (ROLE_SCOPE_NOTE stays unchanged).
+  // is team-only (ROLE_SCOPE_NOTE stays unchanged).
   const scoped = renderReportMarkdown(collectReport(root, 2, "feature"));
   assert.ok(!scoped.includes("Cost by provider"), "a role-scoped report omits the provider line");
 });
@@ -727,7 +727,7 @@ test("report --json --days prints the collector's payload; the Markdown render i
 
 test("report --since --role omits Estimated by role when the scoped role spent none", async () => {
   const root = makeRepo();
-  // The fleet window has notional spend (plan's tick), but feature spends none — scoping to
+  // The team window has notional spend (plan's tick), but feature spends none — scoping to
   // feature must drop the line/field, not render an empty "Estimated by role: -".
   writeEvents(root, [
     JSON.stringify({ ts: ago(10 * 60_000), loop: "plan", type: "run_end", run: 1, result: "changed", tokens: 10, notionalCostUsd: 0.5 }),
@@ -743,9 +743,9 @@ test("report --since --role omits Estimated by role when the scoped role spent n
   assert.deepEqual(scopedJson.commitsByRole, { feature: 1 });
   assert.ok(!("notionalByRole" in scopedJson), "the scoped role's JSON carries no notionalByRole");
 
-  const fleet = await runCli(root, "report", "--since", "6h");
-  assert.equal(fleet.code, 0);
-  assert.match(fleet.out, /\*\*Estimated by role:\*\* plan — \$0\.50/, "the fleet window still shows the notional spend");
+  const team = await runCli(root, "report", "--since", "6h");
+  assert.equal(team.code, 0);
+  assert.match(team.out, /\*\*Estimated by role:\*\* plan — \$0\.50/, "the team window still shows the notional spend");
 });
 
 test("report --json --since prints the window totals with the coverage proof", async () => {
@@ -854,7 +854,7 @@ test("report --json --since carries mergeFailed when a landing fails and omits i
   assert.ok(!("mergeFailed" in cleanParsed.totals), "a failure-free --since window omits mergeFailed");
 });
 
-test("fleet day report breaks landing outcomes down by role, folding instances into their base", async () => {
+test("team day report breaks landing outcomes down by role, folding instances into their base", async () => {
   const root = makeRepo();
   // feature-2's destination event must aggregate under feature (the same base-role keying as
   // Commits by role); bufixes' merge_failed bounces off the gate under bugfix.
@@ -866,7 +866,7 @@ test("fleet day report breaks landing outcomes down by role, folding instances i
   assert.equal(md.code, 0);
   assert.match(md.out, /\*\*Merged by role:\*\* feature — 1/, "landed outcome folds feature-2 into feature");
   assert.match(md.out, /\*\*Merge failures by role:\*\* bugfix — 1/, "the gate's merge_failed names its authoring role");
-  // The fleet totals stay exactly what they were: the per-role maps are a parallel tally.
+  // The team totals stay exactly what they were: the per-role maps are a parallel tally.
   assert.match(md.out, /of which merge runs: 2 runs \(1 failed\)/);
 
   // The collector's day series and window totals carry the per-role maps too (zero-means-absent).
@@ -878,7 +878,7 @@ test("fleet day report breaks landing outcomes down by role, folding instances i
   assert.equal(direct.totals.mergeFailed, 1);
 });
 
-test("fleet day report omits Merge failures by role when none fail; a landing-free window omits both", async () => {
+test("team day report omits Merge failures by role when none fail; a landing-free window omits both", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: at(0), loop: "feature", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
@@ -901,7 +901,7 @@ test("role-scoped day report omits the landing lines (landing runs are the landi
   assert.match(md.out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
 });
 
-test("fleet report --since breaks landing outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
+test("team report --since breaks landing outcomes by role and the scoped --since omits them; JSON carries the maps", async () => {
   const root = makeRepo();
   writeEvents(root, [
     JSON.stringify({ ts: ago(5 * 60_000), loop: "feature-2", type: "merge_done", commit: "abc1234", summary: "x", tokens: 45_200, costUsd: 0.84 }),
@@ -977,7 +977,7 @@ test("renderReportMarkdown scopes a role report: role line, no backlog tail, sco
   const out = renderReportMarkdown(data);
   assert.match(out, /^role: feature$/m);
   assert.match(out, /^\*\*Totals:\*\* 500 output tokens · 1 runs · 1 commits · \$0\.50$/m);
-  assert.ok(!out.includes('features done · 0 bugs fixed'), "the fleet backlog cells are dropped from the totals line");
+  assert.ok(!out.includes('features done · 0 bugs fixed'), "the team backlog cells are dropped from the totals line");
   assert.ok(!out.includes("of which merge runs"), "no landing-share line prints");
   assert.match(out, /role scope: merge runs and backlog tallies \(features done \/ bugs fixed\) are team-wide and omitted/);
 });
@@ -996,8 +996,8 @@ test("tumwater report --role scopes the report, scopes --since/--json, and valid
   assert.ok(!scoped.out.includes("42 output tokens"), "the other role's tokens are excluded");
   assert.match(scoped.out, /role scope: merge runs and backlog tallies/);
 
-  const fleet = await runCli(root, "report");
-  assert.ok(!/^role:/m.test(fleet.out), "the fleet report carries no role line");
+  const team = await runCli(root, "report");
+  assert.ok(!/^role:/m.test(team.out), "the team report carries no role line");
 
   const json = JSON.parse((await runCli(root, "report", "--role", "feature", "--json")).out) as {
     role?: string;

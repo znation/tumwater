@@ -355,11 +355,11 @@ test("formatEvent renders question_posted with the posted heading and no warning
     ts: 0,
     source: "feature",
     type: "question_posted",
-    question: "Should we support multiple repos per fleet?",
+    question: "Should we support multiple repos per team?",
   } as never);
   assert.match(
     line,
-    /feature\s+question posted: Should we support multiple repos per fleet\?/,
+    /feature\s+question posted: Should we support multiple repos per team\?/,
     `the posted heading must show verbatim: ${line}`,
   );
   assert.ok(!line.includes("warning"), `a posted question is routine, not a warning: ${line}`);
@@ -551,7 +551,7 @@ test("formatEvent renders a user_aborted run_end with its result verbatim", () =
 test("formatEvent renders the self-redeploy events and the build stamp on orchestrator_start", () => {
   // Build provenance (src/build/build-info.ts, src/redeploy/redeploy.ts): a stale build is the one
   // fact about
-  // the fleet nothing inside it can otherwise see, so its events must name both commits.
+  // the team nothing inside it can otherwise see, so its events must name both commits.
   const start = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_start", pid: 7, build: "abcdef1234567890" } as never);
   assert.match(start, /tumwater started \(pid 7, version abcdef12\)/);
   const bare = formatEvent({ ts: 0, source: "tumwater", type: "orchestrator_start", pid: 7 } as never);
@@ -589,7 +589,7 @@ test("formatEvent renders the self-redeploy events and the build stamp on orches
   assert.match(restartTorn, /\(finished current work in 0m\)$/, `corrupt drain/abort counts must read zero: ${restartTorn}`);
   assert.doesNotMatch(restartTorn, /NaN|true tick/);
 
-  // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead fleet says so.
+  // BUGS.md 2026-09-23: a refused restart names both builds and the reason; a dead team says so.
   const refused = formatEvent({
     ts: 0, source: "tumwater", type: "restart_refused", from: "a".repeat(40), to: "b".repeat(40), reason: "not initialized",
   } as never);

@@ -8,7 +8,7 @@
  * statically loads only the argument parsing, output, repo gate and help it shares, so
  * `tumwater report` never pays for the orchestrator or ink, and `tumwater logs` never pays for
  * the status collectors. A process that starts, runs one command and exits (the CLI as the
- * fleet's agents and the test suite call it, ~700 spawns a suite run) otherwise compiled all
+ * team's agents and the test suite call it, ~700 spawns a suite run) otherwise compiled all
  * 169 modules every time. The work itself lives in the command
  * modules; this file owns the shared sequence, including each case's flag rejection and its
  * ready-repo gate. An error escaping main() funnels through its catch to fail(errorMessage(err)),
@@ -95,10 +95,10 @@ async function main(): Promise<void> {
   const root = (await repoToplevel(process.cwd())) ?? process.cwd();
   switch (command) {
     case "init":
-      // Imported lazily: cli/cli-run.ts pulls the whole fleet-booting subgraph (orchestrator,
+      // Imported lazily: cli/cli-run.ts pulls the whole team-booting subgraph (orchestrator,
       // supervisor, redeploy, launch-services — the run path's machinery), and every other
       // command's spawn pays module compilation for it unless the dispatch defers that load
-      // to the commands that actually boot or serve a fleet.
+      // to the commands that actually boot or serve a team.
       await (await import("./cli/cli-run.js")).cmdInit(root, args);
       break;
     case "start":

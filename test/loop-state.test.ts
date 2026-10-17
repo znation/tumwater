@@ -10,7 +10,7 @@ import {
   saveLoopState,
   zeroCounters,
 } from "../src/loop/loop-state.js";
-import { isFleetPaused, pauseFleet, resumeFleet } from "../src/team/team-state.js";
+import { isTeamPaused, pauseTeam, resumeTeam } from "../src/team/team-state.js";
 import { orchestratorAlive, readOrchestratorInfo } from "../src/team/orchestrator-info.js";
 import { dailyCost, todayStamp } from "../src/budget/budget.js";
 import type { LoopState } from "../src/loop/loop-state.js";
@@ -42,24 +42,24 @@ test("loadLoopState returns fresh defaults when no file exists", () => {
   assert.deepEqual(loadLoopState(dir, "clean"), freshLoopState("clean"));
 });
 
-test("pauseFleet and resumeFleet write the pause marker and report whether state changed", () => {
+test("pauseTeam and resumeTeam write the pause marker and report whether state changed", () => {
   const dir = tmpdir(); // fresh repo: no .tumwater/ yet — writeJsonAtomic must create it
-  assert.equal(isFleetPaused(dir), false);
+  assert.equal(isTeamPaused(dir), false);
 
-  assert.equal(pauseFleet(dir), true, "the first pause changes state");
-  assert.equal(isFleetPaused(dir), true);
+  assert.equal(pauseTeam(dir), true, "the first pause changes state");
+  assert.equal(isTeamPaused(dir), true);
   const marker = readJson(pausedPath(dir)) as { at: number };
   assert.deepEqual(Object.keys(marker), ["at"], "the marker keeps the CLI's { at } shape");
   assert.equal(typeof marker.at, "number");
 
-  assert.equal(pauseFleet(dir), false, "a repeat pause is a no-op");
-  assert.equal(isFleetPaused(dir), true);
+  assert.equal(pauseTeam(dir), false, "a repeat pause is a no-op");
+  assert.equal(isTeamPaused(dir), true);
 
-  assert.equal(resumeFleet(dir), true, "resume lifts the marker");
-  assert.equal(isFleetPaused(dir), false);
+  assert.equal(resumeTeam(dir), true, "resume lifts the marker");
+  assert.equal(isTeamPaused(dir), false);
   assert.equal(fs.existsSync(pausedPath(dir)), false);
 
-  assert.equal(resumeFleet(dir), false, "resume without a marker is a no-op");
+  assert.equal(resumeTeam(dir), false, "resume without a marker is a no-op");
 });
 
 test("saveLoopState creates the state dir and round-trips without leaving a temp file", () => {

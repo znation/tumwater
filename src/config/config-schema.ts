@@ -121,11 +121,11 @@ interface ReviewConfig {
   timeoutSeconds?: number;
 }
 
-/** The free ("cost n/a") model the fleet falls back to once the daily cost budget is spent
+/** The free ("cost n/a") model the team falls back to once the daily cost budget is spent
  * (plans/fallback-model.md). Each field falls back to the top-level value, exactly like a
  * role's or the reviewer's overrides — so naming only `model` keeps the current provider.
  * The pair is engaged ONLY when pi's models.json prices it at zero; an unknown, unpriced-by-
- * absence, or paid pair is refused and the fleet pauses as it did before, because a fallback
+ * absence, or paid pair is refused and the team pauses as it did before, because a fallback
  * that can spend would defeat the cap it is meant to survive. */
 export interface FallbackModelConfig {
   /** pi provider for fallback runs; falls back to the top-level value. */
@@ -218,8 +218,8 @@ export interface TumwaterConfig {
    * so a test or later backend can register an id outside the schema's reserved AGENT_IDS;
    * validation still rejects an unknown id in a loaded file. */
   backend?: string;
-  /** The branch the fleet merges into and bases every role worktree on — the resolved
-   * "main". Omitted, the fleet targets whatever branch the primary checkout has checked
+  /** The branch the team merges into and bases every role worktree on — the resolved
+   * "main". Omitted, the team targets whatever branch the primary checkout has checked
    * out (the default that makes it branch-agnostic); an explicit value must exist. */
   baseBranch?: string;
   /** The project's own verification command (plans/portability.md §6/7) — what the review
@@ -253,10 +253,10 @@ export interface TumwaterConfig {
    * waiting role tick (land-queue speed 2c). Only the director's own ticks run outside it. */
   maxConcurrent: number;
   /** Per-provider concurrency caps (plans/provider-concurrency.md §1): how many runs each
-   * model provider serves at once, beside the fleet-wide `maxConcurrent`. A map from provider
+   * model provider serves at once, beside the team-wide `maxConcurrent`. A map from provider
    * key (§2: a backend's own id for claude, else the pi provider) to a positive integer. A
    * role tick, a landing vet or a conflict resolver starts when BOTH its provider and the
-   * fleet have headroom; providers never wait on each other. An absent key is uncapped —
+   * team have headroom; providers never wait on each other. An absent key is uncapped —
    * bounded by `maxConcurrent` alone — and a config without the key behaves exactly as
    * before. Unknown provider names are accepted (doctor warns in part 5/5); an entry at or
    * above `maxConcurrent` is legal but inert. Optional and absent by default. */
@@ -297,7 +297,7 @@ export interface TumwaterConfig {
   logMaxBytes: number;
   /** Delete pi session files older than this many days at orchestrator start (0 disables). */
   sessionRetentionDays: number;
-  /** Daily cost budget in USD for the fleet's autonomous spend: while the sum of every loop's
+  /** Daily cost budget in USD for the team's autonomous spend: while the sum of every loop's
    * spend for the local day has reached this, role loops stop starting new ticks until the next
    * local midnight or a live edit raises/disables it (0 disables). The director is exempt — an
    * explicit human prompt outranks the autonomous-spend cap. See plans/daily-cost-budget.md. */
@@ -323,16 +323,16 @@ export interface TumwaterConfig {
    * schedule, exactly as under the budget gate and the operator pause. */
   quietHours?: string;
   /** Per-role quiet hours (PLANS.md): the scheduled sibling of `maxDailyCostUsdPerRole` —
-   * keyed by role id, each value the same "HH:MM-HH:MM" window the fleet-wide `quietHours`
+   * keyed by role id, each value the same "HH:MM-HH:MM" window the team-wide `quietHours`
    * takes (wrapping included; an empty string or an absent key means off for that role). A
    * loop whose own window covers the local wall clock starts no new ticks — in-flight ticks
-   * finish — while the fleet-wide window keeps working unchanged: a role is held when
-   * EITHER window covers now. The director is exempt, exactly as under the fleet window. */
+   * finish — while the team-wide window keeps working unchanged: a role is held when
+   * EITHER window covers now. The director is exempt, exactly as under the team window. */
   quietHoursPerRole?: Record<string, string>;
   /** Disk floor (plans/disk-floor.md, "Disk floor 1/4"): the free-space floor in GB
    * (10^9 bytes) for the volume holding `.tumwater/worktrees`. When free space drops below
    * it, no new work starts — role ticks, the director, landing vets and merges — until free
-   * space climbs back to `diskHoldGB` + 5 GB (the hysteresis that keeps a fleet hovering at
+   * space climbs back to `diskHoldGB` + 5 GB (the hysteresis that keeps a team hovering at
    * the line from flapping). In-flight work runs on. 0 disables the hold, lifting an active
    * one on the next poll. Default 10. */
   diskHoldGB: number;
@@ -367,7 +367,7 @@ export interface TumwaterConfig {
   fallback?: string | FallbackStep[] | Partial<Record<ModelTier, FallbackChain>>;
   /** The free model role loops switch to when `maxDailyCostUsd` is reached, instead of
    * stopping for the rest of the local day (plans/fallback-model.md). With one configured and
-   * verifiable as cost-free in pi's models.json, the budget gate degrades the fleet to free
+   * verifiable as cost-free in pi's models.json, the budget gate degrades the team to free
    * work rather than pausing it: spend cannot advance, so the cap still holds. Absent (the
    * default) — or present but not verifiably free — the gate pauses role loops exactly as
    * before. The director is outside both behaviors: it keeps the budgeted model, because an
@@ -387,7 +387,7 @@ export interface TumwaterConfig {
   /** Friction threshold in wall-clock minutes, same semantics as thrashTurns. */
   thrashMinutes: number;
   idleBackoff: BackoffConfig;
-  /** Self-redeploy for a self-hosting fleet (src/redeploy/redeploy.ts): when main's build inputs
+  /** Self-redeploy for a self-hosting team (src/redeploy/redeploy.ts): when main's build inputs
    * move past the running build and main is green, rebuild, drain, and restart onto the new code
    * (default true). Off, the dashboards still flag the build as stale but nothing restarts. */
   autoRestart: boolean;
@@ -500,7 +500,7 @@ export const MODEL_TRIPLE_KEYS = ["provider", "model", "thinking"];
 
 /** pi's accepted `--thinking` levels (pi's own `--help`). pi WARNS and falls back to its own
  * default on any other value rather than failing, so a misspelled level would silently run the
- * fleet at the wrong reasoning depth — the same silent-ignore class validation exists to
+ * team at the wrong reasoning depth — the same silent-ignore class validation exists to
  * catch. Kept in sync with pi's CLI (dist/cli/args.js VALID_THINKING_LEVELS). */
 export const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
 

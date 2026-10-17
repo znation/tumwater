@@ -39,7 +39,7 @@ export function execFileAsync(
  * Returns a disposer that detaches `fn`. A `{ once: true }` listener detaches itself when the
  * signal fires, so a caller whose work outlives the abort need not dispose; a caller that
  * settles while the signal is still live MUST run the disposer, or a long-lived signal — the
- * fleet shutdown, wired once per landing — accumulates one listener and its closure per task
+ * team shutdown, wired once per landing — accumulates one listener and its closure per task
  * that ever settled. */
 export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): () => void {
   if (!signal) return () => {};
@@ -54,7 +54,7 @@ export function runOnAbort(signal: AbortSignal | undefined, fn: () => void): () 
 /** True when a process with this pid exists — a signal-0 send, which cannot affect the
  * target. Any error reads as "not alive": no such process (ESRCH), or permission denied
  * (EPERM, e.g. the pid was recycled by another user's process) — the harness only probes
- * pids of its own fleet, so a live foreign holder must not be mistaken for one of ours.
+ * pids of its own team, so a live foreign holder must not be mistaken for one of ours.
  *
  * Anything that is not a positive integer reads as not alive without probing: signal 0
  * treats pid 0 as the caller's own process GROUP and a negative pid as another group
@@ -86,7 +86,7 @@ export function pidAlive(pid: number): boolean {
  * no process holds any more (the one state in which a recycled pid could make it another
  * group; the kernel never reissues the number while a member lives). The timer is unref'd and
  * never awaited: the run resolves as soon as pi's output is in, and only a SIGTERM-trapping
- * straggler waits on the escalation — holding every run up to 10 s for it would slow the fleet
+ * straggler waits on the escalation — holding every run up to 10 s for it would slow the team
  * to cover what the SIGTERM already covers, and a finished harness process is not kept alive
  * by it. */
 export function terminateChild(child: ChildProcess): void {
@@ -146,7 +146,7 @@ export function childEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
  * launchservicesd keeps a Mach port for every process that ever checked in and never releases it
  * when the process exits (one port per process, measured on macOS 27.0 and seen in 26.6.2's logs),
  * and the kernel kills the daemon near 268K ports — which wedged the GUI session of the Mac
- * running the fleet on 2026-09-25 (BUGS.md 2026-09-28). npm sets its title on every run and pi at
+ * running the team on 2026-09-25 (BUGS.md 2026-09-28). npm sets its title on every run and pi at
  * startup; one `npm test` leaked ~140 ports through the npm processes of its build-check tests
  * alone.
  *

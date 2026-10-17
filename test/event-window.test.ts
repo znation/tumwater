@@ -355,13 +355,13 @@ test("readEventsSince filters the day-keyed over-read by the cutoff instant", ()
   assert.equal(covered, true);
 });
 
-test("an empty window reads as covered — an idle fleet prints no rotation note", () => {
+test("an empty window reads as covered — an idle team prints no rotation note", () => {
   const root = tmpdir();
   writeEvents(root, []);
   const { events, covered } = readEventsSince(root, 60_000);
   assert.deepEqual(events, []);
   // eventWindowCovers' vacuous case: with no retained events nothing can have rotated away,
-  // so `logs --since` on a fleet that never ran must not hedge.
+  // so `logs --since` on a team that never ran must not hedge.
   assert.equal(covered, true);
 });
 
