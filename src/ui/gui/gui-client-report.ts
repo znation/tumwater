@@ -199,10 +199,24 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   function chartMergeFailuresByRole(data) {
     return roleStackChart(data, "mergeFailedByRole", (n) => plural(n, "merge failure"), countAxis, true);
   }
+  // The day's backlog items: features done stacked at the bottom and bugs fixed above them,
+  // from featuresDone/bugsFixed (day-granular backlog-file done dates, so a role scope zeroes
+  // them); a day with neither keeps its empty slot.
+  function chartBacklogItems(data) {
+    return reportSvg(data.series, (d) => [
+      { value: Number(d.featuresDone) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.featuresDone) || 0, "feature") + " done" },
+      { value: Number(d.bugsFixed) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFixed) || 0, "bug") + " fixed" },
+    ], countAxis, true);
+  }
   // True when some day carries a map under field with an own value above zero; both counts
   // are rare, so their elements render only then.
   function seriesHasAny(data, field) {
     return data.series.some((d) => Object.values(d[field] || {}).some((n) => n > 0));
+  }
+  // True when some day carries a feature or bug count; the gate for the backlog chart, whose
+  // tally a role-scoped report zeroes, so the element stays out exactly where the two tiles are.
+  function seriesHasBacklogItems(data) {
+    return data.series.some((d) => Number(d.featuresDone) > 0 || Number(d.bugsFixed) > 0);
   }
   // True when some day carries a passing-check median; the element renders only then.
   function seriesHasCheckMedian(data) {
@@ -466,7 +480,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Merged commits", chartCommits(d)) + block("Runs by role", chartTicksByRole(d)) +
+        block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +

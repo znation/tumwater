@@ -1087,22 +1087,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 
-### The GUI Usage view charts each day's features done and bugs fixed as one stacked `Backlog items done` element (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region or its render chain; the dashboard twin of the day report's `featuresDone`/`bugsFixed` tallies, which the tiles show only as window totals — touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
-
-**Goal.** The Usage view's six tiles report `Features done` and `Bugs fixed` as window totals with a per-day average, but the charts below them show only commits, runs, tokens, spend, rejections and the per-role failure maps; the per-day `featuresDone`/`bugsFixed` counts the day report already collects are never drawn. Add one stacked `Backlog items done` chart beside `Merged commits`, so the operator sees each day's feature-and-fix throughput next to the commits it is measured against — the work-ratio signal the user asked about ("many more features and bug fixes for that many commits", plans/work-ratio.md).
-
-**Approach.** All changes are in the `report-chart` region of `src/ui/gui/gui-client-report.ts` and the Usage view's block list in the same file; no server change — each `ReportDay` already carries `featuresDone` and `bugsFixed` (both required numbers, backlog-file done dates), which flow through the `/api/report` JSON the view renders.
-
-1. In the `report-chart` region, right after `chartMergeFailuresByRole`, add `chartBacklogItems(data)`, built through `reportSvg` like `chartCommits` but with two stacked segments per day, features at the bottom: `{ value: Number(d.featuresDone) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.featuresDone) || 0, "feature") + " done" }` and `{ value: Number(d.bugsFixed) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFixed) || 0, "bug") + " fixed" }`, on the `countAxis` with the integer axis flag `true`. Doc it as the day's backlog items from `featuresDone`/`bugsFixed` (day-granular backlog-file dates, so a role scope zeroes them); a day with neither keeps its empty slot.
-2. Right after `seriesHasAny`, add `seriesHasBacklogItems(data)` returning `data.series.some((d) => Number(d.featuresDone) > 0 || Number(d.bugsFixed) > 0)`, doc'd as the gate: a role-scoped report zeroes both counts, so the element stays out exactly where the two tiles are omitted.
-3. In the `usage` view's render chain, immediately after `block("Merged commits", chartCommits(d))`, add `(seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") +`, so the daily outcomes sit beside the daily commits.
-
-**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
-
-**Acceptance criteria.**
-- `test/gui-client-report.test.ts`: a new test, "the Backlog items chart stacks features and bugs per day and seriesHasBacklogItems gates it", modelled on the "Merge check median" test. Through `clientScope` with the `["format", "report-chart"]` regions and the builder list `["chartCommits", "chartBacklogItems", "seriesHasBacklogItems"]`, build `mkDay("2026-09-01", { featuresDone: 2, bugsFixed: 1 })`, a plain `mkDay("2026-09-02")` and `mkDay("2026-09-03", { bugsFixed: 3 })`: the rect titles of `chartBacklogItems` deep-equal `["2026-09-01: 2 features done", "2026-09-01: 1 bug fixed", "2026-09-03: 3 bugs fixed"]`, its `<text … text-anchor='middle'>` count equals `chartCommits`'s, `seriesHasBacklogItems` is false for a series with no items and true for that data.
-- The test extracts the builders through `clientScope`, so a missing or misnamed builder fails it.
-- `npm run test` passes.
 
 ### The GUI Usage view charts each day's spend per provider, the dashboard twin of the day report's `Cost by provider` lines (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file; it shares the `report-chart` region and usage render chain with the in-flight backlog-items chart, but adds only its own builders, order helper and gated blocks, so the two land in either order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
 
@@ -1123,6 +1107,23 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### The GUI Usage view charts each day's features done and bugs fixed as one stacked `Backlog items done` element (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region or its render chain; the dashboard twin of the day report's `featuresDone`/`bugsFixed` tallies, which the tiles show only as window totals — touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
+
+**Goal.** The Usage view's six tiles report `Features done` and `Bugs fixed` as window totals with a per-day average, but the charts below them show only commits, runs, tokens, spend, rejections and the per-role failure maps; the per-day `featuresDone`/`bugsFixed` counts the day report already collects are never drawn. Add one stacked `Backlog items done` chart beside `Merged commits`, so the operator sees each day's feature-and-fix throughput next to the commits it is measured against — the work-ratio signal the user asked about ("many more features and bug fixes for that many commits", plans/work-ratio.md).
+
+**Approach.** All changes are in the `report-chart` region of `src/ui/gui/gui-client-report.ts` and the Usage view's block list in the same file; no server change — each `ReportDay` already carries `featuresDone` and `bugsFixed` (both required numbers, backlog-file done dates), which flow through the `/api/report` JSON the view renders.
+
+1. In the `report-chart` region, right after `chartMergeFailuresByRole`, add `chartBacklogItems(data)`, built through `reportSvg` like `chartCommits` but with two stacked segments per day, features at the bottom: `{ value: Number(d.featuresDone) || 0, color: "#6366f1", title: d.date + ": " + plural(Number(d.featuresDone) || 0, "feature") + " done" }` and `{ value: Number(d.bugsFixed) || 0, color: "#ef4444", title: d.date + ": " + plural(Number(d.bugsFixed) || 0, "bug") + " fixed" }`, on the `countAxis` with the integer axis flag `true`. Doc it as the day's backlog items from `featuresDone`/`bugsFixed` (day-granular backlog-file dates, so a role scope zeroes them); a day with neither keeps its empty slot.
+2. Right after `seriesHasAny`, add `seriesHasBacklogItems(data)` returning `data.series.some((d) => Number(d.featuresDone) > 0 || Number(d.bugsFixed) > 0)`, doc'd as the gate: a role-scoped report zeroes both counts, so the element stays out exactly where the two tiles are omitted.
+3. In the `usage` view's render chain, immediately after `block("Merged commits", chartCommits(d))`, add `(seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") +`, so the daily outcomes sit beside the daily commits.
+
+**Files touched.** `src/ui/gui/gui-client-report.ts`, `test/gui-client-report.test.ts`.
+
+**Acceptance criteria.**
+- `test/gui-client-report.test.ts`: a new test, "the Backlog items chart stacks features and bugs per day and seriesHasBacklogItems gates it", modelled on the "Merge check median" test. Through `clientScope` with the `["format", "report-chart"]` regions and the builder list `["chartCommits", "chartBacklogItems", "seriesHasBacklogItems"]`, build `mkDay("2026-09-01", { featuresDone: 2, bugsFixed: 1 })`, a plain `mkDay("2026-09-02")` and `mkDay("2026-09-03", { bugsFixed: 3 })`: the rect titles of `chartBacklogItems` deep-equal `["2026-09-01: 2 features done", "2026-09-01: 1 bug fixed", "2026-09-03: 3 bugs fixed"]`, its `<text … text-anchor='middle'>` count equals `chartCommits`'s, `seriesHasBacklogItems` is false for a series with no items and true for that data.
+- The test extracts the builders through `clientScope`, so a missing or misnamed builder fails it.
+- `npm run test` passes.
 
 ### The GUI Usage view charts each day's red full-suite merge checks beside the merge check median (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region; the GUI half of the red-check signal whose report half landed 2026-10-17 as `ReportDay.checkFailures`; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
