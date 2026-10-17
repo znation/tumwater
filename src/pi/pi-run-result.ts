@@ -2,7 +2,8 @@
  * pi run reads: the tick loop, the merge wiring, the usage accounting, the failure
  * digests. It lives apart from pi.ts so callers that only handle run results (tick-usage,
  * failure-data, the merge batch) need not import the spawn machinery to name the type. */
-import type { BackendFailureKind, RateWindow } from "./pi-stream.js";
+import type { BackendFailureKind } from "./pi-failure.js";
+import type { RateWindow } from "./pi-stream.js";
 
 export interface PiRunResult {
   ok: boolean;
@@ -80,11 +81,11 @@ export interface PiRunResult {
   transientRateLimit: boolean;
   /** True when any event reported a provider-wide failure that is not rate limiting — the
    * connection down, a 5xx, the model failing to load, the stream severed mid-run
-   * (src/pi/pi-stream.ts TRANSIENT_BACKEND). A transient failure of the world like the 429 flag,
+   * (src/pi/pi-failure.ts TRANSIENT_BACKEND). A transient failure of the world like the 429 flag,
    * but with no Retry-After hint to wait out: the team-wide hold (src/team/team-hold.ts) and —
    * for the stream-severed kind only — the per-run retry answer it. */
   transientBackend: boolean;
-  /** Which kind of backend failure the run ended on (src/pi/pi-stream.ts backendKind's
+  /** Which kind of backend failure the run ended on (src/pi/pi-failure.ts backendKind's
    * classification) — the team-wide hold groups its storms by kind. Undefined when
    * transientBackend is false. */
   backendKind?: BackendFailureKind;

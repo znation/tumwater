@@ -148,7 +148,7 @@ export class TickUsage {
     if (run.transientRateLimit && !run.ok)
       this.lastRateLimit = { at: Date.now(), retryAfterSeconds: run.retryAfterSeconds, provider };
     // The backend-failure sibling of the stamp above, same rule: only a run that ENDED on the
-    // failure counts, and the kind travels with it (src/pi/pi-stream.ts backendKind classified
+    // failure counts, and the kind travels with it (src/pi/pi-failure.ts backendKind classified
     // the text at parse time). A 429 never ends up here — pi-stream checks rate-limit first.
     if (run.transientBackend && !run.ok && run.backendKind)
       this.lastBackendFailure = { at: Date.now(), kind: run.backendKind, provider };

@@ -8,6 +8,6 @@
 export { runAgent, runPi } from "../agent/run-agent.js";
 export type { PiRunOptions } from "../agent/run-agent.js";
 export { MODEL_FALLBACK_CLONE, TRANSIENT_PI_CRASH } from "./pi-backend.js";
-export type { BackendFailureKind } from "./pi-stream.js";
+export type { BackendFailureKind } from "./pi-failure.js";
 export type { PiRunKind } from "./pi-event-line.js";
 export { hasResumableSession } from "../agent/session-ledger.js";

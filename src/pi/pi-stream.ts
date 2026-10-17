@@ -9,6 +9,7 @@ import {
 } from "./pi-event-line.js";
 import { describeToolCall } from "../text/phrases.js";
 import { objectOrEmpty, nonNegativeNumber, parseJsonObject, isJsonObject } from "../files/json-object.js";
+import { backendKind, isBackendFailureKind, isPermanentConfigError, TRANSIENT_BACKEND, type BackendFailureKind } from "./pi-failure.js";
 
 /** Accumulating pi's JSON event stream into a run result — pure parsing with no subprocess or
  * file I/O. Split out of pi.ts, whose child-process integration (runPi, hasResumableSession,
@@ -187,110 +188,6 @@ const TRANSIENT_RATE_LIMIT = /\b429\b|too many requests|rate limit/i;
  * "retry after 30s"). Module-private: only PiStreamParser.feedLine matches it. */
 const RETRY_AFTER = /retry[- ]after:?\s*(\d{1,4})/i;
 
-/** The provider rejecting the request with a permanent 4xx client error — a bad model id,
- * credential, or request shape (the observed `400 … model_not_supported` on a mistyped
- * provider suffix, BUGS.md 2026-10-06). Unlike a 429 or 408/5xx it can never succeed until the
- * configuration changes, so retrying it at suite speed loops forever (a reviewer failure is
- * strike-free by design). 408 (request timeout) and 429 are rate/timeouts, not config errors,
- * and are matched by the transient patterns above; this pattern covers 400/401/403/404 and the
- * provider's own permanent-error spellings. Exported so the merge path can hold a pin
- * instead of re-queuing it. */
-const PERMANENT_CONFIG_ERROR = /\b(?:400|401|403|404)\b|model_not_supported|invalid_request_error/i;
-
-/** True when an error text names a permanent provider configuration error (see
- * PERMANENT_CONFIG_ERROR). Pure, exported so the merge path and the stderr path classify
- * with one rule. */
-export function isPermanentConfigError(text: string): boolean {
-  return PERMANENT_CONFIG_ERROR.test(text);
-}
-
-/** The kinds of provider-wide failure that are NOT rate limiting: the backend itself is down,
- * refusing connections, or cannot serve the model at all. The team-wide hold (src/
- * team/team-hold.ts) groups a storm by kind — two roles hitting the same kind is one storm,
- * two hitting different kinds is not — so the observation carries the kind instead of
- * re-matching the text later. Defined beside the classifier that produces it. */
-export type BackendFailureKind =
-  | "connection"
-  | "timeout"
-  | "server"
-  | "model-load"
-  | "stream-severed";
-
-/** undici's spelling of a severed HTTP stream: the provider (or its own idle timeout) cuts
- * the request while pi is still reading it, and undici's fetch rejects with the bare word
- * "terminated" — the 2026-08-22 idle-timeout diagnosis. Anchored to the END of the error text
- * on purpose: the real message is the bare word, optionally behind a prefix and closing
- * punctuation, while an unrelated error that merely contains the word ("worker terminated
- * with exit code 1") must not read as a backend failure. Module-private: matchBackendFailure
- * below, the parser, and backendKind all share the one instance. */
-const STREAM_SEVERED = /(^|[^a-z])terminated[.!\s]*$/i;
-
-/** The connection-class backend-failure phrases: fetch-level "Connection error.", the
- * refusals and resets Node surfaces. One home shared by the TRANSIENT_BACKEND gate and the
- * backendKind classifier, so a spelling added to one cannot go missing from the other. */
-const CONNECTION_ERROR = /connection error|connection refused|connection reset|econn(refused|reset)/i;
-
-/** The timeout-class backend-failure phrase (OpenAI-style "Request timed out"). Shared by the
- * TRANSIENT_BACKEND gate and the backendKind classifier. */
-const TIMEOUT_ERROR = /request timed out/i;
-
-/** The server-class backend-failure phrases: 5xx status texts, oMLX's model-server pause, and
- * a provider pausing itself team-wide with a 503 whose body carries prose rather than any
- * status phrase ("Provider '<name>' is currently failing for model '<id>' and has been paused
- * by the provider"). Shared by the TRANSIENT_BACKEND gate and the backendKind classifier. */
-const SERVER_ERROR = /internal server error|bad gateway|service unavailable|gateway timeout|currently failing for model|paused by the provider/i;
-
-/** The model-load spelling (oMLX's "Failed to load model"): its backendKind is the
- * "model-load" default, so only the gate names the pattern. */
-const MODEL_LOAD_ERROR = /failed to load model/i;
-
-/** The backend-failure error texts pi actually surfaces, matched against every error text
- * feedLine sees — the same shapes as the rate-limit regex's various renderings.
- * Deliberately does NOT match the 429 texts: feedLine checks TRANSIENT_RATE_LIMIT first and
- * only falls through here, so a rate limit stays a rate limit (with its Retry-After hint)
- * and never counts as a backend failure. Composed from the per-kind patterns above so each
- * kind's spellings — including the stream-severed one (STREAM_SEVERED) — live in exactly one
- * place. Only matchBackendFailure and PiStreamParser.feedLine match it; backendKind below
- * classifies which phrase matched. */
-const TRANSIENT_BACKEND = new RegExp(
-  `${CONNECTION_ERROR.source}|${TIMEOUT_ERROR.source}|${SERVER_ERROR.source}|${MODEL_LOAD_ERROR.source}|${STREAM_SEVERED.source}`,
-  "i",
-);
-
-/** Which backend-failure kind an error text belongs to — pure, exported so the parser's
- * classification is unit-testable without a stream (pi-parser.test.ts feeds the texts
- * directly). Each check is the same per-kind pattern the TRANSIENT_BACKEND gate composes, so
- * the gate and the classifier cannot disagree; the order matches that alternation. */
-export function backendKind(text: string): BackendFailureKind {
-  if (CONNECTION_ERROR.test(text)) return "connection";
-  if (TIMEOUT_ERROR.test(text)) return "timeout";
-  if (SERVER_ERROR.test(text)) return "server";
-  if (STREAM_SEVERED.test(text)) return "stream-severed";
-  return "model-load";
-}
-
-/** The backend-failure kind `text` names, or undefined when it names none — the stderr
- * classifier (src/pi/pi-backend.ts's classifyExit) needs "no match" distinct from
- * backendKind's "model-load" default. Gated by TRANSIENT_BACKEND, so a text the event path
- * ignores is ignored on stderr too. Pure; exported for pi-backend.ts's classifyExit. */
-export function matchBackendFailure(text: string): BackendFailureKind | undefined {
-  return TRANSIENT_BACKEND.test(text) ? backendKind(text) : undefined;
-}
-
-/** The valid `backendKind` values, for validating a translator-supplied string at the wire
- * boundary (the same untrusted-JSON policy every other field read here applies). */
-const BACKEND_FAILURE_KINDS: readonly BackendFailureKind[] = [
-  "connection",
-  "timeout",
-  "server",
-  "model-load",
-  "stream-severed",
-];
-
-function isBackendFailureKind(value: unknown): value is BackendFailureKind {
-  return typeof value === "string" && (BACKEND_FAILURE_KINDS as readonly string[]).includes(value);
-}
-
 /** Accumulates pi's JSON event stream into a PiRunResult. Exported for tests. */
 export class PiStreamParser {
   finalText = "";
@@ -348,9 +245,10 @@ export class PiStreamParser {
    * the loop's transient retry covers it, waiting out retryAfterSeconds when present. */
   transientRateLimit = false;
   /** True when any event reports a provider-wide failure that is not rate limiting — the
-   * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND above). Transient in
-   * the same sense: the session is healthy and a later attempt succeeds. The team-wide hold
-   * (src/team/team-hold.ts) consumes it beside the 429 flag, grouped by backendFailureKind. */
+   * connection down, a 5xx, the model failing to load (TRANSIENT_BACKEND, in pi-failure.ts).
+   * Transient in the same sense: the session is healthy and a later attempt succeeds. The
+   * team-wide hold (src/team/team-hold.ts) consumes it beside the 429 flag, grouped by
+   * backendFailureKind. */
   transientBackend = false;
   /** Which kind of backend failure the run saw (backendKind's classification of the same
    * text that set transientBackend) — carried so the hold's storm test can group by kind

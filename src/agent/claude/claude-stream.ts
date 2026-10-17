@@ -16,7 +16,8 @@
  * run produced no authoritative `run_cost`. */
 
 import { isJsonObject, objectOrEmpty, nonNegativeNumber, parseJsonObject } from "../../files/json-object.js";
-import type { BackendFailureKind, TumwaterKind } from "../../pi/pi-stream.js";
+import type { BackendFailureKind } from "../../pi/pi-failure.js";
+import type { TumwaterKind } from "../../pi/pi-stream.js";
 import type { StreamTranslator } from "../agent-backend.js";
 
 type Json = Record<string, unknown>;

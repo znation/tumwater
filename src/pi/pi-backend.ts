@@ -7,7 +7,7 @@
 import { piArgs } from "./pi-args.js";
 import { resolveBackendBin, type ResolvedAgentBin } from "./pi-bin.js";
 import { agentBaseEnv } from "../process/run-marker.js";
-import { isPermanentConfigError, matchBackendFailure } from "./pi-stream.js";
+import { isPermanentConfigError, matchBackendFailure } from "./pi-failure.js";
 import { hasResumableSession, sessionResumable } from "../agent/session-ledger.js";
 import type {
   AgentBackend,

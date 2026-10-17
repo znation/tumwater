@@ -1,4 +1,4 @@
-import type { BackendFailureKind } from "../pi/pi-stream.js";
+import type { BackendFailureKind } from "../pi/pi-failure.js";
 import type { PiRunResult } from "../pi/pi-run-result.js";
 
 /** Per-role model-fallback state machine (PLANS.md "Model failure fallback, part 1/2").
