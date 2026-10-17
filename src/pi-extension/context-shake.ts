@@ -1,5 +1,6 @@
 /**
- * Bundled pi extension: when a run crosses 70% of its context window, reclaim the space held
+ * Bundled pi extension: when a run crosses 70% of its context window (less on a window under
+ * 128k, where pi compacts sooner — see `shakeLimits`), reclaim the space held
  * by old, bulky `read` and `bash` tool results by replacing each with a short pointer the model
  * can follow back to the full text. Loaded on every pi run via `-e <this file>` from
  * src/pi/pi-args.ts, after bounded-output and before context-budget.
@@ -25,19 +26,55 @@ import { compactTokens } from "../text/format.js";
 import { writeFullOutput } from "./full-output.js";
 import { appendToolResultNote } from "./tool-result-content.js";
 import { readContextUsage } from "./context-usage.js";
+import { compactionPercent, declaredWindow, windowScale } from "./context-window.js";
 
-/** The fill percentage at which the first shake pass runs. */
+/** The fill percentage at which the first shake pass runs, on the 128k window it was tuned on
+ * (see `shakeLimits` for a smaller one). */
 export const SHAKE_PERCENT = 70;
 /** The fill percentage at which a second pass runs, only when the first did not bring the run
  * back under `SHAKE_PERCENT` (the note-heavy path climbs here again). */
 export const SHAKE_MAX_PERCENT = 85;
 /** The newest slice of context, in estimated tokens, that is never elided — the model still
- * needs what it was just reading. */
+ * needs what it was just reading. Tuned on the 128k window. */
 export const SHAKE_PROTECTED_TOKENS = 20_000;
 /** A tool result shorter than this is left alone: its pointer would save little. */
 export const SHAKE_MIN_CHARS = 2_000;
-/** A pass that would reclaim fewer than this many estimated tokens is not worth the edit. */
+/** A pass that would reclaim fewer than this many estimated tokens is not worth the edit. Tuned
+ * on the 128k window. */
 export const SHAKE_MIN_RECLAIM_TOKENS = 10_000;
+/** How far, in percentage points, the second pass stays under pi's own compaction line: 2.5
+ * puts it at exactly SHAKE_MAX_PERCENT on the 128k window. */
+const COMPACTION_MARGIN_PERCENT = 2.5;
+
+/** The thresholds one run's shake passes use. */
+interface ShakeLimits {
+  percent: number;
+  maxPercent: number;
+  protectedTokens: number;
+  minReclaimTokens: number;
+}
+
+/** The shake limits for a declared context window. At or above the 128k window they were tuned
+ * on — and when the window is unknown — they are the SHAKE_* constants. Below it:
+ *  - the protected slice and the reclaim floor scale in proportion (10k and 5k tokens at 64k);
+ *  - both passes move under pi's compaction line (window − 16,384), which on a small window
+ *    falls below 85% — at 64k it is 75%, so an 85% pass would never run before pi replaced the
+ *    run's reads with a lossy summary. The second pass sits COMPACTION_MARGIN_PERCENT under
+ *    that line and the first keeps its 15-point lead (57.5% and 72.5% at 64k).
+ * Pure. */
+export function shakeLimits(contextWindow: unknown): ShakeLimits {
+  const window = declaredWindow(contextWindow);
+  const scale = windowScale(window);
+  const maxPercent = window === null
+    ? SHAKE_MAX_PERCENT
+    : Math.max(0, Math.min(SHAKE_MAX_PERCENT, compactionPercent(window) - COMPACTION_MARGIN_PERCENT));
+  return {
+    percent: Math.max(0, Math.min(SHAKE_PERCENT, maxPercent - (SHAKE_MAX_PERCENT - SHAKE_PERCENT))),
+    maxPercent,
+    protectedTokens: Math.round(SHAKE_PROTECTED_TOKENS * scale),
+    minReclaimTokens: Math.round(SHAKE_MIN_RECLAIM_TOKENS * scale),
+  };
+}
 
 /** The fixed prefix of every elision pointer, used to recognize a result that was already
  * elided (and must never be elided again). */
@@ -99,7 +136,7 @@ function percentOf(usage: ShakeUsage): number | null {
   }
   // Both ratio inputs are read through nonNegativeNumber: a NaN/Infinity/negative/string wire
   // value is as unusable as a missing one, and a NaN ratio would slip past shakePlan's
-  // `percent < SHAKE_PERCENT` guard (every comparison against NaN is false) and plan a pass on
+  // `percent < limits.percent` guard (every comparison against NaN is false) and plan a pass on
   // an unknown fill. A non-positive window has no ratio either.
   const tokens = nonNegativeNumber(usage.tokens, null);
   const window = nonNegativeNumber(usage.contextWindow, null);
@@ -134,8 +171,8 @@ function replacementFor(msg: ShakeMessage, fullOutputPath: string | null): strin
 
 /** Whether one message is even a candidate, ignoring the reclaim floor: a bulky, non-error,
  * not-already-elided read or bash result that sits outside the protected newest slice. */
-function isCandidate(msg: ShakeMessage, newerTokens: number): boolean {
-  if (newerTokens < SHAKE_PROTECTED_TOKENS) return false;
+function isCandidate(msg: ShakeMessage, newerTokens: number, protectedTokens: number): boolean {
+  if (newerTokens < protectedTokens) return false;
   if (msg.role !== "toolResult") return false;
   if (msg.toolName !== "read" && msg.toolName !== "bash") return false;
   if (msg.isError === true) return false;
@@ -147,9 +184,10 @@ function isCandidate(msg: ShakeMessage, newerTokens: number): boolean {
 
 /**
  * Plan a shake pass: the `context_edit` replacements that reclaim the most space from old
- * bulky tool results. Empty unless the run is at or above `SHAKE_PERCENT`, something outside
- * the newest `SHAKE_PROTECTED_TOKENS` is reclaimable, and the pass clears
- * `SHAKE_MIN_RECLAIM_TOKENS` together. Deterministic and filesystem-free except the injected
+ * bulky tool results. Empty unless the run is at or above the first pass's percent, something
+ * outside the newest protected slice is reclaimable, and the pass clears the reclaim floor
+ * together — all three from `shakeLimits` for the usage's window. Deterministic and
+ * filesystem-free except the injected
  * `writeFullOutput`, which is only called for a bash result pi has not already persisted.
  */
 export function shakePlan(
@@ -158,7 +196,8 @@ export function shakePlan(
   writeFullOutput?: FullOutputWriter | null,
 ): ShakePlan {
   const percent = percentOf(usage);
-  if (percent === null || percent < SHAKE_PERCENT) return EMPTY_PLAN;
+  const limits = shakeLimits(usage.contextWindow);
+  if (percent === null || percent < limits.percent) return EMPTY_PLAN;
 
   // Tokens newer than each message, so a candidate is one the model has already moved past.
   const newerTokens: number[] = new Array<number>(messages.length).fill(0);
@@ -168,11 +207,11 @@ export function shakePlan(
     running += estimateTokens(messages[i]?.text ?? "");
   }
 
-  const candidates = messages.filter((msg, i) => isCandidate(msg, newerTokens[i] ?? 0));
+  const candidates = messages.filter((msg, i) => isCandidate(msg, newerTokens[i] ?? 0, limits.protectedTokens));
   // The pointer is far shorter than the result it replaces, so the full text's tokens are a
   // safe upper bound on the reclaim; bail before touching the writer when even that is short.
   const upperBound = candidates.reduce((sum, msg) => sum + estimateTokens(msg.text), 0);
-  if (upperBound < SHAKE_MIN_RECLAIM_TOKENS) return EMPTY_PLAN;
+  if (upperBound < limits.minReclaimTokens) return EMPTY_PLAN;
 
   const edits: ShakeEdit[] = [];
   let reclaimedTokens = 0;
@@ -188,7 +227,7 @@ export function shakePlan(
     edits.push({ targetId: msg.entryId!, toolName: msg.toolName as "read" | "bash", replacement, reclaimedTokens: reclaimed });
     reclaimedTokens += reclaimed;
   }
-  if (reclaimedTokens < SHAKE_MIN_RECLAIM_TOKENS) return EMPTY_PLAN;
+  if (reclaimedTokens < limits.minReclaimTokens) return EMPTY_PLAN;
   return { edits, reclaimedTokens, elidedCount: edits.length };
 }
 
@@ -303,7 +342,8 @@ function textOf(msg: MessageLike): string {
 }
 
 /** The pi extension entry point: shake at 70% (and again at 85% when the first pass did not
- * hold), leaving each pointer in the context and the one-line summary on the next result. */
+ * hold) — on a window under 128k, at `shakeLimits`'s lower crossings — leaving each pointer in
+ * the context and the one-line summary on the next result. */
 export default function contextShake(pi: PiExtensionApi): void {
   let lastShake = 0;
   let pendingNote: string | null = null;
@@ -314,10 +354,12 @@ export default function contextShake(pi: PiExtensionApi): void {
     const percent = percentOf(usage);
     if (percent === null) return undefined;
 
-    // One pass per crossing: 70% first, then 85% only if the run climbed back here.
+    // One pass per crossing: the first pass's percent, then the second's only if the run
+    // climbed back there.
     let threshold = 0;
-    if (lastShake < SHAKE_PERCENT && percent >= SHAKE_PERCENT) threshold = SHAKE_PERCENT;
-    else if (lastShake < SHAKE_MAX_PERCENT && percent >= SHAKE_MAX_PERCENT) threshold = SHAKE_MAX_PERCENT;
+    const limits = shakeLimits(usage.contextWindow);
+    if (lastShake < limits.percent && percent >= limits.percent) threshold = limits.percent;
+    else if (lastShake < limits.maxPercent && percent >= limits.maxPercent) threshold = limits.maxPercent;
     if (threshold === 0) return undefined;
     lastShake = threshold;
 

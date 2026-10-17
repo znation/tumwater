@@ -9,7 +9,9 @@ import {
   boundReadResult,
   boundText,
   default as boundedOutput,
+  outputLimits,
 } from "../src/pi-extension/bounded-output.js";
+import { REFERENCE_WINDOW_TOKENS } from "../src/pi-extension/context-window.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 
 const cps = (text: string): number => Array.from(text).length;
@@ -259,8 +261,8 @@ test("boundBashResult returns empty output untouched", () => {
 // ---- pi extension adapter --------------------------------------------------
 
 /** Install the adapter on a fake pi object and return the registered tool_result handler. */
-function captureHandler(): { handler: (event: any) => unknown } {
-  let handler: (event: any) => unknown = () => undefined;
+function captureHandler(): { handler: (event: any, ctx?: any) => unknown } {
+  let handler: (event: any, ctx?: any) => unknown = () => undefined;
   boundedOutput({ on: (_event, cb) => { handler = cb; } });
   return { handler };
 }
@@ -356,6 +358,49 @@ test("adapter leaves a non-array content payload untouched", () => {
   assert.equal(handler({ toolName: "read", toolCallId: "t6", input: { path: "f.ts" }, content: "plain text" }), undefined);
   assert.equal(handler({ toolName: "bash", toolCallId: "t7", content: { type: "text", text: "big" } }), undefined);
 });
+// ---- window-scaled limits ---------------------------------------------------
+
+test("outputLimits keeps the tuned limits at and above the 128k window and when it is unknown", () => {
+  const tuned = { read: READ_LIMIT_CHARS, bash: BASH_LIMIT_CHARS };
+  for (const window of [REFERENCE_WINDOW_TOKENS, 262_144, 1_048_576, undefined, 0, -1, Number.NaN, "65536"]) {
+    assert.deepEqual(outputLimits(window), tuned, String(window));
+  }
+});
+
+test("outputLimits scales both limits with a smaller window, down to a quarter", () => {
+  assert.deepEqual(outputLimits(65_536), { read: 6_000, bash: 8_000 });
+  assert.deepEqual(outputLimits(98_304), { read: 9_000, bash: 12_000 });
+  // A quarter is the floor: 32k reaches it, and nothing smaller goes under it.
+  assert.deepEqual(outputLimits(32_768), { read: 3_000, bash: 4_000 });
+  assert.deepEqual(outputLimits(8_192), { read: 3_000, bash: 4_000 });
+});
+
+test("adapter bounds a 64k model's results to its scaled limits", () => {
+  const { handler } = captureHandler();
+  const ctx = { model: { contextWindow: 65_536 } };
+  const text = bigFileText(600); // ~30k chars
+  const read = handler({
+    toolName: "read",
+    toolCallId: "w1",
+    input: { path: "src/big.ts" },
+    content: [{ type: "text", text }],
+  }, ctx) as { content: Array<{ text: string }> };
+  assert.ok(cps(read.content[0]!.text) <= 6_000, `read bounded to ${cps(read.content[0]!.text)}`);
+  // pi's own full-output path is used, so the bash bound writes nothing.
+  const bash = handler({
+    toolName: "bash",
+    toolCallId: "w2",
+    details: { fullOutputPath: "/tmp/full.log" },
+    content: [{ type: "text", text }],
+  }, ctx) as { content: Array<{ text: string }> };
+  assert.ok(cps(bash.content[0]!.text) <= 8_000, `bash bounded to ${cps(bash.content[0]!.text)}`);
+  // A result between the scaled and the tuned limit passes on a large window, not on 64k.
+  const mid = bigFileText(160); // ~8k chars
+  const event = { toolName: "read", toolCallId: "w3", input: { path: "f.ts" }, content: [{ type: "text", text: mid }] };
+  assert.equal(handler(event, { model: { contextWindow: 1_048_576 } }), undefined);
+  assert.ok(handler(event, ctx), "the same read is bounded on the 64k model");
+});
+
 // The piArgs wiring tests (extension flag placement, non-pi agent skip) live in
 // test/pi-args.test.ts beside the rest of the piArgs suite — they were duplicated here
 // and in pi.test.ts since the feature landed (2026-09-23), and pi.test.ts's copies

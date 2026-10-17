@@ -13,15 +13,36 @@
  *
  * Limits are constants on purpose (opinionated defaults over configuration). The read
  * limit (~12k chars ≈ 300 lines) mirrors the prompt's CONTEXT_BUDGET_RULE; the bash limit
- * is looser because test logs and build output legitimately need more tail.
+ * is looser because test logs and build output legitimately need more tail. Both were tuned on
+ * the 128k local fallback, so a model that declares a smaller window gets them scaled down in
+ * proportion (`outputLimits`): a 12k-char result is twice the share of a 64k window.
  */
 
+import { windowScale } from "./context-window.js";
 import { writeFullOutput } from "./full-output.js";
 
 /** Char budget for a `read` tool result (~300 lines, matching CONTEXT_BUDGET_RULE). */
 export const READ_LIMIT_CHARS = 12_000;
 /** Char budget for a `bash` tool result — looser, so test/build tails survive. */
 export const BASH_LIMIT_CHARS = 16_000;
+
+/** The smallest share of each tuned limit a small window scales it to: a quarter keeps a test
+ * log's tail readable (4,000 chars of bash) even at a 32k window. */
+const MIN_LIMIT_SHARE = 0.25;
+
+/** The read and bash budgets for one run. */
+interface OutputLimits {
+  read: number;
+  bash: number;
+}
+
+/** The budgets for a model's declared context window: READ_LIMIT_CHARS and BASH_LIMIT_CHARS at
+ * or above the 128k window they were tuned on (and when the window is unknown), scaled down in
+ * proportion below it — 6,000 and 8,000 chars at 64k — and never under a quarter of each. */
+export function outputLimits(contextWindow: unknown): OutputLimits {
+  const scale = Math.max(MIN_LIMIT_SHARE, windowScale(contextWindow));
+  return { read: Math.round(READ_LIMIT_CHARS * scale), bash: Math.round(BASH_LIMIT_CHARS * scale) };
+}
 
 /** Extra code points reserved when snapping cut points to line boundaries, so the
  * snapped head+tail plus marker still fit inside the limit even after rounding. */
@@ -175,13 +196,18 @@ interface BoundedToolResultEvent {
   content?: Array<{ type?: string; text?: string }>;
 }
 
-interface PiExtensionApi {
-  on(event: string, handler: (event: BoundedToolResultEvent) => unknown): void;
+interface BoundedContext {
+  model?: { contextWindow?: unknown };
 }
 
-/** The pi extension entry point: bound oversized read and bash results in place. */
+interface PiExtensionApi {
+  on(event: string, handler: (event: BoundedToolResultEvent, ctx?: BoundedContext) => unknown): void;
+}
+
+/** The pi extension entry point: bound oversized read and bash results in place, at the budgets
+ * for the current model's declared window (read per result, so a model change is honored). */
 export default function boundedOutput(pi: PiExtensionApi): void {
-  pi.on("tool_result", (event) => {
+  pi.on("tool_result", (event, ctx) => {
     if (event.toolName !== "read" && event.toolName !== "bash") return undefined;
     const blocks = event.content;
     if (!Array.isArray(blocks)) return undefined;
@@ -189,10 +215,11 @@ export default function boundedOutput(pi: PiExtensionApi): void {
     const textBlock = blocks.find((b) => b?.type === "text" && typeof b.text === "string");
     if (!textBlock || typeof textBlock.text !== "string") return undefined;
 
+    const limits = outputLimits(ctx?.model?.contextWindow);
     const bounded = event.toolName === "read"
-      ? boundReadResult(textBlock.text, event.input)
+      ? boundReadResult(textBlock.text, event.input, limits.read)
       : boundBashResult(textBlock.text, event.details, (text) =>
-        writeFullOutput(text, event.toolCallId));
+        writeFullOutput(text, event.toolCallId), limits.bash);
     if (bounded === textBlock.text) return undefined;
     return { content: [{ type: "text", text: bounded }] };
   });

@@ -9,9 +9,11 @@ import {
   SHAKE_MIN_CHARS,
   SHAKE_PERCENT,
   SHAKE_PROTECTED_TOKENS,
+  SHAKE_MIN_RECLAIM_TOKENS,
   estimateTokens,
   shakeMessages,
   shakeNote,
+  shakeLimits,
   shakePlan,
   type FullOutputWriter,
   type ShakeEdit,
@@ -20,6 +22,7 @@ import {
   type ShakeUsage,
   default as contextShake,
 } from "../src/pi-extension/context-shake.js";
+import { PI_COMPACTION_RESERVE_TOKENS, REFERENCE_WINDOW_TOKENS } from "../src/pi-extension/context-window.js";
 
 // The bundled context-shake extension (src/pi-extension/context-shake.ts): at 70% of the
 // window it replaces old bulky read/bash results with short pointers, so a small-window
@@ -51,7 +54,9 @@ function protectedFillers(): ShakeMessage[] {
   return Array.from({ length: 5 }, () => filler(SHAKE_PROTECTED_TOKENS / 5));
 }
 
-const atPercent = (percent: number): ShakeUsage => ({ tokens: percent * 1000, contextWindow: 100_000, percent });
+// The tuned thresholds hold on any window at or above 128k; these tests use 1M, and the
+// window-scaling tests below use smaller ones.
+const atPercent = (percent: number): ShakeUsage => ({ tokens: percent * 10_000, contextWindow: 1_000_000, percent });
 
 test("shakePlan stays empty below the first crossing", () => {
   const messages = [bash("a"), ...protectedFillers()];
@@ -171,20 +176,20 @@ test("a read pointer names the file and the range it elided", () => {
 
 test("percentOf falls back to tokens/contextWindow when pi gives no percent", () => {
   const messages = [bash("a"), ...protectedFillers()];
-  // 70k/100k is exactly the first crossing; just under it and an unknowable window both plan
+  // 700k/1M is exactly the first crossing; just under it and an unknowable window both plan
   // nothing.
-  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
-  assert.equal(shakePlan(messages, { tokens: 69_999, contextWindow: 100_000 }).edits.length, 0);
-  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: 0 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 700_000, contextWindow: 1_000_000 }).edits.length, 1);
+  assert.equal(shakePlan(messages, { tokens: 699_999, contextWindow: 1_000_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 700_000, contextWindow: 0 }).edits.length, 0);
 });
 
 test("percentOf ignores a non-finite percent and uses the token ratio instead", () => {
   // pi can report NaN or Infinity for a broken context reading; neither is a fill percentage
   // the threshold logic can trust, so percentOf drops it and falls back to tokens/window.
   const messages = [bash("a"), ...protectedFillers()];
-  assert.equal(shakePlan(messages, { percent: NaN, tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
-  assert.equal(shakePlan(messages, { percent: Infinity, tokens: 69_999, contextWindow: 100_000 }).edits.length, 0);
-  assert.equal(shakePlan(messages, { percent: -Infinity, tokens: 70_000, contextWindow: 100_000 }).edits.length, 1);
+  assert.equal(shakePlan(messages, { percent: NaN, tokens: 700_000, contextWindow: 1_000_000 }).edits.length, 1);
+  assert.equal(shakePlan(messages, { percent: Infinity, tokens: 699_999, contextWindow: 1_000_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { percent: -Infinity, tokens: 700_000, contextWindow: 1_000_000 }).edits.length, 1);
 });
 
 test("percentOf reads a non-finite token count or window as unknowable, not as a fill", () => {
@@ -192,10 +197,10 @@ test("percentOf reads a non-finite token count or window as unknowable, not as a
   // comparison against NaN is false, so shakePlan would fall through its `percent <
   // SHAKE_PERCENT` guard and plan a pass on an unknown fill. An infinite window is no better.
   const messages = [bash("a"), ...protectedFillers()];
-  assert.equal(shakePlan(messages, { tokens: NaN, contextWindow: 100_000 }).edits.length, 0);
-  assert.equal(shakePlan(messages, { tokens: Infinity, contextWindow: 100_000 }).edits.length, 0);
-  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: Infinity }).edits.length, 0);
-  assert.equal(shakePlan(messages, { tokens: 70_000, contextWindow: NaN }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: NaN, contextWindow: 1_000_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: Infinity, contextWindow: 1_000_000 }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 700_000, contextWindow: Infinity }).edits.length, 0);
+  assert.equal(shakePlan(messages, { tokens: 700_000, contextWindow: NaN }).edits.length, 0);
 });
 
 test("shakePlan skips a bulky result with no session entry to edit", () => {
@@ -417,7 +422,7 @@ test("the adapter shakes once at 70%, again at 85%, and notes the next tool resu
   const handlers = capture();
   assert.ok(handlers.turn_end && handlers.tool_result);
   const event = turnEndEvent();
-  const ctx = (percent: number) => ({ getContextUsage: () => ({ tokens: percent * 1_000, contextWindow: 100_000, percent }) });
+  const ctx = (percent: number) => ({ getContextUsage: () => ({ tokens: percent * 10_000, contextWindow: 1_000_000, percent }) });
 
   assert.equal(handlers.turn_end(event, ctx(60)), undefined, "below 70% nothing happens");
 
@@ -577,4 +582,61 @@ test("the adapter writes a bash result's full output and points the edit at it",
   } finally {
     process.chdir(prevCwd);
   }
+});
+
+// ---- window-scaled limits ---------------------------------------------------
+
+test("shakeLimits keeps the tuned thresholds at and above 128k and when the window is unknown", () => {
+  const tuned = {
+    percent: SHAKE_PERCENT,
+    maxPercent: SHAKE_MAX_PERCENT,
+    protectedTokens: SHAKE_PROTECTED_TOKENS,
+    minReclaimTokens: SHAKE_MIN_RECLAIM_TOKENS,
+  };
+  for (const window of [REFERENCE_WINDOW_TOKENS, 262_144, 1_048_576, undefined, 0, Number.NaN]) {
+    assert.deepEqual(shakeLimits(window), tuned, String(window));
+  }
+});
+
+test("shakeLimits keeps both passes under pi's compaction line on a 64k window", () => {
+  const limits = shakeLimits(65_536);
+  // pi compacts at 65,536 - 16,384 = 75%: the second pass sits 2.5 points under it and the
+  // first keeps its 15-point lead; the protected slice and reclaim floor halve with the window.
+  assert.equal((65_536 - PI_COMPACTION_RESERVE_TOKENS) / 65_536, 0.75);
+  assert.deepEqual(limits, { percent: 57.5, maxPercent: 72.5, protectedTokens: 10_000, minReclaimTokens: 5_000 });
+});
+
+test("shakeLimits moves the passes down smoothly between 64k and 128k", () => {
+  const at100k = shakeLimits(100_000);
+  assert.ok(at100k.maxPercent < SHAKE_MAX_PERCENT && at100k.maxPercent > 72.5, String(at100k.maxPercent));
+  assert.equal(at100k.percent, at100k.maxPercent - (SHAKE_MAX_PERCENT - SHAKE_PERCENT));
+  // Each pass stays under the line where pi would compact first.
+  for (const window of [49_152, 65_536, 100_000, 126_928]) {
+    const compaction = ((window - PI_COMPACTION_RESERVE_TOKENS) / window) * 100;
+    const limits = shakeLimits(window);
+    assert.ok(limits.maxPercent < compaction && limits.percent < limits.maxPercent, String(window));
+  }
+});
+
+test("a 64k run is shaken at its scaled crossing with its scaled protected slice", () => {
+  const usage = (percent: number): ShakeUsage => ({ tokens: (percent / 100) * 65_536, contextWindow: 65_536, percent });
+  // 10k tokens of newer context is the whole protected slice at 64k (20k at 128k and up).
+  const messages = [bash("a", 30_000), filler(10_000)];
+  assert.equal(shakePlan(messages, usage(57)).edits.length, 0, "below 57.5% nothing happens");
+  const plan = shakePlan(messages, usage(58));
+  assert.equal(plan.edits.length, 1, "the 57.5% crossing shakes");
+  // The same messages on the 1M primary keep the result: 10k is inside its 20k protected slice.
+  assert.equal(shakePlan(messages, atPercent(70)).edits.length, 0);
+});
+
+test("the adapter shakes a 64k run at 57.5% and again at 72.5%", () => {
+  const handlers = capture();
+  const event = turnEndEvent();
+  const ctx = (percent: number) => ({
+    getContextUsage: () => ({ tokens: (percent / 100) * 65_536, contextWindow: 65_536, percent }),
+  });
+  assert.equal(handlers.turn_end!(event, ctx(57)), undefined);
+  assert.ok(handlers.turn_end!(event, ctx(58)), "the first crossing shakes");
+  assert.equal(handlers.turn_end!(event, ctx(70)), undefined, "one pass per crossing");
+  assert.ok(handlers.turn_end!(event, ctx(73)), "the second crossing, before pi compacts at 75%");
 });

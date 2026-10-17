@@ -9,7 +9,9 @@
  * lossy summary; past it, a run that keeps reading hits the window and lands nothing. context-shake
  * reclaims the oldest bulky tool results first, so the notes now sit above that reclaim line: the
  * 70% note names the crossing, context-shake elides what it can in the same turn_end, and at 85%
- * the note is the stop-reading backstop for a run whose remaining results were not reclaimable. The
+ * the note is the stop-reading backstop for a run whose remaining results were not reclaimable. (On
+ * a window under 128k context-shake crosses earlier, under pi's compaction line — see its
+ * `shakeLimits` — while these notes keep their percentages.) The
  * failure mode the numbers exist for is the fallback's local model (Qwen3.8-27B): its longest ticks
  * peaked at 96–110k tokens (coverage, steward, telemetry, plan; 2026-09-29..10-01) while the
  * prompt's reading budget could only say "your window is finite". On a large-window model the

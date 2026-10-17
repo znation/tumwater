@@ -34,7 +34,7 @@
  * event and `ctx.model`.
  */
 
-import { nonNegativeNumber } from "../files/json-object.js";
+import { declaredWindow } from "./context-window.js";
 
 /** The largest declared context window, in tokens, that gets its replayed thinking stripped:
  * 256k (256 × 1024), so a model declaring Qwen's native 262,144 still counts. */
@@ -54,8 +54,8 @@ interface ModelLike {
  * model, API or window (missing, non-finite, negative, zero) keeps the thinking. Pure. */
 export function stripsThinking(model: ModelLike | undefined): boolean {
   if (model?.api !== STRIP_THINKING_API) return false;
-  const window = nonNegativeNumber(model.contextWindow, null);
-  return window !== null && window > 0 && window <= STRIP_THINKING_MAX_WINDOW;
+  const window = declaredWindow(model.contextWindow);
+  return window !== null && window <= STRIP_THINKING_MAX_WINDOW;
 }
 
 /** One content block of an assistant message, as far as the edit needs to see it. */
