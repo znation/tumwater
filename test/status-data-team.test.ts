@@ -176,6 +176,21 @@ test("snapshot carries mainCheck from the newest merge-scope build_check event",
   assert.equal(snapshot(capped).mainCheck, undefined, "past the scan cap the badge drops");
 });
 
+// The event log is loose-typed by design: a merge-scope check whose status is not one of the
+// three MainCheckStatus values (a hand-edited or future-format block) is malformed and reads
+// as no check — never a narrowed status that would leak a mystery word to the header badge
+// and GUI payload (mainCheckVerdict renders an unmatched status verbatim).
+test("a merge-scope check with a foreign status reads as no mainCheck", () => {
+  const repo = makeRepo();
+  const base = Date.now();
+  writeEvents(repo, [
+    { ts: base, loop: "lander", type: "build_check", scope: "merge", status: "running" },
+  ]);
+  assert.equal(snapshot(repo).mainCheck, undefined, "a malformed status is dropped, not narrowed");
+  const payload = statusPayload(repo) as { mainCheckBadge: string };
+  assert.equal(payload.mainCheckBadge, "", "no badge for a malformed check");
+});
+
 // Part 4/4: the snapshot carries the running orchestrator's published disk state, and only
 // while it runs — a stale block beside a dead pid speaks for no team.
 test("snapshot carries the running orchestrator's published disk state", async () => {

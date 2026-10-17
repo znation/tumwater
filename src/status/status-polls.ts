@@ -38,6 +38,16 @@ export interface MainCheckStatus {
   at: number;
 }
 
+/** Is a value one of MainCheckStatus's three statuses? The one home of the membership test:
+ * the event log is loose-typed by design, and a check whose status is not one of the three
+ * (a hand-edited or future-format block) is malformed — dropped like any other malformed
+ * check (see MainCheckScan.check's note) rather than narrowed with a cast into a status it
+ * cannot prove, which would otherwise leak a mystery word to the header badge and the GUI
+ * payload (mainCheckVerdict renders any unmatched status verbatim). */
+function isMainCheckStatus(status: unknown): status is "passed" | "failed" | "skipped" {
+  return status === "passed" || status === "failed" || status === "skipped";
+}
+
 /** How far mainCheckForPoll may grow its event tail. The per-poll default
  * (event-read.ts's DEFAULT_EVENT_TAIL) covers a healthy team — a merge-scope check rides
  * every merge and every redeploy — but a burst of quiet or failing ticks logs hundreds
@@ -130,7 +140,7 @@ function scanMainCheck(root: string): MainCheckScan {
   if (mainCheckGrewFull.size >= MAIN_CHECK_FULL_SET_MAX) mainCheckGrewFull.clear();
   if (check) mainCheckGrewFull.delete(root);
   else mainCheckGrewFull.add(root);
-  if (!check || typeof check.ts !== "number" || typeof check.status !== "string") {
+  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) {
     return { check: undefined };
   }
   let mergeDoneAfter: HarnessEvent | undefined;
@@ -186,13 +196,13 @@ export function heldByMainRed(s: LoopState, mainCheck: MainCheckStatus | undefin
 export function mainCheckForPoll(root: string, cfg: TumwaterConfig): MainCheckStatus | undefined {
   const scan = mainCheckScanFor(root);
   const check = scan.check;
-  if (!check || typeof check.ts !== "number" || typeof check.status !== "string") return undefined;
+  if (!check || typeof check.ts !== "number" || !isMainCheckStatus(check.status)) return undefined;
   const branch = targetBranch(cfg.baseBranch, currentBranchFromHeadFile(root));
   const sha = scan.mergeDoneAfterCommit ?? readBranchHead(root, branch) ?? scan.mergeDoneBeforeCommit;
   const counts = asTestCounts(check.counts);
   return {
     ...(sha ? { sha } : {}),
-    status: check.status as "passed" | "failed" | "skipped",
+    status: check.status,
     ...(counts ? { counts } : {}),
     at: check.ts,
   };
