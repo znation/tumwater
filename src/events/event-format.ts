@@ -6,7 +6,7 @@ import { TUMWATER_SOURCE, type HarnessEvent } from "./events.js";
 import { ORCHESTRATOR_STOPPED, backendKindPhrase, budgetPhrase, firstReason, fleetPausePhrase, fleetResumePhrase, holdPhrase, plural, rolePausePhrase, roleResumePhrase, rolesPhrase, shortSpanPhrase } from "../text/phrases.js";
 import { compactTokens, formatGB, shortSha, usd } from "../text/format.js";
 import { padToWidth } from "../text/text-width.js";
-import { textOr } from "../text/text.js";
+import { textOr, truncate } from "../text/text.js";
 import { formatTimestamp, formatTime } from "../text/datetime.js";
 import { finiteNumber, isJsonObject, stringList } from "../files/json-object.js";
 import { fallbackTierEntries } from "../budget/budget.js";
@@ -189,7 +189,11 @@ export function eventMessage(e: HarnessEvent): string {
       return `question posted: ${textOr(e.question)}`;
     case "entry_refused":
       // Routine operation (a refusal note landed), not a warning — like question_posted.
-      return `entry refused: ${textOr(e.reason)} (${Array.isArray(e.files) ? e.files.join(", ") : ""})`;
+      const files = Array.isArray(e.files) ? e.files.join(", ") : "";
+      const titles = stringList(e.entries);
+      if (titles.length === 0) return `entry refused: ${textOr(e.reason)} (${files})`;
+      const more = titles.length > 1 ? ` (and ${titles.length - 1} more)` : "";
+      return `entry refused: "${truncate(titles[0]!, 80)}"${more}: ${textOr(e.reason)} (${files})`;
     case "wake":
       return `woke (${textOr(e.reason)})`;
     case "run_deferred":

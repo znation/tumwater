@@ -1737,7 +1737,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The `entry_refused` event names the refused plan or bug, so `tumwater logs` and the notify page say which entry is now held (planned 2026-10-16 by plan; independent of every other entry — touches src/verdict/refusal.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests)
+## Done
+
+### The `entry_refused` event names the refused plan or bug, so `tumwater logs` and the notify page say which entry is now held (planned 2026-10-16 by plan; independent of every other entry — touches src/verdict/refusal.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests) — done 2026-10-16
 
 **Goal.** When a refusal note lands, `handleRefusal` (`src/verdict/refusal.ts`) logs `{ type: "entry_refused", reason, files }`. `formatEvent` (`src/events/event-format.ts`) renders that as `entry refused: <reason> (PLANS.md)`. `notify.ts` pages that same line as `TUMWATER_EVENT_MESSAGE`, because `entry_refused` is in `NOTIFY_EVENT_TYPES`. The operator learns that some entry is now held until a human releases it, but not which one. To act (`tumwater plan|bug --release <n>`, the dashboard's release button, or an edit), they must open PLANS.md or BUGS.md and look for the note. The harness already holds both versions of the file in `handleRefusal`: main's copy (`fileContentAt(wt, ctx.mainBranch, "PLANS.md")`) and the worktree's. So it can name the entries whose Refused note is new and put their titles on the event.
 
@@ -1758,8 +1760,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/refusal.test.ts`: the test "only the blocked plan's note is dropped when an eligible entry is refused too" asserts that `entries` names only the eligible entry, not the blocked plan whose note was dropped.
 - `test/event-format.test.ts`: the existing test "formatEvent renders entry_refused with the reason and files and no warning prefix" passes unchanged. A new test asserts that `{ reason: "too risky", files: ["PLANS.md"], entries: ["Add X", "Add Y"] }` renders `entry refused: "Add X" (and 1 more): too risky (PLANS.md)`, and that a single entry renders with no `(and … more)`.
 - `npm run test` passes.
-
-## Done
 
 ### The backlog index lists the newest five `## Done` plans and `## Fixed` bugs with line ranges, so a run reads recent history by range instead of grepping for it (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry)
 

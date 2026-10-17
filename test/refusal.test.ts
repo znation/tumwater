@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { handleRefusal, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
+import { handleRefusal, newlyRefusedTitles, refusalContradiction, withoutBlockedPlanRefusals, type RefusalContext } from "../src/verdict/refusal.js";
 import { freshLoopState } from "../src/loop/loop-state.js";
 import type { TickResult } from "../src/tick/tick-outcome.js";
 import type { PiRunResult } from "../src/pi/pi-run-result.js";
@@ -77,6 +77,7 @@ test("a refusal with a markdown note commits only the note and merges it directl
   assert.equal(refused[0]!.source, "improve");
   assert.equal(refused[0]!.reason, "it would delete user data");
   assert.ok((refused[0]!.files as string[]).includes("PLANS.md"));
+  assert.deepEqual(refused[0]!.entries, [], "a note under no entry names nothing, yet the event fires");
 });
 
 test("a refusal with no note resets the worktree and never merges", async () => {
@@ -250,7 +251,9 @@ test("a refusal note on a plan whose prerequisite is Done lands as usual", async
   const outcome = await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
   assert.ok(outcome.commit);
   assert.equal(merges.length, 1);
-  assert.equal(readEvents(root).filter((e) => e.type === "entry_refused").length, 1);
+  const refused = readEvents(root).filter((e) => e.type === "entry_refused");
+  assert.equal(refused.length, 1);
+  assert.deepEqual(refused[0]!.entries, ["S, part 2/2: b"]);
 });
 
 test("only the blocked plan's note is dropped when an eligible entry is refused too", async () => {
@@ -267,6 +270,34 @@ test("only the blocked plan's note is dropped when an eligible entry is refused 
   const plans = fs.readFileSync(path.join(wt, "PLANS.md"), "utf8");
   assert.equal(plans.split(REFUSED_LINE).length - 1, 1);
   assert.ok(plans.indexOf(REFUSED_LINE) > plans.indexOf("### E: eligible"));
+  const refused = readEvents(root).filter((e) => e.type === "entry_refused");
+  assert.deepEqual(refused[0]!.entries, ["E: eligible"], "the dropped blocked plan is not named");
+});
+
+test("one run refusing a plan and a bug names both, plan first", async () => {
+  const plans = "# Plans\n\n## Planned\n\n### P: plan (planned 2026-10-12 by plan)\n\nbody\n\n## Done\n\n_None yet._\n";
+  const bugs = "# Bugs\n\n## Open\n\n### B: bug (found by test 2026-10-12)\n\nbody\n\n## Fixed\n\n_None yet._\n";
+  const { root, wt } = await initializedWorktree();
+  fs.writeFileSync(path.join(root, "PLANS.md"), plans);
+  fs.writeFileSync(path.join(root, "BUGS.md"), bugs);
+  commitIn(root, "backlog");
+  sh(wt, "git", "reset", "--hard", "main");
+  fs.writeFileSync(path.join(wt, "PLANS.md"), refuseUnder(plans, "### P: plan"));
+  fs.writeFileSync(path.join(wt, "BUGS.md"), refuseUnder(bugs, "### B: bug"));
+  const { ctx } = makeCtx(root);
+  await handleRefusal(ctx, freshLoopState("improve"), wt, refusedPi({ refusedReason: "x" }));
+  const refused = readEvents(root).filter((e) => e.type === "entry_refused");
+  assert.deepEqual(refused[0]!.entries, ["P: plan", "B: bug"]);
+});
+
+test("newlyRefusedTitles names only entries whose Refused note is new in the section", () => {
+  const base = "## Planned\n\n### A (planned 2026-10-12 by plan)\n\nx\n\n### B (planned 2026-10-12 by plan)\n\n" + REFUSED_LINE + "\n\n## Done\n\n### D (planned 2026-10-12 by plan)\n\nx\n";
+  const head = refuseUnder(base, "### A").replace("### D (planned 2026-10-12 by plan)\n\nx", "### D (planned 2026-10-12 by plan)\n\n" + REFUSED_LINE);
+  assert.deepEqual(newlyRefusedTitles(base, head, "Planned"), ["A"], "stamp stripped; already-refused B and Done D skipped");
+  const added = base.replace("## Done", "### N (planned 2026-10-12 by plan)\n\n" + REFUSED_LINE + "\n\n## Done");
+  assert.deepEqual(newlyRefusedTitles(base, added, "Planned"), ["N"], "a new entry carrying a note counts");
+  const fenced = "## Planned\n\n### F (planned 2026-10-12 by plan)\n\n```\n### Fake\n" + REFUSED_LINE + "\n```\n\n## Done\n";
+  assert.ok(!newlyRefusedTitles("## Planned\n\n## Done\n", fenced, "Planned").includes("Fake"), "a fenced ### line is not an entry");
 });
 
 test("withoutBlockedPlanRefusals leaves unchanged, already-noted, and tidy cases right", () => {

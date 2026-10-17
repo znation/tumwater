@@ -370,6 +370,14 @@ test("formatEvent renders entry_refused with the reason and files and no warning
   assert.ok(!line.includes("warning"), line);
 });
 
+test("formatEvent names the refused entry, with a count when several are held", () => {
+  const two = formatEvent({ ts: 0, source: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"], entries: ["Add X", "Add Y"] } as never);
+  assert.match(two, /entry refused: "Add X" \(and 1 more\): too risky \(PLANS\.md\)/);
+  const one = formatEvent({ ts: 0, source: "feature", type: "entry_refused", reason: "too risky", files: ["PLANS.md"], entries: ["Add X"] } as never);
+  assert.match(one, /entry refused: "Add X": too risky/);
+  assert.ok(!one.includes("more"), one);
+});
+
 // The director inbox's prompt_cancelled event (director inbox management plan): a plain line
 // like its prompt_enqueued sibling — routine operation, not a warning.
 test("formatEvent renders prompt_cancelled plainly with the preview", () => {

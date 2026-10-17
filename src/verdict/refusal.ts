@@ -3,7 +3,7 @@ import path from "node:path";
 import { commitPathsAndDiscardRest, fileContentAt } from "../git/git.js";
 import { writeTextAtomic } from "../files/files.js";
 import { parseEntryDetails } from "../backlog/backlog-md.js";
-import { actionableEntryRanges } from "../backlog/backlog-structure.js";
+import { actionableEntryRanges, stripEntryStamp } from "../backlog/backlog-structure.js";
 import {
   entryHoldAgainst,
   entryKey,
@@ -80,6 +80,20 @@ export function withoutBlockedPlanRefusals(
   return dropped.length === 0 ? { md: headMd, dropped } : { md: lines.join("\n"), dropped };
 }
 
+/** Stamp-free titles of the `section` entries whose Refused note is new on `headMd`: head carries
+ * a note and base either lacks the entry (matched by entryKey) or holds it with none. Returned in
+ * head's file order, so the entry_refused event can name what is now held. */
+export function newlyRefusedTitles(baseMd: string, headMd: string, section: string): string[] {
+  const baseByKey = new Map(parseEntryDetails(baseMd, section).map((e) => [entryKey(e.title), e]));
+  return parseEntryDetails(headMd, section)
+    .filter((e) => {
+      if (refusalNote(e.body) === null) return false;
+      const base = baseByKey.get(entryKey(e.title));
+      return base === undefined || refusalNote(base.body) === null;
+    })
+    .map((e) => stripEntryStamp(e.title));
+}
+
 /** What handleRefusal needs from its owning loop: identity, this tick's assistant-turn count
  * (deliberately not on LoopState — see TickUsage.turns, src/tick/tick-usage.ts), and the
  * loop's shared merge landing so a conflict-resolution run folds into the same tick counters as
@@ -127,6 +141,20 @@ export async function handleRefusal(
     }
   }
   const notes = (await changedFiles(wt)).filter((f) => f.toLowerCase().endsWith(".md"));
+  const entries: string[] = [];
+  // Best-effort naming for the entry_refused event; it must never fail the refusal.
+  for (const { file, section } of [{ file: "PLANS.md", section: "Planned" }, { file: "BUGS.md", section: "Open" }]) {
+    if (!notes.includes(file)) continue;
+    try {
+      entries.push(...newlyRefusedTitles(
+        await fileContentAt(wt, ctx.mainBranch, file),
+        fs.readFileSync(path.join(wt, file), "utf8"),
+        section,
+      ));
+    } catch {
+      // Unnamed is fine: the event still carries reason and files.
+    }
+  }
   let commit: string | undefined;
   if (notes.length > 0) {
     // Subject + trailer only — a refusal carries no WHY/RISK/VERIFIED body; the reason is
@@ -152,7 +180,7 @@ export async function handleRefusal(
     clearSupersededRejection(state);
     // Page the operator: the entry stays held until a human or the director lifts it. Best-effort —
     // the note has already landed.
-    logEventBestEffort(ctx.root, { source: ctx.role, type: "entry_refused", reason, files: notes });
+    logEventBestEffort(ctx.root, { source: ctx.role, type: "entry_refused", reason, files: notes, entries });
   }
   return { result: "refused", summary: reason, commit };
 }

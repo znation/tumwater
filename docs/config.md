@@ -132,5 +132,5 @@ The `notify` command receives one of these values as `TUMWATER_EVENT_TYPE`; each
 | `merge_failed` | A merge finished without landing its change. |
 | `restart_blocked` | The restart onto the new main is blocked, and the team is stuck behind it. |
 | `question_posted` | A merge added a new entry under `## Open` in QUESTIONS.md; only a human can answer it. |
-| `entry_refused` | A refusal note landed, so the entry is held until a human or the director releases it. |
+| `entry_refused` | A refusal note landed, so the entry is held until a human or the director releases it; the message names the held entry. |
 | `supervisor_exit` | The supervisor gave up and the team is down; the supervisor runs the hook itself. |
