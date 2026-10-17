@@ -66,6 +66,7 @@ export const GUI_PAGE = `<!doctype html>
         <label class="composer-target"><span class="sr-only">Send to</span><select id="prompttarget" class="field"><option value="director">Director</option></select></label>
         <textarea id="prompt" rows="1" placeholder="Tell the team what to do next…" aria-label="Prompt"></textarea>
         <button type="submit" class="btn btn-primary" id="promptsend" title="Send (Enter)">${iconSvg("send")}<span>Send</span></button>
+        <label class="composer-defer"><span class="sr-only">Send later</span><input id="promptdefer" class="field" type="text" placeholder="Send later…" title="Delay this prompt: 45s, 90m, 1h30m, or 2d (capped at 90d)" autocomplete="off"></label>
       </div>
       <div id="promptimages" class="chips" hidden></div>
       <div id="promptimagenote" class="composer-note" hidden></div>

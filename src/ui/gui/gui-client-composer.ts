@@ -14,6 +14,7 @@ import { PROMPT_IMAGE_EXTENSIONS, PROMPT_IMAGE_MAX_BYTES, PROMPT_IMAGES_MAX_COUN
 export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for the director or any single loop ----
   const PROMPT_MAX = ${DIRECTOR_PROMPT_MAX_CHARS};
   const promptInput = $("prompt");
+  const promptDefer = $("promptdefer");
   const targetSelect = $("prompttarget");
   let promptTarget = "director";
   let targetKey = "";
@@ -261,15 +262,18 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
   // "prompt" and "prompt --role" use. Resolves to the confirmation to show; rejects when the
   // server did not take it (the caller keeps the text so it can be fixed and resent). Pending
   // images ride along as { name, dataBase64 } and are named in the confirmation.
-  async function sendPrompt(target, text, images) {
+  async function sendPrompt(target, text, images, defer) {
     const attached = images && images.length ? " with " + plural(images.length, "image") : "";
     const body = images && images.length ? { text, images } : { text };
+    if (defer) body.defer = defer;
     if (target === "director") {
       await postJson("/api/prompt", body);
-      return "Added to the director's inbox — it runs next" + attached;
+      return defer ? "Added to the director's inbox — delivers in " + defer + attached
+        : "Added to the director's inbox — it runs next" + attached;
     }
     await postJson("/api/prompt-role", { role: target, ...body });
-    return "Added to the " + roleLabel(target) + " inbox for its next run — it wakes now" + attached;
+    return defer ? "Added to the " + roleLabel(target) + " inbox — delivers in " + defer + attached
+      : "Added to the " + roleLabel(target) + " inbox for its next run — it wakes now" + attached;
   }
   // composer-send:end
   let sending = false;
@@ -281,9 +285,10 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     sending = true;
     $("promptsend").disabled = true;
     const images = [];
+    const defer = promptDefer.value.trim();
     try {
       for (const img of promptImages) images.push({ name: img.name, dataBase64: await readImageAsBase64(img.file) });
-      showFlash(await sendPrompt(target, text, images));
+      showFlash(await sendPrompt(target, text, images, defer));
     } catch (err) {
       // The prompt was not accepted: keep the text and the images so they can be fixed and resent.
       showFlash("error: " + err.message);
@@ -295,6 +300,7 @@ export const GUI_CLIENT_COMPOSER_JS = String.raw`  // ---- composer: one box for
     promptImages.length = 0;
     renderPromptImages();
     promptInput.value = "";
+    promptDefer.value = "";
     drafts[target] = "";
     // Record the sent prompt for recall: consecutive duplicates add one entry (re-sending the
     // same nudge does not fill the history with copies), the oldest drop past the cap, and the

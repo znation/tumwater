@@ -8,9 +8,10 @@ import { lanAddresses } from "../src/gui/gui-command.js";
 import { guiBindHost, startGui } from "../src/gui/gui-server.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { initProject } from "../src/init/init.js";
-import { inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { inboxSize, dequeueRolePrompt, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { roleInboxDir } from "../src/paths.js";
 import { piLogPath } from "../src/paths.js";
+import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { fetchLoopback, postJson, startLocalGui } from "./fixtures/gui-fixtures.js";
 import { writeLogLines } from "./fixtures/log-fixtures.js";
 import { makeRepo, tmpdir, writeBacklogFile, writeConfig } from "./fixtures/repo-fixtures.js";
@@ -188,6 +189,39 @@ test("gui serves the dashboard, status JSON, and accepts prompts", async () => {
     assert.equal(inboxSize(repo), 1, "rejected bodies queue nothing");
 
     assert.equal((await fetch(base + "/nope")).status, 404);
+  } finally {
+    server.close();
+  }
+});
+
+test("gui /api/prompt and /api/prompt-role accept a deferral the queues hold until its time", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt defer");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const later = await postJson(base, "/api/prompt", { text: "later", defer: "45m" });
+    assert.equal(later.status, 200);
+    assert.equal(inboxSize(repo), 0, "a deferred prompt is not yet deliverable");
+    assert.equal(dequeueRolePrompt(repo, DIRECTOR_ROLE), null, "a deferred prompt cannot be dequeued");
+    const record = queuedRolePromptRecords(repo, DIRECTOR_ROLE)[0]!;
+    assert.ok(record.notBeforeMs !== null && record.notBeforeMs > Date.now(), "the not-before mark is in the future");
+
+    const bad = await postJson(base, "/api/prompt", { text: "later", defer: "nonsense" });
+    assert.equal(bad.status, 400);
+    assert.match(((await bad.json()) as { error: string }).error, /defer needs a duration/);
+    const over = await postJson(base, "/api/prompt", { text: "later", defer: "100d" });
+    assert.equal(over.status, 400);
+    assert.match(((await over.json()) as { error: string }).error, /defer is capped at 90d/);
+    assert.equal(inboxSize(repo), 0, "rejected deferrals queue nothing");
+
+    const roleLater = await postJson(base, "/api/prompt-role", { role: "feature", text: "later", defer: "45m" });
+    assert.equal(roleLater.status, 200);
+    assert.equal(inboxSize(repo, "feature"), 0, "a deferred per-role prompt is not yet deliverable");
+
+    // An absent defer still queues a deliverable prompt.
+    const now = await postJson(base, "/api/prompt", { text: "now" });
+    assert.equal(now.status, 200);
+    assert.equal(inboxSize(repo), 1, "an absent defer queues a deliverable prompt");
   } finally {
     server.close();
   }

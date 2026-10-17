@@ -259,6 +259,8 @@ export const GUI_STYLES = String.raw`
   .composer:focus-within { border-color: var(--primary); box-shadow: 0 0 0 3px var(--accent-bg); }
   .composer-row { display: flex; align-items: flex-end; gap: 8px; }
   .composer-target select { height: 34px; max-width: 190px; background-color: var(--surface-2); font-weight: 600; color: var(--text); }
+  .composer-defer { display: inline-flex; align-items: center; }
+  .composer-defer input { height: 34px; width: 132px; background-color: var(--surface-2); }
   .composer textarea { flex: 1; min-width: 0; min-height: 34px; max-height: 40vh; resize: none; border: 0; outline: none;
                        background: none; padding: 6px 4px; line-height: 1.45; font-size: 14.5px; }
   .composer textarea::placeholder { color: var(--text-4); }

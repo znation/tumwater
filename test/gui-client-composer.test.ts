@@ -352,6 +352,15 @@ test("the composer's submit queues for the director or one loop through the CLI'
   assert.equal(input.placeholder, "Tell the team what to do next…", "the target fell back to the director");
   assert.equal(s.refreshes(), 1);
 
+  // A deferred prompt posts the Send later duration and clears the defer box once queued.
+  input.value = "later";
+  s.el("promptdefer").value = "45m";
+  await s.fire(s.form(), "submit", SUBMIT);
+  await s.flush();
+  assert.deepEqual(s.posts.at(-1), { path: "/api/prompt", body: { text: "later", defer: "45m" } });
+  assert.match(String(s.flashes.at(-1)), /delivers in 45m/);
+  assert.equal(s.el("promptdefer").value, "", "a queued prompt clears the defer box too");
+
   // Whitespace-only text is a no-op, not a queued empty prompt.
   const before = s.posts.length;
   input.value = "   ";
@@ -362,12 +371,15 @@ test("the composer's submit queues for the director or one loop through the CLI'
   // A refused submit keeps the text so it can be fixed and resent.
   s.setFail(true);
   input.value = "too long";
+  s.el("promptdefer").value = "45m";
   await s.fire(s.form(), "submit", SUBMIT);
   await s.flush();
   assert.match(String(s.flashes.at(-1)), /^error: \/api\/prompt failed: HTTP 400/);
   assert.equal(input.value, "too long", "the draft survives a refusal");
+  assert.equal(s.el("promptdefer").value, "45m", "the deferral survives a refusal");
   assert.equal(s.el("promptsend").disabled, false, "the send button is re-enabled for the retry");
   s.setFail(false);
+  s.el("promptdefer").value = "";
   await s.fire(s.form(), "submit", SUBMIT);
   await s.flush();
   assert.deepEqual(s.posts.at(-1), { path: "/api/prompt", body: { text: "too long" } });
