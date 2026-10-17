@@ -261,18 +261,19 @@ test("the Landed today tile shows the work/maintenance commit split", () => {
 // reaches, with the DOM, persistence, and panel paint stubbed.
 function feedScope(recalled: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
   const panels: Record<string, string> = {};
+  const stores: Record<string, string> = {};
   const listeners: Record<string, ((ev: unknown) => void)[]> = {};
   const els: Record<string, { value: string; innerHTML: string; children: unknown[]; addEventListener: (type: string, fn: (ev: unknown) => void) => void }> = {};
   const $ = (id: string) => (els[id] ||= {
     value: "", innerHTML: "", children: [],
     addEventListener: (type: string, fn: (ev: unknown) => void) => { (listeners[id + ":" + type] ||= []).push(fn); },
   });
-  const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void }>(
+  const scope = clientScope<{ renderFeed(d: object): void; clearFeedFilter(): void; setFeedType(type: string): void }>(
     ["format", "labels", "view-model", "click-delegate", "activity", "report-role"],
-    ["renderFeed", "clearFeedFilter"],
+    ["renderFeed", "clearFeedFilter", "setFeedType"],
     {
       recall: (key: string) => recalled[key] ?? null,
-      store: () => {},
+      store: (key: string, value: string) => { stores[key] = String(value); },
       paintPanel: (id: string, html: string) => { panels[id] = html; },
       markActive: () => {},
       icon: iconStub,
@@ -288,6 +289,7 @@ function feedScope(recalled: Record<string, string> = {}, extra: Record<string, 
   return {
     scope,
     panels,
+    stores,
     els,
     fire: (id: string, type: string, ev: unknown) => (listeners[id + ":" + type] || []).forEach((f) => f(ev)),
   };
@@ -560,9 +562,173 @@ test("the Activity feed tallies the server-backed /api/logs slice it displays", 
   assert.doesNotMatch(html, /0 ×/);
 });
 
+test("the activity feed's type chip narrows to that exact event type", () => {
+  const { scope, panels } = feedScope({ feed: "all", "feed-type": "run_end" });
+  scope.renderFeed({
+    roles: [],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "run row" },
+      { ts: 2, source: "qa", type: "run_start", message: "start row" },
+      { ts: 3, source: "qa", type: "merged", message: "merge row" },
+    ],
+  });
+  const html = panels["feed"] ?? "";
+  assert.match(html, /run row/);
+  assert.doesNotMatch(html, /start row/);
+  assert.doesNotMatch(html, /merge row/);
+  assert.match(html, /data-type='run_end'[^>]*aria-pressed='true'/, "the selected type's chip is active");
+});
+
+test("the tally chips are buttons carrying data-type, marked active when selected", () => {
+  const payload = {
+    roles: [],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "run row" },
+      { ts: 2, source: "qa", type: "run_start", message: "start row" },
+    ],
+  };
+  const { scope, panels } = feedScope({ feed: "all" }, { lastStatus: payload });
+  scope.renderFeed(payload);
+  let html = panels["feed"] ?? "";
+  assert.match(html, /<button type='button' class='chip mono' data-type='run_end'/);
+  assert.match(html, /<button type='button' class='chip mono' data-type='run_start'/);
+  assert.doesNotMatch(html, /<span class='chip mono'/, "chips are buttons, not spans");
+  // Select a type: only its rows show and its chip carries active + aria-pressed.
+  scope.setFeedType("run_end");
+  html = panels["feed"] ?? "";
+  assert.match(html, /class='chip mono active' data-type='run_end' title='run_end' aria-pressed='true'/);
+  assert.doesNotMatch(html, /data-type='run_start'[^>]*active/, "the other chip is not marked active");
+  assert.match(html, /run row/);
+  assert.doesNotMatch(html, /start row/);
+});
+
+test("the type chip composes with the Loop and Search filters", () => {
+  const roleFiltered = feedScope({ feed: "all", "feed-role": "qa", "feed-type": "run_end" });
+  roleFiltered.scope.renderFeed({
+    roles: [{ role: "qa" }],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "keep me" },
+      { ts: 2, source: "feature", type: "run_end", message: "other role" },
+      { ts: 3, source: "qa", type: "merged", message: "other type" },
+    ],
+  });
+  let html = roleFiltered.panels["feed"] ?? "";
+  assert.match(html, /keep me/);
+  assert.doesNotMatch(html, /other role/, "the Loop picker still culls first");
+  assert.doesNotMatch(html, /other type/, "the type chip narrows after the role");
+  // A Search that already narrowed one type still narrows to the selected type.
+  const grepFiltered = feedScope({ feed: "all", "feed-grep": "alpha", "feed-type": "run_end" });
+  grepFiltered.scope.renderFeed({
+    roles: [],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "alpha run" },
+      { ts: 2, source: "qa", type: "run_end", message: "beta run" },
+      { ts: 3, source: "qa", type: "merged", message: "alpha merge" },
+    ],
+  });
+  html = grepFiltered.panels["feed"] ?? "";
+  assert.match(html, /alpha run/);
+  assert.doesNotMatch(html, /beta run/);
+  assert.doesNotMatch(html, /alpha merge/);
+});
+
+test("the type chip narrows the server-backed slice too", async () => {
+  const payload = { roles: [{ role: "qa" }], eventItems: [] };
+  const { scope, panels } = feedScope({ feed: "all", "feed-role": "qa", "feed-grep": "needle" }, {
+    getJson: async () => ({
+      events: [
+        { ts: 1, source: "qa", type: "merged", message: "needle one" },
+        { ts: 2, source: "qa", type: "merge_failed", message: "needle two" },
+        { ts: 3, source: "qa", type: "merged", message: "needle three" },
+      ],
+    }),
+    lastStatus: payload,
+  });
+  scope.renderFeed(payload);
+  await feedSettle();
+  let html = panels["feed"] ?? "";
+  assert.match(html, /needle one/);
+  assert.match(html, /needle two/);
+  scope.setFeedType("merged");
+  html = panels["feed"] ?? "";
+  assert.match(html, /needle one/);
+  assert.match(html, /needle three/);
+  assert.doesNotMatch(html, /needle two/, "the type narrows the server rows the card displays");
+  assert.match(html, /data-type='merged'[^>]*aria-pressed='true'/, "the selected type's chip is active");
+  assert.match(html, /data-type='merge_failed'/, "both present types stay one click away in the chips");
+});
+
+test("a type naming no present event still paints the chips and the clearable empty state", () => {
+  const { scope, panels } = feedScope({ feed: "all", "feed-type": "run_end" });
+  scope.renderFeed({
+    roles: [],
+    eventItems: [
+      { ts: 1, source: "qa", type: "merged", message: "a merge" },
+      { ts: 2, source: "qa", type: "question_posted", message: "a question" },
+    ],
+  });
+  const html = panels["feed"] ?? "";
+  assert.match(html, /No recent events match this filter/);
+  assert.match(html, /data-action='feedclear'/);
+  // The chip set is built from the pre-type rows, so present types stay listed, not an empty row.
+  assert.match(html, /data-type='merged'/);
+  assert.match(html, /data-type='question_posted'/);
+  assert.doesNotMatch(html, /data-type='run_end' title='run_end'>/, "no chip for the absent type");
+});
+
+test("clearing the filter resets the type chip too", () => {
+  const payload = {
+    roles: [{ role: "qa" }],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "run row" },
+      { ts: 2, source: "qa", type: "merged", message: "merge row" },
+    ],
+  };
+  const { scope, panels, stores } = feedScope({ feed: "all", "feed-type": "run_end" }, { lastStatus: payload });
+  scope.renderFeed(payload);
+  assert.match(panels["feed"] ?? "", /run row/);
+  assert.doesNotMatch(panels["feed"] ?? "", /merge row/);
+  scope.clearFeedFilter();
+  assert.equal(stores["feed-type"], "", "the type is persisted as cleared");
+  assert.equal(stores["feed-role"], "", "the role is persisted as cleared");
+  assert.equal(stores["feed-grep"], "", "the search is persisted as cleared");
+  assert.match(panels["feed"] ?? "", /merge row/, "the feed repaints unfiltered");
+});
+
+test("clicking a type chip selects it and clicking the active chip clears it", () => {
+  const payload = {
+    roles: [],
+    eventItems: [
+      { ts: 1, source: "qa", type: "run_end", message: "run row" },
+      { ts: 2, source: "qa", type: "merged", message: "merge row" },
+    ],
+  };
+  const El = class Element {};
+  const hit = (sel: string, dataset: Record<string, string>) => {
+    const t = new El();
+    (t as unknown as { closest: (q: string) => unknown }).closest = (q: string) => (q === sel ? { dataset } : null);
+    return t;
+  };
+  const { scope, panels, stores, fire } = feedScope({ feed: "all" }, { lastStatus: payload, Element: El });
+  scope.renderFeed(payload);
+  assert.match(panels["feed"] ?? "", /run row/);
+  assert.match(panels["feed"] ?? "", /merge row/);
+  // Click the merged chip: it is not the current type (none), so it gets selected.
+  fire("feed", "click", { target: hit("button[data-type]", { type: "merged" }) });
+  assert.equal(stores["feed-type"], "merged");
+  assert.match(panels["feed"] ?? "", /merge row/);
+  assert.doesNotMatch(panels["feed"] ?? "", /run row/);
+  // Click the now-active merged chip again: it clears the type, re-showing everything.
+  fire("feed", "click", { target: hit("button[data-type]", { type: "merged" }) });
+  assert.equal(stores["feed-type"], "", "clicking the active chip lifts the filter");
+  assert.match(panels["feed"] ?? "", /run row/);
+  assert.match(panels["feed"] ?? "", /merge row/);
+});
+
 test("the Activity filter persists its choices and the page ships the controls in the card head", () => {
   assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-role"/);
   assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-grep"/);
+  assert.match(GUI_CLIENT_TEAM_JS, /store\("feed-type"/);
   const card = GUI_PAGE.slice(GUI_PAGE.indexOf('aria-labelledby="activity-title"'));
   const head = card.slice(0, card.indexOf("</header>"));
   assert.match(head, /id="feedrole"/);

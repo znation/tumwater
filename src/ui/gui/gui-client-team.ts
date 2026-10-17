@@ -472,10 +472,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // The Activity card's own narrowing, beside the Notable/All segmented choice: a Loop picker
   // and a text box filter the events the card carries, and — once a filter is set — a debounced
   // /api/logs search reaches past that carried window into the log's recent slice (the same
-  // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed). Both persist like
-  // the Notable/All choice, so a reload keeps the operator's scope.
+  // loop/match rule 'tumwater logs --role'/'--grep' apply to the CLI feed), while the tally
+  // chips select one exact event type the way 'tumwater logs --type <type>' does. All persist
+  // like the Notable/All choice, so a reload keeps the operator's scope.
   let feedFilter = recall("feed") === "all" ? "all" : "notable";
   let feedRole = recall("feed-role") || "";
+  let feedType = recall("feed-type") || "";
   let feedText = recall("feed-grep") || "";
   const KINDS = { landing: ["merge", "green"], problem: ["fail", "red"], attention: ["question", "indigo"], info: ["info", "blue"], routine: ["dot", "gray"] }; // retired-name-ok: event kind key, renamed with the status model
   // Server-backed search state. feedResults is the /api/logs slice once it answers (newest
@@ -490,7 +492,9 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   let feedError = "";
   let feedQueryKey = "";
   // Only the non-empty filters ride the query: an absent grep/role means unfiltered server-side,
-  // exactly as handleLogs reads them.
+  // exactly as handleLogs reads them. The type is deliberately NOT carried: the server slice must
+  // still deliver every type so the tally chips can be built from it — the type is a local
+  // narrowing on the rows in hand, like the Loop picker, not a query narrowing.
   function feedLogsQuery() {
     const params = [];
     if (feedText) params.push("grep=" + encodeURIComponent(feedText));
@@ -538,14 +542,19 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
   // (read-only from src/cli/log-commands.ts's sayTally): one N × <type> chip per present event
   // type, count-descending then type-name ascending. A pure function of the rows in hand, so the
   // chips and the <li> rows below cannot drift on which events count; "" for an empty array so
-  // empty and empty-state feeds paint no stray chips.
-  function tallyChips(events) {
+  // empty and empty-state feeds paint no stray chips. Each chip is a button: clicking the
+  // currently-selected type clears it, otherwise it selects that type (the active one carries
+  // the active class and aria-pressed), the browser twin of 'logs --type <type>'.
+  function tallyChips(events, activeType) {
     if (!events.length) return "";
     const counts = new Map();
     for (const e of events) counts.set(e.type, (counts.get(e.type) || 0) + 1);
+    const chip = (type, n) => "<button type='button' class='chip mono" + (type === activeType ? " active" : "") +
+      "' data-type='" + esc(type) + "' title='" + esc(type) + "'" + (type === activeType ? " aria-pressed='true'" : "") +
+      ">" + n + " × " + esc(eventTypeLabel(type)) + "</button>";
     return "<div class='feed-tally chips'>" + [...counts.entries()]
       .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-      .map(([type, n]) => "<span class='chip mono' title='" + esc(type) + "'>" + n + " × " + esc(eventTypeLabel(type)) + "</span>").join("") + "</div>";
+      .map(([type, n]) => chip(type, n)).join("") + "</div>";
   }
   function renderFeed(d) {
     syncFeedRoles(d);
@@ -568,11 +577,16 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     const serverRows = feedResults !== null
       ? (feedFilter === "all" ? feedResults : feedResults.filter((it) => eventKind(it) !== "routine"))
       : null;
-    const shown = feedError ? [] : serverRows !== null ? serverRows : local;
+    // The type chip narrows whichever slice is in hand (carried window or server slice), so it
+    // composes after the Notable/All cull and the role/grep narrowing. The chips are built from
+    // the pre-type rows so every present type stays one click away even when the filter empties
+    // the feed.
+    const preType = feedError ? [] : serverRows !== null ? serverRows : local;
+    const shown = feedType ? preType.filter((it) => it.type === feedType) : preType;
     markActive($("feedfilter"), "filter", feedFilter);
     const roles = new Set((d.roles || []).map((l) => l.role));
-    paintPanel("feed", shown.length
-      ? tallyChips(shown) + shown.map((it) => {
+    paintPanel("feed", (preType.length ? tallyChips(preType, feedType) : "") + (shown.length
+      ? shown.map((it) => {
         const kind = eventKind(it);
         const tone = it.type === "run_end" && kind === "problem" ? resultInfo(it.result).tone : KINDS[kind][1];
         const whoLabel = it.source === "harness" ? "tumwater" : roleLabel(it.source); // vocabulary-ok: the harness event source
@@ -584,19 +598,28 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
           "<time class='feed-time' title='" + esc(fmtClock(it.ts)) + "'>" + esc(fmtAgo(it.ts)) + "</time></li>";
       }).join("")
       : feedResults !== null
-        ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Role picker to look further back. ")
+        ? emptyFeedRow("No events match this filter in the log's recent slice", "Widen the Search or Role picker, or clear the type chip, to look further back. ")
         : feedError
           ? emptyFeedRow("Search unavailable", esc(feedError) + " — the running server may predate the /api/logs endpoint. ")
-          : notable.length
-            ? emptyFeedRow("No recent events match this filter", "Clear the Role or Search box to see the recent feed again. ")
+          : notable.length || preType.length
+            ? emptyFeedRow("No recent events match this filter", "Clear the Role, Search, or type chip to see the recent feed again. ")
             : "<li class='empty'><strong>" + (items.length ? "Nothing notable lately" : "No events yet") + "</strong>" +
-              (items.length ? "Merges, failures, and questions show up here. All events has every run start and check." : "Events appear here as the roles work.") + "</li>");
+              (items.length ? "Merges, failures, and questions show up here. All events has every run start and check." : "Events appear here as the roles work.") + "</li>"));
+  }
+  // The single state change both the chip click and Clear filter use: select a type (stored so
+  // a reload keeps the scope), or clear it by passing "".
+  function setFeedType(type) {
+    feedType = type;
+    store("feed-type", type);
+    if (lastStatus) renderFeed(lastStatus);
   }
   function clearFeedFilter() {
     feedRole = "";
     feedText = "";
+    feedType = "";
     store("feed-role", "");
     store("feed-grep", "");
+    store("feed-type", "");
     if ($("feedrole")) $("feedrole").value = "";
     if ($("feedgrep")) $("feedgrep").value = "";
     if (lastStatus) renderFeed(lastStatus);
@@ -624,9 +647,12 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     if (lastStatus) renderFeed(lastStatus);
   });
   // The empty state's #feed is static markup, so its delegated listener registers at load like
-  // the #feedfilter one above.
+  // the #feedfilter one above. A chip click whose type matches the current feedType clears it
+  // (toggle off), otherwise it selects that type — the same toggle the Notable/All control uses.
   $("feed").addEventListener("click", (ev) => {
-    if (clickClosest(ev, "button[data-action='feedclear']")) clearFeedFilter();
+    if (clickClosest(ev, "button[data-action='feedclear']")) { clearFeedFilter(); return; }
+    const b = clickClosest(ev, "button[data-type]");
+    if (b) setFeedType(b.dataset.type === feedType ? "" : b.dataset.type);
   });
   // activity:end
 
