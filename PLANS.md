@@ -1266,6 +1266,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### A refused plan or bug raises a standing `refused` team alert on the dashboard, the TUI and `tumwater status`, the way an open question does (planned 2026-10-16 by plan; independent of every other Planned entry — touches src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx and their tests; no src/merge, src/tick, src/doctor or src/ui/gui edit)
+
+**Goal.** A **Refused** note holds an entry until a human decides ("The objection stands until a human or the director edits the entry"). Today the operator hears about it in three places: one notify page when the refusal lands (`entry_refused`), the `refused` row in `tumwater doctor` (`checkRefusedEntries`, src/doctor/doctor-backlog.ts), and a `[blocked: refused]` mark inside the backlog lists. Once the page has scrolled away, nothing on the surfaces an operator watches says a decision is waiting. The tui-panes split in PLANS.md has been held this way since 2026-10-14. An open question gets a standing indigo banner (the `questions` alert in `teamAlerts`, src/ui/team-alerts.ts) until it is answered. This plan gives refused entries the same kind of standing alert. It is amber, because the operator has to act, and it carries a button that opens the backlog card.
+
+**Approach.**
+- `src/backlog/backlog-eligibility.ts`: add an exported `refusedEntryTitles(root: string): string[]`. It returns the verbatim titles of the planned plans and then the open bugs whose hold is `"refused"`, in file order. Read `backlogHolds(root)` (cached) and pair `holds.plans[i]` with `plannedPlanEntries(root)[i].title` and `holds.bugs[i]` with `openBugEntries(root)[i].title`. These are the parallel readers `backlogInProgress` already walks. Give it a doc comment in the style of `backlogMarks`. A missing file yields `[]`, because the readers already return `[]`.
+- `src/ui/team-alerts.ts`: `teamAlerts` gains a fifth parameter, `refused: readonly string[] = []`, after `now`. The default keeps every existing call, including all of test/team-alerts.test.ts and test/status-model.test.ts, unchanged. When `refused.length > 0`, push this alert directly after the `questions` alert:
+  key `refused`, tone `amber`; title `<plural(refused.length, "refused entry waits", "refused entries wait")> on your decision`; detail `<stripEntryStamp(refused[0])>`, then ` — and <N-1> more` when there are several, then ` · no role takes it until you release it (tumwater plan|bug --release <n>, or the entry's drawer) or cancel it`; actions `[{ label: "Open backlog", act: "backlog" }]`.
+  The dashboard already handles `act: "backlog"` in src/ui/gui/gui-client-boot.ts, where it scrolls to the backlog card, so no client change is needed. Update the module's alert-order comment if it lists the keys.
+- Pass the titles at the three production call sites, each read fresh per poll like `openQuestions`:
+  - `statusPayload` in src/ui/status-payload.ts: `teamAlerts(snap, questions, roles, now, refusedEntryTitles(root))`.
+  - `renderStatus` in src/ui/status-render.ts: the CLI banner call.
+  - src/ui/tui/tui.tsx: the `attention` line's `teamAlerts(…)` call.
+- Out of scope: notify changes (`entry_refused` already pages), doctor changes, a per-entry release button on the banner, and any change to how holds are decided.
+
+**Files touched.** src/backlog/backlog-eligibility.ts, src/ui/team-alerts.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/tui/tui.tsx, test/backlog-eligibility.test.ts, test/team-alerts.test.ts, test/status-payload.test.ts.
+
+**Acceptance criteria.**
+- test/backlog-eligibility.test.ts: for a temp repo whose PLANS.md `## Planned` holds an eligible plan, a refused plan and a plan with a Needs review note, and whose BUGS.md `## Open` holds a refused bug, `refusedEntryTitles` returns exactly `[<refused plan title>, <refused bug title>]`. A repo with neither file returns `[]`.
+- test/team-alerts.test.ts:
+  - `teamAlerts(base, [], [], now, ["Split X (planned 2026-10-14 by plan)"])` yields one alert with key `refused`, tone `amber`, title `1 refused entry waits on your decision`, a detail starting `Split X ·` (the stamp stripped) and containing `--release`, and actions `[{ label: "Open backlog", act: "backlog" }]`.
+  - With two titles, the title reads `2 refused entries wait on your decision` and the detail contains `— and 1 more`.
+  - With an open question and a refused title, `questions` comes immediately before `refused` in the key order.
+  - `teamAlerts(base, [], [], now)` stays `[]`.
+- test/status-payload.test.ts: the existing "status payload carries planned plans and open bugs, fresh per poll" fixture already holds a refused plan and a refused bug. Its payload's `alerts` gains a `refused` alert whose title is `2 refused entries wait on your decision`.
+- `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
