@@ -65,3 +65,22 @@ export function loopIds(config: TumwaterConfig): string[] {
   }
   return ids;
 }
+
+/** The pause-marker key for a loop id. Instance 1's loop id is the bare role id, which as a pause
+ * key would mean the whole role, so while the role runs several instances instance 1 pauses under
+ * `<role>-1`. `-1` is a pause key only, never a loop id. Every other id is its own key. */
+export function instancePauseKey(config: TumwaterConfig, loopId: string): string {
+  return INSTANCE_ROLES.has(loopId) && configuredInstances(config, loopId) > 1
+    ? `${loopId}-1`
+    : loopId;
+}
+
+/** Does the per-role pause marker stop this loop id? True for its own id, its base role's id (a
+ * whole-role pause), or — for the bare id of an instance role — the `<role>-1` pause key. */
+export function loopPaused(paused: ReadonlySet<string>, loopId: string): boolean {
+  return (
+    paused.has(loopId) ||
+    paused.has(baseRoleOf(loopId)) ||
+    (INSTANCE_ROLES.has(loopId) && paused.has(`${loopId}-1`))
+  );
+}

@@ -110,7 +110,10 @@ discards a role's in-flight merge.
   run that many instances of the role — `feature`, `feature-2`, … (shown as `feature #2`) — each
   with its own branch and state. The scheduler assigns each due instance one eligible backlog
   entry and holds it until the entry merges, the instance gives it up, or it sits idle past 24 h;
-  two instances never work the same entry. The assignment names any paths the entry cites that no longer exist in the checkout. An extra instance with no unassigned eligible entry is
+  two instances never work the same entry. The assignment names any paths the entry cites that
+  no longer exist in the checkout. The repeated-failure pause stops only the failing instance;
+  instance 1's pause shows as `feature-1`, and `tumwater resume --role feature-1` lifts it. An
+  extra instance with no unassigned eligible entry is
   skipped without lengthening its sleep. A feature instance, the first included, skips its
   scheduled and main-moved runs while no plan is eligible at all, so a wake from you, an inbox
   message or a resume still runs; a `start --once` round settles a skipped instance as

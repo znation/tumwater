@@ -177,3 +177,18 @@ test("pollStreakGate: a rejection-fed streak trips the breaker through the real 
   assert.equal(events[0]!.streak, ERROR_STREAK_BREAKER);
   assert.match(events[0]!.lastError as string, /^review rejected:/);
 });
+
+test("pollStreakGate: instance 1 of a multi-instance role pauses under its own key", () => {
+  const root = tmpdir("streak-gate-");
+  const state = newStreakGateState();
+  const key = (role: string) => (role === "feature" ? "feature-1" : role);
+  const tripped = pollStreakGate(root, state, [runner("feature", ERROR_STREAK_BREAKER, "boom")], new Set(), key);
+  assert.deepEqual(tripped, ["feature-1"]);
+  assert.deepEqual(pausedRoles(root), ["feature-1"]);
+  const events = streakEvents(root);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]!.role, "feature-1");
+  const again = pollStreakGate(root, state, [runner("feature", ERROR_STREAK_BREAKER, "boom")], new Set(["feature-1"]), key);
+  assert.deepEqual(again, []);
+  assert.equal(streakEvents(root).length, 1, "a second poll logs nothing more");
+});

@@ -11,7 +11,7 @@ import { readLandingQueue } from "../landing/landing-queue.js";
 import { MAINTENANCE_DAILY_FLOOR } from "../gates/maintenance-quota.js";
 import { heldByMainRed, mainCheckForPoll, maintenanceQuotaForPoll } from "../status/status-polls.js";
 import { loadLoopState, type LoopState } from "../loop/loop-state.js";
-import { baseRoleOf, loopIds } from "../roles/loop-ids.js";
+import { baseRoleOf, loopIds, loopPaused } from "../roles/loop-ids.js";
 import { ERROR_STREAK_BREAKER, ERROR_STREAK_WARN } from "../tick/tick-apply.js";
 import { squash } from "../text/text.js";
 import { usd } from "../text/format.js";
@@ -252,10 +252,11 @@ export function checkErrorStreaks(root: string, config: TumwaterConfig | undefin
   const phrases = failing.map((s) => {
     const n = s.consecutiveErrors ?? 0;
     let phrase = `${roleLabel(s.role)}: ${n} failed runs`;
-    if (paused.has(s.role)) {
+    if (loopPaused(paused, s.role)) {
+      const key = paused.has(s.role) ? s.role : paused.has(baseRoleOf(s.role)) ? baseRoleOf(s.role) : `${s.role}-1`;
       phrase +=
         n >= ERROR_STREAK_BREAKER
-          ? `, paused at the repeated-failure pause's bar — \`tumwater resume --role ${s.role}\` once the cause is fixed`
+          ? `, paused at the repeated-failure pause's bar — \`tumwater resume --role ${key}\` once the cause is fixed`
           : ", paused";
     }
     if (s.lastError) phrase += ` — last error: ${squash(s.lastError, 120)}`;

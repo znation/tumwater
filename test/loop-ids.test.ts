@@ -9,7 +9,9 @@ import {
   INSTANCE_ROLES,
   baseRoleOf,
   instanceIndex,
+  instancePauseKey,
   loopEnabled,
+  loopPaused,
   loopIds,
 } from "../src/roles/loop-ids.js";
 import { baselineBlocked, roleById, roleTier, yieldScaledRole } from "../src/roles/roles.js";
@@ -23,6 +25,19 @@ import { readEvents } from "../src/events/event-read.js";
 import { commitTrailer, stampedSubject } from "../src/git/commit-message.js";
 import { tmpdir } from "./fixtures/repo-fixtures.js";
 import { spentLoopState } from "./fixtures/loop-fixtures.js";
+
+test("instancePauseKey and loopPaused give instance 1 its own pause key only while the role has siblings", () => {
+  const two = defaultConfig();
+  two.roles.feature!.instances = 2;
+  const one = defaultConfig();
+  assert.equal(instancePauseKey(two, "feature"), "feature-1");
+  assert.equal(instancePauseKey(one, "feature"), "feature");
+  assert.equal(instancePauseKey(two, "feature-2"), "feature-2");
+  assert.equal(instancePauseKey(two, "qa"), "qa");
+  assert.equal(loopPaused(new Set(["feature-1"]), "feature"), true);
+  assert.equal(loopPaused(new Set(["feature-1"]), "feature-2"), false);
+  assert.equal(loopPaused(new Set(["feature"]), "feature-2"), true);
+});
 
 test("baseRoleOf and instanceIndex map only a base role's -N ids", () => {
   assert.ok(INSTANCE_ROLES.has("feature") && INSTANCE_ROLES.has("bugfix"));

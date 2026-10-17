@@ -296,6 +296,25 @@ test("pausing one instance releases its claim so a sibling can take the entry", 
   assert.equal(feature.state.claim?.key, "alpha");
 });
 
+test("pausing instance 1 under its feature-1 key releases its claim and leaves feature-2 working", async () => {
+  const root = tmpdir("tumwater-scheduling-paused-instance-one-");
+  fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);
+  const config = twoFeatureInstances();
+  const feature = fakeRunner("feature", config);
+  const feature2 = fakeRunner("feature-2", config);
+  const roles = () => new Map([["feature", undefined], ["feature-2", undefined]]);
+  await pollRunnerReasons(schedulingCtx(root, [feature, feature2], roles()));
+  assert.equal(feature.state.claim?.key, "alpha");
+  const reasons = await pollRunnerReasons({
+    ...schedulingCtx(root, [feature, feature2], roles()),
+    pausedRoles: new Set(["feature-1"]),
+  });
+  assert.equal(feature.state.claim, undefined, "the paused instance 1 gives its entry back");
+  assert.equal(reasons.has(feature), false, "instance 1 starts no tick");
+  assert.equal(reasons.has(feature2), true, "feature-2 is not stopped");
+  assert.equal(feature2.state.claim?.key, "beta");
+});
+
 test("pausing the whole feature role keeps every instance's claim", async () => {
   const root = tmpdir("tumwater-scheduling-paused-role-");
   fs.writeFileSync(path.join(root, "PLANS.md"), TWO_PLANS);

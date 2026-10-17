@@ -285,6 +285,16 @@ test("cmdResume --role lifts one role and reports the was-not-paused wording whe
   assert.ok(!fs.existsSync(pausedRolesPath(root)), "the last removal deletes the marker");
 });
 
+test("cmdPause and cmdResume accept --role feature-1, the instance-1 pause key, which other commands reject", async () => {
+  const root = tmpdir();
+  await expectOk(() => cmdPause(root, ["--role", "feature-1"]));
+  assert.deepEqual(readJson<Record<string, unknown>>(pausedRolesPath(root)).roles, ["feature-1"]);
+  await expectOk(() => cmdResume(root, ["--role", "feature-1"]));
+  assert.ok(!fs.existsSync(pausedRolesPath(root)), "resume removes the feature-1 marker");
+  const stderr = await expectFailAsync(() => cmdWake(root, ["--role", "feature-1"]));
+  assert.match(stderr, /unknown role: feature-1/);
+});
+
 test("cmdResume --role while the team pause holds names the stronger gate instead of promising ticks", async () => {
   const root = tmpdir();
   await expectOk(() => cmdPause(root)); // team pause: the stronger gate

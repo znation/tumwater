@@ -7,6 +7,7 @@ import { PAUSE_FOR_OVERFLOW_HINT, REASON_VALUE_ERROR, ROLE_VALUE_ERROR } from ".
 import { artifactPhrase, hasRetirableLeftovers, previewRetire, retireRole } from "./retire.js";
 import { agree, teamResumePhrase, pauseReasonSuffix } from "../text/phrases.js";
 import { errCode } from "../errno.js";
+import { INSTANCE_ROLES } from "../roles/loop-ids.js";
 import { allRoleIds, unknownRoleMessage } from "../roles/roles.js";
 import {
   normalizePauseReason,
@@ -64,6 +65,15 @@ function namedRole(root: string, args: string[]): string | null {
   } catch (err) {
     fail(errorMessage(err)); // same message main().catch would print, but via the standard fail()
   }
+}
+
+/** namedRole for the commands that write or lift the per-role pause marker: `--role feature-1`
+ * (`bugfix-1`) is the pause key of instance 1 of a multi-instance role (src/roles/loop-ids.ts's
+ * instancePauseKey), returned verbatim; every other value resolves through namedRole. */
+function pauseTargetRole(root: string, args: string[]): string | null {
+  const role = flagValue(args, "--role");
+  if (role && [...INSTANCE_ROLES].some((base) => role === `${base}-1`)) return role;
+  return namedRole(root, args);
 }
 
 /** The `--role <id>` value a marker command requires: namedRole's resolution plus the
@@ -212,7 +222,7 @@ export async function cmdPause(root: string, args: string[] = [], now: number = 
   // discipline timedPauseBits's own `now` parameter follows.
   const timed = forMs === undefined ? undefined : { ms: forMs, untilMs: now + forMs };
   const untilMs = timed?.untilMs;
-  const role = namedRole(root, args);
+  const role = pauseTargetRole(root, args);
   if (role) {
     // The plan keeps per-role pauses anonymous (a per-role reason would need a per-role map
     // for no observed need), so a reason aimed at a role pause fails fast here — accepting
@@ -313,7 +323,7 @@ export async function cmdStop(root: string, args: string[] = []): Promise<void> 
  * like pause: with no marker there is nothing to do. No live harness required — resuming
  * before startup just means the next `tumwater run` starts unpaused. */
 export async function cmdResume(root: string, args: string[] = []): Promise<void> {
-  const role = namedRole(root, args);
+  const role = pauseTargetRole(root, args);
   if (role) {
     // resumeRole (src/team/team-state.ts) is the single remover of the per-role marker; a false
     // return means the role was never paused — the changed-state contract roleResumeMessage

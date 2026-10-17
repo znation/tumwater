@@ -306,6 +306,14 @@ test("checkErrorStreaks: a paused loop at the breaker bar names the resume comma
   assert.match(r.detail, /tumwater resume --role feature/);
 });
 
+test("checkErrorStreaks: instance 1 paused under feature-1 reads as paused and names that key", () => {
+  const root = streakRoot({ feature: ERROR_STREAK_BREAKER });
+  pauseRole(root, "feature-1");
+  const r = checkErrorStreaks(root, bcfg({}));
+  assert.match(r.detail, /paused at the repeated-failure pause's bar/);
+  assert.match(r.detail, /tumwater resume --role feature-1`/);
+});
+
 test("checkErrorStreaks: a paused loop below the breaker is just paused", () => {
   const root = streakRoot({ feature: ERROR_STREAK_WARN });
   pauseRole(root, "feature");

@@ -15,7 +15,7 @@ import type { WorkLandedCache } from "../scheduling/work-landed-cache.js";
 import { deferTickReason, isEligible, type DeferReason } from "../scheduling/scheduling.js";
 import { BUGFIX_ROLE, DIRECTOR_ROLE, commitTier } from "../roles/roles.js";
 import type { MaintenanceQuotaVerdict } from "../gates/maintenance-quota.js";
-import { baseRoleOf, instanceIndex, loopEnabled } from "../roles/loop-ids.js";
+import { baseRoleOf, instanceIndex, loopEnabled, loopPaused } from "../roles/loop-ids.js";
 import { hasOutstandingWork, saveLoopState, type SkipReason } from "../loop/loop-state.js";
 import { inboxSize } from "../inbox/inbox.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
@@ -190,9 +190,9 @@ export async function pollRunnerReasons(
         // place with `loopEnabled` false, and its idle claim must be released so a sibling can
         // take the entry instead of the key staying held until the 24h stale sweep.
         enabled: loopEnabled(r.config, r.role),
-        // Only this instance paused (not its whole role): a sibling can take the entry. With
-        // the base role paused no sibling runs, so the claim stays.
-        paused: r.role !== base && pausedRolesSet.has(r.role) && !pausedRolesSet.has(base),
+        // Only this instance paused (not its whole role; instance 1 under `<role>-1`): a sibling
+        // can take the entry. With the base role paused no sibling runs, so the claim stays.
+        paused: loopPaused(pausedRolesSet, r.role) && !pausedRolesSet.has(base),
       });
       if (released === null) continue;
       const title = r.state.claim?.title ?? "";
@@ -271,8 +271,7 @@ export async function pollRunnerReasons(
       once.active &&
       !once.isSettled(runner) &&
       !runner.state.running &&
-      (pausedRolesSet.has(runner.role) ||
-        pausedRolesSet.has(baseRoleOf(runner.role)) ||
+      (loopPaused(pausedRolesSet, runner.role) ||
         capPaused.has(runner.role) ||
         maintenanceQuotaOverLine(runner) ||
         bootstrapHeldNow(runner) ||
@@ -291,7 +290,7 @@ export async function pollRunnerReasons(
       continue; // a restart or a low disk is pending: nothing new starts, on any loop
     // The per-role pause gates BEFORE the team check and exempts nothing — the director
     // included (the operator named that one loop deliberately).
-    if (pausedRolesSet.has(runner.role) || pausedRolesSet.has(baseRoleOf(runner.role))) continue;
+    if (loopPaused(pausedRolesSet, runner.role)) continue;
     // The role's own daily cost cap (src/gates/role-cap-gates.ts): no start-gate change — a
     // parked waiter finishes (in-flight ticks finish, NEW ticks are gated at scheduling,
     // exactly like every per-role pause), and there is no fallback-probe exception: the

@@ -1501,7 +1501,28 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)
+### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts and their tests)
+
+**Goal.** Part 1/2 makes the scheduler treat a runner as paused through `loopPaused` (`src/roles/loop-ids.ts`): its own id, its base role's id, or for instance 1 the `feature-1` key. The display surfaces still test `pausedRoles.includes(role)`. A breaker-paused instance 1 (marker `feature-1`) therefore shows as idle on `tumwater status`, the dashboard and `tumwater role feature`. A `feature-2` row under a whole-role `pause --role feature` already shows that way today. Have every surface read the scheduler's own answer.
+
+**Approach.**
+- `src/status/status-data.ts`: add `pausedLoops: string[]` to the status snapshot type, beside `pausedRoles`. Its doc comment: "the loop ids the scheduler treats as paused by the per-role marker". Build it where `pausedRoles: pausedRoles(root)` is built: `loopIds(config).filter((id) => loopPaused(set, id))` over one read of the marker, using the snapshot's config. Keep `pausedRoles` as the raw marker; it is what `resume --role` takes.
+- `src/ui/status-model.ts`: the row's paused test `snap.pausedRoles.includes(s.role)` becomes `snap.pausedLoops.includes(s.role)`.
+- `src/ui/gui/gui-client-loops.ts` (both `(d.pausedRoles || []).includes(l.role)` reads) and `src/ui/gui/gui-client-drawer.ts` (its one read): read `(d.pausedLoops || [])`.
+- `src/roles/role-view.ts`: `paused: pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
+- `src/cli/cli-run.ts`, the once-mode skip reason: `pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
+- Grep `src/` for other `pausedRoles(root).includes(` and `pausedRoles.includes(` reads of a loop's paused state. Switch each to `loopPaused`, except the TUI `p` toggle in `src/ui/tui/tui-editors.ts`: it decides what to write, so it keeps reading the raw marker.
+
+**Acceptance criteria.**
+- `test/status-model.test.ts`, new test: a snapshot with `pausedRoles: ["feature-1"]`, `pausedLoops: ["feature"]` and runners `feature` and `feature-2` gives the `feature` row the paused cell and leaves `feature-2` not paused. The paused cell is the same text a `pausedRoles: ["feature"]` single-instance snapshot renders.
+- A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
+- A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
+- Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
+- `npm run test` passes.
+
+## Done
+
+### The repeated-failure pause, part 1/2: Pause only the failing feature instance, including instance 1 (closed 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/roles/loop-ids.ts, src/gates/streak-gate.ts, src/gates/gate-polls.ts, src/orchestrator/orchestrator-scheduling.ts, src/operator/operator-commands.ts and their tests)
 
 **Goal.** With `roles.feature.instances` above 1 (or `roles.bugfix.instances`), `pollStreakGate` (`src/gates/streak-gate.ts`) pauses a runner that failed `ERROR_STREAK_BREAKER` runs in a row by calling `pauseRole(root, role)` with its loop id. For `feature-2` that pauses one instance, and since the paused-instance claim release landed its plan goes to a sibling. Instance 1's loop id is the bare `feature`, which is also the whole role's id: `pollRunnerReasons` (`src/orchestrator/orchestrator-scheduling.ts`) skips any runner where `pausedRolesSet.has(runner.role) || pausedRolesSet.has(baseRoleOf(runner.role))`. So when instance 1 trips, every feature instance stops, and the claim release keeps its claim (`paused` is false when the base is paused). The same failure in instance 2 stops only instance 2. Give instance 1 its own pause key, `feature-1` (`bugfix-1`), used only while its role runs more than one instance. Then the breaker stops just the failing instance, wherever it is in the count. `pause --role feature` keeps pausing the whole role, as now.
 
@@ -1535,29 +1556,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - An orchestrator-scheduling test, placed next to the existing paused-instance claim release test (grep `test/` for `"paused"` beside `claimReleaseReason` / `pollRunnerReasons`). With feature at 2 instances and the marker holding `feature-1`, an idle `feature` runner's claim is released with reason `paused`, and `feature-2` still gets assigned work.
 - `test/operator-commands.test.ts`, next to "cmdResume --role lifts one role and reports the was-not-paused wording when absent": `cmdPause --role feature-1` writes `feature-1` to the marker, and `cmdResume --role feature-1` removes it. Also assert that `--role feature-1` is rejected by a command that uses `namedRole` (e.g. `cmdWake` or `cmdAbort`, whichever its tests already drive).
 - `npm run test` passes.
-
-### The repeated-failure pause, part 2/2: Status, the dashboard and the role view show instance 1 paused under its own key (planned 2026-10-16 by plan; requires part 1/2 landed; touches src/status/status-data.ts, src/ui/status-model.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/roles/role-view.ts, src/cli/cli-run.ts, src/doctor/doctor-holds.ts and their tests)
-
-**Goal.** Part 1/2 makes the scheduler treat a runner as paused through `loopPaused` (`src/roles/loop-ids.ts`): its own id, its base role's id, or for instance 1 the `feature-1` key. The display surfaces still test `pausedRoles.includes(role)`. A breaker-paused instance 1 (marker `feature-1`) therefore shows as idle on `tumwater status`, the dashboard and `tumwater role feature`. A `feature-2` row under a whole-role `pause --role feature` already shows that way today. Have every surface read the scheduler's own answer.
-
-**Approach.**
-- `src/status/status-data.ts`: add `pausedLoops: string[]` to the status snapshot type, beside `pausedRoles`. Its doc comment: "the loop ids the scheduler treats as paused by the per-role marker". Build it where `pausedRoles: pausedRoles(root)` is built: `loopIds(config).filter((id) => loopPaused(set, id))` over one read of the marker, using the snapshot's config. Keep `pausedRoles` as the raw marker; it is what `resume --role` takes.
-- `src/ui/status-model.ts`: the row's paused test `snap.pausedRoles.includes(s.role)` becomes `snap.pausedLoops.includes(s.role)`.
-- `src/ui/gui/gui-client-loops.ts` (both `(d.pausedRoles || []).includes(l.role)` reads) and `src/ui/gui/gui-client-drawer.ts` (its one read): read `(d.pausedLoops || [])`.
-- `src/roles/role-view.ts`: `paused: pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
-- `src/cli/cli-run.ts`, the once-mode skip reason: `pausedRoles(root).includes(role)` becomes `loopPaused(new Set(pausedRoles(root)), role)`.
-- Grep `src/` for other `pausedRoles(root).includes(` and `pausedRoles.includes(` reads of a loop's paused state. Switch each to `loopPaused`, except the TUI `p` toggle in `src/ui/tui/tui-editors.ts`: it decides what to write, so it keeps reading the raw marker.
-- `src/doctor/doctor-holds.ts`, `checkErrorStreaks`: its `paused.has(s.role)` test (a `Set`, so the grep above misses it) becomes `loopPaused(paused, s.role)`. The breaker hint's `tumwater resume --role ${s.role}` names the marker key that lifts the pause instead: the first of `s.role`, `${s.role}-1` and `baseRoleOf(s.role)` that `paused` holds. Today a `feature-2` at the bar under a whole-role `pause --role feature` already reads as not paused there.
-
-**Acceptance criteria.**
-- `test/status-model.test.ts`, new test: a snapshot with `pausedRoles: ["feature-1"]`, `pausedLoops: ["feature"]` and runners `feature` and `feature-2` gives the `feature` row the paused cell and leaves `feature-2` not paused. The paused cell is the same text a `pausedRoles: ["feature"]` single-instance snapshot renders.
-- A status-data test (grep `test/` for the one that asserts `pausedRoles` on the snapshot), new case: with feature at 2 instances and the marker holding `feature`, `pausedLoops` holds both `feature` and `feature-2`. With the marker holding `feature-1`, it holds only `feature`.
-- A role-view test (grep `test/` for `paused:` on the role view): `feature` with the marker holding `feature-1` reports `paused: true`.
-- A doctor test next to the existing `checkErrorStreaks` cases (grep `test/` for `checkErrorStreaks`): `feature` at `ERROR_STREAK_BREAKER` failed runs with the marker holding `feature-1` reads as paused, and its hint names `tumwater resume --role feature-1`.
-- Existing status, dashboard and role-view tests pass with `pausedLoops` added to their fixtures where the type requires it.
-- `npm run test` passes.
-
-## Done
 
 ### The assigned entry names its paths missing from the checkout (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, src/tick/tick-prompt.ts, src/prompt/gate-prompts.ts and their tests)
 

@@ -32,6 +32,7 @@
 
 import { ERROR_STREAK_BREAKER } from "../tick/tick-apply.js";
 import type { LoopState } from "../loop/loop-state.js";
+import { loopPaused } from "../roles/loop-ids.js";
 import { pauseRole } from "../team/team-state.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
 
@@ -58,9 +59,10 @@ export function newStreakGateState(): StreakGateState {
 /** Step the gate by one orchestrator poll. For each runner whose consecutive error streak
  * has reached ERROR_STREAK_BREAKER plus what its ack already excused, and whose role is not
  * in `pausedRoles`: write the per-role pause marker and log one `role_streak_paused` event
- * carrying the role, the streak, and the last error. Returns the roles this poll paused, so
- * the wiring can fold them into the poll's paused-roles view and the scheduler blocks them
- * on this very poll, not the next one.
+ * carrying the role, the streak, and the last error. Returns the pause keys this poll wrote
+ * (`pauseKey` maps a loop id to its marker key; instance 1 of a multi-instance role pauses as
+ * `<role>-1`), so the wiring can fold them into the poll's paused-roles view and the scheduler
+ * blocks them on this very poll, not the next one.
  *
  * Roles already paused are acked instead of tripped (the ack carrier is the marker itself,
  * per the module doc), a healthy streak clears its ack, and a streak below its bar leaves
@@ -71,13 +73,14 @@ export function pollStreakGate(
   state: StreakGateState,
   runners: readonly StreakObservation[],
   pausedRoles: ReadonlySet<string>,
+  pauseKey: (role: string) => string = (r) => r,
 ): string[] {
   const tripped: string[] = [];
   for (const { role, state: s } of runners) {
     const streak = s.consecutiveErrors ?? 0;
     // Ack while paused: the marker is the ack carrier. The streak is frozen while a role is
     // paused (no ticks run), so recording it here is exactly the level the resume excuses.
-    if (pausedRoles.has(role)) {
+    if (loopPaused(pausedRoles, role)) {
       state.acked.set(role, streak);
       continue;
     }
@@ -93,15 +96,15 @@ export function pollStreakGate(
     // ERROR_STREAK_BREAKER more failures from this level, whether or not any poll sees the
     // role paused in between (an operator resume racing the next poll must not re-trip).
     state.acked.set(role, streak);
-    if (pauseRole(root, role)) {
+    if (pauseRole(root, pauseKey(role))) {
       logEventBestEffort(root, {
         source: TUMWATER_SOURCE,
         type: "role_streak_paused",
-        role,
+        role: pauseKey(role),
         streak,
         ...(s.lastError ? { lastError: s.lastError } : {}),
       });
-      tripped.push(role);
+      tripped.push(pauseKey(role));
     }
   }
   return tripped;

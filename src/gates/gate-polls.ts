@@ -47,7 +47,7 @@ import { ERROR_STORM_QUIET, type ErrorStorm } from "../team/error-storm.js";
 import { FAILURE_SPREAD_QUIET, type FailureSpread } from "../team/failure-spread.js";
 import type { LoopRunner } from "../loop/loop.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
-import { baseRoleOf, loopEnabled } from "../roles/loop-ids.js";
+import { baseRoleOf, instancePauseKey, loopEnabled } from "../roles/loop-ids.js";
 import { queuedLandingRoles } from "../landing/landing-queue.js";
 import { MODEL_TIERS } from "../config/config-schema.js";
 import { logEventBestEffort, TUMWATER_SOURCE } from "../events/events.js";
@@ -327,7 +327,9 @@ export function pollTeamGates(
   // director is not exempt; a failing director cannot process prompts anyway. Roles it just
   // paused fold into this poll's paused-roles view, so the scheduler blocks them on this very
   // poll instead of the next one.
-  const streakPaused = pollStreakGate(root, states.streak, runners, pausedRoles);
+  const streakPaused = pollStreakGate(root, states.streak, runners, pausedRoles, (role) =>
+    instancePauseKey(liveConfig, role),
+  );
   // pollPauseGates advanced its edge-triggered bookkeeping BEFORE the breaker wrote its
   // marker, so without this fold the NEXT poll would log a generic role_paused for a pause
   // the breaker already announced as role_streak_paused — one pause, two events, the second
