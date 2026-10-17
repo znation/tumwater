@@ -2,6 +2,7 @@
 import {
   cancelScheduledStopMessage,
   requestAbort,
+  requestResetCounters,
   requestScheduledStop,
   requestWake,
   cancelWakes,
@@ -140,8 +141,9 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       return true;
     }
     // Per-loop controls on the transcript pane: Ctrl+P toggles the viewed loop's pause,
-    // Ctrl+A aborts its in-flight tick, Ctrl+W opens the wake editor (Ctrl+R opens the
-    // role-prompt editor for it — the prompt editor's arms handle that key). They call the
+    // Ctrl+A aborts its in-flight tick, Ctrl+V zeroes its counters, Ctrl+W opens the wake
+    // editor (Ctrl+R opens the role-prompt editor for it — the prompt editor's arms handle
+    // that key). They call the
     // same marker-writing/submit cores the CLI's --role flags do, so the surfaces cannot
     // drift on marker format, idempotence, or wording. Guarded to the transcript views and
     // out of budget-edit mode; everywhere else the keys fall through to applyKey. Every
@@ -159,7 +161,7 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
       !session.held.queued && !session.held.answer && !session.held.entry &&
       ctx.roleIds.length > 0 &&
       ctx.view >= 1 && ctx.view <= ctx.roleIds.length &&
-      key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w")
+      key.ctrl && (key.name === "p" || key.name === "a" || key.name === "w" || key.name === "v")
     ) {
       const role = ctx.roleIds[ctx.view - 1]!; // defined: view is clamped inside the transcript range
       try {
@@ -181,6 +183,8 @@ export function createPauseEditor(session: TuiEditorSession): TuiEditorModule {
         } else if (key.name === "a") {
           const result = requestAbort(session.root, role);
           session.flashMessage(result.ok ? result.message : `error: ${result.error}`);
+        } else if (key.name === "v") {
+          session.flashMessage(requestResetCounters(session.root, [role]));
         } else if (session.held.rolePromptFor || session.held.search) {
           session.flashMessage(
             session.held.rolePromptFor ? session.busyFlash("role prompt") : session.busyFlash("search"),

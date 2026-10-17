@@ -11,8 +11,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isTeamPaused, scheduledStopAt, pauseTeam, pausedRoles, standingTeamPause } from "../src/team/team-state.js";
 import { listWakes, requestWake } from "../src/operator/operator-intent.js";
-import { abortRequestPath, pausedRolesPath, wakeRequestPath } from "../src/paths.js";
-import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
+import { abortRequestPath, pausedRolesPath, resetRequestPath, wakeRequestPath } from "../src/paths.js";
+import { freshLoopState, loadLoopState, saveLoopState } from "../src/loop/loop-state.js";
 import { loadConfig, saveConfig } from "../src/config/config.js";
 import { writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { makeTuiRepo, withTui } from "./fixtures/tui-fixtures.js";
@@ -430,5 +430,44 @@ test("Ctrl+Q is inert during a / search and while the budget editor is open", as
     tui.key(undefined, "return");
     assert.doesNotMatch(tui.lines().at(-1) ?? "", /^stop in ›/);
     assert.equal(scheduledStopAt(repo), undefined);
+  });
+});
+
+// Ctrl+V zeroes the viewed loop's counters on the transcript pane (the terminal twin of
+// `tumwater reset-counters --role <id>`): one press writes the reset marker through the same
+// requestResetCounters core the CLI and dashboard call and, with no live team, zeroes the
+// state file directly. One press, not an armed second, matches the dashboard button's single
+// click; the action zeroes counters only and leaves scheduling untouched.
+test("Ctrl+V resets the viewed role's counters through requestResetCounters", async () => {
+  const repo = await makeTuiRepo();
+  saveLoopState(repo, { ...freshLoopState("clean"), runs: 4, commits: 3 });
+  await withTui(repo, async (tui) => {
+    tui.key(undefined, "t", { ctrl: true }); // events → transcript (one enabled role)
+    tui.key(undefined, "v", { ctrl: true });
+    assert.match(tui.lastFrame(), /counters reset for clean/);
+    const marker = JSON.parse(fs.readFileSync(resetRequestPath(repo), "utf8")) as { roles: string[] };
+    assert.deepEqual(marker.roles, ["clean"]);
+    // No orchestrator marker, so requestResetCounters zeroes the state file directly: the
+    // next run starts fresh.
+    const state = loadLoopState(repo, "clean");
+    assert.equal(state.runs, 0);
+    assert.equal(state.commits, 0);
+  });
+});
+
+test("Ctrl+V is inert outside the transcript and while the budget editor is open", async () => {
+  const repo = await makeTuiRepo();
+  await withTui(repo, async (tui) => {
+    // Events view (no transcript on screen): the key writes no reset marker.
+    tui.key(undefined, "v", { ctrl: true });
+    assert.equal(fs.existsSync(resetRequestPath(repo)), false);
+
+    // Budget-edit mode swallows it too — the prompt line keeps editing the cap.
+    tui.key(undefined, "t", { ctrl: true }); // → transcript
+    tui.key(undefined, "b", { ctrl: true }); // enter budget mode
+    assert.match(tui.lastFrame(), /edit daily cost budget/);
+    tui.key(undefined, "v", { ctrl: true });
+    assert.equal(fs.existsSync(resetRequestPath(repo)), false);
+    assert.equal(tui.lines().at(-1), "daily cap $ 50", "still editing the cap, Ctrl+V inert");
   });
 });
