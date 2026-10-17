@@ -88,6 +88,12 @@ export const GUI_CLIENT_BOOT_JS = String.raw`  // One tail for the "…written t
     const retire = clickClosest(ev, "button[data-action='retire']");
     if (retire) { ev.preventDefault(); confirmRetire(retire.dataset.role); }
   });
+  // The Health card's Problems only checkbox: repaint the cached report with only its warn
+  // and fail rows (toggleDoctorProblems, gui-client-settings), without rerunning the checks.
+  document.addEventListener("change", (ev) => {
+    const box = clickClosest(ev, "input[data-action='doctor-problems']");
+    if (box) toggleDoctorProblems(box.checked);
+  });
   // ---- global actions: alert and tile buttons, loop names anywhere, questions ----
   // run-act:start
   // The backlog drawer rows resolve a list entry's title from the last polled status by its

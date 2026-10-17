@@ -61,6 +61,7 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
       "<div class='card' id='settingscard'><div class='empty'>Loading…</div></div>" +
       "<div class='card' id='doctorcard'><div class='settings-row'><strong>Health</strong>" +
       "<span>The same checks as <code>tumwater doctor</code>.</span>" +
+      "<label><input type='checkbox' data-action='doctor-problems'> Problems only</label>" +
       "<button type='button' class='btn btn-sm' data-action='doctor-rerun'>Re-run</button></div>" +
       "<div id='doctorbody'><div class='empty'>Checking…</div></div></div>" +
       "<div class='card' id='retirecard'><div class='empty'>Loading…</div></div>" +
@@ -68,23 +69,42 @@ export const GUI_CLIENT_SETTINGS_JS = String.raw`  // settings-view:start
   }
   // The Health check card's body: header, one row per check (level badge, name, detail), the
   // verdict — everything esc'd. The pill is built inline (gui-client.ts's pill sits outside
-  // this region). A missing checks array renders no rows.
-  function renderDoctorReport(d) {
+  // this region). A missing checks array renders no rows. With problems (the Problems only
+  // checkbox), only the warn and fail rows render and a hidden-count line names how many ok
+  // rows were cut, mirroring tumwater doctor --problems's problemsOnly/renderDoctorProblems.
+  function renderDoctorReport(d, problems) {
     const tones = { ok: "green", warn: "amber", fail: "red" };
-    const rows = (Array.isArray(d.checks) ? d.checks : []).map((c) =>
+    const all = Array.isArray(d.checks) ? d.checks : [];
+    const checks = problems ? all.filter((c) => c.level !== "ok") : all;
+    const hidden = all.length - checks.length;
+    const rows = checks.map((c) =>
       "<div class='settings-row'><span class='pill t-" + (tones[c.level] || "amber") + "'>" + esc(c.level) + "</span>" +
       "<strong>" + esc(c.name) + "</strong><span>" + esc(c.detail) + "</span></div>").join("");
-    return "<p>" + esc(d.header) + "</p>" + rows + "<p>" + esc(d.verdict) + "</p>";
+    return "<p>" + esc(d.header) + "</p>" + rows +
+      (problems && hidden > 0 ? "<p class='empty'>" + hidden + " " + (hidden === 1 ? "ok check" : "ok checks") + " hidden</p>" : "") +
+      "<p>" + esc(d.verdict) + "</p>";
   }
+  // The last resolved doctor report and whether the card paints only its problems; the
+  // Problems only checkbox toggles the latter and repaints the cached body without rerunning
+  // the checks.
+  let lastDoctor = null;
+  let doctorProblems = false;
   async function fetchDoctor() {
     buildSettingsView();
     const body = $("doctorbody");
     body.innerHTML = "<div class='empty'>Checking…</div>";
     try {
-      body.innerHTML = renderDoctorReport(await getJson("/api/doctor"));
+      const report = await getJson("/api/doctor");
+      lastDoctor = report;
+      body.innerHTML = renderDoctorReport(report, doctorProblems);
     } catch (err) {
       body.innerHTML = errorPanel("Health checks could not run", err, "empty");
     }
+  }
+  function toggleDoctorProblems(checked) {
+    doctorProblems = checked;
+    const body = $("doctorbody");
+    if (lastDoctor !== null) body.innerHTML = renderDoctorReport(lastDoctor, doctorProblems);
   }
   // The Disabled roles card: roles set to enabled: false that still keep a worktree, branch,
   // merge ref, or paused marker (GET /api/retire), each with a two-click Retire button — the

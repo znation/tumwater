@@ -63,6 +63,10 @@ interface TuiKeysState {
    * delivers immediately; named in the prompt prefix and the Ctrl+L hint. */
   defer: string | null;
   view: number;
+  /** The Health pane's problems-only view (Ctrl+O): whether the tab paints only the warn and
+   * fail checks, the same trim `tumwater doctor --problems` applies. Session-only like the
+   * window/scope state. */
+  healthProblems: boolean;
   /** The session-scoped role the Usage and Failures panes collect for (Ctrl+G), null for the
    * team; cleared when the incoming roster no longer names it. */
   scopeRole: string | null;

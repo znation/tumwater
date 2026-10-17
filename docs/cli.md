@@ -66,7 +66,8 @@ The hint line at the bottom of the TUI names the keys the current view takes.
 | `Ctrl+Q` | Activity | stop the team later (a duration), or cancel a scheduled stop |
 | `Ctrl+G` | Activity, History, Usage, Failures | cycle the role scope |
 | `/` | Activity, History | search |
-| `Ctrl+S` / `Ctrl+O` | History | cycle the trailing window / the outcome filter |
+| `Ctrl+S` | History | cycle the trailing window |
+| `Ctrl+O` | History, Health | cycle the outcome filter on History; on Health, toggle the problems-only (warn and fail) view |
 | `Ctrl+N` | History | the newest completed run's event trail, and back |
 | `Ctrl+E` | Usage, Failures | cycle the trailing window |
 | `Ctrl+R` | Transcript | send a prompt to that role |

@@ -18,8 +18,9 @@ interface SettingsFns {
   renderSettingsPanel(d: unknown): void;
   saveSetting(form: { dataset: Record<string, string>; querySelector(sel: string): { value: string } }): Promise<void>;
   clearSetting(form: { dataset: Record<string, string> }): Promise<void>;
-  renderDoctorReport(d: unknown): string;
+  renderDoctorReport(d: unknown, problems?: boolean): string;
   fetchDoctor(): Promise<void>;
+  toggleDoctorProblems(checked: boolean): void;
   testNotify(): Promise<void>;
   fetchBrief(): Promise<void>;
   saveBrief(form: { querySelector(sel: string): { value: string } }): Promise<void>;
@@ -31,7 +32,7 @@ interface SettingsFns {
 function settingsScope(inject: Record<string, unknown> = {}): SettingsFns {
   return clientScope<SettingsFns>(
     ["panel-build", "settings-view"],
-    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "confirmRetire"],
+    ["SETTINGS_KEYS", "renderSettings", "fetchSettings", "renderSettingsPanel", "saveSetting", "clearSetting", "renderDoctorReport", "fetchDoctor", "toggleDoctorProblems", "testNotify", "fetchBrief", "saveBrief", "renderRetirable", "fetchRetirable", "confirmRetire"],
     { confirmSlot: (_repaint: unknown) => ({ armed: () => false, disarm: () => {}, arm: () => {} }), ...inject },
   );
 }
@@ -254,6 +255,46 @@ test("fetchDoctor paints the error panel into doctorbody when the fetch rejects"
   await fetchDoctor();
   assert.match(els.doctorbody!.innerHTML, /Health checks could not run/);
   assert.match(els.doctorbody!.innerHTML, /boom/);
+});
+
+test("renderDoctorReport filters to problems with the flag, and toggleDoctorProblems repaints the cached report", async () => {
+  const report = {
+    header: "h",
+    checks: [
+      { name: "ok-hold", level: "ok", detail: "x" },
+      { name: "warn-crypto", level: "warn", detail: "y" },
+      { name: "fail-free", level: "fail", detail: "z" },
+    ],
+    verdict: "v",
+  };
+  const els: Record<string, { innerHTML: string; dataset: Record<string, string> }> = {
+    "settings-view": { innerHTML: "", dataset: {} },
+    doctorbody: { innerHTML: "", dataset: {} },
+  };
+  const { renderDoctorReport, fetchDoctor, toggleDoctorProblems } = settingsScope({
+    errorPanel: (title: string, err: { message: string }) => "<div>" + title + " " + err.message + "</div>",
+    $: (id: string) => els[id],
+    getJson: async () => report,
+  });
+  // The default view renders every row; the problems view keeps only the warn and fail rows
+  // and appends the hidden-count line, mirroring `--problems`.
+  const full = renderDoctorReport(report);
+  assert.match(full, /ok-hold/);
+  assert.match(full, /warn-crypto/);
+  assert.match(full, /fail-free/);
+  const problems = renderDoctorReport(report, true);
+  assert.doesNotMatch(problems, /ok-hold/);
+  assert.match(problems, /warn-crypto/);
+  assert.match(problems, /fail-free/);
+  assert.match(problems, /1 ok check hidden/);
+  // After a fetch the card paints the full view; toggling the flag repaints it filtered.
+  await fetchDoctor();
+  assert.match(els.doctorbody!.innerHTML, /ok-hold/);
+  toggleDoctorProblems(true);
+  assert.doesNotMatch(els.doctorbody!.innerHTML, /ok-hold/);
+  assert.match(els.doctorbody!.innerHTML, /1 ok check hidden/);
+  assert.match(els.doctorbody!.innerHTML, /warn-crypto/);
+  assert.match(els.doctorbody!.innerHTML, /fail-free/);
 });
 
 test("the Brief card: built by the view, filled esc'd, saved with the textarea's text", async () => {

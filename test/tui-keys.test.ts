@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderDoctor } from "../src/doctor/doctor-render.js";
+import { renderDoctor, renderDoctorProblems } from "../src/doctor/doctor-render.js";
 import type { DoctorReport } from "../src/doctor/doctor-checks.js";
 import { arrowDir, inkKeyToReadline, pageDir } from "../src/ui/tui/tui-keymap.js";
 import { createTuiKeys } from "../src/ui/tui/tui-keys.js";
@@ -2050,6 +2050,46 @@ test("the Health tab caches renderDoctor of the seam's report, ignores a late re
   await Promise.resolve();
   assert.equal(keys.state().paneCache, null);
   assert.match(keys.state().flash ?? "", /boom/);
+});
+
+test("Ctrl+O on the Health tab toggles the problems-only view; History keeps its outcome cycle", async () => {
+  const root = makeRoot();
+  const report: DoctorReport = {
+    header: "doctor",
+    checks: [
+      { level: "ok", name: "node", detail: "fine" },
+      { level: "warn", name: "free-disk", detail: "low" },
+    ],
+    routing: [],
+    verdict: "warnings",
+  } as DoctorReport;
+  let resolveDoctor!: (r: DoctorReport) => void;
+  const keys = createTuiKeys({
+    root,
+    quit: () => {},
+    requestRender: () => {},
+    now: () => 0,
+    runDoctor: () => new Promise<DoctorReport>((resolve) => (resolveDoctor = resolve)),
+  });
+  keys.syncSnapshot(0, false, [], false);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  assert.equal(keys.state().view, 7);
+  assert.equal(keys.state().healthProblems, false);
+  resolveDoctor(report);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(keys.state().paneCache, renderDoctor(report), "Health enters on the full view");
+  // One Ctrl+O paints only the warn row and counts the hidden ok row, without its name.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().healthProblems, true);
+  assert.equal(keys.state().paneCache, renderDoctorProblems(report));
+  assert.match(keys.state().paneCache ?? "", /free-disk/);
+  assert.match(keys.state().paneCache ?? "", /ok check/);
+  assert.doesNotMatch(keys.state().paneCache ?? "", /node/);
+  // A second Ctrl+O restores the full view.
+  keys.handleKey(undefined, { ctrl: true, name: "o" });
+  assert.equal(keys.state().healthProblems, false);
+  assert.equal(keys.state().paneCache, renderDoctor(report));
 });
 
 test("the Brief tab caches renderBrief of the brief file on entry, and holds null with no prompt block", async () => {

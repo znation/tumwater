@@ -20,7 +20,7 @@ import { renderTickDetail } from "../../tick/tick-detail.js";
 import type { TeamChangeView, RoleChangeView } from "../../change/change-data.js";
 import { renderTeamChange, renderRoleChange } from "../../change/change-render.js";
 import { readBrief, renderBrief } from "../../brief/brief.js";
-import { renderDoctor } from "../../doctor/doctor-render.js";
+import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
 import { readMergeQueue } from "../../merge/merge-queue.js";
 import { renderMergeQueue } from "../../merge/merge-queue-render.js";
@@ -254,6 +254,14 @@ export function createTuiPanes(deps: TuiPanesDeps) {
   // collectReport/collectFailureReport tail-scan events.jsonl and readTickRows reads the log,
   // so they must not run on every second's re-render — those only re-window this string.
   let paneCache: string | null = null;
+  // Within the Health pane (Ctrl+O), whether the cached report paints only its warn and fail
+  // checks, the same problems-only trim `tumwater doctor --problems` applies. Session-only
+  // like the window/scope state: the next Ctrl+T into Health repaints with it.
+  let healthProblems = false;
+  // The Health pane's last resolved doctor report, kept so Ctrl+O can repaint the pane
+  // without rerunning the checks; null until the collector first resolves (the loading note
+  // is up).
+  let lastDoctorReport: DoctorReport | null = null;
   // Ctrl+N toggles the viewed loop's pane between its live transcript and a read-only
   // notebook view (its note and next tick's prompt). Like paneCache, noteCache is computed
   // once on entry and only re-windowed each frame; both reset when the mode changes or the
@@ -497,10 +505,12 @@ export function createTuiPanes(deps: TuiPanesDeps) {
         // they resolve. Same stale-resolution guard as Pending: only paint while Health is
         // current.
         paneCache = null;
+        lastDoctorReport = null;
         void runDoctorSeam(root).then(
           (report) => {
             if (view !== roleIds.length + 7) return;
-            paneCache = renderDoctor(report);
+            lastDoctorReport = report;
+            paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(report);
             deps.requestRender();
           },
           (err: unknown) => {
@@ -683,6 +693,21 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       // re-reads the rows now and resets the scroll so the changed body re-enters at its head.
       historyWindow = nextInCycle(HISTORY_WINDOWS, historyWindow);
       refreshPaneCache("history");
+      deps.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "o" && promptLineFree() && view === roleIds.length + 7) {
+      // Ctrl+O on the Health pane toggles the problems-only view (mnemonic: **O**nly
+      // problems) — the same warn/fail trim `tumwater doctor --problems` applies — so an
+      // operator can hide the ok rows without leaving the surface. The pane repaints from the
+      // cached report it already holds; before any checks resolve (the loading note is up)
+      // the toggle only records the choice for the first paint, and the pane re-enters at its
+      // head so the changed body starts at the top. Every other view keeps the History
+      // Ctrl+O outcome cycle below.
+      healthProblems = !healthProblems;
+      if (lastDoctorReport !== null)
+        paneCache = (healthProblems ? renderDoctorProblems : renderDoctor)(lastDoctorReport);
+      paneScroll = 0;
       deps.requestRender();
       return true;
     }
@@ -945,6 +970,7 @@ export function createTuiPanes(deps: TuiPanesDeps) {
     selectedQueued,
     queuedRows,
     paneCache,
+    healthProblems,
     noteMode,
     noteCache,
     trailMode,
