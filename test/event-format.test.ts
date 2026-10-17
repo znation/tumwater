@@ -713,7 +713,7 @@ test("formatEvent renders the fallback sides of optional payload fields", () => 
   } as never);
   assert.match(
     demotedBare,
-    /\(over-cap model omlx\/qwen is not serving — \? runs failed in a row on it; one trial run retries it after a cool-down\)$/,
+    /\(over-cap model omlx\/qwen is not serving — \? runs failed in a row on it; one trial run retries it after a cool-down\)/,
     `absent failure count must degrade to "?": ${demotedBare}`,
   );
 

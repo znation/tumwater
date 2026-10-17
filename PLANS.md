@@ -1650,7 +1650,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The budget-paused page names how the pause lifts, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)
+## Done
+
+### The budget-paused page names how the pause lifts, so the notify message is something the operator can act on (planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts) — done 2026-10-16
 
 **Goal.** `budget_paused` is in `NOTIFY_EVENT_TYPES` (`src/events/notify.ts`). It is the page for "the whole team stopped". `formatEvent` (`src/events/event-format.ts`, `case "budget_paused"`) renders `budget paused — $X of $Y daily cost reached`, plus a parenthetical when a fallback was refused or demoted. Unlike its per-role sibling `case "role_cap_paused"`, which ends with "it starts no new runs until the cap is raised or removed in tumwater.json or the local day rolls over", the fleet page does not say what keeps the team stopped or what lifts it. `pollBudgetGate` (`src/gates/budget-gates.ts`) re-evaluates `maxDailyCostUsd` from the live config each poll, so a cap raise resumes the gate (`test/budget-gates.test.ts` "raising the cap resumes the gate: …"). The day's spend resets at local midnight, so the next local day resumes it too (`test/budget.test.ts`, the comment on its `budget_resumed` cases). Name those lift paths on the page.
 
@@ -1667,8 +1669,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/failure-render.test.ts` passes unchanged, because the digest lines are not touched.
 - `test/notify.test.ts` passes unchanged, because the page message is `formatEvent(event)`.
 - `npm run test` passes.
-
-## Done
 
 ### The question-posted page names the question's number and the command that answers it, so the notify message is something the operator can act on (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/landing/landing-questions.ts, src/events/event-format.ts, docs/config.md and their tests)
 

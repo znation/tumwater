@@ -138,6 +138,11 @@ test("formatEvent renders the budget transition events plainly with spend and ca
     /budget paused — \$10\.50 of \$10\.00 daily cost reached \(over-cap model omlx\/qwen is not serving — 3 runs failed in a row on it; one trial run retries it after a cool-down\)/,
   );
   assert.ok(!demoted.includes("warning"), "a routine state change is not a warning");
+  // Every branch ends by naming how the pause lifts.
+  for (const line of [paused, bare, refused, demoted])
+    assert.match(line, /; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater\.json or the local day rolls over$/);
+  assert.match(refused, /models\.json\); roles start/);
+  assert.match(demoted, /after a cool-down\); roles start/);
 });
 
 // The live concurrency-cap change event: a routine state

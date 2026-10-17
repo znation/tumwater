@@ -286,12 +286,14 @@ export function eventMessage(e: HarnessEvent): string {
       // switching over, and an operator reading the feed must be able to act on it. So is a
       // free fallback the breaker demoted because its ticks kept failing (BUGS.md 2026-09-20):
       // the backend, not the price, is what to fix, and the fleet retries it on its own.
+      // Like role_cap_paused, the line names the lift paths: a raised or removed cap, or the
+      // local day rolling over (the demoted branch's cool-down retry is the automatic third).
       const refused = e.fallbackRejected
         ? ` (over-cap model ${textOr(e.fallbackRejected)} is not a cost n/a model in pi's models.json)`
         : e.fallbackDemoted
           ? ` (over-cap model ${textOr(e.fallbackDemoted)} is not serving — ${textOr(e.failures)} runs failed in a row on it; one trial run retries it after a cool-down)`
           : "";
-      return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}`;
+      return `budget paused — ${budgetPhrase(e.spentUsd, e.capUsd)} daily cost reached${refused}; roles start no new runs until maxDailyCostUsd is raised or removed in tumwater.json or the local day rolls over`;
     }
     case "budget_fallback": {
       // The cap is spent but the fleet keeps working: name the free model it switched to, the
