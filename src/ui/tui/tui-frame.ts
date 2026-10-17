@@ -15,6 +15,7 @@ import { eventResult } from "../../events/event-format.js";
 import { eventKind, resultTone, type Tone } from "../tone.js";
 import { roleLabel } from "../../roles/role-labels.js";
 import { displayWidth } from "../../text/text-width.js";
+import { plural } from "../../text/phrases.js";
 import { stripTerminalControls } from "../../text/text.js";
 
 /** Strip terminal control characters from every span of a composed frame — the TUI's single
@@ -69,7 +70,7 @@ export function tabStrip(view: TuiView, width: number): StatusLine {
 }
 
 /** The footer's key hints for what the keys do right now: keys bright, words dim. */
-export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null }, width: number): StatusLine {
+export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; images?: number }, width: number): StatusLine {
   let keys: Array<[string, string]>;
   if (mode.entryEditFor?.position === null) keys = [["Enter", `file ${mode.entryEditFor.kind}`], ["Ctrl+N", `switch to ${mode.entryEditFor.kind === "plan" ? "bug" : "plan"}`], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.entryEditFor) keys = [["Enter", "save title"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -77,6 +78,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (mode.queuedEditFor) keys = [["Enter", "save the edit"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.pauseEditMode && mode.pauseEditStop) keys = [["Enter", "schedule stop"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.pauseEditMode) keys = [["Enter", mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
+  else if (mode.attachMode) keys = [["Enter", "attach image path"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.deferMode) keys = [["Enter", "save the delay"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.budget) keys = [["Enter", "save the daily cap"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
   else if (mode.rolePromptFor) keys = [["Enter", `send to ${mode.rolePromptFor}`], ["↑↓", "history"], ["Esc", "cancel"], ["Ctrl+D", "quit"]];
@@ -90,12 +92,12 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
   else if (view.kind === "health") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+O", view.problems ? "problems only" : "all checks"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "brief") keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
   else if (view.kind === "queued") keys = [["Enter", "send"], ["↑↓", "history"], ["Ctrl+E", "edit"], ["Ctrl+X", "cancel"], ["PgUp/PgDn", "scroll"], ["Ctrl+T", "next view"], ["Ctrl+D", "quit"]];
-  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+D", "quit"]];
+  else keys = [["Enter", "send"], ["↑↓", "history"], ["PgUp/PgDn", "scroll"], ["Ctrl+B", "daily cap"], ["Ctrl+G", view.role ? `scope: ${view.role}` : "scope: team"], ["/", view.grep ? `search: ${view.grep}` : "search"], ["Ctrl+T", "next view"], ["Ctrl+F", "pause team"], ["Ctrl+Q", "stop later"], ["Ctrl+C", "interrupt director"], ["Ctrl+V", "attach image"], ["Ctrl+D", "quit"]];
   // The defer editor is the prompt line's fourth meta-editor (after budget, role, and
   // search), so every view whose hint is about sending names its state: the pending delay
   // when one is set, otherwise the way to open it. The mode branches above already name
   // their own keys and keep the line, so this only rides the view hints.
-  if (!mode.deferMode && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
+  if (!mode.deferMode && !mode.attachMode && !mode.pauseEditMode && !mode.budget && !mode.rolePromptFor && !mode.queuedEditFor && !mode.answerFor && !mode.entryEditFor)
     keys.push(["Ctrl+L", mode.defer ? `send later: ${mode.defer}` : "send later"]);
   const spans: StatusSpan[] = [];
   keys.forEach(([key, what], i) => {
@@ -106,7 +108,7 @@ export function hintLine(view: TuiView, mode: { budget: boolean; rolePromptFor: 
 }
 
 /** The prompt line's target, like the dashboard composer's: who Enter sends to. */
-export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null }): StatusSpan[] {
+export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | null; deferMode: boolean; attachMode?: boolean; pauseEditMode?: boolean; pauseEditRole?: string | null; pauseEditWake?: boolean; pauseEditStop?: boolean; defer: string | null; queuedEditFor: { role: string; file: string } | null; answerFor: { position: number; title: string } | null; entryEditFor?: { kind: "plan" | "bug"; position: number | null; title: string } | null; images?: number }): StatusSpan[] {
   if (mode.budget) return [{ text: "daily cap $", tone: "brand" }, { text: " " }];
   if (mode.entryEditFor) return [{ text: mode.entryEditFor.position === null ? `new ${mode.entryEditFor.kind}` : `edit ${mode.entryEditFor.kind} #${mode.entryEditFor.position}`, tone: "brand" }, { text: " › " }];
   if (mode.answerFor) return [{ text: `answer #${mode.answerFor.position}`, tone: "brand" }, { text: " › " }];
@@ -114,10 +116,16 @@ export function promptPrefix(mode: { budget: boolean; rolePromptFor: string | nu
   if (mode.pauseEditMode && mode.pauseEditStop) return [{ text: "stop in", tone: "brand" }, { text: " › " }];
   if (mode.pauseEditMode) return [{ text: mode.pauseEditRole ? `${mode.pauseEditWake ? "wake" : "pause"} ${mode.pauseEditRole}` : "pause", tone: "brand" }, { text: " › " }];
   if (mode.deferMode) return [{ text: "send later", tone: "brand" }, { text: " › " }];
-  // A pending delay is named beside the target (e.g. `director (in 45m) › `), so the
-  // user sees what the next Enter will schedule before pressing it.
+  // A pending delay (e.g. `director (in 45m) › `) and the pending image count (e.g.
+  // `director (2 images) › `) are named beside the target, so the user sees what the next
+  // Enter will send before pressing it. The image count names the director prompt only:
+  // session.images ride into the next director submit (submitPrompt), while a role prompt
+  // (submitRolePromptAndWake) passes images undefined, so the count must not claim an
+  // attachment a role-targeted Enter won't send.
   const target = mode.defer ? `${mode.rolePromptFor ?? "director"} (in ${mode.defer})` : (mode.rolePromptFor ?? "director");
-  return [{ text: target, tone: "brand" }, { text: " › " }];
+  const withImages = mode.rolePromptFor === null && (mode.images ?? 0) > 0;
+  const named = withImages ? `${target} (${plural(mode.images ?? 0, "image")})` : target;
+  return [{ text: named, tone: "brand" }, { text: " › " }];
 }
 
 /** The prefix's width in terminal columns, for sizing the input beside it. */

@@ -6,6 +6,7 @@ import { pushPromptHistory, recallPromptHistory } from "./tui-prompt-history.js"
 import { createTuiEditorSession } from "./tui-editor-session.js";
 import { createBudgetEditor } from "./tui-editor-budget.js";
 import { createDeferEditor } from "./tui-editor-defer.js";
+import { createAttachEditor } from "./tui-editor-attach.js";
 import { createPromptEditor } from "./tui-editor-prompt.js";
 import { createPauseEditor } from "./tui-editor-pause.js";
 import { createQueuedEditor } from "./tui-editor-queued.js";
@@ -79,6 +80,10 @@ interface TuiEditorState {
   /** The backlog pane's title editor (Ctrl+E on a selected plan or bug), a null position being
    * the new-entry form (Ctrl+N). */
   entryEditFor: { kind: "plan" | "bug"; position: number | null; title: string } | null;
+  /** The Activity view's Ctrl+V image-attach mode holds the prompt line. */
+  attachMode: boolean;
+  /** The number of pending image attachments the next director prompt will carry. */
+  images: number;
 }
 
 /** The prompt-line editor subsystem `createTuiKeys` constructs: the aggregator that owns the
@@ -118,6 +123,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
   const editors: TuiEditorModule[] = [
     createBudgetEditor(session),
     createDeferEditor(session),
+    createAttachEditor(session),
     createPauseEditor(session),
     createPromptEditor(session),
     createQueuedEditor(session),
@@ -148,10 +154,14 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         session.input = "";
         session.cursor = 0;
       } else {
+        const images = session.images.length > 0 ? session.images : undefined;
         try {
-          submitPrompt(session.root, prompt, undefined, pending === null ? undefined : session.now() + pending);
+          submitPrompt(session.root, prompt, images, pending === null ? undefined : session.now() + pending);
           session.promptHistory = pushPromptHistory(session.promptHistory, prompt);
           session.deferMs = null;
+          // A successful send consumes the pending image attachments; a thrown submit below
+          // keeps them so the operator can resubmit with the images still attached.
+          session.images = [];
           session.input = "";
           session.cursor = 0;
           session.flashMessage(
@@ -178,7 +188,7 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
     // above already returned), and budget, defer, pause and search modes keep them out —
     // recalling a prompt into the cap/delay/field text would be a paste, not a recall. No
     // history in this direction: fall through to applyKey, which ignores arrows as before.
-    if (!session.held.budget && !session.held.defer && !session.held.pause && !session.held.search) {
+    if (!session.held.budget && !session.held.defer && !session.held.attach && !session.held.pause && !session.held.search) {
       const recalled = recallPromptHistory(
         session.promptHistory,
         session.input,
@@ -234,6 +244,8 @@ export function createTuiEditors(deps: TuiEditorsDeps): TuiEditors {
         searchMode: session.held.search,
         answerFor: session.held.answer,
         entryEditFor: session.held.entry,
+        attachMode: session.held.attach,
+        images: session.images.length,
       };
     },
   };

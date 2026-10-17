@@ -5,6 +5,7 @@ import {
   settlePromptRecall,
   type PromptHistory,
 } from "./tui-prompt-history.js";
+import type { PromptImageInput } from "../../inbox/inbox-attachments.js";
 import type { TuiEditorsDeps } from "./tui-editors.js";
 import type { labeledBacklogEntries } from "./tui-backlog.js";
 
@@ -37,6 +38,8 @@ interface TuiHeld {
   /** The backlog pane's title editor (Ctrl+E on a selected plan or bug), a null position being
    * the new-entry form (Ctrl+N). */
   entry: { kind: "plan" | "bug"; position: number | null; title: string } | null;
+  /** The Activity view's Ctrl+V image-attach mode on the prompt line. */
+  attach: boolean;
 }
 
 /** The shared mutable prompt-line session every per-editor module takes (plus the per-key
@@ -54,6 +57,10 @@ export interface TuiEditorSession {
   /** The pending send-later delay (a DURATION, not an epoch): submit computes now() + deferMs.
    * Shared by the defer editor, the role-prompt submit, and the director submit. */
   deferMs: number | null;
+  /** The pending image attachments the next director prompt will carry (Ctrl+V on the Activity
+   * view's prompt line). Both this and deferMs are submit-time state the director submit
+   * reads, so they live in the session. */
+  images: PromptImageInput[];
   /** The mutually-exclusive editor modes, mirrored here as they change (see TuiHeld). */
   held: TuiHeld;
   root: string;
@@ -88,7 +95,7 @@ export interface TuiEditorSession {
   /** Which editor currently holds the shared prompt line as the busy-guard flash label, or null
    * when none does. `entering` names the editor about to take the line and is excluded: pressing
    * its own key while it already holds the line must toggle/exit it, not flash the way out. */
-  heldEditorFlash(entering: "budget" | "defer"): string | null;
+  heldEditorFlash(entering: "budget" | "defer" | "attach"): string | null;
 }
 
 /** Build the shared prompt-line session from the disk-side deps the aggregator received. The
@@ -99,6 +106,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
     cursor: 0,
     promptHistory: newPromptHistory(),
     deferMs: null,
+    images: [],
     held: {
       budget: false,
       rolePromptFor: null,
@@ -111,6 +119,7 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       queued: null,
       answer: null,
       entry: null,
+      attach: false,
     },
     root: deps.root,
     now: deps.now,
@@ -144,8 +153,10 @@ export function createTuiEditorSession(deps: TuiEditorsDeps): TuiEditorSession {
       if (h.answer) return session.busyFlash("answer");
       if (h.entry) return session.busyFlash("entry edit");
       if (h.rolePromptFor) return session.busyFlash(`prompt for ${h.rolePromptFor}`);
+      if (h.attach && entering !== "attach") return session.busyFlash("image attach");
       if (entering === "defer" && h.budget) return session.busyFlash("budget edit");
       if (entering === "budget" && h.defer) return session.busyFlash("send-later edit");
+      if (entering === "attach" && (h.budget || h.defer)) return session.busyFlash(h.budget ? "budget edit" : "send-later edit");
       return null;
     },
   };

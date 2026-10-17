@@ -9,7 +9,6 @@
  * beside the queue module it drives. The team-side half — the dequeue and requeue a loop
  * performs — is inbox.ts and pending-prompt.ts. */
 import { fail, say, sayJson } from "../cli/cli-output.js";
-import fs from "node:fs";
 import path from "node:path";
 import { parsePromptArgs } from "../cli/cli-command-args.js";
 import {
@@ -33,13 +32,7 @@ import { listWideScope, queuedFileAtPosition, promptPreview, queuedListRows, ren
 import { durationLabel } from "../cli/cli-args.js";
 import { knownRoleIds, knownRoleIdsCached, loadConfig } from "../config/config.js";
 import { errorMessage } from "../text/text.js";
-import {
-  promptImageExtensionProblem,
-  promptImageSizeProblem,
-  promptImagesCountProblem,
-  promptImagesProblem,
-  type PromptImageInput,
-} from "./inbox-attachments.js";
+import { readPromptImageFiles, type PromptImageInput } from "./inbox-attachments.js";
 import { DIRECTOR_ROLE, unknownRoleMessage } from "../roles/roles.js";
 import { submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { imagePromptGuidance } from "./inbox-submit.js";
@@ -112,55 +105,17 @@ function sayPromptOutcome(position: number, role: string, outcome: CancelOutcome
   say(labelRole ? `${outcome.status} (${role}): ${promptPreview(text)}` : `${outcome.status}: ${promptPreview(text)}`);
 }
 
-/** Refuse an `--attach` path list from what the paths alone reveal, before any file is read:
- * the shared image-count cap first (so a glob that expanded past it is rejected without
- * reading or base64-encoding dozens of files), then each path's extension, regular-file
- * shape, and on-disk size. The regular-file check is not just a nicer message for a
- * directory named `shot.png` (whose stat size is small enough to pass the cap): it also keeps
- * `readPromptImages` from calling readFileSync on a FIFO or device node that would block the
- * command indefinitely. A path that cannot be statted is left for the read below to report
- * with its own missing-file wording. Returns the first problem, or null when every path
- * survives. */
-function attachPathsProblem(paths: readonly string[]): string | null {
-  const countProblem = promptImagesCountProblem(paths.length);
-  if (countProblem !== null) return countProblem;
-  for (const p of paths) {
-    const extProblem = promptImageExtensionProblem(p);
-    if (extProblem !== null) return extProblem;
-    try {
-      const stat = fs.statSync(p);
-      if (!stat.isFile())
-        return `attached image ${JSON.stringify(p)} is not a regular file — pass a path to an image file`;
-      const sizeProblem = promptImageSizeProblem(path.basename(p), stat.size);
-      if (sizeProblem !== null) return sizeProblem;
-    } catch {
-      // Missing or unreadable: the read below names it.
-    }
-  }
-  return null;
-}
-
-/** Read and validate an `--attach <path>` list into the GUI's image input shape: refuse the
- * cheap path-only rules first (attachPathsProblem above — count, extension, on-disk size),
- * read each surviving file whole, and re-run the endpoint's validation client-side
- * (promptImagesProblem) so the CLI's error names the broken rule with the same wording the
- * dashboard answers 400 with. Fails through `fail` with the same messages the enqueue branch
- * always raised, so the enqueue and `--edit` forms share one definition and cannot drift. */
+/** Read and validate an `--attach <path>` list into the GUI's image input shape, through the
+ * shared throwing core both surfaces use (readPromptImageFiles in inbox-attachments.ts), with
+ * each failure exiting through `fail` with the same messages the enqueue branch always
+ * raised — so the enqueue and `--edit` forms share one definition and cannot drift from the
+ * TUI's prompt-line attach. */
 function readPromptImages(paths: readonly string[]): PromptImageInput[] {
-  const pathProblem = attachPathsProblem(paths);
-  if (pathProblem !== null) fail(pathProblem);
-  const images = paths.map((p): PromptImageInput => {
-    let bytes: Buffer;
-    try {
-      bytes = fs.readFileSync(p);
-    } catch (err) {
-      return fail(`cannot read attached image ${JSON.stringify(p)}: ${errorMessage(err)}`);
-    }
-    return { name: path.basename(p), dataBase64: bytes.toString("base64") };
-  });
-  const problem = promptImagesProblem(images);
-  if (problem !== null) fail(problem);
-  return images;
+  try {
+    return readPromptImageFiles(paths);
+  } catch (err) {
+    return fail(errorMessage(err));
+  }
 }
 
 /** `tumwater prompt [--role <id>] <text|list|cancel <n>>`: submit a steering prompt to the

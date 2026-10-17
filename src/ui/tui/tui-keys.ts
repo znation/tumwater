@@ -51,6 +51,11 @@ interface TuiKeysState {
   rolePromptFor: string | null;
   /** Whether the prompt line is editing the next prompt's defer delay (Ctrl+L). */
   deferMode: boolean;
+  /** Whether the prompt line is editing an image path to attach to the next director prompt
+   * (Ctrl+V on the Activity view). */
+  attachMode: boolean;
+  /** The number of pending image attachments the next director prompt will carry. */
+  images: number;
   /** Whether the prompt line is editing the team pause's duration and reason (Ctrl+F). */
   pauseEditMode: boolean;
   /** The loop the pause editor pauses, null for the team editor (Ctrl+F). */

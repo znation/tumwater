@@ -117,6 +117,49 @@ export function promptImagesProblem(images: unknown): string | null {
   return null;
 }
 
+/** Read and validate an on-disk `--attach` path list into the GUI's image input shape — the
+ * throwing core the CLI's `readPromptImages` and the TUI's prompt-line image attach share, so
+ * both surfaces validate from one home. It applies the same cheap path-only rules first — the
+ * shared count cap before any file is read (so a glob that expanded past it is rejected
+ * without reading or base64-encoding dozens of files), then each path's extension,
+ * regular-file shape, and on-disk size (the regular-file check keeps this from reading a FIFO
+ * or device node that would block the caller indefinitely); a path that cannot be statted is
+ * left for the read below to report with its own missing-file wording. It reads each
+ * surviving file whole and re-runs the endpoint's validation (promptImagesProblem) so the
+ * error names the broken rule with the same wording the dashboard answers 400 with. Each
+ * failure is a thrown Error carrying that existing wording. */
+export function readPromptImageFiles(paths: readonly string[]): PromptImageInput[] {
+  const countProblem = promptImagesCountProblem(paths.length);
+  if (countProblem !== null) throw new Error(countProblem);
+  for (const p of paths) {
+    const extProblem = promptImageExtensionProblem(p);
+    if (extProblem !== null) throw new Error(extProblem);
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(p);
+    } catch {
+      // Missing or unreadable: the read below names it.
+      continue;
+    }
+    if (!stat.isFile())
+      throw new Error(`attached image ${JSON.stringify(p)} is not a regular file — pass a path to an image file`);
+    const sizeProblem = promptImageSizeProblem(path.basename(p), stat.size);
+    if (sizeProblem !== null) throw new Error(sizeProblem);
+  }
+  const images = paths.map((p): PromptImageInput => {
+    let bytes: Buffer;
+    try {
+      bytes = fs.readFileSync(p);
+    } catch (err) {
+      throw new Error(`cannot read attached image ${JSON.stringify(p)}: ${errorMessage(err)}`);
+    }
+    return { name: path.basename(p), dataBase64: bytes.toString("base64") };
+  });
+  const problem = promptImagesProblem(images);
+  if (problem !== null) throw new Error(problem);
+  return images;
+}
+
 /** Save already-validated images beside a queued prompt's queue file — one file per image,
  * named with the queue file's stem plus the image's extension (`<stem>.png`); same-extension
  * images after the first get a `-<n>` suffix so they cannot overwrite each other. The client's
