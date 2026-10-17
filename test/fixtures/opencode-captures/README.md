@@ -2,7 +2,7 @@
 
 Raw `opencode run --standalone --format json --auto` output, captured 2026-10-17 with OpenCode
 2.0.32 (Homebrew) and no login, against `opencode/deepseek-v4.1-flash-free`, in a throwaway git
-repo. This is hand step H1 of plans/opencode-backend.md; the numbered findings there cite these
+repo. This is hand step H1 of plans/opencode-backend.md, plus a same-day follow-up probe of OpenCode's MCP timing (the three `mcp-first-request-no-tool`, `mcp-tool-from-second-request` and `mcp-notes-end-of-run` files); the numbered findings there cite these
 files. Paths are rewritten to `/work/repo` and `/Users/operator`, and the repo's root-commit hash
 to `<project-root-commit>`. Nothing else is edited, so ids, timestamps, token counts and the
 lossy event boundaries are exactly what OpenCode sent.
@@ -22,4 +22,7 @@ lossy event boundaries are exactly what OpenCode sent.
 | background-shell.jsonl | a `background: true` shell call returning at once; the command was killed when the run ended (18) |
 | mcp-tool-late.jsonl | the role-notes MCP tool appearing mid-run and working as `tumwater_role_notes` (21) |
 | mcp-tool-missing.jsonl | the same config with the MCP tool never appearing (21) |
+| mcp-first-request-no-tool.jsonl | follow-up probe: a stdio MCP server that connected about 0.4 s after launch, yet the model's first request listed no MCP tool (21) |
+| mcp-tool-from-second-request.jsonl | the same server after one `sleep 3` step: the second request lists `probe_probe_echo` (21) |
+| mcp-notes-end-of-run.jsonl | tumwater's role-notes server: read, shell, then `tumwater_role_notes` saving the note at the run's end, the pattern that worked 6 of 6 (21) |
 | models-catalog-entries.json | OpenCode's cached models.dev catalog (`kv` key `models-dev:catalog`), trimmed to the free model, `big-pickle` and Go's `deepseek-v4.1-flash` (9, 10) |

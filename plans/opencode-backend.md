@@ -232,13 +232,31 @@ test/fixtures/opencode-captures/ (README.md there maps each file to its finding)
     without `--standalone` start a background service on `127.0.0.1:<port>` that keeps running
     (`opencode service stop` ends it). `debug config` rejects `--standalone`. tumwater must pass
     `--standalone` to every subcommand that takes it.
-21. **MCP under `run --standalone` is unreliable (upstream issue 56240).**
-    - tumwater's role-notes server always connected (`mcp connected server=tumwater tools=1` in
-      the debug log).
-    - But its tool was missing from the model's tool list in 5 of 6 runs, both from
-      `OPENCODE_CONFIG_CONTENT` and from a project `opencode.json`.
-    - In the sixth run it appeared partway through and worked: the call was
-      `tumwater_role_notes`, which returned "notes saved (13 bytes)".
+21. **MCP tools are missing from a run's first model request only** (upstream issues 51812 and
+    56240, both open; a maintainer called the behavior intentional).
+    - **Cause, in the 2.0.32 source:**
+      - MCP servers connect in the background ("so one slow server does not block Location
+        startup", packages/core/src/mcp/index.ts).
+      - `MCP.tools()` returns only the servers already connected. It does not wait for pending
+        ones; `callTool` does.
+      - The tool registry is filled once at startup. A server that connects later publishes
+        `ToolsChanged`, and the registry reloads after a 100 ms debounce
+        (packages/core/src/tool/mcp.ts).
+      - The tool list is rebuilt for every model request.
+      - So a run's first request almost always goes out without MCP tools, and every later
+        request has them.
+    - **Measured** with a stdio test server that answers at once:
+      - OpenCode listed its tools about 0.4 s after launch.
+      - The model's first request still lacked them, 3 of 3.
+      - After a first step of `sleep 3`, the second request had them, 3 of 3.
+    - **The role-notes pattern works.** With tumwater's real role-notes server, a run that reads
+      and runs a command and then saves a note before ending wrote its note 6 of 6 times
+      (`tumwater_role_notes`, "notes saved").
+    - **The earlier 5-of-6 miss was the worst case:** those probes asked for the note in the run's
+      first step.
+    - **Upstream workarounds, not used here:** hold the first prompt with a plugin until the
+      registry has the tools, or start `opencode serve` ahead of time and use `run --server`.
+      Both cost more than they save for a tool that is called at the end of a run.
 22. **Concurrency and memory.**
     - Six concurrent multi-step runs all exited 0, in 10–20 s each, with no 429s.
     - Peak resident memory was 3.5 GB across the 12 processes (a run plus its serve child, about
@@ -331,13 +349,23 @@ files; only managed config wins over it.
     { "action": "skill",     "resource": "*", "effect": "deny" }
   ],
   "instructions": ["CLAUDE.md"],   // only when the worktree has CLAUDE.md and no AGENTS.md (finding 14)
-  "mcp": { "servers": { "<each operator server>": { "disabled": true } } }
+  "mcp": { "servers": {
+    "tumwater": {                  // only when the run carries notes (§5)
+      "type": "local",
+      "command": ["<node running tumwater>", "<dist>/src/agent/mcp/role-notes-server.js"],
+      "codemode": false,           // a direct tool: Code Mode (`execute`) is denied
+      "environment": { "TUMWATER_NOTES_PATH": "<the role's notes file>" }
+    },
+    "<each operator server>": { "disabled": true }
+  } }
 }
 ```
 
 - **Never deny `read`.** Denying it trips the free-tier gate (finding 11). `shell`, `glob`,
   `grep`, `edit` and `write` stay allowed for parity with pi.
-- **No MCP server of tumwater's own** while finding 21 stands (§5).
+- **The `tumwater` server name is ours.** An operator server of the same name is replaced by
+  this entry rather than disabled: a later config replaces a server object whole.
+- **No permission rule is needed for the notes tool.** `--auto` approves the default `ask`.
 
 **Environment.** It is layered on `agentBaseEnv` (the run marker and the macOS preload), as
 claude's is.
@@ -392,12 +420,21 @@ claude's is.
 ### 5. The prompt dialect and role notes
 
 - The canonical stream maps tool names (§6), so the prompts' shell-command wording stays.
-- **Notes are off on OpenCode.**
-  - MCP tools go missing under `run --standalone` 5 times out of 6 (finding 21).
-  - So an OpenCode run carries no notes server, and its dialect has no notes tool:
-    `roleNotesInstruction` emits nothing.
-  - Notes return when an OpenCode release fixes issue 56240. The smoke check is how to tell.
+- **Notes ride the role-notes MCP server, as on claude** (the `mcp.servers.tumwater` entry in
+  §3). The tool is `tumwater_role_notes`.
+  - **The first-request gap is harmless here.** A run's first model request lacks MCP tools
+    (finding 21), but the notes instruction asks for the note "before you end". By then the run
+    has taken several steps and the tool is listed: 6 of 6 end-of-run notes were saved.
+  - **What loses its note:** a run that ends after a single model request, such as a role that
+    finds nothing to do and stops at once. It has little to note anyway. A call in that first
+    request is refused (issue 56240 quotes "No tool named … is currently available"), and the
+    run goes on without its note.
+  - **No prompt text mentions the gap.** The models probed never stumbled on the tool missing
+    from their first request.
+  - **The smoke check tests the real pattern:** a multi-step run that saves a note at the end
+    (part 7).
 - **The `OPENCODE_DIALECT`:**
+  - `notesTool`: `tumwater_role_notes`.
   - `readRange`: "the read tool's offset/limit (or `sed -n 'A,Bp'`)".
   - `oversizedOutput`: "Oversized shell output keeps only its last lines, followed by a note
     naming the file with the full output — read that file in ranges (the read tool's
@@ -516,7 +553,7 @@ Only what differs from plans/agent-backends.md §10:
 
 | Model job | What changes |
 | --- | --- |
-| Author runs (all roles), director, qa | nothing: they go through runAgent. No notes on OpenCode (§5) |
+| Author runs (all roles), director, qa | nothing: they go through runAgent. Notes ride the MCP server and are available from a run's second model request on (§5) |
 | SUMMARY / stage-fix follow-ups | `--session <ledger id>`, after the existence check (§4) |
 | Reviewer | suite-rerun detection reads `bash` calls, and the `shell`→`bash` mapping keeps it working. Code Mode, which would hide them, is denied |
 | Budget handback, model fallback | `handoff`, unchanged |
@@ -544,6 +581,10 @@ Only what differs from plans/agent-backends.md §10:
   - The captures are in test/fixtures/opencode-captures/.
   - Not covered: rate limits over a whole day of team load, a compaction on a real 200K session,
     and V1 (out of scope).
+  - **A follow-up probe** the same day traced the MCP gap to its cause and measured the
+    end-of-run notes pattern (finding 21). Its captures are mcp-first-request-no-tool.jsonl,
+    mcp-tool-from-second-request.jsonl and mcp-notes-end-of-run.jsonl in
+    test/fixtures/opencode-captures/.
 - **H2: switch the team, after part 7.**
   - Run `npm run smoke:opencode`.
   - Check whether `OPENCODE_MODELS_PATH` makes OpenCode skip its own catalog fetch (§7).
@@ -556,13 +597,18 @@ Only what differs from plans/agent-backends.md §10:
 2. The `opencode` backend id, model-id routing, and `backends.opencode` with its reserved flags.
    **Landed.**
 3. The OpenCode invocation and environment: pure argv, config and env builders, and the
-   session-id minter. Requires part 2.
+   session-id minter. **Landed** (with no notes server: it was planned before finding 21 was
+   corrected).
 4. The stream translator, the export reconciliation and the `run_usage` event, with fixtures from
-   the H1 captures. Requires part 1.
+   the H1 captures. **Landed.**
 5. The adapter, sessions, the `afterRun` hook, registration, the PATH fake and the dialect.
-   Requires parts 3 and 4.
-6. Free-ness, the catalog cache and spend. Requires part 5.
-7. Doctor, docs and the `smoke:opencode` live check. Requires part 6.
+   Requires parts 3 and 4. It was in progress when notes were turned back on, so its entry still
+   says notes are off.
+   - **Part 5b:** role notes on OpenCode — the `mcp.servers.tumwater` entry, the adapter passing
+     it, and the dialect's notes tool. Requires part 5.
+6. Free-ness, the catalog cache and spend. Requires part 5b, which edits the same adapter.
+7. Doctor, docs and the `smoke:opencode` live check, including an end-of-run note. Requires
+   part 6.
 
 ## Decisions (proposed 2026-10-17; confirm or change)
 
@@ -578,8 +624,9 @@ Only what differs from plans/agent-backends.md §10:
    the catalog, overridden by any observed cost.
 7. **No impersonation:** pi never sends OpenCode's client identity, and tumwater never sets
    `OPENCODE_CLIENT`.
-8. **No role notes on OpenCode** until an OpenCode release fixes MCP under `run --standalone`
-   (finding 21).
+8. **Role notes ride the MCP server on OpenCode,** as on claude (decided 2026-10-17, reversing the
+   earlier "no notes" call). Notes are written at a run's end, after OpenCode's first-request MCP
+   gap has passed (finding 21).
 9. **One OpenCode database per team root,** not per session (finding 4).
 
 ## Risks
@@ -606,6 +653,10 @@ Only what differs from plans/agent-backends.md §10:
     research).
   - The translator warns on unknown types, doctor enforces a minimum version, runs disable
     auto-update, and the smoke check is the re-verification.
+- **The MCP gap could widen.** Upstream may change how and when MCP tools register, in either
+  direction. The smoke check's end-of-run note is the guard.
+  - The same upstream issue (56240) reports `opencode run` hanging forever after a session error
+    ("Failed to drain Session"), with or without MCP. The quiet watchdog bounds that hang.
 - **A lossy stream.** The stream drops the final step's usage (finding 5). The export fixes the
   numbers after the run, but live progress (tokens so far) undercounts by the step in flight.
 - **A smaller window.** 200K against 1M means more compaction, and its quality is OpenCode's.

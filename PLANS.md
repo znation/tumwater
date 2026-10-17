@@ -117,7 +117,51 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - **Prompts:** the opencode prompt has no notes instruction and carries both backend rules. The pi and claude prompts are byte-identical to before.
 - `npm test` passes.
 
-### OpenCode backend, part 6/7: The models.dev catalog decides OpenCode free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 5/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
+### OpenCode backend, part 5b/7: OpenCode runs carry the role-notes MCP server, so roles keep their notes on OpenCode (planned 2026-10-17 by user; requires part 5/7 landed; design in plans/opencode-backend.md "The invocation", "The prompt dialect and role notes" and "Findings, verified live" 21; touches src/agent/opencode/opencode-config.ts src/agent/opencode/opencode-backend.ts src/prompt/dialect.ts and their tests)
+
+**Goal.** Part 5/7 ships OpenCode with role notes off. It was planned when OpenCode's MCP tools looked unreliable.
+
+A follow-up probe found they are missing only from a run's **first** model request (finding 21). OpenCode connects MCP servers in the background and rebuilds the tool list on every request. A note saved at the end of a multi-step run, which is how roles use notes, was written 6 times out of 6.
+
+This part turns notes on. An OpenCode run that carries notes gets tumwater's role-notes MCP server, and its prompt asks for the note the way pi's and claude's prompts do.
+
+**Approach.**
+- **src/agent/opencode/opencode-config.ts:**
+  - `OpencodeConfigOptions` gains an optional `notesServer?: { command: string[]; notesPath: string }`.
+  - When it is given, `opencodeConfigContent` adds `mcp.servers.tumwater = { type: "local", command, codemode: false, environment: { TUMWATER_NOTES_PATH: notesPath } }`.
+    - `codemode: false` makes it a direct tool. Code Mode (`execute`) is denied, and MCP tools would otherwise only be reachable through it.
+  - An operator server also named `tumwater` is not given `{ disabled: true }`. This entry replaces it, because a later config replaces a server object whole.
+  - Without `notesServer` the output is unchanged.
+  - Update the module comment that says no server of tumwater's own is configured.
+- **src/agent/opencode/opencode-backend.ts:** when `run.notesPath` is set, `invocation` passes `notesServer`.
+  - Its command is `[process.execPath, <dist role-notes-server.js>]`, resolved the way claude-backend.ts's `roleNotesMcpConfig` resolves it (`new URL("../mcp/role-notes-server.js", import.meta.url)`).
+  - Pass it on every invocation that carries notes: fresh, resumed, a transient retry, a SUMMARY follow-up. OpenCode's config is per process.
+  - The run env also carries `TUMWATER_NOTES_PATH`, as the pi and claude adapters' envs do.
+  - This replaces part 5/7's "a run's notesPath is ignored".
+- **src/prompt/dialect.ts:** `OPENCODE_DIALECT.notesTool` becomes `"tumwater_role_notes"`, so `roleNotesInstruction` asks for the note "before you end".
+  - Nothing in the prompt mentions the first-request gap (design §5): the note is written after it has passed.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-config.ts, src/agent/opencode/opencode-backend.ts, src/prompt/dialect.ts.
+- Tests: test/opencode-config.test.ts, test/opencode-run.test.ts, test/prompt-dialect.test.ts.
+
+**Acceptance criteria.**
+- **`opencodeConfigContent` with `notesServer`**, parsed back:
+  - `mcp.servers.tumwater` has `type: "local"`, the given command, `codemode: false`, and `environment.TUMWATER_NOTES_PATH` set to the notes path.
+  - Operator servers are still `disabled: true`.
+  - An operator server named `tumwater` is replaced, not disabled.
+  - Without `notesServer`, the output is byte-identical to before.
+- **An authoring run with a notebook, on the fake:**
+  - Its recorded `OPENCODE_CONFIG_CONTENT` has the `tumwater` server, pointing at dist's role-notes-server.js and at the role's notes path.
+  - A continue of that run carries the server too.
+  - A run without `notesPath` has no `tumwater` server.
+- **Prompts:**
+  - The opencode prompt carries the notes instruction naming `tumwater_role_notes`.
+  - The pi and claude prompts are byte-identical to before.
+- **The capture:** test/fixtures/opencode-captures/mcp-notes-end-of-run.jsonl, through part 4/7's translator, gives a tool execution named `tumwater_role_notes` after the run's `read` and `bash` calls.
+- `npm test` passes.
+
+### OpenCode backend, part 6/7: The models.dev catalog decides OpenCode free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 5b/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
 
 **Goal.** A model job on OpenCode's free model counts as free:
 
@@ -200,7 +244,7 @@ The team's OpenCode sessions and spill files are pruned like its other session f
   - the free model's catch: OpenCode's own client only, no login, time-limited, intermittent refusals that move work to the fallback;
   - Go, which pi already reaches as `opencode-go/…`;
   - what tumwater turns off and denies, and why `read` must stay allowed;
-  - no role notes on OpenCode yet;
+  - role notes ride the role-notes MCP server; a run's first model request cannot see MCP tools (upstream issues 51812 and 56240), and notes are written at a run's end, after that;
   - XDG left alone, and why;
   - where sessions and spill files live.
 - **docs/config.md:** `backends.opencode`, `TUMWATER_OPENCODE_BIN` and `maxConcurrentPerProvider.opencode`.
@@ -208,6 +252,7 @@ The team's OpenCode sessions and spill files are pruned like its other session f
   - a three-step run on `opencode/deepseek-v4.1-flash-free` that reads, edits and checks a file;
   - a resume of that session that recalls something from the first run;
   - a SIGTERM during a long `node` shell command, then a check that no marked process survives;
+  - a run carrying a notes file that reads a file and runs a command, then saves a role note before it ends; the notes file must then hold the note. This is the real usage pattern, and it is the guard on OpenCode's MCP timing (finding 21);
   - checks that the run's tokens came from `run_usage` (the export) and its cost is 0, and that the catalog cache calls the model free.
 
   It prints a named PASS or FAIL for each check and exits nonzero on the first failure. A free-tier 403 gets its own FAIL line saying the gate refused the exact production invocation, so a stricter gate is seen here before the team sees it.
@@ -227,7 +272,7 @@ The team's OpenCode sessions and spill files are pruned like its other session f
   - A temp HOME whose `.config/opencode/opencode.jsonc` has an MCP server and an `instructions` entry gets one warning naming both.
   - A pi-only config shows no opencode rows.
 - **Pruning:** with an OpenCode ledger record older than the window, pruning calls the fake's `session delete` with its id, and leaves a fresh one alone.
-- `npm run smoke:opencode` exists and is not reachable from `npm test`.
+- `npm run smoke:opencode` exists, includes the end-of-run note check, and is not reachable from `npm test`.
 - `npm test` passes.
 
 
