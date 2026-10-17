@@ -1266,6 +1266,39 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor` warns when a recently Fixed bug's quoted test has failed again since its fix and no Open bug names that test (planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts and test/doctor.test.ts; no src/merge, src/tick, src/backlog or src/ui edit)
+
+**Goal.** BUGS.md's ## Fixed section holds flake bugs whose headings quote the test name. Two of today's are `"runGit SIGKILLs a git that ignores SIGTERM, taking its grandchild with it"` (fixed 2026-10-16) and `"a later wake request leaves a pending scheduled wake standing"` (fixed 2026-10-14). When such a test fails again, nothing links the failure to the Fixed record. The open `startParentDeathWatch` bug was filed by hand, after its 10-01 and 10-09 Fixed entries, when an operator session happened to read improve's red merge check. `checkWaitingBugs` (src/doctor/doctor-backlog.ts) already does this matching for Open bugs that carry a Waiting note: `quotedTestName` on the heading, then `failureMentions` over the event log since the day after the note. This plan applies the same matching to the newest Fixed records. It adds one doctor row, `regressed fixes`, which warns when a Fixed record's quoted test has failed since the day after its fix and no Open bug quotes the same test. Like every backlog check, it is a warn, never a fail, and doctor writes nothing to BUGS.md.
+
+**Approach.** All logic is in `src/doctor/doctor-backlog.ts`:
+- Extract the inline day-after computation in `checkWaitingBugs` (the `new Date(Number(date.slice(0, 4)), Number(date.slice(5, 7)) - 1, Number(date.slice(8, 10)) + 1).getTime()` expression) into an unexported `dayAfterMs(date: string): number` (local midnight after a `YYYY-MM-DD`). `checkWaitingBugs` calls it, and its behaviour is unchanged.
+- Add an exported `checkRegressedFixes(root: string): CheckOutcome`:
+  - Read BUGS.md with `readDocChecked(…, "no BUGS.md — nothing to verify")`, as `checkFixClaims` does.
+  - Take `fixedEntries(doc).slice(0, FIX_CLAIMS_CHECKED)`, the same newest-10 window `checkFixClaims` uses and for the same reason: older records drift.
+  - For each record, `name = quotedTestName(entry.title)` and `date = lastDate(entry.title, /(\d{4}-\d{2}-\d{2})/)` (src/backlog/backlog-md.ts; the last date in the heading is the fix date in both heading shapes, `— fixed 2026-10-14` and `(fixed 2026-10-16)`). Skip a record whose `name` or `date` is null, or whose `dayAfterMs(date)` is NaN.
+  - Skip a record when an Open bug's heading quotes the same test: `openBugEntries(root).some((e) => quotedTestName(e.title) === name)`. The regression is then already filed. This is why the open startParentDeathWatch bug stops the Fixed 10-09 record from warning.
+  - When any record is left, read events once with `readEventsSince(root, Math.max(0, Date.now() - <earliest since>))`, exactly as `checkWaitingBugs` does. Keep the records where `failureMentions(events, name, since)` is non-empty, and remember each one's newest mention.
+  - None left: `okOutcome("no recently Fixed bug's quoted test has failed since its fix")`.
+  - Otherwise, warn on the first in file order (newest-first), with `andMore` over the rest (`#`-less, `"${truncate(title, FIX_CLAIM_HEADING_MAX)}"`): `BUGS.md Fixed record "<title truncated to FIX_CLAIM_HEADING_MAX>" quotes a test that failed again after its <date> fix (<formatTimestamp(ts)>: <truncate(text, REFUSAL_NOTE_MAX)>)<more> — file it as a new bug with \`tumwater bug\`, quoting the test name and citing the Fixed record`.
+- Update the comment on `checkWaitingBugs`/`failureMentions` only where it says the matching serves Waiting bugs alone. Give `checkRegressedFixes` its own doc comment in the style of its neighbours.
+- `src/doctor/doctor.ts`: import `checkRegressedFixes` and add `{ name: "regressed fixes", ...checkRegressedFixes(root) }` directly after the `"waiting bugs"` row.
+- Out of scope: auto-filing or reopening the bug (doctor stays read-only), Fixed records older than the newest 10, one-line compressed records (`fixedEntries` returns `###` entries), and any team alert or dashboard change (dashboards already show doctor rows).
+
+**Files touched.** src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, test/doctor-backlog.test.ts, test/doctor.test.ts.
+
+**Acceptance criteria.**
+- In test/doctor-backlog.test.ts, a fixture like `recurrenceRoot` writes a BUGS.md with an empty `## Open` and a `## Fixed` entry `### \`test/x.test.ts\` "${FLAKY_TEST}" flaked (found by bugfix <5 days ago>) — fixed <N days ago>`, and logs a `warning` event `${FLAKY_WARNING_PREFIX}<failure>`:
+  - N = 2 with failure `✖ ${FLAKY_TEST}`: `checkRegressedFixes` is `warn`, and the detail contains `failed again after its`, the failure text, and `tumwater bug`;
+  - N = 0 (same-day failure): ok;
+  - N = 2 with an unrelated failure: ok;
+  - N = 2 with an Open entry whose heading quotes the same `FLAKY_TEST`: ok;
+  - a Fixed heading with no quoted span of 12 or more characters, or with no date: ok;
+  - no BUGS.md: ok with `no BUGS.md — nothing to verify`;
+  - two regressed Fixed records: the warn names the first and carries the `andMore` count.
+- The existing `checkWaitingBugs` tests pass unchanged after the `dayAfterMs` extraction.
+- test/doctor.test.ts's row-name list gains `"regressed fixes"` right after `"waiting bugs"`.
+- `npm run test` passes.
+
 ## Done
 
 ### Staging asks a bugfix run that adds a Progress note to an open bug, but leaves no Waiting for the next failure note under it, to write that note (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry — touches only src/tick/stage-check.ts, docs/how-it-works.md and test/stage-check.test.ts; no src/merge, src/backlog, src/ui or src/doctor edit)
