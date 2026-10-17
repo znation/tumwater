@@ -18,7 +18,10 @@ export function answerQuestion(root: string, n: number, rawDecision: string): { 
 
 /** Map a non-answered outcome to the CLI's `fail` wording; shared by both CLI entry points. */
 function answeredOrFail(n: number, outcome: AnswerOutcome): { title: string; decision: string } {
-  if (outcome.status === "missing") fail(`no question at position ${n} (${outcome.open} open)`);
+  if (outcome.status === "missing") {
+    const range = outcome.open > 0 ? ` — valid: 1-${outcome.open}` : "";
+    fail(`no question at position ${n} (${outcome.open} open)${range}`);
+  }
   if (outcome.status === "fenced") fail(UNCLOSED_FENCE_MESSAGE);
   if (outcome.status === "moved") fail(`question ${n} is now "${outcome.title}" — the list changed while you edited; nothing changed`);
   if (outcome.status !== "answered") fail(`no question at position ${n}`);

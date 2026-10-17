@@ -163,7 +163,7 @@ test("questions --show <n> --answered prints one answered question in full", asy
   assert.equal(q.answeredOn, "2026-10-02");
   const past = await cli(repo, "questions", "--show", "3", "--answered");
   assert.equal(past.code, 1);
-  assert.match(past.stderr, /no answered question at position 3 \(2 in QUESTIONS\.md\)/);
+  assert.match(past.stderr, /no answered question at position 3 \(2 in QUESTIONS\.md\) — valid: 1-2\n$/);
   const n = await cli(repo, "questions", "--show", "1", "--answered", "-n", "2");
   assert.equal(n.code, 1);
   assert.match(n.stderr, /-n does not apply to --show/);
@@ -175,7 +175,7 @@ test("questions --show refuses misuse", async () => {
   await initProject(repo, "cli questions show refusals");
   fs.writeFileSync(path.join(repo, "QUESTIONS.md"), SHOW_QUESTIONS);
   const cases: [string[], RegExp][] = [
-    [["--show", "3"], /no open question at position 3 \(2 in QUESTIONS\.md\)/],
+    [["--show", "3"], /no open question at position 3 \(2 in QUESTIONS\.md\) — valid: 1-2\n$/],
     [["--show", "0"], /--show needs a positive integer/],
     [["--show"], /--show needs a position number/],
     [["--show", "1", "--show", "2"], /--show may only be given once/],

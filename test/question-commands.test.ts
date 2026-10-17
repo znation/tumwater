@@ -167,7 +167,7 @@ test("an out-of-range position fails with the prompt --cancel wording and exit 1
   const o = attempt(() => answerQuestion(root, 9, "x"));
   if (!o.exited) assert.fail("expected process.exit, but the call returned");
   assert.equal(o.code, 1);
-  assert.match(o.stderr, /^tumwater: no question at position 9 \(2 open\)\n$/);
+  assert.match(o.stderr, /^tumwater: no question at position 9 \(2 open\) — valid: 1-2\n$/);
 });
 
 test("answering in a file with no ## Answered section grows one at the end", () => {

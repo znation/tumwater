@@ -98,7 +98,10 @@ export function queuedFileAtPosition(root: string, role: string, position: numbe
   const files = queuedFiles(root, role);
   const file = files[position - 1];
   if (position < 1 || position > files.length || !file) {
-    throw new Error(`no prompt at position ${position} (${files.length} in the inbox)`);
+    // Name the valid range when the queue is non-empty, so the operator sees the fix in the
+    // same line instead of deriving `1..N` from the count; an empty queue needs no range.
+    const range = files.length > 0 ? ` — valid: 1-${files.length}` : "";
+    throw new Error(`no prompt at position ${position} (${files.length} in the inbox)${range}`);
   }
   return file;
 }

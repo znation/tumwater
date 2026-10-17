@@ -66,7 +66,7 @@ test("a missing position never runs the editor; no editor is reported", async ()
   const s = stub(dir, "d", `fs.writeFileSync(${JSON.stringify(marker)}, "x");`);
   const r = await cliWithEnv(repo, s.env, ["questions", "answer", "9"]);
   assert.notEqual(r.code, 0);
-  assert.match(r.stderr, /no question at position 9 \(2 open\)/);
+  assert.match(r.stderr, /no question at position 9 \(2 open\) — valid: 1-2\n$/);
   assert.equal(fs.existsSync(marker), false);
   const none = await cliWithEnv(repo, {}, ["questions", "answer", "1"]);
   assert.notEqual(none.code, 0);

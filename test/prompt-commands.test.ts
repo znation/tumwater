@@ -173,7 +173,7 @@ test("prompt cancel without --role misses cleanly when no loop's queue reaches t
   const root = makeRoot();
   enqueueRolePrompt(root, "clean", "only one");
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "3"]));
-  assert.match(o, /no prompt at position 3 \(longest inbox holds 1\)/);
+  assert.match(o, /no prompt at position 3 \(longest inbox holds 1\) — valid: 1-1\n$/);
 });
 
 test("prompt cancel/edit without --role names the longest queue, not the total across loops", async () => {
@@ -202,7 +202,7 @@ test("prompt cancel --role succeeds in scope and fails out of range with the que
   assert.equal(stdout, "cancelled: a\n");
   assert.equal(inboxSize(root, "clean"), 1);
   const o = await expectFailAsync(() => cmdPrompt(root, ["--cancel", "5", "--role", "clean"]));
-  assert.match(o, /no prompt at position 5 \(1 in the inbox\)/);
+  assert.match(o, /no prompt at position 5 \(1 in the inbox\) — valid: 1-1\n$/);
 });
 
 test("prompt --file queues the file's contents verbatim for the director", async () => {

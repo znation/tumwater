@@ -54,7 +54,10 @@ function failQueueMiss<T extends { status: string }>(listed: T | ListedQueueMiss
     if (listed.status === "ambiguous") {
       fail(`position ${position} is in more than one role's inbox (${listed.roles.join(", ")}) — name one with --role <id>`);
     }
-    fail(`no prompt at position ${position} (longest inbox holds ${listed.queued})`);
+    // `queued` is the longest queue's length — the highest position any loop's numbering can
+    // reach — so a miss names it as the valid range when at least one loop holds a prompt.
+    const range = listed.queued > 0 ? ` — valid: 1-${listed.queued}` : "";
+    fail(`no prompt at position ${position} (longest inbox holds ${listed.queued})${range}`);
   }
   return listed;
 }

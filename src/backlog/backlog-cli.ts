@@ -505,7 +505,8 @@ export function showAndAnnounce(root: string, args: string[], command: "bug" | "
     const all = bug ? fixedBugEntries(root) : donePlanEntries(root);
     const entry = all[position - 1];
     if (entry === undefined) {
-      fail(`no ${bug ? "fixed bug" : "done plan"} at position ${position} (${all.length} in ${bug ? "BUGS.md" : "PLANS.md"})`);
+      const range = all.length > 0 ? ` — valid: 1-${all.length}` : "";
+      fail(`no ${bug ? "fixed bug" : "done plan"} at position ${position} (${all.length} in ${bug ? "BUGS.md" : "PLANS.md"})${range}`);
     }
     if (json) {
       const dateRe = bug ? FIXED_DATE_RE : DONE_DATE_RE;

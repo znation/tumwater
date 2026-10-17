@@ -142,7 +142,10 @@ function locateEntry(
   const entry = findEntry(md, sectionTitle, n);
   if (entry === undefined) {
     const count = actionableEntryRanges(md, sectionTitle).length;
-    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${count} in ${fileName})`);
+    // Name the valid range when the section is non-empty, so the operator sees the fix in the
+    // same line instead of deriving `1..N` from the count; an empty section needs no range.
+    const range = count > 0 ? ` — valid: 1-${count}` : "";
+    fail(`no ${sectionNoun(sectionTitle)} at position ${n} (${count} in ${fileName})${range}`);
   }
   return entry;
 }

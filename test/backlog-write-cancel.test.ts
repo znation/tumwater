@@ -118,7 +118,7 @@ test("an out-of-range cancel fails and leaves the file byte-identical", async ()
   const before = fs.readFileSync(path.join(repo, "BUGS.md"), "utf8");
   const r = await cli(repo, "bug", "--cancel", "4");
   assert.equal(r.code, 1);
-  assert.match(r.stderr, /no open bug at position 4 \(1 in BUGS\.md\)/);
+  assert.match(r.stderr, /no open bug at position 4 \(1 in BUGS\.md\) — valid: 1-1\n$/);
   assert.equal(fs.readFileSync(path.join(repo, "BUGS.md"), "utf8"), before);
   // An empty section (the init placeholder) has no entries either.
   const empty = await cli(repo, "plan", "--cancel", "1");

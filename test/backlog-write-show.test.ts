@@ -111,7 +111,7 @@ test("--show <n> --done prints the Nth newest done plan or fixed bug", async () 
   assert.equal(bug.stdout, `${bugTitle}\n\nfix text\n`);
   const missing = await cli(repo, "bug", "--show", "2", "--done");
   assert.equal(missing.code, 1);
-  assert.match(missing.stderr, /no fixed bug at position 2 \(1 in BUGS\.md\)/);
+  assert.match(missing.stderr, /no fixed bug at position 2 \(1 in BUGS\.md\) — valid: 1-1\n$/);
   const twice = await cli(repo, "plan", "--show", "1", "--done", "--done");
   assert.equal(twice.code, 1);
   assert.match(twice.stderr, /--done may only be given once/);

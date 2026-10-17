@@ -246,13 +246,21 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
     if (answeredFlag) {
       if (limit !== undefined) fail("-n does not apply to --show");
       const a = answeredQuestionAt(root, show);
-      if (a === null) fail(`no answered question at position ${show} (${answeredQuestionCount(root)} in QUESTIONS.md)`);
+      if (a === null) {
+        const count = answeredQuestionCount(root);
+        const range = count > 0 ? ` — valid: 1-${count}` : "";
+        fail(`no answered question at position ${show} (${count} in QUESTIONS.md)${range}`);
+      }
       if (jsonFlag) sayJson(a);
       else say(renderShownQuestion(a));
       return;
     }
     const q = openQuestionAt(root, show);
-    if (q === null) fail(`no open question at position ${show} (${questionListPayload(root).questions.length} in QUESTIONS.md)`);
+    if (q === null) {
+      const count = questionListPayload(root).questions.length;
+      const range = count > 0 ? ` — valid: 1-${count}` : "";
+      fail(`no open question at position ${show} (${count} in QUESTIONS.md)${range}`);
+    }
     if (jsonFlag) sayJson(q);
     else say(renderShownQuestion(q));
     return;
@@ -293,7 +301,10 @@ export async function cmdQuestions(root: string, args: string[]): Promise<void> 
   if (words.length === 2) {
     const open = questionListPayload(root).questions;
     const question = open[n - 1];
-    if (question === undefined) fail(`no question at position ${n} (${open.length} open)`);
+    if (question === undefined) {
+      const range = open.length > 0 ? ` — valid: 1-${open.length}` : "";
+      fail(`no question at position ${n} (${open.length} open)${range}`);
+    }
     const edited = decisionFromEditorBuffer(
       editInEditor(answerEditorBuffer(question.title, question.body), `answer-${n}.md`, "pass a decision or --file <path>"),
     );
