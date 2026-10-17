@@ -1298,6 +1298,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### A red merge check whose failure matches a recorded flake keeps its pin once instead of being rejected on main's cached green (planned 2026-10-16 by plan; independent of every other entry — touches src/merge/merge-check-failures.ts, src/loop/loop-state.ts, src/tick/tick-apply.ts and their tests)
+
+**Goal.** The review gate already skips a failure it has recorded as flaky. In `src/review/review-precheck.ts`, a red whose headline passes `isKnownFlake` (`src/review/known-flakes.ts`) keeps the commit and the pin and counts no strike (BUGS.md 2026-10-06). The merge side has no such check. When the in-lock merge check goes red twice on one patch (`MERGE_CHECK_FAILURE_LIMIT`), or a batch bisect narrows a red to one change (`src/merge/merge-batch.ts`), `attributeRedCheck` in `src/merge/merge-check-failures.ts` asks `mainTipVerdict` for main's verdict. That verdict usually comes from the per-SHA cache, which an earlier merge seeded green, so the change is rejected. This applies even when the failing test is one the gate or the merge retry recorded as a flake within the last 24 h. The merge-check flake record (done 2026-10-16) now feeds that memory from merge retries too, so the merge side can use it. One excuse per headline per pin bounds the retry: a change that really breaks a flaky test is still rejected, after at most one extra round of retries.
+
+**Approach.**
+- `src/loop/loop-state.ts`: add `mergeFlakeExcused?: string` to `LoopState`, next to `mergeCheckFailures`. Its doc comment says it holds the normalized failure headline (`normalizeClusterKey`) that `attributeRedCheck` last excused as a known flake for this role's pinned change. It is cleared when the change merges or is rejected. In the heal function that heals `mergeCheckFailures`, delete `mergeFlakeExcused` when it is not a string.
+- `src/tick/tick-apply.ts`: on the line `if (changeGone) s.mergeCheckFailures = undefined;`, also clear `s.mergeFlakeExcused`, so each new change starts with its one excuse available.
+- `src/merge/merge-check-failures.ts`, `attributeRedCheck`: after the unverified-tree branch and before `mainTipVerdict`, compute `headline = failureHeadline(red.outcome.outputTail) ?? describeCheck(red.check)`. This is the expression `mergeCheckRed` and review-precheck.ts already use. Also compute `key = normalizeClusterKey(headline)` (import from `src/failure/failure-cluster.ts`). When `isKnownFlake(ctx.root, headline)` is true and `state.mergeFlakeExcused !== key`, do the following:
+  - set `state.mergeFlakeExcused = key`;
+  - set `state.lastError` to the template `` `${label} failed: known-flaky failure, merge kept: ${headline}` ``;
+  - call `warnEventBestEffort(ctx.root, role, detail)`, where `detail` is the template `` `${label}: known-flaky failure, merge kept: ${headline}` ``;
+  - call `saveLoopState`;
+  - return `"merge_blocked"`.
+
+  That is the return the unverified branch already uses: the ref stays and recovery merges it again. Otherwise, continue to main's verdict unchanged. Extend the function's doc comment with the known-flake branch, its once-per-headline limit and the reason (this plan, BUGS.md 2026-10-06).
+- Same file, `mergeCheckRed`: today it logs `merge check failed (kept for one retry): …` whenever `keepPinOrAttribute` returns `"merge_blocked"`. With this plan, that result can also come from the attribution callback's flake excuse, which logs its own warning. Track whether the callback ran with a local `let attributed = false` set inside the callback, and log the kept-for-retry warning and store the strike headline only when `!attributed`.
+- Leave unchanged: the gate side, `mainTipVerdict`'s cache use (a forced fresh run on the merge side would be a separate plan), and the batch caller in merge-batch.ts. It already passes the returned result through `emit`, and `"merge_blocked"` is an outcome it already handles from the unverified branch.
+- The file is `// vocabulary: plain`: say "merge", never "landing", in new lines.
+
+**Files touched.** `src/merge/merge-check-failures.ts`, `src/loop/loop-state.ts`, `src/tick/tick-apply.ts`, `test/attribute-red-check.test.ts`, `test/streak-gate.test.ts`, `test/loop-state.test.ts`.
+
+**Acceptance criteria.**
+- `test/attribute-red-check.test.ts`, a new test named "attributeRedCheck keeps the ref once for a known-flake red, then attributes a repeat". Use the "rejects deterministically when main's own tip is green" fixture (a green fake npm) with a unique marker. Seed one warning event for the role whose message is `FLAKY_WARNING_PREFIX + "✖ the flaky test"`. Run the red with `outputTail: ["✖ the flaky test (1.2ms)", "expected 2 to be 3"]`.
+  - The first call returns `"merge_blocked"`. The pin ref still exists, `state.lastReview` is unchanged (no reject), `state.lastError` contains `known-flaky failure, merge kept` and `the flaky test`, and `loadLoopState(root, ROLE).mergeFlakeExcused` is set.
+  - A second call with the same state returns `"rejected"` and deletes the pin.
+- The same file: a red whose headline matches no flake warning still returns `"rejected"` on a green main. The existing first test covers this, since it seeds no flake warning. It must still pass unchanged.
+- A test in `test/streak-gate.test.ts`, which already drives `applyLandingOutcome` (`src/tick/tick-apply.ts`): `mergeFlakeExcused` is cleared on `"changed"` and on `"rejected"` and kept on `"merge_blocked"`.
+- `test/loop-state.test.ts`: a saved state with a non-string `mergeFlakeExcused` loads with the field absent.
+- `npm run test` passes, including `test/vocabulary.test.ts` and `test/comment-width.test.ts`.
+
 ## Done
 
 ### `tumwater doctor` names open bugs held by a "Waiting for the next failure" note, and stops calling them stale (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/doctor/doctor-backlog.ts, src/doctor/doctor.ts, docs/cli.md and test/doctor-backlog.test.ts)
