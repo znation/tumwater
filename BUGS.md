@@ -18,6 +18,8 @@ Each bug: symptom, how to reproduce, suspected cause if known. Move fixed bugs t
 - **Progress 2026-10-16 (bugfix, third):** no repro. 30 concurrent runs of the test beside 8 CPU-spinning node processes all passed (the `timeout` wrapper on the spinners did not exist on this host, so the spinners ran unbounded until `pkill`; the load was real). `startParentDeathWatch` (src/process/supervisor.ts:79-104) reads correctly on the handed-down `expectedPpid` path. No code change; the entry stays open until a flake's failure message (signals sent, ESRCH or not, ppids seen) names the case.
 - **Progress 2026-10-16 (bugfix, fourth):** one more candidate closed, unconfirmed: the signal loop was bounded by a count (200 × 50 ms), so a grandchild starved for longer than that (the 145 s check suggests heavy load) could miss every poll and the verdict was read right after. The loop is now bounded by 60 s of wall clock. The entry stays open until a flake reads out.
 
+**Waiting for the next failure 2026-10-16 by bugfix: the failure message will show signals sent, whether the loop broke on ESRCH, the expected ppid, and the ppid the grandchild saw on each poll (`gone.seen`).**
+
 ## Fixed
 
 ### The telemetry digest has no merge-failure section: a blocked or conflicted merge shows up only as a per-role loss cause with the placeholder "(no error text recorded)", and the top-5 loss cut hid all of 2026-10-16's (found by operator session 2026-10-16 while checking why telemetry filed nothing) — fixed 2026-10-16
