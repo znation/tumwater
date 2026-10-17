@@ -1405,6 +1405,37 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### A staged PLANS.md edit that breaks a requires clause gets a staging finding (planned 2026-10-16 by plan; independent of every other entry — touches src/tick/stage-check.ts, test/stage-check.test.ts and docs/invariants.md)
+
+**Goal.** The claim allocator decides when a series part is free from the heading's `requires <Series> i/n landed` clause. If a plan, director or steward run writes one of these clauses wrong, the allocator gets it wrong. A ref to a part no heading carries (dangling) leaves the dependent part claimable at once. A clause that parses to no refs (unparsed) holds nothing. A dependency cycle blocks every part on it forever. `checkPlanDependencies` (`src/doctor/doctor-backlog.ts`) reports these problems, but only after the edit has merged and only when someone runs `tumwater doctor`. By then a feature instance may already have claimed the part too early, which is the waste behind BUGS.md's 2026-10-14 "six wasted claims" entry. The pre-queue self-check (`stageCheckFindings`, `src/tick/stage-check.ts`) runs while the authoring session can still take one fix-up turn (`requestStageFix` in `src/tick/tick-stage.ts`). This plan makes it report any dependency problem that the run's own PLANS.md edit adds, so the author fixes the heading before the change commits. Problems already on main are not this run's fault and stay doctor's to report.
+
+**Approach.**
+- `src/tick/stage-check.ts`: add and export a pure `planDependencyFinding(head: string, base: string): string | undefined`. For each text, parse `parseEntryDetails(text, "Planned")` and the titles of `parseEntryDetails(text, "Done")` (both from `src/backlog/backlog-md.ts`), then run `planDependencyProblems` (`src/backlog/backlog-eligibility.ts`) on them. A problem is new when the base does not have it:
+  - a cycle is new when head's `cycle` is non-null and base's `cycle` is null;
+  - a dangling item is new when the base has no item with the same `title` and `ref`;
+  - an unparsed title is new when it is not among the base's unparsed titles.
+  Return a finding for the most serious new problem, in the order cycle, then dangling, then unparsed. When more new problems follow it, append ` (+N more)` with `moreSuffix` from `src/text/phrases.ts`, which the module already imports. Return undefined when nothing is new. The wording is:
+  - cycle: `` PLANS.md's requires clauses now form a cycle: <A 1/2 → B 2/2 → A 1/2> — every part on it stays blocked forever; edit one heading's `requires … landed` clause to break it ``
+  - dangling: `PLANS.md plan "<title>" requires <ref>, which no PLANS.md heading carries — the claim allocator ignores the clause and hands the plan out now; fix the series name or part number to match the prerequisite's heading`
+  - unparsed: `` PLANS.md plan "<title>" has a `requires … landed` clause that names no part the claim allocator can read — it holds nothing; write each ref as `<Series> i/n` or `part i/n` after a `<Series>, part i/n:` heading prefix ``
+
+  The module is opted in with `// vocabulary: plain`. Wherever one of these literals contains `landed`, end the line with the `// vocabulary-ok: PLANS.md heading syntax` comment that `checkPlanDependencies` uses. Write the doc comment in the module's style and say why only new problems count.
+- `stageCheckFindings` in the same file: right after the `backlogStructureReason` finding, when `files` includes `"PLANS.md"`, read head with `readTextOrNull(path.join(wt, "PLANS.md")) ?? ""` (from `src/files/files.ts`; add the `node:path` import). Read base with `fileContentAt(wt, await changeBaseRev(wt, mainBranch), "PLANS.md")` (`src/git/git.ts`, where `changeBaseRev` is already imported). Push `planDependencyFinding(head, base)` when it is defined. Wrap the git read in `.catch(() => undefined)`, the way the other checks are wrapped, so a git hiccup gives no finding. This is a staging-only check: do not add it to the review gate or the in-lock landing re-check, because the doctor warning is the backstop for anything that gets past the fix-up turn.
+- Add a sentence to the module's top doc comment saying this check is staging-only.
+- `docs/invariants.md`: if a section's **Binds.** line names `src/tick/stage-check.ts` and states which findings staging reports, add this guarantee there, pinned to the new test. If no section does, leave the register alone.
+
+**Files touched.** `src/tick/stage-check.ts`, `test/stage-check.test.ts`, possibly `docs/invariants.md`.
+
+**Acceptance criteria.**
+- New test in `test/stage-check.test.ts`, "planDependencyFinding reports only the requires-clause problems an edit adds". A base PLANS.md text with `## Planned` holding `### S, part 1/2: a` and `### S, part 2/2: b (requires part 1/2 landed)`, then `## Done`. The test checks:
+  - head equal to base gives undefined;
+  - head where part 2/2's clause reads `requires part 3/2 landed` gives a finding that names that title and `S 3/2`;
+  - head where part 1/2's heading gains `(requires part 2/2 landed)` gives a finding that starts with the cycle wording and names `S 1/2` and `S 2/2`;
+  - head whose new `### Other plan (requires nothing landed)` clause parses to no refs gives the unparsed finding naming `Other plan`;
+  - a base that already has the dangling clause, with a head that keeps it and changes only a body line, gives undefined.
+- New test, "a staged PLANS.md edit adding a dangling requires clause yields the dependency finding". It uses `repoWith` with the base above. It writes the dangling head into the worktree, and `stageCheckFindings(wt, "main", EXEMPT, "plan")` returns a finding containing `which no PLANS.md heading carries`. The existing "a clean change yields no findings" test still passes.
+- `npm run test` passes, including `test/vocabulary.test.ts`.
+
 ## Done
 ### An assigned series part names the later parts waiting on it (planned 2026-10-16 by plan; independent of every other entry — touches src/backlog/backlog-eligibility.ts, src/prompt/gate-prompts.ts, src/tick/tick-prompt.ts and their tests; it adds code next to "An assigned series part names the Done entries of the parts it requires", so whichever lands second rebases onto the other) (done 2026-10-16)
 
