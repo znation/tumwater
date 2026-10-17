@@ -7,7 +7,7 @@ import { tickRows, readTickRowsSince } from "../src/history/history-data.js";
 import { SPARSE_WINDOW_NOTE } from "../src/events/event-window.js";
 import { writeEvents } from "./fixtures/log-fixtures.js";
 import { freshLoopState, saveLoopState } from "../src/loop/loop-state.js";
-import { enqueueRolePrompt, inboxSize, queuedRolePrompts } from "../src/inbox/inbox.js";
+import { enqueueRolePrompt, inboxSize, queuedRolePromptRecords, queuedRolePrompts } from "../src/inbox/inbox.js";
 import { readEvents } from "../src/events/event-read.js";
 import { DIRECTOR_ROLE } from "../src/roles/roles.js";
 import { MAX_BODY_BYTES } from "../src/gui/http-body.js";
@@ -133,6 +133,53 @@ test("gui /api/prompt-cancel removes one queued prompt by file, answers gone on 
     });
     assert.equal(res.status, 400);
     assert.equal(inboxSize(repo), 1);
+  } finally {
+    server.close();
+  }
+});
+
+// The queued-prompts rows' Move to top affordance: POST /api/prompt-top reorders exactly the
+// prompt its queue file names to the head of its role's queue — the file-addressed twin of the
+// CLI's position-based `prompt --top <n>`, so a 1 s-stale poll can never reorder the wrong
+// entry. The head answers already_first, and a hostile name is the guard's 400.
+test("gui /api/prompt-top moves one queued prompt to its role's queue head", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "gui prompt-top test");
+  const { server, base } = await startLocalGui(repo);
+  try {
+    const first = enqueueRolePrompt(repo, DIRECTOR_ROLE, "first prompt");
+    const second = enqueueRolePrompt(repo, DIRECTOR_ROLE, "second prompt");
+    const clean = enqueueRolePrompt(repo, "clean", "clean prompt");
+    const post = (payload: unknown) => postJson(base, "/api/prompt-top", payload);
+
+    // Moving the second director prompt to the head answers topped, and a status read shows
+    // it first in its role's queue while the other queues are untouched.
+    let res = await post({ file: path.basename(second) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "topped", preview: "second prompt" });
+    assert.deepEqual(queuedRolePrompts(repo, DIRECTOR_ROLE), ["second prompt", "first prompt"]);
+    assert.deepEqual(queuedRolePrompts(repo, "clean"), ["clean prompt"], "other queues untouched");
+
+    // The queue head answers already_first with no write.
+    res = await post({ file: path.basename(queuedRolePromptRecords(repo, DIRECTOR_ROLE)[0]!.file) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "already_first" });
+    assert.deepEqual(queuedRolePrompts(repo, DIRECTOR_ROLE), ["second prompt", "first prompt"]);
+
+    // A hostile or malformed name, and an unknown role, are 400s leaving the queue unchanged.
+    for (const file of ["../escape.md", "a/b.md", "not-a-prompt.txt", "", undefined]) {
+      res = await post({ file });
+      assert.equal(res.status, 400, `file ${JSON.stringify(file)} rejected`);
+      assert.match(await res.text(), /file/);
+    }
+    res = await post({ role: "nope", file: path.basename(first) });
+    assert.equal(res.status, 400);
+    assert.equal(queuedRolePrompts(repo, DIRECTOR_ROLE).length, 2, "the queue survived every rejection");
+
+    // An absent role targets the director (matching /api/prompt-cancel).
+    res = await post({ role: "clean", file: path.basename(clean) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, status: "already_first" });
   } finally {
     server.close();
   }

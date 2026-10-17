@@ -333,7 +333,8 @@ validation, and atomic write, so you never have to hand-edit the file.
   the Notable/All choice. A new needs-you alert also plays a short Web Audio cue, with a sidebar
   speaker toggle persisted across reloads; the Inbox tab lists each queued prompt and how long it
   has waited, and each row can be edited in place — Edit loads the prompt's body, Save replaces it
-  through the same path `tumwater prompt --edit` uses; an open question's Answer button opens its
+  through the same path `tumwater prompt --edit` uses — and can be moved to the front of its role's
+  queue, the same reorder `tumwater prompt --top` makes, addressed by the row's queue file; an open question's Answer button opens its
   drawer, whose Record answer form writes the decision to QUESTIONS.md as `tumwater questions
   answer` does. Clicking a role opens its details — its notes and next run's prompt included — and
   its live transcript (`#role/<name>` links straight to it). Its History, Usage, Failures, and

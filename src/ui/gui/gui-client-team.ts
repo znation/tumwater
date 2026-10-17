@@ -320,8 +320,16 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     let html;
     if (!list.length) html = "<div class='empty'><strong>" + esc(emptyTitle) + "</strong>" + esc(emptyText) + "</div>";
     else if (key === "queued") {
+      // Each role's queue head carries no Move to top (a no-op there); every later row of
+      // that role does. The rows arrive grouped by role — director first, then each loop in
+      // id order — so a Set of roles already painted marks each group's first row.
+      const paintedFirst = new Set();
       html = list.map((q) => {
         const addr = "data-file='" + esc(q.file) + "' data-role='" + esc(q.role) + "'";
+        // Mark this role's group head before the edit-row early return, so an edited head row
+        // still leaves the Move to top button on that role's later rows.
+        const alreadyFirst = paintedFirst.has(q.role);
+        paintedFirst.add(q.role);
         // The row being edited swaps its preview for a textarea and a Save/Cancel pair; the
         // address stays the queue-file basename, the same one /api/prompt-cancel uses.
         if (queuedEdit && q.file === queuedEdit.file && q.role === queuedEdit.role) {
@@ -331,10 +339,14 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditsave' " + addr + ">Save</button>" +
             "<button type='button' class='btn btn-sm rowaction' data-action='prompteditcancel' " + addr + ">Cancel</button></div>";
         }
+        const topBtn = alreadyFirst
+          ? "<button type='button' class='btn btn-sm rowaction' data-action='prompttop' " + addr + ">Move to top</button>"
+          : "";
         return "<div class='list-item'><span class='li-icon'>" + icon("chat") + "</span><div class='li-main'><span class='li-title'>" + esc(q.preview) +
           "</span><span class='li-meta'>" + esc((q.role === "director" ? "for the director" : "for the " + roleLabel(q.role) + " role") +
             (q.notBeforeMs && q.notBeforeMs > Date.now() ? " · delivers in " + humanSeconds(Math.round((q.notBeforeMs - Date.now()) / 1000))
               : (q.queuedAtMs ? " · queued " + fmtAgo(q.queuedAtMs) : ""))) + "</span></div>" +
+          topBtn +
           "<button type='button' class='btn btn-sm rowaction' data-action='promptcancel' " + addr + ">Cancel</button>" +
           "<button type='button' class='btn btn-sm rowaction' data-action='promptedit' " + addr + ">Edit</button></div>";
       }).join("");
@@ -422,6 +434,16 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
       const bodyBox = $("backlognewbody");
       await postAction("/api/backlog-file", { kind: freshSave.dataset.kind, title, body: bodyBox ? bodyBox.value : "" }, (d) => "Filed: " + d.title + uncommittedTail(d));
       endBacklogNew();
+      return;
+    }
+    const top = clickClosest(ev, "button.rowaction[data-action='prompttop']");
+    if (top) {
+      await postAction("/api/prompt-top", { role: top.dataset.role, file: top.dataset.file }, (d) =>
+        d && d.status === "topped"
+          ? "Moved to the front: " + (d.preview || "")
+          : d && d.status === "already_first"
+            ? "Already first"
+            : "No longer in the inbox — " + (top.dataset.role ? roleLabel(top.dataset.role) : "the director") + " already took it");
       return;
     }
     const cancel = clickClosest(ev, "button.rowaction[data-action='promptcancel']");

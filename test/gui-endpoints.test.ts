@@ -9,7 +9,7 @@ import { eventFeedItem, eventMatchesGrep } from "../src/events/event-format.js";
 import { statusPayload } from "../src/ui/status-payload.js";
 import { handleBrief, handleConfig, handleDoctor, handleDiff, handleReport, handleFailures, handleHistory, handleLogs, handlePromptText, handleTick, handleRole } from "../src/gui/gui-endpoints.js";
 import { EDITABLE_CONFIG_KEYS } from "../src/config/config-editable-keys.js";
-import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
+import { handleBriefEdit, handleBudget, handleConfigSet, handleConfigUnset, handleNotifyTest, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit, handlePromptEdit, handlePromptTop, handleQuestionAnswer, handleReclaim, handleRestart, handleRoleNotes, handleStopSchedule } from "../src/gui/gui-endpoint-commands.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
 import { readTickDetail, type TickDetail } from "../src/tick/tick-detail-data.js";
 import { consumeRestartRequest } from "../src/operator/operator-requests.js";
@@ -18,9 +18,10 @@ import { writeJsonFile } from "../src/files/json-files.js";
 import { configPath, roleInboxDir, roleNotesPath, wakeRequestPath } from "../src/paths.js";
 import { orchestratorStatePath, reclaimRequestPath, restartRequestPath } from "../src/paths.js";
 import { DIRECTOR_PROMPT_MAX_CHARS } from "../src/inbox/inbox-submit.js";
+import { queuedFiles, queuedRolePromptRecords } from "../src/inbox/inbox.js";
 import { WINDOW_DAY_CASES } from "./fixtures/window-days.js";
 import { atLocalTs as at, dayKey } from "./helpers/oracles.js";
-import { writeEvents } from "./fixtures/log-fixtures.js";
+import { writeEvents, eventsOfType } from "./fixtures/log-fixtures.js";
 import { INITIAL_PROMPT_MAX_CHARS, PROMPT_START, readBrief } from "../src/brief/brief.js";
 import { initializedRepo, sh, assertClean, tmpdir, commitIn, makeRepo, writeBacklogFile } from "./fixtures/repo-fixtures.js";
 import { startLocalGui } from "./fixtures/gui-fixtures.js";
@@ -849,6 +850,10 @@ function servePromptEdit(root: string, body: unknown) {
   return captureJson((res) => handlePromptEdit(fakeReq(JSON.stringify(body)), res, root));
 }
 
+function servePromptTop(root: string, body: unknown) {
+  return captureJson((res) => handlePromptTop(fakeReq(JSON.stringify(body)), res, root));
+}
+
 test("handlePromptText serves a queue file's editable body, with gone and the guards", async () => {
   const root = tmpdir();
   seedPromptFile(root, "qa", "q.md", "the queued body");
@@ -920,6 +925,60 @@ test("handlePromptEdit rewrites the named file, leaving a sibling intact, with g
   const unknown = await servePromptEdit(root, { role: "ghost", file: "q.md", text: "x" });
   assert.equal(unknown.captured.status, 400);
   assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
+});
+
+// ---- POST /api/prompt-top: the Queued tab's file-addressed Move to top. The handler reuses
+// inbox-top.ts's topQueuedFile — the file-addressed twin of `prompt --top <n>` — so a stale
+// poll reorders only the file it names, logging one prompt_topped event under the role.
+test("handlePromptTop moves the named file to its role's queue head, with already_first, gone, and the guards", async () => {
+  const root = tmpdir();
+  seedPromptFile(root, "qa", "q1.md", "first body");
+  seedPromptFile(root, "qa", "q2.md", "second body");
+  seedPromptFile(root, "qa", "q3.md", "third body");
+
+  const { captured, data } = await servePromptTop(root, { role: "qa", file: "q3.md" });
+  assert.equal(captured.status, 200);
+  assert.deepEqual(data, { ok: true, status: "topped", preview: "third body" });
+  // The moved prompt leads its role's queue; its two siblings keep their set of texts.
+  const records = queuedRolePromptRecords(root, "qa");
+  assert.equal(records[0]?.text, "third body");
+  assert.deepEqual(queuedRolePromptRecords(root, "qa").map((r) => r.text).sort(), ["first body", "second body", "third body"]);
+  // One prompt_topped event under the target role, previewing the moved prompt.
+  const topped = eventsOfType(root, "prompt_topped");
+  assert.equal(topped.length, 1);
+  assert.equal(topped[0]?.source, "qa");
+  assert.equal(topped[0]?.preview, "third body");
+
+  // The head answers already_first with no write and no second event.
+  const headName = path.basename(queuedFiles(root, "qa")[0] as string);
+  const head = await servePromptTop(root, { role: "qa", file: headName });
+  assert.equal(head.captured.status, 200);
+  assert.deepEqual(head.data, { ok: true, status: "already_first" });
+  assert.equal(eventsOfType(root, "prompt_topped").length, 1);
+
+  // A vanished file answers gone.
+  const gone = await servePromptTop(root, { role: "qa", file: "missing.md" });
+  assert.equal(gone.captured.status, 200);
+  assert.deepEqual(gone.data, { ok: true, status: "gone" });
+
+  // A missing or hostile file name is the shared basename guard's 400, the queue unchanged.
+  const missing = await servePromptTop(root, { role: "qa" });
+  assert.equal(missing.captured.status, 400);
+  assert.match((missing.data as { error: string }).error, /file required/);
+  const bad = await servePromptTop(root, { role: "qa", file: "../escape.md" });
+  assert.equal(bad.captured.status, 400);
+  assert.match((bad.data as { error: string }).error, /plain queue-file basename/);
+  assert.equal(queuedRolePromptRecords(root, "qa").length, 3, "nothing touched on a rejected name");
+
+  // An unknown role is rejectBadRole's 400; an absent role targets the director's queue.
+  const unknown = await servePromptTop(root, { role: "ghost", file: "q1.md" });
+  assert.equal(unknown.captured.status, 400);
+  assert.match((unknown.data as { error: string }).error, /unknown role "ghost"/);
+  seedPromptFile(root, DIRECTOR_ROLE, "0.md", "earlier director");
+  seedPromptFile(root, DIRECTOR_ROLE, "d.md", "director body");
+  const asDirector = await servePromptTop(root, { file: "d.md" });
+  assert.equal(asDirector.captured.status, 200);
+  assert.deepEqual(asDirector.data, { ok: true, status: "topped", preview: "director body" });
 });
 
 test("handleQuestionAnswer wakes the role named in the asked-by clause", async () => {

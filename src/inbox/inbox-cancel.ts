@@ -139,9 +139,10 @@ export function queueFileNameProblem(name: unknown): string | null {
 }
 
 /** The file-addressed queue functions' shared entry guard: throw the reason a name fails
- * queueFileNameProblem, so cancelQueuedFile, editQueuedFile, and readQueuedPromptBody all
- * fail closed with the same error before touching disk. The callers run the guard anyway;
- * naming it in one place keeps the throw contract from drifting between them. */
+ * queueFileNameProblem, so cancelQueuedFile, editQueuedFile, readQueuedPromptBody, and
+ * topQueuedFile all fail closed with the same error before touching disk. The callers run
+ * the guard anyway; naming it in one place keeps the throw contract from drifting between
+ * them. */
 export function assertQueueFileName(name: string): void {
   const problem = queueFileNameProblem(name);
   if (problem) throw new Error(problem);

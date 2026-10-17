@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { movePromptToTop } from "../src/inbox/inbox-top.js";
+import { movePromptToTop, topQueuedFile } from "../src/inbox/inbox-top.js";
 import {
   dequeueRolePrompt,
   enqueueRolePrompt,
@@ -149,4 +149,44 @@ test("movePromptToTop makes the moved prompt the next delivered", () => {
   // "second" was position 2; after the move it leads the queue and is the first delivered.
   assert.deepEqual(queuedRolePrompts(root, "feature"), ["second", "first", "third"]);
   assert.equal(dequeueRolePrompt(root, "feature"), "second");
+});
+
+/** The file-addressed twin (the dashboard's per-row Move to top): topQueuedFile names one
+ * queue file by basename, reorders it to the head via the same rename-and-event pairing, and
+ * answers already_first/gone instead of throwing for the head and the vanished file. */
+test("topQueuedFile moves a named queue file to the head, and answers already_first and gone", () => {
+  const root = tmpdir();
+  enqueueRolePrompt(root, "feature", "first");
+  enqueueRolePrompt(root, "feature", "second");
+  const third = enqueueRolePrompt(root, "feature", "third");
+  const thirdText = fs.readFileSync(third, "utf8");
+
+  const outcome = topQueuedFile(root, "feature", path.basename(third));
+  assert.deepEqual(outcome, { status: "topped", preview: "third" });
+  const after = queuedFiles(root, "feature");
+  assert.equal(after.length, 3);
+  assert.equal(fs.readFileSync(after[0] as string, "utf8"), thirdText, "the moved text is byte-identical");
+  assert.deepEqual(queuedRolePrompts(root, "feature"), ["third", "first", "second"]);
+
+  // One prompt_topped event under the target role, like the position-addressed move.
+  const events = eventsOfType(root, "prompt_topped");
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.source, "feature");
+
+  // The queue head answers already_first with no write and no event; the order stays.
+  const movedName = path.basename(queuedFiles(root, "feature")[0] as string);
+  const head = topQueuedFile(root, "feature", movedName);
+  assert.deepEqual(head, { status: "already_first" });
+  assert.deepEqual(queuedRolePrompts(root, "feature"), ["third", "first", "second"], "the head is unchanged");
+  assert.equal(eventsOfType(root, "prompt_topped").length, 1, "no event on an already-first move");
+
+  // A name the loop already dequeued answers gone.
+  assert.deepEqual(topQueuedFile(root, "feature", "missing.md"), { status: "gone" });
+
+  // A name failing the shared guard throws, like cancelQueuedFile/editQueuedFile.
+  assert.throws(() => topQueuedFile(root, "feature", "../escape.md"), /plain queue-file basename/);
+  assert.throws(() => topQueuedFile(root, "feature", "not-a-prompt.txt"), /\.md/);
+
+  // The moved prompt is the next delivered.
+  assert.equal(dequeueRolePrompt(root, "feature"), "third");
 });

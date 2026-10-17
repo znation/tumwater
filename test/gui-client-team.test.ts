@@ -55,6 +55,33 @@ test("the Queued tab shows how long each prompt has waited, and unstamped ones a
   assert.match(html, /data-action='promptcancel' data-file='q\.md' data-role='qa'/);
 });
 
+// Each role's queue head carries no Move to top (a no-op there); every later row of that
+// role does, addressed by the same queue-file basename and role as Cancel and Edit — so a
+// stale poll can never reorder the wrong prompt.
+test("the Queued tab paints a Move to top button on every row except its role's first", () => {
+  const { scope, panels } = backlogScope();
+  scope.renderBacklog({
+    questions: [], plans: [], bugs: [],
+    inboxPrompts: ["first", "second"],
+    inboxFiles: ["a.md", "b.md"],
+    inboxQueuedAt: [null, null],
+    roleInboxPrompts: {
+      qa: [
+        { file: "q1.md", preview: "qa one", queuedAtMs: null },
+        { file: "q2.md", preview: "qa two", queuedAtMs: null },
+      ],
+    },
+  });
+  const html = panels["backlog"] ?? "";
+  // The second row of each role group carries the button, addressed like Cancel/Edit.
+  assert.match(html, /data-action='prompttop' data-file='b\.md' data-role='director'/);
+  assert.match(html, /data-action='prompttop' data-file='q2\.md' data-role='qa'/);
+  // Neither role's first row (its queue head) carries one.
+  assert.doesNotMatch(html, /data-action='prompttop' data-file='a\.md'/);
+  assert.doesNotMatch(html, /data-action='prompttop' data-file='q1\.md'/);
+  assert.equal((html.match(/data-action='prompttop'/g) || []).length, 2);
+});
+
 test("the Queued tab edits a prompt in place, and the poll cannot clobber the editor", () => {
   const { scope, panels } = backlogScope();
   const status = {
@@ -105,8 +132,10 @@ test("the queued row's delegated handler carries the edit arms", () => {
   assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='promptedit'\]/);
   assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditsave'\]/);
   assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompteditcancel'\]/);
+  assert.match(GUI_CLIENT_TEAM_JS, /button\.rowaction\[data-action='prompttop'\]/);
   assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-text\?role="/);
   assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-edit"/);
+  assert.match(GUI_CLIENT_TEAM_JS, /"\/api\/prompt-top"/);
 });
 
 test("the other backlog tabs render unchanged alongside the queued age", () => {

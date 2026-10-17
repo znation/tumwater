@@ -11,7 +11,7 @@
  * and operator lifecycle restart/reclaim/abort/reset-counters/stop-schedule/role-notes/
  * retire/brief-edit (gui/gui-operator-commands).
  */
-export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit } from "./gui-prompt-commands.js";
+export { handlePrompt, handlePromptRole, handlePromptCancel, handlePromptEdit, handlePromptTop } from "./gui-prompt-commands.js";
 export { handleQuestionAnswer, handleBacklogFile, handleBacklogCancel, handleBacklogRelease, handleBacklogTop, handleBacklogEdit } from "./gui-backlog-commands.js";
 export { handleConfigSet, handleConfigUnset, handleBudget, handleNotifyTest } from "./gui-config-commands.js";
 export { handlePause, handlePauseRole, handleWake, handleWakeCancel } from "./gui-team-commands.js";

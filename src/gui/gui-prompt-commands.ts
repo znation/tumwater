@@ -2,10 +2,10 @@
 /**
  * The dashboard's POST prompt-queueing command handlers (barrelled into
  * gui/gui-endpoint-commands.ts, which routes to them from src/gui/gui-server.ts): prompt,
- * prompt-role, prompt-cancel, and prompt-edit — the `checkedPromptImages` /
+ * prompt-role, prompt-cancel, prompt-edit, and prompt-top — the `checkedPromptImages` /
  * `checkedPromptDefer` / `checkedPromptFields` validators they share ride with them. Each
  * handler adapts HTTP onto the domain work one layer down (inbox-submit, inbox-cancel,
- * inbox-edit, operator-intent) and touches no socket beyond its own `res`.
+ * inbox-edit, inbox-top, operator-intent) and touches no socket beyond its own `res`.
  */
 import { submitPrompt } from "../inbox/inbox-submit.js";
 import { imagePromptGuidance } from "../inbox/inbox-submit.js";
@@ -13,6 +13,7 @@ import { promptImagesProblem, type PromptImageInput } from "../inbox/inbox-attac
 import { promptPreview } from "../inbox/inbox.js";
 import { cancelQueuedFile } from "../inbox/inbox-cancel.js";
 import { editQueuedFile, type EditOutcome } from "../inbox/inbox-edit.js";
+import { topQueuedFile, type FileTopOutcome } from "../inbox/inbox-top.js";
 import { parseDurationMs } from "../cli/cli-args.js";
 import { PAUSE_FOR_MAX_MS, submitRolePromptAndWake } from "../operator/operator-intent.js";
 import { DIRECTOR_ROLE } from "../roles/roles.js";
@@ -200,5 +201,38 @@ export async function handlePromptEdit(req: http.IncomingMessage, res: http.Serv
     outcome.status === "edited"
       ? { ok: true, status: "edited", oldText: outcome.oldText, newText: outcome.newText }
       : OK_GONE,
+  );
+}
+
+/** Handle POST /api/prompt-top: move one queued prompt to the head of its role's queue,
+ * addressed by its queue file — the dashboard's per-row Move to top affordance, the
+ * file-addressed twin of the CLI's position-addressed `prompt --top`. The role is optional
+ * (absent moves in the director's queue) and validates exactly like /api/prompt-cancel; a
+ * file name failing the shared rejectBadQueueFileName guard is a user-input error answered
+ * 400 with nothing touched on disk. A vanished file answers 200 { status: "gone" } and the
+ * queue head answers 200 { status: "already_first" } — both data for the flash line, not
+ * server faults, so a stale poll can never reorder the wrong prompt. Same body discipline
+ * as /api/prompt (readJsonObject → 400 malformed/non-object, 413 oversized). */
+export async function handlePromptTop(req: http.IncomingMessage, res: http.ServerResponse, root: string): Promise<void> {
+  const body = await readPostBody(req, res, '{"role": "qa", "file": "<stamp>.md"}');
+  if (!body) return;
+  if (body.role !== undefined && rejectBadRole(root, res, body.role)) return;
+  const role = body.role === undefined ? DIRECTOR_ROLE : (body.role as string);
+  if (rejectBadQueueFileName(res, body.file)) return;
+  let outcome: FileTopOutcome;
+  try {
+    outcome = topQueuedFile(root, role, body.file as string);
+  } catch (err) {
+    badRequest(res, errorMessage(err));
+    return;
+  }
+  sendJson(
+    res,
+    200,
+    outcome.status === "topped"
+      ? { ok: true, status: "topped", preview: outcome.preview }
+      : outcome.status === "already_first"
+        ? { ok: true, status: "already_first" }
+        : OK_GONE,
   );
 }
