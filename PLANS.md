@@ -1135,7 +1135,9 @@ code; no server or page change.
   `ArrowUp` reaches it, the next stays).
 - `npm run test` passes.
 
-### The GUI Usage view charts each day's red full-suite merge checks beside the merge check median (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region; the GUI half of the red-check signal whose report half landed 2026-10-17 as `ReportDay.checkFailures`; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
+## Done
+
+### The GUI Usage view charts each day's red full-suite merge checks beside the merge check median (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file's `report-chart` region; the GUI half of the red-check signal whose report half landed 2026-10-17 as `ReportDay.checkFailures`; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** `tumwater report` now counts each day's red full-suite merge checks
 (`ReportDay.checkFailures`) and the CLI prints a `**Red merge checks:**` line beside its median,
@@ -1174,8 +1176,6 @@ change — `ReportDay.checkFailures` already flows through the `/api/report` JSO
   same `["format", "report-chart"]` regions the neighbouring median test uses, so a missing or
   misnamed builder fails the test.
 - `npm run test` passes.
-
-## Done
 
 ### Each day's red full-suite merge checks are counted in the `tumwater report` day report (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight problems-only Health view plan; the report half of a red-check signal whose GUI chart is left to a later plan, as the project did for `Merge check median`; touches src/build/build-check-events.ts, src/report/report-data.ts, src/report/report-render.ts, docs/cli.md and their tests) — done 2026-10-17 by the feature role
 
