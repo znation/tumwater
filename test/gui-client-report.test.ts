@@ -237,3 +237,40 @@ test("the Rejections by loop chart stacks per role in the ticks order and stays 
   const emptySvg = chartRejectionsByRole({ ...data, series: [none, { ...none, date: "2026-09-02" }] });
   assert.equal(parseRects(emptySvg).length, 0, "a missing map renders no segments");
 });
+
+test("the Fallbacks and Image reroutes charts stack per role and seriesHasAny gates them", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartFallbacksByRole(d: ReportData): string;
+    chartImageReroutesByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartFallbacksByRole, chartImageReroutesByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartFallbacksByRole", "chartImageReroutesByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { fallbacksByRole: { feature: 2 }, imageReroutesByRole: { qa: 1 } }),
+    mkDay("2026-09-02", { feature: 1 }, { fallbacksByRole: { bugfix: 1 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0], ["qa", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.equal(titles(chartFallbacksByRole(data)).length, 2);
+  assert.ok(titles(chartFallbacksByRole(data)).some((t) => t.includes("2026-09-01 · feature: 2 fallbacks")));
+  assert.equal(titles(chartImageReroutesByRole(data)).length, 1);
+  assert.ok(titles(chartImageReroutesByRole(data)).some((t) => t.includes("qa: 1 image reroute")));
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartFallbacksByRole(data)), legendOf(chartTicksByRole(data)));
+  assert.equal(legendOf(chartImageReroutesByRole(data)), legendOf(chartTicksByRole(data)));
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { fallbacksByRole: { feature: 0 } })]);
+  assert.equal(seriesHasAny(plain, "fallbacksByRole"), false);
+  assert.equal(seriesHasAny(plain, "imageReroutesByRole"), false);
+  assert.equal(seriesHasAny(data, "fallbacksByRole"), true);
+  assert.equal(seriesHasAny(data, "imageReroutesByRole"), true);
+});

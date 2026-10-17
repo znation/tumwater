@@ -1153,7 +1153,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The GUI Usage view charts `Fallbacks by role` and `Image reroutes by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the merge-rename series and the install alert)
+
+## Done
+
+### The GUI Usage view charts `Fallbacks by role` and `Image reroutes by role` as stacked per-role elements (planned 2026-10-16 by the plan role; independent of the merge-rename series and the install alert) — done 2026-10-16
 
 **Goal.** `tumwater report` now ranks model-fallback episodes and image reroutes per role (PLANS.md Done: "`tumwater report` gains a `Fallbacks by role` line" and "… an `Image reroutes by role` line"). Both counts already reach the dashboard as `ReportDay.fallbacksByRole` and `ReportDay.imageReroutesByRole` (`src/report/report-data.ts`), but the GUI Usage view (`src/ui/gui/gui-client-report.ts`) never draws them. An operator watching the dashboard cannot see which role's primary model keeps failing or which role keeps needing a vision model. Add one stacked per-role chart for each, following `chartRejectionsByRole`.
 
@@ -1173,8 +1176,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `seriesHasAny` is false for a series without either map (and for maps holding only zeros) and true once any day carries a nonzero count.
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged. That includes the rejections test's `reportRoleOrder` assertion, because its data carries neither new map.
 - `npm run test` passes.
-
-## Done
 
 ### The dashboards raise an amber `install` alert while the root checkout's `node_modules` is behind `package-lock.json` (planned 2026-10-16 by the plan role; independent of the waiting plain-terms series and of the in-flight "Image reroutes by role" report plan — it adds one module under `src/status/`, one optional `StatusSnapshot` field, and one branch in `src/ui/team-alerts.ts`) — done 2026-10-16
 
