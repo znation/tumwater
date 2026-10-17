@@ -69,7 +69,8 @@ test("status table marks custom roles with an asterisk and a footnote", () => {
   // The footnote is the line under the table — one per fleet, not per loop.
   const lines = text.split("\n");
   assert.equal(lines[lines.length - 1], "* custom role");
-  assert.equal(text.match(/custom role/g)?.length, 1);
+  assert.match(text, /nightly\*.*custom role\n/, "a custom role's title cell reads custom role");
+  assert.equal(text.match(/custom role/g)?.length, 2, "its title cell plus the one footnote");
 
   // No customs: no asterisk anywhere and the table still ends at its totals row.
   const plain = renderStatus(tmpdir(), snapshotWith([{ role: "clean" }, { role: "dedupe" }]));

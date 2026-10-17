@@ -156,7 +156,7 @@ ${DECOMPOSITION_GUIDANCE}`,
   {
     id: "readme",
     tier: "small",
-    title: "README maintainer",
+    title: "brief and README keeper",
     find: `Keep the project brief — TUMWATER.md when it exists with the tumwater:prompt markers, else
 README.md — accurate against the actual state of the project.
    1. Work from the delta, not from scratch: \`git log --oneline <last readme commit>..main\` names
@@ -474,7 +474,7 @@ arguments, config files, environment), and rough edges you meet while running th
   {
     id: "steward",
     tier: "default",
-    title: "project steward",
+    title: "backlog curator",
     find: `Make ONE curation move on this project's records — the most valuable one.
    1. Re-read the brief, PRINCIPLES.md, PLANS.md, BUGS.md — and QUESTIONS.md if it
       exists — and skim the codebase's shape (sizes, module list, test count).

@@ -19,7 +19,7 @@ test("the steward role exists last in catalog order", () => {
   // The director is appended separately by allRoleIds(), so within the catalog the steward
   // sits right after improve — exactly the lowest tie-break priority planned.
   assert.equal(ids[ids.indexOf("improve") + 1], "steward", "steward sits right after improve");
-  assert.equal(steward.title, "project steward");
+  assert.equal(steward.title, "backlog curator");
 });
 
 test("the steward prompt makes ONE curation move from the planned list", () => {
@@ -207,6 +207,6 @@ test("the steward prompt carries the shared curation rules over to Fixed compres
 
 test("buildTickPrompt for steward carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: steward!, initialPrompt: "" });
-  assert.match(prompt, /"steward" role \(project steward\)/);
+  assert.match(prompt, /"steward" role \(backlog curator\)/);
   assert.ok(prompt.includes(steward!.find.trim()), "the full find text is embedded");
 });

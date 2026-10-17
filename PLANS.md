@@ -21,36 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms role ids, part 5/5: Retitle steward and readme and show each role's title beside its id on the dashboard and TUI (planned 2026-10-16 by user; requires part 4/5 and Plain terms groundwork 4/4 landed; design in plans/terminology.md "Role names"; touches src/roles/role-catalog.ts and src/ui/status-render.ts and src/ui/gui/ plus tests)
-
-**Goal.** Every role is listed with its title beside its id, so a newcomer reads "dedupe — duplication remover" instead of guessing. The steward is titled "backlog curator" and readme "brief and README keeper".
-
-**Approach.**
-- src/roles/role-catalog.ts: steward's `title: "backlog curator"`, readme's `title: "brief and README keeper"`. No other title changes; parts 3/5 and 4/5 set dedupe's and selfcheck's.
-- **TUI and `tumwater status`:** both render `renderStatusSpans` in src/ui/status-render.ts.
-  - Append a last column headed `title`, whose cell is `roleTitle(s.role)` (src/roles/role-labels.ts, groundwork) in the `dim` tone. The totals row leaves it blank.
-  - Make `{ index: <the new column's index>, minWidth: 0 }` the first `FLEXIBLE_COLUMNS` entry, so a narrow terminal gives up the title before any other column shrinks.
-  - The new column is appended last, so the existing positional indices do not move. A cell clipped to zero width trims away with the trailing padding.
-- **Dashboard**, using the browser `roleTitle` twin from groundwork:
-  - The Roles table name cell, `loopCells` in src/ui/gui/gui-client-loops.ts, adds `<span class='muted role-title'>` + `esc(roleTitle(l.role))` + `</span>` after the role button.
-  - The drawer header, both `drawerhead` paints in src/ui/gui/gui-client-drawer.ts, shows the title under the id.
-  - The composer's target options in src/ui/gui/gui-client-composer.ts read `<id> — <title>`.
-  - Add a `.role-title` rule in src/ui/gui/gui-styles.ts: small, muted, no wrap.
-- `tumwater role <id>` already prints the title (src/roles/role-render.ts). Leave it.
-- A custom role shows "custom role", and `feature-2` shows feature's title, because `roleTitle` resolves instances through the base role.
-- Tests:
-  - test/status-render.test.ts: rows end with their titles; at a `maxWidth` too narrow for everything, the title column goes first and the other columns keep their widths.
-  - The gui-client-loops, gui-client-drawer and gui-client-composer suites: the title appears beside the id.
-  - test/prompt-steward.test.ts and test/prompt-roles.test.ts: the new titles in the prompt self-description.
-
-**Files touched.** src/roles/role-catalog.ts, src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-styles.ts; tests: test/status-render.test.ts, test/gui-client-loops.test.ts, test/gui-client-drawer.test.ts, test/gui-client-composer.test.ts, test/prompt-steward.test.ts, test/prompt-roles.test.ts.
-
-**Acceptance criteria.**
-- `tumwater status` at full width shows each role's title in a last column, and at a narrow width drops the title before clipping anything else.
-- The dashboard's Roles table, drawer header and composer target list show the title beside the id, including "custom role" for a custom role.
-- The steward's and readme's prompts describe them as "backlog curator" and "brief and README keeper".
-- `npm run test` passes.
-
 ### Plain terms code team, part 1/6: Move src/fleet/ to src/team/ and give the fleet-named files team names (planned 2026-10-16 by user; requires Plain terms role ids 5/5 and Plain terms scripting 5/5 landed; design in plans/terminology.md "Code names"; touches src/fleet/ and the fleet-named files and their importers)
 
 **Goal.** A mechanical file move with no identifier changes. The fleet-named directory and files take team names, and every import path and path mention follows them. Behavior is unchanged.
@@ -1698,6 +1668,36 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `test/landing-merge.test.ts`, "a merged diff that posts new Open questions emits one question_posted per entry": also assert that the one posted event has `position: 2` and `open: 2`. The existing `question` assertion passes unchanged. `test/landing-stack.test.ts` "ffStackToMain emits question_posted …" passes unchanged.
 - `test/event-format.test.ts`: the existing "formatEvent renders question_posted with the posted heading and no warning prefix" (no `position`) passes unchanged. A new test renders `{ type: "question_posted", question: "Which storage?", position: 3, open: 3 }` to a line containing `question posted: Which storage? — question 3 in \`tumwater questions\`; answer it with \`tumwater questions answer 3 "<decision>"\``, without `warning`. `position: 0`, `position: "3"` and `position: 1.5` render the same line as the position-less event.
 - `test/notify.test.ts` "a posted question spawns the notify command once …" passes unchanged, because it compares the message to `formatEvent(event)`.
+- `npm run test` passes.
+
+### Plain terms role ids, part 5/5: Retitle steward and readme and show each role's title beside its id on the dashboard and TUI (planned 2026-10-16 by user, done 2026-10-16; requires part 4/5 and Plain terms groundwork 4/4 landed; design in plans/terminology.md "Role names"; touches src/roles/role-catalog.ts and src/ui/status-render.ts and src/ui/gui/ plus tests)
+
+**Goal.** Every role is listed with its title beside its id, so a newcomer reads "dedupe — duplication remover" instead of guessing. The steward is titled "backlog curator" and readme "brief and README keeper".
+
+**Approach.**
+- src/roles/role-catalog.ts: steward's `title: "backlog curator"`, readme's `title: "brief and README keeper"`. No other title changes; parts 3/5 and 4/5 set dedupe's and selfcheck's.
+- **TUI and `tumwater status`:** both render `renderStatusSpans` in src/ui/status-render.ts.
+  - Append a last column headed `title`, whose cell is `roleTitle(s.role)` (src/roles/role-labels.ts, groundwork) in the `dim` tone. The totals row leaves it blank.
+  - Make `{ index: <the new column's index>, minWidth: 0 }` the first `FLEXIBLE_COLUMNS` entry, so a narrow terminal gives up the title before any other column shrinks.
+  - The new column is appended last, so the existing positional indices do not move. A cell clipped to zero width trims away with the trailing padding.
+- **Dashboard**, using the browser `roleTitle` twin from groundwork:
+  - The Roles table name cell, `loopCells` in src/ui/gui/gui-client-loops.ts, adds `<span class='muted role-title'>` + `esc(roleTitle(l.role))` + `</span>` after the role button.
+  - The drawer header, both `drawerhead` paints in src/ui/gui/gui-client-drawer.ts, shows the title under the id.
+  - The composer's target options in src/ui/gui/gui-client-composer.ts read `<id> — <title>`.
+  - Add a `.role-title` rule in src/ui/gui/gui-styles.ts: small, muted, no wrap.
+- `tumwater role <id>` already prints the title (src/roles/role-render.ts). Leave it.
+- A custom role shows "custom role", and `feature-2` shows feature's title, because `roleTitle` resolves instances through the base role.
+- Tests:
+  - test/status-render.test.ts: rows end with their titles; at a `maxWidth` too narrow for everything, the title column goes first and the other columns keep their widths.
+  - The gui-client-loops, gui-client-drawer and gui-client-composer suites: the title appears beside the id.
+  - test/prompt-steward.test.ts and test/prompt-roles.test.ts: the new titles in the prompt self-description.
+
+**Files touched.** src/roles/role-catalog.ts, src/ui/status-render.ts, src/ui/gui/gui-client-loops.ts, src/ui/gui/gui-client-drawer.ts, src/ui/gui/gui-client-composer.ts, src/ui/gui/gui-styles.ts; tests: test/status-render.test.ts, test/status-render-cells.test.ts, test/gui-client-loops.test.ts, test/gui-client-drawer.test.ts, test/gui-client-composer.test.ts, test/prompt-steward.test.ts, test/prompt-roles.test.ts.
+
+**Acceptance criteria.**
+- `tumwater status` at full width shows each role's title in a last column, and at a narrow width drops the title before clipping anything else.
+- The dashboard's Roles table, drawer header and composer target list show the title beside the id, including "custom role" for a custom role.
+- The steward's and readme's prompts describe them as "backlog curator" and "brief and README keeper".
 - `npm run test` passes.
 
 ### The repeated-failure pause page names the role's last error, so `tumwater logs` and the notify message say why the role stopped (done 2026-10-16; planned 2026-10-16 by plan; independent of every other entry — touches src/events/event-format.ts, docs/config.md and test/event-format-fleet.test.ts)

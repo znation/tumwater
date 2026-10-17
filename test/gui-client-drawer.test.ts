@@ -181,6 +181,7 @@ test("the loop drawer for a role the fleet no longer has says so, paints no acti
   });
   t.scope.toggleLoop("gone");
   assert.match(t.paintedFor("drawerhead"), /no longer part of the team/);
+  assert.match(t.paintedFor("drawerhead"), /role-title'>custom role</);
   assert.equal(t.paintedFor("draweractions"), "");
   // The change section renders for a role absent from statusPayload.loops, so a disabled
   // loop's unlanded patch is still visible in its drawer.
@@ -268,6 +269,7 @@ test("the loop drawer paints a working loop's actions, metrics, ticks, and trans
   const head = t.paintedFor("drawerhead");
   assert.match(head, /<pill blue:Working>/);
   assert.match(head, /clean/);
+  assert.match(head, /<div class='muted role-title'>code cleaner<\/div>/);
   assert.match(head, /<span class='muted'>phase detail<\/span>/);
 
   const meta = t.paintedFor("drawermeta");

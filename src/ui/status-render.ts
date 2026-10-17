@@ -11,7 +11,7 @@ import { bootstrapBadge, buildBadge, budgetBadge, claudeWindowTone, diskBadge, l
 import { idleClaimText, isActivePhase, loopRowCells, onErrorStreak, sortLoopsByState } from "./status-model.js";
 import { tickProgress } from "./tick-progress-model.js";
 import { eventTypeLabel } from "../events/event-labels.js";
-import { roleLabel } from "../roles/role-labels.js";
+import { roleLabel, roleTitle } from "../roles/role-labels.js";
 import { yieldMultiplierFor, yieldMultiplierSuffix } from "../scheduling/backoff.js";
 import { phaseTone, resultTone, type Tone } from "./tone.js";
 import { fleetAlerts } from "./fleet-alerts.js";
@@ -100,14 +100,16 @@ function stateCell(root: string, s: LoopState, phase: string, live?: LiveProgres
 }
 
 /** Columns allowed to shrink when the table is wider than the terminal, widest offender
- * first: `last result` (holds the tick summary), then `state` (live working detail), then
- * `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago" before whole
- * lines clip; its minimum is a bare HH:MM:SS. `last landed` sits right of `last tick` and is
- * not flexible: it is a short sibling time cell whose width follows lastTickCell's, and the
- * whole-line clip that already protects the header also bounds it. Indices are positional in
- * the `cols` array below — renumber when columns change. (`today`, like `cost`, is a short
- * fixed-width cell: never flexible.) */
+ * first: `title` (the role's plain-terms description, dropped entirely before anything else
+ * narrows), then `last result` (holds the tick summary), then `state` (live working
+ * detail), then `last tick` — it shrinks last so on a narrow terminal it loses " · 3m ago"
+ * before whole lines clip; its minimum is a bare HH:MM:SS. `last landed` sits right of
+ * `last tick` and is not flexible: it is a short sibling time cell whose width follows
+ * lastTickCell's, and the whole-line clip that already protects the header also bounds it.
+ * Indices are positional in the `cols` array below — renumber when columns
+ * change. (`today`, like `cost`, is a short fixed-width cell: never flexible.) */
 const FLEXIBLE_COLUMNS: Array<{ index: number; minWidth: number }> = [
+  { index: 12, minWidth: 0 },
   { index: 10, minWidth: 12 },
   { index: 1, minWidth: 12 },
   { index: 8, minWidth: 10 },
@@ -280,9 +282,9 @@ export function renderStatusSpans(
   // or missing, so loops that never ticked — or last ticked yesterday — read zero without a
   // save. It renders whether or not the cap is enabled: spend observability does not depend
   // on it.
-  // `next run` is appended last and never flexible (a short fixed-width cell like `today`):
-  // FLEXIBLE_COLUMNS' positional indices above stay untouched when columns change.
-  const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run"];
+  // `next run` is a short fixed-width cell like `today`, never flexible; `title` is appended
+  // last and shrinks first, so FLEXIBLE_COLUMNS' other positional indices stay untouched.
+  const cols = ["role", "state", "runs", "commits", "output", "peak ctx", "cost", "today", "last run", "last merged", "last result", "next run", "title"];
   // One live tail read per running loop per frame, threaded through every cell that shows
   // in-flight detail (metrics, state, current work) — each helper used to re-read the log on
   // its own, up to three stats + reads per loop per second. The phase is computed once per
@@ -356,6 +358,7 @@ export function renderStatusSpans(
         ? [{ text: eventTypeLabel(s.lastResult), ...(resultT ? { tone: resultT } : {}) }, { text: s.lastSummary ? ` — ${s.lastSummary}` : "" }]
         : cell("-"),
       cell(next, next.startsWith("sleeping") ? "yellow" : undefined),
+      cell(roleTitle(s.role), "dim"),
     ];
   });
   const totalsRow: StatusSpan[][] = [
@@ -374,6 +377,7 @@ export function renderStatusSpans(
     // the point (BUGS.md 2026-09-30). Not running, the snapshot derives the block from these
     // same loops, so cells and total agree by construction.
     usd(snap.budget.spentUsd),
+    "",
     "",
     "",
     "",

@@ -87,7 +87,8 @@ test("last tick shrinks last: narrow width takes from last result, then state, t
   const col = (w: number[], i: number): number => w[i] ?? -1;
   const natural = tableCells(renderStatus(root, snap)).widths; // unclipped render
   assert.equal(col(natural, 8), 17, "fixture sanity: last tick column is HH:MM:SS · 3m ago");
-  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
+  // The `title` column (12) gives way before any of these shrink: budget it out of the total.
+  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1) - col(natural, 12);
 
   // Stage 1: only `last result` shrinks.
   let w = tableCells(renderStatus(root, snap, total - 5)).widths;
@@ -202,7 +203,8 @@ test("the today column keeps its natural width under overflow like cost", () => 
   const snap = { ...snapshotWith([s]), running: true };
   const { widths: natural, headers: cols } = tableCells(renderStatus(root, snap));
   assert.equal(natural[cols.indexOf("today")], 6, "fixture sanity: $12.34 sets the column width");
-  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1);
+  // The `title` column (12) gives way before any of these shrink: budget it out of the total.
+  const total = natural.reduce((a, b) => a + b, 0) + 2 * (natural.length - 1) - (natural[12] ?? 0);
   // Overflow past last result's minimum so at least one flexible column is shrinking…
   const w = tableCells(
     renderStatus(root, snap, total - (natural[cols.indexOf("last result")] ?? 0)),
@@ -334,9 +336,23 @@ test("nextRunCell reads - for a loop in flight or a fleet that is not running", 
 test("status table appends the next run column after last result", () => {
   const snap = { ...snapshotWith([{ role: "clean" }]), running: true };
   const { headers, cellAt, lines } = tableCells(renderStatus(tmpdir(), snap));
-  assert.equal(headers[headers.length - 1], "next run", "the new column is last");
-  assert.equal(headers[headers.length - 2], "last result");
+  assert.equal(headers[headers.length - 1], "title", "the title column is last");
+  assert.equal(headers[headers.length - 2], "next run");
+  assert.equal(headers[headers.length - 3], "last result");
   // A fresh state is due immediately (nextRunAt 0): the idle row reads now.
   const row = lines.find((l) => l.startsWith("clean ")) ?? "";
   assert.equal(cellAt(row, headers.indexOf("next run")), "now");
+});
+
+test("status table ends each row with its role's title and drops the title first when narrow", () => {
+  const snap = snapshotWith([{ role: "steward" }, { role: "feature-2" }]);
+  const full = renderStatus(tmpdir(), snap);
+  const { widths, cellAt, lines } = tableCells(full);
+  const rowOf = (name: string): string => lines.find((l) => l.startsWith(name)) ?? "";
+  assert.equal(cellAt(rowOf("steward"), 12), "backlog curator");
+  assert.equal(cellAt(rowOf("feature #2"), 12), "feature implementer", "an instance shows its base role's title");
+  const total = widths.reduce((a, b) => a + b, 0) + 2 * (widths.length - 1);
+  const narrow = tableCells(renderStatus(tmpdir(), snap, total - 5));
+  assert.equal(narrow.widths[12], (widths[12] ?? 0) - 5, "the title column gives up the overflow");
+  assert.deepEqual(narrow.widths.slice(0, 12), widths.slice(0, 12), "every other column keeps its width");
 });

@@ -324,7 +324,7 @@ test("the readme prompt keeps the brief short and moves detail into linked docs"
 });
 test("buildTickPrompt for readme carries the find text plus the shared rules", () => {
   const prompt = buildTickPrompt({ role: readme!, initialPrompt: "" });
-  assert.match(prompt, /"readme" role \(README maintainer\)/);
+  assert.match(prompt, /"readme" role \(brief and README keeper\)/);
   assert.ok(prompt.includes(readme!.find.trim()), "the full find text is embedded");
 });
 test("the clean role names the suite's unused-export check instead of hunting internal-only exports", () => {

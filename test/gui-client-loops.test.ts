@@ -263,3 +263,11 @@ test("an idle instance's activity shows its claimed entry, and its pill the idle
   assert.match(skipped.status, /Idle/);
   assert.match(skipped.status, /no unclaimed plans/);
 });
+
+test("the name cell shows the role's title beside its id, custom role for an unknown one", () => {
+  const name = (role: string): string =>
+    loopCells({ role, phase: "sleeping", runs: 0, commits: 0, todayUsd: 0, costUsd: 0 }, {}).cells.map(String)[0] ?? "";
+  assert.match(name("steward"), /<span class='muted role-title'>backlog curator<\/span>/);
+  assert.match(name("feature-2"), /role-title'>feature implementer</);
+  assert.match(name("nightly"), /role-title'>custom role</);
+});

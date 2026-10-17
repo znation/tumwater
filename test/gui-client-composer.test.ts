@@ -160,8 +160,8 @@ test("the target picker rebuilds only when the fleet's roles change, and a vanis
   const select = s.el("prompttarget");
   assert.match(select.innerHTML, /<option value='director'>Director<\/option>/);
   assert.match(select.innerHTML, /<optgroup label='One role, at its next run'>/);
-  assert.match(select.innerHTML, /<option value='qa'>qa<\/option>/);
-  assert.match(select.innerHTML, /<option value='bugfix'>bugfix<\/option>/);
+  assert.match(select.innerHTML, /<option value='qa'>qa — product QA<\/option>/);
+  assert.match(select.innerHTML, /<option value='bugfix'>bugfix — bug fixer<\/option>/);
   const link = s.el("queuelink");
   assert.equal(link.hidden, false);
   assert.equal(link.dataset.act, "queued");
