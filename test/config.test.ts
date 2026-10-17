@@ -25,7 +25,7 @@ import { patchFsMethod, withCountedReads } from "./helpers/fs-faults.js";
 import { tmpdir, writeConfig, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
 // The longest tick a hosted model legitimately took and still landed work (BUGS.md 2026-09-29:
-// telemetry at 185 minutes). A shipped default at or below it re-kills every such tick and
+// selfcheck at 185 minutes). A shipped default at or below it re-kills every such tick and
 // restarts the same long task from scratch — the 2026-09-22 meltdown shape.
 const LONGEST_LEGITIMATE_TICK_S = 185 * 60;
 
@@ -36,15 +36,15 @@ test("the shipped tick budget clears the longest legitimate observed tick", () =
   );
 });
 
-test("defaultConfig enables every role including director, except the opt-in telemetry", () => {
+test("defaultConfig enables every role including director, except the opt-in selfcheck", () => {
   const config = defaultConfig();
   for (const id of allRoleIds()) {
-    if (id === "telemetry") continue;
+    if (id === "selfcheck") continue;
     assert.equal(config.roles[id]?.enabled, true, `role ${id} should default enabled`);
   }
   // Telemetry files only harness bugs from the harness's own event log, so on any other project
   // its findings land in the wrong backlog; tumwater's own tumwater.example.json opts in.
-  assert.equal(config.roles.telemetry?.enabled, false);
+  assert.equal(config.roles.selfcheck?.enabled, false);
   assert.ok(config.maxConcurrent >= 1);
   // Merge queue 5/5: the batch cap defaults to 3 — the fleet's realistic concurrent-role count.
   assert.equal(config.mergeBatchMax, 3);
@@ -59,7 +59,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   const config = defaultConfig();
   assert.equal(configForRole(config, "steward").minRunIntervalSeconds, 21600);
   assert.equal(configForRole(config, "qa").minRunIntervalSeconds, 7200);
-  assert.equal(configForRole(config, "telemetry").minRunIntervalSeconds, 7200);
+  assert.equal(configForRole(config, "selfcheck").minRunIntervalSeconds, 7200);
   // The bookkeeping roles: readme batches landings into one sync per half hour, plan re-audits
   // at most hourly — in dogfood the two were 30% of all commits at the global 20 s clock.
   assert.equal(configForRole(config, "readme").minRunIntervalSeconds, 1800);
@@ -67,7 +67,7 @@ test("defaultConfig gives the slow-clock roles their clocks and no other role on
   // Organize restructures at most hourly — at the global clock it reorganized the whole tree
   // one directory per tick.
   assert.equal(configForRole(config, "organize").minRunIntervalSeconds, 3600);
-  const slow = new Set(["steward", "qa", "telemetry", "readme", "plan", "organize"]);
+  const slow = new Set(["steward", "qa", "selfcheck", "readme", "plan", "organize"]);
   for (const id of allRoleIds()) {
     if (slow.has(id)) continue;
     // Every other role falls back to the global interval.

@@ -29,8 +29,8 @@ spend on a subscription) and is not part of `npm test`, which stays green withou
 ## Status
 
 <!-- tumwater:status:start -->
-**v0.1.4**: working tumwater. The director and 14 of the 15 roles are enabled by default; `telemetry`,
-which files tumwater bugs from tumwater's own event log, is opt-in (`roles.telemetry.enabled`).
+**v0.1.4**: working tumwater. The director and 14 of the 15 roles are enabled by default; `selfcheck`,
+which files tumwater bugs from tumwater's own event log, is opt-in (`roles.selfcheck.enabled`).
 
 Open work: [PLANS.md](PLANS.md) (planned), [BUGS.md](BUGS.md) (open bugs),
 [QUESTIONS.md](QUESTIONS.md) (open questions).

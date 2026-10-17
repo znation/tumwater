@@ -145,7 +145,7 @@ at the path, a permission failure, or every complete line corrupt) reads `unread
 distinct from a missing or zero-byte feed's `empty`; an unreadable file outranks a readable
 sibling, so a readable rotated archive cannot mask an unreadable live log. The failure digest renders
 `log unreadable — evidence missing` for the unreadable case instead of `no events retained`, so
-the telemetry role can tell "the team was idle" from "I could not read the log"; a
+the selfcheck role can tell "the team was idle" from "I could not read the log"; a
 newline-less trailing fragment remains a write in flight and never by itself makes a feed
 unreadable.
 

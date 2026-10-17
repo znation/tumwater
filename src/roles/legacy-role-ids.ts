@@ -3,6 +3,7 @@
  * flags keep naming the old id. */
 export const LEGACY_ROLE_IDS: Readonly<Record<string, string>> = {
   dry: "dedupe",
+  telemetry: "selfcheck",
 };
 
 /** Today's id for a role id a person typed or an old file holds; any other id comes back

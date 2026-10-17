@@ -35,8 +35,8 @@ const WORK_ROLES: ReadonlySet<string> = new Set(["feature", "bugfix", "plan"]);
  * not hold for these, so their no_change tick schedules at `minRunIntervalSeconds` and leaves
  * `backoffSeconds` at 0 (src/scheduling/backoff.ts). The error ladder still applies in full, and
  * they are removed from DEFERRABLE_ROLES because their input (the running product for `qa`, the
- * event log for `telemetry`) is not a function of whether main moved. */
-export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "telemetry"]);
+ * event log for `selfcheck`) is not a function of whether main moved. */
+export const OBSERVER_ROLES: ReadonlySet<string> = new Set(["qa", "selfcheck"]);
 
 /** The built-in maintenance roles that author code on their own cadence — the eight members
  * DEFERRABLE_ROLES and BASELINE_BLOCKED_ROLES share. Both sets list them because both charter
@@ -94,7 +94,7 @@ export function roleTier(role: string): number {
  * (human prompts outrank autonomous gates, like the budget gate), bugfix (the designated healer
  * — its tick runs the suite per "leave the project working" and can fix a red main through the
  * existing pre-merge gate; blocking it would leave only humans able to unblock the fleet), and
- * plan/readme/steward/qa/telemetry (markdown-only charter — their diffs are exempt from the build
+ * plan/readme/steward/qa/selfcheck (markdown-only charter — their diffs are exempt from the build
  * pre-check via review.exemptPaths, so a red main does not block them). */
 export const BASELINE_BLOCKED_ROLES: ReadonlySet<string> = new Set([
   "feature",

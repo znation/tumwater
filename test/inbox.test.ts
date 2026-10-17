@@ -315,8 +315,8 @@ test("per-role queues are separate from the director's queue and from each other
   assert.equal(dequeuePrompt(dir), "for the director");
   assert.equal(dequeuePrompt(dir), null);
   // An empty (or never-created) queue reads as empty, like the director's.
-  assert.deepEqual(queuedRolePrompts(dir, "telemetry"), []);
-  assert.equal(dequeueRolePrompt(dir, "telemetry"), null);
+  assert.deepEqual(queuedRolePrompts(dir, "selfcheck"), []);
+  assert.equal(dequeueRolePrompt(dir, "selfcheck"), null);
 });
 
 test("submitRolePrompt and cancelRolePrompt log their events under the named loop", () => {

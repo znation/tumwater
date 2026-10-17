@@ -97,7 +97,7 @@ test("snapshot resolves a per-role quiet window through the base role for instan
 test("snapshot survives a broken tumwater.json and recovers when it is fixed", async () => {
   const repo = makeRepo();
   await initProject(repo, "test project");
-  // Baseline: every catalog role but the opt-in telemetry enabled by default.
+  // Baseline: every catalog role but the opt-in selfcheck enabled by default.
   assert.equal(snapshot(repo).loops.length, allRoleIds().length - 1);
 
   // A valid config that disables one role becomes the last known-good one.

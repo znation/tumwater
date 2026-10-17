@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 /** The retired words, as regex sources; later series append here. This is the only list.
- * The role id `telemetry` stays out until the Plain terms role ids selfcheck part appends it.
  * `dry(?![- ]run)` keeps `--dry-run` and "dry run" legal. */
 const RETIRED_WORDS: readonly string[] = [
   "fleet",
@@ -30,6 +29,7 @@ const RETIRED_WORDS: readonly string[] = [
   "backed off",
   "drain",
   "dry(?![- ]run)",
+  "telemetry",
 ];
 
 /** Letters, digits and `_` are word characters, so snake_case machine names (`tick_end`) and

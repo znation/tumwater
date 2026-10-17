@@ -21,34 +21,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `wc -l src/ui/tui/tui-keys.ts` drops below ~900 after this part, and no moved pane local name (`view`, `scopeRole`, `trailMode`, `changeMode`, `paneCache`, `paneScroll`, `activityRole`, `historyWindow`, `reportWindow`, `selectedEntry`, `selectedQueued`, `noteMode`, `refreshPaneCache`, `eventBudget`, …) appears in `tui-keys.ts` — a grep over `src/ui/tui/` for each moved name finds it only in `tui-panes.ts`, in `tui-keys.ts` only as a call-site reference, or in a doc comment; no stale definition or reference anywhere under `src/`, `test/`, or the markdown docs.
 - `wc -l src/ui/tui/tui-keys.ts` falls from 2110 (pre-split) toward the project median, and `npm run test` passes.
 
-### Plain terms role ids, part 4/5: Rename the telemetry role to selfcheck (planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config.ts and src/tick/tick-prompt.ts and tumwater.example.json and README.md plus tests)
-
-**Goal.** The opt-in role that files tumwater bugs from its own failure log is `selfcheck`, titled "self-check: files tumwater bugs from its own failure log". It is still opt-in, through `roles.selfcheck.enabled`. A config that enables `roles.telemetry` keeps it running under the new id, and its state, branch and history carry over.
-
-**Approach.**
-- `LEGACY_ROLE_IDS` gains `telemetry: "selfcheck"`.
-- src/roles/role-catalog.ts: `id: "selfcheck"`, the new title. In its `find` text, the duplicate-filing check `git log --grep="tumwater(telemetry)"` becomes `git log ${roleCommitGrep("selfcheck")}`, so it sees filings under both ids.
-- src/roles/roles.ts: `OBSERVER_ROLES` is `["qa", "selfcheck"]`. Fix the comments that name the role id there and in `BASELINE_BLOCKED_ROLES`'s doc.
-- src/config/config.ts `defaultConfig`: `roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 }`. Keep the opt-in rationale comment and update its role name.
-- src/tick/tick-prompt.ts: the digest injection tests `base === "selfcheck"`.
-- tumwater.example.json: `roles.selfcheck`.
-- README.md: the status line naming the opt-in role says `selfcheck` and `roles.selfcheck.enabled`. Update docs/invariants.md's mention too.
-- test/vocabulary.test.ts: append `telemetry` to `RETIRED_WORDS`. Fix every opted-in literal it now flags, for example the Report view blurb in src/ui/gui/gui-client-report.ts ("the digest the telemetry loop reads") if Plain terms text left the id there.
-- Not renamed here: src/tick/telemetry-digest.ts, `telemetryDigest` and `TELEMETRY_DIGEST_DAYS`, which Plain terms code cleanup renames; plans/telemetry-role.md, which is history; the word "telemetry" in comments that do not mean the role id.
-- This repo's own tumwater.json likely enables `roles.telemetry`. The alias keeps it running, doctor names the rename, and part 2/5's step moves its artifacts at startup. The user renames the key when convenient (plans/terminology.md "Out of scope").
-- Tests:
-  - Update the id and title in test/telemetry-digest, prompt-roles, tick-prompt, roles, config, role-view, status-data, report-data, inbox, gui-report, failure-render, tick-finalize and pi-parser, and in test/fixtures/orchestrator-fixtures.ts.
-  - New cases: a tumwater.json with `roles.telemetry.enabled: true` enables selfcheck, and doctor names `roles.telemetry → roles.selfcheck`; selfcheck's tick prompt holds both `--grep` arguments and the failure digest.
-
-**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/config/config.ts, src/tick/tick-prompt.ts, src/ui/gui/gui-client-report.ts (only if flagged), tumwater.example.json, README.md, docs/invariants.md, test/vocabulary.test.ts, and the tests listed.
-
-**Acceptance criteria.**
-- `defaultConfig().roles.selfcheck.enabled` is false, and no `telemetry` role exists.
-- A tumwater.json enabling `roles.telemetry` runs selfcheck, and doctor's `config key names` check names the rename.
-- Selfcheck's tick prompt carries the failure digest, and the role's duplicate check greps both `tumwater(selfcheck)` and `tumwater(telemetry)`.
-- `grep -rn '"telemetry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
-- `npm run test` passes.
-
 ### Plain terms role ids, part 5/5: Retitle steward and readme and show each role's title beside its id on the dashboard and TUI (planned 2026-10-16 by user; requires part 4/5 and Plain terms groundwork 4/4 landed; design in plans/terminology.md "Role names"; touches src/roles/role-catalog.ts and src/ui/status-render.ts and src/ui/gui/ plus tests)
 
 **Goal.** Every role is listed with its title beside its id, so a newcomer reads "dedupe — duplication remover" instead of guessing. The steward is titled "backlog curator" and readme "brief and README keeper".
@@ -1727,6 +1699,34 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Plain terms role ids, part 4/5: Rename the telemetry role to selfcheck (done 2026-10-16; planned 2026-10-16 by user; requires part 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/ and src/config/config.ts and src/tick/tick-prompt.ts and tumwater.example.json and README.md plus tests)
+
+**Goal.** The opt-in role that files tumwater bugs from its own failure log is `selfcheck`, titled "self-check: files tumwater bugs from its own failure log". It is still opt-in, through `roles.selfcheck.enabled`. A config that enables `roles.telemetry` keeps it running under the new id, and its state, branch and history carry over.
+
+**Approach.**
+- `LEGACY_ROLE_IDS` gains `telemetry: "selfcheck"`.
+- src/roles/role-catalog.ts: `id: "selfcheck"`, the new title. In its `find` text, the duplicate-filing check `git log --grep="tumwater(telemetry)"` becomes `git log ${roleCommitGrep("selfcheck")}`, so it sees filings under both ids.
+- src/roles/roles.ts: `OBSERVER_ROLES` is `["qa", "selfcheck"]`. Fix the comments that name the role id there and in `BASELINE_BLOCKED_ROLES`'s doc.
+- src/config/config.ts `defaultConfig`: `roles.selfcheck = { enabled: false, minRunIntervalSeconds: 7200 }`. Keep the opt-in rationale comment and update its role name.
+- src/tick/tick-prompt.ts: the digest injection tests `base === "selfcheck"`.
+- tumwater.example.json: `roles.selfcheck`.
+- README.md: the status line naming the opt-in role says `selfcheck` and `roles.selfcheck.enabled`. Update docs/invariants.md's mention too.
+- test/vocabulary.test.ts: append `telemetry` to `RETIRED_WORDS`. Fix every opted-in literal it now flags, for example the Report view blurb in src/ui/gui/gui-client-report.ts ("the digest the telemetry loop reads") if Plain terms text left the id there.
+- Not renamed here: src/tick/telemetry-digest.ts, `telemetryDigest` and `TELEMETRY_DIGEST_DAYS`, which Plain terms code cleanup renames; plans/telemetry-role.md, which is history; the word "telemetry" in comments that do not mean the role id.
+- This repo's own tumwater.json likely enables `roles.telemetry`. The alias keeps it running, doctor names the rename, and part 2/5's step moves its artifacts at startup. The user renames the key when convenient (plans/terminology.md "Out of scope").
+- Tests:
+  - Update the id and title in test/telemetry-digest, prompt-roles, tick-prompt, roles, config, role-view, status-data, report-data, inbox, gui-report, failure-render, tick-finalize and pi-parser, and in test/fixtures/orchestrator-fixtures.ts.
+  - New cases: a tumwater.json with `roles.telemetry.enabled: true` enables selfcheck, and doctor names `roles.telemetry → roles.selfcheck`; selfcheck's tick prompt holds both `--grep` arguments and the failure digest.
+
+**Files touched.** src/roles/legacy-role-ids.ts, src/roles/role-catalog.ts, src/roles/roles.ts, src/config/config.ts, src/tick/tick-prompt.ts, src/ui/gui/gui-client-report.ts (only if flagged), tumwater.example.json, README.md, docs/invariants.md, test/vocabulary.test.ts, and the tests listed.
+
+**Acceptance criteria.**
+- `defaultConfig().roles.selfcheck.enabled` is false, and no `telemetry` role exists.
+- A tumwater.json enabling `roles.telemetry` runs selfcheck, and doctor's `config key names` check names the rename.
+- Selfcheck's tick prompt carries the failure digest, and the role's duplicate check greps both `tumwater(selfcheck)` and `tumwater(telemetry)`.
+- `grep -rn '"telemetry"' src` finds nothing. The `LEGACY_ROLE_IDS` row's key is unquoted.
+- `npm run test` passes.
 
 ### The `entry_refused` event names the refused plan or bug, so `tumwater logs` and the notify page say which entry is now held (planned 2026-10-16 by plan; independent of every other entry — touches src/verdict/refusal.ts, src/events/event-format.ts, src/events/events.ts, docs/config.md and their tests) — done 2026-10-16
 

@@ -138,8 +138,8 @@ test("a queued per-role prompt appears in the preview and stays queued", () => {
 
 test("a paused role reads as paused; the pause marker is read, not required", () => {
   const dir = root();
-  pauseRoles(dir, ["telemetry"]);
-  assert.equal(rolePayload(dir, "telemetry", NO_MODELS).paused, true);
+  pauseRoles(dir, ["selfcheck"]);
+  assert.equal(rolePayload(dir, "selfcheck", NO_MODELS).paused, true);
   assert.equal(rolePayload(dir, "qa", NO_MODELS).paused, false);
 });
 

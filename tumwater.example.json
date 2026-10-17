@@ -14,7 +14,7 @@
   "roles": {
     "steward": { "enabled": true, "minRunIntervalSeconds": 21600 },
     "qa": { "enabled": true, "minRunIntervalSeconds": 7200 },
-    "telemetry": { "enabled": true, "minRunIntervalSeconds": 7200 },
+    "selfcheck": { "enabled": true, "minRunIntervalSeconds": 7200 },
     "readme": { "enabled": true, "minRunIntervalSeconds": 1800 },
     "plan": { "enabled": true, "minRunIntervalSeconds": 3600 }
   }

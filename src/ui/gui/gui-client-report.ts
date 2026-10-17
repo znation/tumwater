@@ -415,7 +415,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
 
   const failures = windowView({
     panelId: "failures", title: "Failures", bodyId: "failbody",
-    blurb: "What went wrong, where, and how often — the digest the telemetry role reads.",
+    blurb: "What went wrong, where, and how often — the digest the selfcheck role reads.",
     pickerId: "failwindow", choices: [7, 14, 30], refreshId: "failrefresh",
     key: "fail-days", defaultDays: 14, roleKey: "fail-role", rolePickerId: "failrole",
     sinceKey: "fail-since", sinceChoices: REPORT_SINCE_CHOICES,

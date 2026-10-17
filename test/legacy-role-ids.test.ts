@@ -62,7 +62,7 @@ test("canonicalConfigKey maps an old role id in a dotted key", () => {
 });
 
 test("the real table maps dry to dedupe", () => {
-  assert.deepEqual(LEGACY_ROLE_IDS, { dry: "dedupe" });
+  assert.deepEqual(LEGACY_ROLE_IDS, { dry: "dedupe", telemetry: "selfcheck" });
   assert.equal(canonicalRoleId("dry"), "dedupe");
   assert.equal(canonicalRoleId("dedupe"), "dedupe");
   assert.deepEqual(legacyRoleIdsOf("dedupe"), ["dry"]);
@@ -108,4 +108,16 @@ test("roles.dry.enabled: false disables dedupe, and doctor names the rename", as
   assert.equal(cfg.roles.dry, undefined);
   const r = await cli(repo, "doctor");
   assert.match(r.stdout, /roles\.dry → roles\.dedupe/);
+});
+
+test("roles.telemetry.enabled: true enables selfcheck, and doctor names the rename", async () => {
+  const repo = makeRepo();
+  await initProject(repo, "legacy telemetry config");
+  fs.writeFileSync(path.join(repo, "tumwater.json"), JSON.stringify({ roles: { telemetry: { enabled: true } } }));
+  const cfg = loadConfig(repo);
+  assert.equal(cfg.roles.selfcheck!.enabled, true);
+  assert.equal(cfg.roles.telemetry, undefined);
+  const r = await cli(repo, "doctor");
+  assert.match(r.stdout, /roles\.telemetry → roles\.selfcheck/);
+  assert.equal(roleCommitGrep("selfcheck"), '--grep="tumwater(selfcheck)" --grep="tumwater(telemetry)"');
 });

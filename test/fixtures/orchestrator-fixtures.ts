@@ -66,7 +66,7 @@ export function readSamples(runDir: string): number[] {
 
 /** A config where only the given roles tick quickly (no min gap, 1s backoff) so several
  * ticks land within a few poll cycles. The per-role clocks defaultConfig seeds (organize
- * 3600s, plan 3600s, readme 1800s, steward/qa/telemetry) are zeroed too: a role entry
+ * 3600s, plan 3600s, readme 1800s, steward/qa/selfcheck) are zeroed too: a role entry
  * inherits them through overlayDefaults even when the test rewrites `roles.<id>`
  * wholesale, and configForRole prefers the per-role value — leaving them would put a
  * `fastConfig(["organize"])` fleet on a 1 h tick clock (2026-10-06 CI regression). Only

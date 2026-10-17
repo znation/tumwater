@@ -19,7 +19,7 @@ import { tmpdir } from "./fixtures/repo-fixtures.js";
 /** Unit coverage for src/tick/tick-prompt.ts — the assembly of what one loop's tick actually runs
  * on. The builders themselves (prompt.ts, gate-prompts.ts) are covered elsewhere; this is the
  * composition: brief resolution (TUMWATER.md before README.md), the director's inbox dequeue
- * (empty inbox = nothing to run), the qa/telemetry evidence blocks, custom roles, and the
+ * (empty inbox = nothing to run), the qa/selfcheck evidence blocks, custom roles, and the
  * cross-tick memory notes (rejected review, conflict discard, cut-off streak) appended in
  * order — the only memory a fresh session has of why the last attempt failed. */
 
@@ -309,20 +309,21 @@ test("the qa role's prompt carries the flow-coverage ledger rendered from disk",
   assert.match(result.prompt, /init — never exercised/);
 });
 
-test("the telemetry role's prompt carries the failure digest rendered from its event log", () => {
+test("the selfcheck role's prompt carries the failure digest rendered from its event log", () => {
   const dir = root();
   writeEvents(dir, [
     { ts: Date.now(), loop: "feature", type: "run_end", result: "error", error: "pi exited null" },
   ]);
-  const result = promptFor(dir, "telemetry");
+  const result = promptFor(dir, "selfcheck");
   assert.ok(result);
   assert.match(result.prompt, /Runtime failure digest of tumwater's own event log/);
   assert.match(result.prompt, /<failure-digest>\n[\s\S]*pi exited null[\s\S]*<\/failure-digest>/);
-  // The digest is the telemetry role's evidence block, not the coverage ledger's.
+  assert.ok(result.prompt.includes('--grep="tumwater(selfcheck)" --grep="tumwater(telemetry)"'));
+  // The digest is the selfcheck role's evidence block, not the coverage ledger's.
   assert.doesNotMatch(result.prompt, /Flow coverage/);
 });
 
-test("a role other than qa or telemetry gets neither evidence block", () => {
+test("a role other than qa or selfcheck gets neither evidence block", () => {
   const result = promptFor(root(), "coverage");
   assert.ok(result);
   assert.doesNotMatch(result.prompt, /Flow coverage/);

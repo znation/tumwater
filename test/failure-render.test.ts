@@ -423,7 +423,7 @@ test("the top-N cluster sections mark their cut: remainder line, no silent trunc
   // section read as a full itemization while half the window's rejections were invisible.
   const root = tmpdir();
   const events: object[] = [];
-  const roles = ["bugfix", "coverage", "dedupe", "feature", "perf", "qa", "telemetry"];
+  const roles = ["bugfix", "coverage", "dedupe", "feature", "perf", "qa", "selfcheck"];
   roles.forEach((role, i) => {
     events.push({ ts: at(0), loop: role, type: "review_rejected", head: String(i).padStart(40, String(i)), reasons: [`reject ${role}`] });
     events.push({ ts: at(0), loop: role, type: "run_end", result: "queued" });

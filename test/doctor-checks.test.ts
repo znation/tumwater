@@ -255,7 +255,7 @@ test("checkInit fails when uninitialized and reports the enabled role count for 
   assert.equal(notInit.level, "fail");
   assert.match(notInit.detail, /not initialized/);
 
-  // An empty config enables every catalog role but the opt-in telemetry by default.
+  // An empty config enables every catalog role but the opt-in selfcheck by default.
   const defaults = checkInit(readyRepo());
   const enabledByDefault = Object.values(defaultConfig().roles).filter((r) => r.enabled).length;
   assert.equal(enabledByDefault, allRoleIds().length - 1);
@@ -938,14 +938,14 @@ test("checkLeftoverRoleBranches names disabled roles' branches and unknown ones,
   sh(root, "git", "branch", "tumwater/feature");
   sh(root, "git", "branch", "tumwater/director");
   assert.deepEqual(await checkLeftoverRoleBranches(root, loadConfig(root)), ok);
-  sh(root, "git", "branch", "tumwater/telemetry");
+  sh(root, "git", "branch", "tumwater/selfcheck");
   const warn = await checkLeftoverRoleBranches(root, loadConfig(root));
   assert.equal(warn.level, "warn");
-  assert.match(warn.detail, /telemetry is disabled but still has a branch — `tumwater retire --role <id>`/);
+  assert.match(warn.detail, /selfcheck is disabled but still has a branch — `tumwater retire --role <id>`/);
   assert.doesNotMatch(warn.detail, /feature|director/);
   sh(root, "git", "branch", "tumwater/ghost");
   const ghost = await checkLeftoverRoleBranches(root, loadConfig(root));
-  assert.match(ghost.detail, /(telemetry, ghost|ghost, telemetry) are disabled but still have a branch/);
+  assert.match(ghost.detail, /(selfcheck, ghost|ghost, selfcheck) are disabled but still have a branch/);
   sh(root, "git", "branch", "tumwater/old.role");
   assert.match((await checkLeftoverRoleBranches(root, loadConfig(root))).detail, /; tumwater\/old\.role names no role retire accepts/);
   sh(root, "git", "branch", "tumwater/feature-2");

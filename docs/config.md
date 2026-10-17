@@ -98,12 +98,12 @@ The fields of a `roles.<id>` entry:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `enabled` | `true` (`false` for telemetry) | Whether the role runs. |
+| `enabled` | `true` (`false` for selfcheck) | Whether the role runs. |
 | `instructions` | none | Extra instructions appended to this role's prompt. |
 | `provider` | none | A provider override for this role; unset uses the top-level value. |
 | `model` | none | A model override for this role: a selector, or a tier name from the top-level `model` map; unset uses the role's catalog tier. |
 | `thinking` | none | A thinking-level override for this role; unset uses the top-level value. |
-| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and telemetry, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. |
+| `minRunIntervalSeconds` | `3600` for plan and organize, `1800` for readme, `7200` for qa and selfcheck, `21600` for steward, otherwise the top-level value | The minimum seconds between two runs of this role, overriding the top-level value. |
 | `instances` | `1` | How many parallel instances the role may have, 1–8; accepted only for feature and bugfix. |
 
 Model backends (OpenAI-compatible endpoints, the `claude` backend, and fallbacks) are covered in

@@ -341,7 +341,7 @@ test("the lazily built Usage/Failures heads carry their blurbs — a dropped blu
   assert.match(els.usagebody!.innerHTML, /Usage report unavailable/, "the error path still names the view");
 
   await scope.fetchFailures();
-  assert.match(els.failures!.innerHTML, /What went wrong, where, and how often — the digest the telemetry role reads\./,
+  assert.match(els.failures!.innerHTML, /What went wrong, where, and how often — the digest the selfcheck role reads\./,
     "the Failures head's subtitle survives the windowView extraction");
   assert.doesNotMatch(els.failures!.innerHTML, /undefined/);
 

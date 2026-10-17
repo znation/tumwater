@@ -16,6 +16,7 @@ import {
   VALIDATION_GAP_GUIDANCE,
   VALIDATION_GAP_TALLY,
 } from "./role-guidance.js";
+import { roleCommitGrep } from "./legacy-role-ids.js";
 import { NOTHING_TO_DO } from "../verdict/reply-contract.js";
 import type { ModelTier } from "../config/config-schema.js";
 
@@ -352,9 +353,9 @@ The FLOW line — required on every run: your final reply carries one result-car
    ${NOTHING_TO_DO}`,
   },
   {
-    id: "telemetry",
+    id: "selfcheck",
     tier: "default",
-    title: "runtime telemetry reader",
+    title: "self-check: files tumwater bugs from its own failure log",
     find: `File ONE bug in BUGS.md's ## Open section per run, or declare nothing-to-do, from the
 <failure-digest> block in your prompt: a deterministic digest of this project's own event log over
 the last day (per-role outcome counts, each role's time and spend by outcome, normalized error and
@@ -371,7 +372,7 @@ the live log lives outside your worktree.
    3. Rank what you would file by LOSS, not by run count: the digest's time-and-spend table and
       top loss causes price each cause in agent-hours and dollars, and a cluster that burned hours
       outranks one that burned seconds — cite its cost when it is the reason you file.
-   4. Before filing, check BUGS.md's ## Open section and \`git log --grep="tumwater(telemetry)"\`
+   4. Before filing, check BUGS.md's ## Open section and \`git log ${roleCommitGrep("selfcheck")}\`
       for an entry that already names this cluster — no duplicate filings.
    5. File it: cite the cluster's normalized key plus the correlated \`merged\` commit in the
       entry, so the bugfix role can reproduce it.

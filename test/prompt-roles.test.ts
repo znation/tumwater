@@ -7,7 +7,7 @@ import { NEEDS_REPLAN_NOTE, NEEDS_REVIEW_NOTE } from "../src/roles/role-guidance
 import { oneLine } from "./helpers/oracles.js";
 
 // What each role's own prompt says: the per-role find text and content contracts (qa,
-// telemetry, readme, clean, coverage, feature, bugfix, plan, steward) and the director's
+// selfcheck, readme, clean, coverage, feature, bugfix, plan, steward) and the director's
 // routing text — the wording a specific loop carries. How prompts are assembled and the rules
 // every prompt shares stay in prompt.test.ts.
 test("buildDirectorPrompt routes work to the specialist roles instead of implementing", () => {
@@ -75,8 +75,8 @@ test("the robustness role injects a concrete fault and refuses to silence errors
 });
 test("security and robustness sit between the observers and improve in catalog order", () => {
   const ids = ROLES.map((r) => r.id);
-  assert.deepEqual(ids.slice(ids.indexOf("telemetry"), ids.indexOf("improve") + 1), [
-    "telemetry",
+  assert.deepEqual(ids.slice(ids.indexOf("selfcheck"), ids.indexOf("improve") + 1), [
+    "selfcheck",
     "security",
     "robustness",
     "improve",
@@ -234,25 +234,25 @@ test("buildTickPrompt renders the coverage block only when one is passed", () =>
   const improve = buildTickPrompt({ role: roleById("improve")!, initialPrompt: "" });
   assert.ok(!improve.includes("least recently exercised first"));
 });
-test("the telemetry role exists after qa in catalog order", () => {
-  assert.ok(telemetry, "roleById('telemetry') returns a role");
+test("the selfcheck role exists after qa in catalog order", () => {
+  assert.ok(selfcheck, "roleById('selfcheck') returns a role");
   const ids = ROLES.map((r) => r.id);
-  assert.equal(ids[ids.indexOf("qa") + 1], "telemetry", "telemetry sits right after qa (both observers)");
-  assert.equal(telemetry.title, "runtime telemetry reader");
+  assert.equal(ids[ids.indexOf("qa") + 1], "selfcheck", "selfcheck sits right after qa (both observers)");
+  assert.equal(selfcheck.title, "self-check: files tumwater bugs from its own failure log");
 });
-test("the telemetry find text carries tumwater-response rule, one bug, and the dedup check", () => {
-  const find = oneLine(telemetry!.find);
+test("the selfcheck find text carries tumwater-response rule, one bug, and the dedup check", () => {
+  const find = oneLine(selfcheck!.find);
   assert.match(find, /File ONE bug in BUGS\.md's ## Open section per run/);
   assert.match(find, /ONLY when tumwater's RESPONSE to it is wrong/);
   assert.match(find, /A mere infrastructure failure .* is weather, not a bug/);
   assert.match(find, /cite the cluster's normalized key plus the correlated .* commit/);
   assert.match(find, /BUGS\.md is your only write; never edit source, tests, or docs/);
-  assert.match(find, /git log --grep="tumwater\(telemetry\)"/);
+  assert.match(find, /git log --grep="tumwater\(selfcheck\)" --grep="tumwater\(telemetry\)"/);
   assert.match(find, /no duplicate filings/);
 });
-test("a telemetry prompt renders the injected digest in a <failure-digest> block", () => {
+test("a selfcheck prompt renders the injected digest in a <failure-digest> block", () => {
   const prompt = buildTickPrompt({
-    role: telemetry!,
+    role: selfcheck!,
     initialPrompt: "",
     digest: "# Failure digest\n- cluster",
   });
@@ -455,7 +455,7 @@ test("the steward reads the injected index and reads bodies only by range", () =
   assert.match(find, /read that one line \(`grep -n 'Validation gap' FILE`\), not the whole body/);
 });
 const qa = roleById("qa");
-const telemetry = roleById("telemetry");
+const selfcheck = roleById("selfcheck");
 const readme = roleById("readme");
 // Sweep completeness (2026-10-01): the budgeted model's dedupe/organize/clean rejections were
 // mostly a refactor or rename left half-swept — call sites unconverted, a stale path in a doc

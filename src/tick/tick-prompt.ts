@@ -135,7 +135,7 @@ export function assembleTickPrompt(
     prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent);
   } else {
     // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
-    // instructions, the qa/telemetry/clean blocks — resolves through the base role, so
+    // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
     // `feature-2` runs the feature charter and `roles.feature.instructions` while keeping its
     // own queue and notes (plans/parallel-work-instances.md).
     const base = baseRoleOf(role);
@@ -161,9 +161,9 @@ export function assembleTickPrompt(
     const entry = preview ? null : dequeueRolePromptEntry(root, role);
     const dequeued = preview ? peekRolePrompt(root, role) : entry?.text ?? null;
     const request = dequeued === null ? null : stripNotBeforeMarker(dequeued);
-    // The telemetry role's evidence is the harness's own event log, one level outside this
+    // The selfcheck role's evidence is the harness's own event log, one level outside this
     // worktree, so its evidence module renders it (telemetryDigest) and the tick injects it.
-    const digest = base === "telemetry" ? telemetryDigest(root) : undefined;
+    const digest = base === "selfcheck" ? telemetryDigest(root) : undefined;
     // The `qa` observer's flow rotation needs a memory of what it last exercised; every tick
     // is a fresh session, and a passing cheap check leaves nothing in the repo. The ledger is
     // runtime state, and a missing or unreadable one degrades to no block
