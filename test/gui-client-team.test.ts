@@ -610,7 +610,7 @@ test("the stat tile sub line wraps and reserves two lines instead of truncating"
   assert.match(rule, /line-height: 1\.4/);
 });
 
-test("the Questions tab lists answered questions under the open ones, read-only", () => {
+test("the Questions tab lists answered questions under the open ones", () => {
   const base = { questions: [], plans: ["P (planned 2026-10-01)"], bugs: [], inboxPrompts: [], inboxFiles: [], inboxQueuedAt: [], roleInboxPrompts: {} };
   const answeredQuestions = [{ title: "Which <b>?", decision: "Answered 2026-10-02: A" }, { title: "Second", decision: "" }];
   const q = backlogScope("questions");
@@ -620,7 +620,14 @@ test("the Questions tab lists answered questions under the open ones, read-only"
   assert.ok(html.indexOf("Answered recently") < html.indexOf("Which &lt;b&gt;?"));
   assert.match(html, /Answered 2026-10-02: A/);
   assert.match(html, /Second/);
-  assert.doesNotMatch(html, /backloglink|data-index|Answer<\/button>/);
+  assert.match(html, /data-file='answered' data-index='0'/);
+  assert.match(html, /data-file='answered' data-index='1'/);
+  assert.doesNotMatch(html, /Answer<\/button>/);
+  const act = backlogScope("questions", { openEntryKey: () => "answered:1" });
+  act.scope.renderBacklog({ ...base, answeredQuestions });
+  const rows = (act.panels["backlog"] ?? "").split("list-item t-gray");
+  assert.doesNotMatch(rows[1] ?? "", /^ active/);
+  assert.match(rows[2] ?? "", /^ active/);
   for (const extra of [{}, { answeredQuestions: [] }]) {
     const old = backlogScope("questions");
     old.scope.renderBacklog({ ...base, ...extra });

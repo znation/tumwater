@@ -375,9 +375,9 @@ export const GUI_CLIENT_TEAM_JS = String.raw`  // ---- sidebar: project, team st
     }
     const answered = key === "questions" ? (d.answeredQuestions || []) : [];
     if (answered.length) {
-      html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map((a) =>
-        "<div class='list-item t-gray'><span class='li-icon'>" + icon("check") + "</span><div class='li-main'><span class='li-title'>" + esc(a.title) + "</span>" +
-        (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</div></div>").join("");
+      html += "<div class='list-item list-divider'><span class='li-meta'>Answered recently</span></div>" + answered.map((a, i) =>
+        "<div class='list-item t-gray" + (openEntryKey() === "answered:" + i ? " active" : "") + "'><span class='li-icon'>" + icon("check") + "</span><button type='button' class='li-open backloglink' data-file='answered' data-index='" + i + "'><span class='li-title'>" + esc(a.title) + "</span>" +
+        (a.decision ? "<span class='li-meta'>" + esc(a.decision) + "</span>" : "") + "</button></div>").join("");
     }
     const finished = key === "plans" ? (d.donePlans || []) : key === "bugs" ? (d.fixedBugs || []) : [];
     if (finished.length) {

@@ -384,6 +384,20 @@ test("a done plan or fixed bug entry opens read-only with its kind and body", as
   assert.match(t.paintedFor("drawerhead"), /Fixed bug/);
 });
 
+test("an answered question entry opens read-only with its kind and body", async () => {
+  const t = openDrawer(["toggleEntry"], {
+    status: { roles: [] },
+    responses: {
+      "/api/backlog?file=answered&index=0": { title: "Which?", body: "Context.\n\n**Answered 2026-10-05: A**", refused: false, waiting: false },
+    },
+  });
+  t.scope.toggleEntry("answered", 0);
+  await flush();
+  assert.match(t.paintedFor("drawerhead"), /Answered question/);
+  assert.match(t.paintedFor("entrybody"), /<md>Context\./);
+  assert.doesNotMatch(t.paintedFor("entrybody"), /answertext|answer-record|data-act='mention'|entry-edit|entry-cancel|entry-top|entry-release/);
+});
+
 test("the entry drawer offers Move to top on every plan entry but the first", async () => {
   const t = openDrawer(["toggleEntry"], {
     status: { roles: [] },

@@ -426,7 +426,7 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
   ]);
   writeBacklogFile(repo, "QUESTIONS.md", [
     { heading: "## Open", body: "### Q1: which database?\n\n**Context:** the storage layer is undecided." },
-    { heading: "## Answered" },
+    { heading: "## Answered", body: "### Old Q\n\nOld context.\n\n**Answered 2026-09-01 by user: old**\n\n### New Q\n\nNew context.\n\n**Answered 2026-09-02 by user: new**" },
   ]);
 
   const { server, base } = await startLocalGui(repo);
@@ -468,6 +468,13 @@ test("gui /api/backlog serves an entry's title and body and validates file/index
     assert.deepEqual([fin.title, fin.body], ["Older plan (done 2026-09-02)", "Older body."]);
     fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=fixed&index=0");
     assert.deepEqual([fin.title, fin.body], ["Fixed bug (fixed 2026-09-03)", "Root cause: x."]);
+    // answered is appended to in file order, so index 0 is the newest.
+    fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=answered&index=0");
+    assert.deepEqual([fin.title, fin.body], ["New Q", "New context.\n\n**Answered 2026-09-02 by user: new**"]);
+    fin = await getJson<{ title: string; body: string }>(base, "/api/backlog?file=answered&index=1");
+    assert.equal(fin.title, "Old Q");
+    const ansRange = await getJson<{ error: string }>(base, "/api/backlog?file=answered&index=2");
+    assert.match(ansRange.error, /\(answered has 2 entries\)$/);
     const doneRange = await getJson<{ error: string }>(base, "/api/backlog?file=done&index=2");
     assert.match(doneRange.error, /\(done has 2 entries\)$/);
 

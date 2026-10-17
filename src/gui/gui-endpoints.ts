@@ -12,7 +12,7 @@
  */
 import { refusalNote, waitingNote } from "../backlog/backlog-eligibility.js";
 import type { BacklogEntry } from "../backlog/backlog-md.js";
-import { donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
+import { answeredQuestionEntries, donePlanEntries, fixedBugEntries, openBugEntries, openQuestionEntries, plannedPlanEntries } from "../backlog/backlog.js";
 import { runDoctor } from "../doctor/doctor.js";
 import type { DoctorReport } from "../doctor/doctor-checks.js";
 import { knownRoleIds, loadConfigSafe } from "../config/config.js";
@@ -66,16 +66,19 @@ const BACKLOG_FILE_READERS = new Map<string, (root: string) => BacklogEntry[]>([
   ["questions", openQuestionEntries],
   ["done", donePlanEntries],
   ["fixed", fixedBugEntries],
+  ["answered", (root) => answeredQuestionEntries(root).reverse()],
 ]);
 const BACKLOG_FILE_NAMES = [...BACKLOG_FILE_READERS.keys()];
 const BACKLOG_FILE_VALUES = BACKLOG_FILE_NAMES.join(", ");
 
-/** Handle GET /api/backlog?file=<plans|bugs|questions|done|fixed>&index=N: one backlog entry's full
- * text ({title, body}), fetched on demand so multi-KB bodies (long repros, whole plans) never
- * ride the 1-second /api/status poll. index addresses the Nth entry of that file's section
- * in the same order statusPayload lists its titles — plans: PLANS.md ## Planned, bugs: BUGS.md
- * ## Open, questions: QUESTIONS.md ## Open, done: PLANS.md ## Done and fixed: BUGS.md ## Fixed
- * (both newest first, the order of the dashboard's recent rows) — zero-based.
+/** Handle GET /api/backlog?file=<plans|bugs|questions|done|fixed|answered>&index=N: one
+ * backlog entry's full text ({title, body}), fetched on demand so multi-KB bodies (long repros,
+ * whole plans) never ride the 1-second /api/status poll. index addresses the Nth entry of that
+ * file's section in the same order statusPayload lists its titles — plans: PLANS.md ## Planned,
+ * bugs: BUGS.md ## Open, questions: QUESTIONS.md ## Open, done: PLANS.md ## Done and fixed:
+ * BUGS.md ## Fixed (both newest first, the order of the dashboard's recent rows) and answered:
+ * QUESTIONS.md ## Answered, newest first (the file is appended to, so the reverse of file
+ * order, unlike done/fixed) — zero-based.
  * Unknown/missing file, missing or bad index, and out-of-range index
  * → 400 JSON error via sendJson.
  * The query arrives pre-parsed (gui/gui-server.ts's parseRequestTarget), like every
