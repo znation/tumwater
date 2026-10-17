@@ -23,7 +23,8 @@ import { quietHoursStatus } from "../scheduling/quiet-hours.js";
 import { assembleTickPrompt } from "../tick/tick-prompt.js";
 import { configForRole, resolvedModelFields, reviewRunConfig, roleSeamTier, seamConcurrencyKey } from "../config/config-views.js";
 import { fallbackPair, modelFallbackView, type ModelFallbackView } from "../config/config-fallbacks.js";
-import { fallbackModelPair, piModelsPath } from "../pi/pi-models.js";
+import { fallbackModelPair, piModelsPath, seamContextWindow } from "../pi/pi-models.js";
+import { compactPromptWindow } from "../pi-extension/context-window.js";
 import { formatModelSelector } from "../config/model-selector.js";
 import { roleImageInfo } from "../agent/image-input.js";
 import { readImageProbeCache } from "../doctor/image-probe.js";
@@ -346,6 +347,8 @@ export function rolePayload(
         role,
         state,
         preview: true,
+        // The compact prompt a run on the role's own model would get (a small declared window).
+        compact: compactPromptWindow(seamContextWindow(configForRole(cfg, role), root, modelsPath)),
       })?.prompt ?? null,
     // The loop's schedule — surfaced read-only from the same persisted state rolePayload
     // already loaded for the model-fallback episode and the next-tick preview, so no new

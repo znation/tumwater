@@ -29,7 +29,8 @@ import {
 } from "../config/config-views.js";
 import { fallbackRoleConfig } from "../config/config-fallbacks.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
-import { piModelsPath, readPiProviders } from "../pi/pi-models.js";
+import { piModelsPath, readPiProviders, seamContextWindow } from "../pi/pi-models.js";
+import { compactPromptWindow } from "../pi-extension/context-window.js";
 import { peekPrompt, peekRolePrompt } from "../inbox/inbox.js";
 import { planTickStart, type TickStartPlan } from "../tick/tick-resume.js";
 import { DEFAULT_AGENT } from "../agent/agent-backend.js";
@@ -80,7 +81,7 @@ export interface LoopTickContext {
   warn(message: string): void;
   /** The signal a tick's pi runs watch: harness shutdown OR this tick's abort controller. */
   runSignal(): AbortSignal;
-  tickPrompt(agent?: string): string | null;
+  tickPrompt(agent?: string, compact?: boolean): string | null;
   /** Which pair set an image reroute may look among (plans/image-input.md "Reroute target"
    * "Regime"): the free fallback pairs while the budget gate is on fallback or the role is
    * in a model-fallback episode, else the primary tiers. Delegates to the runner's rule. */
@@ -319,8 +320,11 @@ export async function runTickPhase(
     role: ctx.role,
     state: s,
     pending: ctx.pending,
-    tickPrompt: (agent) => ctx.tickPrompt(agent),
+    tickPrompt: (agent, compact) => ctx.tickPrompt(agent, compact),
     agent: cfg.agent ?? DEFAULT_AGENT,
+    // The window the tick's model declares in pi's catalog decides the compact prompt
+    // (context-window.ts compactPromptWindow); a non-pi or unknown model keeps the full one.
+    compact: compactPromptWindow(seamContextWindow(cfg, ctx.root)),
   });
   if (plan === null) return { result: "skipped" };
   if (ctx.role === DIRECTOR_ROLE) {

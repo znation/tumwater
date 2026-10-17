@@ -65,7 +65,12 @@ function withClaudeAuthor(root: string, cwd: string, id = "c1"): void {
 function plan(
   root: string,
   s: LoopState,
-  opts: { tickPrompt?: (agent?: string) => string | null; pending?: PendingPrompt; agent?: string } = {},
+  opts: {
+    tickPrompt?: (agent?: string, compact?: boolean) => string | null;
+    pending?: PendingPrompt;
+    agent?: string;
+    compact?: boolean;
+  } = {},
 ) {
   return planTickStart({
     root,
@@ -74,6 +79,7 @@ function plan(
     pending: opts.pending ?? new PendingPrompt(root, s.role),
     tickPrompt: opts.tickPrompt ?? (() => "assembled run prompt"),
     agent: opts.agent,
+    compact: opts.compact,
   });
 }
 
@@ -111,6 +117,23 @@ test("a fresh run hands the effective agent to the prompt assembly", () => {
   });
   assert.ok(p);
   assert.equal(seen, "claude", "the effective agent reaches the fresh prompt assembly");
+});
+
+test("the tick's small-window decision reaches the fresh prompt assembly", () => {
+  // runTickPhase decides the compact prompt from the window the tick's model declares, and the
+  // fresh tick's assembly must receive that decision rather than default to the full prompt.
+  for (const compact of [true, false, undefined]) {
+    let seen: boolean | undefined | "unset" = "unset";
+    const p = plan(tmpdir(), state(), {
+      compact,
+      tickPrompt: (_agent, c) => {
+        seen = c;
+        return "assembled";
+      },
+    });
+    assert.ok(p);
+    assert.equal(seen, compact);
+  }
 });
 
 test("a resumable session resumes with the restart bridge and skips the assembled prompt", () => {

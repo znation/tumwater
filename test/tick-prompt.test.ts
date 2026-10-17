@@ -723,3 +723,64 @@ test("the steward's prompt carries the records-overflow block only when Done is 
   fs.writeFileSync(path.join(dir, "PLANS.md"), done(10) + "\n");
   assert.ok(!(promptFor(dir, "steward")?.prompt ?? "").includes("<records-overflow>\n"));
 });
+
+// ---- compact prompt (a small-window model) ----------------------------------
+
+test("a compact assigned run drops the brief block and backlog index and keeps its assignment", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
+  const claim = { file: "BUGS.md" as const, key: "real bug", title: "Real bug", at: 1, source: "assigned" as const };
+  const input = { root: dir, config: defaultConfig(), role: "bugfix-2", state: state({ role: "bugfix-2", claim }) };
+  const full = assembleTickPrompt(input);
+  const compact = assembleTickPrompt({ ...input, compact: true });
+  assert.ok(full && compact);
+  assert.match(full.prompt, /<project-prompt>/);
+  assert.match(full.prompt, /^<backlog-index>$/m);
+  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
+  // The block itself; the charter's choosing steps still name it, and the orientation says why
+  // an assigned run has none.
+  assert.doesNotMatch(compact.prompt, /^<backlog-index>$/m);
+  assert.match(compact.prompt, /this prompt carries no backlog index/);
+  assert.match(compact.prompt, /<assigned-entry>[\s\S]*BUGS\.md lines 3-4/);
+  assert.match(compact.prompt, /Read your assigned entry \(at the end of this prompt\)/);
+  assert.ok(compact.prompt.length < full.prompt.length);
+});
+
+test("a compact run without an assignment reads the brief file and keeps the backlog index", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
+  const compact = assembleTickPrompt({ root: dir, config: defaultConfig(), role: "bugfix", state: state({ role: "bugfix" }), compact: true });
+  assert.ok(compact);
+  // The brief block is the brief file's own text, which the run reads in full.
+  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
+  assert.match(compact.prompt, /^<backlog-index>$/m);
+  assert.match(compact.prompt, /First read the project brief \(README\.md\) in full/);
+  assert.match(compact.prompt, /Your context window is small/);
+});
+
+test("a compact run's queued request counts as unassigned, so it keeps the backlog index", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "BUGS.md"), "# Bugs\n## Open\n### Real bug\nRepro.\n## Fixed\n_None._\n");
+  enqueueRolePrompt(dir, "bugfix-2", "look at the flaky test");
+  const claim = { file: "BUGS.md" as const, key: "real bug", title: "Real bug", at: 1, source: "assigned" as const };
+  const compact = assembleTickPrompt({
+    root: dir, config: defaultConfig(), role: "bugfix-2", state: state({ role: "bugfix-2", claim }), compact: true,
+  });
+  assert.ok(compact);
+  assert.match(compact.prompt, /<user-request>/);
+  assert.match(compact.prompt, /<backlog-index>/);
+  assert.doesNotMatch(compact.prompt, /<assigned-entry>/);
+});
+
+test("a compact director run reads the brief file instead of carrying the brief block", () => {
+  const dir = root();
+  enqueuePrompt(dir, "what should we build next");
+  const input = { root: dir, config: defaultConfig(), role: DIRECTOR_ROLE, state: state({ role: DIRECTOR_ROLE }), preview: true };
+  const full = assembleTickPrompt(input);
+  const compact = assembleTickPrompt({ ...input, compact: true });
+  assert.ok(full && compact);
+  assert.match(full.prompt, /<project-prompt>\nBuild a tiny thing\./);
+  assert.doesNotMatch(compact.prompt, /<project-prompt>/);
+  assert.match(compact.prompt, /First read the project brief \(README\.md\) in full/);
+  assert.match(compact.prompt, /<user-request>\nwhat should we build next/);
+});

@@ -53,6 +53,7 @@ test("piArgs loads the context-shake extension right after bounded-output", () =
     "context-shake.js",
     "context-budget.js",
     "strip-thinking.js",
+    "trim-system-prompt.js",
     "role-notes.js",
   ]);
   for (const e of exts) assert.ok(fs.existsSync(e), `extension exists in dist: ${e}`);

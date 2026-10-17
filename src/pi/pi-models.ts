@@ -10,6 +10,8 @@ import { cachedByStat, type StatKeyedValue } from "../files/stat-cache.js";
 import { isJsonObject } from "../files/json-object.js";
 import { readJsonFile } from "../files/json-files.js";
 import { expandHomeTilde } from "../files/files.js";
+import { declaredWindow } from "../pi-extension/context-window.js";
+import { piSettingsPath, readPiDefaultModel } from "./pi-settings.js";
 
 /** pi's model definitions — the custom providers and models they serve, with each model's
  * declared cost. This is where a local (free) team differs from an API one: unpriced or
@@ -37,6 +39,9 @@ export interface PiModelDef {
    * (src/agent/image-input.ts) and the doctor's `image input` check can read it; absent — the
    * common case for a hand-written catalog — means pi treats the model as text-only. */
   input?: unknown;
+  /** The context window, in tokens, pi's models.json declares for the model — what pi sizes
+   * its compaction against. Read through declaredWindow, so an unusable value is no window. */
+  contextWindow?: unknown;
 }
 
 /** The cost components pi's models.json may declare. */
@@ -114,6 +119,26 @@ export function readPiProviders(modelsPath: string): Map<string, PiModelDef[]> |
     // A copy: callers may treat the result as their own.
     (providers) => new Map([...providers].map(([name, models]) => [name, [...models]])),
   );
+}
+
+/** The context window a run's model declares in pi's definitions, or null when it cannot be
+ * known: a non-pi seam (its backend keeps its own catalog), an unresolvable pair, or a missing
+ * or unusable `contextWindow`. A pi seam naming no provider/model runs on pi's saved default
+ * (readPiDefaultModel), so that pair is looked up instead — exactly the model pi will start on. */
+export function seamContextWindow(
+  seam: { agent?: string; provider?: string; model?: string },
+  projectRoot: string,
+  modelsPath: string = piModelsPath(),
+): number | null {
+  const agent = seam.agent ?? (isAgentId(seam.provider) ? seam.provider : "pi");
+  if (agent !== "pi") return null;
+  let { provider, model } = seam;
+  if (!provider || !model) {
+    const piDefault = readPiDefaultModel(piSettingsPath(modelsPath), projectRoot);
+    provider = piDefault?.provider;
+    model = piDefault?.model;
+  }
+  return declaredWindow(resolveModelDef(readPiProviders(modelsPath), provider, model)?.contextWindow);
 }
 
 /** A provider's `baseUrl` from pi's models.json, or null when the file, the provider or the

@@ -290,6 +290,13 @@ for a mid-sized model with a finite context window: tool-call budgets, ranged re
 files, and bundled pi extensions that trim oversized tool output to its head and tail and, on
 a model with a window of at most 256k, stop sending the model's earlier thinking back to it.
 
+A run whose model declares a window of at most 128k in pi's `models.json` gets a compact
+prompt. Its rules keep every directive in fewer words, its principles block keeps only the
+bullets, and it leaves out the brief block, since the brief file holds the same text. A run that
+tumwater assigned one backlog entry also goes without the backlog index and reads its entry
+first. pi's system prompt loses its section about pi's own documentation. Larger and unknown
+windows get the full prompt.
+
 Each role also has notes: a short, model-written note its own earlier runs left for the
 next fresh session (where things live, what was ruled out, what to look at next). They live at
 `.tumwater/state/notes/<role>.md`, are capped at 4 KB, and are the only state carried between a

@@ -46,6 +46,9 @@ export interface TickPromptInput {
    * authoring run gets, so a fallback seam's prompt cannot speak the primary's dialect.
    * Omitted: the role's primary `configForRole(config, role).agent`. */
   agent?: string;
+  /** The run's model declares a window of at most 128k (context-window.ts compactPromptWindow),
+   * so it gets the compact prompt (prompt.ts CompactPrompt). Omitted: the full prompt. */
+  compact?: boolean;
 }
 
 /** The repo paths the entry at `file` lines `range` names that are absent from the checkout at
@@ -111,7 +114,7 @@ function flakyChecksNote(root: string): string | undefined {
  * re-queue it if the tick leaves it unfulfilled; `userPromptFile` is the queue file it came
  * from, so that bookkeeping can clean the prompt's attachments by that file's stem. */
 export function assembleTickPrompt(
-  { root, config, role, state, preview = false, agent }: TickPromptInput,
+  { root, config, role, state, preview = false, agent, compact = false }: TickPromptInput,
 ): { prompt: string; userPrompt: string | null; userPromptFile: string | null } | null {
   // One read of the brief yields both the prompt it carries and the owning file's name
   // (brief.ts's readBrief): readInitialPrompt + briefFile were two full reads of the same
@@ -147,7 +150,9 @@ export function assembleTickPrompt(
     if (!dequeued) return null;
     userPrompt = stripNotBeforeMarker(dequeued);
     userPromptFile = entry?.file ?? null;
-    prompt = buildDirectorPrompt(userPrompt, initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent);
+    // The compact prompt leaves the brief block out: the director reads the brief file in full,
+    // and that file carries the same text.
+    prompt = buildDirectorPrompt(userPrompt, compact ? "" : initialPrompt, principles, check, brief, undefined, backlogIndex, agent ?? configForRole(config, DIRECTOR_ROLE).agent, compact);
   } else {
     // The loop id keys its inbox and notebook; every lookup ABOUT the role — catalog charter,
     // instructions, the qa/selfcheck/clean blocks — resolves through the base role, so
@@ -218,15 +223,21 @@ export function assembleTickPrompt(
           `feature could take, the same count that decides whether a plan run is deferred).`
         : undefined;
     const flakyChecks = base === "bugfix" ? flakyChecksNote(root) : undefined;
+    // A run holding a claim with no queued request is assigned its one entry (the assignment
+    // note below). In the compact prompt such a run reads that entry first, so the backlog index
+    // — what an unassigned run chooses its task from — stays out. The brief block stays out of
+    // every compact prompt: an unassigned run reads the brief file in full, which carries the
+    // same text, and an assigned one reads it only when its entry needs it.
+    const variant = compact ? { assigned: state.claim !== undefined && request === null } : undefined;
     prompt = buildTickPrompt({
       role: resolved,
-      initialPrompt,
+      initialPrompt: compact ? "" : initialPrompt,
       principles,
       digest,
       coverage,
       backlogStructure,
       recordsOverflow,
-      backlogIndex,
+      backlogIndex: variant?.assigned ? undefined : backlogIndex,
       notes,
       notesSavedDay,
       planTargetNote,
@@ -235,6 +246,7 @@ export function assembleTickPrompt(
       check,
       briefFile: brief,
       agent: agent ?? configForRole(config, role).agent,
+      compact: variant,
       // A per-role prompt queued by `tumwater prompt --role <id>` rides as an explicit user
       // request block; its text is also the tick's userPrompt,
       // so the runner's pending-prompt machinery (re-queue on unfulfilled, clear on merge)
@@ -256,11 +268,11 @@ export function assembleTickPrompt(
     const range = eligibleEntries(root, role).find((e) => e.key === claim.key);
     prompt = appendPromptNote(prompt, buildAssignmentNote(claim, range, range ? missingEntryPaths(root, claim.file, range) : []));
     const merged = claim.file === "PLANS.md" ? mergedPrerequisiteRanges(root, claim.title) : [];
-    if (merged.length > 0) prompt = appendPromptNote(prompt, buildMergedPrerequisitesNote(merged));
+    if (merged.length > 0) prompt = appendPromptNote(prompt, buildMergedPrerequisitesNote(merged, compact));
   }
   if (claim && userPrompt === null && claim.file === "PLANS.md") {
     const waiting = waitingPartRanges(root, claim.title);
-    if (waiting.length > 0) prompt = appendPromptNote(prompt, buildWaitingPartsNote(waiting));
+    if (waiting.length > 0) prompt = appendPromptNote(prompt, buildWaitingPartsNote(waiting, compact));
   }
   if (!claim && userPrompt === null && role !== DIRECTOR_ROLE && state.heldElsewhere?.length) {
     prompt = appendPromptNote(prompt, buildHeldEntriesNote(state.heldElsewhere));

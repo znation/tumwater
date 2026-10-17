@@ -58,12 +58,15 @@ export function planTickStart(opts: {
   /** Assemble a fresh tick's prompt (null when the loop has nothing to run); the runner's
    * tickPrompt() so the dequeued user request is recorded as pending exactly as before. The
    * effective `agent` below is passed through so the prompt speaks the dialect of the backend
-   * the tick actually runs on, not the role's primary. */
-  tickPrompt: (agent?: string) => string | null;
+   * the tick actually runs on, not the role's primary, and `compact` below likewise. */
+  tickPrompt: (agent?: string, compact?: boolean) => string | null;
   /** The backend this tick would run on, for the resume decision: a newest author ledger line
    * naming another agent hands off instead of resuming. Defaults to pi, the historical
    * backend. */
   agent?: string;
+  /** The tick's model declares a window of at most 128k, so a fresh tick's prompt is the compact
+   * one (prompt.ts CompactPrompt). Omitted: the full prompt. */
+  compact?: boolean;
 }): TickStartPlan | null {
   const s = opts.state;
   // The last merge's failure, read before the clear below: a merge that failed
@@ -163,7 +166,7 @@ export function planTickStart(opts: {
   if (resuming) {
     prompt = buildResumePrompt(opts.role, resumeCause, agent);
   } else {
-    const assembled = opts.tickPrompt(agent);
+    const assembled = opts.tickPrompt(agent, opts.compact);
     // The image-reroute handoff note names the model the blind run was on and the image it
     // read; those facts ride the one-shot marker, which is consumed here. A handoff's fresh
     // session also needs the to-be-run model named for its own side of the note, but the

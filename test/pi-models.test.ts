@@ -3,7 +3,7 @@ import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { defaultConfig } from "../src/config/config.js";
-import { fallbackModelFree, teamModelsFree, piAgentDir, piModelsPath } from "../src/pi/pi-models.js";
+import { fallbackModelFree, teamModelsFree, piAgentDir, piModelsPath, seamContextWindow } from "../src/pi/pi-models.js";
 import type { TumwaterConfig } from "../src/config/config-schema.js";
 import { tmpdir, writeMalformedJson } from "./fixtures/repo-fixtures.js";
 
@@ -322,4 +322,33 @@ test("a priced strong tier keeps the badge off even when every role runs a free 
   const noStrong = teamAt("lm-studio", "qwen3.8-27b");
   noStrong.model = { default: "lm-studio/qwen3.8-27b" };
   assert.equal(teamModelsFree(noStrong, file), true);
+});
+
+test("seamContextWindow reads the run model's declared window from pi's catalog", () => {
+  const file = writeModels(JSON.stringify({
+    providers: {
+      qwenrunner: { models: [{ id: "qwen3.8-27b", contextWindow: 131_072 }, { id: "bad", contextWindow: "64k" }] },
+      hf: { models: [{ id: "big", contextWindow: 1_048_576 }, { id: "none" }] },
+    },
+  }));
+  const project = tmpdir("pi-window-project-");
+  assert.equal(seamContextWindow({ provider: "qwenrunner", model: "qwen3.8-27b" }, project, file), 131_072);
+  assert.equal(seamContextWindow({ agent: "pi", provider: "hf", model: "big" }, project, file), 1_048_576);
+  // An unusable or missing window, an unknown pair, and a non-pi backend are all unknown.
+  assert.equal(seamContextWindow({ provider: "qwenrunner", model: "bad" }, project, file), null);
+  assert.equal(seamContextWindow({ provider: "hf", model: "none" }, project, file), null);
+  assert.equal(seamContextWindow({ provider: "hf", model: "missing" }, project, file), null);
+  assert.equal(seamContextWindow({ agent: "claude", model: "sonnet" }, project, file), null);
+  assert.equal(seamContextWindow({ provider: "claude", model: "sonnet" }, project, file), null);
+  // No pair named and no saved default: pi's start-up model is unknown here.
+  assert.equal(seamContextWindow({}, project, file), null);
+});
+
+test("seamContextWindow follows pi's saved default when the run names no model", () => {
+  const file = writeModels(JSON.stringify({ providers: { qwenrunner: { models: [{ id: "qwen3.8-27b", contextWindow: 65_536 }] } } }));
+  fs.writeFileSync(
+    path.join(path.dirname(file), "settings.json"),
+    JSON.stringify({ defaultProvider: "qwenrunner", defaultModel: "qwen3.8-27b" }),
+  );
+  assert.equal(seamContextWindow({}, tmpdir("pi-window-project-"), file), 65_536);
 });

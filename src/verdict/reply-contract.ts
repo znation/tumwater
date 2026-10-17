@@ -38,6 +38,18 @@ change rejected; a small, correct change is welcome:
   green run is unverified, so verify again before you end. Order your work so the final
   verification comes after your last edit, backlog files included.`;
 
+/** CLAIMS_RULE in the compact prompt a small-window run gets (prompt.ts commonRules): the same
+ * four directives, without the reasons. */
+export const CLAIMS_RULE_COMPACT = `Claims — a reviewer checks your change against the code before it merges, and an inaccurate
+claim gets it rejected; a small, correct change is welcome:
+- State only what you verified: SUMMARY, WHY, RISK, VERIFIED, and every doc comment or
+  PLANS.md/BUGS.md line you write are claims about the code.
+- Back each universal word ("all", "every", "only", "none remain", "untested", "byte-identical",
+  "unchanged") with the check that proves it, or drop the word.
+- Never state test or suite counts: say what you ran and what you saw.
+- Verify after your LAST edit, backlog files included: an edit after the last green run is
+  unverified.`;
+
 /** Sentinel a loop's pi run outputs when it found nothing worth doing (REPLY_ENDINGS below
  * instructs it). */
 export const NOTHING_TO_DO = "TUMWATER_NOTHING_TO_DO";

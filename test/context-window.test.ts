@@ -1,8 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  COMPACT_PROMPT_MAX_WINDOW,
   PI_COMPACTION_RESERVE_TOKENS,
   REFERENCE_WINDOW_TOKENS,
+  compactPromptWindow,
   compactionPercent,
   declaredWindow,
   windowScale,
@@ -33,4 +35,12 @@ test("compactionPercent is where pi's default reserve puts its compaction", () =
   assert.equal(compactionPercent(65_536), 75);
   assert.equal(compactionPercent(16_384), 0);
   assert.equal(compactionPercent(8_192), 0, "a window inside the reserve compacts at once");
+});
+
+test("compactPromptWindow holds for a known window of at most 128k", () => {
+  assert.equal(COMPACT_PROMPT_MAX_WINDOW, REFERENCE_WINDOW_TOKENS);
+  for (const window of [32_768, 65_536, 126_928, 131_072]) assert.equal(compactPromptWindow(window), true, String(window));
+  for (const window of [131_073, 262_144, 1_048_576, undefined, 0, Number.NaN, "65536"]) {
+    assert.equal(compactPromptWindow(window), false, String(window));
+  }
 });

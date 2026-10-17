@@ -251,8 +251,8 @@ export class LoopRunner {
    * runner records it as pending — re-queued if the tick ends without fulfilling it. Null when
    * the loop has nothing to run (an empty director inbox); a role loop's assembly never
    * returns null. */
-  private tickPrompt(agent?: string): string | null {
-    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent });
+  private tickPrompt(agent?: string, compact?: boolean): string | null {
+    const assembled = assembleTickPrompt({ root: this.root, config: this.config, role: this.role, state: this.state, agent, compact });
     if (assembled === null) return null;
     if (assembled.userPrompt !== null) {
       logEventBestEffort(this.root, { source: this.role, type: "prompt_taken", run: this.state.runs, preview: promptPreview(assembled.userPrompt) });
@@ -360,7 +360,7 @@ export class LoopRunner {
       save: () => this.save(),
       warn: (message) => this.warn(message),
       runSignal: () => this.runSignal(),
-      tickPrompt: (agent) => this.tickPrompt(agent),
+      tickPrompt: (agent, compact) => this.tickPrompt(agent, compact),
       rerouteRegime: (now) => this.rerouteRegime(now),
       get recoveryFailure() {
         return self.recoveryFailure;

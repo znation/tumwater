@@ -437,8 +437,17 @@ ${titles.map((t) => `- "${t}"`).join("\n")}
  * notes: at most five `- "title"` lines, each naming the entry's heading line range, then one
  * `- …and N more` line for the rest, so the two notes list a part's neighbors identically. A
  * pure function so its shape is pinned in tests (test/gate-prompts.test.ts). */
-function entryRangeLines(entries: readonly { title: string; start: number; end: number }[]): string[] {
-  const lines = entries.slice(0, 5).map((e) => `- "${e.title}" (PLANS.md lines ${e.start}-${e.end})`);
+/** The longest title a compact prompt quotes in an entry list: a PLANS.md heading's tail names
+ * the plan's dates and every file it touches, which its range already leads to. */
+const COMPACT_TITLE_CHARS = 100;
+
+function entryRangeLines(entries: readonly { title: string; start: number; end: number }[], compact = false): string[] {
+  // Cut by code point, so an astral character is never split in half.
+  const title = (t: string): string => {
+    const cps = Array.from(t);
+    return compact && cps.length > COMPACT_TITLE_CHARS ? `${cps.slice(0, COMPACT_TITLE_CHARS).join("").trimEnd()}…` : t;
+  };
+  const lines = entries.slice(0, 5).map((e) => `- "${title(e.title)}" (PLANS.md lines ${e.start}-${e.end})`);
   if (entries.length > 5) lines.push(`- …and ${entries.length - 5} more`);
   return lines;
 }
@@ -449,8 +458,10 @@ function entryRangeLines(entries: readonly { title: string; start: number; end: 
  * five, then a count of the rest. A pure function so its shape is pinned in tests. */
 export function buildMergedPrerequisitesNote(
   entries: readonly { title: string; start: number; end: number }[],
+  /** A small-window run's compact prompt: each title cut to COMPACT_TITLE_CHARS. */
+  compact = false,
 ): string {
-  const lines = entryRangeLines(entries);
+  const lines = entryRangeLines(entries, compact);
   return `<merged-prerequisites>
 Your assigned entry builds on parts that are already merged. Each one's Done entry records what it actually changed; read one by its range when your entry depends on its details, rather than searching PLANS.md:
 ${lines.join("\n")}
@@ -526,8 +537,12 @@ If the failure is environmental — flaky, load-sensitive, or a broken local too
  * wait on it, so the implementer sees where its part ends and leaves their share alone. At most
  * five are listed, then a literal `- …and N more` line (the `moreSuffix` phrase renders inline,
  * not as a list line). A pure function so its shape is pinned in tests. */
-export function buildWaitingPartsNote(entries: readonly { title: string; start: number; end: number }[]): string {
-  const shown = entryRangeLines(entries);
+export function buildWaitingPartsNote(
+  entries: readonly { title: string; start: number; end: number }[],
+  /** A small-window run's compact prompt: each title cut to COMPACT_TITLE_CHARS. */
+  compact = false,
+): string {
+  const shown = entryRangeLines(entries, compact);
   return `<waiting-parts>
 Later parts of your series wait for yours to land, and each one plans its own share of the work: do none of it here, and keep in place the names and files they say your part leaves behind. Read one by its range when you need to know what it expects:
 ${shown.join("\n")}
