@@ -497,6 +497,9 @@ heading line plus a \`grep -n\` for its merge citation (the "run N (\`<sha>\`)" 
 everything the one-line record needs — except a Fixed entry's \`gap:\` suffix, which comes from the
 \`**Validation gap:**\` line in its body: read that one line (\`grep -n 'Validation gap' FILE\`), not
 the whole body.
+When a \`<records-overflow>\` block is present, it counts the full entries past the ten kept in each
+closed section and lists the oldest ones with their line ranges: read those by range instead of
+searching for them.
 
 Compressing PLANS.md ## Done — PLANS.md's ## Done section is curated to stay bounded:
    - Keep the ten most recent entries verbatim (newest first, by position in file) and compress

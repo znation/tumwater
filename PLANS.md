@@ -5,44 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### The steward's prompt lists how many full entries PLANS.md `## Done` and BUGS.md `## Fixed` hold past the ten the compression policy keeps, with the oldest ones' line ranges (planned 2026-10-16 by plan; independent of every other Planned entry; touches a new src/backlog/records-overflow.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts and src/roles/role-catalog.ts. The in-flight bugfix flake plan also adds one field to `buildTickPrompt` and one line to `assembleTickPrompt`, so whichever lands second rebases over adjacent lines)
-
-**Goal.** The steward charter (`id: "steward"` in src/roles/role-catalog.ts) keeps the ten most recent `## Done` / `## Fixed` entries verbatim and compresses older ones to one line each. On 2026-10-16, PLANS.md `## Done` held 272 full (`### `) entries and BUGS.md `## Fixed` held 304, so about 560 entries were past the line. The steward's recent compressions (`git log --grep='(steward)'`) each took ten entries. Every steward run also has to grep two files of several hundred KB to find out whether compression is due and where the oldest full entries sit, and nothing tells it how far behind it is when it weighs compression against its other moves. The harness can count this cheaply and synchronously from the files the `<backlog-index>` block already reads, the same way `renderBacklogStructureBlock` gives the clean role its evidence.
-
-**Approach.**
-- New `src/backlog/records-overflow.ts`, opted into the vocabulary guard with a `// vocabulary: plain` line (test/vocabulary.test.ts):
-  - `export const RECORDS_KEPT_FULL = 10;` (the charter's "ten most recent") and `const OLDEST_LISTED = 10;`.
-  - `export interface RecordsOverflow { file: string; section: string; full: number; refused: number; oldest: ActionableEntryRange[]; over: number }`.
-  - `export function recordsOverflow(md: string, file: string, section: string): RecordsOverflow | null`. It is pure. It calls `actionableEntryRanges(md, section)` (src/backlog/backlog-structure.ts), whose `### ` entries in file order are newest first. `full` is their count. The first `RECORDS_KEPT_FULL` are kept. The rest are candidates, minus any entry whose body (lines `start` through `end - 1` of `md.split("\n")`, zero-based, i.e. after the heading) carries a Refused note, detected with `refusalNote(body) !== null` (exported from src/backlog/backlog-eligibility.ts). The charter says those stay full. `refused` counts the excluded ones, `over` counts the remaining candidates, and `oldest` is the last `OLDEST_LISTED` candidates in file order (the bottom of the section). Returns `null` when `over === 0`.
-  - `export function renderRecordsOverflowBlock(root: string): string | undefined`. For `["PLANS.md", "Done"]` then `["BUGS.md", "Fixed"]` it reads `filePath = path.join(root, file)` through `cachedTextByStat` (src/files/stat-cache.ts) with a module-level `Map<string, StatKeyedValue<RecordsOverflow | null>>` keyed by `${filePath}#${section}`. The clone returns a copy with `oldest` sliced. This follows `strandedPlanEntriesFor`, so an unchanged file costs one stat. A missing or unreadable file, or a `null` result, contributes nothing. Returns `undefined` when neither file contributes. Otherwise it returns exactly:
-    ```
-    Closed backlog sections holding more full entries than the 10 most recent your compression policy keeps:
-    <records-overflow>
-    PLANS.md ## Done: 272 full entries, 262 past the 10 kept (1 more carries a Refused note and stays full). Oldest, by line range:
-    - 10900-10975: <title>
-    …
-    </records-overflow>
-    ```
-    One paragraph per file, separated by a blank line. The parenthetical is present only when `refused > 0`. Its rows are `oldest` in file order, rendered `- ${start}-${end}: ${title}`, with the title passed through `truncate(title, 120)` from src/text/text.ts. Both `10`s in the block are rendered from `RECORDS_KEPT_FULL`.
-- `src/tick/tick-prompt.ts` `assembleTickPrompt`: next to `backlogStructure`, add `const recordsOverflow = base === "steward" ? renderRecordsOverflowBlock(root) : undefined;` with a one-line comment, and pass `recordsOverflow` to `buildTickPrompt`. Because `base` is used, `steward-2` and the `tumwater role steward` preview (role-view's `rolePayload` goes through the same function) get the block too.
-- `src/prompt/prompt.ts`: add `recordsOverflow?: string` to the `buildTickPrompt` input type. Its doc comment: rendered closed-section overflow block (see records-overflow.ts); steward only, omitted when both closed sections are within the policy or unreadable. Destructure it and push it right after `if (backlogStructure) parts.push(backlogStructure);`, before the backlog index.
-- `src/roles/role-catalog.ts`, steward `find`: at the end of the paragraph that starts "Reading the backlog files:", add one sentence: "When a \`<records-overflow>\` block is present, it counts the full entries past the ten kept in each closed section and lists the oldest ones with their line ranges: read those by range instead of searching for them." No other charter text changes.
-
-**Files touched.** src/backlog/records-overflow.ts (new), src/tick/tick-prompt.ts, src/prompt/prompt.ts, src/roles/role-catalog.ts, test/records-overflow.test.ts (new), test/tick-prompt.test.ts.
-
-**Acceptance criteria.**
-- test/records-overflow.test.ts, `recordsOverflow` over inline markdown:
-  - a `## Done` with exactly 10 `### ` entries (and some `- ` one-liners below them) returns `null`;
-  - 13 entries return `full: 13, over: 3, refused: 0`, and `oldest` holds entries 11–13 with their 1-based heading lines as `start`;
-  - 25 entries list only the last 10 in `oldest`, with `over: 15`;
-  - an over-the-line entry with an indented `**Refused 2026-10-12 by feature: x**` body line is excluded from `oldest` and counted in `refused`. A Refused note on one of the first ten changes nothing;
-  - `### ` lines under `## Planned` or inside a fenced block in `## Done` are not counted;
-  - the `Fixed` section of a BUGS.md-shaped document is counted the same way.
-- test/records-overflow.test.ts, `renderRecordsOverflowBlock` over a temp root: both files past the line give one block with a `PLANS.md ## Done:` and a `BUGS.md ## Fixed:` paragraph in that order, between `<records-overflow>` tags; only one file past the line gives only that paragraph; neither, or a root with no files, gives `undefined`; rewriting PLANS.md with a changed size re-reads it (as the `renderBacklogStructureBlock re-reads PLANS.md whose stat changed` test does).
-- test/tick-prompt.test.ts, with a temp root whose PLANS.md `## Done` holds 12 full entries: `promptFor(dir, "steward").prompt` contains `<records-overflow>` before `Your task this run:`; `promptFor(dir, "steward-2")` carries it too; `promptFor(dir, "clean")` does not; a steward prompt over a `## Done` with 10 entries does not.
-- test/vocabulary.test.ts passes with the new module opted in.
-- `npm run test` passes.
-
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
 
 **Refused 2026-10-14 by feature: prerequisite part 1/2 has not landed — `tui-editors.ts` does not exist (git ls-files and a grep under `src/`/`test/` for `tui-editors`/`createTuiEditors` find nothing) and the `tui-editors` entry is still under `## Planned`. This part 2/2's whole approach — `createTuiKeys` shrinking to an outer shell that constructs the `tui-editors` and `tui-panes` sub-factories, and the editors receiving `refreshPaneCache`/`refreshTrail`/`refreshQueued` as deps from `tui-panes` through `createTuiKeys` — builds on part 1/2 already having landed, which it has not. Land the `tui-editors` split first.
@@ -1803,6 +1765,44 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### The steward's prompt lists how many full entries PLANS.md `## Done` and BUGS.md `## Fixed` hold past the ten the compression policy keeps, with the oldest ones' line ranges (done 2026-10-16; planned 2026-10-16 by plan; independent of every other Planned entry; touches a new src/backlog/records-overflow.ts, src/tick/tick-prompt.ts, src/prompt/prompt.ts and src/roles/role-catalog.ts. The in-flight bugfix flake plan also adds one field to `buildTickPrompt` and one line to `assembleTickPrompt`, so whichever lands second rebases over adjacent lines)
+
+**Goal.** The steward charter (`id: "steward"` in src/roles/role-catalog.ts) keeps the ten most recent `## Done` / `## Fixed` entries verbatim and compresses older ones to one line each. On 2026-10-16, PLANS.md `## Done` held 272 full (`### `) entries and BUGS.md `## Fixed` held 304, so about 560 entries were past the line. The steward's recent compressions (`git log --grep='(steward)'`) each took ten entries. Every steward run also has to grep two files of several hundred KB to find out whether compression is due and where the oldest full entries sit, and nothing tells it how far behind it is when it weighs compression against its other moves. The harness can count this cheaply and synchronously from the files the `<backlog-index>` block already reads, the same way `renderBacklogStructureBlock` gives the clean role its evidence.
+
+**Approach.**
+- New `src/backlog/records-overflow.ts`, opted into the vocabulary guard with a `// vocabulary: plain` line (test/vocabulary.test.ts):
+  - `export const RECORDS_KEPT_FULL = 10;` (the charter's "ten most recent") and `const OLDEST_LISTED = 10;`.
+  - `export interface RecordsOverflow { file: string; section: string; full: number; refused: number; oldest: ActionableEntryRange[]; over: number }`.
+  - `export function recordsOverflow(md: string, file: string, section: string): RecordsOverflow | null`. It is pure. It calls `actionableEntryRanges(md, section)` (src/backlog/backlog-structure.ts), whose `### ` entries in file order are newest first. `full` is their count. The first `RECORDS_KEPT_FULL` are kept. The rest are candidates, minus any entry whose body (lines `start` through `end - 1` of `md.split("\n")`, zero-based, i.e. after the heading) carries a Refused note, detected with `refusalNote(body) !== null` (exported from src/backlog/backlog-eligibility.ts). The charter says those stay full. `refused` counts the excluded ones, `over` counts the remaining candidates, and `oldest` is the last `OLDEST_LISTED` candidates in file order (the bottom of the section). Returns `null` when `over === 0`.
+  - `export function renderRecordsOverflowBlock(root: string): string | undefined`. For `["PLANS.md", "Done"]` then `["BUGS.md", "Fixed"]` it reads `filePath = path.join(root, file)` through `cachedTextByStat` (src/files/stat-cache.ts) with a module-level `Map<string, StatKeyedValue<RecordsOverflow | null>>` keyed by `${filePath}#${section}`. The clone returns a copy with `oldest` sliced. This follows `strandedPlanEntriesFor`, so an unchanged file costs one stat. A missing or unreadable file, or a `null` result, contributes nothing. Returns `undefined` when neither file contributes. Otherwise it returns exactly:
+    ```
+    Closed backlog sections holding more full entries than the 10 most recent your compression policy keeps:
+    <records-overflow>
+    PLANS.md ## Done: 272 full entries, 262 past the 10 kept (1 more carries a Refused note and stays full). Oldest, by line range:
+    - 10900-10975: <title>
+    …
+    </records-overflow>
+    ```
+    One paragraph per file, separated by a blank line. The parenthetical is present only when `refused > 0`. Its rows are `oldest` in file order, rendered `- ${start}-${end}: ${title}`, with the title passed through `truncate(title, 120)` from src/text/text.ts. Both `10`s in the block are rendered from `RECORDS_KEPT_FULL`.
+- `src/tick/tick-prompt.ts` `assembleTickPrompt`: next to `backlogStructure`, add `const recordsOverflow = base === "steward" ? renderRecordsOverflowBlock(root) : undefined;` with a one-line comment, and pass `recordsOverflow` to `buildTickPrompt`. Because `base` is used, `steward-2` and the `tumwater role steward` preview (role-view's `rolePayload` goes through the same function) get the block too.
+- `src/prompt/prompt.ts`: add `recordsOverflow?: string` to the `buildTickPrompt` input type. Its doc comment: rendered closed-section overflow block (see records-overflow.ts); steward only, omitted when both closed sections are within the policy or unreadable. Destructure it and push it right after `if (backlogStructure) parts.push(backlogStructure);`, before the backlog index.
+- `src/roles/role-catalog.ts`, steward `find`: at the end of the paragraph that starts "Reading the backlog files:", add one sentence: "When a \`<records-overflow>\` block is present, it counts the full entries past the ten kept in each closed section and lists the oldest ones with their line ranges: read those by range instead of searching for them." No other charter text changes.
+
+**Files touched.** src/backlog/records-overflow.ts (new), src/tick/tick-prompt.ts, src/prompt/prompt.ts, src/roles/role-catalog.ts, test/records-overflow.test.ts (new), test/tick-prompt.test.ts.
+
+**Acceptance criteria.**
+- test/records-overflow.test.ts, `recordsOverflow` over inline markdown:
+  - a `## Done` with exactly 10 `### ` entries (and some `- ` one-liners below them) returns `null`;
+  - 13 entries return `full: 13, over: 3, refused: 0`, and `oldest` holds entries 11–13 with their 1-based heading lines as `start`;
+  - 25 entries list only the last 10 in `oldest`, with `over: 15`;
+  - an over-the-line entry with an indented `**Refused 2026-10-12 by feature: x**` body line is excluded from `oldest` and counted in `refused`. A Refused note on one of the first ten changes nothing;
+  - `### ` lines under `## Planned` or inside a fenced block in `## Done` are not counted;
+  - the `Fixed` section of a BUGS.md-shaped document is counted the same way.
+- test/records-overflow.test.ts, `renderRecordsOverflowBlock` over a temp root: both files past the line give one block with a `PLANS.md ## Done:` and a `BUGS.md ## Fixed:` paragraph in that order, between `<records-overflow>` tags; only one file past the line gives only that paragraph; neither, or a root with no files, gives `undefined`; rewriting PLANS.md with a changed size re-reads it (as the `renderBacklogStructureBlock re-reads PLANS.md whose stat changed` test does).
+- test/tick-prompt.test.ts, with a temp root whose PLANS.md `## Done` holds 12 full entries: `promptFor(dir, "steward").prompt` contains `<records-overflow>` before `Your task this run:`; `promptFor(dir, "steward-2")` carries it too; `promptFor(dir, "clean")` does not; a steward prompt over a `## Done` with 10 entries does not.
+- test/vocabulary.test.ts passes with the new module opted in.
+- `npm run test` passes.
 
 ### Plain terms role ids, part 2/5: Rename a legacy role id's branch and refs and files once at startup (planned 2026-10-16 by user; requires part 1/5 and Plain terms state 3/5 landed; design in plans/terminology.md "Role names"; touches src/roles/legacy-role-migration.ts and the startup migration hook plus a test) (done 2026-10-16)
 

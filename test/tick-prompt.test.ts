@@ -634,3 +634,16 @@ test("the bugfix prompt omits the flake tally over an empty log and caps it at f
   assert.match(prompt, /\(and 1 more\)/);
   assert.equal(prompt.match(/" ×1/g)?.length, 5);
 });
+
+test("the steward's prompt carries the records-overflow block only when Done is past the kept ten", () => {
+  const dir = root();
+  const done = (n: number): string =>
+    `## Planned\n\n_None yet._\n\n## Done\n\n${Array.from({ length: n }, (_, i) => `### E${i} (done 2026-10-01)\n\nx\n\n`).join("")}`;
+  fs.writeFileSync(path.join(dir, "PLANS.md"), done(12));
+  const prompt = promptFor(dir, "steward")?.prompt ?? "";
+  assert.ok(prompt.includes("<records-overflow>\n"));
+  assert.ok(prompt.indexOf("<records-overflow>\n") < prompt.indexOf("Your task this run:"));
+  assert.ok(!(promptFor(dir, "clean")?.prompt ?? "").includes("<records-overflow>\n"));
+  fs.writeFileSync(path.join(dir, "PLANS.md"), done(10) + "\n");
+  assert.ok(!(promptFor(dir, "steward")?.prompt ?? "").includes("<records-overflow>\n"));
+});

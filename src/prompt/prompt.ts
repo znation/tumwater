@@ -261,6 +261,9 @@ interface TickPromptInput {
   /** Rendered stranded-plan block (see backlog-structure.ts); clean only, omitted when the
    * primary checkout's PLANS.md is missing, unreadable, or clean. */
   backlogStructure?: string;
+  /** Rendered closed-section overflow block (see records-overflow.ts); steward only, omitted when
+   * both closed sections are within the policy or unreadable. */
+  recordsOverflow?: string;
   /** Rendered actionable backlog index (see backlog-structure.ts); every tick carries it. */
   backlogIndex?: string;
   /** The role's notebook (roleNotesPath, read by tick-prompt.ts): the note its own earlier
@@ -331,7 +334,7 @@ from the repo.`,
 
 /** The full prompt for one role run. */
 export function buildTickPrompt(input: TickPromptInput): string {
-  const { role, initialPrompt, principles, digest, coverage, backlogStructure, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent } = input;
+  const { role, initialPrompt, principles, digest, coverage, backlogStructure, recordsOverflow, backlogIndex, notes, notesSavedDay, extraInstructions, planTargetNote, flakyChecks, check, briefFile, today, userRequest, agent } = input;
   const dialect = dialectFor(agent);
   const day = today ?? todayStamp();
   const parts = [
@@ -348,6 +351,7 @@ role's scope, say so in your reply instead of doing it anyway.\n<user-request>\n
   if (coverage) parts.push(coverage);
   if (digest) parts.push(digestBlock(digest));
   if (backlogStructure) parts.push(backlogStructure);
+  if (recordsOverflow) parts.push(recordsOverflow);
   if (backlogIndex) parts.push(backlogIndex);
   if (notes && notes.trim() !== "") parts.push(roleNotesBlock(notes, notesSavedDay, day));
   parts.push(`Your task this run:\n${role.find.trim()}`);
