@@ -6,6 +6,7 @@ import {
   checkAnthroApiKey,
   checkClaudeAuth,
   checkClaudeVersion,
+  checkFallbackChain,
   checkFallbackModel,
   checkImageInput,
   checkTierModels,
@@ -19,6 +20,8 @@ import { writeClaudeAccount } from "../src/agent/claude/claude-account.js";
 import { registerAgentBackend } from "../src/agent/agent-backend.js";
 import { piBackend } from "../src/pi/pi-backend.js";
 import { claudeBackend } from "../src/agent/claude/claude-backend.js";
+import { todayStamp } from "../src/budget/budget.js";
+import { saveLoopState, loadLoopState } from "../src/loop/loop-state.js";
 import { allRoleIds } from "../src/roles/roles.js";
 import type { ImageProbeResult } from "../src/doctor/image-probe.js";
 import { envPath } from "../src/files/files.js";
@@ -805,4 +808,62 @@ test("checkImageInput caches a failed free-fallback probe under the pi agent key
   const second = await checkImageInput(root, models, undefined, undefined, "missing", base, probe);
   assert.equal(calls, 1, "fresh cached fail means no double probe");
   assert.equal(second.level, "fail");
+});
+
+/** A models.json whose `local` provider points at `baseUrl`, plus a priced `paid` one. */
+function writeChainModels(baseUrl: string): string {
+  const file = path.join(tmpdir("doctor-chain-"), "models.json");
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      providers: {
+        local: { baseUrl, models: [{ id: "free-model" }] },
+        paid: { baseUrl: "https://api.example.com/v1", models: [{ id: "gpt-x", cost: { input: 1, output: 2 } }] },
+      },
+    }),
+  );
+  return file;
+}
+
+test("checkFallbackChain reads ok 'none configured' without a fallback", async () => {
+  const root = readyRepo();
+  assert.deepEqual(await checkFallbackChain(root, path.join(tmpdir(), "absent.json")), {
+    level: "ok",
+    detail: "none configured",
+  });
+});
+
+test("checkFallbackChain warns on a local server that does not answer and reads ok on one that does", async () => {
+  // An injected probe stands in for the server: the gating tier binds no real listener.
+  const models = writeChainModels("http://127.0.0.1:8090/v1");
+  const root = readyRepo();
+  writeConfig(root, { fallback: ["local/free-model"] });
+  const urls: string[] = [];
+  const up = await checkFallbackChain(root, models, async (u) => (urls.push(u), true));
+  assert.equal(up.level, "ok");
+  assert.match(up.detail, /default 1: local\/free-model — free · server up/);
+  assert.deepEqual(urls, ["http://127.0.0.1:8090/v1/models"]);
+  const down = await checkFallbackChain(root, models, async () => false);
+  assert.equal(down.level, "warn");
+  assert.match(down.detail, /not running \(GET http:\/\/127\.0\.0\.1:8090\/v1\/models failed\)/);
+});
+
+test("checkFallbackChain flags a spent step cap and never probes a non-local server", async () => {
+  const root = readyRepo();
+  writeConfig(root, { fallback: [{ model: "paid/gpt-x", maxDailyCostUsd: 5 }] });
+  const models = writeChainModels("http://127.0.0.1:1/v1");
+  const state = loadLoopState(root, "feature");
+  state.dayStamp = todayStamp();
+  state.dayCostByPair = { "paid/gpt-x": 5 };
+  saveLoopState(root, state);
+  let calls = 0;
+  const spent = await checkFallbackChain(root, models, async () => (calls++, true));
+  assert.match(spent.detail, /default 1: paid\/gpt-x — cap reached \(\$5\.00\/\$5\)/);
+
+  const remote = readyRepo();
+  writeConfig(remote, { fallback: ["paid/gpt-x"] });
+  calls = 0;
+  const priced = await checkFallbackChain(remote, models, async () => (calls++, true));
+  assert.equal(calls, 0);
+  assert.match(priced.detail, /priced, team cap only/);
 });

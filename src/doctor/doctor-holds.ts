@@ -27,7 +27,7 @@ import { okOutcome, warnOutcome, type CheckOutcome } from "./outcome.js";
  * (checkBudget), `claude window` (checkClaudeWindow), `maintenance quota`
  * (checkMaintenanceQuota), and `error streaks` (checkErrorStreaks), all read-only reports of
  * holds on ticking. */
-function loadLoopStates(root: string, config: TumwaterConfig): LoopState[] {
+export function loadLoopStates(root: string, config: TumwaterConfig): LoopState[] {
   return loopIds(config)
     .map((id) => loadLoopState(root, id))
     .sort((a, b) => a.role.localeCompare(b.role));

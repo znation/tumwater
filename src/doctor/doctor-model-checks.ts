@@ -3,8 +3,8 @@ import { childEnv } from "../process/process.js";
 import { boundedProbe } from "./probe.js";
 import { enabledRoleIds, defaultConfig, loadConfigSafe } from "../config/config.js";
 import { configForRole } from "../config/config-views.js";
-import { fallbackPair, resolveTierFallbacks, seamsInUse } from "../config/config-fallbacks.js";
-import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
+import { fallbackPair, resolveTierFallbacks, seamsInUse, tierChainSteps } from "../config/config-fallbacks.js";
+import { cacheReadUnpriced, fallbackModelPair, piModelsPath, piPairFree, piProviderBaseUrl, readPiProviders, type PiModelDef } from "../pi/pi-models.js";
 import { MODEL_TIERS, type FallbackModelConfig, type TumwaterConfig } from "../config/config-schema.js";
 import { isAgentId } from "../config/model-selector.js";
 import { imageReroute, seamImageInput } from "../agent/image-input.js";
@@ -21,6 +21,9 @@ import { claudeAuthUsesSubscription, parseClaudeAuthStatus, readClaudeAccount, t
 import { claudeEnv } from "../agent/claude/claude-env.js";
 import { parseJsonObject } from "../files/json-object.js";
 import { envPath } from "../files/files.js";
+import { modelPairName, pairDailyCost } from "../budget/budget.js";
+import { usd, usdCap } from "../text/format.js";
+import { loadLoopStates } from "./doctor-holds.js";
 import { resolveAgentBin } from "../pi/pi-bin.js";
 import { agree } from "../text/phrases.js";
 import { formatDate, formatTime } from "../text/datetime.js";
@@ -85,6 +88,73 @@ export function checkFallbackModel(
     return okOutcome(`${name} — priced at zero (cost n/a), serving not verified`);
   }
   return warnOutcome(`${nameOf(declared)} is not priced at zero in ${modelsPath} — at the cap roles pause instead of switching`);
+}
+
+/** Whether a local server answers `GET <url>`: node's built-in fetch with a short timeout, false
+ * on any failure — doctor is a pre-flight, not a place to wait out a hung server. */
+async function probeModels(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(2000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+const isLocalUrl = (url: string): boolean => {
+  try {
+    const host = new URL(url).hostname;
+    return host === "127.0.0.1" || host === "localhost";
+  } catch {
+    return false;
+  }
+};
+
+/** The `fallback chain` check: one fragment per step of every tier's chain saying whether the
+ * step can run now — a local pi server that does not answer (warn), a step whose own daily cap is
+ * spent, a free pair, a claude step with its billing, or a priced pair. Reads config, pi's
+ * models.json and the loop states; only a pi step on 127.0.0.1/localhost makes a network
+ * request. `probe` is injectable so tests need no real server. */
+export async function checkFallbackChain(
+  root: string,
+  modelsPath: string = piModelsPath(),
+  probe: (url: string) => Promise<boolean> = probeModels,
+): Promise<CheckOutcome> {
+  const loaded = loadConfigForCheck(root);
+  if ("outcome" in loaded) return loaded.outcome;
+  const { config } = loaded;
+  const steps = tierChainSteps(config);
+  if (steps.length === 0) return okOutcome("none configured");
+  const states = loadLoopStates(root, config);
+  const providers = readPiProviders(modelsPath);
+  const account = readClaudeAccount(root);
+  const now = Date.now();
+  let down = false;
+  const fragments: string[] = [];
+  for (const { tier, step, pair } of steps) {
+    const isClaude = pair.provider === "claude";
+    const base = !isClaude && pair.provider ? piProviderBaseUrl(modelsPath, pair.provider) : null;
+    const local = base !== null && isLocalUrl(base);
+    const up = local ? await probe(`${base}/models`) : null;
+    const cap = pair.maxDailyCostUsd;
+    const spent = cap !== undefined ? pairDailyCost(states, modelPairName(pair), now) : 0;
+    let verdict: string;
+    if (up === false) {
+      down = true;
+      verdict = `not running (GET ${base}/models failed)`;
+    } else if (cap !== undefined && spent >= cap) {
+      verdict = `cap reached (${usd(spent)}/${usdCap(cap)})`;
+    } else if (isClaude) {
+      verdict = `claude ${pair.extraUsage ? "extra usage" : (account?.billing ?? "billing unknown")}`;
+    } else if (piPairFree(providers, pair.provider, pair.model, account)) {
+      verdict = up ? "free · server up" : "free";
+    } else {
+      verdict = cap !== undefined ? `priced, ${usd(spent)}/${usdCap(cap)} today` : "priced, team cap only";
+    }
+    fragments.push(`${tier} ${step + 1}: ${pair.provider ?? "?"}/${pair.model ?? "?"} — ${verdict}`);
+  }
+  const detail = fragments.join("; ");
+  return down ? warnOutcome(detail) : okOutcome(detail);
 }
 
 /** The credential verdict one provider's `pi auth check --provider <p> --json` gives:

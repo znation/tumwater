@@ -32,7 +32,7 @@ import {
   checkWorkInstances,
   type DoctorReport,
 } from "./doctor-checks.js";
-import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
+import { checkClaudeAuth, checkClaudeVersion, checkAnthroApiKey, checkFallbackChain, checkFallbackModel, checkImageInput, checkTierModels } from "./doctor-model-checks.js";
 import { agentQualifiedSelector } from "../config/config-views.js";
 import { seamsInUse } from "../config/config-fallbacks.js";
 import { checkBacklogHeadings, checkFixClaims, checkPlanDependencies, checkRefusedEntries, checkStaleQueuedLandings, checkStaleBugs, checkStaleQuestions, checkStalledPlans, checkStrandedPlans, checkUncommittedBacklog } from "./doctor-backlog.js";
@@ -99,6 +99,7 @@ export async function runDoctor(
     { name: "repeated failures", ...checkErrorStreaks(root, config) },
     { name: "main's check", ...checkMainRed(root, config) },
     { name: "over-cap model", ...checkFallbackModel(root, undefined, (orchestratorAlive(root, info) && info?.fallbackDemoted) || null) },
+    { name: "fallback chain", ...(await checkFallbackChain(root)) },
     { name: "models for each tier", ...(await checkTierModels(root)) },
     { name: "image input", ...(await checkImageInput(root, undefined, undefined, undefined, probeImages, pathEnv)) },
     { name: "claude auth", ...(await checkClaudeAuth(root, pathEnv)) },

@@ -5,34 +5,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 7a/7: A `tumwater doctor` "fallback chain" check lists each tier's steps and probes local servers (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7b/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts and their tests)
-
-**Goal.** Doctor's over-cap model row says "priced at zero (cost n/a), serving not verified" even when the local server is down. On 2026-10-16 neither `qwenrunner` (127.0.0.1:8090) nor oMLX (:8000) was listening. A new row lists every step of every tier's chain and says whether each one can run now. This part reads only config, pi's `models.json` and the loop states, so it needs no other part of 7/7.
-
-**Approach.**
-- src/pi/pi-models.ts: add `piProviderBaseUrl(modelsPath: string, provider: string): string | null`. It returns the provider's `baseUrl` string from `models.json`, or null when the file, the provider or the field is missing. Read the file with the same `readJsonFile` guard `readPiProviders` uses.
-- src/doctor/doctor-model-checks.ts: add `async function checkFallbackChain(root: string, modelsPath = piModelsPath(), probe: (url: string) => Promise<boolean> = probeModels): Promise<CheckOutcome>`.
-  - It loads the config with `loadConfigForCheck`, takes the steps from `tierChainSteps(config)`, and loads the states with `loadLoopStates(root, config)`. Export that function from src/doctor/doctor-holds.ts, where it is module-private today.
-  - No steps: `okOutcome("none configured")`.
-  - For each step it writes one fragment, `<tier> <step+1>: <provider>/<model> — <verdict>`. Fragments are joined with `; `. The verdict is decided in this order:
-    1. A pi step whose `piProviderBaseUrl` host is `127.0.0.1` or `localhost`, and where `probe(<baseUrl>/models)` resolves false: `not running (GET <baseUrl>/models failed)`.
-    2. A step with `maxDailyCostUsd` where `pairDailyCost(states, modelPairName(pair), now) >= maxDailyCostUsd`: `cap reached ($5.00/$5)`, written as `${usd(spent)}/${usdCap(cap)}` (src/text/format.ts).
-    3. A pi step that `piPairFree` prices at zero: `free`, plus ` · server up` when rule 1 probed it.
-    4. A claude step: `claude` and the billing (`subscription` or `extra usage` when `pair.extraUsage`), from `readClaudeAccount(root)`.
-    5. Otherwise: `priced` and today's spend over its cap, or `priced, team cap only` when it has no step cap.
-  - It warns when any step reads `not running`, and is ok otherwise.
-  - `probeModels(url)` is a module-private `fetch(url, { signal: AbortSignal.timeout(2000) })` that resolves `res.ok` and resolves false on any throw. It uses node's built-in fetch, so it adds no dependency.
-- src/doctor/doctor.ts: add `{ name: "fallback chain", ...(await checkFallbackChain(root)) }` right after the `over-cap model` row.
-
-**Files touched.** src/pi/pi-models.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, test/doctor-model-checks.test.ts.
-
-**Acceptance criteria.** All of these are tests in test/doctor-model-checks.test.ts, with a temp `models.json` and an injected or real local probe:
-- A local step whose `baseUrl` points at a port that was listened on and then closed (a `node:http` server on 127.0.0.1:0, then `close()`) warns and contains `not running`. The same step with the server listening reads ok and contains `free · server up`.
-- A priced step with `maxDailyCostUsd: 5` and a state charging that pair $5 today contains `cap reached ($5.00/$5)`.
-- A config with no fallback reads ok `none configured`.
-- A non-local `baseUrl` never calls the probe: the injected probe counts zero calls.
-- `npm run test` passes.
-
 ### Fallback chain, part 7b/7: The budget gate publishes each tier's step as a `chain` block and logs `fallback_switched` (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/fleet/orchestrator-info.ts src/events/ and their tests)
 
 **Goal.** After parts 1/7–6/7, a tier can run on a later step of its chain because the window is used up, the reserve is reached, the team cap is reached, a step's own cap is spent, or a step was demoted. Nothing records which step each tier is on. This part publishes it for the surfaces in 7c/7 and 7d/7, and logs each change.
@@ -1919,6 +1891,35 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - `npm run test` passes.
 
 ## Done
+
+### Fallback chain, part 7a/7: A `tumwater doctor` "fallback chain" check lists each tier's steps and probes local servers (done 2026-10-16; planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7b/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts and their tests)
+
+**Goal.** Doctor's over-cap model row says "priced at zero (cost n/a), serving not verified" even when the local server is down. On 2026-10-16 neither `qwenrunner` (127.0.0.1:8090) nor oMLX (:8000) was listening. A new row lists every step of every tier's chain and says whether each one can run now. This part reads only config, pi's `models.json` and the loop states, so it needs no other part of 7/7.
+
+**Approach.**
+- src/pi/pi-models.ts: add `piProviderBaseUrl(modelsPath: string, provider: string): string | null`. It returns the provider's `baseUrl` string from `models.json`, or null when the file, the provider or the field is missing. Read the file with the same `readJsonFile` guard `readPiProviders` uses.
+- src/doctor/doctor-model-checks.ts: add `async function checkFallbackChain(root: string, modelsPath = piModelsPath(), probe: (url: string) => Promise<boolean> = probeModels): Promise<CheckOutcome>`.
+  - It loads the config with `loadConfigForCheck`, takes the steps from `tierChainSteps(config)`, and loads the states with `loadLoopStates(root, config)`. Export that function from src/doctor/doctor-holds.ts, where it is module-private today.
+  - No steps: `okOutcome("none configured")`.
+  - For each step it writes one fragment, `<tier> <step+1>: <provider>/<model> — <verdict>`. Fragments are joined with `; `. The verdict is decided in this order:
+    1. A pi step whose `piProviderBaseUrl` host is `127.0.0.1` or `localhost`, and where `probe(<baseUrl>/models)` resolves false: `not running (GET <baseUrl>/models failed)`.
+    2. A step with `maxDailyCostUsd` where `pairDailyCost(states, modelPairName(pair), now) >= maxDailyCostUsd`: `cap reached ($5.00/$5)`, written as `${usd(spent)}/${usdCap(cap)}` (src/text/format.ts).
+    3. A pi step that `piPairFree` prices at zero: `free`, plus ` · server up` when rule 1 probed it.
+    4. A claude step: `claude` and the billing (`subscription` or `extra usage` when `pair.extraUsage`), from `readClaudeAccount(root)`.
+    5. Otherwise: `priced` and today's spend over its cap, or `priced, team cap only` when it has no step cap.
+  - It warns when any step reads `not running`, and is ok otherwise.
+  - `probeModels(url)` is a module-private `fetch(url, { signal: AbortSignal.timeout(2000) })` that resolves `res.ok` and resolves false on any throw. It uses node's built-in fetch, so it adds no dependency.
+- src/doctor/doctor.ts: add `{ name: "fallback chain", ...(await checkFallbackChain(root)) }` right after the `over-cap model` row.
+
+**Files touched.** src/pi/pi-models.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, test/doctor-model-checks.test.ts.
+
+**Acceptance criteria.** All of these are tests in test/doctor-model-checks.test.ts, with a temp `models.json` and an injected or real local probe:
+- A local step whose `baseUrl` points at a port that was listened on and then closed (a `node:http` server on 127.0.0.1:0, then `close()`) warns and contains `not running`. The same step with the server listening reads ok and contains `free · server up`.
+- A priced step with `maxDailyCostUsd: 5` and a state charging that pair $5 today contains `cap reached ($5.00/$5)`.
+- A config with no fallback reads ok `none configured`.
+- A non-local `baseUrl` never calls the probe: the injected probe counts zero calls.
+- `npm run test` passes.
+
 
 ### Plain terms docs, part 5/5: Rename the script and event and state names the docs still quote (done 2026-10-16; planned 2026-10-16 by user; requires parts 1/5–4/5, Plain terms scripting 5/5, Plain terms event log 9/9 and Plain terms state 5/5 landed; design in plans/terminology.md "Script interfaces" and "Event log" and "State and git"; touches README.md and DEVELOPMENT.md and docs/)
 
