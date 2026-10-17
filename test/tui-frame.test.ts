@@ -151,6 +151,7 @@ test("the hint line says what the keys do in each view and mode", () => {
   assert.match(hint({ kind: "health" }), /PgUp\/PgDn scroll/);
   assert.match(hint({ kind: "health" }), /Ctrl\+D quit/);
   assert.match(hint({ kind: "health" }), /Ctrl\+R re-run checks/);
+  assert.match(hint({ kind: "health" }), /Ctrl\+E reclaim disk/);
   assert.match(hint({ kind: "health", problems: false }), /Ctrl\+O all checks/);
   assert.match(hint({ kind: "health", problems: true }), /Ctrl\+O problems only/);
   assert.match(hint({ kind: "brief" }), /PgUp\/PgDn scroll/);

@@ -1,6 +1,7 @@
 // vocabulary: plain
 import { renderDoctor, renderDoctorProblems } from "../../doctor/doctor-render.js";
 import type { DoctorReport } from "../../doctor/doctor-checks.js";
+import { runManualReclaim } from "../../operator/operator-intent.js";
 import { promptLineFree, type TuiPaneCtx, type TuiPaneModule } from "./tui-pane-ctx.js";
 import type { TuiPaneSession } from "./tui-pane-session.js";
 
@@ -56,6 +57,28 @@ export function createHealthPane(session: TuiPaneSession) {
       run();
       session.paneScroll = 0;
       session.requestRender();
+      return true;
+    }
+    if (key.ctrl && key.name === "e" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {
+      // Ctrl+E on the Health pane runs one manual reclaim pass now — the terminal twin of the
+      // dashboard disk row's reclaim button and the core `tumwater reclaim`, both reached
+      // through the same runManualReclaim. With a live team the pass is requested through the
+      // marker a running orchestrator consumes within one poll; with none running it runs
+      // in-process, since nothing is in use. The confirmation flashes verbatim; the doctor
+      // re-runs so the free-disk row reflects what the pass freed, and a write failure flashes
+      // instead of killing the TUI. Every other view keeps Ctrl+E's trailing-window cycle.
+      void runManualReclaim(session.root).then(
+        (message) => {
+          session.flashMessage(message);
+          run();
+          session.paneScroll = 0;
+          session.requestRender();
+        },
+        (err: unknown) => {
+          session.flashError(err);
+          session.requestRender();
+        },
+      );
       return true;
     }
     if (key.ctrl && key.name === "o" && promptLineFree(ctx.es) && session.view === session.roleIds.length + 7) {

@@ -121,7 +121,13 @@ export function createTuiPanes(deps: TuiPanesDeps) {
       if (session.view === session.roleIds.length + 4) return history.handleKey?.(key, ctx) ?? false;
       return report.handleKey?.(key, ctx) ?? false;
     }
-    if (key.ctrl && key.name === "e") return report.handleKey?.(key, ctx) ?? false;
+    if (key.ctrl && key.name === "e") {
+      // Ctrl+E's Health reclaim arm is routed ahead of the report panes' trailing-window
+      // cycle; the Health arm's own view guard keeps Usage/Failures on their cycle, and the
+      // Backlog/Inbox edit arms (which live in the editors) are untouched.
+      if (health.handleKey?.(key, ctx)) return true;
+      return report.handleKey?.(key, ctx) ?? false;
+    }
     if (key.ctrl && key.name === "s") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "y") return history.handleKey?.(key, ctx) ?? false;
     if (key.ctrl && key.name === "o") {

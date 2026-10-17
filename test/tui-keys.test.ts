@@ -19,7 +19,7 @@ import { renderMergeQueue } from "../src/merge/merge-queue-render.js";
 import { enqueuePrompt, enqueueRolePrompt, listWideScope, queuedListRows, renderQueuedList } from "../src/inbox/inbox.js";
 import { notBeforeMarker, notBeforeMs } from "../src/inbox/prompt-not-before.js";
 import { readQueuedPromptBody } from "../src/inbox/inbox-edit.js";
-import { abortRequestPath, wakeRequestPath } from "../src/paths.js";
+import { abortRequestPath, reclaimRequestPath, wakeRequestPath } from "../src/paths.js";
 import { writeEvents, writeOrchestratorMarker } from "./fixtures/log-fixtures.js";
 import { readTickDetail } from "../src/tick/tick-detail-data.js";
 import { renderTickDetail } from "../src/tick/tick-detail.js";
@@ -2538,4 +2538,43 @@ test("the Brief tab caches renderBrief of the brief file on entry, and holds nul
   for (let i = 0; i < 8; i++) bareKeys.handleKey(undefined, { ctrl: true, name: "t" });
   assert.equal(bareKeys.state().view, 8);
   assert.equal(bareKeys.state().paneCache, null);
+});
+
+// Ctrl+E on the Health view runs one manual reclaim pass — the terminal twin of the dashboard
+// disk row's reclaim button, both through the same runManualReclaim (src/operator/
+// operator-intent.ts). A live team is asked through the marker it consumes within one poll; with
+// none running the pass runs in-process. Every other view keeps Ctrl+E's trailing-window cycle.
+test("Ctrl+E on the Health view requests a manual reclaim from a live team", async () => {
+  const root = makeRoot();
+  writeOrchestratorMarker(root, ["clean"]); // default pid makes the marker live
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health (roleIds.length + 7)
+  assert.equal(keys.state().view, 7, "Health is roleIds.length + 7");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), true, "the marker a live team consumes is on disk");
+  assert.match(keys.state().flash!, /reclaim requested/);
+});
+
+test("Ctrl+E on the Health view runs an in-process reclaim with no live team", async () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  for (let i = 0; i < 7; i++) keys.handleKey(undefined, { ctrl: true, name: "t" }); // → Health
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.match(keys.state().flash!, /nothing to reclaim/);
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), false, "no live team, so no marker is written");
+});
+
+test("Ctrl+E on the Activity view writes no reclaim marker", async () => {
+  const root = makeRoot();
+  const { keys } = makeKeys(root, () => 0);
+  keys.syncSnapshot(0, false, []);
+  assert.equal(keys.state().view, 0, "starts on Activity");
+  keys.handleKey(undefined, { ctrl: true, name: "e" });
+  assert.equal(fs.existsSync(reclaimRequestPath(root)), false, "Activity's Ctrl+E writes no reclaim marker");
 });
