@@ -311,3 +311,36 @@ test("the Failed runs and Merge failures charts stack per role and seriesHasAny 
   assert.equal(seriesHasAny(data, "failedRunsByRole"), true);
   assert.equal(seriesHasAny(data, "mergeFailedByRole"), true);
 });
+
+test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartRevisionsByRole(d: ReportData): string;
+    seriesHasAny(d: ReportData, field: string): boolean;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartRevisionsByRole, seriesHasAny } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartRevisionsByRole", "seriesHasAny"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3 }, { revisionsByRole: { feature: 2 } }),
+    mkDay("2026-09-02", { feature: 1 }, { revisionsByRole: { bugfix: 1 } }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 4], ["bugfix", 0]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  const got = titles(chartRevisionsByRole(data));
+  assert.equal(got.length, 2);
+  assert.ok(got.some((t) => t.includes("2026-09-01 · feature: 2 revisions")));
+  assert.ok(got.some((t) => t.includes("2026-09-02 · bugfix: 1 revision")));
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartRevisionsByRole(data)), legendOf(chartTicksByRole(data)));
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 }, { revisionsByRole: { feature: 0 } })]);
+  assert.equal(seriesHasAny(plain, "revisionsByRole"), false);
+  assert.equal(seriesHasAny(data, "revisionsByRole"), true);
+});

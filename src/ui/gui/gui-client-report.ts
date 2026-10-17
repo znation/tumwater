@@ -36,6 +36,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       for (const role of Object.keys(d.costByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.notionalByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.rejectionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
+      for (const role of Object.keys(d.revisionsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.fallbacksByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.imageReroutesByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
       for (const role of Object.keys(d.failedRunsByRole || {})) if (!Object.hasOwn(byRole, role)) byRole[role] = 0;
@@ -155,6 +156,10 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
   // (day, loop) with a rejection, empty when the report has none.
   function chartRejectionsByRole(data) {
     return roleStackChart(data, "rejectionsByRole", (n) => plural(n, "rejection"), countAxis, true);
+  }
+  // Revisions (rework rounds after a rejection), per loop, drawn the same way.
+  function chartRevisionsByRole(data) {
+    return roleStackChart(data, "revisionsByRole", (n) => plural(n, "revision"), countAxis, true);
   }
   // The team's model-fallback episodes, per loop, on the same count axis: one segment per
   // (day, loop) with a fallback.
@@ -430,6 +435,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
         block("Merged commits", chartCommits(d)) + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
         block("Rejections by role", chartRejectionsByRole(d)) +
+        (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +
         (seriesHasAny(d, "fallbacksByRole") ? block("Fallbacks by role", chartFallbacksByRole(d)) : "") +
         (seriesHasAny(d, "imageReroutesByRole") ? block("Image reroutes by role", chartImageReroutesByRole(d)) : "") +
         (seriesHasAny(d, "failedRunsByRole") ? block("Failed runs by role", chartFailedRunsByRole(d)) : "") +

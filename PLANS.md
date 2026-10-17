@@ -1153,7 +1153,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The GUI Usage view charts `Revisions by role` as a stacked per-role element (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and of the in-flight `Merge check median` plan, which touches only `src/report/`)
+## Done
+
+### The GUI Usage view charts `Revisions by role` as a stacked per-role element (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and of the in-flight `Merge check median` plan, which touches only `src/report/`) — done 2026-10-16
 
 **Goal.** `tumwater report` prints a `Revisions by role` line in both renders (`src/report/report-render.ts`), and each series day already carries the count to the dashboard as `ReportDay.revisionsByRole` (`src/report/report-data.ts`; set in the team branch of `collectReport` when non-empty, narrowed with `narrowToRole` in the role-scoped branch). The GUI Usage view (`src/ui/gui/gui-client-report.ts`) charts rejections, fallbacks, image reroutes, failed runs and merge failures per role, but not revisions, so the rework rounds a role spends re-applying rejected changes are invisible on the dashboard. Add one stacked per-role chart for it, the same way as `chartFailedRunsByRole` (PLANS.md Done: "The GUI Usage view charts `Failed runs by role` and `Merge failures by role`").
 
@@ -1173,8 +1175,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - `seriesHasAny(d, "revisionsByRole")` is false for a series without the map (or only zero counts) and true once a day carries a nonzero count.
 - The existing tests in `test/gui-client-report.test.ts` pass unchanged.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater report`'s day report gains a `Merge check median` line giving each day's median passing merge-check time, so the operator sees the suite slowing over days (planned 2026-10-16 by the plan role; independent of the waiting plain-terms rename series and the in-flight GUI failed-runs chart — touches src/report/, src/build/build-check-events.ts and tests only, and leaves src/doctor/ and src/ui/ alone) — done 2026-10-16
 
