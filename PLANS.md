@@ -118,59 +118,6 @@ This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires t
   - No `XDG_*` is added, and an inherited one passes through untouched.
 - `npm test` passes.
 
-### OpenCode backend, part 4/7: The OpenCode stream translator, the export reconciliation, and a canonical `run_usage` event (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 1/7 landed; design in plans/opencode-backend.md "The stream translator, and the export that completes it" and "Findings, verified live" 4, 5, 7, 8; touches src/agent/opencode/opencode-stream.ts (new) src/pi/pi-stream.ts test/fixtures/opencode-events.ts (new) and their tests)
-
-**Goal.** Turn `opencode run --format json` lines into tumwater's canonical event stream (pi's vocabulary), so every reader of the raw log works unchanged for OpenCode runs. Those readers are PiStreamParser, the transcripts, progress data, `tumwater logs` and suite-rerun detection.
-
-The live stream drops the final step's usage in most runs (41 of 49, finding 5). So this part also turns OpenCode's session export into authoritative cost and usage lines.
-
-**Approach.**
-- **Fixtures.** test/fixtures/opencode-events.ts loads the real captures in test/fixtures/opencode-captures/ (README.md there says what each shows).
-  - It adds builders only for the cases the probe never produced: a 429, a 5xx, and a context overflow.
-  - Each such builder's comment says it is synthetic, shaped like the captured `error` events.
-- **`opencodeTranslator()`** in src/agent/opencode/opencode-stream.ts implements `StreamTranslator` (`translate`, `warnings`, `finalize`):
-  - The first event with a non-empty `sessionID` emits `session` (`id`, `cwd`), then `agent_start`.
-  - `step_start` opens a message buffer. A `text` or `tool_use` that arrives with no buffer open opens one too, because the first `step_start` is sometimes missing.
-  - A `tool_use` becomes a `toolCall` block:
-    - `id` = `part.id`;
-    - the name mapped `shell`→`bash`, `patch`→`edit`, others lower-cased;
-    - `arguments` = `state.input` (V2 already uses `path`).
-  - `step_finish` emits one `message_end` with the buffered blocks.
-    - Usage: `input`, `output`, `cacheRead` = cache.read, `cacheWrite` = cache.write, and `totalTokens` = their sum.
-    - `cost.total` = the step's `cost`.
-    - Then, for each buffered call, `tool_execution_start` and `tool_execution_end` (`isError` for `status: "error"`).
-  - `finalize()` flushes an open buffer as a `message_end` without usage.
-- **Errors** (`{type: "error", error: {type, message, status?, response?}}`) become a final `message_end` with `stopReason: "error"`, `errorMessage` and `tumwaterKind`:
-  - `provider.auth` with status 403, or a body naming `FreeTierError` → `transientBackend` / `server`. `warnings()` reports `opencode_free_tier_refused` once.
-  - `provider.no-route`, an `unknown` "Expected a string starting with "ses"", or a 401 → `configError`.
-  - 429 / rate-limit text → `transientRateLimit`; 5xx, connection and timeout → `transientBackend` of that kind; context overflow → `contextExceeded`.
-- **`opencodeExportLines(exportJson: unknown): string[]`** (pure) returns two canonical lines from the export's `info`:
-  - `run_cost {total: info.cost}`;
-  - `run_usage {input, output, cacheRead, cacheWrite}` from `info.tokens`.
-
-  Anything malformed returns `[]`. Part 5/7 runs the export and logs `opencode_usage_partial` when this is empty.
-- **src/pi/pi-stream.ts:** a canonical `run_usage` event **replaces** the summed token fields (`input`, `output`, `cacheRead`, `cacheWrite`, total), the way `run_cost` already replaces the cost sum. A stream without one is unchanged.
-
-**Files touched.**
-- Source: src/agent/opencode/opencode-stream.ts (new), src/pi/pi-stream.ts.
-- Tests: test/fixtures/opencode-events.ts (new), test/opencode-stream.test.ts (new), test/pi-parser.test.ts.
-
-**Acceptance criteria.**
-- **edit-run.jsonl:**
-  - It translates to `session`, `agent_start`, then three `message_end`s, each followed by its one tool execution (read, edit, bash).
-  - The final text with no `step_finish` is flushed by `finalize()`.
-  - Fed to PiStreamParser, the tokens are the three streamed steps' sums and `finalText` is "DONE".
-  - Adding `opencodeExportLines(edit-run-export.json)` makes the parser's tokens equal the export's `info.tokens` (input 3223, output 433, cacheRead 7680), with `costUsd` 0.
-- **parallel-tools.jsonl** gives one `message_end` with two toolCalls, then two tool executions.
-- **oversized-output.jsonl** gives a `bash` call whose `command` is `seq 1 200000`, which suite-rerun detection can read.
-- **Error captures:**
-  - Both free-tier files fold to `transientBackend`, and the warning appears exactly once.
-  - unknown-model, unavailable-variant and malformed-session-id fold to `configError`.
-  - The synthetic 429 folds to `transientRateLimit`.
-- An unknown event type is warned once.
-- A stream without `run_usage` folds exactly as before (existing test/pi-parser.test.ts cases unchanged).
-- `npm test` passes.
-
 ### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
 
 **Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
@@ -1414,6 +1361,60 @@ The team's OpenCode sessions and spill files are pruned like its other session f
 - `npm run test` passes.
 
 ## Done
+
+### OpenCode backend, part 4/7: The OpenCode stream translator, the export reconciliation, and a canonical `run_usage` event (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 1/7 landed; design in plans/opencode-backend.md "The stream translator, and the export that completes it" and "Findings, verified live" 4, 5, 7, 8; touches src/agent/opencode/opencode-stream.ts (new) src/pi/pi-stream.ts test/fixtures/opencode-events.ts (new) and their tests — done 2026-10-17 by the feature role)
+
+**Goal.** Turn `opencode run --format json` lines into tumwater's canonical event stream (pi's vocabulary), so every reader of the raw log works unchanged for OpenCode runs. Those readers are PiStreamParser, the transcripts, progress data, `tumwater logs` and suite-rerun detection.
+
+The live stream drops the final step's usage in most runs (41 of 49, finding 5). So this part also turns OpenCode's session export into authoritative cost and usage lines.
+
+**Approach.**
+- **Fixtures.** test/fixtures/opencode-events.ts loads the real captures in test/fixtures/opencode-captures/ (README.md there says what each shows).
+  - It adds builders only for the cases the probe never produced: a 429, a 5xx, and a context overflow.
+  - Each such builder's comment says it is synthetic, shaped like the captured `error` events.
+- **`opencodeTranslator()`** in src/agent/opencode/opencode-stream.ts implements `StreamTranslator` (`translate`, `warnings`, `finalize`):
+  - The first event with a non-empty `sessionID` emits `session` (`id`, `cwd`), then `agent_start`.
+  - `step_start` opens a message buffer. A `text` or `tool_use` that arrives with no buffer open opens one too, because the first `step_start` is sometimes missing.
+  - A `tool_use` becomes a `toolCall` block:
+    - `id` = `part.id`;
+    - the name mapped `shell`→`bash`, `patch`→`edit`, others lower-cased;
+    - `arguments` = `state.input` (V2 already uses `path`).
+  - `step_finish` emits one `message_end` with the buffered blocks.
+    - Usage: `input`, `output`, `cacheRead` = cache.read, `cacheWrite` = cache.write, and `totalTokens` = their sum.
+    - `cost.total` = the step's `cost`.
+    - Then, for each buffered call, `tool_execution_start` and `tool_execution_end` (`isError` for `status: "error"`).
+  - `finalize()` flushes an open buffer as a `message_end` without usage.
+- **Errors** (`{type: "error", error: {type, message, status?, response?}}`) become a final `message_end` with `stopReason: "error"`, `errorMessage` and `tumwaterKind`:
+  - `provider.auth` with status 403, or a body naming `FreeTierError` → `transientBackend` / `server`. `warnings()` reports `opencode_free_tier_refused` once.
+  - `provider.no-route`, an `unknown` "Expected a string starting with "ses"", or a 401 → `configError`.
+  - 429 / rate-limit text → `transientRateLimit`; 5xx, connection and timeout → `transientBackend` of that kind; context overflow → `contextExceeded`.
+- **`opencodeExportLines(exportJson: unknown): string[]`** (pure) returns two canonical lines from the export's `info`:
+  - `run_cost {total: info.cost}`;
+  - `run_usage {input, output, cacheRead, cacheWrite}` from `info.tokens`.
+
+  Anything malformed returns `[]`. Part 5/7 runs the export and logs `opencode_usage_partial` when this is empty.
+- **src/pi/pi-stream.ts:** a canonical `run_usage` event **replaces** the per-message token sums (`input`, `output`, `cacheRead`, `cacheWrite`), the way `run_cost` already replaces the cost sum. The export's split is the whole run's cumulative total, not one request's, so it never touches `peakContextTokens`, and `run_usage` carries no `total`. A stream without one is unchanged.
+
+**Files touched.**
+- Source: src/agent/opencode/opencode-stream.ts (new), src/pi/pi-stream.ts.
+- Tests: test/fixtures/opencode-events.ts (new), test/opencode-stream.test.ts (new), test/pi-parser.test.ts.
+
+**Acceptance criteria.**
+- **edit-run.jsonl:**
+  - It translates to `session`, `agent_start`, then three `message_end`s, each followed by its one tool execution (read, edit, bash).
+  - The final text with no `step_finish` is flushed by `finalize()`.
+  - Fed to PiStreamParser, the tokens are the three streamed steps' sums and `finalText` is "DONE".
+  - Adding `opencodeExportLines(edit-run-export.json)` makes the parser's tokens equal the export's `info.tokens` (input 3223, output 433, cacheRead 7680), with `costUsd` 0.
+- **parallel-tools.jsonl** gives one `message_end` with two toolCalls, then two tool executions.
+- **oversized-output.jsonl** gives a `bash` call whose `command` is `seq 1 200000`, which suite-rerun detection can read.
+- **Error captures:**
+  - Both free-tier files fold to `transientBackend`, and the warning appears exactly once.
+  - unknown-model, unavailable-variant and malformed-session-id fold to `configError`.
+  - The synthetic 429 folds to `transientRateLimit`.
+- An unknown event type is warned once.
+- A stream without `run_usage` folds exactly as before (existing test/pi-parser.test.ts cases unchanged).
+- `npm test` passes.
+
 ### The TUI's Activity pane filters the feed by one exact event type with Ctrl+O, the terminal twin of `tumwater logs --type <type>` and the dashboard Activity card's tally chips (planned 2026-10-17 by the plan role; the Activity pane narrows its feed only by role scope (`activityRole`, Ctrl+G) and free-text search (`activityGrep`, `/`), so an operator who wants one event type must type it into the substring search or leave for the CLI's exact-match `--type`: `activityEvents` (src/ui/tui/tui-pane.ts) takes only role and grep, and no TUI file filters on `e.type`. Ctrl+O already cycles a view's categorical filter — the History pane's outcome class and the Health pane's problems-only toggle — and is routed to each pane by view in src/ui/tui/tui-panes.ts, so Activity takes the same key with no new binding. Independent of the three eligible Planned entries (prompt `--top`, TUI image attach, dashboard tally chips: none edits this feed filter) and of the blocked plain-terms series; the in-flight image-attach plan binds Ctrl+V on Activity and touches tui-frame.ts/tui.tsx, so the two rebase but neither takes Ctrl+O. Touches src/ui/tui/tui-pane-activity.ts, src/ui/tui/tui-pane.ts, src/ui/tui/tui-panes.ts, src/ui/tui/tui-frame.ts, src/ui/tui/tui-keys.ts, src/ui/tui/tui.tsx, docs/cli.md, test/tui-keys.test.ts and test/tui-frame.test.ts — done 2026-10-17 by the feature role)
 
 **Goal.** Ctrl+O on the Activity view (view 0) narrows the feed to one exact event type: it advances `all → first present type → … → last present type → all`, the same press-to-cycle shape Ctrl+O gives the History pane's outcome class and the Health pane's problems-only toggle. The type is the CLI's exact `e.type === type` match (`logs --type`), not the substring search; it composes with the Ctrl+G role scope and the `/` search, resets the pane to the live tail on each change, and the hint line names the active type.

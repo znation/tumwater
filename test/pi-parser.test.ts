@@ -727,3 +727,44 @@ test("the first blind read wins; a later one does not re-fire the hook", () => {
   assert.deepEqual(parser.imageBlind, { path: "/a.png" });
   assert.deepEqual(calls, ["/a.png"], "only the first blind read reaches the hook");
 });
+
+test("a run_usage with the full token split replaces the summed prompt/output figures", () => {
+  // plan opencode-backend part 4/7: the export's run_usage is authoritative the way run_cost
+  // is. Seed the parser with a summed per-message stream, then overlay the run_usage from
+  // opencodeExportLines(edit-run-export.json) — it must override, not add.
+  const parser = new PiStreamParser();
+  const turn = (input: number, output: number): string =>
+    JSON.stringify({
+      type: "message_end",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "x" }],
+        usage: { input, output, cacheRead: 0, cacheWrite: 0, totalTokens: input + output, cost: { total: 1 } },
+        stopReason: "stop",
+      },
+    });
+  parser.feed(turn(1000, 100) + "\n");
+  parser.feed(turn(2000, 200) + "\n");
+  assert.equal(parser.outputTokens, 300, "summed before the overlay");
+
+  // The export's numbers (input 3223, output 433, cache read 7680) replace the sums.
+  const beforePeak = parser.peakContextTokens;
+  const runUsage = { type: "run_usage", input: 3223, output: 433, cacheRead: 7680, cacheWrite: 0 };
+  parser.feed(JSON.stringify(runUsage) + "\n");
+  assert.equal(parser.outputTokens, 433, "output is the export's, not the stream's sum");
+  assert.equal(parser.promptTokens, 3223 + 7680, "prompt = input + cacheRead");
+  assert.equal(parser.cacheReadTokens, 7680);
+  assert.equal(parser.peakContextTokens, beforePeak, "the split's cumulative sum is not a per-request peak");
+});
+
+test("a run_usage carrying only outputTokens (claude) still replaces just the output", () => {
+  const parser = new PiStreamParser();
+  parser.feed(
+    JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text: "x" }], usage: { output: 50, cost: { total: 0 } }, stopReason: "stop" },
+    }) + "\n",
+  );
+  parser.feed(JSON.stringify({ type: "run_usage", outputTokens: 7 }) + "\n");
+  assert.equal(parser.outputTokens, 7, "the claude-style run_usage replaces the output sum");
+});

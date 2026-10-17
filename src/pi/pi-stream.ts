@@ -104,8 +104,13 @@ interface PiStreamEvent {
   retryAfterSeconds?: unknown;
   /** run_cost events only: the run's authoritative cost. */
   total?: unknown;
-  /** run_usage events only: the run's authoritative output-token total. */
+  /** run_usage events only: the run's authoritative output-token total (claude). */
   outputTokens?: unknown;
+  /** run_usage events only: the run's authoritative token split (opencode's export). */
+  input?: unknown;
+  output?: unknown;
+  cacheRead?: unknown;
+  cacheWrite?: unknown;
   /** rate_limit events only, the account-window reading. */
   rateLimitType?: unknown;
   status?: unknown;
@@ -500,9 +505,27 @@ export class PiStreamParser {
     // (claude's split-block messages report cost.total 0; the final result carries the real
     // number). A backend that emits none keeps the summed per-message figure (pi).
     if (event.type === "run_cost") this.costUsd = usageNumber(event.total);
-    // Likewise a run_usage replaces the summed output tokens (claude's per-message usage is
-    // the stream-start snapshot, about 8x low).
-    if (event.type === "run_usage") this.outputTokens = usageNumber(event.outputTokens);
+    // Likewise a run_usage replaces the summed per-message token figures (claude's per-message
+    // usage is the stream-start snapshot, about 8x low). OpenCode's export drives a run_usage
+    // that carries the run's whole token split — input, output, cacheRead, cacheWrite — and
+    // replaces all four summed fields, the way run_cost replaces the cost sum; a stream without
+    // one keeps its summed figures. A run_usage bearing only outputTokens (claude) keeps the
+    // historical behavior of replacing just the output sum. The split's sum is a cumulative RUN
+    // total, not a single request, so it never touches peakContextTokens (a per-request peak
+    // the stream keeps computing); the export carries no total and none is invented here.
+    if (event.type === "run_usage") {
+      if (event.input !== undefined || event.cacheRead !== undefined || event.cacheWrite !== undefined) {
+        const input = usageNumber(event.input);
+        const cacheRead = usageNumber(event.cacheRead);
+        const cacheWrite = usageNumber(event.cacheWrite);
+        const output = usageNumber(event.output);
+        this.outputTokens = output;
+        this.promptTokens = input + cacheRead + cacheWrite;
+        this.cacheReadTokens = cacheRead;
+      } else {
+        this.outputTokens = usageNumber(event.outputTokens);
+      }
+    }
     // A canonical rate_limit event carries an account-window reading: collect the newest per
     // type, note any overage, and treat a rejected window as the transient rate limit it is.
     if (event.type === "rate_limit") this.applyRateLimit(event);
