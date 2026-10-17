@@ -89,8 +89,8 @@ under the default `backend: "pi"`, so one config can mix a Claude strong tier wi
 }
 ```
 
-The default tier runs on pi through Hugging Face, the strong model jobs (the reviewer and the
-conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
+The default tier runs on pi through Hugging Face, the strong model jobs (the director, the plan
+role, the reviewer, and the conflict resolver) run on the claude CLI's included usage, and the fallback runs on pi through
 oMLX — all concurrently, under each provider's cap (set it with `maxConcurrentPerProvider`;
 `tumwater status` shows how many runs each key has going out of its cap). Prefix `anthropic/` (`anthropic/claude-…`)
 to keep a Claude model on pi instead (billed per token). See [plans/agent-backends.md §3](plans/agent-backends.md).
