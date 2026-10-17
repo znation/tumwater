@@ -5,46 +5,109 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### Fallback chain, part 7/7: Show the fallback chain in doctor, the status badge, the TUI, the dashboard and the role view (planned 2026-10-16 by user; requires parts 2/7 and 6/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/doctor/ src/fleet/orchestrator-info.ts src/status/ src/ui/ src/roles/role-view.ts src/roles/role-render.ts src/events/ and their tests)
+### Fallback chain, part 7a/7: A `tumwater doctor` "fallback chain" check lists each tier's steps and probes local servers (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7b/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/pi/pi-models.ts src/doctor/doctor-model-checks.ts src/doctor/doctor.ts and their tests)
 
-**Needs review 2026-10-16 by feature: too large for one run**
-
-**Goal.** After parts 1/7–6/7, the team can be on step 2 of a chain because the window is used up, because a step's cap is spent, or because a step was demoted. Several surfaces still describe the old world:
-
-- the window badge reads "claude seams held until 14:30" while the work runs on a fallback;
-- doctor's `claude window` check says subscription Claude jobs wait;
-- doctor's fallback row says "priced at zero (cost n/a), serving not verified", even when the local server is not running. On 2026-10-16 neither `qwenrunner` (127.0.0.1:8090) nor oMLX (:8000) was listening.
-
-This part makes every surface say which step each tier is on, why, and when it returns.
+**Goal.** Doctor's over-cap model row says "priced at zero (cost n/a), serving not verified" even when the local server is down. On 2026-10-16 neither `qwenrunner` (127.0.0.1:8090) nor oMLX (:8000) was listening. A new row lists every step of every tier's chain and says whether each one can run now. This part reads only config, pi's `models.json` and the loop states, so it needs no other part of 7/7.
 
 **Approach.**
-- src/gates/budget-gates.ts, published through `publishInfoFields` into orchestrator.json (src/fleet/orchestrator-info.ts): a `chain` block with, per tier:
-  - the active step's pair, its `step` index, and the reason it is not on step 0: `window`, `reserve`, `cap`, `step-cap`, `overage` or `demoted`;
-  - when it returns: the window's `resetsAt`, or local midnight for a cap;
-  - for priced steps, the pair's spend and cap.
-- A `fallback_switched` event, logged on every poll where a tier's active step changes, with each changed tier's `from`, `to` and `reason`. src/events/event-format.ts renders it. src/ui/fleet-alerts.ts raises it while a tier is off step 0.
-- Status snapshot, badge and side card (src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/ui/gui/gui-client-operator.ts): name each tier that is off step 0, e.g. `default → DeepSeek-V4-Flash $3.10/$5 · Claude 5h resets 17:40`.
-  - The rejected-window text says "on fallback until …" when the chain moved the work, and keeps "held until …" only when nothing could move.
-  - The TUI renders the same badge string.
-- Role view (src/roles/role-view.ts, src/roles/role-render.ts): "running on fallback 2 of 3 (5h window used up, resets 17:40)".
-- Doctor (src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts):
-  - A "fallback chain" check lists each tier's steps and whether each is usable now, and why not.
-  - For a pi step whose provider's `baseUrl` in pi's `models.json` is on 127.0.0.1 or localhost, it does a `boundedProbe` `GET <baseUrl>/models` with a 2 s budget, and warns "not running" when it fails.
-  - `checkClaudeWindow` says the work moved, or names the tiers that wait.
+- src/pi/pi-models.ts: add `piProviderBaseUrl(modelsPath: string, provider: string): string | null`. It returns the provider's `baseUrl` string from `models.json`, or null when the file, the provider or the field is missing. Read the file with the same `readJsonFile` guard `readPiProviders` uses.
+- src/doctor/doctor-model-checks.ts: add `async function checkFallbackChain(root: string, modelsPath = piModelsPath(), probe: (url: string) => Promise<boolean> = probeModels): Promise<CheckOutcome>`.
+  - It loads the config with `loadConfigForCheck`, takes the steps from `tierChainSteps(config)`, and loads the states with `loadLoopStates(root, config)`. Export that function from src/doctor/doctor-holds.ts, where it is module-private today.
+  - No steps: `okOutcome("none configured")`.
+  - For each step it writes one fragment, `<tier> <step+1>: <provider>/<model> — <verdict>`. Fragments are joined with `; `. The verdict is decided in this order:
+    1. A pi step whose `piProviderBaseUrl` host is `127.0.0.1` or `localhost`, and where `probe(<baseUrl>/models)` resolves false: `not running (GET <baseUrl>/models failed)`.
+    2. A step with `maxDailyCostUsd` where `pairDailyCost(states, modelPairName(pair), now) >= maxDailyCostUsd`: `cap reached ($5.00/$5)`, written as `${usd(spent)}/${usdCap(cap)}` (src/text/format.ts).
+    3. A pi step that `piPairFree` prices at zero: `free`, plus ` · server up` when rule 1 probed it.
+    4. A claude step: `claude` and the billing (`subscription` or `extra usage` when `pair.extraUsage`), from `readClaudeAccount(root)`.
+    5. Otherwise: `priced` and today's spend over its cap, or `priced, team cap only` when it has no step cap.
+  - It warns when any step reads `not running`, and is ok otherwise.
+  - `probeModels(url)` is a module-private `fetch(url, { signal: AbortSignal.timeout(2000) })` that resolves `res.ok` and resolves false on any throw. It uses node's built-in fetch, so it adds no dependency.
+- src/doctor/doctor.ts: add `{ name: "fallback chain", ...(await checkFallbackChain(root)) }` right after the `over-cap model` row.
 
-**Files touched.**
-- Source: src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/fleet/orchestrator-info.ts, src/events/events.ts, src/events/event-format.ts, src/status/status-data.ts, src/status/status-budget.ts, src/ui/badges.ts, src/ui/fleet-alerts.ts, src/ui/status-payload.ts, src/ui/gui/gui-client-operator.ts, src/roles/role-view.ts, src/roles/role-render.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts.
-- Tests: test/badges.test.ts, test/status-budget.test.ts, test/status-data-budget.test.ts, test/doctor-model-checks.test.ts, test/doctor-holds.test.ts, and test/event-format-fleet.test.ts.
+**Files touched.** src/pi/pi-models.ts, src/doctor/doctor-model-checks.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, test/doctor-model-checks.test.ts.
+
+**Acceptance criteria.** All of these are tests in test/doctor-model-checks.test.ts, with a temp `models.json` and an injected or real local probe:
+- A local step whose `baseUrl` points at a port that was listened on and then closed (a `node:http` server on 127.0.0.1:0, then `close()`) warns and contains `not running`. The same step with the server listening reads ok and contains `free · server up`.
+- A priced step with `maxDailyCostUsd: 5` and a state charging that pair $5 today contains `cap reached ($5.00/$5)`.
+- A config with no fallback reads ok `none configured`.
+- A non-local `baseUrl` never calls the probe: the injected probe counts zero calls.
+- `npm run test` passes.
+
+### Fallback chain, part 7b/7: The budget gate publishes each tier's step as a `chain` block and logs `fallback_switched` (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7c/7 and 7d/7; design in plans/fallback-chain.md "Events and surfaces"; touches src/gates/budget-gates.ts src/gates/gate-polls.ts src/fleet/orchestrator-info.ts src/events/ and their tests)
+
+**Goal.** After parts 1/7–6/7, a tier can run on a later step of its chain because the window is used up, the reserve is reached, the team cap is reached, a step's own cap is spent, or a step was demoted. Nothing records which step each tier is on. This part publishes it for the surfaces in 7c/7 and 7d/7, and logs each change.
+
+**Approach.**
+- src/fleet/orchestrator-info.ts: export `interface ChainTierInfo { pair: string; step: number; of: number; reason: ChainReason; returnsAt?: number; spentUsd?: number; capUsd?: number }`, with `type ChainReason = "window" | "reserve" | "cap" | "step-cap" | "overage" | "demoted"`. Add `chain?: Partial<Record<ModelTier, ChainTierInfo>>` to `OrchestratorInfo`. The read-side sanitizer drops a `chain` that is not a JSON object, the same way it drops a malformed `budget`.
+  - `step` is the 1-based position in the supplying tier's chain: `TierFallback.step ?? 0`, plus 1.
+  - `of` is that chain's length, from `tierChainSteps`.
+- src/gates/budget-gates.ts: `BudgetGatePoll` gains `chain: Partial<Record<ModelTier, ChainTierInfo>>`, built by a new exported pure helper `chainInfo(...)` from `servingResolved`. A tier gets an entry only when this poll moved it off its primary: every tier while `reached`, and while the window move is active, the tiers whose primary is a subscription claude seam. A tier the gate pauses (`pair: null`) gets no entry.
+  - `reason` names why the position just before the active step cannot run, checked in this order:
+    1. That position is a chain step whose breaker is demoted (`fallbackServingPair` false): `demoted`.
+    2. It is a chain step at its own `maxDailyCostUsd`: `step-cap`.
+    3. It is a claude step, or the tier's primary is claude, and `windowOut` is set: `reserve` when `windowOut.reserve`, else `window`.
+    4. It is a claude `extraUsage` step and `claudeOverageRefused(account)`: `overage`.
+    5. Otherwise: `cap`.
+  - `returnsAt` is `windowOut.resetsAt` for `window` and `reserve`, and the next local midnight (`dayAt(-1, new Date(now)).getTime()`) for `cap` and `step-cap`. It is absent for `demoted` and `overage`.
+  - `spentUsd` and `capUsd` are set for a priced active step that has `maxDailyCostUsd`, from `pairDailyCost`.
+  - `BudgetGateState` gains `prevChain` (initially `{}`).
+- src/gates/gate-polls.ts: add `["chain", chain]` to the existing `publishInfoFields` batch. When there are no entries, publish `undefined` so the field disappears. When any tier's `pair` or `step` differs from `state.budget.prevChain`, log one `fallback_switched` event carrying `tiers: { <tier>: { from: <pair|null>, to: <pair|null>, reason } }` for each changed tier. A tier returning to its primary has `to: null` and reason `available`. Then advance `prevChain`.
+- src/events/events.ts: add `"fallback_switched"` to the event type union with its one-line comment. src/events/event-format.ts renders it as `fallback: default → deepseek/DeepSeek-V4-Flash (window); strong → primary (available)`.
+
+**Files touched.** src/gates/budget-gates.ts, src/gates/gate-polls.ts, src/fleet/orchestrator-info.ts, src/events/events.ts, src/events/event-format.ts, test/budget-gates.test.ts, test/gate-polls.test.ts, test/event-format-fleet.test.ts.
 
 **Acceptance criteria.**
-- With a rejected window and a moved default tier:
-  - The badge names the tier, its step and the reset time, and contains no "held".
-  - `tumwater status --json` carries the `chain` block.
-  - `fallback_switched` is logged once with reason `window`.
-- Doctor:
-  - A local step on a closed port warns "not running", and an open one reads ok.
-  - A step over its cap reads "cap reached ($5.00/$5)".
-- With no fallback and nothing off step 0, every surface reads exactly as before, and `npm test` passes.
+- test/budget-gates.test.ts: with a rejected subscription window, a claude primary and a free pi chain step, `pollBudgetGate(...).chain.default` is `{ pair, step: 1, of: 1, reason: "window", returnsAt: <resetsAt> }`. Under the cap with no used-up window, `chain` is `{}`.
+- test/gate-polls.test.ts: two polls with the window rejected log exactly one `fallback_switched` with `tiers.default.reason === "window"`. A third poll after the reset logs one more, with `to: null` and reason `available`. orchestrator.json carries `chain` while moved and has none after the reset.
+- test/event-format-fleet.test.ts pins the rendered line.
+- With no fallback configured, orchestrator.json has no `chain` key, and `npm run test` passes.
+
+### Fallback chain, part 7c/7: The status badge, the dashboard side card, the TUI header and the team alerts name each tier's fallback step (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7d/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/status/status-data.ts src/ui/badges.ts src/ui/status-payload.ts src/ui/status-render.ts src/ui/fleet-alerts.ts src/ui/gui/gui-client-operator.ts and their tests)
+
+**Goal.** The window badge reads "claude model jobs wait until 14:30", and the side card reads "held until 14:30", while the work runs on a fallback. With part 7b/7's `chain` block, these surfaces say where each tier went and when it returns.
+
+**Approach.**
+- src/status/status-data.ts: `StatusSnapshot` gains `chain?: OrchestratorInfo["chain"]`. `snapshot` copies `info.chain` only while `orchestratorAlive(root, info)`, the same rule the published `budget` follows.
+- src/ui/badges.ts: add exported `chainBadge(chain, now): string`. It returns `""` when the block is absent or empty. Otherwise it returns ` · ` plus one fragment per tier in `MODEL_TIERS` order, joined with ` · `:
+  - `<tier> → <model id> [$<spent>/$<cap>]`, with the money (`usd(spent)/usdCap(cap)`) shown only when `spentUsd` and `capUsd` are set;
+  - then ` until HH:MM` (`clockHm`) when `returnsAt` is set.
+  - For example: ` · default → DeepSeek-V4-Flash $3.10/$5 until 17:40`.
+- `budgetBadge` takes `chain` as a new optional fourth parameter and appends `chainBadge` after the window fragment.
+- In `claudeWindowBadge`, the rejected branch reads `on fallback until HH:MM` when any chain entry has reason `window` or `reserve`, and keeps `claude model jobs wait until HH:MM` otherwise. That needs a `moved: boolean` argument from `budgetBadge`.
+- src/ui/status-payload.ts and src/ui/status-render.ts pass `snap.chain` to `budgetBadge`, so the GUI payload's preformatted badge and the TUI header show the same string.
+- src/ui/gui/gui-client-operator.ts `windowLine`: in the rejected branch, write `"on fallback until "` when `snap.chain` has a `window`/`reserve` entry, else keep `"held until "`. The side card adds one line per chain tier, with the same fragment text as `chainBadge`. The client reads `chain` from the status payload, which carries the snapshot field.
+- src/ui/fleet-alerts.ts: add `"chain"` to `fleetAlerts`' snapshot `Pick`. While any tier is moved, raise one alert, `running on fallback: <chainBadge text without the leading " · ">`. It does not need the operator (`alertNeedsYou` false).
+
+**Files touched.** src/status/status-data.ts, src/ui/badges.ts, src/ui/status-payload.ts, src/ui/status-render.ts, src/ui/fleet-alerts.ts, src/ui/gui/gui-client-operator.ts, test/badges.test.ts, test/fleet-alerts.test.ts, test/status-budget.test.ts.
+
+**Acceptance criteria.**
+- test/badges.test.ts: a rejected window plus a `chain.default` with reason `window` gives a `budgetBadge` that contains `default → ` and `on fallback until`, and contains neither `wait until` nor `held`. The same window with no chain still contains `claude model jobs wait until`.
+- test/fleet-alerts.test.ts: a snapshot with a chain entry raises the `running on fallback:` alert, and one without raises none.
+- `tumwater status --json` from a test whose orchestrator.json carries `chain` (alive pid) includes `chain`. With no chain, every badge string equals its value before this part (an existing badge test that does not set `chain` still passes unchanged).
+- `npm run test` passes.
+
+### Fallback chain, part 7d/7: The role view and doctor's `claude window` row say which fallback step the work moved to (planned 2026-10-16 by user; split 2026-10-16 by plan from part 7/7, siblings 7a/7, 7b/7 and 7c/7; requires part 7b/7 landed; design in plans/fallback-chain.md "Events and surfaces"; touches src/roles/role-view.ts src/roles/role-render.ts src/doctor/doctor-holds.ts src/doctor/doctor.ts src/text/datetime.ts src/ui/badges.ts and their tests)
+
+**Goal.** `tumwater role <id>` names only the declared budget fallback. Doctor's `claude window` check says "subscription claude model jobs wait until it resets" even when every tier moved. With part 7b/7's `chain` block, both say what is actually running.
+
+**Approach.**
+- src/roles/role-view.ts: `RoleViewPayload` gains `chainStep: ChainTierInfo | null`. `rolePayload` reads `readOrchestratorInfo(root)` and, while `orchestratorAlive`, sets it from `info.chain?.[roleSeamTier(cfg, role)] ?? null`.
+- src/roles/role-render.ts `renderRoleMarkdown`: when `chainStep` is set, add a line after the budget-fallback line: `Running on fallback <step> of <of> (<why><, resets HH:MM>)`. For the time, move badges.ts's private `clockHm` to src/text/datetime.ts as an export, and import it in both modules. `<why>` comes from a reason table:
+  - `window`: `<label> window used up`, using `claudeWindowLabel` of the account's rejected window, or `Claude window used up` when none is reported;
+  - `reserve`: `window reserve reached`;
+  - `cap`: `daily cap reached`;
+  - `step-cap`: `previous step's cap reached`;
+  - `overage`: `extra usage refused`;
+  - `demoted`: `previous step demoted`.
+  - `inspectMarkdownLines` gets the same line.
+- src/doctor/doctor-holds.ts `checkClaudeWindow(root, now, chain?)`: in the rejected branch, when `chain` holds `window`/`reserve` entries, the warn reads `<label> window rejected — <tiers> moved to fallbacks until it resets in <h>`, then `; <tiers> wait` for the claude-primary tiers with no entry. Without `chain` the text is unchanged. src/doctor/doctor.ts passes `orchestratorAlive(root, info) ? info?.chain : undefined`.
+
+**Files touched.** src/roles/role-view.ts, src/roles/role-render.ts, src/doctor/doctor-holds.ts, src/doctor/doctor.ts, src/text/datetime.ts, src/ui/badges.ts, test/role-view.test.ts, test/doctor-holds.test.ts.
+
+**Acceptance criteria.**
+- test/role-view.test.ts: an orchestrator.json with a live pid and `chain.default = { step: 2, of: 3, reason: "window", returnsAt }`, plus a rejected 5h window, renders `Running on fallback 2 of 3 (5h window used up, resets HH:MM)` for a default-tier role. With no orchestrator, no `Running on fallback` line is rendered.
+- test/doctor-holds.test.ts: a rejected window with a `chain` naming `default` contains `default moved to fallbacks`. Without `chain`, the existing expected text still matches.
+- `npm run test` passes.
 
 ### Split the TUI key-handling monolith into a `tui-panes` module: extract the pane-navigation state out of `src/ui/tui/tui-keys.ts` (planned 2026-10-14 by plan; requires part 1/2 landed — part 2/2 of the too-large "split the TUI key-handling monolith" plan split on feature's review. The sibling part 1/2 (the prompt-line editors, `tui-editors`) landed first and halved the file; this part extracts the panes and finishes the split; cross-reference part 1/2. Independent of every other entry — touches only `src/ui/tui/` and the `test/tui-*.test.ts` suites; none of the running Planned entries touch `src/ui`)
 

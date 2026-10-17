@@ -272,6 +272,9 @@ Overage is real money, so only a Claude model listed after the chain's first one
    Requires 5.
 7. Surfaces: the doctor "fallback chain" check with the local probe, and the badge, TUI, GUI and
    role-view chain lines. Requires 2 and 6.
+   Split 2026-10-16 into 7a/7 (the doctor check and the probe), 7b/7 (the gate's `chain` block and
+   `fallback_switched`), 7c/7 (badge, side card, TUI, alerts) and 7d/7 (role view, `claude window`
+   row); 7c and 7d require 7b.
 
 Part 1 alone answers the question that started this: a used-up window falls back instead of
 pausing. Parts 1–5 give the chain you described.
