@@ -1171,6 +1171,33 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater plan --show <n> --done` and `tumwater bug --show <n> --done` print the Nth newest Done plan or Fixed bug in full (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/backlog/backlog-cli.ts, src/cli/help.ts, docs/cli.md and their tests)
+
+**Goal.** `--list --done` prints only the titles of the newest finished entries, as `- <title>` bullets. To read what a done plan specified or how a bug was fixed, the operator has to pipe `--list --done --json` through a JSON tool or scroll PLANS.md/BUGS.md past every open entry. `--show <n>` already prints an open entry in full (`showAndAnnounce`), and `questions --show` does the same for questions. Let `--show <n> --done` print the Nth newest finished entry the same way, and number the `--list --done` lines so `<n>` can be read off the list.
+
+**Approach.** All logic goes in `src/backlog/backlog-cli.ts`, using the readers it already imports (`donePlanEntries`, `fixedBugEntries`, `completionDate`, `DONE_DATE_RE`, `FIXED_DATE_RE`).
+- `showAndAnnounce(root, args, command)`: accept `--done` once (`rejectRepeatFlag(done, "--done")`, the same as `listAndAnnounce`). With `--done`:
+  - Read `all = command === "bug" ? fixedBugEntries(root) : donePlanEntries(root)`. These are in file order, which is newest first, the same order `--list --done` uses.
+  - When `position > all.length`, `fail(\`no ${command === "bug" ? "fixed bug" : "done plan"} at position ${position} (${all.length} in ${command === "bug" ? "BUGS.md" : "PLANS.md"})\`)`. This mirrors the wording `locateEntry` (src/backlog/backlog-write.ts) uses for open entries, and an empty or missing section reads `(0 in …)`.
+  - Otherwise `entry = all[position - 1]`. Prose prints `renderShownEntry({ title: entry.title, body: entry.body })`. Unlike `showEntry`, the title is kept verbatim: the `(done …)`/`fixed …` stamp is what the operator is looking for. `--json` prints `{ position, title, body, completedOn: completionDate(entry.title, dateRe) }`, with `dateRe` chosen as `listAndAnnounce`'s done branch chooses it. There is no `hold` key, because finished entries have no hold.
+  - Without `--done` the function behaves as it does today. `cli.ts` already routes any `--show` invocation to `showAndAnnounce`, so `src/cli.ts` needs no change.
+- `listAndAnnounce`'s done branch: render the prose lines as `${i + 1}. ${e.title}` instead of `- ${e.title}`, so the list numbers match `--show <n> --done`. Keep the header and the `(N older; -n M shows more)` line as they are, and leave `--json` unchanged. Update the doc comment above `listAndAnnounce` ("bullets" becomes "numbered") and the one above `showAndAnnounce` to name `--done`.
+- `src/cli/help.ts`: under both the `bug --show <n>` and `plan --show <n>` stanzas, add a stanza `tumwater <cmd> --show <n> --done [--json]` reading "Print the Nth entry of `<cmd> --list --done` (newest first) in full; --json prints {position, title, body, completedOn}". In both `--list --done` stanzas, change "List the newest entries" to "List the newest entries, numbered,".
+- `docs/cli.md`: in the "Steer the project" row, after "`--list --done [-n <count>]` lists the newest fixed bugs or done plans instead, newest first", add "numbered, and `--show <n> --done` prints the Nth one in full".
+
+**Files touched.** `src/backlog/backlog-cli.ts`, `src/cli/help.ts`, `docs/cli.md`, `test/backlog-write-list.test.ts`, `test/backlog-write-show.test.ts`.
+
+**Acceptance criteria.**
+- In `test/backlog-write-list.test.ts`, "plan --list --done lists the newest done plans, and bug --list --done an empty Fixed" now expects `1. Done 1 (done 2026-10-01)` and `10. Done 10 (done 2026-10-10)` in place of the bullets. Its other assertions are unchanged.
+- New test in `test/backlog-write-show.test.ts`, "--show <n> --done prints the Nth newest done plan or fixed bug". It writes PLANS.md with one Planned entry and two Done entries (the first with a multi-line body), and BUGS.md with one Fixed entry and an empty Open section, then checks:
+  - `plan --show 1 --done` exits 0 and prints exactly the first Done heading's title (stamp included), a blank line, and its body. `plan --show 2 --done` prints the second.
+  - `plan --show 1 --done --json` parses to `{position: 1, title, body, completedOn: "<the heading's date>"}`.
+  - `bug --show 1 --done` prints the Fixed entry. `bug --show 2 --done` exits 1 with stderr matching `no fixed bug at position 2 \(1 in BUGS.md\)`.
+  - `plan --show 1 --done --done` exits 1 with `--done may only be given once`.
+  - `plan --show 1` still prints the Planned entry, not a Done one.
+- The existing tests in both files pass unchanged apart from the numbering assertions above.
+- `npm run test` passes.
+
 ## Done
 
 ### The GUI Usage view charts each day's `Merge check median` as a bar element, so the operator sees the suite slowing on the dashboard as well as in `tumwater report` (planned 2026-10-17 by the plan role; independent of the waiting plain-terms rename series — touches only src/ui/gui/gui-client-report.ts and its test) — done 2026-10-17
