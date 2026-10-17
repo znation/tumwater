@@ -169,7 +169,9 @@ export function assembleTickPrompt(
     const planTargetNote =
       base === "plan"
         ? `This run's stop target: when PLANS.md \`## Planned\` already holds ` +
-          `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}.`
+          `${planBacklogTarget(config)} or more eligible plans, end with ${NOTHING_TO_DO}. ` +
+          `It holds ${eligibleEntries(root, "feature").length} now (tumwater's count of entries ` +
+          `feature could take, the same count that decides whether a plan run is deferred).`
         : undefined;
     prompt = buildTickPrompt({
       role: resolved,

@@ -172,6 +172,18 @@ test("the plan prompt counts only takeable entries and marks the blocked ones in
   assert.match(result.prompt, /prefer a plan independent of the waiting series, so feature can run it alongside/);
   const blocked = result.prompt.match(/\[blocked: requires Base 1\/2\]/g) ?? [];
   assert.equal(blocked.length, 4, "all four dependents are marked blocked");
+  assert.match(result.prompt, /It holds 1 now/);
+});
+
+test("the plan prompt reports zero eligible plans and other roles omit the count", () => {
+  const dir = root();
+  fs.writeFileSync(path.join(dir, "PLANS.md"), "# Plans\n## Planned\n_None yet._\n## Done\n_None._\n");
+  const plan = promptFor(dir, "plan");
+  assert.ok(plan);
+  assert.match(plan.prompt, /It holds 0 now/);
+  const feature = promptFor(dir, "feature");
+  assert.ok(feature);
+  assert.doesNotMatch(feature.prompt, /It holds/);
 });
 
 // The role notebook (PLANS.md "Role notebook"): the tick reads the role's note file from disk.
