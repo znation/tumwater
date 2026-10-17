@@ -316,3 +316,17 @@ test("refused entries raise a standing amber alert right after the questions ale
   assert.deepEqual(both.map((a) => a.key), ["questions", "refused"]);
   assert.deepEqual(teamAlerts(base, [], [], now), []);
 });
+
+test("root install drift raises one amber install alert naming up to five packages", () => {
+  const installs = (rootInstallDrift?: string[]) =>
+    teamAlerts({ ...base, rootInstallDrift }, [], [], Date.now()).filter((a) => a.key === "install");
+  const two = installs(["ink", "typescript"]);
+  assert.equal(two.length, 1);
+  assert.equal(two[0]?.tone, "amber");
+  assert.match((two[0]?.detail ?? ""), /ink, typescript/);
+  assert.match((two[0]?.detail ?? ""), /npm install/);
+  assert.deepEqual(installs(), []);
+  assert.deepEqual(installs([]), []);
+  const seven = (installs(["a", "b", "c", "d", "e", "f", "g"])[0]?.detail ?? "");
+  assert.match(seven, /\(a, b, c, d, e, \+2 more\)/);
+});

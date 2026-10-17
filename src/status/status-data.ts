@@ -23,6 +23,7 @@ import { readMergeQueue } from "../merge/merge-queue.js";
 import { collectImageProbeFailures, collectRoleRows } from "./status-roles.js";
 import { collectInboxes } from "./status-inbox.js";
 import { collectBudget } from "./status-budget.js";
+import { collectRootInstallDrift } from "./status-install.js";
 
 /** Status data collection: one fresh snapshot of the team for observers (`tumwater
  * status`, TUI, GUI). Rendering lives in status-render.ts; the per-poll cached readers
@@ -335,6 +336,9 @@ export interface StatusSnapshot {
    * orchestrator runs, its build predates the field, or statfs could not measure the volume —
    * every surface then renders exactly as before. */
   disk?: DiskStatus;
+  /** Direct dependencies the root checkout's `node_modules` does not hold at `package-lock.json`'s
+   * pin (the doctor's `root install` row); absent when none drift. */
+  rootInstallDrift?: string[];
   /** The permit pool's live state (plans/provider-concurrency.md §8) as the orchestrator
    * published it: team in-use/cap plus each referenced provider key's state. Only while the
    * orchestrator runs; absent otherwise, so the surfaces render exactly as before, and the
@@ -364,6 +368,7 @@ function earliestStop(a: number | undefined, b: number | undefined): number | un
  * snapshot — the consistency property the per-collector comments call out. */
 export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.now()): StatusSnapshot {
   const cfg = configForStatus(root);
+  const rootDrift = collectRootInstallDrift(root, now);
   // The gate's read-only bootstrap verdict (plans/work-ratio.md, part 2/2), computed over the
   // same last-known-good config the caps read, so the dashboards show the hold the scheduler
   // enforces. Null when no bootstrap is configured.
@@ -503,6 +508,8 @@ export function snapshot(root: string, modelsPath = piModelsPath(), now = Date.n
     // must not speak for a stopped team — and only when the last poll could measure the
     // volume. Absent otherwise, so the surfaces render exactly as before.
     disk: running && info?.disk ? info.disk : undefined,
+    // Independent of the team running: a stopped team's worktrees still borrow the root install.
+    rootInstallDrift: rootDrift.length ? rootDrift : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.
     permits: running && info?.permits ? info.permits : undefined,
     // Only while running: a stale info file beside a dead pid must not speak for a stopped team.

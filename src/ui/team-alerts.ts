@@ -96,6 +96,7 @@ export function teamAlerts(
     | "quietHours"
     | "inQuietHours"
     | "disk"
+    | "rootInstallDrift"
     | "imageProbeFailures"
     | "chain"
   >,
@@ -152,6 +153,21 @@ export function teamAlerts(
       tone: "amber",
       title: `Waiting: low disk — the team is holding new work at ${formatGB(snap.disk.freeGB)} free`,
       detail: `Free space is below the ${snap.disk.holdGB} GB floor. Build outputs are reclaimed first; new work starts again once space recovers.`,
+      actions: [],
+    });
+  }
+  // The root checkout's node_modules is behind package-lock.json (a failed post-merge re-sync):
+  // checks install into their own trees until it is fixed. Clears on drift, so a hand fix
+  // clears it too.
+  const drift = snap.rootInstallDrift ?? [];
+  if (drift.length) {
+    const shown = drift.slice(0, 5).join(", ");
+    const names = drift.length > 5 ? `${shown}, +${drift.length - 5} more` : shown;
+    out.push({
+      key: "install",
+      tone: "amber",
+      title: "The root install is behind package-lock.json",
+      detail: `${plural(drift.length, "direct dependency", "direct dependencies")} not installed as pinned (${names}). Run npm install in the project's root checkout; until then each check installs into its own tree, and \`tumwater doctor\` names the last re-sync failure.`,
       actions: [],
     });
   }

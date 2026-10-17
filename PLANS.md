@@ -1188,7 +1188,9 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
-### The dashboards raise an amber `install` alert while the root checkout's `node_modules` is behind `package-lock.json` (planned 2026-10-16 by the plan role; independent of the waiting plain-terms series and of the in-flight "Image reroutes by role" report plan — it adds one module under `src/status/`, one optional `StatusSnapshot` field, and one branch in `src/ui/team-alerts.ts`)
+## Done
+
+### The dashboards raise an amber `install` alert while the root checkout's `node_modules` is behind `package-lock.json` (planned 2026-10-16 by the plan role; independent of the waiting plain-terms series and of the in-flight "Image reroutes by role" report plan — it adds one module under `src/status/`, one optional `StatusSnapshot` field, and one branch in `src/ui/team-alerts.ts`) — done 2026-10-16
 
 **Goal.** When a post-merge re-sync (`syncRootInstall` in `src/build/dep-install.ts`) fails, every check installs into its own tree until a later merge retries. Today the operator sees this only as a `warn` line in the feed or by running `tumwater doctor`, whose `root install` row (`checkRootInstall` in `src/doctor/doctor-install.ts`) reports the drift. The dashboard, the TUI, and `tumwater status` raise no alert. These surfaces should show the drift the way they show the disk floor: an amber alert that names the drifted packages and the fix, and clears once the drift is gone. Clearing on drift, not on a later `dep_install` event, also clears it when the operator fixes the install by hand.
 
@@ -1213,8 +1215,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
   - Call `resetRootInstallCache()` between tests.
 - `snapshot()` on a fixture repo with that drift carries `rootInstallDrift: [name]`. With matching versions the key is absent. Assert this in `test/status-install.test.ts` through `snapshot(root)` if the existing status tests' fixture helper makes that cheap; otherwise the two unit tests above suffice.
 - `npm run test` passes.
-
-## Done
 
 ### `tumwater report` gains an `Image reroutes by role` line counting each role's image reroutes (planned 2026-10-16 by the plan role) — done 2026-10-16
 
