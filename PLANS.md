@@ -1233,6 +1233,31 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The guard's own tests pin the new scope: a module without any header is scanned.
 - `npm run test` passes.
 
+### `tumwater doctor` gains a `root install` row that warns when the root checkout's `node_modules` no longer matches `package-lock.json`'s direct pins, so an operator learns a failed post-merge re-sync is making every check install into its own tree (planned 2026-10-16 by plan; independent of every other Planned entry — adds one new module under `src/doctor/` and one row to `src/doctor/doctor.ts`'s list, and leaves `src/doctor/doctor-checks.ts` alone, which the in-flight "check row … 24 h passing merge-check durations" plan edits)
+
+**Goal.** When a merge moves main's lockfile, `syncRootInstall` (`src/build/dep-install.ts`) re-installs the root checkout. If that install fails, it logs a `dep_install` event with `status: "failed"` plus a warning, and only tries again when a later merge calls it. Until then, every gate and merge check finds the drift through `installDrift` and runs its own `npm install` into its own tree. Each check pays for an install, and nothing tells the operator the root is behind. `src/build/dep-install.ts` and `src/events/event-format.ts` are the only places that reference `dep_install` or `installDrift` today, so no doctor row, alert, or report reads either one. Add a doctor row that checks the root live and names the fix.
+
+**Approach.**
+- New module `src/doctor/doctor-install.ts` exporting `checkRootInstall(root: string, now = Date.now()): CheckOutcome`, written in the same style as the other read-only checks (`okOutcome`/`warnOutcome` from `./outcome.js`):
+  - No `package-lock.json` at `root` (`fs.existsSync(path.join(root, "package-lock.json"))` is false) → `okOutcome("no package-lock.json — nothing pinned")`.
+  - `installDrift(root)` (imported from `../build/dep-install.js`) is empty → `okOutcome("node_modules matches package-lock.json")`.
+  - Otherwise → `warnOutcome`. The detail reads: the count from `plural(n, "direct dependency", "direct dependencies")` (`src/text/phrases.ts`), then "not installed as package-lock.json pins (<names, comma-joined>) — run npm install in <root>; until then each check installs into its own tree". After it, add `; the last re-sync failed ${shortSpanPhrase(now - ev.ts)} ago: ${textOr(ev.error)}` when the newest `dep_install` event in `readEventsSince(root, 24 * 3600_000).events` has `status === "failed"`. Name the window constant `DEP_INSTALL_CHECK_WINDOW_MS`. Wrap the event read in try/catch the way `checkWorktreePool` does: a read error adds `could not read the event log: ${errorMessage(err)}` to the detail and still warns.
+  - A failed `dep_install` event with no drift now (an operator already installed by hand) stays ok. The live drift is the truth, and the event only explains it.
+- `src/doctor/doctor.ts`: import `checkRootInstall` and add `{ name: "root install", ...checkRootInstall(root) }` directly after the `check` row.
+- Docs: in `docs/cli.md`'s `tumwater doctor` Audit cell, add "the root checkout's `node_modules` drifting from `package-lock.json`'s direct pins (naming the last failed post-merge re-sync)" to the list of what it flags.
+
+**Files touched.** `src/doctor/doctor-install.ts` (new), `src/doctor/doctor.ts`, `test/doctor-install.test.ts` (new), `docs/cli.md`.
+
+**Acceptance criteria.**
+- `test/doctor-install.test.ts` (node:test, offline, temp dirs from `tmpdir` in `test/fixtures/repo-fixtures.ts`; build the lockfile and `node_modules` manifests by hand the way `writeLock`/`installPkg` in `test/dep-install.test.ts` do, either copied or moved into a shared fixture) pins these cases:
+  - no lockfile is ok with "nothing pinned";
+  - a lockfile whose pins are all installed is ok;
+  - a missing pin and a version-skewed pin warn, with both names in the detail and the `npm install` fix text;
+  - a drifting root with a `dep_install` `status: "failed"` event logged in the last 24 h (via `logEvent`) warns, and the detail includes that event's `error` text;
+  - the same failed event with no drift is ok.
+- `tumwater doctor` lists a `root install` row right after `check`. The row is ok on this repo's own healthy checkout, which `test/doctor.test.ts` covers only if it already asserts row names; otherwise do not add an assertion there.
+- No `src/ui` import in `src/doctor/doctor-install.ts`. `npm run test` passes.
+
 ## Done
 
 ### `tumwater doctor`'s `check` row says how long the declared check's passing merge checks took over the last 24 h, so the operator sees the suite slowing the merge lock before it times out (planned 2026-10-16 by plan; independent of every other entry — touches src/doctor/doctor-checks.ts, test/doctor-checks.test.ts, docs/cli.md) (done 2026-10-16)
