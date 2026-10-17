@@ -533,3 +533,31 @@ test("the Spend by provider charts stack per provider and reportProviderOrder li
   assert.equal(seriesHasAny(data, "costByProvider"), true);
   assert.equal(seriesHasAny(data, "notionalByProvider"), true);
 });
+
+test("the Work vs maintenance chart stacks work and maintenance per day and matches chartCommits' labels", () => {
+  interface Builders {
+    chartCommits(d: ReportData): string;
+    chartCommitTiers(d: ReportData): string;
+  }
+  const { chartCommits, chartCommitTiers } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["chartCommits", "chartCommitTiers"],
+  );
+  const mkDay = (date: string, extra: Partial<ReportDay> = {}): ReportDay => ({
+    date, tokensOut: 0, runsByRole: {}, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, ...extra,
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 3, from: "2026-09-01", to: "2026-09-03", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { workCommits: 2, maintenanceCommits: 1, commits: 3 }),
+    mkDay("2026-09-02"),
+    mkDay("2026-09-03", { maintenanceCommits: 2, commits: 5 }),
+  ]);
+  const svg = chartCommitTiers(data);
+  const titles = [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  // 2026-09-03 has commits: 5 but only 2 tiered — the untiered plan/steward/observer commits
+  // draw no segment here (they count in the total commits chart alone).
+  assert.deepEqual(titles, ["2026-09-01: 2 work commits", "2026-09-01: 1 maintenance commit", "2026-09-03: 2 maintenance commits"]);
+  const labels = (s: string) => (s.match(/<text [^>]*text-anchor='middle'/g) || []).length;
+  assert.equal(labels(svg), labels(chartCommits(data)));
+});

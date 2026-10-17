@@ -116,6 +116,19 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       countAxis, true);
   }
 
+  // The day's work vs maintenance commits, from workCommits/maintenanceCommits (the same split
+  // foldUsageEvent's totals carry): work (feature/bugfix/director) at the bottom, maintenance
+  // (code-maintenance/readme) above. This shows only the tiered counts — plan, steward,
+  // observer and custom/legacy roles are untiered and count toward the total commits chart
+  // alone, so the two tiers need not sum to chartCommits. The Number(...) || 0 guard covers
+  // older or hand-built report rows that omit the fields.
+  function chartCommitTiers(data) {
+    return reportSvg(data.series, (d) => [
+      { value: Number(d.workCommits) || 0, color: "#10b981", title: d.date + ": " + plural(Number(d.workCommits) || 0, "work commit") },
+      { value: Number(d.maintenanceCommits) || 0, color: "#94a3b8", title: d.date + ": " + plural(Number(d.maintenanceCommits) || 0, "maintenance commit") },
+    ], countAxis, true);
+  }
+
   // The lower median of the day's passing full-suite merge checks, from checkMedianMs; a day
   // without one keeps its empty slot.
   function chartCheckMedian(data) {
@@ -519,7 +532,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // A scoped report drops to the four scoped tiles and says what it left out, mirroring the
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
-        block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
+        block("Work vs maintenance commits", chartCommitTiers(d), "per day · work + maintenance") + block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
         block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
