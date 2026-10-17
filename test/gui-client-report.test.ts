@@ -345,6 +345,40 @@ test("the Revisions chart stacks per role and seriesHasAny gates it", () => {
   assert.equal(seriesHasAny(data, "revisionsByRole"), true);
 });
 
+test("the Tokens by role chart stacks per role and matches the ticks legend", () => {
+  interface Builders {
+    reportRoleOrder(d: ReportData): Array<[string, number]>;
+    chartTicksByRole(d: ReportData): string;
+    chartTokensByRole(d: ReportData): string;
+  }
+  const { reportRoleOrder, chartTicksByRole, chartTokensByRole } = clientScope<Builders>(
+    ["format", "report-chart"],
+    ["reportRoleOrder", "chartTicksByRole", "chartTokensByRole"],
+  );
+  const mkDay = (date: string, runsByRole: Record<string, number>, tokensByRole?: Record<string, number>): ReportDay => ({
+    date, tokensOut: 0, runsByRole, costByRole: {}, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0,
+    ...(tokensByRole ? { tokensByRole } : {}),
+  });
+  const totals = { tokensOut: 0, runs: 0, commits: 0, costUsd: 0, featuresDone: 0, bugsFixed: 0, mergeRuns: 0, mergeTokens: 0, mergeCostUsd: 0 };
+  const mk = (series: ReportDay[]): ReportData => ({ days: 2, from: "2026-09-01", to: "2026-09-02", series, totals, coversFullWindow: true });
+  const data = mk([
+    mkDay("2026-09-01", { feature: 3, bugfix: 1 }, { feature: 1_500, bugfix: 2_000 }),
+    mkDay("2026-09-02", { qa: 2 }, { qa: 1_500_000 }),
+  ]);
+  assert.deepEqual(reportRoleOrder(data), [["feature", 3], ["qa", 2], ["bugfix", 1]]);
+  const titles = (svg: string) => [...svg.matchAll(/<rect [^>]*><title>([^<]*)<\/title><\/rect>/g)].map((r) => r[1]!);
+  assert.deepEqual(titles(chartTokensByRole(data)), [
+    "2026-09-01 · feature: 1500 output tokens",
+    "2026-09-01 · bugfix: 2000 output tokens",
+    "2026-09-02 · qa: 1.5M output tokens",
+  ]);
+  const legendOf = (svg: string) => svg.slice(svg.indexOf("<div class='legend'>"));
+  assert.equal(legendOf(chartTokensByRole(data)), legendOf(chartTicksByRole(data)));
+  // A day whose tokensByRole map is missing renders no token segments.
+  const plain = mk([mkDay("2026-09-01", { feature: 1 }), mkDay("2026-09-02", { feature: 1 })]);
+  assert.equal(titles(chartTokensByRole(plain)).length, 0);
+});
+
 test("the Merge check median chart draws one bar per checked day and seriesHasCheckMedian gates it", () => {
   interface Builders {
     chartCommits(d: ReportData): string;

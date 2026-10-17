@@ -188,6 +188,11 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
     return roleStackChart(data, "costByRole", fmtUsd, (v) => (v === 0 ? "$0" : fmtUsd(v)), false);
   }
 
+  // The day's output tokens, per loop, the dashboard twin of the CLI "Tokens by role" line.
+  function chartTokensByRole(data) {
+    return roleStackChart(data, "tokensByRole", (n) => fmtTokens(Number(n) || 0) + " output tokens", (v) => fmtTokens(Math.round(v)), true);
+  }
+
   // The API-equivalent (notional) spend of subscription runs, per loop, on the same axis as
   // the cap spend.
   function chartNotionalByRole(data) {
@@ -515,7 +520,7 @@ export const GUI_CLIENT_REPORT_JS = String.raw`// report-chart:start
       // CLI's --role report. The team-wide render is unchanged.
       return "<div class='stats" + (d.role ? "" : " six") + "'>" + reportSummary(d) + "</div><div class='grid-2 even'>" +
         block("Merged commits", chartCommits(d)) + (seriesHasBacklogItems(d) ? block("Backlog items done", chartBacklogItems(d), "per day · features done + bugs fixed") : "") + block("Runs by role", chartTicksByRole(d)) +
-        block("Output tokens", chartTokens(d)) + block("Spend by role", chartCostByRole(d)) +
+        block("Output tokens", chartTokens(d)) + block("Tokens by role", chartTokensByRole(d)) + block("Spend by role", chartCostByRole(d)) +
         (!d.role && seriesHasAny(d, "costByProvider") ? block("Spend by provider", chartCostByProvider(d)) : "") +
         block("Rejections by role", chartRejectionsByRole(d)) +
         (seriesHasAny(d, "revisionsByRole") ? block("Revisions by role", chartRevisionsByRole(d)) : "") +

@@ -1105,7 +1105,10 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - The test extracts the builders through `clientScope`, so a missing or misnamed builder fails it.
 - `npm run test` passes.
 
-### The GUI Usage view charts each day's output tokens per role, the dashboard twin of the day report's `Tokens by role` line (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites the merge-family comments in src/ui but not this file, whose merge terms are already plain; it shares the `report-chart` region and Usage render chain with the in-flight backlog-items/work-maintenance/provider-spend chart plans, but adds only its own builder and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts)
+
+## Done
+
+### The GUI Usage view charts each day's output tokens per role, the dashboard twin of the day report's `Tokens by role` line (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites the merge-family comments in src/ui but not this file, whose merge terms are already plain; it shares the `report-chart` region and Usage render chain with the in-flight backlog-items/work-maintenance/provider-spend chart plans, but adds only its own builder and block, so it lands in any order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
 **Goal.** The CLI day report prints `Tokens by role` — output tokens ranked per role (`rankedRoleTotals`/`rankedRoleLine` in `src/report/report-render.ts`) — and the dashboard Usage view draws only the unsplit `Output tokens` chart (`chartTokens`). Tokens are the resource the budget charges, so an operator who sees a token spike on the dashboard cannot point at the role that burned it without opening the CLI report or the raw event log. Add one stacked `Tokens by role` chart.
 
@@ -1122,8 +1125,6 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 - A day whose `tokensByRole` map is missing renders no token segments (the `roleStackChart` `d[field] || {}` guard), asserted on a fixture spread of a day without the map.
 - The Usage render chain carries the new block: reading the edited `usage` render closure shows the `block("Tokens by role", chartTokensByRole(d))` term between the two sibling blocks (the chain has no view-render test, as the sibling per-role chart blocks also have none).
 - `npm run test` passes.
-
-## Done
 
 ### The GUI Usage view charts each day's spend per provider, the dashboard twin of the day report's `Cost by provider` lines (planned 2026-10-17 by the plan role; independent of the plain-terms series and of the in-flight merge-comment part 11b, which rewrites comments in src/ui but not this file; it shares the `report-chart` region and usage render chain with the in-flight backlog-items chart, but adds only its own builders, order helper and gated blocks, so the two land in either order; touches src/ui/gui/gui-client-report.ts and test/gui-client-report.test.ts) — done 2026-10-17 by the feature role
 
