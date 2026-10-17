@@ -5,163 +5,191 @@ Each plan: goal, approach, files touched, acceptance criteria. Move finished pla
 
 ## Planned
 
-### OpenCode backend, part 3/7: The OpenCode invocation, its injected config, and its environment (planned 2026-10-17 by user; requires part 2/7 landed; design in plans/opencode-backend.md "The invocation"; touches src/agent/opencode/opencode-args.ts src/agent/opencode/opencode-config.ts (new) src/agent/opencode/opencode-env.ts (new) and their tests)
+### OpenCode backend, part 3/7: The OpenCode invocation, its injected config, its environment, and the session-id minter (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 2/7 landed; design in plans/opencode-backend.md "The invocation" and "Findings, verified live" 3, 6, 11–16; touches src/agent/opencode/opencode-args.ts src/agent/opencode/opencode-config.ts (new) src/agent/opencode/opencode-env.ts (new) src/agent/opencode/opencode-session-id.ts (new) and their tests)
 
-**Goal.** Build one OpenCode run's command line, its `OPENCODE_CONFIG_CONTENT` and its environment as pure functions, with no subprocess and no registration. This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires them into the adapter.
+**Goal.** Build one OpenCode run's pieces as pure functions, with no subprocess and no registration:
+
+- its command line;
+- its `OPENCODE_CONFIG_CONTENT`;
+- its environment;
+- its session id.
+
+This mirrors src/agent/claude/claude-args.ts and claude-env.ts. Part 5/7 wires these into the adapter. Every choice here was verified live on OpenCode 2.0.32 (plans/opencode-backend.md "Findings, verified live").
 
 **Approach.**
-- `opencodeArgs({ model, variant?, sessionId, args?, prompt })` in src/agent/opencode/opencode-args.ts returns `{ args, stdin }`.
-  - The args are `run --standalone --format json --auto --model <id>[#<variant>] --session <sessionId>`, then the passthrough args.
-  - `stdin` is the prompt. It is never an argv element: OpenCode reads a non-TTY stdin to EOF, and the runner closes it.
-  - The `--model` value: a model with no `/` is on OpenCode's gateway and gets the `opencode/` provider (`deepseek-v4.1-flash-free` → `opencode/deepseek-v4.1-flash-free`). Anything else passes as is.
-  - `variant`: the caller passes one only when OpenCode's catalog lists it for the model. Part 6/7 supplies that list; until then callers pass none.
-  - A passthrough arg that repeats a flag in `HARNESS_OPENCODE_FLAGS`, matched also as `--flag=value`, throws, as claudeArgs does.
-- `opencodeConfigContent({ cwd, notesServer?, operatorMcpNames })` in src/agent/opencode/opencode-config.ts returns the JSON string. It contains:
-  - `autoupdate: false`, `snapshot: false`, `lsp: false`, `formatter: false`;
-  - `mcp.tumwater` (`type: "local"`, `command: [process.execPath, <dist role-notes-server.js>]`, `environment: { TUMWATER_NOTES_PATH }`), only when `notesServer` is given;
-  - `{ enabled: false }` for each name in `operatorMcpNames`;
-  - `instructions: ["CLAUDE.md"]`, only when `cwd` has a `CLAUDE.md` and no `AGENTS.md`;
-  - no `tools` or `permission` keys. Denying `read`/`bash`/`glob`/`grep` trips the free-tier gate, and `--auto` already approves every ask.
-- `operatorMcpNames(env, homeDir)` reads the MCP server names in the operator's global opencode config:
-  - from `$XDG_CONFIG_HOME/opencode/` or `~/.config/opencode/`;
-  - in `config.json`, `opencode.json` or `opencode.jsonc` (comments and trailing commas stripped for jsonc);
-  - it returns `[]` for a missing or unreadable file. Doctor reports a broken one in part 7/7.
-- `opencodeEnv(base, { quietTimeoutSeconds, dbPath, configContent })` in src/agent/opencode/opencode-env.ts never mutates `base`.
-  - **Removes** every `OPENCODE_*` except `OPENCODE_API_KEY`.
-  - **Sets** `OPENCODE_PURE=1`, `OPENCODE_DISABLE_CLAUDE_CODE=1`, `OPENCODE_DISABLE_EXTERNAL_SKILLS=1`, `OPENCODE_DISABLE_AUTOUPDATE=1`, `OPENCODE_DISABLE_LSP_DOWNLOAD=1`, `OPENCODE_DB=dbPath` and `OPENCODE_CONFIG_CONTENT=configContent`.
-  - **Sets** the shell tool's default timeout to `quietTimeoutSeconds` × 1000 − 60 000 ms, clamped to at least 1 000. Use the variable name hand step H1 records in plans/opencode-backend.md "Findings"; until then, the V1 name `OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS`. With `quietTimeoutSeconds` 0 it sets nothing.
-  - **Never sets** any `XDG_*` variable (design §3: the shell's `git` would lose `~/.config/git/config`).
+- **`opencodeArgs({ model, variant?, sessionId, title, args?, prompt })`** in src/agent/opencode/opencode-args.ts returns `{ args, stdin }`.
+  - The args are `run --standalone --format json --auto --model <id>[#<variant>] --session <sessionId> --title <title>`, then the passthrough args.
+  - `--title` skips OpenCode's hidden title-generation model call (finding 6). Add `--title` to `HARNESS_OPENCODE_FLAGS`.
+  - `stdin` is the prompt; it is never an argv element.
+  - A model with no `/` gets the `opencode/` provider; anything else passes as is.
+  - `variant` is passed only when given. Part 6/7 gives it only for an effort the catalog lists, because an unlisted variant fails the run (finding 9).
+  - A reserved passthrough throws, matched also as `--flag=value`.
+- **`mintOpencodeSessionId(now = Date.now(), randomBytes?)`** in src/agent/opencode/opencode-session-id.ts reproduces OpenCode's `Identifier.descending()` (packages/schema/src/identifier.ts):
+  - `current = BigInt(now) * 0x1000n + BigInt(counter)`, where `counter` restarts at 1 for each new millisecond.
+  - The 12 hex digits are the low 48 bits of `~current`, big-endian.
+  - Then 14 characters drawn from `0-9A-Za-z` (random byte % 62).
+  - The prefix is `ses_`.
+  - Any other shape gets the free-tier 403 (finding 3), so this must match OpenCode exactly.
+- **`opencodeConfigContent({ cwd, operatorMcpNames })`** in src/agent/opencode/opencode-config.ts returns the JSON string. It contains:
+  - `snapshots: false` and `update: "disable"`;
+  - `permissions`: `deny` for `execute`, `subagent`, `webfetch`, `websearch`, `question` and `skill` (resource `*`). It **never** denies `read`, which trips the gate (finding 11).
+  - `instructions: ["CLAUDE.md"]`, only when `cwd` has a `CLAUDE.md` and no `AGENTS.md` (finding 14);
+  - `mcp.servers.<name>: { disabled: true }` for each operator server;
+  - no MCP server of tumwater's own. Role notes are off on OpenCode (design decision 8).
+- **`operatorMcpNames(env, homeDir)`** reads the server names in the operator's global opencode config:
+  - from `$XDG_CONFIG_HOME/opencode/`, or `~/.config/opencode/`;
+  - in `config.json`, `opencode.json` or `opencode.jsonc` (comments and trailing commas stripped);
+  - the keys of V2's `mcp.servers`, plus V1-shaped `mcp.<name>` keys other than `servers`;
+  - `[]` for a missing or unreadable file.
+- **`opencodeEnv(base, { dbPath, configContent })`** in src/agent/opencode/opencode-env.ts never mutates `base`.
+  - **Removes** `OPENCODE`, every `OPENCODE_*` except `OPENCODE_API_KEY` (so `OPENCODE_CLIENT` and a host session's `OPENCODE_SESSION_ID` never pass through), and `AI_AGENT`.
+  - **Sets** `OPENCODE_DISABLE_CLAUDE_CODE=1`, `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1`, `OPENCODE_DISABLE_AUTOUPDATE=1`, `OPENCODE_DISABLE_FILEWATCHER=1`, `OPENCODE_DB=dbPath` and `OPENCODE_CONFIG_CONTENT=configContent`.
+  - **Never sets** a shell-timeout variable (2.0.32 has none, finding 16) or any `XDG_*` variable.
 
 **Files touched.**
-- Source: src/agent/opencode/opencode-args.ts, src/agent/opencode/opencode-config.ts (new), src/agent/opencode/opencode-env.ts (new).
-- Tests: test/opencode-args.test.ts (new), test/opencode-config.test.ts (new), test/opencode-env.test.ts (new).
+- Source: src/agent/opencode/opencode-args.ts, src/agent/opencode/opencode-config.ts (new), src/agent/opencode/opencode-env.ts (new), src/agent/opencode/opencode-session-id.ts (new).
+- Tests: test/opencode-args.test.ts (new), test/opencode-config.test.ts (new), test/opencode-env.test.ts (new), test/opencode-session-id.test.ts (new), and test/config-validation.test.ts for `--title`.
 
 **Acceptance criteria.**
-- `opencodeArgs`:
-  - Its exact argv for a fresh run, and with a variant.
+- **`opencodeArgs`:**
+  - Exact argv, with and without a variant.
   - Gateway and non-gateway model mapping.
-  - The prompt is returned as stdin and appears nowhere in argv.
-  - A reserved passthrough throws, in both the `--flag value` and `--flag=value` forms.
-- `opencodeConfigContent`:
-  - Parsed back, it has the four switches.
-  - It has `mcp.tumwater` only with `notesServer`.
-  - Operator servers come out `enabled: false`.
-  - The `instructions` entry follows the CLAUDE.md/AGENTS.md matrix (CLAUDE.md only → present; both, AGENTS.md only, or neither → absent).
-  - It has no `tools` or `permission` key.
-- `operatorMcpNames` reads names from a jsonc file with comments, and returns `[]` for missing and malformed files.
-- `opencodeEnv`:
-  - An inherited `OPENCODE_SERVER_PASSWORD` is removed and `OPENCODE_API_KEY` is kept.
-  - Every set variable is present.
-  - The timeout is derived, and is absent at quiet timeout 0.
-  - An inherited `XDG_CONFIG_HOME` passes through untouched, and none is added.
+  - The prompt is in stdin only.
+  - A reserved passthrough throws in both forms.
+  - `backends.opencode.args: ["--title=x"]` is now refused by validation.
+- **`mintOpencodeSessionId`:**
+  - Ids match `/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/`.
+  - Two ids in the same millisecond differ in their counter.
+  - A later millisecond sorts before an earlier one (descending).
+  - Decoding the hex of the OpenCode-minted session ids in test/fixtures/opencode-captures/parallel-tools.jsonl, oversized-output.jsonl and background-shell.jsonl gives counter 1 and a millisecond 0–10 s before that capture's first event timestamp, both taken modulo 2^36 (the 48 kept bits hold ms × 4096 + counter; the live captures decode about 2.3 s early). That shows the encoder matches OpenCode's.
+- **`opencodeConfigContent`**, parsed back:
+  - It has `snapshots: false`, `update: "disable"` and the six denials, and no rule for `read`.
+  - The `instructions` entry follows the CLAUDE.md/AGENTS.md matrix.
+  - Operator servers come out `disabled: true`, and there is no `tumwater` server.
+- **`operatorMcpNames`** reads both config shapes from a jsonc file with comments, and returns `[]` for missing and malformed files.
+- **`opencodeEnv`:**
+  - `OPENCODE`, `OPENCODE_CLIENT`, `OPENCODE_SESSION_ID` and `AI_AGENT` are removed; `OPENCODE_API_KEY` is kept.
+  - The six variables are set.
+  - No `XDG_*` is added, and an inherited one passes through untouched.
 - `npm test` passes.
 
-### OpenCode backend, part 4/7: The OpenCode stream translator and its fixtures (planned 2026-10-17 by user; requires part 1/7 landed; design in plans/opencode-backend.md "The stream translator" and "Findings from the source" 3; touches src/agent/opencode/opencode-stream.ts (new) test/fixtures/opencode-events.ts (new) test/opencode-stream.test.ts (new))
+### OpenCode backend, part 4/7: The OpenCode stream translator, the export reconciliation, and a canonical `run_usage` event (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 1/7 landed; design in plans/opencode-backend.md "The stream translator, and the export that completes it" and "Findings, verified live" 4, 5, 7, 8; touches src/agent/opencode/opencode-stream.ts (new) src/pi/pi-stream.ts test/fixtures/opencode-events.ts (new) and their tests)
 
 **Goal.** Turn `opencode run --format json` lines into tumwater's canonical event stream (pi's vocabulary), so every reader of the raw log works unchanged for OpenCode runs. Those readers are PiStreamParser, the transcripts, progress data, `tumwater logs` and suite-rerun detection.
 
+The live stream drops the final step's usage in most runs (41 of 49, finding 5). So this part also turns OpenCode's session export into authoritative cost and usage lines.
+
 **Approach.**
-- **Fixtures first.** If plans/opencode-backend.md "Findings from the source" records live captures (hand step H1), trim the fixtures in test/fixtures/opencode-events.ts from them. Otherwise build them from the V2 2.0.32 source shapes listed there, and say so in each builder's comment. Builders:
-  - a three-step run: text; then a `shell` call; then a `read` call with `filePath`, then text;
-  - a step with two tool calls;
-  - a `tool_use` with `status: "error"`;
-  - a 403 `FreeTierError`;
-  - a 429;
-  - an unknown model;
-  - an error raised before the session exists (`sessionID: ""`);
-  - a stream cut off mid-step;
-  - an event type the translator does not know.
-- **`opencodeTranslator()`** implements `StreamTranslator` (`translate`, `warnings`, `finalize`) as the design's table says:
-  - The first event with a non-empty `sessionID` emits `session` (`id`, `cwd` from the run) and then `agent_start`.
-  - `step_start` opens a buffer. `text` and `tool_use` add blocks to it.
-    - A tool call's name is mapped: `shell`→`bash`, `patch`→`edit`, others lower-cased.
-    - Its `arguments` are `state.input` plus a `path` alias for `filePath`.
-  - `step_finish` emits one `message_end` (role assistant) with the buffered blocks.
-    - Usage: `input`, `output`, `cacheRead`, `cacheWrite`, and `totalTokens` = their sum.
+- **Fixtures.** test/fixtures/opencode-events.ts loads the real captures in test/fixtures/opencode-captures/ (README.md there says what each shows).
+  - It adds builders only for the cases the probe never produced: a 429, a 5xx, and a context overflow.
+  - Each such builder's comment says it is synthetic, shaped like the captured `error` events.
+- **`opencodeTranslator()`** in src/agent/opencode/opencode-stream.ts implements `StreamTranslator` (`translate`, `warnings`, `finalize`):
+  - The first event with a non-empty `sessionID` emits `session` (`id`, `cwd`), then `agent_start`.
+  - `step_start` opens a message buffer. A `text` or `tool_use` that arrives with no buffer open opens one too, because the first `step_start` is sometimes missing.
+  - A `tool_use` becomes a `toolCall` block:
+    - `id` = `part.id`;
+    - the name mapped `shell`→`bash`, `patch`→`edit`, others lower-cased;
+    - `arguments` = `state.input` (V2 already uses `path`).
+  - `step_finish` emits one `message_end` with the buffered blocks.
+    - Usage: `input`, `output`, `cacheRead` = cache.read, `cacheWrite` = cache.write, and `totalTokens` = their sum.
     - `cost.total` = the step's `cost`.
-    - Then, for each buffered call in order, a `tool_execution_start` followed by a `tool_execution_end`, with `isError` for `status: "error"`.
-  - `finalize()` flushes an open step as a `message_end` without usage.
-- **Errors** become a final `message_end` with `stopReason: "error"`, `errorMessage`, and a `tumwaterKind`:
-  - `FreeTierError` / 403 → `transientBackend` with `backendKind: "server"`. `warnings()` also reports `opencode_free_tier_refused` once.
-  - 429 or rate-limit text → `transientRateLimit`, with `retryAfterSeconds` when given.
-  - 5xx → `transientBackend` / `server`; connection and timeout text → those kinds.
-  - Unknown model or provider, and 401 → `configError`.
-  - Context overflow → `contextExceeded`.
-- **Unknown events.** `warnings()` names each unknown event type once. A malformed line is skipped with one warning, as in claude-stream.ts.
+    - Then, for each buffered call, `tool_execution_start` and `tool_execution_end` (`isError` for `status: "error"`).
+  - `finalize()` flushes an open buffer as a `message_end` without usage.
+- **Errors** (`{type: "error", error: {type, message, status?, response?}}`) become a final `message_end` with `stopReason: "error"`, `errorMessage` and `tumwaterKind`:
+  - `provider.auth` with status 403, or a body naming `FreeTierError` → `transientBackend` / `server`. `warnings()` reports `opencode_free_tier_refused` once.
+  - `provider.no-route`, an `unknown` "Expected a string starting with "ses"", or a 401 → `configError`.
+  - 429 / rate-limit text → `transientRateLimit`; 5xx, connection and timeout → `transientBackend` of that kind; context overflow → `contextExceeded`.
+- **`opencodeExportLines(exportJson: unknown): string[]`** (pure) returns two canonical lines from the export's `info`:
+  - `run_cost {total: info.cost}`;
+  - `run_usage {input, output, cacheRead, cacheWrite}` from `info.tokens`.
+
+  Anything malformed returns `[]`. Part 5/7 runs the export and logs `opencode_usage_partial` when this is empty.
+- **src/pi/pi-stream.ts:** a canonical `run_usage` event **replaces** the summed token fields (`input`, `output`, `cacheRead`, `cacheWrite`, total), the way `run_cost` already replaces the cost sum. A stream without one is unchanged.
 
 **Files touched.**
-- Source: src/agent/opencode/opencode-stream.ts (new).
-- Tests: test/fixtures/opencode-events.ts (new), test/opencode-stream.test.ts (new).
+- Source: src/agent/opencode/opencode-stream.ts (new), src/pi/pi-stream.ts.
+- Tests: test/fixtures/opencode-events.ts (new), test/opencode-stream.test.ts (new), test/pi-parser.test.ts.
 
 **Acceptance criteria.**
-- The three-step fixture translates to the expected canonical lines, in order: `session`, `agent_start`, then per step a `message_end` followed by its tool executions.
-- Fed to `PiStreamParser`:
-  - The token totals are the steps' sums.
-  - `costUsd` is the sum of step costs (0 for a free-model fixture).
-  - `finalText` is the last text.
-  - A `bash` call carries `command`, which suite-rerun detection reads.
-- The error fixtures fold to `transientBackend` (free tier), `transientRateLimit` (429), `configError` (unknown model) and `contextExceeded`. The free-tier run's warnings include `opencode_free_tier_refused` exactly once.
-- The cut-off stream's last step is flushed by `finalize()`.
-- An unknown type is warned once however often it appears.
+- **edit-run.jsonl:**
+  - It translates to `session`, `agent_start`, then three `message_end`s, each followed by its one tool execution (read, edit, bash).
+  - The final text with no `step_finish` is flushed by `finalize()`.
+  - Fed to PiStreamParser, the tokens are the three streamed steps' sums and `finalText` is "DONE".
+  - Adding `opencodeExportLines(edit-run-export.json)` makes the parser's tokens equal the export's `info.tokens` (input 3223, output 433, cacheRead 7680), with `costUsd` 0.
+- **parallel-tools.jsonl** gives one `message_end` with two toolCalls, then two tool executions.
+- **oversized-output.jsonl** gives a `bash` call whose `command` is `seq 1 200000`, which suite-rerun detection can read.
+- **Error captures:**
+  - Both free-tier files fold to `transientBackend`, and the warning appears exactly once.
+  - unknown-model, unavailable-variant and malformed-session-id fold to `configError`.
+  - The synthetic 429 folds to `transientRateLimit`.
+- An unknown event type is warned once.
+- A stream without `run_usage` folds exactly as before (existing test/pi-parser.test.ts cases unchanged).
 - `npm test` passes.
 
-### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with sessions, a PATH fake and role notes (planned 2026-10-17 by user; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions" and "The prompt dialect and role notes"; touches src/agent/opencode/opencode-backend.ts (new) src/agent/run-agent.ts src/prompt/dialect.ts src/prompt/prompt.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
+### OpenCode backend, part 5/7: The opencode adapter runs model jobs, with minted sessions, the export after each run, a PATH fake and its prompt dialect (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 3/7 and part 4/7 landed; design in plans/opencode-backend.md "Sessions", "The prompt dialect and role notes" and "The stream translator, and the export that completes it"; touches src/agent/agent-backend.ts src/agent/run-agent.ts src/agent/opencode/opencode-backend.ts (new) src/prompt/dialect.ts src/prompt/prompt.ts src/paths.ts test/fakes/fake-opencode.ts (new) test/test-runner.ts and their tests)
 
-**Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs. Sessions resume only when the session really exists, and the prompts speak OpenCode's tool surface.
+**Goal.** Register an `opencode` backend that runs real model jobs through `opencode run`: authoring, review, follow-ups and resolver runs.
+
+- Its cost and usage are complete: they come from the session export, not only from the lossy stream.
+- A session resumes only when it really exists.
+- The prompts describe OpenCode's real tool surface.
 
 **Approach.**
+- **The seam hook.** `AgentBackend` (src/agent/agent-backend.ts) gains an optional `afterRun?(run: AgentRunSpec, invocation: AgentInvocation): string[]`.
+  - It returns canonical lines. src/agent/run-agent.ts calls it once after the process closes, before the parser's final fold, and writes and parses the lines like streamed ones.
+  - It is skipped for a run the harness killed.
+  - pi and claude do not implement it.
 - **`opencodeBackend`** in src/agent/opencode/opencode-backend.ts:
   - `id: "opencode"`, `label: "OpenCode"`, `defaultBin: "opencode"`, `binEnv: "TUMWATER_OPENCODE_BIN"`.
-  - `resolveBin` goes through `resolveBackendBin` (src/pi/pi-bin.ts).
-  - `invocation` builds the run with part 3/7's builders:
+  - `resolveBin` goes through `resolveBackendBin`.
+  - `invocation`:
+    - the database is `opencodeDbPath(root)` = `<tumwater dir>/opencode/opencode.db` (a new helper in src/paths.ts; the tumwater dir is the `.tumwater` that contains `run.sessionDir`);
+    - `title` = `run.sessionName`;
     - the passthrough from `resolvedAgentConfig(run.config, "opencode").args`;
     - `operatorMcpNames(process.env, os.homedir())`;
-    - `dbPath` = `<sessionDir>/opencode/<sessionId>.db`;
-    - the notes server only when `run.notesPath` is set (see role notes, below);
-    - the env layered on `agentBaseEnv(run.runMarker)`, plus `TUMWATER_NOTES_PATH`.
-    - It returns the `sessionId`, which the runner records in the session ledger.
-  - `translator` is part 4/7's.
-  - `classifyExit`: a run the harness killed is never classified. On a nonzero exit, stderr naming `FreeTierError` → `transientBackend`, and an unknown model or provider → `configError`.
-  - No `imageInput` hook yet (part 6/7).
-- **Sessions:**
-  - A fresh run mints an id in the form hand step H1 records for `--session` (a `tumwater-` prefixed UUID if V2 accepts any string).
-  - A continue takes the session ledger's newest record of this run's kind (`resumableSession`, src/agent/session-ledger.ts). It resumes that id only when the record is opencode's, its `cwd` equals this run's cwd, and its database file exists. Otherwise it mints a fresh id.
-  - The `resumable` hook answers the same way, so the resume guard and the invocation cannot disagree. This is how claude-backend.ts shares `claudeResumableRecord`.
-- **Registration:** src/agent/run-agent.ts registers `opencodeBackend` beside pi and claude. part 2/7's startup gate then passes for opencode jobs.
-- **Dialect** (src/prompt/dialect.ts):
-  - `PromptDialect` gains an optional `backendRules?: string[]`. src/prompt/prompt.ts renders it right after the oversized-output rule; the pi and claude dialects leave it unset, so their prompts stay byte-identical.
+    - part 3/7's builders, with the env layered on `agentBaseEnv(run.runMarker)`.
+    - It returns the `sessionId`, which the runner records in the session ledger before spawning.
+    - A run's `notesPath` is ignored (design decision 8).
+  - **Sessions:**
+    - A fresh run calls `mintOpencodeSessionId()`.
+    - A continue takes the ledger's newest record of this run's kind (`resumableSession`). It resumes that id only when the record is OpenCode's, has this run's `cwd`, and `opencode session export <id> --standalone` (spawnSync with the run env, 10 s timeout) exits 0. Otherwise it mints a fresh id.
+    - `resumable` answers through the same helper.
+  - `afterRun` runs the same export, bounded at 10 s, and returns `opencodeExportLines(json)`. On failure or empty lines it returns `[]`, and the translator's warnings gain `opencode_usage_partial`.
+  - `classifyExit`: a run the harness killed is never classified. On a nonzero exit, stderr naming `FreeTierError` → `transientBackend`, and `Model unavailable` / `Variant unavailable` → `configError`.
+- **Registration:** src/agent/run-agent.ts registers `opencodeBackend` beside pi and claude.
+- **Dialect** (src/prompt/dialect.ts, the `DIALECTS` table):
+  - `PromptDialect` gains an optional `backendRules?: string[]`. src/prompt/prompt.ts renders it after the oversized-output rule. `roleNotesInstruction` returns `""` when `notesTool` is empty.
   - `OPENCODE_DIALECT` has:
-    - `notesTool: "tumwater_role_notes"`;
-    - `readRange: "the read tool's offset/limit (or `sed -n 'A,Bp'`)"`;
-    - `oversizedOutput`: H1's finding on how V2 returns oversized output, or claude's truncate-and-save wording if H1 has not run;
-    - `backendRules`: "Run every shell command in the foreground: never set `background`." and "Do not start sub-agents."
-- **Role notes:** attach the role-notes MCP server (`mcp.tumwater`), unless hand step H1 recorded that MCP tools hang or go missing under `run --standalone` (upstream issue 56240). In that case:
-  - pass no `notesServer`;
-  - make the opencode dialect's `notesTool` empty, so `roleNotesInstruction` (src/prompt/prompt.ts) emits nothing;
-  - record in this entry's Landed notes that notes wait for the upstream fix.
-- **`test/fakes/fake-opencode.ts`**, the twin of test/fakes/fake-claude.ts:
-  - a PATH shim named `opencode` that replays canned JSON lines from part 4/7's fixtures;
-  - records argv, stdin and the `OPENCODE_*` env for each run;
-  - creates the `OPENCODE_DB` file so resume checks pass;
-  - supports a scripted exit code and a scripted hang (for the kill path).
-- **test/test-runner.ts** also strips `TUMWATER_OPENCODE_BIN` and every `OPENCODE_*` from the suite environment.
+    - `notesTool: ""`;
+    - `readRange`: "the read tool's offset/limit (or `sed -n 'A,Bp'`)";
+    - `oversizedOutput`: "Oversized shell output keeps only its last lines, followed by a note naming the file with the full output — read that file in ranges (the read tool's offset/limit) instead of re-running the command.";
+    - `backendRules`: the two rules in plans/opencode-backend.md §5 (pass `timeout` for long commands such as the check; never set `background`).
+  - The pi and claude prompts stay byte-identical.
+- **`test/fakes/fake-opencode.ts`**, the twin of fake-claude.ts: a PATH shim named `opencode`.
+  - For `run`, it replays a capture from part 4/7's fixtures, records argv, stdin and the `OPENCODE_*` env, and stores the session id in a per-test ledger file.
+  - For `session export <id>`, it prints a canned export when it knows the id, and exits 1 otherwise. It also handles `session delete <id>`.
+  - It supports a scripted exit code and a scripted hang.
+- **test/test-runner.ts** strips `TUMWATER_OPENCODE_BIN`, `OPENCODE` and every `OPENCODE_*` from the suite environment.
 
 **Files touched.**
-- Source: src/agent/opencode/opencode-backend.ts (new), src/agent/run-agent.ts, src/prompt/dialect.ts, src/prompt/prompt.ts.
-- Tests: test/fakes/fake-opencode.ts (new), test/opencode-run.test.ts (new), test/prompt-dialect.test.ts, test/test-runner.ts, test/agent-backend.test.ts.
+- Source: src/agent/agent-backend.ts, src/agent/run-agent.ts, src/agent/opencode/opencode-backend.ts (new), src/prompt/dialect.ts, src/prompt/prompt.ts, src/paths.ts.
+- Tests: test/fakes/fake-opencode.ts (new), test/opencode-run.test.ts (new), test/agent-backend.test.ts, test/prompt-dialect.test.ts, test/test-runner.ts.
 
 **Acceptance criteria.**
-- With `model: "opencode/deepseek-v4.1-flash-free"`, an authoring run through `runAgent` on the fake:
-  - spawns `opencode` with part 3/7's argv and the prompt on stdin;
-  - appends an opencode ledger record with the minted id before the spawn;
-  - writes canonical lines to the raw log and the native lines to `.tumwater/log/<role>.opencode.native.jsonl`;
-  - returns `costUsd` 0.
-- A continue with the database file present passes the same `--session` id. With the file deleted, or a record from another cwd, it mints a new id and `resumable` answers false.
-- A run on the hanging fake that the quiet watchdog kills: its process group is killed, its marked children are swept, and the result has no classifier override.
-- The opencode prompt names `tumwater_role_notes` (or no notes tool, under the H1 fallback) and carries both backend rules. The pi and claude prompts are byte-identical to before.
+- **An authoring run with `model: "opencode/deepseek-v4.1-flash-free"`, through `runAgent` on the fake:**
+  - It spawns `opencode` with part 3/7's argv (a minted `--session`, `--title` = the session name) and the prompt on stdin.
+  - It appends an opencode ledger record before the spawn.
+  - It writes canonical lines to the raw log and native lines to `.tumwater/log/<role>.opencode.native.jsonl`.
+  - Its result's tokens equal the canned export's `info.tokens`, and `costUsd` is 0.
+- **With the fake's export failing:** the result keeps the streamed tokens, and the run logs `opencode_usage_partial`.
+- **Continue:**
+  - With the id known to the fake's export, the same `--session` id is passed.
+  - With an unknown id, or a record from another cwd, a new id is minted and `resumable` answers false.
+- **A run on the hanging fake that the quiet watchdog kills:** its group is killed, `afterRun` is skipped, and no classifier overrides the result.
+- **Prompts:** the opencode prompt has no notes instruction and carries both backend rules. The pi and claude prompts are byte-identical to before.
 - `npm test` passes.
 
-### OpenCode backend, part 6/7: OpenCode's model catalog decides free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; requires part 5/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor"; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
+### OpenCode backend, part 6/7: The models.dev catalog decides OpenCode free-ness, variants and image input, and an observed price overrides it (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 5/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Findings, verified live" 9, 10; touches src/agent/opencode/opencode-catalog.ts (new) src/agent/opencode/opencode-backend.ts src/pi/pi-models.ts src/gates/startup-gate.ts src/gates/budget-gates.ts src/status/status-data.ts src/tick/tick-finalize.ts src/merge/merge-slot.ts src/paths.ts src/events/events.ts src/events/event-format.ts and their tests)
 
 **Goal.** A model job on OpenCode's free model counts as free:
 
@@ -173,99 +201,104 @@ If OpenCode ever bills that model, tumwater notices on the first priced run and 
 
 **Approach.**
 - **src/agent/opencode/opencode-catalog.ts:**
-  - `probeOpencodeCatalog(bin, env)` runs `opencode models --verbose` (bounded at 15 s, with part 3/7's scrubbed env). For each `provider/model` it parses:
-    - input and output price per M tokens,
-    - context limit,
-    - input modalities,
-    - variant names.
-
-    The output shape is the one hand step H1 records.
-  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ cliVersion, fetchedAt, models: { "<provider>/<model>": { free, inputPerM, outputPerM, context, images, variants, billedAt? } } }`.
-    - `free` means both prices are 0.
-    - The cache is refreshed when older than 24 h or when the CLI version changed.
-    - A failed probe keeps the old cache and logs one warning.
-  - `observeOpencodeRun(root, { model, costUsd })`: a run with `costUsd > 0` on a model the cache calls free sets `billedAt` and logs `opencode_free_model_billed` {model, costUsd} once (a new event in src/events/events.ts, rendered in src/events/event-format.ts). Call it next to `observeClaudeAccount` in src/tick/tick-finalize.ts and src/merge/merge-slot.ts.
+  - `fetchOpencodeCatalog()` GETs `https://models.dev/api.json`, bounded at 30 s. This is the data OpenCode itself caches (finding 10); V2's `opencode models` prints ids only.
+  - `parseOpencodeCatalog(body, providers)` keeps the `opencode` provider plus any provider the config routes through OpenCode (`opencode/<provider>/…`). For each model it records:
+    - `free`: input and output cost are both 0;
+    - `inputPerM`, `outputPerM`;
+    - `context` (`limit.context`);
+    - `images` (`modalities.input` includes `"image"`);
+    - `efforts` (the `values` of the `reasoning_options` entry with `type: "effort"`).
+  - The cache is `.tumwater/state/opencode-models.json` (a new path helper in src/paths.ts): `{ fetchedAt, cliVersion, models: { "<provider>/<model>": { …, billedAt? } } }`.
+    - It is refreshed when older than 24 h or when `opencode --version` changed.
+    - A failed fetch keeps the old cache and logs one warning.
+    - `billedAt` survives a refresh.
+  - `observeOpencodeRun(root, { model, costUsd })`: a run with `costUsd > 0` on a model the cache calls free sets `billedAt` and logs `opencode_free_model_billed` {model, costUsd} once. That is a new event in src/events/events.ts, rendered in src/events/event-format.ts. Call it next to `observeClaudeAccount` in src/tick/tick-finalize.ts and src/merge/merge-slot.ts.
   - `opencodeModelFree(cache, model)` = `free && billedAt === undefined`.
-- **src/pi/pi-models.ts `seamFree`:** the opencode arm (part 1/7's switch) reads `opencodeModelFree` for the gateway-qualified id. A model missing from the cache is not free.
-  - `seamFree` and `piPairFree` take the cache the way they take the claude account today: an optional parameter. The budget gate, the status free-ness read and doctor pass it.
-- **src/gates/startup-gate.ts:** seed the cache once per root per process when a model job routes to opencode, as `seedClaudeAccount` does.
+- **src/pi/pi-models.ts `seamFree`:** the opencode arm of part 1/7's switch reads `opencodeModelFree` for the gateway-qualified id. A model missing from the cache is not free.
+  - `seamFree` and `piPairFree` take the cache as an optional parameter, the way they take the claude account.
+  - The budget gate (src/gates/budget-gates.ts), the status free-ness read (src/status/status-data.ts) and doctor pass it.
+- **src/gates/startup-gate.ts:** refresh the cache once per root per process when a model job routes to opencode, as `seedClaudeAccount` does.
 - **src/agent/opencode/opencode-backend.ts:**
-  - `invocation` passes the variant when the cache lists the thinking level for the model.
-  - The `imageInput(model)` hook answers from the cache's `images`.
+  - `invocation` passes `#<level>` only when the cache lists the thinking level among the model's `efforts`.
+  - The new `imageInput(model)` hook answers from `images`.
 
 **Files touched.**
 - Source: src/agent/opencode/opencode-catalog.ts (new), src/agent/opencode/opencode-backend.ts, src/pi/pi-models.ts, src/gates/startup-gate.ts, src/gates/budget-gates.ts, src/status/status-data.ts, src/tick/tick-finalize.ts, src/merge/merge-slot.ts, src/paths.ts, src/events/events.ts, src/events/event-format.ts.
 - Tests: test/opencode-catalog.test.ts (new), test/pi-models.test.ts, test/budget-gates.test.ts, test/startup-gate.test.ts, test/opencode-run.test.ts, test/event-format.test.ts.
 
 **Acceptance criteria.**
-- The catalog parser reads a captured `opencode models --verbose` fixture, marking the free model free and a priced model with its prices.
-- A stale or version-changed cache refreshes; a failed probe keeps the old one.
-- `seamFree`:
-  - An opencode job on a cached free model is free.
+- **Parsing** the `body` of test/fixtures/opencode-captures/models-catalog-entries.json gives `opencode/deepseek-v4.1-flash-free` with `free: true`, context 200000, images true and efforts `["low", "high", "max"]`. It gives `opencode-go/deepseek-v4.1-flash` as priced, but only when the config routes `opencode/opencode-go/…`.
+- **The cache:** a stale or version-changed cache refreshes; a failed fetch keeps the old one; `billedAt` survives a refresh.
+- **`seamFree`:**
+  - A cached free model is free.
   - A priced one, an unknown one, and a free one with `billedAt` set are not.
   - The pi and claude arms are unchanged.
-- `pollBudgetGate` with every tier on `opencode/deepseek-v4.1-flash-free`: the team reads as all-free, and at the cap (spend from a priced pi role) the opencode roles keep their primary.
-- A free OpenCode model works as the budget `fallback` for a priced pi primary.
-- A fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once. The next `seamFree` answer is false.
-- A run with thinking `high` on a model whose cached variants include `high` gets `#high`; one whose variants do not gets no variant.
+- **The budget gate:** with every tier on `opencode/deepseek-v4.1-flash-free`, the team reads as all-free. At the cap (spend from a priced pi role), the opencode roles keep their primary.
+- **Fallback:** a free OpenCode model works as the budget `fallback` for a priced pi primary.
+- **Observed price:** a fake run reporting a cost on a cached free model sets `billedAt` and logs `opencode_free_model_billed` once. The next `seamFree` answer is false.
+- **Variants:** thinking `high` on the free model passes `#high`; `medium` passes no variant.
 - `npm test` passes.
 
-### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; requires part 6/7 landed; design in plans/opencode-backend.md "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
+### OpenCode backend, part 7/7: Doctor checks the OpenCode install, models and leaks; session retention; docs; and an opt-in `smoke:opencode` live check (planned 2026-10-17 by user; revised 2026-10-17 by user after the live probe; requires part 6/7 landed; design in plans/opencode-backend.md "Sessions", "Spend, free-ness, image input and doctor" and "Hand steps"; touches src/doctor/doctor-model-checks.ts src/doctor/doctor-checks.ts src/agent/opencode/opencode-backend.ts src/agent/session-ledger.ts docs/backends.md docs/config.md scripts/smoke-opencode.mjs (new) package.json and their tests)
 
 **Goal.** Before any OpenCode run starts, `tumwater doctor` says everything that would make one fail or leak:
 
-- an OpenCode that is missing, or V1;
+- an OpenCode that is missing, V1, or too old;
 - a model OpenCode does not know;
 - a provider with no credential;
 - the operator's global opencode config, which still loads into team runs.
 
-docs/backends.md explains the backend and the free model's catch. `npm run smoke:opencode` checks a real install by hand.
+The team's OpenCode sessions and spill files are pruned like its other session files. docs/backends.md explains the backend and the free model's catch. `npm run smoke:opencode` re-verifies the exact production invocation against the real CLI.
 
 **Approach.**
 - **Doctor**, when any model job routes to opencode:
-  - **Binary and version** (src/doctor/doctor-checks.ts): `opencode --version`.
-    - A 1.x version fails, naming `brew install opencode` (Homebrew core ships V2).
-    - Below the minimum fails. The minimum is the version H1 passed on, kept as one constant in src/agent/opencode/opencode-backend.ts, the way `CLAUDE_MIN_VERSION` is.
-  - **Models:** each opencode model is in the catalog cache, with "free" or its per-M prices and its context window.
+  - **Version** (src/doctor/doctor-checks.ts): parse `opencode --version` (`opencode v2.0.32`).
+    - A 1.x version fails, naming `brew install opencode`.
+    - Below `OPENCODE_MIN_VERSION` = `2.0.32` (a constant in src/agent/opencode/opencode-backend.ts, the H1-verified version) fails.
+  - **Models:** each model is in the catalog cache, with "free" or its per-M prices and its context window.
     - An unknown model fails.
-    - A model on a non-gateway provider (`opencode/anthropic/…`) warns unless `opencode auth list --format json` (bounded) lists that provider.
-    - A thinking level the model has no variant for is noted as dropped.
-  - **Leaks:** the operator's global opencode config. Each of these warns, naming the file and the key:
-    - an MCP server (it will be disabled for team runs);
+    - A thinking level the model has no effort for is noted as dropped.
+    - A non-gateway provider (`opencode/anthropic/…`) warns unless `opencode auth list --format json` (bounded) lists it.
+  - **Leaks:** the operator's global opencode config files and `~/.config/opencode/AGENTS.md`. Each of these warns, naming the file and key:
+    - an MCP server (disabled for team runs);
     - a `plugin`, `agent` or `instructions` entry;
-    - an `~/.config/opencode/AGENTS.md`.
-  - **Sessions:** the total size of `<sessionDir>/opencode/*.db` under `.tumwater/sessions`.
+    - the AGENTS.md file.
+  - **Sizes:** `.tumwater/opencode/opencode.db`, and the shell spill dir for this repo's root commit (`~/.local/share/opencode/shell/<root commit>/`, finding 17).
+- **Retention:** the session pruning that applies `sessionRetentionDays`:
+  - also runs `opencode session delete <id> --standalone` (bounded) for each OpenCode ledger record older than the window;
+  - deletes spill files older than the window in this repo's spill dir.
 - **docs/backends.md:** a new "OpenCode (`opencode/…` model ids)" section:
   - the config from plans/opencode-backend.md "Goal";
-  - that the free model works only through the OpenCode CLI, needs no login, is time-limited, and refuses runs intermittently (they move to the fallback);
+  - the free model's catch: OpenCode's own client only, no login, time-limited, intermittent refusals that move work to the fallback;
   - Go, which pi already reaches as `opencode-go/…`;
-  - what tumwater turns off (snapshots, LSP, formatters, auto-update, plugins);
-  - that XDG is left alone, and why;
-  - where sessions live.
+  - what tumwater turns off and denies, and why `read` must stay allowed;
+  - no role notes on OpenCode yet;
+  - XDG left alone, and why;
+  - where sessions and spill files live.
 - **docs/config.md:** `backends.opencode`, `TUMWATER_OPENCODE_BIN` and `maxConcurrentPerProvider.opencode`.
-- **scripts/smoke-opencode.mjs** (`npm run smoke:opencode`, **not in `npm test`**), the twin of scripts/smoke-claude.mjs. It drives the real `opencode` in a throwaway git repo through the compiled `runAgent`:
-  - a three-step run on `opencode/deepseek-v4.1-flash-free` that reads and edits a file;
-  - a resume of that session;
-  - a SIGTERM during a `sleep` shell command, then a check that no process carrying the run marker survives;
-  - checks that the run cost 0 and that `.tumwater/state/opencode-models.json` calls the model free;
-  - when notes are on, a `tumwater_role_notes` call that writes the notes file.
+- **scripts/smoke-opencode.mjs** (`npm run smoke:opencode`, **not in `npm test`**), the twin of scripts/smoke-claude.mjs. It drives the real `opencode` through the compiled `runAgent`, in a throwaway git repo:
+  - a three-step run on `opencode/deepseek-v4.1-flash-free` that reads, edits and checks a file;
+  - a resume of that session that recalls something from the first run;
+  - a SIGTERM during a long `node` shell command, then a check that no marked process survives;
+  - checks that the run's tokens came from `run_usage` (the export) and its cost is 0, and that the catalog cache calls the model free.
 
-  It prints a named PASS or FAIL for each check and exits nonzero on the first failure. A free-tier 403 prints its own FAIL line saying the gate refused the run, so a flaky gate is not mistaken for a tumwater bug.
+  It prints a named PASS or FAIL for each check and exits nonzero on the first failure. A free-tier 403 gets its own FAIL line saying the gate refused the exact production invocation, so a stricter gate is seen here before the team sees it.
 
 **Files touched.**
-- Source: src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, src/agent/opencode/opencode-backend.ts.
+- Source: src/doctor/doctor-model-checks.ts, src/doctor/doctor-checks.ts, src/agent/opencode/opencode-backend.ts, src/agent/session-ledger.ts.
 - Scripts: scripts/smoke-opencode.mjs (new), package.json.
 - Docs: docs/backends.md, docs/config.md.
-- Tests: test/doctor-model-checks.test.ts, test/doctor-checks.test.ts.
+- Tests: test/doctor-model-checks.test.ts, test/doctor-checks.test.ts, test/session-ledger.test.ts.
 
 **Acceptance criteria.**
-- Doctor with a fake `opencode`:
-  - Version `1.19.3` fails, naming the install command.
-  - A version below the minimum fails; the minimum passes.
+- **Doctor with a fake `opencode`:**
+  - `opencode v1.19.3` fails, naming the install command.
+  - `opencode v2.0.31` fails; `opencode v2.0.32` passes.
   - A model missing from the catalog fails, and the free model reads "free".
   - A non-gateway model with no listed credential warns.
   - A temp HOME whose `.config/opencode/opencode.jsonc` has an MCP server and an `instructions` entry gets one warning naming both.
   - A pi-only config shows no opencode rows.
+- **Pruning:** with an OpenCode ledger record older than the window, pruning calls the fake's `session delete` with its id, and leaves a fresh one alone.
 - `npm run smoke:opencode` exists and is not reachable from `npm test`.
 - `npm test` passes.
 
